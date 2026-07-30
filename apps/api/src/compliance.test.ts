@@ -356,6 +356,7 @@ describe("POST /v1/compliance/retention/run", () => {
   let heldMessageId: string;
   let purgeableMessageId: string;
   let purgeRunId: string;
+  let purgeAuditsBefore = 0;
 
   beforeAll(async () => {
     const tenants = await database
@@ -453,6 +454,9 @@ describe("POST /v1/compliance/retention/run", () => {
   });
 
   it("purges past the cutoff, honours a legal hold and stays inside the tenant", async () => {
+    // The tenant ships its own retention history, so what the audit test can
+    // assert is what this purge added — not how many purges have ever run.
+    purgeAuditsBefore = (await auditRows("compliance.retention.run")).length;
     const res = await call(OFFICER, "POST", "/v1/compliance/retention/run", {
       policyKey: "messages",
       dryRun: false
@@ -493,8 +497,9 @@ describe("POST /v1/compliance/retention/run", () => {
   it("audits the plan and the purge, and lists the run", async () => {
     expect((await auditRows("compliance.retention.plan")).length).toBeGreaterThan(0);
     const purges = await auditRows("compliance.retention.run");
-    expect(purges.length).toBe(1);
-    expect(purges[0]!.subjectRef).toBe("retention:messages");
+    expect(purges.length).toBe(purgeAuditsBefore + 1);
+    const latest = purges.reduce((a, b) => (b.ts >= a.ts ? b : a));
+    expect(latest.subjectRef).toBe("retention:messages");
 
     const list = await call(OFFICER, "GET", "/v1/compliance/retention-runs");
     expect(list.status).toBe(200);

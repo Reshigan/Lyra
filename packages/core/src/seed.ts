@@ -11,6 +11,16 @@ import { ROLES, TENANT_ROLE_KEYS, requiresMfa } from "./rbac.js";
 import { hashPassword } from "./password.js";
 import { splitCommission } from "./commission.js";
 import type { CoreDb } from "./context.js";
+import { seedAdmin } from "./seed/admin.js";
+import { seedAnalytics } from "./seed/analytics.js";
+import { seedAxis } from "./seed/axis.js";
+import { seedCompliance } from "./seed/compliance.js";
+import { seedLedger } from "./seed/ledger.js";
+import { seedOrbit } from "./seed/orbit.js";
+import { seedPlatform } from "./seed/platform.js";
+import { seedScout } from "./seed/scout.js";
+import { seedSignal } from "./seed/signal.js";
+import type { SeedContext } from "./seed/context.js";
 
 // GONXT is the reference tenant: an aggregator that distributes other
 // underwriters' products, underwrites some of its own, and sells through a b2c
@@ -806,8 +816,9 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
   // Last year's cover for the same customer, ending inside the renewal window.
   // The sweep on the scheduled tick raises it, so the retention desk opens on a
   // real queue instead of an empty one (docs/05 J-C3).
+  const renewalPolicyId = id("pol", issuedAt + 1);
   await db.insert(schema.axisPolicies).values({
-    id: id("pol", issuedAt + 1),
+    id: renewalPolicyId,
     tenantId,
     customerId,
     providerId: won.providerId,
@@ -1896,6 +1907,40 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
       updatedAt: now - 3 * DAY
     }
   ]);
+
+  /* ------------------------------------------------------ the other workspaces */
+  // One file per module rather than one more screenful here: the modules do not
+  // share rows, only the context below, and a seeder that owns its own file can
+  // be read next to the module it fills.
+  const ctx: SeedContext = {
+    db,
+    now,
+    tenantId,
+    users,
+    teams,
+    providers,
+    products,
+    offerings,
+    channels,
+    customerId,
+    consentId,
+    quoteRequestId: requestId,
+    caseId,
+    policyId,
+    renewalPolicyId,
+    issuedAt
+  };
+  await seedAdmin(ctx);
+  await seedAxis(ctx);
+  await seedLedger(ctx);
+  await seedOrbit(ctx);
+  await seedSignal(ctx);
+  await seedScout(ctx);
+  await seedCompliance(ctx);
+  await seedAnalytics(ctx);
+  // Last, because the audit trail is a record of what the seeders above did:
+  // it can only be written once those rows exist.
+  await seedPlatform(ctx);
 
   return { tenantId, users, channels, providers, offerings };
 }
