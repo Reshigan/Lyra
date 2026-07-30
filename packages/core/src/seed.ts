@@ -16,10 +16,13 @@ import { seedAnalytics } from "./seed/analytics.js";
 import { seedAxis } from "./seed/axis.js";
 import { seedCompliance } from "./seed/compliance.js";
 import { seedLedger } from "./seed/ledger.js";
+import { seedOnboarding } from "./seed/onboarding.js";
 import { seedOrbit } from "./seed/orbit.js";
 import { seedPlatform } from "./seed/platform.js";
 import { seedScout } from "./seed/scout.js";
+import { seedSettlement } from "./seed/settlement.js";
 import { seedSignal } from "./seed/signal.js";
+import { seedStaff } from "./seed/staff.js";
 import type { SeedContext } from "./seed/context.js";
 
 // GONXT is the reference tenant: an aggregator that distributes other
@@ -1934,6 +1937,12 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
   await seedAxis(ctx);
   await seedLedger(ctx);
   await seedOrbit(ctx);
+  // Onboarding reads partners by name, so it follows orbit. Settlement reads
+  // the periods ledger writes, the channels the core story writes and the
+  // agreement onboarding signs, so it follows both.
+  await seedOnboarding(ctx);
+  await seedSettlement(ctx);
+  await seedStaff(ctx);
   await seedSignal(ctx);
   await seedScout(ctx);
   await seedCompliance(ctx);

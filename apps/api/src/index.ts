@@ -3,6 +3,7 @@ import { PolicyJson, EntitlementsJson, schema } from "@lyra/db";
 import { notFound, pruneIdempotency } from "@lyra/core";
 import { drainOutbox } from "./dispatch.js";
 import { sweepRenewals } from "./engines/renewals.js";
+import { expireDelegations } from "./engines/staff.js";
 import { authRoutes, ctxFor, db, pruneSessions } from "./auth.js";
 import { mountAll } from "./crud.js";
 import { BY_MODULE } from "./resources.js";
@@ -17,6 +18,9 @@ import { aiRoutes } from "./routes/ai.js";
 import { ssoRoutes } from "./routes/sso.js";
 import { analyticsRoutes, runDueSchedules } from "./routes/analytics.js";
 import { complianceRoutes } from "./routes/compliance.js";
+import { onboardingRoutes } from "./routes/onboarding.js";
+import { settlementRoutes } from "./routes/settlement.js";
+import { staffRoutes } from "./routes/staff.js";
 import type { App, Env } from "./env.js";
 
 // docs/04. One worker, one router. `/v1/<module>/<resource>` is generated CRUD;
@@ -52,6 +56,13 @@ app.route("/v1/ledger", ledgerRoutes);
 app.route("/v1/ai", aiRoutes);
 app.route("/v1/analytics", analyticsRoutes);
 app.route("/v1/compliance", complianceRoutes);
+// Three cross-module processes, mounted outside `/v1/<module>` because none of
+// them belongs to one module: onboarding walks a partner through core steps and
+// dist agreements, settlement turns dist commissions into ledger postings, and
+// staff moves core users, roles and delegations at once.
+app.route("/v1/onboarding", onboardingRoutes);
+app.route("/v1/settlement", settlementRoutes);
+app.route("/v1/staff", staffRoutes);
 
 for (const [module, resources] of Object.entries(BY_MODULE)) {
   mountAll(app.basePath(`/v1/${module}`) as unknown as Hono<App>, resources);
@@ -89,6 +100,9 @@ export default {
           await drainOutbox(ctx);
           await sweepRenewals(ctx);
           await runDueSchedules(ctx, env.FILES);
+          // A delegation that has run out must stop showing as active, or every
+          // admin screen lies about who currently holds the authority to approve.
+          await expireDelegations(ctx);
         }
       })()
     );

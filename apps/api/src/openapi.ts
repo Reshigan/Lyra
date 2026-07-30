@@ -156,7 +156,57 @@ const HAND_WRITTEN: Op[] = [
   { method: "get", path: "/v1/analytics/saved-views", summary: "The caller's saved list views", permission: "analytics:saved_views:read", tag: "analytics" },
   { method: "post", path: "/v1/analytics/saved-views", summary: "Save the current filters and columns of a list", permission: "analytics:saved_views:write", tag: "analytics", requestBody: true },
   { method: "delete", path: "/v1/analytics/saved-views/{id}", summary: "Delete a saved view", permission: "analytics:saved_views:write", tag: "analytics" },
-  { method: "get", path: "/v1/analytics/unit-economics", summary: "Cost, revenue and margin per unit of work", permission: "analytics:reports:read", tag: "analytics" }
+  { method: "get", path: "/v1/analytics/unit-economics", summary: "Cost, revenue and margin per unit of work", permission: "analytics:reports:read", tag: "analytics" },
+
+  // Onboarding. The rows are readable as CRUD (`core/onboarding-steps`,
+  // `dist/partner-agreements`) and moved only from here: a step's state and a
+  // partner's stage are the output of a process, never a field a caller sets.
+  { method: "post", path: "/v1/onboarding/steps", summary: "Generate an onboarding checklist from a template for a partner, channel or member of staff", permission: "core:onboarding:write", tag: "onboarding", requestBody: true },
+  { method: "get", path: "/v1/onboarding/steps", summary: "One subject's checklist and which steps are blocking a given stage", permission: "core:onboarding:read", tag: "onboarding" },
+  { method: "post", path: "/v1/onboarding/steps/{id}/complete", summary: "Clear a step, attaching the evidence its kind requires", permission: "core:onboarding:write", tag: "onboarding", requestBody: true },
+  { method: "post", path: "/v1/onboarding/steps/{id}/fail", summary: "Record that a step came back negative, with the reason", permission: "core:onboarding:write", tag: "onboarding", requestBody: true },
+  // Waiving lets something go live unproven, so it is dual-control and never
+  // auto-approvable (approvals.ts `core.onboarding_waive`).
+  { method: "post", path: "/v1/onboarding/steps/{id}/waive", summary: "Waive a required step (dual control; the waiver is recorded against it)", permission: "core:onboarding:waive", tag: "onboarding", requestBody: true },
+  { method: "post", path: "/v1/onboarding/partners/{id}/advance", summary: "Advance a partner one stage, refused while a step gating it is open", permission: "orbit:partners:update", tag: "onboarding" },
+  { method: "post", path: "/v1/onboarding/partners/{id}/suspend", summary: "Stop trading with a partner without unwinding their diligence", permission: "orbit:partners:update", tag: "onboarding", requestBody: true },
+  { method: "post", path: "/v1/onboarding/partners/{id}/resume", summary: "Resume trading with a suspended partner", permission: "orbit:partners:update", tag: "onboarding" },
+  { method: "post", path: "/v1/onboarding/partners/{id}/terminate", summary: "End a partnership; the record and its agreements stay readable", permission: "orbit:partners:update", tag: "onboarding", requestBody: true },
+  { method: "post", path: "/v1/onboarding/agreements", summary: "Draft the next version of a partner agreement", permission: "dist:agreements:write", tag: "onboarding", requestBody: true },
+  { method: "post", path: "/v1/onboarding/agreements/{id}/send", summary: "Send a drafted agreement for signature", permission: "dist:agreements:write", tag: "onboarding" },
+  // Guarded on `write` on purpose: the drafter asks, and the
+  // `dist.agreement_sign` approval — decided by `dist:agreements:sign` — binds.
+  { method: "post", path: "/v1/onboarding/agreements/{id}/sign", summary: "Countersign an agreement (dual control; supersedes the previous version)", permission: "dist:agreements:write", tag: "onboarding", requestBody: true },
+
+  // Settlement. Nothing here writes `state`, `net_minor` or a journal line
+  // directly: a payout is the output of four verbs, each with its own approval.
+  { method: "post", path: "/v1/settlement/runs", summary: "Draft a counterparty's commission settlement for a period (arithmetic only, nothing posts)", permission: "dist:commissions:settle", tag: "settlement", requestBody: true },
+  { method: "get", path: "/v1/settlement/settlements/{id}", summary: "One settlement with its totals and state", permission: "dist:commissions:read", tag: "settlement" },
+  { method: "get", path: "/v1/settlement/settlements/{id}/lines", summary: "The entries behind the total, with the agreement terms applied", permission: "dist:commissions:read", tag: "settlement" },
+  { method: "post", path: "/v1/settlement/settlements/{id}/approve", summary: "Approve the number and accrue it (dual control; the runner may not self-approve)", permission: "dist:commissions:settle", tag: "settlement" },
+  // Approving the amount and releasing the cash are two decisions by two
+  // people, so the payout carries its own policy rather than reusing the accrual's.
+  { method: "post", path: "/v1/settlement/settlements/{id}/pay", summary: "Release the payout and post it (a second signature, held by a controller)", permission: "ledger:payouts:approve", tag: "settlement" },
+  { method: "post", path: "/v1/settlement/settlements/{id}/dispute", summary: "Mark a settlement disputed with the counterparty's reason", permission: "dist:commissions:settle", tag: "settlement", requestBody: true },
+  { method: "post", path: "/v1/settlement/settlements/{id}/reopen", summary: "Reopen a disputed settlement so the period can be restated", permission: "dist:commissions:settle", tag: "settlement", requestBody: true },
+  { method: "get", path: "/v1/settlement/settlements/{id}/statement", summary: "Remittance advice as pdf, xlsx, csv or json", permission: "dist:commissions:read", tag: "settlement" },
+
+  // Staff. Joining, moving and leaving each touch permissions, credentials and
+  // other people's open work at once, so each is one transaction with one audit
+  // entry rather than four PATCHes an operator might do three of.
+  { method: "post", path: "/v1/staff/invitations", summary: "Create a staff account with its roles, teams and joiner checklist", permission: "core:users:create", tag: "staff", requestBody: true },
+  { method: "post", path: "/v1/staff/users/{id}/onboarding", summary: "Re-run the joiner checklist for an account that already exists", permission: "core:onboarding:write", tag: "staff", requestBody: true },
+  // Refused outright when it would grant a permission the caller does not hold:
+  // role assignment is otherwise a privilege-escalation path.
+  { method: "post", path: "/v1/staff/users/{id}/roles", summary: "Add or remove roles; never grants what the caller lacks", permission: "core:roles:assign", tag: "staff", requestBody: true },
+  { method: "post", path: "/v1/staff/users/{id}/offboard", summary: "Revoke every credential and reassign every open item to a named owner", permission: "core:users:update", tag: "staff", requestBody: true },
+  // Id and display name only: a person picker is not a reason to hand out the
+  // staff directory.
+  { method: "get", path: "/v1/staff/users", summary: "People picker for assignment surfaces: id and display name only", permission: "core:users:read", tag: "staff" },
+  { method: "post", path: "/v1/staff/delegations", summary: "Delegate the authority to approve for a window (itself approved)", permission: "core:delegations:write", tag: "staff", requestBody: true },
+  { method: "get", path: "/v1/staff/delegations", summary: "Who currently holds whose authority", permission: "core:delegations:read", tag: "staff" },
+  { method: "post", path: "/v1/staff/delegations/{id}/revoke", summary: "Revoke a delegation; handing your own authority back needs no administrator", permission: "core:delegations:write", tag: "staff", requestBody: true },
+  { method: "post", path: "/v1/staff/delegations/expire", summary: "Sweep delegations whose window has closed (also runs on the scheduled tick)", permission: "core:delegations:write", tag: "staff" }
 ];
 
 export function openapi(): Record<string, unknown> {
@@ -263,7 +313,12 @@ export function openapi(): Record<string, unknown> {
     tags: [
       ...Object.keys(BY_MODULE).map((m) => ({ name: m })),
       { name: "auth" },
-      { name: "me" }
+      { name: "me" },
+      // Cross-module processes: each spans more than one module's tables, so it
+      // is its own tag rather than filed under whichever module it touches most.
+      { name: "onboarding" },
+      { name: "settlement" },
+      { name: "staff" }
     ],
     paths,
     components: {
