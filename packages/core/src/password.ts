@@ -6,8 +6,12 @@ import { base64url, base64urlDecode, timingSafeEqual } from "./crypto.js";
 
 const ITERATIONS = 210_000; // OWASP 2023 floor for PBKDF2-SHA256
 const KEY_BITS = 256;
+// The Workers runtime rejects a single deriveBits call above this ("Pbkdf2
+// failed: iteration counts above 100000 are not supported"), so the cost above
+// it is reached by chaining calls instead of one long one.
+const MAX_PER_CALL = 100_000;
 
-async function derive(password: string, salt: Uint8Array, iterations: number): Promise<Uint8Array> {
+async function pbkdf2(password: string, salt: Uint8Array, iterations: number): Promise<Uint8Array> {
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, [
     "deriveBits"
   ]);
@@ -17,6 +21,23 @@ async function derive(password: string, salt: Uint8Array, iterations: number): P
     KEY_BITS
   );
   return new Uint8Array(bits);
+}
+
+/**
+ * Total work is `iterations`, split into chunks the runtime accepts. Each chunk
+ * salts the next, so the chain costs the sum and is at least as strong as its
+ * final chunk. A hash of 100k or fewer iterations derives in one call, exactly
+ * as it did before chaining, so it stays verifiable.
+ */
+async function derive(password: string, salt: Uint8Array, iterations: number): Promise<Uint8Array> {
+  let next = salt;
+  let remaining = iterations;
+  do {
+    const chunk = Math.min(remaining, MAX_PER_CALL);
+    next = await pbkdf2(password, next, chunk);
+    remaining -= chunk;
+  } while (remaining > 0);
+  return next;
 }
 
 export async function hashPassword(password: string): Promise<string> {

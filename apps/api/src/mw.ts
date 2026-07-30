@@ -78,5 +78,12 @@ export const withCors: MiddlewareHandler<App> = async (c, next) => {
 };
 
 export function onError(err: unknown, c: Parameters<typeof problem>[0]): Response {
-  return problem(c, err);
+  const res = problem(c, err);
+  // The client only ever sees the generic 500 (toProblem never leaks internals),
+  // so without this line an unexpected failure is invisible in Workers Logs too.
+  // Anything that maps to a 4xx is a normal outcome and stays quiet.
+  if (res.status >= 500) {
+    console.error(`unhandled ${c.req.method} ${c.req.path}:`, err instanceof Error ? err.stack : err);
+  }
+  return res;
 }

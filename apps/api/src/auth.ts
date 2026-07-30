@@ -36,8 +36,13 @@ const LoginBody = z.object({
   tenantSlug: z.string().min(1).max(64).optional()
 });
 
-/** Constant work whether or not the user exists — an unknown email must not be faster. */
-const DUMMY_HASH = "$scrypt$n=16384,r=8,p=1$0000000000000000000000$0000000000000000000000000000000000000000000";
+/**
+ * Constant work whether or not the user exists — an unknown email must not be
+ * faster. This has to be a real hash in the live format, or verifyPassword
+ * rejects it on the format check and returns before doing any KDF work.
+ * Derived from a throwaway random string; no password matches it.
+ */
+const DUMMY_HASH = "pbkdf2$210000$HFVRUeNDtDBwhePd-XErCg$B4sOaeGUdiI6mKaz29OPN3nGtX0YPPICXQFTQ6scKdI";
 
 export function db(env: Env) {
   return env.DB_CLIENT ?? makeDb(env.DB);
