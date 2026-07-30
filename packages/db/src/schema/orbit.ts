@@ -116,6 +116,17 @@ export const journeyRuns = sqliteTable(
   ]
 );
 
+/**
+ * A distribution partner. `status` is whether we are trading with them today;
+ * `stage` is where they are in getting there. The two are separate because a
+ * live partner can be paused for a billing dispute without losing the record
+ * that their diligence and agreement are done — pausing must not mean
+ * re-onboarding.
+ *
+ * The stage ladder is walked by the onboarding engine, never set by hand:
+ * `prospect > applied > screening > diligence > agreement > integration >
+ * sandbox > live`, with `suspended` and `terminated` reachable from any stage.
+ */
 export const partners = sqliteTable(
   "orbit_partners",
   {
@@ -128,10 +139,34 @@ export const partners = sqliteTable(
     sandboxFlag: integer("sandbox_flag", { mode: "boolean" }).notNull().default(true),
     status: text("status").notNull().default("active"),
     contactJson: text("contact_json"),
+    /** Where they are in onboarding. Advanced only by the engine. */
+    stage: text("stage").notNull().default("prospect"),
+    /** Who inside the tenant owns this relationship. */
+    ownerRef: text("owner_ref"),
+    /** Legal identity, so a payout is made to a named entity and not a nickname. */
+    legalName: text("legal_name"),
+    registrationNo: text("registration_no"),
+    taxId: text("tax_id"),
+    country: text("country"),
+    /** Latest diligence: what was checked, by whom, and what came back. */
+    screeningId: text("screening_id"), // -> compliance_screenings.id
+    riskRating: text("risk_rating"), // low|medium|high
+    /** The agreement version currently governing. */
+    agreementId: text("agreement_id"), // -> dist_partner_agreements.id
+    /** Bank details are a reference into the payout provider, never held here. */
+    payoutMethodRef: text("payout_method_ref"),
+    goLiveAt: integer("go_live_at"),
+    suspendedAt: integer("suspended_at"),
+    suspendedReason: text("suspended_reason"),
+    terminatedAt: integer("terminated_at"),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull()
   },
-  (t) => [index("orbit_partners_tenant_idx").on(t.tenantId, t.status)]
+  (t) => [
+    index("orbit_partners_tenant_idx").on(t.tenantId, t.status),
+    index("orbit_partners_stage_idx").on(t.tenantId, t.stage),
+    index("orbit_partners_owner_idx").on(t.tenantId, t.ownerRef)
+  ]
 );
 
 export const partnerTxns = sqliteTable(

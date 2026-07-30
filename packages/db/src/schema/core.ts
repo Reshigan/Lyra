@@ -560,3 +560,87 @@ export const idempotencyKeys = sqliteTable(
   },
   (t) => [uniqueIndex("core_idempotency_uq").on(t.tenantId, t.key, t.route)]
 );
+
+/**
+ * One item on a checklist that gates something going live: a partner, a channel
+ * or a member of staff. Deliberately one table for all three — an onboarding is
+ * the same shape whichever subject it hangs off (a required thing, who owns it,
+ * what proves it was done), and three near-identical tables would drift.
+ *
+ * Steps are generated from a template at start, so the set is auditable: nobody
+ * can quietly go live by never creating the step they could not pass. Waiving a
+ * required step is an approval, not a field edit.
+ */
+export const onboardingSteps = sqliteTable(
+  "core_onboarding_steps",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    subjectKind: text("subject_kind").notNull(), // partner|channel|staff
+    subjectRef: text("subject_ref").notNull(),
+    /** Template that produced this run, kept so a later template change is visible. */
+    template: text("template").notNull(),
+    /** Stable slug: `kyc_screening`, `agreement_signed`, `contract_acknowledged`. */
+    key: text("key").notNull(),
+    labelJson: text("label_json").notNull(),
+    /** Position in the checklist; the lowest incomplete step is what is blocking. */
+    seq: integer("seq").notNull(),
+    required: integer("required", { mode: "boolean" }).notNull().default(true),
+    /** Which stage this step must clear before the subject may leave. */
+    gatesStage: text("gates_stage").notNull(),
+    state: text("state").notNull().default("pending"), // pending|in_progress|done|waived|failed
+    /** What proves it: a file id, a screening id, an agreement id, a consent id. */
+    evidenceKind: text("evidence_kind"), // file|screening|agreement|consent|verification|attestation
+    evidenceRef: text("evidence_ref"),
+    ownerRef: text("owner_ref"), // core_users.id who must action it
+    dueAt: integer("due_at"),
+    notesJson: text("notes_json"),
+    /** Set only when `state = waived`; points at the approval that allowed it. */
+    waivedApprovalId: text("waived_approval_id"),
+    decidedBy: text("decided_by"),
+    decidedAt: integer("decided_at"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull()
+  },
+  (t) => [
+    uniqueIndex("core_onboarding_steps_uq").on(t.tenantId, t.subjectKind, t.subjectRef, t.key),
+    index("core_onboarding_steps_subject_idx").on(t.tenantId, t.subjectKind, t.subjectRef, t.seq),
+    index("core_onboarding_steps_owner_idx").on(t.tenantId, t.ownerRef, t.state)
+  ]
+);
+
+/**
+ * "While I am away, my approvals go to them." An approval queue that nobody can
+ * clear is an outage in a system where every consequential action pauses for a
+ * human — but a delegation is itself consequential, so it is scoped, dated,
+ * capped and audited rather than being a profile setting.
+ *
+ * `scopeJson` narrows what may be delegated: `{policyKeys: [...]}` or
+ * `{modules: [...]}`. Absent = everything the delegator can decide. The
+ * delegate never gains a permission the delegator does not hold.
+ */
+export const delegations = sqliteTable(
+  "core_delegations",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    fromUserId: text("from_user_id").notNull(),
+    toUserId: text("to_user_id").notNull(),
+    reason: text("reason").notNull(), // leave|travel|cover|offboarding
+    scopeJson: text("scope_json"),
+    /** Ceiling on any single approval taken under this delegation. */
+    maxAmountMinor: integer("max_amount_minor"),
+    currency: text("currency"),
+    startsAt: integer("starts_at").notNull(),
+    endsAt: integer("ends_at").notNull(),
+    status: text("status").notNull().default("active"), // active|revoked|expired
+    createdBy: text("created_by").notNull(),
+    revokedBy: text("revoked_by"),
+    revokedAt: integer("revoked_at"),
+    createdAt: integer("created_at").notNull()
+  },
+  (t) => [
+    index("core_delegations_to_idx").on(t.tenantId, t.toUserId, t.status, t.endsAt),
+    index("core_delegations_from_idx").on(t.tenantId, t.fromUserId, t.status)
+  ]
+);

@@ -30,7 +30,9 @@ export {
   memories,
   lenses,
   rulepacks,
-  idempotencyKeys
+  idempotencyKeys,
+  onboardingSteps,
+  delegations
 } from "./schema/core.js";
 
 export {
@@ -40,7 +42,8 @@ export {
   quoteRequests as distQuoteRequests,
   quoteResponses as distQuoteResponses,
   commissionEntries as distCommissionEntries,
-  nextBestOffers as distNextBestOffers
+  nextBestOffers as distNextBestOffers,
+  partnerAgreements as distPartnerAgreements
 } from "./schema/dist.js";
 
 export {

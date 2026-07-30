@@ -60,6 +60,13 @@ export const PERMISSIONS = [
   "core:pii:view",
   "core:audit:read", "core:audit:export",
   "core:approvals:read", "core:approvals:decide",
+  // Onboarding a partner, a channel or a member of staff is the same checklist
+  // shape, so it is one permission family. Waiving a required step is separate
+  // from completing one: it is the power to let something go live unproven.
+  "core:onboarding:read", "core:onboarding:write", "core:onboarding:waive",
+  // "While I am away, my approvals go to them." Granting is separate from
+  // reading because a delegation moves authority, not just visibility.
+  "core:delegations:read", "core:delegations:write",
   "core:settings:read", "core:settings:update",
   "core:api_keys:read", "core:api_keys:create", "core:api_keys:revoke",
   "core:webhooks:read", "core:webhooks:write",
@@ -73,6 +80,10 @@ export const PERMISSIONS = [
   "dist:ai:invoke", "dist:quote_requests:read", "dist:quote_requests:create", "dist:quote_requests:share",
   "dist:commissions:read", "dist:commissions:adjust", "dist:commissions:settle",
   "dist:offers:read", "dist:offers:surface", "dist:offers:override",
+  // The commercial agreement behind a partnership. Countersigning is separate
+  // from drafting so the person who wrote the terms is not the one who binds
+  // us to them.
+  "dist:agreements:read", "dist:agreements:write", "dist:agreements:sign",
 
   // AXIS — operations
   "axis:cases:read", "axis:cases:create", "axis:cases:update", "axis:cases:assign",
@@ -238,12 +249,19 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     "ai:prompts:write", "ai:evals:run", "ai:killswitch:use",
     "compliance:*:read", "admin:billing:read",
     "dist:*:read", "dist:channels:write", "dist:offerings:write", "dist:offerings:publish",
-    "dist:rates:write"
+    "dist:rates:write",
+    // Binds the tenant to a partnership. Deliberately not held by
+    // `orbit.partners`, who drafts the terms — drafter and signer are two
+    // people or the countersignature proves nothing.
+    "dist:agreements:sign"
   ],
   "tenant.compliance": [
     "core:audit:read", "core:audit:export", "core:consents:read", "core:customers:read",
     "core:pii:view", "core:approvals:read", "core:approvals:decide",
     "compliance:*:*", "ai:audit:read", "ai:runs:read", "ai:suggestions:read",
+    // Reads the diligence trail behind anything that went live; may waive a
+    // step that compliance itself owns, but never edit one.
+    "core:onboarding:read", "core:onboarding:waive", "dist:agreements:read",
     "ai:agents:read", "ai:agents:pause",
     "ai:killswitch:use", "ai:evals:read",
     "signal:creatives:read", "signal:creatives:approve",
@@ -331,7 +349,12 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     "orbit:partners:certify", "orbit:partner_keys:issue_test",
     "ledger:txns:read", "analytics:reports:read", "analytics:reports:run",
     "dist:channels:read", "dist:channels:write", "dist:rates:read", "dist:commissions:read",
-    "dist:offerings:read"
+    "dist:offerings:read",
+    // Runs partner and channel onboarding, but cannot waive a required step or
+    // countersign the agreement they drafted — both are someone else's call.
+    "core:onboarding:read", "core:onboarding:write",
+    "dist:agreements:read", "dist:agreements:write",
+    "compliance:screenings:read", "compliance:screenings:run"
   ],
   "orbit.admin": [
     "orbit:*:*", "ai:suggestions:read", "core:customers:*", "core:pii:view", "core:consents:*",
@@ -429,6 +452,8 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
   "finance.controller": [
     "ledger:*:*", "core:approvals:read", "core:approvals:decide",
     "dist:commissions:*", "dist:rates:read", "dist:rates:approve", "dist:channels:read",
+    // Settles against the terms, so must be able to read them.
+    "dist:agreements:read", "core:onboarding:read",
     "analytics:*:read", "analytics:reports:run", "analytics:exports:create", "analytics:exports:download",
     "analytics:exports:unmasked", "compliance:evidence:read", "compliance:evidence:export"
   ],

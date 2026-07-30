@@ -139,7 +139,18 @@ export const CORE = register(
   r("webhook-deliveries", schema.webhookDeliveries, "whd", "core", ro("core:webhooks:read")),
   r("notifications", schema.notifications, "ntf", "core", ro("core:notifications:read")),
   r("audit-log", schema.auditLog, "aud", "core", ro("core:audit:read"), { immutable: true }),
-  r("event-dlq", schema.eventDlq, "dlq", "core", ro("admin:dlq:read"))
+  r("event-dlq", schema.eventDlq, "dlq", "core", ro("admin:dlq:read")),
+  // Read-only here on purpose. A checklist step is generated from a template and
+  // moved by the onboarding engine (routes/onboarding.ts); letting CRUD PATCH
+  // `state` would let anyone with write permission mark their own diligence done
+  // and skip the waiver approval entirely.
+  r("onboarding-steps", schema.onboardingSteps, "obs", "core", ro("core:onboarding:read"), {
+    searchable: ["key", "subjectRef"]
+  }),
+  // Same reason: a delegation moves the authority to approve, so it is created
+  // and revoked through routes/staff.ts where the delegate's permissions are
+  // checked against the delegator's. CRUD only reads.
+  r("delegations", schema.delegations, "dlg", "core", ro("core:delegations:read"))
 );
 
 /* -------------------------------------------------------------------- dist */
@@ -175,7 +186,15 @@ export const DIST = register(
   r("next-best-offers", schema.distNextBestOffers, "nb", "dist", {
     read: "dist:offers:read",
     update: "dist:offers:override"
-  })
+  }),
+  // A version of the terms, superseded rather than edited — the same discipline
+  // as `commission-rates`, and for the same reason: a commission dispute is
+  // settled by reading the version that was active on the sale date. Signature
+  // and state transitions go through routes/onboarding.ts.
+  r("partner-agreements", schema.distPartnerAgreements, "pag", "dist", {
+    read: "dist:agreements:read",
+    create: "dist:agreements:write"
+  }, { immutable: true, actorColumns: ["createdBy"] })
 );
 
 /* -------------------------------------------------------------------- axis */

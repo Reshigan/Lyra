@@ -273,3 +273,44 @@ export const nextBestOffers = sqliteTable(
     index("dist_nbo_state_idx").on(t.tenantId, t.state, t.score)
   ]
 );
+
+/**
+ * The commercial agreement behind a b2b channel. Versioned and never edited: a
+ * new set of terms supersedes the old one so a commission dispute six months
+ * from now can be settled by reading the version that was active on the sale
+ * date — the same reason `dist_commission_rates` rows are closed rather than
+ * updated.
+ *
+ * `termsJson` carries what the money engine needs to be told rather than made to
+ * guess: {settlement: {frequency, netDays, minPayoutMinor}, clawbackDays,
+ * exclusivity, territories, terminationNoticeDays}.
+ */
+export const partnerAgreements = sqliteTable(
+  "dist_partner_agreements",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    partnerId: text("partner_id").notNull(), // -> orbit_partners.id
+    version: integer("version").notNull(),
+    kind: text("kind").notNull().default("distribution"), // distribution|referral|introducer|underwriting|data
+    termsJson: text("terms_json").notNull(),
+    documentFileId: text("document_file_id"),
+    /** Who on each side put their name to it. */
+    signedByUserId: text("signed_by_user_id"),
+    signedByPartnerName: text("signed_by_partner_name"),
+    signedAt: integer("signed_at"),
+    effectiveFrom: integer("effective_from"),
+    effectiveTo: integer("effective_to"),
+    state: text("state").notNull().default("draft"), // draft|pending_signature|active|superseded|terminated
+    supersedesId: text("supersedes_id"),
+    /** The approval that let it become active; null while it is still paper. */
+    approvalId: text("approval_id"),
+    createdBy: text("created_by").notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull()
+  },
+  (t) => [
+    uniqueIndex("dist_partner_agreements_uq").on(t.tenantId, t.partnerId, t.version),
+    index("dist_partner_agreements_state_idx").on(t.tenantId, t.partnerId, t.state)
+  ]
+);

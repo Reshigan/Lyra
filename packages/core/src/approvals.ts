@@ -66,6 +66,17 @@ export const APPROVAL_POLICIES: Record<string, ApprovalPolicy> = Object.fromEntr
     policy({ key: "dist.settlement_run", module: "core", decide: "dist:commissions:settle", dualControl: "always", neverAutoApprove: true }),
     policy({ key: "dist.partner_activate", module: "core", decide: "orbit:partners:certify", dualControl: "never" }),
     policy({ key: "dist.rshare_adjust", module: "core", decide: "dist:commissions:adjust", dualControl: "above_threshold", defaultThresholdMinor: 1_000_00 }),
+    // Countersigning binds the tenant to commercial terms, so the person who
+    // drafted them cannot be the one who signs: `dist:agreements:sign` is held
+    // by nobody who holds `dist:agreements:write`.
+    policy({ key: "dist.agreement_sign", module: "core", decide: "dist:agreements:sign", dualControl: "always", neverAutoApprove: true }),
+    // Waiving a required onboarding step lets something go live unproven. It is
+    // never auto-approvable — an allowlist that could skip diligence is the same
+    // hole the checklist exists to close.
+    policy({ key: "core.onboarding_waive", module: "core", decide: "core:onboarding:waive", dualControl: "always", neverAutoApprove: true }),
+    // A delegation moves the authority to approve to somebody else for a window.
+    // Consequential by definition (docs/06 §1), so it is itself approved.
+    policy({ key: "core.delegation_grant", module: "core", decide: "core:delegations:write", dualControl: "never" }),
     // growth
     policy({ key: "signal.budget_move", module: "signal", decide: "signal:budget_moves:approve", dualControl: "never" }),
     policy({ key: "signal.campaign_launch", module: "signal", decide: "signal:campaigns:launch", dualControl: "never" }),
