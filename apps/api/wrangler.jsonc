@@ -20,11 +20,11 @@
       "binding": "DB",
       "database_name": "lyra",
       // Filled in by `wrangler d1 create lyra`; CI fails loudly if it is blank.
-      "database_id": "",
+      "database_id": "e1f4ed16-86ee-49be-9c46-7c21915eccd2",
       "migrations_dir": "../../packages/db/migrations"
     }
   ],
-  "kv_namespaces": [{ "binding": "KV", "id": "" }],
+  "kv_namespaces": [{ "binding": "KV", "id": "d0e3a0b5e70f4bbbad797a0fdd9dbae0" }],
   "r2_buckets": [{ "binding": "FILES", "bucket_name": "lyra-files" }],
   // Outbox drain and session sweep. Both idempotent, so a missed tick only costs
   // latency.
@@ -43,11 +43,11 @@
         {
           "binding": "DB",
           "database_name": "lyra-staging",
-          "database_id": "",
+          "database_id": "81d1ede7-08fc-4941-a3aa-7e342bbbc0fb",
           "migrations_dir": "../../packages/db/migrations"
         }
       ],
-      "kv_namespaces": [{ "binding": "KV", "id": "" }],
+      "kv_namespaces": [{ "binding": "KV", "id": "fe4fd013a5ac4b9e8125c9c1301d3a5e" }],
       "r2_buckets": [{ "binding": "FILES", "bucket_name": "lyra-files-staging" }],
       "triggers": { "crons": ["*/15 * * * *"] },
       "routes": [{ "pattern": "api-staging.lyra.vantax.co.za", "custom_domain": true }]
