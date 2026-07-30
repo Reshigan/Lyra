@@ -509,6 +509,11 @@ describe("J-O3 month-end reconciliation", () => {
   });
 
   it("the same idempotency key does not post twice", async () => {
+    const totalDebits = async () => {
+      const tb = ok(await call("finance.controller", "GET", "/v1/ledger/reports/trial-balance"));
+      return tb.rows.reduce((s: number, r: any) => s + (r.debitMinor ?? 0), 0);
+    };
+    const before = await totalDebits();
     const again = await call(
       "finance.controller",
       "POST",
@@ -522,9 +527,10 @@ describe("J-O3 month-end reconciliation", () => {
       { "idempotency-key": "j-o3-collect-1" }
     );
     expect([200, 201, 409]).toContain(again.status);
-    const tb = ok(await call("finance.controller", "GET", "/v1/ledger/reports/trial-balance"));
-    const debits = tb.rows.reduce((s: number, r: any) => s + (r.debitMinor ?? 0), 0);
-    expect(debits).toBe(300_000_00);
+    // A replay is not a second posting: whatever the ledger weighed before the
+    // retry, it weighs after. A delta says that; an absolute total only says how
+    // much the fixture happened to seed.
+    expect(await totalDebits()).toBe(before);
   });
 
   it("a statement reconciles against the ledger without AI in the money path", async () => {
@@ -750,7 +756,15 @@ describe("J-X3 partner integration", () => {
   it("a developer key can be issued but never read back", async () => {
     const keys = ok(await call("dev.admin", "GET", "/v1/core/api-keys"));
     expect(Array.isArray(keys.data)).toBe(true);
-    for (const k of keys.data) expect(JSON.stringify(k)).not.toContain("qvk_live_");
+    for (const k of keys.data) {
+      // `prefix` is the public handle — `qvk_live_` plus 8 characters, printed so
+      // an operator can tell two integrations apart. What must never come back on
+      // a read path is the hash or a full-length token: either one would let a
+      // reader authenticate as the integration.
+      expect(k.keyHash).toBeUndefined();
+      expect(k.key).toBeUndefined();
+      expect(JSON.stringify(k)).not.toMatch(/qvk_(live|test)_[A-Za-z0-9]{20,}/);
+    }
   });
 });
 
@@ -1186,6 +1200,9 @@ describe("J-A3 pausing an agent mid-incident", () => {
     const threshold = ok(
       await call("tenant.compliance", "POST", "/v1/compliance/policy-thresholds", {
         key: "axis.bind",
+        // v1 is already in force; raising the gate mints the next version rather
+        // than colliding with the row the tenant is currently governed by.
+        version: 2,
         valueJson: { amountMinor: 5_000_000 },
         effectiveFrom: Date.now()
       }),

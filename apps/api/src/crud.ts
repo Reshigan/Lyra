@@ -201,6 +201,21 @@ function filterSql(cols: Columns, filters: Record<string, string>): SQL[] {
   return parts;
 }
 
+/**
+ * Did this write land on a unique index? Drizzle wraps the driver error, so the
+ * constraint text sits on the cause chain and never on the message we would
+ * read first — matching only the top-level string drops duplicates into the 500
+ * bucket instead of answering 409.
+ */
+function isUniqueViolation(e: unknown): boolean {
+  for (let cur: unknown = e, depth = 0; cur != null && depth < 5; depth++) {
+    const message = (cur as { message?: unknown }).message;
+    if (String(message ?? cur).includes("UNIQUE")) return true;
+    cur = (cur as { cause?: unknown }).cause;
+  }
+  return false;
+}
+
 /* -------------------------------------------------------------- the maker */
 
 export function crudRouter(r: Resource): Hono<App> {
@@ -380,7 +395,7 @@ export function crudRouter(r: Resource): Hono<App> {
         } catch (e) {
           // The unique indexes are the real constraint; surfacing them as 409
           // keeps "already exists" out of the 500 bucket.
-          if (String(e).includes("UNIQUE")) throw conflict(`${r.path} already exists`);
+          if (isUniqueViolation(e)) throw conflict(`${r.path} already exists`);
           throw e;
         }
 
@@ -420,10 +435,17 @@ export function crudRouter(r: Resource): Hono<App> {
         });
       }
 
-      await ctx.db
-        .update(r.table)
-        .set({ ...serialize(cols, values), ...(cols.updatedAt ? { updatedAt: ctx.now } : {}) } as never)
-        .where(scoped(ctx, r.table as never, eq(idCol, rowId)));
+      try {
+        await ctx.db
+          .update(r.table)
+          .set({ ...serialize(cols, values), ...(cols.updatedAt ? { updatedAt: ctx.now } : {}) } as never)
+          .where(scoped(ctx, r.table as never, eq(idCol, rowId)));
+      } catch (e) {
+        // Editing a row onto a key another row already holds is the same 409 as
+        // creating that duplicate outright.
+        if (isUniqueViolation(e)) throw conflict(`${r.path} already exists`);
+        throw e;
+      }
 
       const after = await load(ctx, rowId);
       await audit(ctx, {

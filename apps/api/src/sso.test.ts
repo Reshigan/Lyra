@@ -147,6 +147,12 @@ beforeAll(async () => {
 
   const now = Date.now();
   providerId = "idp_test";
+  // The seed ships GONXT's real staff IdP, and an email domain routes to exactly
+  // one provider. Swap it for the fake issuer this suite can mint tokens against
+  // rather than adding a second claimant to the same domain.
+  await database
+    .delete(schema.identityProviders)
+    .where(eq(schema.identityProviders.emailDomain, "gonxt.ae"));
   await database.insert(schema.identityProviders).values({
     id: providerId,
     tenantId,

@@ -355,6 +355,7 @@ describe("POST /v1/compliance/retention/run", () => {
   const OLD = Date.now() - 1000 * 60 * 60 * 24 * 365 * 3; // three years back
   let heldMessageId: string;
   let purgeableMessageId: string;
+  let purgeRunId: string;
 
   beforeAll(async () => {
     const tenants = await database
@@ -421,6 +422,9 @@ describe("POST /v1/compliance/retention/run", () => {
   });
 
   it("plans without deleting, and defaults to planning", async () => {
+    // The seed ships this tenant's retention history, so what a plan must not do
+    // is add to it — an absolute count would only be measuring the fixture.
+    const runsBefore = (await database.select().from(schema.retentionRuns)).length;
     const res = await call(OFFICER, "POST", "/v1/compliance/retention/run", { policyKey: "messages" });
     expect(res.status).toBe(200);
     expect(res.body.dryRun).toBe(true);
@@ -431,8 +435,8 @@ describe("POST /v1/compliance/retention/run", () => {
     expect(res.body.rowsAffected).toBe(1);
     expect(res.body.rowsHeld).toBe(1);
 
-    // A plan is not a run: no row, and nothing gone.
-    expect((await database.select().from(schema.retentionRuns)).length).toBe(0);
+    // A plan is not a run: no new row, and nothing gone.
+    expect((await database.select().from(schema.retentionRuns)).length).toBe(runsBefore);
     expect((await database.select().from(schema.orbitMessages).where(eq(schema.orbitMessages.id, purgeableMessageId))).length).toBe(1);
   });
 
@@ -457,6 +461,7 @@ describe("POST /v1/compliance/retention/run", () => {
     expect(res.body.state).toBe("done");
     expect(res.body.rowsAffected).toBe(1);
     expect(res.body.rowsHeld).toBe(1);
+    purgeRunId = res.body.id as string;
 
     const left = await database.select().from(schema.orbitMessages);
     expect(left.some((m) => m.id === purgeableMessageId)).toBe(false);
@@ -493,7 +498,9 @@ describe("POST /v1/compliance/retention/run", () => {
 
     const list = await call(OFFICER, "GET", "/v1/compliance/retention-runs");
     expect(list.status).toBe(200);
-    expect(list.body.data.length).toBe(1);
+    // The run this suite performed has to be readable back, alongside whatever
+    // history the tenant already had.
+    expect(list.body.data.some((r: { id: string }) => r.id === purgeRunId)).toBe(true);
   });
 
   it("left no compliance action unaudited", async () => {
