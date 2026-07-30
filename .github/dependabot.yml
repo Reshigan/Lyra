@@ -1,0 +1,28 @@
+version: 2
+
+# Feeds the SEC-007 gate: pnpm audit fails CI on high/critical advisories, so
+# something has to open the bump PRs. Grouped so a normal week is two PRs, not
+# forty.
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "04:00"
+    open-pull-requests-limit: 10
+    versioning-strategy: increase
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+    # Majors come through as individual PRs — they need a human and often an ADR.
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "04:00"
+    groups:
+      actions-minor-and-patch:
+        update-types: [minor, patch]

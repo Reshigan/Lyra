@@ -31,13 +31,20 @@ RUN corepack enable && corepack install && chmod -R a+rX /opt/corepack
 COPY . .
 RUN pnpm install --frozen-lockfile && pnpm build
 
+# The R2 stand-in writes here (FILES_DIR). Created before USER drops so the
+# named volume inherits node's ownership at first mount.
+RUN mkdir -p /var/lib/lyra/files && chown -R node:node /var/lib/lyra
+
 # Nothing below is baked in: every value comes from the compose env file.
 # RUNTIME=node selects the on-prem adapters (docs/11 §3); MODE picks the role.
 ENV RUNTIME=node MODE=app NODE_ENV=production
 USER node
 EXPOSE 8787
 
-# The Node entrypoint (`RUNTIME=node` adapter) is built by apps/api and is NOT
-# in the repo yet — see README §"On-prem status". Until it lands, `app` and
-# `worker` will exit; `libsql` and `migrate` work today.
-CMD ["node", "apps/api/dist/node.js"]
+# apps/api/src/node.ts, run through tsx.
+#
+# ponytail: no bundle step. tsx pays a one-off transpile at boot and keeps the
+# image honest — the container runs the same source the tests run. Swap for a
+# real `pnpm --filter @lyra/api build` + `node dist/node.js` when cold-start
+# time or a distroless base actually matters.
+CMD ["pnpm", "--filter", "@lyra/api", "start"]

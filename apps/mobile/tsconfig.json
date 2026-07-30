@@ -1,0 +1,13 @@
+{
+  "extends": ["expo/tsconfig.base", "../../packages/config/tsconfig.json"],
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "lib": ["ES2022"],
+    "types": [],
+    "paths": { "~/*": ["./src/*"] }
+  },
+  "include": ["app/**/*.ts", "app/**/*.tsx", "src/**/*.ts", "src/**/*.tsx", "*.ts"]
+}

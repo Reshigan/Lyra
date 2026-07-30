@@ -1,0 +1,106 @@
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { createClient } from "@libsql/client";
+import { drizzle } from "drizzle-orm/libsql";
+import { beforeAll, describe, expect, it } from "vitest";
+import { seed } from "@lyra/core";
+import type { Db } from "@lyra/db";
+import { app } from "./index.js";
+import type { Env } from "./env.js";
+
+// One-click persona sign-in (auth.ts §demo). It is a credential bypass, so the
+// test that matters most is the one asserting it does not exist in production.
+
+const MIGRATIONS = join(import.meta.dirname, "..", "..", "..", "packages", "db", "migrations");
+
+function statements(): string[] {
+  return readdirSync(MIGRATIONS)
+    .filter((f) => f.endsWith(".sql"))
+    .sort()
+    .flatMap((f) => readFileSync(join(MIGRATIONS, f), "utf8").split("--> statement-breakpoint"))
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+const exec = { waitUntil() {}, passThroughOnException() {} };
+let database: Db;
+
+function envFor(environment: string): Env {
+  return { DB_CLIENT: database, ENVIRONMENT: environment, APP_ORIGIN: "http://localhost:5173" } as unknown as Env;
+}
+
+async function call<T = any>(
+  environment: string,
+  method: string,
+  path: string,
+  payload?: unknown
+): Promise<{ status: number; body: T; headers: Headers }> {
+  const res = await app.fetch(
+    new Request(`http://api.test${path}`, {
+      method,
+      headers: { "content-type": "application/json" },
+      ...(payload !== undefined ? { body: JSON.stringify(payload) } : {})
+    }),
+    envFor(environment) as never,
+    exec as never
+  );
+  const text = res.headers.get("content-type")?.includes("json") ? await res.text() : "";
+  return { status: res.status, body: text ? (JSON.parse(text) as T) : (null as T), headers: res.headers };
+}
+
+beforeAll(async () => {
+  const client = createClient({ url: ":memory:" });
+  for (const stmt of statements()) await client.execute(stmt);
+  database = drizzle(client) as unknown as Db;
+  await seed(database as never);
+}, 60_000);
+
+describe("demo sign-in", () => {
+  it("is not there in production", async () => {
+    const list = await call("production", "GET", "/v1/auth/demo/personas");
+    expect(list.status).toBe(404);
+    const login = await call("production", "POST", "/v1/auth/demo/login", {
+      email: "amina.saleh@gonxt.ae"
+    });
+    expect(login.status).toBe(404);
+  });
+
+  it("lists one row per seeded persona, with the role each one demonstrates", async () => {
+    const list = await call("staging", "GET", "/v1/auth/demo/personas");
+    expect(list.status).toBe(200);
+    const personas = list.body.data as { email: string; name: string; roleKey: string }[];
+    expect(personas.length).toBeGreaterThan(5);
+    expect(new Set(personas.map((p) => p.email)).size).toBe(personas.length);
+    const admin = personas.find((p) => p.email === "amina.saleh@gonxt.ae");
+    expect(admin?.roleKey).toBe("tenant.admin");
+    // No credential leaves this route.
+    expect(JSON.stringify(personas)).not.toMatch(/pbkdf2|passwordHash/i);
+  });
+
+  it("signs a persona all the way in, past the second-factor wall", async () => {
+    const login = await call("staging", "POST", "/v1/auth/demo/login", {
+      email: "amina.saleh@gonxt.ae"
+    });
+    expect(login.status).toBe(200);
+    expect(login.body.mfaRequired).toBe(false);
+    expect(login.headers.get("set-cookie")).toContain("lyra_session=");
+
+    // The point of the door: the session works immediately, where a password
+    // login for this role would have stopped at TOTP enrolment.
+    const me = await app.fetch(
+      new Request("http://api.test/v1/me", {
+        headers: { authorization: `Bearer ${login.body.token}` }
+      }),
+      envFor("staging") as never,
+      exec as never
+    );
+    expect(me.status).toBe(200);
+  });
+
+  it("refuses an email it did not seed", async () => {
+    const login = await call("staging", "POST", "/v1/auth/demo/login", {
+      email: "attacker@example.com"
+    });
+    expect(login.status).toBe(404);
+  });
+});

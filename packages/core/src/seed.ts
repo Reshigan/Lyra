@@ -7,7 +7,7 @@ import {
   id,
   schema
 } from "@lyra/db";
-import { ROLES, TENANT_ROLE_KEYS } from "./rbac.js";
+import { ROLES, TENANT_ROLE_KEYS, requiresMfa } from "./rbac.js";
 import { hashPassword } from "./password.js";
 import { splitCommission } from "./commission.js";
 import type { CoreDb } from "./context.js";
@@ -26,6 +26,13 @@ const DEFAULT_PASSWORD = "Gonxt-Demo-2026!";
 export interface SeedOptions {
   now?: number;
   password?: string;
+  /**
+   * Enrol every staff persona on this shared TOTP secret. Only a test or a demo
+   * wants this — it is one secret for many people, which is the opposite of what
+   * a second factor is for. Leave it unset for a real tenant and PLAT-013 walks
+   * each person through enrolment on their first sign-in.
+   */
+  mfaSecret?: string;
 }
 
 export interface SeedResult {
@@ -184,7 +191,10 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
       status: "active",
       authProvider: "password",
       passwordHash,
-      mfaEnrolled: false,
+      // PLAT-013 covers staff only, so an external persona stays on a password
+      // even when the demo secret is supplied.
+      mfaEnrolled: Boolean(opts.mfaSecret) && requiresMfa([person.role]),
+      mfaSecret: opts.mfaSecret && requiresMfa([person.role]) ? opts.mfaSecret : null,
       createdAt: now,
       updatedAt: now
     });

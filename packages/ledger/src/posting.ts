@@ -81,6 +81,16 @@ function balanceBase(lines: { side: Side; baseAmountMinor: number }[]): void {
 
 const INCOME_OR_EXPENSE = /^[45]/;
 
+/** An error plus every `cause` under it, flattened to text for matching. */
+function chain(err: unknown): string {
+  let out = "";
+  for (let e: unknown = err, depth = 0; e && depth < 5; depth++) {
+    out += ` ${String(e)}`;
+    e = (e as { cause?: unknown }).cause;
+  }
+  return out;
+}
+
 /**
  * docs/19 §5.2 B: client money is a pass-through, never a revenue source. The
  * check is on the client-money *asset* — CM-TRANSFER legitimately debits the
@@ -155,7 +165,9 @@ export async function post(ctx: Ctx, input: PostInput): Promise<PostedBatch> {
       postedAt
     });
   } catch (err) {
-    if (String(err).includes("ledger_batches_txn_uq") || String(err).toUpperCase().includes("UNIQUE")) {
+    // Drivers wrap: the text that names the constraint is on a `cause` a level
+    // or two down ("Failed query: insert into …" is all the outer message says).
+    if (/ledger_batches_txn_uq|unique/i.test(chain(err))) {
       throw conflict(`transaction ${input.txnId} already has a posted batch`);
     }
     throw err;

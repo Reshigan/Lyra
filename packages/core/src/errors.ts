@@ -75,6 +75,14 @@ export const approvalRequired = (policyKey: string, approvalId?: string) =>
     approvalId ? { policy_key: policyKey, approval_id: approvalId } : { policy_key: policyKey }
   );
 
+/**
+ * The session is real but has not cleared the second factor (PLAT-012/013).
+ * `step` tells the client which screen to draw: an enrolled user types a code,
+ * a staff account that never enrolled has to enrol before it can work.
+ */
+export const mfaRequired = (step: "verify" | "enrol") =>
+  new AppError(403, "mfa_required", "Second factor required", step, { step });
+
 /** Consent missing for the purpose being attempted (docs/12 §2). */
 export const consentRequired = (purpose: string) =>
   new AppError(403, "consent_required", "Consent required", purpose, { purpose });

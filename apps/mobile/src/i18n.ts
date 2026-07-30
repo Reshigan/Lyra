@@ -1,0 +1,184 @@
+// Every string this app renders. A literal in a screen is a bug: it cannot be
+// translated and the ar catalogue would silently drift from it. Keys are
+// `area.thing`; the nav.* keys are the `labelKey` values /v1/me returns, so
+// they must stay in step with apps/web/app/i18n/en.ts.
+//
+// ponytail: plain objects and a replace() interpolator, same as the web shell.
+// An ICU runtime buys plurals and date formats nothing here renders yet.
+
+export const en = {
+  "app.loading": "Loading",
+
+  "nav.home": "Home",
+  "nav.axis": "Operations",
+  "nav.orbit": "Conversations",
+  "nav.signal": "Marketing",
+  "nav.scout": "Market",
+  "nav.north": "Insight",
+  "nav.distribution": "Distribution",
+  "nav.ledger": "Ledger",
+  "nav.analytics": "Analytics",
+  "nav.compliance": "Compliance",
+  "nav.admin": "Administration",
+  "nav.settings": "Settings",
+  "nav.unavailable": "Not on mobile yet",
+
+  "home.signedInAs": "Signed in as {name}",
+  "home.workspaces": "Workspaces",
+  "home.signOut": "Sign out",
+  "home.empty": "Your roles do not open any area yet.",
+
+  "auth.signIn": "Sign in",
+  "auth.intro": "Enter your work email and password to continue.",
+  "auth.email": "Email",
+  "auth.password": "Password",
+  "auth.tenantSlug": "Workspace",
+  "auth.tenantSlug.hint":
+    "Your email belongs to more than one workspace. Enter which one to open.",
+  "auth.continue": "Continue",
+  "auth.working": "Working…",
+  "auth.totp.title": "Two-step verification",
+  "auth.totp.intro": "Enter the six-digit code from your authenticator app.",
+  "auth.totp.code": "Verification code",
+  "auth.totp.verify": "Verify",
+  "auth.enrol.title": "Set up two-step verification",
+  "auth.enrol.intro":
+    "Your role requires a second step at sign-in. Add this account to an authenticator app, then enter the code it shows.",
+  "auth.enrol.secret": "Setup key",
+  "auth.enrol.secretHint":
+    "Paste this key into your authenticator app, or open the link below on this device.",
+  "auth.enrol.open": "Open in authenticator app",
+  "auth.enrol.confirm": "Confirm",
+  "auth.recovery.title": "Save your recovery codes",
+  "auth.recovery.intro":
+    "Each code signs you in once if you lose your phone. This is the only time they are shown — store them somewhere safe.",
+  "auth.recovery.continue": "I have saved them",
+  "auth.error.credentials": "That email and password do not match. Check both and try again.",
+  "auth.error.throttled": "Too many attempts. Wait a few minutes, then try again.",
+  "auth.error.locked": "This account cannot sign in. An administrator can restore it.",
+  "auth.error.generic": "Sign-in could not be completed. Nothing was changed; you can try again.",
+  "auth.error.code": "That code was not accepted. Codes expire quickly — try the current one.",
+
+  "list.empty": "There is nothing here yet.",
+  "list.count": "{n} shown",
+  "list.untitled": "Untitled",
+  "detail.title": "Record",
+
+  "error.title": "This did not load",
+  "error.generic": "The page could not be built. Nothing was saved, and you can try again.",
+  "error.network": "No connection to the server. Check the network and try again.",
+  "error.notFound": "There is nothing at this address.",
+  "error.forbidden": "Your roles do not include access to this area.",
+  "error.unauthorized": "Your session has ended. Sign in to continue.",
+  "error.retry": "Try again",
+  "error.requestId": "Reference {id}"
+} as const;
+
+export type MessageKey = keyof typeof en;
+/** The shape every catalogue must match — enforced at compile time and in test. */
+export type Messages = Record<MessageKey, string>;
+
+// Written in Arabic, not translated from the English.
+export const ar: Messages = {
+  "app.loading": "جارٍ التحميل",
+
+  "nav.home": "الرئيسية",
+  "nav.axis": "العمليات",
+  "nav.orbit": "المحادثات",
+  "nav.signal": "التسويق",
+  "nav.scout": "السوق",
+  "nav.north": "التحليلات التنفيذية",
+  "nav.distribution": "التوزيع",
+  "nav.ledger": "الدفتر المحاسبي",
+  "nav.analytics": "التقارير",
+  "nav.compliance": "الامتثال",
+  "nav.admin": "الإدارة",
+  "nav.settings": "الإعدادات",
+  "nav.unavailable": "غير متاح على الجوال بعد",
+
+  "home.signedInAs": "تسجيل الدخول باسم {name}",
+  "home.workspaces": "مساحات العمل",
+  "home.signOut": "تسجيل الخروج",
+  "home.empty": "أدوارك لا تفتح أي قسم بعد.",
+
+  "auth.signIn": "تسجيل الدخول",
+  "auth.intro": "أدخل بريد العمل وكلمة المرور للمتابعة.",
+  "auth.email": "البريد الإلكتروني",
+  "auth.password": "كلمة المرور",
+  "auth.tenantSlug": "مساحة العمل",
+  "auth.tenantSlug.hint": "بريدك مرتبط بأكثر من مساحة عمل. حدد المساحة التي تريد فتحها.",
+  "auth.continue": "متابعة",
+  "auth.working": "جارٍ التنفيذ…",
+  "auth.totp.title": "التحقق بخطوتين",
+  "auth.totp.intro": "أدخل الرمز المكوّن من ستة أرقام من تطبيق المصادقة.",
+  "auth.totp.code": "رمز التحقق",
+  "auth.totp.verify": "تحقق",
+  "auth.enrol.title": "إعداد التحقق بخطوتين",
+  "auth.enrol.intro":
+    "يتطلب دورك خطوة ثانية عند تسجيل الدخول. أضف هذا الحساب إلى تطبيق المصادقة، ثم أدخل الرمز الذي يعرضه.",
+  "auth.enrol.secret": "مفتاح الإعداد",
+  "auth.enrol.secretHint": "الصق هذا المفتاح في تطبيق المصادقة، أو افتح الرابط أدناه على هذا الجهاز.",
+  "auth.enrol.open": "فتح في تطبيق المصادقة",
+  "auth.enrol.confirm": "تأكيد",
+  "auth.recovery.title": "احفظ رموز الاسترداد",
+  "auth.recovery.intro":
+    "كل رمز يسجّل دخولك مرة واحدة إذا فقدت هاتفك. تُعرض هذه الرموز الآن فقط — احفظها في مكان آمن.",
+  "auth.recovery.continue": "لقد حفظتها",
+  "auth.error.credentials": "البريد وكلمة المرور غير متطابقين. تحقق منهما وأعد المحاولة.",
+  "auth.error.throttled": "محاولات كثيرة. انتظر بضع دقائق ثم أعد المحاولة.",
+  "auth.error.locked": "هذا الحساب لا يمكنه تسجيل الدخول. يستطيع المسؤول إعادة تفعيله.",
+  "auth.error.generic": "تعذّر إكمال تسجيل الدخول. لم يتغيّر شيء، ويمكنك المحاولة مرة أخرى.",
+  "auth.error.code": "لم يُقبل هذا الرمز. الرموز تنتهي سريعًا — جرّب الرمز الحالي.",
+
+  "list.empty": "لا يوجد شيء هنا بعد.",
+  "list.count": "المعروض {n}",
+  "list.untitled": "بدون عنوان",
+  "detail.title": "السجل",
+
+  "error.title": "تعذّر تحميل هذه الصفحة",
+  "error.generic": "تعذّر بناء الصفحة. لم يُحفظ شيء، ويمكنك المحاولة مرة أخرى.",
+  "error.network": "لا يوجد اتصال بالخادم. تحقق من الشبكة وأعد المحاولة.",
+  "error.notFound": "لا يوجد شيء على هذا العنوان.",
+  "error.forbidden": "أدوارك لا تشمل الوصول إلى هذا القسم.",
+  "error.unauthorized": "انتهت جلستك. سجّل الدخول للمتابعة.",
+  "error.retry": "أعد المحاولة",
+  "error.requestId": "المرجع {id}"
+};
+
+export const CATALOGUES: Record<string, Messages> = { en, ar };
+export const DEFAULT_LOCALE = "en";
+
+/** Locales that lay out right-to-left. Drives direction and every logical style. */
+const RTL = new Set(["ar", "fa", "he", "ur"]);
+
+export type Translate = (key: string, vars?: Record<string, string | number>) => string;
+
+export function baseOf(tag: string): string {
+  return (tag.split("-")[0] ?? "").toLowerCase();
+}
+
+export function dirFor(locale: string): "rtl" | "ltr" {
+  return RTL.has(baseOf(locale)) ? "rtl" : "ltr";
+}
+
+/** First supported locale among the device's preferences, else English. */
+export function resolveLocale(preferred: readonly (string | null | undefined)[]): string {
+  for (const tag of preferred) {
+    const base = baseOf(tag ?? "");
+    if (CATALOGUES[base]) return base;
+  }
+  return DEFAULT_LOCALE;
+}
+
+export function translator(locale: string): Translate {
+  const catalogue = CATALOGUES[baseOf(locale)] ?? CATALOGUES[DEFAULT_LOCALE]!;
+  return (key, vars) => {
+    // An unknown key renders as itself rather than as an empty box: a missing
+    // string should look wrong in review, not invisible in production.
+    const template = catalogue[key as MessageKey] ?? key;
+    if (!vars) return template;
+    return template.replace(/\{(\w+)\}/g, (whole, name: string) =>
+      name in vars ? String(vars[name]) : whole
+    );
+  };
+}

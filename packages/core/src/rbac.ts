@@ -63,6 +63,7 @@ export const PERMISSIONS = [
   "core:settings:read", "core:settings:update",
   "core:api_keys:read", "core:api_keys:create", "core:api_keys:revoke",
   "core:webhooks:read", "core:webhooks:write",
+  "core:identity_providers:read", "core:identity_providers:write",
   "core:impersonate:use",
 
   // DIST — aggregator distribution: channels, offerings, commercials
@@ -405,6 +406,21 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
 };
 
 export type RoleKey = keyof typeof ROLES;
+
+/**
+ * PLAT-013. Everyone inside the business carries a second factor; the rule is
+ * the platform's and no tenant policy switch turns it off. Only accounts that
+ * belong to someone else — a broker's developer, an underwriter's read-only
+ * viewer, a customer — are outside it, because we do not run their identity.
+ *
+ * An account with no role at all is treated as staff: failing closed here costs
+ * one enrolment, failing open costs an unprotected admin.
+ */
+const EXTERNAL_ROLE_PREFIXES = ["partner.", "provider.", "customer"];
+
+export function requiresMfa(roleKeys: readonly string[]): boolean {
+  return roleKeys.every((key) => !EXTERNAL_ROLE_PREFIXES.some((p) => key.startsWith(p)));
+}
 
 /** Roles provisioned into every new tenant (platform.* live outside tenants). */
 export const TENANT_ROLE_KEYS: readonly string[] = Object.keys(ROLES).filter(

@@ -1,4 +1,5 @@
 import { redirect, type ActionFunctionArgs } from "react-router";
+import { cloudflare } from "../context";
 import { apiFetch, relayCookies } from "../api.server";
 
 // Action only, no UI. POST so a link prefetch or a crawler cannot end a session.
@@ -7,7 +8,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
   const headers = new Headers();
   try {
     const response = await apiFetch("/v1/auth/logout", {
-      env: context.cloudflare.env,
+      env: context.get(cloudflare).env,
       request,
       method: "POST"
     });

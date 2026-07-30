@@ -33,6 +33,11 @@ export const users = sqliteTable(
     passwordHash: text("password_hash"),
     mfaEnrolled: integer("mfa_enrolled", { mode: "boolean" }).notNull().default(false),
     mfaSecret: text("mfa_secret"),
+    // Hashed single-use recovery codes, so a lost phone is not a support ticket.
+    mfaRecoveryJson: text("mfa_recovery_json"),
+    // Subject claim from the identity provider that owns this account. Matching
+    // on email alone would let a renamed mailbox inherit a session.
+    externalId: text("external_id"),
     lastSeenAt: integer("last_seen_at"),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
@@ -340,6 +345,49 @@ export const apiKeys = sqliteTable(
   (t) => [
     index("core_api_keys_tenant_idx").on(t.tenantId, t.mode),
     uniqueIndex("core_api_keys_prefix_uq").on(t.prefix)
+  ]
+);
+
+/**
+ * docs/04 §2. One row per enterprise sign-in route. `kind` is the seam: OIDC is
+ * implemented, SAML sits behind the same shape so adding it is a handler and
+ * not a schema change (CLAUDE.md §15).
+ *
+ * No client secret is stored. `clientSecretRef` names the wrangler secret /
+ * environment variable that holds it, so a database dump is not a set of
+ * working credentials.
+ */
+export const identityProviders = sqliteTable(
+  "core_identity_providers",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    kind: text("kind").notNull().default("oidc"), // oidc|saml
+    name: text("name").notNull(),
+    /** Email domain this provider owns, lower case, no `@`. Drives discovery. */
+    emailDomain: text("email_domain").notNull(),
+    issuer: text("issuer").notNull(),
+    clientId: text("client_id"),
+    clientSecretRef: text("client_secret_ref"),
+    discoveryUrl: text("discovery_url"),
+    authorizeUrl: text("authorize_url"),
+    tokenUrl: text("token_url"),
+    jwksUrl: text("jwks_url"),
+    /** SAML only: IdP SSO URL and the base64 signing certificate. */
+    ssoUrl: text("sso_url"),
+    certificate: text("certificate"),
+    /** Role granted to an account created on first sign-in. */
+    defaultRoleKey: text("default_role_key"),
+    /** Off by default: a half-configured provider must not shadow the password form. */
+    enabled: integer("enabled", { mode: "boolean" }).notNull().default(false),
+    /** PLAT-013 rides on the provider too: an IdP without MFA cannot cover staff. */
+    mfaAsserted: integer("mfa_asserted", { mode: "boolean" }).notNull().default(false),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull()
+  },
+  (t) => [
+    index("core_identity_providers_tenant_idx").on(t.tenantId, t.enabled),
+    uniqueIndex("core_identity_providers_domain_uq").on(t.emailDomain)
   ]
 );
 

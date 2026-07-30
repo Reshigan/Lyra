@@ -12,7 +12,8 @@ import { meRoutes } from "./routes/me.js";
 import { distRoutes } from "./routes/dist.js";
 import { ledgerRoutes } from "./routes/ledger.js";
 import { aiRoutes } from "./routes/ai.js";
-import { analyticsRoutes } from "./routes/analytics.js";
+import { ssoRoutes } from "./routes/sso.js";
+import { analyticsRoutes, runDueSchedules } from "./routes/analytics.js";
 import type { App, Env } from "./env.js";
 
 // docs/04. One worker, one router. `/v1/<module>/<resource>` is generated CRUD;
@@ -30,6 +31,7 @@ app.get("/health", (c) =>
 );
 app.get("/openapi.json", (c) => c.json(openapi()));
 
+app.route("/v1/auth/sso", ssoRoutes);
 app.route("/v1/auth", authRoutes);
 app.route("/v1/me", meRoutes);
 
@@ -80,6 +82,7 @@ export default {
           );
           await drainOutbox(ctx);
           await sweepRenewals(ctx);
+          await runDueSchedules(ctx, env.FILES);
         }
       })()
     );

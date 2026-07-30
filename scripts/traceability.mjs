@@ -16,8 +16,6 @@ const J = "apps/api/src/journeys.test.ts";
 const API = "apps/api/src/api.test.ts";
 const RBAC = "packages/core/src/rbac.test.ts";
 const CORE = "packages/core/src/core.test.ts";
-const COMM = "packages/core/src/commission.test.ts";
-const SEED = "packages/core/src/seed.test.ts";
 const LEDGER = "packages/ledger/src/ledger.test.ts";
 const GW = "packages/model-gateway/src/gateway.test.ts";
 const SHELL = "apps/web/app/shell.test.ts";
@@ -198,11 +196,11 @@ function parse(line) {
   for (let i = 0; i < line.length; i++) {
     const ch = line[i];
     if (inQ) {
-      if (ch === '"' && line[i + 1] === '"') (cur += '"'), i++;
+      if (ch === '"' && line[i + 1] === '"') { cur += '"'; i++; }
       else if (ch === '"') inQ = false;
       else cur += ch;
     } else if (ch === '"') inQ = true;
-    else if (ch === ",") (cells.push(cur), (cur = ""));
+    else if (ch === ",") { cells.push(cur); cur = ""; }
     else cur += ch;
   }
   cells.push(cur);

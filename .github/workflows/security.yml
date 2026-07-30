@@ -1,0 +1,95 @@
+name: security
+
+# docs/12 §"Vulnerability management": dep audit weekly + scanning in CI.
+# Closes traceability SEC-007 (dependency scanning on a schedule) and
+# SEC-008 (baseline security scan in CI).
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Mondays 03:17 UTC — off the hour so we don't queue behind the world.
+    - cron: "17 3 * * 1"
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # SEC-007 — dependency vulnerabilities. Gating, not advisory: a high or
+  # critical advisory fails the build. Triage is bump-or-ADR, never a
+  # continue-on-error.
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm audit --audit-level=high
+
+  # SEC-008 — committed credentials. Free on this repo because it is public;
+  # if Lyra is ever made private, gitleaks-action requires a paid org licence
+  # in secrets.GITLEAKS_LICENSE (add it to the `env` below) or the step 403s.
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # gitleaks scans history, not just the tip
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # SEC-008 — static analysis. apps/ and packages/ are all TS.
+  codeql:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          queries: security-extended
+      # No build step: the JS/TS extractor reads source directly.
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:javascript-typescript
+
+  # Copyleft licences are incompatible with shipping Lyra to tenants.
+  # LGPL is excluded from the match on purpose — dynamic linking is fine and
+  # we already depend on an LGPL-3.0 package.
+  licenses:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Fail on GPL/AGPL dependencies
+        run: |
+          pnpm licenses list --json > licenses.json
+          if grep -oE '"license": "[^"]*"' licenses.json \
+            | grep -Ev 'LGPL' \
+            | grep -E '\bA?GPL-' ; then
+            echo "::error::GPL/AGPL-licensed dependency found (matches above). Replace it or record an ADR."
+            exit 1
+          fi
+          echo "No GPL/AGPL dependencies."
+
+# ponytail: SEC-019 (prompt-injection / tool-escape red-team suite) is M3 and
+# has no runner yet — it belongs in packages/model-gateway/evals and gets its
+# own job here once that suite exists. Container image scanning (SEC-007's
+# second half) lands when infra/onprem ships a Dockerfile.

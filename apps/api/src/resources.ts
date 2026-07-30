@@ -54,9 +54,10 @@ export const CORE = register(
   r("users", schema.users, "us", "core", rcud("core:users"), {
     searchable: ["name", "email"],
     pii: { email: "email", phone: "phone", name: "name" },
-    // A password hash must never round-trip through a CRUD body.
+    // A credential must never round-trip through a CRUD body — not the password
+    // hash, not the TOTP secret, and not the recovery codes that bypass it.
     beforeWrite: (_ctx, values) => {
-      const { passwordHash: _p, mfaSecret: _m, ...rest } = values;
+      const { passwordHash: _p, mfaSecret: _m, mfaRecoveryJson: _r, ...rest } = values;
       return rest;
     }
   }),
@@ -101,6 +102,11 @@ export const CORE = register(
   r("api-keys", schema.apiKeys, "key", "core", {
     read: "core:api_keys:read",
     remove: "core:api_keys:revoke"
+  }),
+  // The client secret is never here: the row names a worker secret, it does not
+  // hold one (routes/sso.ts).
+  r("identity-providers", schema.identityProviders, "idp", "core", rw("core:identity_providers"), {
+    searchable: ["name", "emailDomain"]
   }),
   r("webhooks", schema.webhooks, "whk", "core", rw("core:webhooks")),
   r("webhook-deliveries", schema.webhookDeliveries, "whd", "core", ro("core:webhooks:read")),

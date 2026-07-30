@@ -7,6 +7,7 @@ import {
   type LoaderFunctionArgs,
   type MetaFunction
 } from "react-router";
+import { cloudflare } from "../context";
 import { ApiError, fetchMe } from "../api.server";
 import { Shell } from "../components/shell";
 import { translator } from "../i18n";
@@ -19,7 +20,7 @@ import { landingFor } from "../routing";
 export const ROUTE_ID = "routes/workspace";
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
-  const env = context.cloudflare.env;
+  const env = context.get(cloudflare).env;
 
   let me;
   try {
@@ -56,7 +57,7 @@ export function useShellData(): ShellData | undefined {
   return useRouteLoaderData<typeof loader>(ROUTE_ID);
 }
 
-export const meta: MetaFunction<typeof loader> = ({ data: loaded }) => [
+export const meta: MetaFunction<typeof loader> = ({ loaderData: loaded }) => [
   // The product name is tenant configuration, never a literal (CLAUDE.md §5).
   { title: loaded?.brand?.name ?? loaded?.tenantName ?? "" }
 ];

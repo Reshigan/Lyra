@@ -360,6 +360,78 @@ export async function runReport(
   };
 }
 
+/* --------------------------------------------------------------- feed (row) */
+
+export interface FeedPage {
+  /** Physical rows, keyed by column name — the shape a warehouse wants to land. */
+  rows: Record<string, unknown>[];
+  /** True when another page is waiting behind this one. */
+  more: boolean;
+}
+
+/**
+ * Row-level read of one dataset for warehouse-out (ANL-010). Same registry, same
+ * tenant guard as `runReport`; the difference is that nothing is aggregated, so
+ * a BI tool can model the grain itself.
+ *
+ * ponytail: NDJSON over a keyset cursor, not Parquet to the customer's bucket.
+ * A warehouse polls this; when someone asks for Parquet, the column list below
+ * is already the schema to write.
+ */
+export async function feedRows(
+  ctx: Ctx,
+  datasetKey: string,
+  opts: { since?: number | undefined; after?: { value: number; id: string } | undefined; limit: number }
+): Promise<FeedPage> {
+  const ds = DATASETS[datasetKey];
+  if (!ds) throw badRequest(`unknown dataset ${datasetKey}`);
+
+  const columns = feedColumns(ds);
+  const params: unknown[] = [ctx.tenantId];
+  // Every row carries its tenant, and every query is filtered by it: a warehouse
+  // that lands two tenants in one table is the failure this line prevents.
+  const where: string[] = ["tenant_id = ?"];
+  if (ds.baseFilter) where.push(ds.baseFilter);
+  if (opts.since !== undefined) {
+    where.push(`${ds.timeColumn} >= ?`);
+    params.push(opts.since);
+  }
+  if (opts.after) {
+    // Keyset over (time, id): the same tuple the cursor encodes, so a poll that
+    // resumes mid-second neither repeats nor skips a row.
+    where.push(`(${ds.timeColumn} > ? or (${ds.timeColumn} = ? and id > ?))`);
+    params.push(opts.after.value, opts.after.value, opts.after.id);
+  }
+
+  const text =
+    `select ${columns.join(", ")} from ${ds.table} where ${where.join(" and ")}` +
+    ` order by ${ds.timeColumn} asc, id asc limit ${opts.limit + 1}`;
+
+  const raw = await ctx.db.all<Record<string, unknown>>(sql.raw(bind(text, params)));
+  const more = raw.length > opts.limit;
+  return { rows: more ? raw.slice(0, opts.limit) : raw, more };
+}
+
+/** id, tenant, time and every registered column — never `select *`. */
+function feedColumns(ds: Dataset): string[] {
+  return [
+    ...new Set([
+      "id",
+      "tenant_id",
+      ds.timeColumn,
+      ...Object.values(ds.dimensions).map((d) => d.column),
+      ...Object.values(ds.metrics).flatMap((m) => (m.column ? [m.column] : []))
+    ])
+  ];
+}
+
+/** Which feed columns hold PII, for the masker in the route. */
+export function feedPiiColumns(ds: Dataset): string[] {
+  return Object.values(ds.dimensions)
+    .filter((d) => d.pii)
+    .map((d) => d.column);
+}
+
 /* ------------------------------------------------------------------ helpers */
 
 /**

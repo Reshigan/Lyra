@@ -147,10 +147,18 @@ the internal network. Optional profiles: `--profile gpu` swaps Ollama for vLLM,
 
 Upgrades are pull tag → migrate → rolling restart; the app is stateless.
 
-**On-prem status:** the stack definition is complete, but `app` and `worker`
-will not start yet. They need the Node entrypoint that `RUNTIME=node` selects
-(docs/11 §3) — `apps/api` currently ships only the Workers `fetch` export and
-binds D1 directly. `libsql` and `migrate` work today.
+**On-prem status:** `app` and `worker` run on plain Node 22 via
+`apps/api/src/node.ts` — the `RUNTIME=node` entrypoint (docs/11 §3). It binds
+libSQL instead of D1, an in-process rate counter instead of KV, and the
+`files-data` volume instead of R2, then serves the same Hono router; with
+`MODE=jobs` it runs the same `scheduled` handler on `CRON_INTERVAL_MS`.
+Models already go to the internal `llm` service through the gateway's
+`openai-compat` provider, so there is no AI adapter.
+
+Not yet wired to the on-prem twin: `redis` (the KV stand-in is per-container,
+so run one `app` replica until it is), `minio` (files land on a shared volume),
+`qdrant` and `render`. Each is a stack service with no caller in `apps/api`
+today; see the `ponytail:` notes in `apps/api/src/node.ts`.
 
 ## Conventions
 

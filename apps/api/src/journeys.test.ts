@@ -2,10 +2,10 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import { schema, type Db } from "@lyra/db";
-import { seed, type SeedResult } from "@lyra/core";
+import { seed, totpAt, TOTP_STEP_SEC, type SeedResult } from "@lyra/core";
 import { app } from "./index.js";
 import { sweepRenewals } from "./engines/renewals.js";
 import type { Env } from "./env.js";
@@ -26,6 +26,13 @@ function statements(): string[] {
 }
 
 const PASSWORD = "Gonxt-Demo-2026!";
+
+/**
+ * One shared TOTP secret for every seeded staff persona. Fine here and nowhere
+ * else: a test needs a code it can compute, a real tenant enrols each person
+ * separately (PLAT-013, seed.ts §mfaSecret).
+ */
+const DEMO_TOTP_SECRET = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
 
 /** Persona per role, matching the seed. Journeys read as people, not user ids. */
 const PEOPLE: Record<string, string> = {
@@ -126,7 +133,7 @@ beforeAll(async () => {
   const client = createClient({ url: ":memory:" });
   for (const stmt of statements()) await client.execute(stmt);
   database = drizzle(client) as unknown as Db;
-  seeded = await seed(database as never);
+  seeded = await seed(database as never, { mfaSecret: DEMO_TOTP_SECRET });
 
   env = {
     DB_CLIENT: database,
@@ -158,7 +165,17 @@ beforeAll(async () => {
       tenantSlug: "gonxt"
     });
     ok(res);
-    tokens[role] = res.body.token as string;
+    const token = res.body.token as string;
+    // PLAT-013: every one of these people is staff, so the password is only the
+    // first hop. Walking the real second factor here is what proves the journeys
+    // below are reachable by a person and not just by an ungated test.
+    expect(res.body.mfaRequired).toBe(true);
+    expect(res.body.mfaStep).toBe("verify");
+    const verified = await call(null, "POST", "/v1/auth/mfa/verify", {
+      code: await totpAt(DEMO_TOTP_SECRET, Math.floor(Date.now() / 1000 / TOTP_STEP_SEC))
+    }, { authorization: `Bearer ${token}` });
+    ok(verified);
+    tokens[role] = token;
   }
 
   const productRows = await database.select().from(schema.products);

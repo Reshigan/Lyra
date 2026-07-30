@@ -23,5 +23,11 @@ export default tseslint.config(
         }
       ]
     }
+  },
+  {
+    // Repo scripts run in Node, not a Worker. Only the globals they actually
+    // use, so a stray `window` in one still gets caught.
+    files: ["scripts/**/*.mjs", "**/*.config.mjs"],
+    languageOptions: { globals: { process: "readonly", console: "readonly" } }
   }
 );

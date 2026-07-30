@@ -20,6 +20,7 @@ export {
   eventOutbox,
   eventDlq,
   apiKeys,
+  identityProviders,
   webhooks,
   webhookDeliveries,
   notifications,

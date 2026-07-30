@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { and, eq, isNull, lt } from "drizzle-orm";
 import { z } from "zod";
 import { id as newId, makeDb, schema, EntitlementsJson, PolicyJson, ScopeJson } from "@lyra/db";
@@ -8,11 +8,19 @@ import {
   emit,
   forbidden,
   hashPassword,
+  mfaRequired,
   needsRehash,
+  notFound,
+  otpauthUri,
   permissionsForRole,
   randomToken,
+  recoveryCodes,
+  requiresMfa,
   sha256Hex,
+  timingSafeEqual,
   tooManyRequests,
+  totpSecret,
+  totpVerify,
   unauthorized,
   verifyPassword,
   type Actor,
@@ -111,12 +119,12 @@ async function tenantConfig(
   };
 }
 
-/** Session cookie or `Authorization: Bearer <session token>`. */
-async function fromSession(
-  database: ReturnType<typeof makeDb>,
-  token: string,
-  now: number
-): Promise<Authenticated> {
+/**
+ * Resolve a session token to its row and owner, with no authorization decision
+ * attached. The MFA routes need the session *before* the second-factor gate
+ * runs, which is exactly the check `fromSession` adds on top.
+ */
+async function sessionRow(database: ReturnType<typeof makeDb>, token: string, now: number) {
   const tokenHash = await sha256Hex(token);
   const rows = await database
     .select({ session: schema.sessions, user: schema.users })
@@ -129,9 +137,30 @@ async function fromSession(
   if (!row) throw unauthorized("session not found");
   if (row.session.expiresAt <= now) throw unauthorized("session expired");
   if (row.user.status !== "active") throw forbidden(`user is ${row.user.status}`);
+  return row;
+}
 
+/** Session cookie or `Authorization: Bearer <session token>`. */
+async function fromSession(
+  database: ReturnType<typeof makeDb>,
+  token: string,
+  now: number
+): Promise<Authenticated> {
+  const row = await sessionRow(database, token, now);
   const tenantId = row.session.tenantId;
   const grants = await grantsFor(database, tenantId, row.user.id);
+
+  // PLAT-012/013. A session that has not cleared its second factor is a session
+  // that cannot do anything, and a staff account that never enrolled is told to
+  // enrol rather than quietly let through. This is the only place the check can
+  // live: putting it in a route decorator would mean every new route has to
+  // remember it.
+  // One field carries the whole decision: `mfaSatisfied` is set at sign-in only
+  // when there was nothing to do (or the identity provider asserted the second
+  // factor itself), so this reads the same for a password login, an SSO callback
+  // and a session that has since cleared its factor.
+  if (!row.session.mfaSatisfied) throw mfaRequired(row.user.mfaEnrolled ? "verify" : "enrol");
+
   const config = await tenantConfig(database, tenantId);
   return {
     tenantId,
@@ -258,6 +287,122 @@ authRoutes.post("/login", async (c) => {
       .where(eq(schema.users.id, user.id));
   }
 
+  const issued = await issueSession(c, database, user, now);
+  return c.json({
+    ...issued,
+    user: { id: user.id, name: user.name, email: user.email, locale: user.locale, tenantId: user.tenantId }
+  });
+});
+
+/**
+ * One-click persona sign-in for demos. This is a credential bypass, so it exists
+ * only where there is nothing to bypass: any deployment whose ENVIRONMENT is
+ * `production` answers 404, as if the routes had never been mounted, and the
+ * only accounts it will ever name are the seeded demo personas.
+ */
+function demoOnly(env: Env): void {
+  if ((env.ENVIRONMENT ?? "production") === "production") throw notFound("route");
+}
+
+/** The seeded demo tenant. A demo deployment has exactly one. */
+async function demoTenant(database: ReturnType<typeof makeDb>): Promise<string> {
+  const rows = await database
+    .select({ id: schema.tenants.id })
+    .from(schema.tenants)
+    .where(eq(schema.tenants.status, "active"))
+    .limit(2);
+  const tenant = rows[0];
+  if (!tenant || rows.length > 1) throw notFound("demo tenant");
+  return tenant.id;
+}
+
+authRoutes.get("/demo/personas", async (c) => {
+  demoOnly(c.env);
+  const database = db(c.env);
+  const tenantId = await demoTenant(database);
+  const rows = await database
+    .select({
+      email: schema.users.email,
+      name: schema.users.name,
+      locale: schema.users.locale,
+      roleKey: schema.roles.key
+    })
+    .from(schema.users)
+    .innerJoin(schema.userRoles, eq(schema.userRoles.userId, schema.users.id))
+    .innerJoin(schema.roles, eq(schema.roles.id, schema.userRoles.roleId))
+    .where(and(eq(schema.users.tenantId, tenantId), eq(schema.users.status, "active"), isNull(schema.users.deletedAt)));
+
+  // One row per person: a seat is named by its first role, which is the one the
+  // persona exists to demonstrate.
+  const byEmail = new Map<string, { email: string; name: string; locale: string; roleKey: string }>();
+  for (const r of rows) if (!byEmail.has(r.email)) byEmail.set(r.email, r);
+  return c.json({ data: [...byEmail.values()].sort((a, b) => a.roleKey.localeCompare(b.roleKey)) });
+});
+
+authRoutes.post("/demo/login", async (c) => {
+  demoOnly(c.env);
+  const now = Date.now();
+  const input = await body(c, z.object({ email: z.string().email() }));
+  const database = db(c.env);
+  const tenantId = await demoTenant(database);
+  const rows = await database
+    .select()
+    .from(schema.users)
+    .where(
+      and(
+        eq(schema.users.tenantId, tenantId),
+        eq(schema.users.email, input.email.toLowerCase()),
+        isNull(schema.users.deletedAt)
+      )
+    )
+    .limit(1);
+
+  const user = rows[0];
+  if (!user) throw notFound("persona");
+  if (user.status !== "active") throw forbidden(`user is ${user.status}`);
+
+  // The second factor is asserted rather than skipped: the demo door is the
+  // factor, and the audit trail says so (`via: "demo"`).
+  const issued = await issueSession(c, database, user, now, { mfaAsserted: true, via: "demo" });
+  return c.json({
+    ...issued,
+    user: { id: user.id, name: user.name, email: user.email, locale: user.locale, tenantId: user.tenantId }
+  });
+});
+
+/**
+ * Create the session a successful sign-in hands back, whichever door it came
+ * through. Password login and the SSO callback have to agree on the cookie, the
+ * audit trail and the second-factor decision, so there is exactly one of these.
+ *
+ * `mfaAsserted` is for an identity provider that performed the second factor
+ * itself (docs/06 §2, core_identity_providers.mfa_asserted) — the session is
+ * born satisfied and the local TOTP enrolment is not asked for.
+ */
+export async function issueSession(
+  c: Context<App>,
+  database: ReturnType<typeof makeDb>,
+  user: typeof schema.users.$inferSelect,
+  now: number,
+  options: { mfaAsserted?: boolean; via?: string } = {}
+): Promise<{
+  token: string;
+  expiresAt: number;
+  mfaRequired: boolean;
+  mfaStep?: "verify" | "enrol";
+  roles: string[];
+}> {
+  const grants = await grantsFor(database, user.tenantId, user.id);
+  // Which of the two second-factor screens the client should draw. Absent when
+  // there is nothing to do, so a customer sign-in stays a single hop.
+  const step = options.mfaAsserted
+    ? undefined
+    : user.mfaEnrolled
+      ? "verify"
+      : requiresMfa(grants.map((g) => g.roleKey))
+        ? "enrol"
+        : undefined;
+
   const token = randomToken();
   const sessionId = newId("ses", now);
   await database.insert(schema.sessions).values({
@@ -267,14 +412,13 @@ authRoutes.post("/login", async (c) => {
     tokenHash: await sha256Hex(token),
     ip: c.req.header("cf-connecting-ip") ?? null,
     ua: c.req.header("user-agent") ?? null,
-    mfaSatisfied: !user.mfaEnrolled,
+    mfaSatisfied: step === undefined,
     expiresAt: now + SESSION_TTL_MS,
     createdAt: now,
     revokedAt: null
   });
   await database.update(schema.users).set({ lastSeenAt: now }).where(eq(schema.users.id, user.id));
 
-  const grants = await grantsFor(database, user.tenantId, user.id);
   const ctx = await ctxFor(c.env, {
     tenantId: user.tenantId,
     locale: user.locale,
@@ -282,21 +426,213 @@ authRoutes.post("/login", async (c) => {
     ...(await tenantConfig(database, user.tenantId))
   }, now, c.req.header("cf-connecting-ip"), c.req.header("user-agent"));
   await audit(ctx, { action: "core.session.login", subjectRef: sessionId });
-  await emit(ctx, { module: "core", type: "core.session.login", subject: user.id, data: { sessionId } });
+  await emit(ctx, {
+    module: "core",
+    type: "core.session.login",
+    subject: user.id,
+    data: { sessionId, via: options.via ?? "password" }
+  });
 
   const secure = (c.env.ENVIRONMENT ?? "production") !== "development";
   c.header(
     "set-cookie",
     `${c.env.SESSION_COOKIE ?? COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_TTL_MS / 1000}${secure ? "; Secure" : ""}`
   );
-  return c.json({
+
+  return {
     token,
     expiresAt: now + SESSION_TTL_MS,
-    mfaRequired: Boolean(user.mfaEnrolled),
-    user: { id: user.id, name: user.name, email: user.email, locale: user.locale, tenantId: user.tenantId },
+    mfaRequired: step !== undefined,
+    ...(step ? { mfaStep: step } : {}),
     roles: grants.map((g) => g.roleKey)
+  };
+}
+
+/* -------------------------------------------------------------------- mfa */
+
+// PLAT-012/013. These four routes sit on the unauthenticated router on purpose:
+// the caller holds a real session but has not cleared the gate that
+// `fromSession` applies, so they resolve the session themselves.
+
+const CodeBody = z.object({ code: z.string().min(6).max(20) });
+
+/** Read the bearer or cookie session the same way `authenticate` does. */
+function sessionToken(c: { req: { header(name: string): string | undefined } }, env: Env): string {
+  const header = c.req.header("authorization");
+  const token =
+    (header?.startsWith("Bearer ") ? header.slice(7).trim() : undefined) ??
+    readCookie(c.req.header("cookie") ?? null, env.SESSION_COOKIE ?? COOKIE);
+  if (!token || token.startsWith("qvk_")) throw unauthorized("no session");
+  return token;
+}
+
+/**
+ * A code is six digits out of a million, so the throttle is the whole defence.
+ * Keyed by session rather than by user: a stolen cookie gets its own budget and
+ * cannot be used to lock the real owner out.
+ */
+const MFA_MAX = 6;
+
+async function mfaThrottle(env: Env, sessionId: string): Promise<void> {
+  if (!env.KV) return;
+  const key = `mfa:${sessionId}`;
+  const n = Number((await env.KV.get(key)) ?? "0") + 1;
+  await env.KV.put(key, String(n), { expirationTtl: LOGIN_WINDOW_SEC });
+  if (n > MFA_MAX) throw tooManyRequests(LOGIN_WINDOW_SEC);
+}
+
+authRoutes.post("/mfa/enrol", async (c) => {
+  const now = Date.now();
+  const database = db(c.env);
+  const row = await sessionRow(database, sessionToken(c, c.env), now);
+  // Re-enrolling would silently invalidate the authenticator the account is
+  // already using, so it is a refusal rather than a reset.
+  if (row.user.mfaEnrolled) throw badRequest("already enrolled");
+
+  const secret = totpSecret();
+  const tenant = (
+    await database.select({ name: schema.tenants.name }).from(schema.tenants)
+      .where(eq(schema.tenants.id, row.session.tenantId)).limit(1)
+  )[0];
+  await database
+    .update(schema.users)
+    .set({ mfaSecret: secret, updatedAt: now })
+    .where(eq(schema.users.id, row.user.id));
+
+  // The secret is returned once, here, and never again: the confirm step is the
+  // proof the user actually captured it.
+  return c.json({
+    secret,
+    // Issuer is the tenant's own name, not a hard-coded product string — the
+    // authenticator app is a user-facing surface like any other.
+    otpauthUri: otpauthUri(secret, row.user.email, tenant?.name ?? "Lyra")
   });
 });
+
+authRoutes.post("/mfa/enrol/confirm", async (c) => {
+  const now = Date.now();
+  const input = await body(c, CodeBody);
+  const database = db(c.env);
+  const row = await sessionRow(database, sessionToken(c, c.env), now);
+  await mfaThrottle(c.env, row.session.id);
+  if (row.user.mfaEnrolled) throw badRequest("already enrolled");
+  if (!row.user.mfaSecret) throw badRequest("enrolment not started");
+  if (!(await totpVerify(row.user.mfaSecret, input.code, now))) throw unauthorized("code is incorrect");
+
+  // Recovery codes are stored the same way session tokens are: hashed, so the
+  // database never holds a usable credential.
+  const codes = recoveryCodes();
+  const hashes = await Promise.all(codes.map((code) => sha256Hex(code)));
+  await database
+    .update(schema.users)
+    .set({ mfaEnrolled: true, mfaRecoveryJson: JSON.stringify(hashes), updatedAt: now })
+    .where(eq(schema.users.id, row.user.id));
+  await database
+    .update(schema.sessions)
+    .set({ mfaSatisfied: true })
+    .where(eq(schema.sessions.id, row.session.id));
+
+  const ctx = await ctxForSession(c, database, row, now);
+  await audit(ctx, { action: "core.mfa.enrolled", subjectRef: row.user.id });
+
+  // Shown once. There is no route that reads them back.
+  return c.json({ recoveryCodes: codes });
+});
+
+authRoutes.post("/mfa/verify", async (c) => {
+  const now = Date.now();
+  const input = await body(c, CodeBody);
+  const database = db(c.env);
+  const row = await sessionRow(database, sessionToken(c, c.env), now);
+  await mfaThrottle(c.env, row.session.id);
+  if (!row.user.mfaEnrolled || !row.user.mfaSecret) throw badRequest("not enrolled");
+  if (row.session.mfaSatisfied) return c.json({ mfaSatisfied: true });
+
+  let usedRecovery = false;
+  let ok = await totpVerify(row.user.mfaSecret, input.code, now);
+  if (!ok) {
+    // A recovery code is single use: it is removed before the session is marked,
+    // so a replay of the same code finds nothing left to match.
+    const hashes: string[] = JSON.parse(row.user.mfaRecoveryJson ?? "[]");
+    const submitted = await sha256Hex(input.code.trim().toUpperCase());
+    const remaining = hashes.filter((h) => !timingSafeEqual(h, submitted));
+    if (remaining.length !== hashes.length) {
+      await database
+        .update(schema.users)
+        .set({ mfaRecoveryJson: JSON.stringify(remaining), updatedAt: now })
+        .where(eq(schema.users.id, row.user.id));
+      ok = true;
+      usedRecovery = true;
+    }
+  }
+  if (!ok) throw unauthorized("code is incorrect");
+
+  await database
+    .update(schema.sessions)
+    .set({ mfaSatisfied: true })
+    .where(eq(schema.sessions.id, row.session.id));
+
+  const ctx = await ctxForSession(c, database, row, now);
+  await audit(ctx, {
+    action: usedRecovery ? "core.mfa.recovery_used" : "core.mfa.verified",
+    subjectRef: row.session.id
+  });
+  await emit(ctx, {
+    module: "core",
+    type: "core.mfa.verified",
+    subject: row.user.id,
+    data: { sessionId: row.session.id, usedRecovery }
+  });
+
+  return c.json({ mfaSatisfied: true, usedRecovery });
+});
+
+authRoutes.post("/mfa/disable", async (c) => {
+  const now = Date.now();
+  const input = await body(c, CodeBody);
+  const database = db(c.env);
+  const row = await sessionRow(database, sessionToken(c, c.env), now);
+  await mfaThrottle(c.env, row.session.id);
+  if (!row.user.mfaEnrolled || !row.user.mfaSecret) throw badRequest("not enrolled");
+
+  const grants = await grantsFor(database, row.session.tenantId, row.user.id);
+  // PLAT-013: staff cannot turn it off, and neither can a tenant admin on their
+  // behalf. The only way out of MFA for a staff account is to stop being staff.
+  if (requiresMfa(grants.map((g) => g.roleKey))) throw forbidden("mfa is mandatory for this role");
+  if (!(await totpVerify(row.user.mfaSecret, input.code, now))) throw unauthorized("code is incorrect");
+
+  await database
+    .update(schema.users)
+    .set({ mfaEnrolled: false, mfaSecret: null, mfaRecoveryJson: null, updatedAt: now })
+    .where(eq(schema.users.id, row.user.id));
+
+  const ctx = await ctxForSession(c, database, row, now);
+  await audit(ctx, { action: "core.mfa.disabled", subjectRef: row.user.id });
+  return c.body(null, 204);
+});
+
+/** Audit needs a Ctx and the MFA routes build theirs before the gate passes. */
+async function ctxForSession(
+  c: { env: Env; req: { header(name: string): string | undefined } },
+  database: ReturnType<typeof makeDb>,
+  row: { session: { tenantId: string }; user: { id: string; locale: string } },
+  now: number
+): Promise<Ctx> {
+  const tenantId = row.session.tenantId;
+  const grants = await grantsFor(database, tenantId, row.user.id);
+  return ctxFor(
+    c.env as Env,
+    {
+      tenantId,
+      locale: row.user.locale,
+      actor: { kind: "user", id: row.user.id, tenantId, grants },
+      ...(await tenantConfig(database, tenantId))
+    },
+    now,
+    c.req.header("cf-connecting-ip"),
+    c.req.header("user-agent")
+  );
+}
 
 authRoutes.post("/logout", async (c) => {
   const now = Date.now();

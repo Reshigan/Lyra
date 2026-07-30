@@ -8,14 +8,35 @@ import type { App, Env } from "./env.js";
 // Handlers below this file never see a raw binding, so there is no path that
 // reaches the database without a tenant id attached.
 
-/** Routes reachable without credentials. Everything else authenticates. */
-const PUBLIC = new Set(["/health", "/v1/auth/login", "/v1/auth/logout", "/openapi.json"]);
+/**
+ * Routes reachable without credentials. Everything else authenticates.
+ *
+ * The `/v1/auth/mfa/*` routes are here because the caller holds a real session
+ * that has deliberately not cleared the second-factor gate `authenticate`
+ * applies — they resolve and check that session themselves (auth.ts §mfa).
+ */
+const PUBLIC = new Set([
+  "/health",
+  "/v1/auth/login",
+  "/v1/auth/logout",
+  "/v1/auth/mfa/enrol",
+  "/v1/auth/mfa/enrol/confirm",
+  "/v1/auth/mfa/verify",
+  "/v1/auth/mfa/disable",
+  // Demo persona sign-in. The routes themselves 404 outside a demo deployment
+  // (auth.ts §demoOnly), so being listed here costs nothing in production.
+  "/v1/auth/demo/personas",
+  "/v1/auth/demo/login",
+  "/openapi.json"
+]);
 
 export const withContext: MiddlewareHandler<App> = async (c, next) => {
   const now = Date.now();
   c.set("startedAt", now);
 
-  if (PUBLIC.has(c.req.path)) {
+  // `/v1/auth/sso/*` is public by shape rather than by name: it carries a
+  // provider id and there is no session until the callback creates one.
+  if (PUBLIC.has(c.req.path) || c.req.path.startsWith("/v1/auth/sso/")) {
     c.set("requestId", crypto.randomUUID());
     return next();
   }

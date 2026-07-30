@@ -10,4 +10,5 @@ export * from "./pii.js";
 export * from "./idempotency.js";
 export * from "./commission.js";
 export * from "./password.js";
+export * from "./totp.js";
 export * from "./seed.js";

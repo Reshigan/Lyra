@@ -24,6 +24,19 @@ interface Op {
 const HAND_WRITTEN: Op[] = [
   { method: "post", path: "/v1/auth/login", summary: "Password login, returns a session cookie", tag: "auth", requestBody: true, public: true },
   { method: "post", path: "/v1/auth/logout", summary: "End the current session", tag: "auth", public: true },
+  // Marked public because they run against a session that has deliberately not
+  // cleared the second-factor gate — they are not reachable without a session.
+  { method: "post", path: "/v1/auth/mfa/enrol", summary: "Start TOTP enrolment; returns the secret once", tag: "auth", public: true },
+  { method: "post", path: "/v1/auth/mfa/enrol/confirm", summary: "Confirm TOTP enrolment; returns single-use recovery codes once", tag: "auth", requestBody: true, public: true },
+  { method: "post", path: "/v1/auth/mfa/verify", summary: "Clear the second factor with a TOTP or recovery code", tag: "auth", requestBody: true, public: true },
+  { method: "post", path: "/v1/auth/mfa/disable", summary: "Remove the second factor (refused for staff roles)", tag: "auth", requestBody: true, public: true },
+  // Demo deployments only: both answer 404 when ENVIRONMENT is production.
+  { method: "get", path: "/v1/auth/demo/personas", summary: "Seeded demo personas offered as one-click sign-in (non-production only)", tag: "auth", public: true },
+  { method: "post", path: "/v1/auth/demo/login", summary: "Sign in as a seeded demo persona without a password (non-production only)", tag: "auth", requestBody: true, public: true },
+  // Enterprise sign-in. Public because a browser walks these before any session exists.
+  { method: "get", path: "/v1/auth/sso/discover", summary: "Which identity provider, if any, owns an email domain", tag: "auth", public: true },
+  { method: "get", path: "/v1/auth/sso/{id}/start", summary: "Redirect to the provider's authorization endpoint (OIDC + PKCE)", tag: "auth", public: true },
+  { method: "get", path: "/v1/auth/sso/{id}/callback", summary: "Verify the id_token, link or provision the account, issue a session", tag: "auth", public: true },
   // `GET /v1/me` is the whole bootstrap: actor, tenant, roles, permissions,
   // entitlements, policy and the labelled navigation, in one round trip. There
   // is deliberately no separate nav or permissions endpoint to fall out of step
@@ -100,6 +113,7 @@ const HAND_WRITTEN: Op[] = [
   { method: "post", path: "/v1/analytics/exports", summary: "Render a run to xlsx, pdf, csv or json", permission: "analytics:exports:create", tag: "analytics", requestBody: true },
   { method: "get", path: "/v1/analytics/exports", summary: "The caller's recent exports and their state", permission: "analytics:exports:create", tag: "analytics" },
   { method: "get", path: "/v1/analytics/exports/{id}/download", summary: "Download a rendered export", permission: "analytics:exports:download", tag: "analytics" },
+  { method: "get", path: "/v1/analytics/feed/{dataset}", summary: "Incremental NDJSON feed of one dataset for a warehouse or BI tool", permission: "analytics:exports:create", tag: "analytics" },
   { method: "get", path: "/v1/analytics/schedules", summary: "Report schedules and their next run", permission: "analytics:schedules:read", tag: "analytics" },
   { method: "post", path: "/v1/analytics/schedules", summary: "Schedule a report to run and deliver on a cron", permission: "analytics:schedules:write", tag: "analytics", requestBody: true },
   { method: "post", path: "/v1/analytics/schedules/{id}/pause", summary: "Pause a schedule", permission: "analytics:schedules:write", tag: "analytics" },

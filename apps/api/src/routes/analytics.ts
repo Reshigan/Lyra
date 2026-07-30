@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { desc, eq, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { id, schema } from "@lyra/db";
 import {
@@ -10,17 +10,30 @@ import {
   conflict,
   forbidden,
   gate,
+  mask,
   notFound,
   require_,
   scoped,
   sha256Hex,
-  type Ctx
+  withIdempotency,
+  type Ctx,
+  type PiiMap
 } from "@lyra/core";
 import type { ReportTable } from "@lyra/ledger";
-import { DATASETS, MAX_ROWS, runReport, totalsOf, type ReportDefinition, type RunResult } from "../engines/report.js";
+import {
+  DATASETS,
+  MAX_ROWS,
+  feedPiiColumns,
+  feedRows,
+  runReport,
+  totalsOf,
+  type Dataset,
+  type ReportDefinition,
+  type RunResult
+} from "../engines/report.js";
 import { toXlsx } from "../engines/export/xlsx.js";
 import { pdfSafe, toPdf } from "../engines/export/pdf.js";
-import { body, listParams } from "../http.js";
+import { body, decodeCursor, encodeCursor, listParams, parse, MAX_PAGE } from "../http.js";
 import { must } from "../rows.js";
 import type { App } from "../env.js";
 
@@ -279,54 +292,20 @@ analyticsRoutes.post("/exports", async (c) => {
     meta: { "Requested by": actorRef(ctx), Rows: String(result.rowCount), ...(input.unmasked ? { Access: "UNMASKED" } : {}) }
   });
 
-  const exportId = id("exp", ctx.now);
-  const fileId = id("file", ctx.now);
-  const r2Key = `exports/${ctx.tenantId}/${exportId}.${input.format}`;
-  const bucket = c.env.FILES;
-  if (bucket) await bucket.put(r2Key, rendered.bytes, { httpMetadata: { contentType: rendered.contentType } });
-
-  await ctx.db.insert(schema.files).values({
-    id: fileId,
-    tenantId: ctx.tenantId,
-    r2Key,
-    kind: "analytics_export",
-    subjectRef: exportId,
-    sha256: await sha256Hex(rendered.bytes),
-    sizeBytes: rendered.bytes.length,
-    contentType: rendered.contentType,
-    piiLevel: input.unmasked ? "high" : "none",
-    createdAt: ctx.now,
-    deletedAt: null
-  });
-
-  const row = {
-    id: exportId,
-    tenantId: ctx.tenantId,
+  const row = await storeExport(ctx, c.env.FILES, {
     runId,
     reportId,
-    subjectRef: null,
     format: input.format,
-    fileId,
-    sizeBytes: rendered.bytes.length,
+    rendered,
     rowCount: result.rowCount,
-    piiMasked: !input.unmasked,
+    unmasked: input.unmasked,
     piiJustification: input.piiJustification ?? null,
     watermark: watermark ?? null,
-    requestedBy: actorRef(ctx),
-    approvedBy,
-    // Rendering happens inline: these reports are bounded by MAX_ROWS, and a
-    // queue for something that takes 200ms is a queue to debug at 3am.
-    state: bucket ? "ready" : "failed",
-    downloadCount: 0,
-    expiresAt: ctx.now + 7 * 24 * 60 * 60 * 1000,
-    error: bucket ? null : "no object store bound",
-    createdAt: ctx.now,
-    updatedAt: ctx.now
-  };
-  await ctx.db.insert(schema.analyticsExports).values(row);
+    approvedBy
+  });
   await audit(ctx, {
     action: "analytics.export.create",
-    subjectRef: exportId,
+    subjectRef: row.id,
     after: { format: input.format, rows: result.rowCount, unmasked: input.unmasked, reportId }
   });
   return c.json(row, 201);
@@ -376,6 +355,58 @@ analyticsRoutes.get("/exports/:id/download", async (c) => {
     headers: {
       "content-type": file.contentType ?? "application/octet-stream",
       "content-disposition": `attachment; filename="${row.id}.${row.format}"`,
+      "cache-control": "no-store"
+    }
+  });
+});
+
+/* ---------------------------------------------------------- warehouse feed */
+
+const FeedQuery = z.object({
+  /** Epoch-ms watermark on the dataset's time column, for the first poll. */
+  since: z.coerce.number().int().optional(),
+  /** Opaque keyset cursor; preferred over `since` once a poll has run once. */
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(MAX_PAGE).default(MAX_PAGE)
+});
+
+/**
+ * ANL-010. Row-level, incremental, tenant-scoped NDJSON for a warehouse or a BI
+ * tool. Read `x-lyra-cursor` and pass it back as `?cursor=` until `x-lyra-more`
+ * is false; keep the last cursor and resume from it on the next poll. Masked
+ * exactly like every other read — a warehouse is not an exemption from docs/06.
+ */
+analyticsRoutes.get("/feed/:dataset", async (c) => {
+  const ctx = c.get("ctx");
+  require_(ctx.actor, "analytics:exports:create", { tenantId: ctx.tenantId });
+  const ds = requireDataset(ctx, c.req.param("dataset"));
+  const q = parse(FeedQuery, c.req.query());
+
+  const after = q.cursor ? decodeCursor(q.cursor) : undefined;
+  const { rows, more } = await feedRows(ctx, c.req.param("dataset"), {
+    since: q.since,
+    after: after ? { value: Number(after.value), id: after.id } : undefined,
+    limit: q.limit
+  });
+
+  // Identifiers a report would pseudonymise are masked here too; `mask` is a
+  // no-op for a caller holding core:pii:view.
+  const piiMap: PiiMap = Object.fromEntries(feedPiiColumns(ds).map((col) => [col, "id" as const]));
+  const safe = Object.keys(piiMap).length ? mask(ctx.actor, rows, piiMap, ctx.tenantId) : rows;
+
+  const last = safe[safe.length - 1];
+  const cursor = last ? encodeCursor(Number(last[ds.timeColumn]), String(last.id)) : q.cursor;
+  await audit(ctx, {
+    action: "analytics.feed.read",
+    subjectRef: `dataset:${c.req.param("dataset")}`,
+    after: { rows: safe.length, since: q.since ?? null, more }
+  });
+
+  return new Response(safe.map((r) => JSON.stringify(r)).join("\n") + (safe.length ? "\n" : ""), {
+    headers: {
+      "content-type": "application/x-ndjson; charset=utf-8",
+      "x-lyra-more": String(more),
+      ...(cursor ? { "x-lyra-cursor": cursor } : {}),
       "cache-control": "no-store"
     }
   });
@@ -673,10 +704,11 @@ async function readableReport(ctx: Ctx, reportId: string): Promise<typeof schema
   return row;
 }
 
-function requireDataset(ctx: Ctx, dataset: string): void {
+function requireDataset(ctx: Ctx, dataset: string): Dataset {
   const ds = DATASETS[dataset];
   if (!ds) throw badRequest(`unknown dataset ${dataset}`);
   require_(ctx.actor, ds.permission, { tenantId: ctx.tenantId, module: ds.module });
+  return ds;
 }
 
 function mergeDefinition(
@@ -700,7 +732,7 @@ function mergeDefinition(
 async function materialise(
   ctx: Ctx,
   def: ReportDefinition,
-  opts: { reportId?: string; title?: string; unmasked?: boolean }
+  opts: { reportId?: string; title?: string; unmasked?: boolean; trigger?: "user" | "schedule" }
 ): Promise<{ result: RunResult; runId: string }> {
   const runId = id("run", ctx.now);
   const started = Date.now();
@@ -713,7 +745,7 @@ async function materialise(
       reportId: opts.reportId ?? "adhoc",
       paramsJson: JSON.stringify(def),
       requestedBy: actorRef(ctx),
-      trigger: "user",
+      trigger: opts.trigger ?? "user",
       state: "done",
       rowCount: result.rowCount,
       resultRef: null,
@@ -732,7 +764,7 @@ async function materialise(
       reportId: opts.reportId ?? "adhoc",
       paramsJson: JSON.stringify(def),
       requestedBy: actorRef(ctx),
-      trigger: "user",
+      trigger: opts.trigger ?? "user",
       state: "failed",
       truncated: false,
       durationMs: Date.now() - started,
@@ -747,6 +779,69 @@ async function materialise(
 interface Rendered {
   bytes: Uint8Array;
   contentType: string;
+}
+
+/** Put the bytes in the object store and leave the two rows that describe them. */
+async function storeExport(
+  ctx: Ctx,
+  bucket: R2Bucket | undefined,
+  a: {
+    runId: string;
+    reportId: string | null;
+    format: string;
+    rendered: Rendered;
+    rowCount: number;
+    unmasked: boolean;
+    piiJustification?: string | null;
+    watermark?: string | null;
+    approvedBy?: string | null;
+  }
+): Promise<typeof schema.analyticsExports.$inferSelect> {
+  const exportId = id("exp", ctx.now);
+  const fileId = id("file", ctx.now);
+  const r2Key = `exports/${ctx.tenantId}/${exportId}.${a.format}`;
+  if (bucket) await bucket.put(r2Key, a.rendered.bytes, { httpMetadata: { contentType: a.rendered.contentType } });
+
+  await ctx.db.insert(schema.files).values({
+    id: fileId,
+    tenantId: ctx.tenantId,
+    r2Key,
+    kind: "analytics_export",
+    subjectRef: exportId,
+    sha256: await sha256Hex(a.rendered.bytes),
+    sizeBytes: a.rendered.bytes.length,
+    contentType: a.rendered.contentType,
+    piiLevel: a.unmasked ? "high" : "none",
+    createdAt: ctx.now,
+    deletedAt: null
+  });
+
+  const row = {
+    id: exportId,
+    tenantId: ctx.tenantId,
+    runId: a.runId,
+    reportId: a.reportId,
+    subjectRef: null,
+    format: a.format,
+    fileId,
+    sizeBytes: a.rendered.bytes.length,
+    rowCount: a.rowCount,
+    piiMasked: !a.unmasked,
+    piiJustification: a.piiJustification ?? null,
+    watermark: a.watermark ?? null,
+    requestedBy: actorRef(ctx),
+    approvedBy: a.approvedBy ?? null,
+    // Rendering happens inline: these reports are bounded by MAX_ROWS, and a
+    // queue for something that takes 200ms is a queue to debug at 3am.
+    state: bucket ? "ready" : "failed",
+    downloadCount: 0,
+    expiresAt: ctx.now + 7 * 24 * 60 * 60 * 1000,
+    error: bucket ? null : "no object store bound",
+    createdAt: ctx.now,
+    updatedAt: ctx.now
+  };
+  await ctx.db.insert(schema.analyticsExports).values(row);
+  return row;
 }
 
 function render(
@@ -828,6 +923,170 @@ export function nextRun(cron: string, from: number): number | null {
     cursor.setUTCMinutes(cursor.getUTCMinutes() + 1);
   }
   return null;
+}
+
+/* ------------------------------------------------------- scheduled delivery */
+
+type Schedule = typeof schema.analyticsSchedules.$inferSelect;
+
+/**
+ * ANL-012. Run every schedule that is due for this tenant, render its report and
+ * deliver it. Called from the worker's `scheduled` handler, so it runs as the
+ * system actor with no grants — which is why nothing here checks a permission
+ * and everything here is masked by default.
+ *
+ * Exactly-once is the idempotency key `<schedule>@<due>`: a cron that fires
+ * twice for the same slot finds the first attempt's result and delivers nothing.
+ */
+export async function runDueSchedules(ctx: Ctx, bucket?: R2Bucket): Promise<number> {
+  const due = await ctx.db
+    .select()
+    .from(schema.analyticsSchedules)
+    .where(
+      scoped(
+        ctx,
+        schema.analyticsSchedules,
+        eq(schema.analyticsSchedules.status, "active"),
+        lte(schema.analyticsSchedules.nextRunAt, ctx.now)
+      )
+    )
+    .limit(50);
+
+  let delivered = 0;
+  for (const s of due) {
+    try {
+      delivered += await withIdempotency(
+        ctx,
+        `${s.id}@${s.nextRunAt}`,
+        "analytics.schedule.run",
+        { scheduleId: s.id, due: s.nextRunAt },
+        () => deliverSchedule(ctx, s, bucket)
+      );
+    } catch (err) {
+      // A failed schedule must alert its owner and then get out of the way: the
+      // next tick belongs to the other schedules, not to this one's retry loop.
+      await failSchedule(ctx, s, err);
+    }
+  }
+  return delivered;
+}
+
+async function deliverSchedule(ctx: Ctx, s: Schedule, bucket: R2Bucket | undefined): Promise<number> {
+  // ponytail: report schedules only. A dashboard schedule needs a multi-table
+  // artefact; when that lands it renders every tile and calls storeExport once.
+  if (!s.reportId) throw badRequest("only report schedules are delivered");
+  const report = await must(ctx, schema.reports, s.reportId, "report");
+  const params = s.paramsJson ? (JSON.parse(s.paramsJson) as Partial<ReportDefinition>) : {};
+  const def = mergeDefinition(report.definitionJson, params);
+  const title = labelOf(s.nameJson, s.locale);
+
+  const { result, runId } = await materialise(ctx, def, { reportId: report.id, title, trigger: "schedule" });
+  const rendered = render(s.format as "xlsx" | "pdf" | "csv" | "json", result, {
+    totals: totalsOf(result),
+    meta: { Schedule: title, Rows: String(result.rowCount) }
+  });
+  const row = await storeExport(ctx, bucket, {
+    runId,
+    reportId: report.id,
+    format: s.format,
+    rendered,
+    rowCount: result.rowCount,
+    unmasked: false
+  });
+  if (row.state !== "ready") throw new Error("no object store bound");
+
+  const recipients = JSON.parse(s.recipientsJson) as string[];
+  const reachable = recipients.length
+    ? await ctx.db
+        .select({ id: schema.users.id })
+        .from(schema.users)
+        .where(
+          scoped(
+            ctx,
+            schema.users,
+            or(inArray(schema.users.id, recipients), inArray(schema.users.email, recipients)),
+            eq(schema.users.status, "active")
+          )
+        )
+    : [];
+
+  // ponytail: the inbox is the one delivery channel that is built. Email, R2
+  // hand-off, webhook and Slack are the same seam — a `deliver(kind, target)`
+  // switch here, each case consent-checked and gated (docs/12 §4) before send,
+  // which is exactly why an outbound channel is not being smuggled in today.
+  await notify(ctx, reachable.map((u) => u.id), "report", "analytics.schedule.delivered", row.id, {
+    scheduleId: s.id,
+    exportId: row.id,
+    format: s.format,
+    rows: result.rowCount
+  });
+
+  const state = reachable.length === recipients.length ? "done" : reachable.length ? "partial" : "undelivered";
+  if (state !== "done") {
+    await notify(ctx, ownerOf(s), "alert", "analytics.schedule.undelivered", s.id, {
+      scheduleId: s.id,
+      delivered: reachable.length,
+      recipients: recipients.length
+    });
+  }
+
+  await ctx.db
+    .update(schema.analyticsSchedules)
+    .set({ lastRunAt: ctx.now, lastState: state, nextRunAt: nextRun(s.cron, ctx.now), updatedAt: ctx.now })
+    .where(scoped(ctx, schema.analyticsSchedules, eq(schema.analyticsSchedules.id, s.id)));
+  await audit(ctx, {
+    action: "analytics.schedule.deliver",
+    subjectRef: s.id,
+    after: { exportId: row.id, format: s.format, rows: result.rowCount, delivered: reachable.length, state }
+  });
+  return 1;
+}
+
+async function failSchedule(ctx: Ctx, s: Schedule, err: unknown): Promise<void> {
+  const error = err instanceof Error ? err.message : "failed";
+  let next: number | null = null;
+  try {
+    next = nextRun(s.cron, ctx.now);
+  } catch {
+    // A schedule with an unparseable cron stops rather than spinning.
+  }
+  await ctx.db
+    .update(schema.analyticsSchedules)
+    .set({ lastRunAt: ctx.now, lastState: "failed", nextRunAt: next, updatedAt: ctx.now })
+    .where(scoped(ctx, schema.analyticsSchedules, eq(schema.analyticsSchedules.id, s.id)));
+  await notify(ctx, ownerOf(s), "alert", "analytics.schedule.failed", s.id, { scheduleId: s.id, error });
+  await audit(ctx, { action: "analytics.schedule.failed", subjectRef: s.id, after: { error } });
+}
+
+/** `user:u_1` → `u_1`; anything else has no inbox to write to. */
+function ownerOf(s: Schedule): string[] {
+  const [kind, userId] = s.createdBy.split(":");
+  return kind === "user" && userId ? [userId] : [];
+}
+
+async function notify(
+  ctx: Ctx,
+  userIds: string[],
+  kind: string,
+  titleKey: string,
+  subjectRef: string,
+  params: Record<string, unknown>
+): Promise<void> {
+  if (!userIds.length) return;
+  await ctx.db.insert(schema.notifications).values(
+    userIds.map((userId) => ({
+      id: id("ntf", ctx.now),
+      tenantId: ctx.tenantId,
+      userId,
+      kind,
+      // Rule 7: the inbox stores a key and its parameters, never a sentence.
+      titleKey,
+      paramsJson: JSON.stringify(params),
+      subjectRef,
+      readAt: null,
+      createdAt: ctx.now
+    }))
+  );
 }
 
 function labelOf(nameJson: string, locale: string): string {
