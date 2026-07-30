@@ -1,0 +1,322 @@
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { createClient } from "@libsql/client";
+import { drizzle } from "drizzle-orm/libsql";
+import { sql } from "drizzle-orm";
+import { beforeEach, describe, expect, it } from "vitest";
+import { EntitlementsJson, PolicyJson, schema } from "@lyra/db";
+import { isKnownPermission, permissionsForRole, type Ctx } from "@lyra/core";
+import { BY_MODULE } from "./resources.js";
+import { DATASETS, runReport, totalsOf } from "./engines/report.js";
+import { toXlsx } from "./engines/export/xlsx.js";
+import { pdfSafe, toPdf } from "./engines/export/pdf.js";
+import { crc32 } from "./engines/export/zip.js";
+import { nextRun } from "./routes/analytics.js";
+import { openapi } from "./openapi.js";
+
+const MIGRATIONS = join(import.meta.dirname, "..", "..", "..", "packages", "db", "migrations");
+
+function statements(): string[] {
+  return readdirSync(MIGRATIONS)
+    .filter((f) => f.endsWith(".sql"))
+    .sort()
+    .flatMap((f) => readFileSync(join(MIGRATIONS, f), "utf8").split("--> statement-breakpoint"))
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+let ctx: Ctx;
+
+beforeEach(async () => {
+  const client = createClient({ url: ":memory:" });
+  for (const stmt of statements()) await client.execute(stmt);
+  ctx = {
+    db: drizzle(client) as unknown as Ctx["db"],
+    tenantId: "t_test",
+    actor: { kind: "user", id: "u_test", tenantId: "t_test", grants: [{ roleKey: "owner", permissions: ["*"] }] },
+    requestId: "req_test",
+    now: Date.UTC(2026, 5, 15, 12),
+    locale: "en",
+    policy: PolicyJson.parse({}),
+    entitlements: EntitlementsJson.parse({})
+  };
+});
+
+/**
+ * AppError carries the generic title in `message` ("Bad request") and the cause
+ * in `detail`, so assertions read the detail.
+ */
+async function detailOf(fn: () => unknown): Promise<string> {
+  try {
+    await fn();
+  } catch (e) {
+    return (e as { detail?: string }).detail ?? String(e);
+  }
+  return "";
+}
+
+/* ------------------------------------------------------------- permissions */
+
+describe("permission vocabulary", () => {
+  // A typo in a permission string is silent: `can()` simply never matches, so
+  // the endpoint denies everyone and nobody notices until go-live. This is the
+  // test that makes the vocabulary a compile-time-ish fact.
+  it("every string the API checks is a real permission", () => {
+    const unknown = new Set<string>();
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const path = join(dir, entry.name);
+        if (entry.isDirectory()) walk(path);
+        else if (entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts")) {
+          for (const m of readFileSync(path, "utf8").matchAll(/"([a-z_]+:[a-z_]+:[a-z_]+)"/g)) {
+            const p = m[1] as string;
+            if (!isKnownPermission(p)) unknown.add(`${entry.name}: ${p}`);
+          }
+        }
+      }
+    };
+    walk(import.meta.dirname);
+    expect([...unknown]).toEqual([]);
+  });
+
+  it("every CRUD resource names permissions that exist", () => {
+    const bad: string[] = [];
+    for (const [module, resources] of Object.entries(BY_MODULE)) {
+      for (const r of resources) {
+        for (const p of Object.values(r.perms)) {
+          if (typeof p === "string" && !isKnownPermission(p)) bad.push(`${module}/${r.path}: ${p}`);
+        }
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
+  it("gives a viewer read only", () => {
+    const viewer = permissionsForRole("provider.viewer");
+    expect(viewer.length).toBeGreaterThan(0);
+    expect(viewer.filter((p) => !p.endsWith(":read") && p !== "*")).toEqual([]);
+  });
+});
+
+/* ---------------------------------------------------------------- datasets */
+
+describe("semantic layer", () => {
+  it("every dataset points at real columns and a real permission", async () => {
+    const bad: string[] = [];
+    for (const [key, ds] of Object.entries(DATASETS)) {
+      if (!isKnownPermission(ds.permission)) bad.push(`${key}: permission ${ds.permission}`);
+      const cols = [
+        ds.timeColumn,
+        "tenant_id",
+        ...Object.values(ds.dimensions).map((d) => d.column),
+        ...Object.values(ds.metrics).flatMap((m) => (m.column ? [m.column] : []))
+      ];
+      for (const col of cols) {
+        // A wrong table or column name would otherwise surface on a customer's
+        // first report run; this turns it into a red test instead.
+        await ctx.db.all(sql.raw(`select "${col}" from ${ds.table} limit 0`)).catch(() => {
+          bad.push(`${key}: ${ds.table}.${col}`);
+        });
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
+  it("refuses a dimension that is not in the registry", async () => {
+    expect(
+      await detailOf(() =>
+        runReport(ctx, { dataset: "policies", metrics: ["policies"], dimensions: ["'; drop table core_users; --"] })
+      )
+    ).toMatch(/unknown dimension/);
+  });
+
+  it("refuses a metric that is not in the registry", async () => {
+    expect(
+      await detailOf(() => runReport(ctx, { dataset: "policies", metrics: ["sum(premium_minor) from core_users"] }))
+    ).toMatch(/unknown metric/);
+  });
+
+  it("refuses an unknown dataset", async () => {
+    expect(await detailOf(() => runReport(ctx, { dataset: "core_users", metrics: ["policies"] }))).toMatch(
+      /unknown dataset/
+    );
+  });
+
+  it("refuses a report with no metric", async () => {
+    expect(await detailOf(() => runReport(ctx, { dataset: "policies", metrics: [] }))).toMatch(/at least one metric/);
+  });
+
+  it("scopes every query to the caller's tenant", async () => {
+    await seedPolicies();
+    const mine = await runReport(ctx, { dataset: "policies", metrics: ["policies"] });
+    const theirs = await runReport({ ...ctx, tenantId: "t_other" }, { dataset: "policies", metrics: ["policies"] });
+    expect(mine.rows[0]?.policies).toBe(2);
+    expect(theirs.rows[0]?.policies).toBe(0);
+  });
+
+  it("groups by period and totals money", async () => {
+    await seedPolicies();
+    const r = await runReport(ctx, { dataset: "policies", metrics: ["gwp", "policies"], grain: "month" });
+    expect(r.columns[0]?.key).toBe("period");
+    expect(r.rows[0]?.period).toBe("2026-06");
+    expect(totalsOf(r).gwp).toBe(300_00);
+  });
+
+  it("binds filter values instead of splicing them", async () => {
+    await seedPolicies();
+    const r = await runReport(ctx, {
+      dataset: "policies",
+      metrics: ["gwp"],
+      filters: [{ field: "status", op: "eq", value: "active' or '1'='1" }]
+    });
+    // If the value were spliced into the SQL, this would match both rows.
+    expect(r.rows[0]?.gwp).toBe(null);
+  });
+
+  it("hashes a PII dimension unless the caller is entitled", async () => {
+    await seedPolicies();
+    const def = { dataset: "policies", metrics: ["policies"], dimensions: ["customerId"] };
+    const masked = await runReport(ctx, def);
+    const clear = await runReport(ctx, def, { unmasked: true });
+    // Masking groups the same way — it changes the label, never the shape.
+    expect(masked.rows.length).toBe(clear.rows.length);
+    expect(clear.rows.map((r) => r.customerId).sort()).toEqual(["cus_1", "cus_2"]);
+    expect(masked.rows.some((r) => String(r.customerId).includes("cus_"))).toBe(false);
+  });
+
+  it("caps the row count rather than streaming the table", async () => {
+    await seedPolicies();
+    const r = await runReport(ctx, { dataset: "policies", metrics: ["gwp"], dimensions: ["customerId"], limit: 1 });
+    expect(r.rowCount).toBe(1);
+    expect(r.truncated).toBe(true);
+  });
+});
+
+/* ----------------------------------------------------------------- exports */
+
+const TABLE = {
+  title: "Premium by month",
+  columns: [
+    { key: "period", label: "Month", kind: "text" as const },
+    { key: "gwp", label: "Premium", kind: "money" as const },
+    { key: "policies", label: "Policies", kind: "number" as const }
+  ],
+  rows: [
+    { period: "2026-05", gwp: 125_00, policies: 3 },
+    { period: "2026-06", gwp: 175_00, policies: 4 }
+  ],
+  currency: "AED",
+  generatedAt: Date.UTC(2026, 5, 15)
+};
+
+describe("exports", () => {
+  it("computes the CRC the ZIP spec expects", () => {
+    // Canonical vector: CRC-32 of "123456789" is 0xCBF43926.
+    expect(crc32(new TextEncoder().encode("123456789"))).toBe(0xcbf43926);
+  });
+
+  it("writes a workbook Excel can open", () => {
+    const bytes = toXlsx([TABLE]);
+    expect([bytes[0], bytes[1]]).toEqual([0x50, 0x4b]); // "PK"
+    const view = new DataView(bytes.buffer, bytes.byteOffset + bytes.byteLength - 22, 22);
+    expect(view.getUint32(0, true)).toBe(0x06054b50); // end of central directory
+    expect(view.getUint16(10, true)).toBe(6); // one entry per part, one sheet
+  });
+
+  it("writes money as a number, not a formatted string", () => {
+    const text = new TextDecoder().decode(toXlsx([TABLE]));
+    expect(text).toContain("<v>125</v>"); // 125_00 minor units, as major
+    expect(text).not.toContain("AED 125.00");
+  });
+
+  it("writes a PDF with a valid trailer and one page per table", () => {
+    const text = new TextDecoder("latin1").decode(toPdf([TABLE], { totals: { gwp: 300_00 } }));
+    expect(text.startsWith("%PDF-1.4")).toBe(true);
+    expect(text.trimEnd().endsWith("%%EOF")).toBe(true);
+    expect(text).toContain("/Type /Catalog");
+    expect(text.match(/\/Type \/Page[^s]/g)?.length).toBe(1);
+    expect(text).toContain("startxref");
+  });
+
+  it("stamps a watermark when one is asked for", () => {
+    const plain = new TextDecoder("latin1").decode(toPdf([TABLE]));
+    const stamped = new TextDecoder("latin1").decode(toPdf([TABLE], { watermark: "user:u_1 - 2026-06-15" }));
+    expect(plain).not.toContain("user:u_1");
+    expect(stamped).toContain("user:u_1 - 2026-06-15");
+  });
+
+  it("reports Arabic as unsafe rather than drawing boxes", () => {
+    expect(pdfSafe([TABLE])).toBe(true);
+    expect(pdfSafe([{ ...TABLE, rows: [{ period: "يونيو", gwp: 1, policies: 1 }] }])).toBe(false);
+    expect(pdfSafe([{ ...TABLE, title: "تقرير" }])).toBe(false);
+  });
+});
+
+/* --------------------------------------------------------------- schedules */
+
+describe("cron", () => {
+  const at = (s: string): number => Date.parse(s);
+
+  it("finds the next daily fire time", () => {
+    expect(nextRun("0 6 * * *", at("2026-06-15T05:00:00Z"))).toBe(at("2026-06-15T06:00:00Z"));
+    expect(nextRun("0 6 * * *", at("2026-06-15T07:00:00Z"))).toBe(at("2026-06-16T06:00:00Z"));
+  });
+
+  it("handles steps, lists and day-of-week", () => {
+    expect(nextRun("*/15 * * * *", at("2026-06-15T05:01:00Z"))).toBe(at("2026-06-15T05:15:00Z"));
+    expect(nextRun("0 9 * * 1", at("2026-06-15T10:00:00Z"))).toBe(at("2026-06-22T09:00:00Z"));
+    expect(nextRun("30 8,17 * * *", at("2026-06-15T09:00:00Z"))).toBe(at("2026-06-15T17:30:00Z"));
+  });
+
+  it("never returns a time at or before `from`", () => {
+    const from = at("2026-06-15T06:00:00Z");
+    expect(nextRun("0 6 * * *", from)).toBe(at("2026-06-16T06:00:00Z"));
+  });
+
+  it("rejects a malformed expression instead of silently never running", async () => {
+    expect(await detailOf(() => nextRun("0 6 *", 0))).toMatch(/five fields/);
+  });
+});
+
+/* ----------------------------------------------------------------- openapi */
+
+describe("openapi", () => {
+  const spec = openapi() as {
+    paths: Record<string, Record<string, { security?: unknown[] }>>;
+    components: { schemas: Record<string, unknown> };
+  };
+  const resourceCount = Object.values(BY_MODULE).reduce((n, rs) => n + rs.length, 0);
+
+  it("describes every registered resource", () => {
+    expect(Object.keys(spec.components.schemas).length).toBeGreaterThanOrEqual(resourceCount);
+    expect(Object.keys(spec.paths).length).toBeGreaterThan(resourceCount);
+  });
+
+  it("leaves no documented endpoint unauthenticated", () => {
+    const open = Object.entries(spec.paths)
+      .filter(([p]) => !p.startsWith("/v1/auth") && p !== "/health" && p !== "/openapi.json")
+      .flatMap(([p, ops]) => Object.entries(ops).filter(([, op]) => !op.security).map(([m]) => `${m} ${p}`));
+    expect(open).toEqual([]);
+  });
+});
+
+/* -------------------------------------------------------------------- seed */
+
+async function seedPolicies(): Promise<void> {
+  const base = {
+    tenantId: ctx.tenantId,
+    providerId: "prv_1",
+    offeringId: "off_1",
+    status: "active",
+    currency: "AED",
+    startAt: ctx.now,
+    endAt: ctx.now + 365 * 24 * 3600 * 1000,
+    commissionMinor: 0,
+    createdAt: ctx.now,
+    updatedAt: ctx.now
+  };
+  await ctx.db.insert(schema.axisPolicies).values([
+    { ...base, id: "pol_1", policyNo: "P-1", customerId: "cus_1", premiumMinor: 125_00 },
+    { ...base, id: "pol_2", policyNo: "P-2", customerId: "cus_2", premiumMinor: 175_00 }
+  ]);
+}

@@ -1,0 +1,514 @@
+import { sqliteTable, text, integer, index, uniqueIndex, primaryKey } from "drizzle-orm/sqlite-core";
+
+// docs/03 §Core. Conventions: ULID text PK · tenant_id on every table ·
+// created_at/updated_at epoch ms · soft delete via deleted_at · JSON columns are
+// TEXT validated by the zod shapes in ../json.ts · composite index (tenant_id, hot key).
+
+export const tenants = sqliteTable("core_tenants", {
+  id: text("id").primaryKey(),
+  slug: text("slug").notNull().unique(),
+  name: text("name").notNull(),
+  plan: text("plan").notNull().default("standard"),
+  region: text("region").notNull().default("auto"),
+  dbBinding: text("db_binding"),
+  status: text("status").notNull().default("active"), // active|suspended|closed
+  brandJson: text("brand_json"),
+  policyJson: text("policy_json"),
+  entitlementsJson: text("entitlements_json"),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull()
+});
+
+export const users = sqliteTable(
+  "core_users",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    email: text("email").notNull(),
+    phone: text("phone"),
+    name: text("name").notNull(),
+    locale: text("locale").notNull().default("en"),
+    status: text("status").notNull().default("invited"), // invited|active|suspended
+    authProvider: text("auth_provider").notNull().default("password"), // password|oidc|saml
+    passwordHash: text("password_hash"),
+    mfaEnrolled: integer("mfa_enrolled", { mode: "boolean" }).notNull().default(false),
+    mfaSecret: text("mfa_secret"),
+    lastSeenAt: integer("last_seen_at"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+    deletedAt: integer("deleted_at")
+  },
+  (t) => [
+    index("core_users_tenant_idx").on(t.tenantId, t.email),
+    uniqueIndex("core_users_tenant_email_uq").on(t.tenantId, t.email)
+  ]
+);
+
+export const sessions = sqliteTable(
+  "core_sessions",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    userId: text("user_id").notNull(),
+    tokenHash: text("token_hash").notNull(),
+    ip: text("ip"),
+    ua: text("ua"),
+    mfaSatisfied: integer("mfa_satisfied", { mode: "boolean" }).notNull().default(false),
+    expiresAt: integer("expires_at").notNull(),
+    createdAt: integer("created_at").notNull(),
+    revokedAt: integer("revoked_at")
+  },
+  (t) => [
+    index("core_sessions_tenant_idx").on(t.tenantId, t.userId),
+    uniqueIndex("core_sessions_token_uq").on(t.tokenHash)
+  ]
+);
+
+export const roles = sqliteTable(
+  "core_roles",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    key: text("key").notNull(), // docs/06 §1
+    name: text("name").notNull(),
+    permissionsJson: text("permissions_json").notNull(),
+    system: integer("system", { mode: "boolean" }).notNull().default(true),
+    createdAt: integer("created_at").notNull()
+  },
+  (t) => [
+    index("core_roles_tenant_idx").on(t.tenantId, t.key),
+    uniqueIndex("core_roles_tenant_key_uq").on(t.tenantId, t.key)
+  ]
+);
+
+export const userRoles = sqliteTable(
+  "core_user_roles",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    userId: text("user_id").notNull(),
+    roleId: text("role_id").notNull(),
+    scopeJson: text("scope_json"), // ABAC overlay: team, module, product line
+    createdAt: integer("created_at").notNull()
+  },
+  (t) => [
+    index("core_user_roles_tenant_idx").on(t.tenantId, t.userId),
+    uniqueIndex("core_user_roles_uq").on(t.tenantId, t.userId, t.roleId)
+  ]
+);
+
+export const teams = sqliteTable(
+  "core_teams",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    name: text("name").notNull(),
+    moduleScope: text("module_scope"),
+    createdAt: integer("created_at").notNull()
+  },
+  (t) => [index("core_teams_tenant_idx").on(t.tenantId, t.name)]
+);
+
+/** The 360 spine. ORBIT owns writes; every module reads. */
+export const customers = sqliteTable(
+  "core_customers",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    type: text("type").notNull().default("person"), // person|business
+    nameJson: text("name_json").notNull(),
+    emailsJson: text("emails_json"),
+    phonesJson: text("phones_json"),
+    nationalIdHash: text("national_id_hash"),
+    kycStatus: text("kyc_status").notNull().default("none"), // none|pending|verified|failed
+    consentId: text("consent_id"),
+    tagsJson: text("tags_json"),
+    ltvCached: integer("ltv_cached"),
+    riskFlagsJson: text("risk_flags_json"),
+    locale: text("locale").notNull().default("en"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+    deletedAt: integer("deleted_at")
+  },
+  (t) => [
+    index("core_customers_tenant_idx").on(t.tenantId, t.updatedAt),
+    index("core_customers_natid_idx").on(t.tenantId, t.nationalIdHash)
+  ]
+);
+
+/** Immutable rows; the current consent is the latest row per purpose. */
+export const consents = sqliteTable(
+  "core_consents",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    customerId: text("customer_id").notNull(),
+    purposesJson: text("purposes_json").notNull(),
+    channelOptinsJson: text("channel_optins_json").notNull(),
+    source: text("source").notNull(), // web|whatsapp|import|agent|portal
+    evidenceRef: text("evidence_ref"),
+    ts: integer("ts").notNull(),
+    expiry: integer("expiry"),
+    version: integer("version").notNull().default(1)
+  },
+  (t) => [index("core_consents_tenant_idx").on(t.tenantId, t.customerId, t.ts)]
+);
+
+export const products = sqliteTable(
+  "core_products",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    line: text("line").notNull(), // motor|health|travel|home|life|sme|card|loan|account
+    nameJson: text("name_json").notNull(),
+    providerId: text("provider_id"),
+    termsRef: text("terms_ref"),
+    status: text("status").notNull().default("active"),
+    // Horizon seams (docs/16): reserved, sparsely used in v1.
+    structure: text("structure").notNull().default("conventional"), // conventional|takaful|parametric
+    takafulJson: text("takaful_json"),
+    parametricTriggerJson: text("parametric_trigger_json"),
+    standardMappingJson: text("standard_mapping_json"),
+    pricingInputsJson: text("pricing_inputs_json"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull()
+  },
+  (t) => [index("core_products_tenant_idx").on(t.tenantId, t.line)]
+);
+
+export const providers = sqliteTable(
+  "core_providers",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    name: text("name").notNull(),
+    kind: text("kind").notNull().default("insurer"), // insurer|bank|financier (H9)
+    /** We are also an underwriter: this row is us. Its offerings carry no external commission. */
+    isInternal: integer("is_internal", { mode: "boolean" }).notNull().default(false),
+    linesJson: text("lines_json"),
+    integrationJson: text("integration_json"), // api|portal|email
+    commissionJson: text("commission_json"),
+    /** {frequency, netDays, dayOfMonth} — when they pay us commission. */
+    settlementTermsJson: text("settlement_terms_json"),
+    currency: text("currency"),
+    /** Quote fan-out endpoint config; secrets are wrangler/env refs, never values. */
+    quoteEndpointJson: text("quote_endpoint_json"),
+    panelStatus: text("panel_status").notNull().default("active"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull()
+  },
+  (t) => [index("core_providers_tenant_idx").on(t.tenantId, t.panelStatus)]
+);
+
+export const files = sqliteTable(
+  "core_files",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    r2Key: text("r2_key").notNull(),
+    kind: text("kind").notNull(),
+    subjectRef: text("subject_ref"),
+    sha256: text("sha256").notNull(),
+    sizeBytes: integer("size_bytes"),
+    contentType: text("content_type"),
+    piiLevel: text("pii_level").notNull().default("none"), // none|low|high
+    createdAt: integer("created_at").notNull(),
+    deletedAt: integer("deleted_at")
+  },
+  (t) => [index("core_files_tenant_idx").on(t.tenantId, t.subjectRef)]
+);
+
+/** Append-only. Hash-chained per tenant: each row's chain_hash covers the prior. */
+export const auditLog = sqliteTable(
+  "core_audit_log",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    actorRef: text("actor_ref").notNull(),
+    action: text("action").notNull(),
+    subjectRef: text("subject_ref"),
+    beforeHash: text("before_hash"),
+    afterHash: text("after_hash"),
+    prevHash: text("prev_hash"),
+    chainHash: text("chain_hash").notNull(),
+    ip: text("ip"),
+    ua: text("ua"),
+    ts: integer("ts").notNull()
+  },
+  (t) => [index("core_audit_tenant_idx").on(t.tenantId, t.ts)]
+);
+
+/** Append-only, exportable, 7y retention. Every model-gateway call lands here. */
+export const aiAuditLog = sqliteTable(
+  "ai_audit_log",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    module: text("module").notNull(),
+    purpose: text("purpose").notNull(),
+    model: text("model").notNull(),
+    provider: text("provider").notNull(),
+    tier: text("tier").notNull(), // fast|standard|reasoning
+    inputHash: text("input_hash").notNull(),
+    outputHash: text("output_hash"),
+    tokensIn: integer("tokens_in").notNull().default(0),
+    tokensOut: integer("tokens_out").notNull().default(0),
+    costMicro: integer("cost_micro").notNull().default(0),
+    latencyMs: integer("latency_ms").notNull().default(0),
+    toolCallsJson: text("tool_calls_json"),
+    guardrailFlagsJson: text("guardrail_flags_json"),
+    actorRef: text("actor_ref").notNull(),
+    subjectRef: text("subject_ref"),
+    outcome: text("outcome").notNull().default("ok"), // ok|refused|error|budget_exceeded
+    ts: integer("ts").notNull()
+  },
+  (t) => [
+    index("ai_audit_tenant_idx").on(t.tenantId, t.ts),
+    index("ai_audit_module_idx").on(t.tenantId, t.module, t.ts)
+  ]
+);
+
+/** Idempotency for inbound events (dedupe) — docs/04 §7. */
+export const eventInbox = sqliteTable(
+  "core_event_inbox",
+  {
+    id: text("id").notNull(), // the event envelope id
+    tenantId: text("tenant_id").notNull(),
+    type: text("type").notNull(),
+    consumer: text("consumer").notNull(),
+    processedAt: integer("processed_at").notNull(),
+    attempts: integer("attempts").notNull().default(1),
+    status: text("status").notNull().default("done") // done|failed|dead
+  },
+  (t) => [
+    // One row per (event, consumer): every consumer processes an event once.
+    primaryKey({ columns: [t.id, t.consumer] }),
+    index("core_event_inbox_tenant_idx").on(t.tenantId, t.processedAt)
+  ]
+);
+
+/** Transactional outbox: written in the same txn as the state change, drained to the queue. */
+export const eventOutbox = sqliteTable(
+  "core_event_outbox",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    module: text("module").notNull(),
+    type: text("type").notNull(),
+    envelopeJson: text("envelope_json").notNull(),
+    publishedAt: integer("published_at"),
+    attempts: integer("attempts").notNull().default(0),
+    lastError: text("last_error"),
+    createdAt: integer("created_at").notNull()
+  },
+  (t) => [index("core_event_outbox_pending_idx").on(t.tenantId, t.publishedAt, t.createdAt)]
+);
+
+/** Dead-letter queue with replay from the admin console (docs/09). */
+export const eventDlq = sqliteTable(
+  "core_event_dlq",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    type: text("type").notNull(),
+    consumer: text("consumer").notNull(),
+    envelopeJson: text("envelope_json").notNull(),
+    error: text("error").notNull(),
+    attempts: integer("attempts").notNull(),
+    replayedAt: integer("replayed_at"),
+    createdAt: integer("created_at").notNull()
+  },
+  (t) => [index("core_event_dlq_tenant_idx").on(t.tenantId, t.createdAt)]
+);
+
+export const apiKeys = sqliteTable(
+  "core_api_keys",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    name: text("name").notNull(),
+    prefix: text("prefix").notNull(), // qvk_live_ / qvk_test_ + 8 chars, for lookup
+    keyHash: text("key_hash").notNull(),
+    mode: text("mode").notNull().default("test"), // test|live
+    scopesJson: text("scopes_json").notNull(),
+    createdBy: text("created_by").notNull(),
+    lastUsedAt: integer("last_used_at"),
+    expiresAt: integer("expires_at"),
+    revokedAt: integer("revoked_at"),
+    createdAt: integer("created_at").notNull()
+  },
+  (t) => [
+    index("core_api_keys_tenant_idx").on(t.tenantId, t.mode),
+    uniqueIndex("core_api_keys_prefix_uq").on(t.prefix)
+  ]
+);
+
+export const webhooks = sqliteTable(
+  "core_webhooks",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    url: text("url").notNull(),
+    eventTypesJson: text("event_types_json").notNull(),
+    secret: text("secret").notNull(),
+    status: text("status").notNull().default("active"),
+    createdAt: integer("created_at").notNull()
+  },
+  (t) => [index("core_webhooks_tenant_idx").on(t.tenantId, t.status)]
+);
+
+export const webhookDeliveries = sqliteTable(
+  "core_webhook_deliveries",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    webhookId: text("webhook_id").notNull(),
+    eventId: text("event_id").notNull(),
+    status: text("status").notNull(), // pending|delivered|failed|dead
+    responseCode: integer("response_code"),
+    attempts: integer("attempts").notNull().default(0),
+    nextAttemptAt: integer("next_attempt_at"),
+    error: text("error"),
+    createdAt: integer("created_at").notNull()
+  },
+  (t) => [index("core_webhook_deliveries_idx").on(t.tenantId, t.webhookId, t.createdAt)]
+);
+
+export const notifications = sqliteTable(
+  "core_notifications",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    userId: text("user_id").notNull(),
+    kind: text("kind").notNull(),
+    titleKey: text("title_key").notNull(), // i18n key, never a literal string
+    paramsJson: text("params_json"),
+    subjectRef: text("subject_ref"),
+    readAt: integer("read_at"),
+    createdAt: integer("created_at").notNull()
+  },
+  (t) => [index("core_notifications_user_idx").on(t.tenantId, t.userId, t.createdAt)]
+);
+
+/** Shared approval engine (CLAUDE.md rule 4). AXIS is the heaviest user. */
+export const approvals = sqliteTable(
+  "core_approvals",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    subjectRef: text("subject_ref").notNull(),
+    policyKey: text("policy_key").notNull(),
+    module: text("module").notNull(),
+    requestedBy: text("requested_by").notNull(),
+    requestedAt: integer("requested_at").notNull(),
+    decidedBy: text("decided_by"),
+    decision: text("decision").notNull().default("pending"), // pending|approved|rejected
+    reason: text("reason"),
+    contextJson: text("context_json"),
+    decidedAt: integer("decided_at")
+  },
+  (t) => [
+    index("core_approvals_tenant_idx").on(t.tenantId, t.decision, t.requestedAt),
+    index("core_approvals_subject_idx").on(t.tenantId, t.subjectRef)
+  ]
+);
+
+/* --------------------------------------------- horizon-reserved (docs/16) */
+
+/** H1 agentic commerce: delegated authority an agent acts under. */
+export const mandates = sqliteTable(
+  "core_mandates",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    principalRef: text("principal_ref").notNull(),
+    agentIdentity: text("agent_identity").notNull(),
+    scopeJson: text("scope_json").notNull(),
+    spendCapMinor: integer("spend_cap_minor"),
+    currency: text("currency"),
+    verificationRef: text("verification_ref"),
+    expiry: integer("expiry"),
+    status: text("status").notNull().default("active"),
+    createdAt: integer("created_at").notNull()
+  },
+  (t) => [index("core_mandates_tenant_idx").on(t.tenantId, t.principalRef)]
+);
+
+/** H5 digital identity. */
+export const identityVerifications = sqliteTable(
+  "core_identity_verifications",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    subjectRef: text("subject_ref").notNull(),
+    method: text("method").notNull(),
+    evidenceLevel: text("evidence_level").notNull(),
+    providerRef: text("provider_ref"),
+    expiry: integer("expiry"),
+    createdAt: integer("created_at").notNull()
+  },
+  (t) => [index("core_identity_verifications_idx").on(t.tenantId, t.subjectRef)]
+);
+
+/** H11 compounding intelligence. Purpose-bound reads; erasure-linked. */
+export const memories = sqliteTable(
+  "core_memories",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    subjectRef: text("subject_ref").notNull(),
+    kind: text("kind").notNull(),
+    contentJson: text("content_json").notNull(),
+    provenance: text("provenance").notNull(),
+    sensitivity: text("sensitivity").notNull().default("low"),
+    purposesJson: text("purposes_json"),
+    expiry: integer("expiry"),
+    createdAt: integer("created_at").notNull()
+  },
+  (t) => [index("core_memories_idx").on(t.tenantId, t.subjectRef, t.kind)]
+);
+
+/** docs/15 §5 lens engine: role default workspace + learned personal adaptation. */
+export const lenses = sqliteTable(
+  "core_lenses",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    userId: text("user_id").notNull(),
+    lensJson: text("lens_json").notNull(),
+    updatedAt: integer("updated_at").notNull()
+  },
+  (t) => [uniqueIndex("core_lenses_user_uq").on(t.tenantId, t.userId)]
+);
+
+/** H12 regulation-as-data. */
+export const rulepacks = sqliteTable(
+  "core_rulepacks",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    market: text("market").notNull(),
+    version: text("version").notNull(),
+    effectiveAt: integer("effective_at").notNull(),
+    rulesJson: text("rules_json").notNull(),
+    createdAt: integer("created_at").notNull()
+  },
+  (t) => [index("core_rulepacks_idx").on(t.tenantId, t.market, t.effectiveAt)]
+);
+
+/** Idempotency-Key ledger for POSTs (docs/04 §1, honoured 24h). */
+export const idempotencyKeys = sqliteTable(
+  "core_idempotency_keys",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    key: text("key").notNull(),
+    route: text("route").notNull(),
+    requestHash: text("request_hash").notNull(),
+    responseJson: text("response_json"),
+    status: text("status").notNull().default("in_flight"), // in_flight|done
+    expiresAt: integer("expires_at").notNull(),
+    createdAt: integer("created_at").notNull()
+  },
+  (t) => [uniqueIndex("core_idempotency_uq").on(t.tenantId, t.key, t.route)]
+);

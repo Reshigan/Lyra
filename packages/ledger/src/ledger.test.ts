@@ -1,0 +1,510 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { createClient } from "@libsql/client";
+import { drizzle } from "drizzle-orm/libsql";
+import { eq } from "drizzle-orm";
+import { beforeEach, describe, expect, it } from "vitest";
+import { PolicyJson, EntitlementsJson, schema } from "@lyra/db";
+import type { Ctx } from "@lyra/core";
+import { balanceOf, post, reverse } from "./posting.js";
+import { openTxn, reverseTxn, runSaga, runTxn, transition } from "./txn.js";
+import { closePeriod, ensurePeriod, periodCode } from "./periods.js";
+import { RECIPES, buildRecipe } from "./recipes.js";
+import { clientMoneyPosition, rebuildBalances, trialBalance } from "./reports.js";
+import { reconcile } from "./recon.js";
+import { TXN_TYPES, autoApprovable } from "./types.js";
+
+// docs/19 §11. These are the invariants that may not be relaxed to make a test
+// pass. Everything runs against a real migrated SQLite engine, not a mock,
+// because half of what is being asserted here is enforced by an index.
+
+const MIGRATIONS = join(import.meta.dirname, "..", "..", "db", "migrations");
+
+function statements(): string[] {
+  return readdirSync(MIGRATIONS)
+    .filter((f) => f.endsWith(".sql"))
+    .sort()
+    .flatMap((f) => readFileSync(join(MIGRATIONS, f), "utf8").split("--> statement-breakpoint"))
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+let ctx: Ctx;
+
+async function freshCtx(): Promise<Ctx> {
+  const client = createClient({ url: ":memory:" });
+  for (const sql of statements()) await client.execute(sql);
+  return {
+    db: drizzle(client) as unknown as Ctx["db"],
+    tenantId: "t_test",
+    actor: {
+      kind: "user",
+      id: "u_test",
+      tenantId: "t_test",
+      grants: [{ roleKey: "owner", permissions: ["*"] }]
+    },
+    requestId: "req_test",
+    now: Date.UTC(2026, 5, 15, 12),
+    locale: "en",
+    policy: PolicyJson.parse({}),
+    entitlements: EntitlementsJson.parse({})
+  };
+}
+
+beforeEach(async () => {
+  ctx = await freshCtx();
+});
+
+/**
+ * AppError carries the human-readable title as `message` and the specific cause
+ * as `detail`, so asserting on `toThrow(/…/)` would only ever test the title.
+ */
+async function rejects(p: Promise<unknown>, detail: RegExp): Promise<void> {
+  await expect(p).rejects.toThrow();
+  try {
+    await p;
+  } catch (e) {
+    expect((e as { detail?: string }).detail ?? String(e)).toMatch(detail);
+  }
+}
+
+/* ------------------------------------------------------------- generators */
+
+/** Deterministic PRNG: a failing seed is reproducible, unlike Math.random(). */
+function rng(seed: number): () => number {
+  let s = seed >>> 0 || 1;
+  return () => {
+    s ^= s << 13;
+    s ^= s >>> 17;
+    s ^= s << 5;
+    return ((s >>> 0) % 1_000_000) / 1_000_000;
+  };
+}
+
+const FINANCIAL = Object.values(TXN_TYPES).filter((t) => t.financial && RECIPES[t.code]);
+
+/** Plausible arguments for any recipe, driven by the seed. */
+function argsFor(code: string, r: () => number): Record<string, unknown> {
+  const amount = 1 + Math.floor(r() * 500_000);
+  const tax = Math.floor(amount * 0.05);
+  const channel = Math.floor((amount - tax) * r() * 0.5);
+  const commission = { grossMinor: amount, taxMinor: tax, channelMinor: channel };
+  const spec = RECIPES[code];
+  if (!spec) throw new Error(`no recipe ${code}`);
+  // Probe the schema rather than branching per code: whichever shape parses is
+  // the shape the recipe wants.
+  const shapes: Record<string, unknown>[] = [
+    commission,
+    { ...commission, amountMinor: amount },
+    { amountMinor: amount, feeMinor: Math.floor(amount * 0.02) },
+    { amountMinor: amount, withholdingMinor: Math.floor(amount * 0.05) },
+    { amountMinor: amount },
+    { netMinor: amount, taxMinor: tax }
+  ];
+  for (const s of shapes) {
+    if (spec.schema.safeParse({ ...spec.defaults, ...s }).success) return s;
+  }
+  throw new Error(`no generator shape fits ${code}`);
+}
+
+/* ---------------------------------------------------------------- §11.1 */
+
+describe("every journal batch balances in both currencies", () => {
+  it("holds for every financial transaction type, fuzzed", async () => {
+    const r = rng(20260615);
+    expect(FINANCIAL.length).toBeGreaterThan(20);
+
+    for (const def of FINANCIAL) {
+      for (let i = 0; i < 3; i++) {
+        const lines = buildRecipe(def.code, argsFor(def.code, r));
+        const debit = lines.filter((l) => l.side === "debit").reduce((s, l) => s + l.amountMinor, 0);
+        const credit = lines.filter((l) => l.side === "credit").reduce((s, l) => s + l.amountMinor, 0);
+        expect(debit, `${def.code} txn currency`).toBe(credit);
+
+        const txnId = `tx_${def.code}_${i}`;
+        await ctx.db.insert(schema.ledgerTxns).values(baseTxn(txnId, def.code, debit));
+        const batch = await post(ctx, {
+          txnId,
+          currency: "AED",
+          baseCurrency: "USD",
+          // A non-unit rate is the case where base-currency balance is not free.
+          fxRatePpm: 272_300,
+          lines
+        });
+        expect(batch.totalMinor).toBe(debit);
+
+        const rows = await ctx.db
+          .select()
+          .from(schema.ledgerJournalLines)
+          .where(eq(schema.ledgerJournalLines.batchId, batch.batchId));
+        const baseDebit = rows.filter((l) => l.side === "debit").reduce((s, l) => s + l.baseAmountMinor, 0);
+        const baseCredit = rows.filter((l) => l.side === "credit").reduce((s, l) => s + l.baseAmountMinor, 0);
+        expect(baseDebit, `${def.code} base currency`).toBe(baseCredit);
+      }
+    }
+  });
+});
+
+function baseTxn(txnId: string, type: string, gross: number) {
+  return {
+    id: txnId,
+    tenantId: "t_test",
+    type,
+    idempotencyKey: `k_${txnId}`,
+    state: "authorized",
+    actorKind: "user",
+    actorId: "u_test",
+    currency: "AED",
+    baseCurrency: "USD",
+    grossMinor: gross,
+    baseGrossMinor: gross,
+    createdAt: Date.UTC(2026, 5, 15, 12),
+    updatedAt: Date.UTC(2026, 5, 15, 12)
+  };
+}
+
+/* ---------------------------------------------------------------- §11.2 */
+
+describe("client money segregation", () => {
+  it("1010 >= 2010 after any random sequence of client-money transactions", async () => {
+    const r = rng(7);
+    const ops = ["CM-RECEIPT", "PREM-REMIT", "CM-TRANSFER"] as const;
+    let held = 0;
+
+    for (let i = 0; i < 60; i++) {
+      const op = ops[Math.floor(r() * ops.length)] ?? "CM-RECEIPT";
+      const amount = 1 + Math.floor(r() * 100_000);
+      let args: Record<string, unknown>;
+      if (op === "CM-RECEIPT") {
+        args = { amountMinor: amount };
+      } else if (held <= 0) {
+        continue;
+      } else if (op === "PREM-REMIT") {
+        args = { amountMinor: Math.min(amount, held) };
+      } else {
+        const gross = Math.min(amount, held);
+        args = { amountMinor: gross, grossMinor: gross, taxMinor: 0, channelMinor: 0 };
+      }
+
+      const txnId = `tx_cm_${i}`;
+      await ctx.db.insert(schema.ledgerTxns).values(baseTxn(txnId, op, amount));
+      await post(ctx, { txnId, currency: "AED", lines: buildRecipe(op, args) });
+
+      held += op === "CM-RECEIPT" ? amount : -(args.amountMinor as number);
+
+      const asset = await balanceOf(ctx, "1010", "AED");
+      const liability = await balanceOf(ctx, "2010", "AED");
+      expect(asset.balanceMinor, `after ${op} #${i}`).toBeGreaterThanOrEqual(liability.balanceMinor);
+    }
+
+    const [position] = await clientMoneyPosition(ctx, "AED");
+    expect(position?.breach).toBe(false);
+    expect(position?.surplusMinor).toBe(0);
+  });
+
+  it("refuses a posting that would take client money below the liability", async () => {
+    await ctx.db.insert(schema.ledgerTxns).values(baseTxn("tx_in", "CM-RECEIPT", 10_000));
+    await post(ctx, { txnId: "tx_in", currency: "AED", lines: buildRecipe("CM-RECEIPT", { amountMinor: 10_000 }) });
+
+    await ctx.db.insert(schema.ledgerTxns).values(baseTxn("tx_bad", "PREM-REMIT", 5_000));
+    // Draining the asset without releasing the liability is the breach shape.
+    await rejects(
+      post(ctx, {
+        txnId: "tx_bad",
+        currency: "AED",
+        lines: [
+          { accountCode: "1000", side: "debit", amountMinor: 5_000 },
+          { accountCode: "1010", side: "credit", amountMinor: 5_000 }
+        ]
+      }),
+      /client money/i
+    );
+
+    const alarms = await ctx.db
+      .select()
+      .from(schema.ledgerClientMoneyChecks)
+      .where(eq(schema.ledgerClientMoneyChecks.breach, true));
+    expect(alarms.length, "a breach must leave an alarm row behind").toBeGreaterThan(0);
+  });
+});
+
+/* ---------------------------------------------------------------- §11.3 */
+
+describe("no journal debits client-money assets to credit income or expense", () => {
+  it("rejects the illegal shape directly", async () => {
+    await ctx.db.insert(schema.ledgerTxns).values(baseTxn("tx_x", "CM-RECEIPT", 1_000));
+    await rejects(
+      post(ctx, {
+        txnId: "tx_x",
+        currency: "AED",
+        lines: [
+          { accountCode: "1010", side: "debit", amountMinor: 1_000 },
+          { accountCode: "4000", side: "credit", amountMinor: 1_000 }
+        ]
+      }),
+      /CM-TRANSFER/
+    );
+  });
+
+  it("no recipe in the catalogue produces the illegal shape", () => {
+    const r = rng(99);
+    for (const def of FINANCIAL) {
+      const lines = buildRecipe(def.code, argsFor(def.code, r));
+      const debitsClientMoney = lines.some((l) => l.side === "debit" && l.accountCode === "1010");
+      const creditsPnl = lines.some((l) => l.side === "credit" && /^[45]/.test(l.accountCode));
+      expect(debitsClientMoney && creditsPnl, def.code).toBe(false);
+    }
+  });
+
+  it("allows CM-TRANSFER, which debits the liability rather than the asset", async () => {
+    await ctx.db.insert(schema.ledgerTxns).values(baseTxn("tx_r", "CM-RECEIPT", 100_000));
+    await post(ctx, { txnId: "tx_r", currency: "AED", lines: buildRecipe("CM-RECEIPT", { amountMinor: 100_000 }) });
+
+    await ctx.db.insert(schema.ledgerTxns).values(baseTxn("tx_t", "CM-TRANSFER", 10_000));
+    const batch = await post(ctx, {
+      txnId: "tx_t",
+      currency: "AED",
+      lines: buildRecipe("CM-TRANSFER", { amountMinor: 10_000, grossMinor: 10_000, taxMinor: 500, channelMinor: 2_000 })
+    });
+    expect(batch.lineCount).toBeGreaterThanOrEqual(5);
+
+    // Channel's share became a payable at the moment of earning, not later.
+    const payable = await balanceOf(ctx, "2100", "AED");
+    expect(payable.balanceMinor).toBe(2_000);
+    const income = await balanceOf(ctx, "4000", "AED");
+    expect(income.balanceMinor).toBe(7_500);
+  });
+});
+
+/* ---------------------------------------------------------------- §11.4 */
+
+describe("idempotency", () => {
+  it("replaying a transaction with the same key posts nothing new", async () => {
+    const recipe = { lines: buildRecipe("CMSN-ACCR", { grossMinor: 50_000, taxMinor: 2_500, channelMinor: 10_000 }) };
+    const input = { type: "CMSN-ACCR", idempotencyKey: "idem-1", currency: "AED", grossMinor: 50_000 };
+
+    const first = await runTxn(ctx, input, { recipe, preApproved: true });
+    const second = await runTxn(ctx, input, { recipe, preApproved: true });
+    expect(second.id).toBe(first.id);
+    expect(second.state).toBe("settled");
+
+    const batches = await ctx.db.select().from(schema.ledgerJournalBatches);
+    expect(batches).toHaveLength(1);
+    const lines = await ctx.db.select().from(schema.ledgerJournalLines);
+    expect(lines).toHaveLength(4);
+
+    const income = await balanceOf(ctx, "4000", "AED");
+    expect(income.balanceMinor).toBe(37_500);
+  });
+
+  it("a second batch for the same transaction is a conflict, not a duplicate", async () => {
+    await ctx.db.insert(schema.ledgerTxns).values(baseTxn("tx_d", "CMSN-ACCR", 1_000));
+    const lines = buildRecipe("CMSN-ACCR", { grossMinor: 1_000 });
+    await post(ctx, { txnId: "tx_d", currency: "AED", lines });
+    await rejects(post(ctx, { txnId: "tx_d", currency: "AED", lines }), /already has a posted batch/);
+  });
+});
+
+/* ---------------------------------------------------------------- §11.5 */
+
+describe("reversal", () => {
+  it("returns net-zero economics and leaves the original intact", async () => {
+    const original = await runTxn(
+      ctx,
+      { type: "CMSN-ACCR", idempotencyKey: "rev-1", currency: "AED", grossMinor: 80_000 },
+      { recipe: { lines: buildRecipe("CMSN-ACCR", { grossMinor: 80_000, taxMinor: 4_000, channelMinor: 16_000 }) }, preApproved: true }
+    );
+
+    const before = await ctx.db.select().from(schema.ledgerJournalLines).where(eq(schema.ledgerJournalLines.txnId, original.id));
+    const { original: after, reversal } = await reverseTxn(ctx, original.id, "customer cancelled in cooling-off");
+
+    expect(after.state).toBe("reversed");
+    expect(reversal.state).toBe("settled");
+
+    const stillThere = await ctx.db.select().from(schema.ledgerJournalLines).where(eq(schema.ledgerJournalLines.txnId, original.id));
+    expect(stillThere).toEqual(before);
+
+    for (const code of ["1100", "4000", "2100", "2200"]) {
+      const b = await balanceOf(ctx, code, "AED");
+      expect(b.balanceMinor, `${code} after reversal`).toBe(0);
+    }
+
+    const tb = await trialBalance(ctx);
+    expect(tb.balanced).toBe(true);
+  });
+
+  it("refuses to reverse the same batch twice", async () => {
+    await ctx.db.insert(schema.ledgerTxns).values(baseTxn("tx_o", "CMSN-ACCR", 1_000));
+    const batch = await post(ctx, { txnId: "tx_o", currency: "AED", lines: buildRecipe("CMSN-ACCR", { grossMinor: 1_000 }) });
+    await ctx.db.insert(schema.ledgerTxns).values(baseTxn("tx_c1", "CMSN-ACCR", 1_000));
+    await reverse(ctx, batch.batchId, { txnId: "tx_c1", reason: "error" });
+    await ctx.db.insert(schema.ledgerTxns).values(baseTxn("tx_c2", "CMSN-ACCR", 1_000));
+    await rejects(reverse(ctx, batch.batchId, { txnId: "tx_c2", reason: "again" }), /already reversed/i);
+  });
+
+  it("nets to zero even when FX left a rounding residual", async () => {
+    await ctx.db.insert(schema.ledgerTxns).values(baseTxn("tx_fx", "CMSN-ACCR", 33_333));
+    const batch = await post(ctx, {
+      txnId: "tx_fx",
+      currency: "AED",
+      baseCurrency: "USD",
+      fxRatePpm: 272_294,
+      lines: buildRecipe("CMSN-ACCR", { grossMinor: 33_333, taxMinor: 1_111, channelMinor: 7_777 })
+    });
+    await ctx.db.insert(schema.ledgerTxns).values(baseTxn("tx_fxr", "CMSN-ACCR", 33_333));
+    await reverse(ctx, batch.batchId, { txnId: "tx_fxr", reason: "fx residual check" });
+
+    const tb = await trialBalance(ctx);
+    expect(tb.balanced).toBe(true);
+    for (const row of tb.rows) expect(row.balanceMinor, row.accountCode).toBe(0);
+  });
+});
+
+/* --------------------------------------------------- state machine & saga */
+
+describe("transaction state machine", () => {
+  it("refuses an illegal transition", async () => {
+    const t = await openTxn(ctx, { type: "CMSN-ACCR", idempotencyKey: "sm-1", currency: "AED" });
+    await expect(transition(ctx, t.id, "settled")).rejects.toThrow();
+  });
+
+  it("a failed step unwinds the ones before it", async () => {
+    const t = await openTxn(ctx, { type: "CMSN-ACCR", idempotencyKey: "saga-1", currency: "AED" });
+    const undone: string[] = [];
+    await expect(
+      runSaga(ctx, t.id, [
+        { name: "reserve", run: async () => "r1", compensate: async () => void undone.push("reserve") },
+        { name: "charge", run: async () => "c1", compensate: async () => void undone.push("charge") },
+        {
+          name: "notify",
+          run: async () => {
+            throw new Error("provider down");
+          }
+        }
+      ])
+    ).rejects.toThrow("provider down");
+
+    expect(undone).toEqual(["charge", "reserve"]);
+    const steps = await ctx.db.select().from(schema.ledgerSagaSteps).where(eq(schema.ledgerSagaSteps.txnId, t.id));
+    expect(steps).toHaveLength(3);
+  });
+});
+
+/* ------------------------------------------------------ periods & reports */
+
+describe("periods", () => {
+  it("blocks a posting into a hard-closed period unless it is a contra batch", async () => {
+    const code = periodCode(ctx.now);
+    await ensurePeriod(ctx, code);
+    await closePeriod(ctx, code, "soft_closed");
+    await closePeriod(ctx, code, "hard_closed");
+
+    await ctx.db.insert(schema.ledgerTxns).values(baseTxn("tx_late", "CMSN-ACCR", 1_000));
+    await rejects(
+      post(ctx, { txnId: "tx_late", currency: "AED", lines: buildRecipe("CMSN-ACCR", { grossMinor: 1_000 }) }),
+      /hard closed/
+    );
+  });
+
+  it("will not hard close straight from open", async () => {
+    const code = periodCode(ctx.now);
+    await ensurePeriod(ctx, code);
+    await rejects(closePeriod(ctx, code, "hard_closed"), /soft closed/);
+  });
+});
+
+describe("reports", () => {
+  it("the balances cache agrees with a rebuild from lines", async () => {
+    const r = rng(4242);
+    for (const [i, def] of FINANCIAL.slice(0, 12).entries()) {
+      const txnId = `tx_rb_${i}`;
+      const lines = buildRecipe(def.code, argsFor(def.code, r));
+      const gross = lines.filter((l) => l.side === "debit").reduce((s, l) => s + l.amountMinor, 0);
+      await ctx.db.insert(schema.ledgerTxns).values(baseTxn(txnId, def.code, gross));
+      await post(ctx, { txnId, currency: "AED", lines });
+    }
+    const drift = (await rebuildBalances(ctx)).filter((d) => d.drifted);
+    expect(drift).toEqual([]);
+  });
+});
+
+/* ------------------------------------------------------- reconciliation */
+
+describe("reconciliation", () => {
+  it("matches exactly, within tolerance, and leaves the rest for a human", async () => {
+    for (const [i, amount] of [10_000, 20_050, 30_000].entries()) {
+      const txnId = `tx_rc_${i}`;
+      await ctx.db.insert(schema.ledgerTxns).values({
+        ...baseTxn(txnId, "CMSN-ACCR", amount),
+        idempotencyKey: `stmt-${i}`,
+        state: "settled"
+      });
+    }
+
+    const result = await reconcile(ctx, {
+      process: "insurer",
+      period: "2026-06",
+      currency: "AED",
+      lines: [
+        { ref: "L1", ourRef: "stmt-0", amountMinor: 10_000, currency: "AED" },
+        { ref: "L2", ourRef: "stmt-1", amountMinor: 20_100, currency: "AED" },
+        { ref: "L3", ourRef: "nothing-of-ours", amountMinor: 999, currency: "AED" }
+      ]
+    });
+
+    expect(result.matched).toBe(2);
+    expect(result.unmatchedStatementRefs).toEqual(["L3"]);
+    expect(result.unmatchedTxnIds).toEqual(["tx_rc_2"]);
+    expect(result.state).toBe("review");
+
+    const matches = await ctx.db.select().from(schema.ledgerReconMatches);
+    const exact = matches.find((m) => m.statementLineRef === "L1");
+    expect(exact?.method).toBe("deterministic");
+    expect(exact?.state).toBe("confirmed");
+    const near = matches.find((m) => m.statementLineRef === "L2");
+    expect(near?.method).toBe("tolerance");
+    // Anything with a delta stays a proposal — a variance is a decision, not a match.
+    expect(near?.state).toBe("proposed");
+    expect(near?.deltaMinor).toBe(50);
+  });
+
+  it("client money reconciles at zero tolerance", async () => {
+    await ctx.db.insert(schema.ledgerTxns).values({
+      ...baseTxn("tx_cm_r", "CM-RECEIPT", 5_000),
+      idempotencyKey: "cm-1",
+      state: "settled"
+    });
+    const result = await reconcile(ctx, {
+      process: "client_money",
+      period: "2026-06",
+      currency: "AED",
+      lines: [{ ref: "C1", ourRef: "cm-1", amountMinor: 5_001, currency: "AED" }]
+    });
+    expect(result.matched).toBe(0);
+  });
+});
+
+/* ---------------------------------------------------------- the catalogue */
+
+describe("catalogue", () => {
+  it("every financial transaction type has a posting recipe", () => {
+    const missing = Object.values(TXN_TYPES)
+      .filter((t) => t.financial && !RECIPES[t.code])
+      .map((t) => t.code);
+    expect(missing).toEqual([]);
+  });
+
+  it("every payout type is gated by an approval policy", () => {
+    // Money leaving needs a policy. Money arriving does not — refusing a
+    // customer's premium because nobody approved it would be the worse failure.
+    for (const t of Object.values(TXN_TYPES)) {
+      if (t.payout) expect(t.approval, `${t.code} must be gated`).toBeTruthy();
+    }
+  });
+
+  it("no payout or client-money type is auto-approvable", () => {
+    for (const t of Object.values(TXN_TYPES)) {
+      if (t.payout || t.clientMoney) expect(autoApprovable(t.code), t.code).toBe(false);
+    }
+  });
+});

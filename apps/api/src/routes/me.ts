@@ -1,0 +1,249 @@
+import { Hono } from "hono";
+import { and, desc, eq, isNull } from "drizzle-orm";
+import { z } from "zod";
+import { schema } from "@lyra/db";
+import {
+  audit,
+  badRequest,
+  can,
+  expand,
+  hashPassword,
+  notFound,
+  pendingApprovals,
+  verifyPassword,
+  type Ctx
+} from "@lyra/core";
+import { body } from "../http.js";
+import { must } from "../rows.js";
+import type { App } from "../env.js";
+
+// Everything the shell needs on first paint: who the caller is, what they may
+// do, and what is waiting for them. One round trip, because a login that fans
+// out to six endpoints before it can draw a nav is a slow login.
+
+export const meRoutes = new Hono<App>();
+
+const ctxOf = (c: { get(k: "ctx"): Ctx }): Ctx => c.get("ctx");
+
+meRoutes.get("/", async (c) => {
+  const ctx = ctxOf(c);
+  // core_tenants is the one table with no tenant_id of its own, so it does not
+  // go through the scoped helper.
+  const tenant = (
+    await ctx.db.select().from(schema.tenants).where(eq(schema.tenants.id, ctx.tenantId)).limit(1)
+  )[0];
+  if (!tenant) throw notFound("tenant");
+
+  const grants = ctx.actor.grants.map((g) => g.roleKey);
+  const permissions = [...new Set(ctx.actor.grants.flatMap((g) => expand(g.permissions)))].sort();
+
+  let profile: { id: string; name: string; email: string; locale: string; status: string } | null = null;
+  if (ctx.actor.kind === "user") {
+    const user = await must(ctx, schema.users, ctx.actor.id, "user");
+    profile = {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      locale: user.locale,
+      status: user.status
+    };
+  }
+
+  return c.json({
+    actor: { kind: ctx.actor.kind, id: ctx.actor.id },
+    profile,
+    tenant: {
+      id: tenant.id,
+      slug: tenant.slug,
+      name: tenant.name,
+      plan: tenant.plan,
+      region: tenant.region,
+      status: tenant.status,
+      brand: safe(tenant.brandJson)
+    },
+    locale: ctx.locale,
+    roles: grants,
+    permissions,
+    entitlements: ctx.entitlements,
+    policy: ctx.policy,
+    // The nav is derived from permissions, not stored: a role change takes
+    // effect on the next request rather than the next deploy.
+    nav: navFor(ctx)
+  });
+});
+
+const ProfileBody = z.object({
+  name: z.string().min(1).max(120).optional(),
+  locale: z.enum(["en", "ar"]).optional()
+});
+
+meRoutes.patch("/", async (c) => {
+  const ctx = ctxOf(c);
+  if (ctx.actor.kind !== "user") throw badRequest("only a user has a profile");
+  const input = await body(c, ProfileBody);
+  const before = await must(ctx, schema.users, ctx.actor.id, "user");
+
+  await ctx.db
+    .update(schema.users)
+    .set({ ...input, updatedAt: ctx.now })
+    .where(and(eq(schema.users.tenantId, ctx.tenantId), eq(schema.users.id, ctx.actor.id)));
+  await audit(ctx, { action: "core.user.update_self", subjectRef: ctx.actor.id, before, after: input });
+  return c.json({ ...before, ...input, updatedAt: ctx.now });
+});
+
+const PasswordBody = z.object({
+  current: z.string().min(1),
+  next: z.string().min(12).max(200)
+});
+
+meRoutes.post("/password", async (c) => {
+  const ctx = ctxOf(c);
+  if (ctx.actor.kind !== "user") throw badRequest("only a user has a password");
+  const input = await body(c, PasswordBody);
+  const user = await must(ctx, schema.users, ctx.actor.id, "user");
+
+  if (!(await verifyPassword(input.current, user.passwordHash))) {
+    // Deliberately not a 401: the session is valid, the claim about the old
+    // password is not.
+    throw badRequest("current password is incorrect");
+  }
+  if (input.next === input.current) throw badRequest("new password must differ from the current one");
+
+  await ctx.db
+    .update(schema.users)
+    .set({ passwordHash: await hashPassword(input.next), updatedAt: ctx.now })
+    .where(and(eq(schema.users.tenantId, ctx.tenantId), eq(schema.users.id, user.id)));
+
+  // Every other session dies. A password change that leaves the attacker's
+  // session alive has changed nothing.
+  await ctx.db
+    .update(schema.sessions)
+    .set({ revokedAt: ctx.now })
+    .where(
+      and(
+        eq(schema.sessions.tenantId, ctx.tenantId),
+        eq(schema.sessions.userId, user.id),
+        isNull(schema.sessions.revokedAt)
+      )
+    );
+
+  await audit(ctx, { action: "core.user.password_change", subjectRef: user.id });
+  return c.body(null, 204);
+});
+
+/** Sessions the caller can see and kill — the "where am I signed in" panel. */
+meRoutes.get("/sessions", async (c) => {
+  const ctx = ctxOf(c);
+  if (ctx.actor.kind !== "user") return c.json({ data: [] });
+  const rows = await ctx.db
+    .select({
+      id: schema.sessions.id,
+      ip: schema.sessions.ip,
+      ua: schema.sessions.ua,
+      createdAt: schema.sessions.createdAt,
+      expiresAt: schema.sessions.expiresAt,
+      revokedAt: schema.sessions.revokedAt
+    })
+    .from(schema.sessions)
+    .where(and(eq(schema.sessions.tenantId, ctx.tenantId), eq(schema.sessions.userId, ctx.actor.id)))
+    .orderBy(desc(schema.sessions.createdAt))
+    .limit(50);
+  return c.json({ data: rows });
+});
+
+meRoutes.delete("/sessions/:id", async (c) => {
+  const ctx = ctxOf(c);
+  if (ctx.actor.kind !== "user") throw badRequest("only a user has sessions");
+  await ctx.db
+    .update(schema.sessions)
+    .set({ revokedAt: ctx.now })
+    .where(
+      and(
+        eq(schema.sessions.tenantId, ctx.tenantId),
+        eq(schema.sessions.userId, ctx.actor.id),
+        eq(schema.sessions.id, c.req.param("id"))
+      )
+    );
+  await audit(ctx, { action: "core.session.revoke", subjectRef: c.req.param("id") });
+  return c.body(null, 204);
+});
+
+/** The caller's work queue: approvals they can decide, unread notifications. */
+meRoutes.get("/inbox", async (c) => {
+  const ctx = ctxOf(c);
+  const approvals = (await pendingApprovals(ctx)).filter((a) =>
+    can(ctx.actor, `${a.module}:approval:decide`, { tenantId: ctx.tenantId, module: a.module })
+  );
+  const notifications = await ctx.db
+    .select()
+    .from(schema.notifications)
+    .where(
+      and(
+        eq(schema.notifications.tenantId, ctx.tenantId),
+        eq(schema.notifications.userId, ctx.actor.id),
+        isNull(schema.notifications.readAt)
+      )
+    )
+    .orderBy(desc(schema.notifications.createdAt))
+    .limit(50);
+  return c.json({ approvals, notifications, counts: { approvals: approvals.length, notifications: notifications.length } });
+});
+
+meRoutes.post("/notifications/:id/read", async (c) => {
+  const ctx = ctxOf(c);
+  await ctx.db
+    .update(schema.notifications)
+    .set({ readAt: ctx.now })
+    .where(
+      and(
+        eq(schema.notifications.tenantId, ctx.tenantId),
+        eq(schema.notifications.userId, ctx.actor.id),
+        eq(schema.notifications.id, c.req.param("id"))
+      )
+    );
+  return c.body(null, 204);
+});
+
+/* ------------------------------------------------------------------- nav */
+
+export interface NavItem {
+  /** i18n key. A hard-coded English label in a nav is a bug (docs/07 §2). */
+  labelKey: string;
+  href: string;
+  icon: string;
+  children?: NavItem[];
+}
+
+/**
+ * Nav items always carry a text label — `labelKey` is required and `icon` is
+ * decoration beside it, never instead of it. An icon-only rail costs every user
+ * a hover to read and a screen-reader user the label entirely.
+ */
+const NAV: (NavItem & { permission: string })[] = [
+  { labelKey: "nav.home", href: "/", icon: "home", permission: "core:tenants:read" },
+  { labelKey: "nav.axis", href: "/axis", icon: "shield", permission: "axis:cases:read" },
+  { labelKey: "nav.orbit", href: "/orbit", icon: "orbit", permission: "orbit:conversations:read" },
+  { labelKey: "nav.signal", href: "/signal", icon: "megaphone", permission: "signal:campaigns:read" },
+  { labelKey: "nav.scout", href: "/scout", icon: "radar", permission: "scout:signals:read" },
+  { labelKey: "nav.north", href: "/north", icon: "compass", permission: "north:metrics:read" },
+  { labelKey: "nav.distribution", href: "/distribution", icon: "network", permission: "dist:quote_requests:read" },
+  { labelKey: "nav.ledger", href: "/ledger", icon: "ledger", permission: "ledger:txns:read" },
+  { labelKey: "nav.analytics", href: "/analytics", icon: "chart", permission: "analytics:reports:read" },
+  { labelKey: "nav.compliance", href: "/compliance", icon: "scale", permission: "compliance:dsar:read" },
+  { labelKey: "nav.admin", href: "/admin", icon: "settings", permission: "core:users:read" }
+];
+
+function navFor(ctx: Ctx): NavItem[] {
+  return NAV.filter((item) => can(ctx.actor, item.permission, { tenantId: ctx.tenantId })).map(
+    ({ permission: _p, ...item }) => item
+  );
+}
+
+function safe(raw: string | null): unknown {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}

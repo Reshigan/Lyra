@@ -1,0 +1,56 @@
+{
+  // Deploy targets: `wrangler deploy` for production, `--env staging` for staging.
+  // Secrets (ANTHROPIC_API_KEY, OPENAI_COMPAT_API_KEY) are set with
+  // `wrangler secret put` — never in this file.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "lyra-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-01-15",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "observability": { "enabled": true },
+  "vars": {
+    "ENVIRONMENT": "production",
+    "APP_ORIGIN": "https://lyra.vantax.co.za",
+    "SESSION_COOKIE": "lyra_session"
+  },
+  "ai": { "binding": "AI" },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "lyra",
+      // Filled in by `wrangler d1 create lyra`; CI fails loudly if it is blank.
+      "database_id": "",
+      "migrations_dir": "../../packages/db/migrations"
+    }
+  ],
+  "kv_namespaces": [{ "binding": "KV", "id": "" }],
+  "r2_buckets": [{ "binding": "FILES", "bucket_name": "lyra-files" }],
+  // Outbox drain and session sweep. Both idempotent, so a missed tick only costs
+  // latency.
+  "triggers": { "crons": ["*/5 * * * *"] },
+  "routes": [{ "pattern": "api.lyra.vantax.co.za", "custom_domain": true }],
+  "env": {
+    "staging": {
+      "name": "lyra-api-staging",
+      "vars": {
+        "ENVIRONMENT": "staging",
+        "APP_ORIGIN": "https://staging.lyra.vantax.co.za",
+        "SESSION_COOKIE": "lyra_session"
+      },
+      "ai": { "binding": "AI" },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "lyra-staging",
+          "database_id": "",
+          "migrations_dir": "../../packages/db/migrations"
+        }
+      ],
+      "kv_namespaces": [{ "binding": "KV", "id": "" }],
+      "r2_buckets": [{ "binding": "FILES", "bucket_name": "lyra-files-staging" }],
+      "triggers": { "crons": ["*/15 * * * *"] },
+      "routes": [{ "pattern": "api-staging.lyra.vantax.co.za", "custom_domain": true }]
+    }
+  }
+}

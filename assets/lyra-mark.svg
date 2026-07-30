@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="Lyra Vega mark">
+  <rect width="256" height="256" rx="56" fill="#070B14"/>
+  <g fill="none" stroke="#AEB9CF" stroke-width="2.4" opacity="0.75">
+    <path d="M108 118 L168 102 L188 162 L128 178 Z"/>
+    <path d="M78 84 L108 118"/>
+  </g>
+  <g fill="#F4F7FC">
+    <circle cx="108" cy="118" r="4.4"/><circle cx="168" cy="102" r="3.8"/>
+    <circle cx="188" cy="162" r="3.8"/><circle cx="128" cy="178" r="3.8"/>
+  </g>
+  <circle cx="78" cy="84" r="15" fill="#FFB020"/>
+  <circle cx="78" cy="84" r="25" fill="none" stroke="#FFB020" stroke-width="1.8" opacity="0.4"/>
+</svg>

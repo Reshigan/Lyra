@@ -1,0 +1,186 @@
+import { and, eq, isNull, sql } from "drizzle-orm";
+import { id, schema } from "@lyra/db";
+import { actorRef, audit, badRequest, conflict, type Ctx } from "@lyra/core";
+
+// docs/19 §6. open → soft_closed (adjustments, reason required) → hard_closed
+// (contra postings only). A period is created on first posting into it, so
+// nobody has to remember to open next month.
+
+export type PeriodState = "open" | "soft_closed" | "hard_closed";
+
+export interface Period {
+  id: string;
+  code: string;
+  startAt: number;
+  endAt: number;
+  state: PeriodState;
+}
+
+/** UTC month. Financial periods do not move with a tenant's timezone. */
+export function periodCode(at: number): string {
+  return new Date(at).toISOString().slice(0, 7);
+}
+
+function bounds(code: string): { startAt: number; endAt: number } {
+  const [y, m] = code.split("-").map(Number);
+  if (!y || !m || m < 1 || m > 12) throw badRequest(`bad period code ${code}`);
+  return { startAt: Date.UTC(y, m - 1, 1), endAt: Date.UTC(y, m, 1) - 1 };
+}
+
+export async function ensurePeriod(ctx: Ctx, code: string): Promise<Period> {
+  const where = and(eq(schema.ledgerPeriods.tenantId, ctx.tenantId), eq(schema.ledgerPeriods.code, code));
+  const found = await ctx.db.select().from(schema.ledgerPeriods).where(where).limit(1);
+  if (found[0]) return found[0] as Period;
+
+  const row = { id: id("per", ctx.now), tenantId: ctx.tenantId, code, ...bounds(code), state: "open" as const };
+  try {
+    await ctx.db.insert(schema.ledgerPeriods).values(row);
+    return row;
+  } catch {
+    // Concurrent first posting into the same month; the unique index picked a winner.
+    const again = await ctx.db.select().from(schema.ledgerPeriods).where(where).limit(1);
+    if (!again[0]) throw conflict(`period ${code} lost a race and did not reappear`);
+    return again[0] as Period;
+  }
+}
+
+/**
+ * Whether this batch may land in this period. `contra` marks a reversal batch,
+ * which is the one thing a hard-closed period still accepts (docs/19 §6) —
+ * an audit correction must never be blocked by the calendar.
+ */
+export function assertPostable(p: Period, opts: { contra?: boolean; reason?: string } = {}): void {
+  if (p.state === "open") return;
+  if (p.state === "hard_closed" && !opts.contra) {
+    throw conflict(`period ${p.code} is hard closed; post a contra batch instead`);
+  }
+  if (p.state === "soft_closed" && !opts.contra && !opts.reason) {
+    throw badRequest(`period ${p.code} is soft closed; an adjustment reason is required`);
+  }
+}
+
+export interface CloseCheck {
+  name: string;
+  ok: boolean;
+  detail?: string | undefined;
+}
+
+/**
+ * The close checklist runs the invariants that must hold before a month is
+ * frozen. It reads the balances table rather than re-summing lines; reports.ts
+ * has the from-lines rebuild used to prove the two agree.
+ */
+export async function closeChecks(ctx: Ctx, code: string): Promise<CloseCheck[]> {
+  const rows = await ctx.db
+    .select()
+    .from(schema.ledgerAccountBalances)
+    .where(eq(schema.ledgerAccountBalances.tenantId, ctx.tenantId));
+
+  const checks: CloseCheck[] = [];
+  const byCurrency = new Map<string, { debit: number; credit: number }>();
+  for (const r of rows) {
+    const acc = byCurrency.get(r.currency) ?? { debit: 0, credit: 0 };
+    acc.debit += r.baseDebitMinor;
+    acc.credit += r.baseCreditMinor;
+    byCurrency.set(r.currency, acc);
+  }
+  let debit = 0;
+  let credit = 0;
+  for (const v of byCurrency.values()) {
+    debit += v.debit;
+    credit += v.credit;
+  }
+  checks.push({
+    name: "trial_balance_zero",
+    ok: debit === credit,
+    detail: debit === credit ? undefined : `base debits ${debit} vs credits ${credit}`
+  });
+
+  const unsettled = await ctx.db
+    .select({ n: sql<number>`count(*)` })
+    .from(schema.ledgerTxns)
+    .where(and(eq(schema.ledgerTxns.tenantId, ctx.tenantId), eq(schema.ledgerTxns.state, "pending_external")));
+  const stuck = unsettled[0]?.n ?? 0;
+  checks.push({
+    name: "no_pending_external",
+    ok: stuck === 0,
+    detail: stuck ? `${stuck} transactions still waiting on a provider` : undefined
+  });
+
+  const breaches = await ctx.db
+    .select({ n: sql<number>`count(*)` })
+    .from(schema.ledgerClientMoneyChecks)
+    .where(
+      and(
+        eq(schema.ledgerClientMoneyChecks.tenantId, ctx.tenantId),
+        eq(schema.ledgerClientMoneyChecks.breach, true),
+        isNull(schema.ledgerClientMoneyChecks.resolvedAt)
+      )
+    );
+  const open = breaches[0]?.n ?? 0;
+  checks.push({
+    name: "no_open_client_money_breach",
+    ok: open === 0,
+    detail: open ? `${open} client-money breaches recorded` : undefined
+  });
+
+  return checks.map((c) => ({ ...c, name: `${c.name}@${code}` }));
+}
+
+/** Soft close first, always: hard closing straight from open skips the checklist. */
+export async function closePeriod(
+  ctx: Ctx,
+  code: string,
+  to: "soft_closed" | "hard_closed",
+  opts: { force?: boolean } = {}
+): Promise<Period> {
+  const p = await ensurePeriod(ctx, code);
+  if (p.state === "hard_closed") throw conflict(`period ${code} is already hard closed`);
+  if (to === "hard_closed" && p.state !== "soft_closed") {
+    throw conflict(`period ${code} must be soft closed before it is hard closed`);
+  }
+
+  const checks = await closeChecks(ctx, code);
+  const failed = checks.filter((c) => !c.ok);
+  // force exists for the genuine "known and accepted break" case; it is audited
+  // with the failing checks so the override is never invisible.
+  if (failed.length && !opts.force) {
+    throw conflict(`close checks failed: ${failed.map((c) => c.name).join(", ")}`);
+  }
+
+  await ctx.db
+    .update(schema.ledgerPeriods)
+    .set({
+      state: to,
+      checklistJson: JSON.stringify(checks),
+      closedBy: actorRef(ctx),
+      closedAt: ctx.now
+    })
+    .where(and(eq(schema.ledgerPeriods.tenantId, ctx.tenantId), eq(schema.ledgerPeriods.code, code)));
+
+  await audit(ctx, {
+    action: "ledger.period.close",
+    subjectRef: `period:${code}`,
+    before: { state: p.state },
+    after: { state: to, checks, forced: Boolean(opts.force) }
+  });
+
+  return { ...p, state: to };
+}
+
+/** Reopen is a separate, higher-privilege act — never a side effect of posting. */
+export async function reopenPeriod(ctx: Ctx, code: string): Promise<Period> {
+  const p = await ensurePeriod(ctx, code);
+  if (p.state === "open") return p;
+  await ctx.db
+    .update(schema.ledgerPeriods)
+    .set({ state: "open", closedBy: null, closedAt: null })
+    .where(and(eq(schema.ledgerPeriods.tenantId, ctx.tenantId), eq(schema.ledgerPeriods.code, code)));
+  await audit(ctx, {
+    action: "ledger.period.reopen",
+    subjectRef: `period:${code}`,
+    before: { state: p.state },
+    after: { state: "open" }
+  });
+  return { ...p, state: "open" };
+}

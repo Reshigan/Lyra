@@ -1,0 +1,121 @@
+import { z } from "zod";
+
+// docs/02 §5. One interface for every model call in the product, so budget,
+// audit and guardrails cannot be bypassed by calling a provider directly.
+
+export const TIERS = ["fast", "standard", "reasoning"] as const;
+export type Tier = (typeof TIERS)[number];
+
+export const PROVIDERS = ["workers-ai", "anthropic", "openai-compat", "stub"] as const;
+export type ProviderName = (typeof PROVIDERS)[number];
+
+export const Message = z.object({
+  role: z.enum(["system", "user", "assistant", "tool"]),
+  content: z.string(),
+  /** Set on role=tool so the provider adapter can thread the result back. */
+  toolCallId: z.string().optional(),
+  name: z.string().optional()
+});
+export type Message = z.infer<typeof Message>;
+
+export const ToolDef = z.object({
+  name: z.string(),
+  description: z.string(),
+  /** JSON Schema for the arguments. */
+  parameters: z.record(z.unknown()),
+  /** Consequential tools may not run without an approval (CLAUDE.md rule 4). */
+  consequential: z.boolean().default(false)
+});
+export type ToolDef = z.infer<typeof ToolDef>;
+
+export interface ToolCall {
+  id: string;
+  name: string;
+  args: Record<string, unknown>;
+}
+
+export interface ModelRequest {
+  module: string;
+  /** Stable slug: what this call is for. Lands in ai_audit_log and the budget key. */
+  purpose: string;
+  tier: Tier;
+  messages: Message[];
+  tools?: ToolDef[];
+  maxTokens?: number;
+  temperature?: number;
+  locale?: string;
+  /** What the answer is about — an id the audit trail can join on. */
+  subjectRef?: string;
+  /** Ask the provider for a JSON object matching this schema. */
+  responseSchema?: Record<string, unknown>;
+  /** Skip the PII scrubber. Only for prompts built from already-public text. */
+  unscrubbed?: boolean;
+  /** Stops a runaway retry loop from re-billing the tenant. */
+  idempotencyKey?: string;
+}
+
+export interface Usage {
+  tokensIn: number;
+  tokensOut: number;
+  costMicro: number;
+}
+
+export interface ModelResponse {
+  text: string;
+  toolCalls: ToolCall[];
+  model: string;
+  provider: ProviderName;
+  tier: Tier;
+  usage: Usage;
+  latencyMs: number;
+  finishReason: "stop" | "length" | "tool_calls" | "refusal" | "error";
+  /** Guardrail rules that fired. Empty on a clean call. */
+  flags: string[];
+  /** ai_audit_log row id — the handle for explainability surfaces. */
+  auditId: string;
+}
+
+export interface EmbedRequest {
+  module: string;
+  purpose: string;
+  texts: string[];
+  /** bge-m3 handles ar+en in one space, so we do not shard by locale. */
+  locale?: string;
+}
+
+export interface EmbedResponse {
+  vectors: number[][];
+  model: string;
+  provider: ProviderName;
+  usage: Usage;
+}
+
+/** What every provider adapter must implement. Adding one is a new file, not a branch. */
+export interface Provider {
+  name: ProviderName;
+  complete(req: ModelRequest, model: string, env: ProviderEnv): Promise<ProviderResult>;
+  embed?(req: EmbedRequest, model: string, env: ProviderEnv): Promise<{ vectors: number[][]; usage: Usage }>;
+}
+
+export interface ProviderResult {
+  text: string;
+  toolCalls: ToolCall[];
+  tokensIn: number;
+  tokensOut: number;
+  finishReason: ModelResponse["finishReason"];
+}
+
+/**
+ * Bindings and secrets the adapters need. Values arrive from wrangler secrets or
+ * Docker env — never from the database, never from a prompt.
+ */
+export interface ProviderEnv {
+  AI?: { run(model: string, input: unknown): Promise<unknown> };
+  ANTHROPIC_API_KEY?: string;
+  /** Cloudflare AI Gateway base, so cost logging and caching apply. */
+  AI_GATEWAY_URL?: string;
+  /** on-prem vLLM/Ollama, e.g. http://vllm:8000/v1 */
+  OPENAI_COMPAT_URL?: string;
+  OPENAI_COMPAT_API_KEY?: string;
+  fetch?: typeof fetch;
+}

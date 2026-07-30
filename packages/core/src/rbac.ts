@@ -1,0 +1,474 @@
+// docs/04 §3 + docs/06 §1. One authorization path: can(actor, perm, subject).
+// Permission strings are `module:resource:action`; `*` is a wildcard segment.
+// ABAC lives on the grant, never merged across roles — a team-scoped AXIS lead
+// must not inherit the unscoped reach of a second role.
+
+export type Permission = string;
+
+export interface Scope {
+  /** core_teams ids the grant is limited to. Empty/absent = tenant-wide. */
+  teams?: readonly string[];
+  /** product lines the grant is limited to (motor, health, ...). */
+  productLines?: readonly string[];
+  /** modules the grant is limited to. */
+  modules?: readonly string[];
+}
+
+export interface Grant {
+  roleKey: string;
+  permissions: readonly Permission[];
+  scope?: Scope;
+}
+
+export type ActorKind = "user" | "agent" | "partner" | "system" | "customer";
+
+export interface Actor {
+  kind: ActorKind;
+  /** user id, agent key, partner id, or "system". */
+  id: string;
+  tenantId: string;
+  grants: readonly Grant[];
+  /** Platform staff acting inside a tenant; every action is audit-logged. */
+  impersonating?: boolean;
+}
+
+export interface Subject {
+  tenantId: string;
+  teamId?: string;
+  productLine?: string;
+  module?: string;
+  /** "user:<id>" | "agent:<key>" — used by `*:own` style checks upstream. */
+  ownerRef?: string;
+}
+
+/* ------------------------------------------------------------ permissions */
+
+/** Full catalogue. Anything not listed here cannot be granted (validated below). */
+export const PERMISSIONS = [
+  // core / tenancy
+  "core:tenants:read", "core:tenants:update",
+  "core:users:read", "core:users:create", "core:users:update", "core:users:delete",
+  "core:roles:read", "core:roles:update", "core:roles:assign",
+  "core:teams:read", "core:teams:write",
+  "core:customers:read", "core:customers:create", "core:customers:update", "core:customers:delete",
+  "core:consents:read", "core:consents:create",
+  "core:products:read", "core:products:write",
+  "core:providers:read", "core:providers:write",
+  "core:files:read", "core:files:create", "core:files:delete",
+  "core:notifications:read",
+  "core:search:read",
+  "core:pii:view",
+  "core:audit:read", "core:audit:export",
+  "core:approvals:read", "core:approvals:decide",
+  "core:settings:read", "core:settings:update",
+  "core:api_keys:read", "core:api_keys:create", "core:api_keys:revoke",
+  "core:webhooks:read", "core:webhooks:write",
+  "core:impersonate:use",
+
+  // DIST — aggregator distribution: channels, offerings, commercials
+  "dist:channels:read", "dist:channels:write", "dist:channels:suspend",
+  "dist:offerings:read", "dist:offerings:write", "dist:offerings:publish", "dist:offerings:withdraw",
+  "dist:rates:read", "dist:rates:write", "dist:rates:approve",
+  "dist:quote_requests:read", "dist:quote_requests:create", "dist:quote_requests:share",
+  "dist:commissions:read", "dist:commissions:adjust", "dist:commissions:settle",
+  "dist:offers:read", "dist:offers:surface", "dist:offers:override",
+
+  // AXIS — operations
+  "axis:cases:read", "axis:cases:create", "axis:cases:update", "axis:cases:assign",
+  "axis:cases:approve", "axis:cases:delete",
+  "axis:quotes:read", "axis:quotes:create", "axis:quotes:compare", "axis:quotes:approve",
+  "axis:documents:read", "axis:documents:upload", "axis:documents:extract", "axis:documents:verify",
+  "axis:tasks:read", "axis:tasks:write",
+  "axis:policies:read", "axis:policies:create", "axis:policies:update", "axis:policies:cancel",
+  "axis:escrow:read", "axis:escrow:reconcile", "axis:escrow:approve",
+  "axis:sops:read", "axis:sops:write",
+  "axis:claims:read", "axis:claims:create", "axis:claims:update", "axis:claims:approve",
+  "axis:metrics:read",
+
+  // ORBIT — customer experience
+  "orbit:conversations:read", "orbit:conversations:reply", "orbit:conversations:assign",
+  "orbit:conversations:close",
+  "orbit:messages:read", "orbit:messages:send",
+  "orbit:renewals:read", "orbit:renewals:update", "orbit:renewals:approve",
+  "orbit:journeys:read", "orbit:journeys:write", "orbit:journeys:publish",
+  "orbit:partners:read", "orbit:partners:create", "orbit:partners:update", "orbit:partners:certify",
+  "orbit:partner_keys:issue_test", "orbit:partner_keys:issue_live",
+  "orbit:qa:read", "orbit:qa:score",
+  "orbit:handover:read", "orbit:handover:write",
+
+  // SIGNAL — growth
+  "signal:campaigns:read", "signal:campaigns:create", "signal:campaigns:update",
+  "signal:campaigns:launch", "signal:campaigns:pause",
+  "signal:audiences:read", "signal:audiences:create", "signal:audiences:estimate",
+  "signal:creatives:read", "signal:creatives:generate", "signal:creatives:approve",
+  "signal:creatives:publish",
+  "signal:experiments:read", "signal:experiments:create", "signal:experiments:decide",
+  "signal:budget_moves:read", "signal:budget_moves:approve", "signal:budget_moves:reverse",
+  "signal:aeo:read", "signal:aeo:write",
+  "signal:attribution:read",
+  "signal:spend:read",
+
+  // SCOUT — product intelligence
+  "scout:signals:read", "scout:signals:ingest",
+  "scout:clusters:read",
+  "scout:whitespaces:read", "scout:whitespaces:promote",
+  "scout:panel_bench:read",
+  "scout:experiments:read", "scout:experiments:create", "scout:experiments:decide",
+  "scout:data_products:read", "scout:data_products:create", "scout:data_products:publish",
+
+  // NORTH — executive
+  "north:metrics:read", "north:metrics:write",
+  "north:snapshots:read",
+  "north:briefings:read", "north:briefings:generate", "north:briefings:approve",
+  "north:anomalies:read", "north:anomalies:assign",
+  "north:scenarios:read", "north:scenarios:run",
+  "north:boardpacks:read", "north:boardpacks:generate",
+  "north:decisions:read", "north:decisions:write",
+
+  // ledger & money (docs/19)
+  "ledger:txns:read", "ledger:txns:create", "ledger:txns:authorize", "ledger:txns:reverse",
+  "ledger:journals:read", "ledger:journals:post",
+  "ledger:accounts:read", "ledger:accounts:write",
+  "ledger:periods:read", "ledger:periods:close",
+  "ledger:recon:read", "ledger:recon:run", "ledger:recon:confirm",
+  "ledger:invoices:read", "ledger:invoices:create", "ledger:invoices:approve",
+  "ledger:payments:read", "ledger:payments:create", "ledger:payments:refund",
+  "ledger:payouts:approve",
+  "ledger:client_money:read", "ledger:client_money:transfer",
+
+  // Running an agent is a per-module permission, not a global one: a marketer
+  // who may invoke SIGNAL agents has no business invoking a LEDGER agent.
+  "core:ai:invoke", "dist:ai:invoke", "axis:ai:invoke", "orbit:ai:invoke",
+  "signal:ai:invoke", "scout:ai:invoke", "north:ai:invoke", "ledger:ai:invoke",
+
+  // AI governance
+  "ai:agents:read", "ai:agents:write", "ai:agents:pause",
+  "ai:prompts:read", "ai:prompts:write",
+  "ai:runs:read",
+  "ai:suggestions:read",
+  "ai:budgets:read", "ai:budgets:write",
+  "ai:evals:read", "ai:evals:run",
+  "ai:audit:read",
+  "ai:killswitch:use",
+
+  // compliance
+  "compliance:dsar:read", "compliance:dsar:create", "compliance:dsar:fulfil",
+  "compliance:erasure:execute",
+  "compliance:disclosures:read",
+  "compliance:screenings:read", "compliance:screenings:run",
+  "compliance:retention:read", "compliance:retention:run",
+  "compliance:legal_holds:read", "compliance:legal_holds:write",
+  "compliance:evidence:read", "compliance:evidence:export",
+  "compliance:incidents:read", "compliance:incidents:write",
+  "compliance:rulepacks:read", "compliance:rulepacks:apply",
+  "compliance:thresholds:read", "compliance:thresholds:write",
+
+  // analytics & reporting
+  "analytics:dashboards:read", "analytics:dashboards:write",
+  "analytics:reports:read", "analytics:reports:write", "analytics:reports:run",
+  "analytics:exports:create", "analytics:exports:download", "analytics:exports:unmasked",
+  "analytics:schedules:read", "analytics:schedules:write",
+  "analytics:saved_views:read", "analytics:saved_views:write",
+
+  // developer surfaces
+  "dev:consoles:read", "dev:sandbox:use", "dev:keys_test:issue", "dev:keys_live:issue",
+
+  // platform staff only
+  "admin:tenants:read", "admin:tenants:write",
+  "admin:entitlements:write",
+  "admin:billing:read", "admin:billing:write",
+  "admin:dlq:read", "admin:dlq:replay",
+  "admin:flags:write",
+  "admin:diagnostics:read"
+] as const;
+
+export type KnownPermission = (typeof PERMISSIONS)[number];
+
+const PERMISSION_SET: ReadonlySet<string> = new Set(PERMISSIONS);
+
+/** Read permissions for a module — the base every module role starts from. */
+function readsOf(module: string): Permission[] {
+  return PERMISSIONS.filter((p) => p.startsWith(`${module}:`) && p.endsWith(":read"));
+}
+
+/* ------------------------------------------------------------------ roles */
+
+/** docs/06 §1. `system: true` roles are provisioned into every tenant. */
+export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
+  /* platform (goNXT staff) */
+  "platform.admin": ["*:*:*"],
+  "platform.support": [
+    "admin:diagnostics:read", "admin:dlq:read", "core:impersonate:use",
+    "core:audit:read", "ai:runs:read"
+  ],
+  "platform.engineer": ["admin:diagnostics:read", "admin:dlq:read", "admin:dlq:replay", "admin:flags:write"],
+
+  /* tenant-wide */
+  "tenant.admin": [
+    "core:*:*", "axis:*:read", "orbit:*:read", "signal:*:read", "scout:*:read",
+    "north:*:read", "ledger:*:read", "ai:*:read", "analytics:*:*",
+    "ai:agents:write", "ai:budgets:read", "ai:killswitch:use",
+    "compliance:*:read", "admin:billing:read",
+    "dist:*:read", "dist:channels:write", "dist:offerings:write", "dist:offerings:publish",
+    "dist:rates:write"
+  ],
+  "tenant.compliance": [
+    "core:audit:read", "core:audit:export", "core:consents:read", "core:customers:read",
+    "core:pii:view", "core:approvals:read", "core:approvals:decide",
+    "compliance:*:*", "ai:audit:read", "ai:runs:read", "ai:agents:read", "ai:agents:pause",
+    "ai:killswitch:use", "ai:evals:read",
+    "signal:creatives:read", "signal:creatives:approve",
+    "analytics:exports:create", "analytics:exports:unmasked",
+    "ledger:client_money:read", "ledger:journals:read"
+  ],
+
+  /* AXIS */
+  "axis.agent": [
+    ...readsOf("axis"), "axis:ai:invoke", "axis:cases:create", "axis:cases:update",
+    "axis:quotes:create", "axis:quotes:compare",
+    "axis:documents:upload", "axis:documents:extract",
+    "axis:tasks:write", "axis:claims:create", "axis:claims:update",
+    "core:customers:read", "core:customers:create", "core:customers:update",
+    "core:consents:read", "core:consents:create", "core:files:read", "core:files:create",
+    "core:search:read", "core:notifications:read", "ledger:txns:read",
+    "dist:offerings:read", "dist:quote_requests:read", "dist:quote_requests:create",
+    "dist:offers:read", "dist:offers:surface"
+  ],
+  "axis.lead": [
+    ...readsOf("axis"), "axis:ai:invoke", "axis:cases:create", "axis:cases:update", "axis:cases:assign",
+    "axis:cases:approve", "axis:quotes:create", "axis:quotes:compare", "axis:quotes:approve",
+    "axis:documents:upload", "axis:documents:extract", "axis:documents:verify",
+    "axis:tasks:write", "axis:policies:create", "axis:policies:update", "axis:policies:cancel",
+    "axis:claims:create", "axis:claims:update", "axis:claims:approve", "axis:sops:write",
+    "core:customers:read", "core:customers:create", "core:customers:update", "core:pii:view",
+    "core:consents:read", "core:consents:create", "core:files:read", "core:files:create",
+    "core:search:read", "core:approvals:read", "core:approvals:decide",
+    "ledger:txns:read", "analytics:reports:read", "analytics:reports:run",
+    "analytics:exports:create", "analytics:saved_views:write",
+    "dist:channels:read", "dist:offerings:read", "dist:rates:read",
+    "dist:quote_requests:read", "dist:quote_requests:create", "dist:quote_requests:share",
+    "dist:commissions:read", "dist:offers:read", "dist:offers:surface", "dist:offers:override"
+  ],
+  "axis.admin": [
+    "axis:*:*", "core:customers:*", "core:products:*", "core:providers:*",
+    "core:pii:view", "core:approvals:read", "core:approvals:decide", "core:files:*",
+    "ledger:txns:read", "ledger:recon:read", "ledger:recon:run",
+    "analytics:*:read", "analytics:reports:run", "analytics:exports:create",
+    "dist:channels:*", "dist:offerings:*", "dist:quote_requests:*", "dist:offers:*",
+    "dist:rates:read", "dist:commissions:read"
+  ],
+
+  /* ORBIT */
+  "orbit.agent": [
+    ...readsOf("orbit"), "orbit:ai:invoke", "orbit:conversations:reply", "orbit:conversations:close",
+    "orbit:messages:send", "orbit:handover:write",
+    "core:customers:read", "core:consents:read", "core:search:read", "core:files:read",
+    "axis:policies:read", "axis:cases:read", "axis:cases:create"
+  ],
+  "orbit.lead": [
+    ...readsOf("orbit"), "orbit:ai:invoke", "orbit:conversations:reply", "orbit:conversations:assign",
+    "orbit:conversations:close", "orbit:messages:send", "orbit:handover:write",
+    "orbit:qa:score", "orbit:renewals:update", "orbit:journeys:write",
+    "core:customers:read", "core:pii:view", "core:consents:read", "core:search:read",
+    "core:approvals:read", "core:approvals:decide", "core:files:read",
+    "axis:policies:read", "axis:cases:read", "axis:cases:create",
+    "analytics:reports:read", "analytics:reports:run", "analytics:exports:create",
+    "analytics:saved_views:write"
+  ],
+  "orbit.retention": [
+    ...readsOf("orbit"), "orbit:ai:invoke", "orbit:renewals:update", "orbit:conversations:reply",
+    "orbit:messages:send",
+    "core:customers:read", "core:consents:read", "core:search:read",
+    "axis:policies:read", "axis:quotes:create", "axis:quotes:compare",
+    "analytics:reports:read", "analytics:reports:run",
+    "dist:offerings:read", "dist:quote_requests:create", "dist:offers:read", "dist:offers:surface"
+  ],
+  "orbit.partners": [
+    ...readsOf("orbit"), "orbit:ai:invoke", "orbit:partners:create", "orbit:partners:update",
+    "orbit:partners:certify", "orbit:partner_keys:issue_test",
+    "ledger:txns:read", "analytics:reports:read", "analytics:reports:run",
+    "dist:channels:read", "dist:channels:write", "dist:rates:read", "dist:commissions:read",
+    "dist:offerings:read"
+  ],
+  "orbit.admin": [
+    "orbit:*:*", "core:customers:*", "core:pii:view", "core:consents:*",
+    "core:approvals:read", "core:approvals:decide", "core:files:*",
+    "axis:policies:read", "axis:cases:read",
+    "analytics:*:read", "analytics:reports:run", "analytics:exports:create"
+  ],
+
+  /* SIGNAL */
+  "signal.marketer": [
+    ...readsOf("signal"), "signal:ai:invoke", "signal:campaigns:create", "signal:campaigns:update",
+    "signal:audiences:create", "signal:audiences:estimate",
+    "signal:creatives:generate", "signal:aeo:write", "signal:experiments:create",
+    "core:consents:read", "core:search:read", "core:files:read", "core:files:create",
+    "analytics:reports:read", "analytics:reports:run"
+  ],
+  "signal.lead": [
+    ...readsOf("signal"), "signal:ai:invoke", "signal:campaigns:create", "signal:campaigns:update",
+    "signal:campaigns:launch", "signal:campaigns:pause",
+    "signal:audiences:create", "signal:audiences:estimate",
+    "signal:creatives:generate", "signal:creatives:publish",
+    "signal:experiments:create", "signal:experiments:decide",
+    "signal:budget_moves:approve", "signal:budget_moves:reverse", "signal:aeo:write",
+    "core:consents:read", "core:search:read", "core:approvals:read", "core:approvals:decide",
+    "core:files:read", "core:files:create",
+    "ledger:txns:read", "analytics:reports:read", "analytics:reports:run",
+    "analytics:exports:create", "analytics:saved_views:write"
+  ],
+  "signal.admin": [
+    "signal:*:*", "core:consents:read", "core:files:*", "core:approvals:read",
+    "core:approvals:decide", "ledger:txns:read",
+    "analytics:*:read", "analytics:reports:run", "analytics:exports:create"
+  ],
+
+  /* SCOUT */
+  "scout.pm": [
+    ...readsOf("scout"), "scout:ai:invoke", "scout:experiments:create", "scout:whitespaces:promote",
+    "core:products:read", "core:providers:read", "dist:offerings:read",
+    "analytics:reports:read", "analytics:reports:run"
+  ],
+  "scout.lead": [
+    ...readsOf("scout"), "scout:ai:invoke", "scout:experiments:create", "scout:experiments:decide",
+    "scout:whitespaces:promote", "scout:data_products:create",
+    "core:products:read", "core:providers:read", "core:approvals:read", "core:approvals:decide",
+    "analytics:reports:read", "analytics:reports:run", "analytics:exports:create"
+  ],
+  "scout.admin": [
+    "scout:*:*", "core:products:*", "core:providers:*",
+    "analytics:*:read", "analytics:reports:run", "analytics:exports:create"
+  ],
+
+  /* NORTH */
+  "north.exec": [
+    ...readsOf("north"), "north:ai:invoke", "north:anomalies:assign", "north:scenarios:run",
+    "north:decisions:write", "north:boardpacks:generate",
+    "axis:metrics:read", "signal:attribution:read", "signal:spend:read",
+    "orbit:renewals:read", "scout:clusters:read", "ledger:txns:read",
+    "dist:commissions:read", "dist:channels:read",
+    "analytics:dashboards:read", "analytics:reports:read", "analytics:reports:run",
+    "analytics:exports:create", "analytics:saved_views:write"
+  ],
+  "north.analyst": [
+    ...readsOf("north"), "north:ai:invoke", "north:metrics:write", "north:briefings:generate",
+    "north:scenarios:run",
+    "axis:metrics:read", "signal:attribution:read", "signal:spend:read",
+    "orbit:renewals:read", "scout:clusters:read", "ledger:journals:read",
+    "analytics:dashboards:write", "analytics:reports:write", "analytics:reports:run",
+    "analytics:exports:create", "analytics:schedules:write", "analytics:saved_views:write"
+  ],
+  /** Board pack readers. Read-only by design — never grant write here. */
+  "north.board": [
+    "north:briefings:read", "north:boardpacks:read", "north:snapshots:read",
+    "north:decisions:read", "analytics:dashboards:read"
+  ],
+  "north.admin": [
+    "north:*:*", "analytics:*:*", "ledger:journals:read", "ledger:txns:read"
+  ],
+
+  /* finance — money movement is separated from operations by design (docs/19 §7) */
+  "finance.analyst": [
+    ...readsOf("ledger"), "ledger:ai:invoke", "ledger:recon:run", "ledger:invoices:create",
+    "analytics:reports:read", "analytics:reports:run", "analytics:exports:create",
+    "dist:commissions:read", "dist:rates:read", "dist:channels:read"
+  ],
+  "finance.controller": [
+    "ledger:*:*", "core:approvals:read", "core:approvals:decide",
+    "dist:commissions:*", "dist:rates:read", "dist:rates:approve", "dist:channels:read",
+    "analytics:*:read", "analytics:reports:run", "analytics:exports:create",
+    "analytics:exports:unmasked", "compliance:evidence:read", "compliance:evidence:export"
+  ],
+
+  /* developer */
+  "dev.developer": ["dev:consoles:read", "dev:sandbox:use", "dev:keys_test:issue", "core:webhooks:read"],
+  "dev.admin": [
+    "dev:consoles:read", "dev:sandbox:use", "dev:keys_test:issue", "dev:keys_live:issue",
+    "core:api_keys:read", "core:api_keys:create", "core:api_keys:revoke", "core:webhooks:write"
+  ],
+
+  /* external */
+  "customer": [],
+  "partner.developer": ["dev:sandbox:use", "dev:keys_test:issue", "orbit:partners:read"],
+  "partner.manager": [
+    "orbit:partners:read", "ledger:txns:read", "analytics:reports:read",
+    "dist:channels:read", "dist:offerings:read", "dist:commissions:read", "dist:quote_requests:read"
+  ],
+  "provider.viewer": ["scout:data_products:read", "scout:panel_bench:read"]
+};
+
+export type RoleKey = keyof typeof ROLES;
+
+/** Roles provisioned into every new tenant (platform.* live outside tenants). */
+export const TENANT_ROLE_KEYS: readonly string[] = Object.keys(ROLES).filter(
+  (k) => !k.startsWith("platform.")
+);
+
+/* -------------------------------------------------------------- the check */
+
+/** `axis:cases:read` matched against `axis:*:*`, `axis:cases:*`, `*:*:*`. */
+function matches(granted: string, wanted: string): boolean {
+  if (granted === wanted) return true;
+  const g = granted.split(":");
+  const w = wanted.split(":");
+  if (g.length !== 3 || w.length !== 3) return false;
+  return g.every((seg, i) => seg === "*" || seg === w[i]);
+}
+
+function scopeAllows(scope: Scope | undefined, subject: Subject | undefined): boolean {
+  if (!scope) return true;
+  if (scope.modules?.length && subject?.module && !scope.modules.includes(subject.module)) return false;
+  if (scope.teams?.length) {
+    // A team-scoped grant cannot act on a subject with no team — fail closed.
+    if (!subject?.teamId || !scope.teams.includes(subject.teamId)) return false;
+  }
+  if (scope.productLines?.length) {
+    if (!subject?.productLine || !scope.productLines.includes(subject.productLine)) return false;
+  }
+  return true;
+}
+
+/**
+ * The only authorization path in the platform (docs/04 §3).
+ * Tenant mismatch is denied before permissions are even consulted.
+ */
+export function can(actor: Actor, permission: Permission, subject?: Subject): boolean {
+  if (subject && subject.tenantId !== actor.tenantId) return false;
+  return actor.grants.some(
+    (g) => g.permissions.some((p) => matches(p, permission)) && scopeAllows(g.scope, subject)
+  );
+}
+
+/** Throwing variant for route handlers. */
+export class ForbiddenError extends Error {
+  readonly permission: Permission;
+  constructor(permission: Permission) {
+    super(`forbidden: ${permission}`);
+    this.name = "ForbiddenError";
+    this.permission = permission;
+  }
+}
+
+export function require_(actor: Actor, permission: Permission, subject?: Subject): void {
+  if (!can(actor, permission, subject)) throw new ForbiddenError(permission);
+}
+
+/** Expand a role key to its permission bundle. Unknown role = no permissions. */
+export function permissionsForRole(roleKey: string): readonly Permission[] {
+  return ROLES[roleKey] ?? [];
+}
+
+/** Every concrete permission a wildcard bundle covers — for admin UI and tests. */
+export function expand(bundle: readonly Permission[]): Permission[] {
+  return PERMISSIONS.filter((p) => bundle.some((b) => matches(b, p)));
+}
+
+/** Guards role definitions and tenant-authored custom roles. */
+export function isKnownPermission(p: string): p is KnownPermission {
+  return PERMISSION_SET.has(p);
+}
+
+/** A wildcard is valid if it expands to at least one real permission. */
+export function isValidGrantString(p: string): boolean {
+  return isKnownPermission(p) || (p.split(":").length === 3 && PERMISSIONS.some((k) => matches(p, k)));
+}

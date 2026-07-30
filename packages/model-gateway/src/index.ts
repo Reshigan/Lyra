@@ -1,0 +1,10 @@
+export * from "./types.js";
+export * from "./models.js";
+export * from "./budget.js";
+export * from "./guardrails.js";
+export * from "./gateway.js";
+// scrub is exported for the CI prompt-scrubber test; app code should not need it.
+export { scrub, scrubMessages, rehydrate, newScrubState } from "./scrub.js";
+// The stub is a test double, not a route. Real adapters stay private to the Gateway
+// so nothing can call a model without budget, guardrails and audit.
+export { makeStub } from "./providers/stub.js";

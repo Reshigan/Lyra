@@ -1,0 +1,27 @@
+// Shared flat ESLint config. Kept deliberately small: typecheck does the heavy
+// lifting, lint guards the conventions typecheck cannot see.
+import js from "@eslint/js";
+import tseslint from "typescript-eslint";
+
+export default tseslint.config(
+  { ignores: ["**/dist/**", "**/build/**", "**/.wrangler/**", "**/migrations/**", "**/.react-router/**"] },
+  js.configs.recommended,
+  ...tseslint.configs.recommended,
+  {
+    rules: {
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
+      "@typescript-eslint/consistent-type-imports": "error",
+      // CLAUDE.md rule 7: logical properties only. Physical CSS props in JS
+      // string literals are caught by the stylelint-ish check in packages/ui tests.
+      "no-restricted-syntax": [
+        "error",
+        {
+          // CLAUDE.md rule 3: no provider SDK outside the model gateway.
+          selector: "ImportDeclaration[source.value=/^(@anthropic-ai|openai)\\//]",
+          message: "Model access only via @lyra/model-gateway (CLAUDE.md rule 3)."
+        }
+      ]
+    }
+  }
+);

@@ -1,0 +1,508 @@
+import { Hono } from "hono";
+import { and, desc, eq, inArray } from "drizzle-orm";
+import { z } from "zod";
+import { id as newId, schema } from "@lyra/db";
+import {
+  audit,
+  badRequest,
+  conflict,
+  emit,
+  gate,
+  notFound,
+  quoteCommission,
+  require_,
+  withIdempotency,
+  type Ctx
+} from "@lyra/core";
+import { body, created, listParams } from "../http.js";
+import { one } from "../rows.js";
+import {
+  assertInputs,
+  panelFor,
+  quoteOne,
+  rankOutcomes,
+  type ProviderQuoter,
+  type QuoteOutcome
+} from "../engines/rating.js";
+import { decideOffer, markSurfaced, proposeOffers } from "../engines/nbo.js";
+import type { App } from "../env.js";
+
+// docs/05 §4-6. The aggregator's own verbs: shop a risk across the panel, show
+// the customer the comparison, convert one line of it into a case, and keep the
+// three-way commission straight. Generated CRUD covers the rows; this covers
+// what happens to them.
+
+export const distRoutes = new Hono<App>();
+
+const ctxOf = (c: { get(k: "ctx"): Ctx }): Ctx => c.get("ctx");
+
+/* --------------------------------------------------------------- fan-out */
+
+const ShopBody = z.object({
+  productId: z.string().min(1),
+  channelId: z.string().min(1),
+  customerId: z.string().optional(),
+  consentId: z.string().optional(),
+  caseId: z.string().optional(),
+  /** The risk, in the product's rating inputs. */
+  inputs: z.record(z.string(), z.unknown()),
+  currency: z.string().length(3).default("ZAR")
+});
+
+/**
+ * Comparative shop. One request, every eligible offering priced, one ranked
+ * comparison back. Declines and errors are returned alongside the quotes,
+ * because "six of nine underwriters would not touch this" is an answer the
+ * operator needs and silently dropping them looks like a thin panel.
+ */
+distRoutes.post("/quote-requests/shop", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "dist:quote_requests:create", { tenantId: ctx.tenantId, module: "dist" });
+  const input = await body(c, ShopBody);
+
+  return c.json(
+    await withIdempotency(ctx, c.req.header("idempotency-key"), "dist.shop", input, async () => {
+      const channel = await one(ctx, schema.distChannels, input.channelId);
+      if (!channel) throw notFound("channel");
+      if (channel.status !== "active") throw conflict("channel is not active");
+
+      // Passing a customer's details to third-party underwriters is data sharing
+      // and needs a recorded basis. No consent, no fan-out (docs/12 §3).
+      if (input.customerId) {
+        if (!input.consentId) throw badRequest("consentId is required when a customer is identified");
+        const consent = await one(ctx, schema.consents, input.consentId);
+        if (!consent || consent.customerId !== input.customerId) throw badRequest("consent does not match customer");
+        const purposes = JSON.parse(consent.purposesJson) as { dataSharing?: boolean };
+        if (!purposes.dataSharing) throw badRequest("consent does not permit sharing with providers");
+      }
+
+      const panel = await panelFor(ctx, {
+        productId: input.productId,
+        channelKey: channel.key,
+        at: ctx.now
+      });
+      if (!panel.length) throw conflict("no active offerings on the panel for this product");
+      assertInputs(panel, input.inputs);
+
+      const request: typeof schema.distQuoteRequests.$inferInsert = {
+        id: newId("qr", ctx.now),
+        tenantId: ctx.tenantId,
+        caseId: input.caseId ?? null,
+        customerId: input.customerId ?? null,
+        channelId: input.channelId,
+        productId: input.productId,
+        inputsJson: JSON.stringify(input.inputs),
+        consentId: input.consentId ?? null,
+        fanoutCount: panel.length,
+        respondedCount: 0,
+        currency: input.currency,
+        state: "fanned_out",
+        expiresAt: ctx.now + 7 * 86_400_000,
+        createdAt: ctx.now,
+        updatedAt: ctx.now
+      };
+      await ctx.db.insert(schema.distQuoteRequests).values(request);
+
+      // Providers are independent, so the shop is as slow as the slowest one,
+      // not the sum. quoteOne never rejects, so no allSettled is needed.
+      const outcomes = await Promise.all(
+        panel.map((entry) => quoteOne(ctx, entry, input.inputs, quoterFor(c)))
+      );
+      const ranked = await rankOutcomes(ctx, outcomes, { channelId: input.channelId });
+
+      const rows: (typeof schema.distQuoteResponses.$inferSelect)[] = [];
+      for (const o of ranked) {
+        const row: typeof schema.distQuoteResponses.$inferInsert = {
+          id: newId("qs", ctx.now),
+          tenantId: ctx.tenantId,
+          requestId: request.id,
+          offeringId: o.offeringId,
+          providerId: o.providerId,
+          state: o.state,
+          premiumMinor: o.premiumMinor ?? null,
+          taxMinor: o.taxMinor,
+          feesMinor: o.feesMinor,
+          currency: o.currency,
+          commissionPpm: o.commission?.basePpm ?? null,
+          commissionMinor: o.commission?.grossMinor ?? null,
+          channelCommissionMinor: o.commission?.channelMinor ?? null,
+          coverageJson: o.coverage ? JSON.stringify(o.coverage) : null,
+          priceRank: o.priceRank ?? null,
+          valueScore: o.valueScore ?? null,
+          rationaleKey: o.priceRank === 1 ? "quote.rationale.cheapest" : null,
+          declineReason: o.declineReason ?? null,
+          latencyMs: o.latencyMs,
+          validUntil: o.validUntil ?? null,
+          createdAt: ctx.now,
+          updatedAt: ctx.now
+        };
+        await ctx.db.insert(schema.distQuoteResponses).values(row);
+        rows.push(row as typeof schema.distQuoteResponses.$inferSelect);
+      }
+
+      const best = rows
+        .filter((r) => r.state === "quoted")
+        .sort((a, b) => (a.priceRank ?? 99) - (b.priceRank ?? 99))[0];
+      const responded = rows.filter((r) => r.state === "quoted" || r.state === "declined").length;
+
+      await ctx.db
+        .update(schema.distQuoteRequests)
+        .set({
+          respondedCount: responded,
+          bestOfferingId: best?.offeringId ?? null,
+          bestPremiumMinor: best?.premiumMinor ?? null,
+          state: responded === panel.length ? "complete" : "fanned_out",
+          updatedAt: ctx.now
+        })
+        .where(and(eq(schema.distQuoteRequests.tenantId, ctx.tenantId), eq(schema.distQuoteRequests.id, request.id)));
+
+      await audit(ctx, {
+        action: "dist.quote_request.shop",
+        subjectRef: request.id,
+        after: { fanout: panel.length, quoted: rows.filter((r) => r.state === "quoted").length }
+      });
+      await emit(ctx, {
+        module: "dist",
+        type: "dist.quote_request.fanned_out",
+        subject: request.id,
+        data: { productId: input.productId, channelId: input.channelId, fanout: panel.length }
+      });
+
+      return { request: { ...request, respondedCount: responded, bestOfferingId: best?.offeringId ?? null }, responses: rows };
+    }),
+    201
+  );
+});
+
+/** The comparison as the customer sees it: quotes ranked, declines summarised. */
+distRoutes.get("/quote-requests/:id/comparison", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "dist:quote_requests:read", { tenantId: ctx.tenantId, module: "dist" });
+  const request = await one(ctx, schema.distQuoteRequests, c.req.param("id"));
+  if (!request) throw notFound("quote request");
+
+  const responses = await ctx.db
+    .select()
+    .from(schema.distQuoteResponses)
+    .where(
+      and(
+        eq(schema.distQuoteResponses.tenantId, ctx.tenantId),
+        eq(schema.distQuoteResponses.requestId, request.id)
+      )
+    );
+
+  const offeringIds = responses.map((r) => r.offeringId);
+  const offerings = offeringIds.length
+    ? await ctx.db
+        .select()
+        .from(schema.distOfferings)
+        .where(and(eq(schema.distOfferings.tenantId, ctx.tenantId), inArray(schema.distOfferings.id, offeringIds)))
+    : [];
+  const byOffering = new Map(offerings.map((o) => [o.id, o]));
+
+  const quoted = responses
+    .filter((r) => r.state === "quoted")
+    .sort((a, b) => (a.priceRank ?? 99) - (b.priceRank ?? 99))
+    .map((r) => ({
+      ...r,
+      // Commission is ours, not the customer's business; strip it unless the
+      // caller is staff with the permission to see the margin.
+      ...(canSeeMargin(ctx) ? {} : { commissionPpm: null, commissionMinor: null, channelCommissionMinor: null }),
+      offering: byOffering.get(r.offeringId) ?? null
+    }));
+
+  return c.json({
+    request,
+    quotes: quoted,
+    unavailable: responses
+      .filter((r) => r.state !== "quoted")
+      .map((r) => ({ offeringId: r.offeringId, providerId: r.providerId, state: r.state, reason: r.declineReason })),
+    bestValue: quoted.slice().sort((a, b) => (b.valueScore ?? 0) - (a.valueScore ?? 0))[0]?.id ?? null
+  });
+});
+
+/** Mark the comparison as shown to the customer — the timestamp is evidence. */
+distRoutes.post("/quote-requests/:id/share", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "dist:quote_requests:share", { tenantId: ctx.tenantId, module: "dist" });
+  const request = await one(ctx, schema.distQuoteRequests, c.req.param("id"));
+  if (!request) throw notFound("quote request");
+  await ctx.db
+    .update(schema.distQuoteRequests)
+    .set({ sharedWithCustomerAt: ctx.now, updatedAt: ctx.now })
+    .where(and(eq(schema.distQuoteRequests.tenantId, ctx.tenantId), eq(schema.distQuoteRequests.id, request.id)));
+  await audit(ctx, { action: "dist.quote_request.share", subjectRef: request.id });
+  await emit(ctx, {
+    module: "dist",
+    type: "dist.quote_request.shared",
+    subject: request.id,
+    data: { customerId: request.customerId }
+  });
+  return c.body(null, 204);
+});
+
+/** The customer picks one. Everything downstream keys off this row. */
+distRoutes.post("/quote-requests/:id/select", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "dist:quote_requests:share", { tenantId: ctx.tenantId, module: "dist" });
+  const { responseId } = await body(c, z.object({ responseId: z.string().min(1) }));
+  const request = await one(ctx, schema.distQuoteRequests, c.req.param("id"));
+  if (!request) throw notFound("quote request");
+
+  const rows = await ctx.db
+    .select()
+    .from(schema.distQuoteResponses)
+    .where(
+      and(
+        eq(schema.distQuoteResponses.tenantId, ctx.tenantId),
+        eq(schema.distQuoteResponses.id, responseId),
+        eq(schema.distQuoteResponses.requestId, request.id)
+      )
+    )
+    .limit(1);
+  const response = rows[0];
+  if (!response) throw notFound("quote response");
+  if (response.state !== "quoted") throw conflict("that response is not a quote");
+  if (response.validUntil !== null && response.validUntil < ctx.now) throw conflict("quote has expired");
+
+  await ctx.db
+    .update(schema.distQuoteResponses)
+    .set({ selectedAt: ctx.now, updatedAt: ctx.now })
+    .where(and(eq(schema.distQuoteResponses.tenantId, ctx.tenantId), eq(schema.distQuoteResponses.id, response.id)));
+  await ctx.db
+    .update(schema.distQuoteRequests)
+    .set({ state: "converted", updatedAt: ctx.now })
+    .where(and(eq(schema.distQuoteRequests.tenantId, ctx.tenantId), eq(schema.distQuoteRequests.id, request.id)));
+
+  await audit(ctx, {
+    action: "dist.quote_response.select",
+    subjectRef: response.id,
+    after: { premiumMinor: response.premiumMinor, offeringId: response.offeringId }
+  });
+  await emit(ctx, {
+    module: "dist",
+    type: "dist.quote_response.selected",
+    subject: response.id,
+    data: {
+      requestId: request.id,
+      offeringId: response.offeringId,
+      providerId: response.providerId,
+      premiumMinor: response.premiumMinor,
+      customerId: request.customerId
+    }
+  });
+  return c.json({ ...response, selectedAt: ctx.now });
+});
+
+/* ------------------------------------------------------------ commission */
+
+const AccrueBody = z.object({
+  policyId: z.string().min(1),
+  kind: z.enum(["new_business", "renewal", "endorsement", "adjustment"]).default("new_business"),
+  earnedOn: z.enum(["issue", "collection"]).default("issue"),
+  taxMinor: z.number().int().min(0).default(0)
+});
+
+/**
+ * Turn an issued policy into the three-way money view. Derived from the policy
+ * and the rate in force rather than taken from the caller, so a channel cannot
+ * post its own commission.
+ */
+distRoutes.post("/commission-entries/accrue", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "dist:commissions:adjust", { tenantId: ctx.tenantId, module: "dist" });
+  const input = await body(c, AccrueBody);
+
+  return c.json(
+    await withIdempotency(ctx, c.req.header("idempotency-key"), "dist.accrue", input, async () => {
+      const policy = await one(ctx, schema.axisPolicies, input.policyId);
+      if (!policy) throw notFound("policy");
+      if (!policy.offeringId || !policy.channelId) throw badRequest("policy has no offering or channel to rate");
+
+      const existing = await ctx.db
+        .select({ id: schema.distCommissionEntries.id })
+        .from(schema.distCommissionEntries)
+        .where(
+          and(
+            eq(schema.distCommissionEntries.tenantId, ctx.tenantId),
+            eq(schema.distCommissionEntries.policyId, policy.id),
+            eq(schema.distCommissionEntries.kind, input.kind)
+          )
+        )
+        .limit(1);
+      if (existing[0]) throw conflict("commission already accrued for this policy and kind");
+
+      const split = await quoteCommission(ctx, {
+        offeringId: policy.offeringId,
+        channelId: policy.channelId,
+        premiumMinor: policy.premiumMinor
+      });
+
+      const row: typeof schema.distCommissionEntries.$inferInsert = {
+        id: newId("ce", ctx.now),
+        tenantId: ctx.tenantId,
+        policyId: policy.id,
+        offeringId: policy.offeringId,
+        providerId: policy.providerId,
+        channelId: policy.channelId,
+        rateId: split.rateId ?? null,
+        kind: input.kind,
+        premiumMinor: policy.premiumMinor,
+        grossCommissionMinor: split.grossMinor,
+        channelCommissionMinor: split.channelMinor,
+        netCommissionMinor: split.netMinor - input.taxMinor,
+        taxMinor: input.taxMinor,
+        currency: policy.currency,
+        earnedOn: input.earnedOn,
+        earnedAt: input.earnedOn === "issue" ? ctx.now : null,
+        state: "accrued",
+        createdAt: ctx.now,
+        updatedAt: ctx.now
+      };
+      await ctx.db.insert(schema.distCommissionEntries).values(row);
+      await audit(ctx, { action: "dist.commission.accrue", subjectRef: row.id, after: row });
+      await emit(ctx, {
+        module: "dist",
+        type: "dist.commission.accrued",
+        subject: row.id,
+        data: { policyId: policy.id, grossMinor: split.grossMinor, channelMinor: split.channelMinor }
+      });
+      return row;
+    }),
+    201
+  );
+});
+
+/**
+ * Reverse an accrual. Never edits the original: a clawback is its own entry
+ * pointing at what it reverses, so a statement reproduces to the cent.
+ */
+distRoutes.post("/commission-entries/:id/clawback", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "dist:commissions:adjust", { tenantId: ctx.tenantId, module: "dist" });
+  const { reason } = await body(c, z.object({ reason: z.string().min(3).max(500) }));
+  const entry = await one(ctx, schema.distCommissionEntries, c.req.param("id"));
+  if (!entry) throw notFound("commission entry");
+  if (entry.reversalOf) throw conflict("cannot claw back a reversal");
+
+  await gate(ctx, {
+    policyKey: "dist.commission_adjust",
+    subjectRef: entry.id,
+    amountMinor: entry.grossCommissionMinor,
+    context: { reason }
+  });
+
+  const row: typeof schema.distCommissionEntries.$inferInsert = {
+    ...entry,
+    id: newId("ce", ctx.now),
+    kind: "clawback",
+    premiumMinor: -entry.premiumMinor,
+    grossCommissionMinor: -entry.grossCommissionMinor,
+    channelCommissionMinor: -entry.channelCommissionMinor,
+    netCommissionMinor: -entry.netCommissionMinor,
+    taxMinor: -entry.taxMinor,
+    reversalOf: entry.id,
+    providerSettlementId: null,
+    channelSettlementId: null,
+    state: "accrued",
+    createdAt: ctx.now,
+    updatedAt: ctx.now
+  };
+  await ctx.db.insert(schema.distCommissionEntries).values(row);
+  await ctx.db
+    .update(schema.distCommissionEntries)
+    .set({ state: "clawed_back", updatedAt: ctx.now })
+    .where(and(eq(schema.distCommissionEntries.tenantId, ctx.tenantId), eq(schema.distCommissionEntries.id, entry.id)));
+
+  await audit(ctx, { action: "dist.commission.clawback", subjectRef: row.id, before: entry, after: row });
+  await emit(ctx, {
+    module: "dist",
+    type: "dist.commission.clawed_back",
+    subject: row.id,
+    data: { reversalOf: entry.id, reason }
+  });
+  return created(c, row as { id: string });
+});
+
+/** What each counterparty owes or is owed right now, from the entries alone. */
+distRoutes.get("/commission-entries/statement", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "dist:commissions:read", { tenantId: ctx.tenantId, module: "dist" });
+  const { filters } = listParams(c);
+  const e = schema.distCommissionEntries;
+
+  const where = [eq(e.tenantId, ctx.tenantId)];
+  if (filters.providerId) where.push(eq(e.providerId, filters.providerId));
+  if (filters.channelId) where.push(eq(e.channelId, filters.channelId));
+  if (filters.state) where.push(eq(e.state, filters.state));
+
+  const rows = await ctx.db.select().from(e).where(and(...where)).orderBy(desc(e.createdAt)).limit(1000);
+
+  const totals = rows.reduce(
+    (acc, r) => ({
+      premiumMinor: acc.premiumMinor + r.premiumMinor,
+      receivableMinor: acc.receivableMinor + r.grossCommissionMinor,
+      payableMinor: acc.payableMinor + r.channelCommissionMinor,
+      netMinor: acc.netMinor + r.netCommissionMinor,
+      taxMinor: acc.taxMinor + r.taxMinor
+    }),
+    { premiumMinor: 0, receivableMinor: 0, payableMinor: 0, netMinor: 0, taxMinor: 0 }
+  );
+
+  return c.json({ totals, currency: rows[0]?.currency ?? null, count: rows.length, entries: rows });
+});
+
+/* ------------------------------------------------------------------- nbo */
+
+distRoutes.post("/next-best-offers/propose", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "dist:offers:surface", { tenantId: ctx.tenantId, module: "dist" });
+  const input = await body(
+    c,
+    z.object({
+      customerId: z.string().min(1),
+      channelId: z.string().optional(),
+      anchorPolicyId: z.string().optional(),
+      limit: z.number().int().min(1).max(10).optional()
+    })
+  );
+  const offers = await proposeOffers(ctx, input);
+  return c.json({ data: offers });
+});
+
+distRoutes.post("/next-best-offers/:id/surface", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "dist:offers:override", { tenantId: ctx.tenantId, module: "dist" });
+  await markSurfaced(ctx, c.req.param("id"));
+  return c.body(null, 204);
+});
+
+distRoutes.post("/next-best-offers/:id/decide", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "dist:offers:override", { tenantId: ctx.tenantId, module: "dist" });
+  const input = await body(
+    c,
+    z.object({ decision: z.enum(["accepted", "dismissed"]), quoteRequestId: z.string().optional() })
+  );
+  await decideOffer(ctx, c.req.param("id"), input.decision, input.quoteRequestId);
+  return c.body(null, 204);
+});
+
+/* ------------------------------------------------------------------ util */
+
+function canSeeMargin(ctx: Ctx): boolean {
+  return ctx.actor.kind !== "customer";
+}
+
+/**
+ * Live underwriter adapters. None are wired yet — every offering on the seeded
+ * panel prices from a table — so an `api` offering returns a visible error row
+ * rather than a fake quote.
+ *
+ * ponytail: no adapter registry until there is a second adapter to register.
+ */
+function quoterFor(_c: unknown): ProviderQuoter | undefined {
+  return undefined;
+}
+
+export type { QuoteOutcome };

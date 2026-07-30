@@ -1,0 +1,215 @@
+import { and, eq, isNull, lt, sql } from "drizzle-orm";
+import { id as newId, schema } from "@lyra/db";
+import { z } from "zod";
+import { actorRef, type Ctx, type CoreDb } from "./context.js";
+
+// docs/04 §7. Transactional outbox out, inbox dedupe in, DLQ for what keeps failing.
+
+// The five product modules plus the four cross-cutting ones. `dist`, `compliance`
+// and `analytics` own tables and therefore emit events; leaving them out would
+// have forced their events to masquerade as `core`.
+export const MODULES = [
+  "core",
+  "dist",
+  "axis",
+  "orbit",
+  "signal",
+  "scout",
+  "north",
+  "ledger",
+  "ai",
+  "compliance",
+  "analytics"
+] as const;
+
+export const Envelope = z.object({
+  id: z.string(),
+  ts: z.number().int(),
+  tenant_id: z.string(),
+  module: z.enum(MODULES),
+  type: z.string(), // `axis.case.issued`
+  actor: z.string(),
+  subject: z.string().optional(),
+  data: z.unknown(),
+  v: z.literal(1)
+});
+export type Envelope = z.infer<typeof Envelope>;
+
+export interface EmitInput {
+  module: (typeof MODULES)[number];
+  type: string;
+  subject?: string;
+  data: unknown;
+}
+
+/**
+ * Queue an event. Call inside the same transaction as the state change it
+ * describes — that is the whole point of the outbox.
+ */
+export async function emit(ctx: Ctx, input: EmitInput): Promise<Envelope> {
+  const envelope: Envelope = Envelope.parse({
+    id: newId("ev", ctx.now),
+    ts: ctx.now,
+    tenant_id: ctx.tenantId,
+    module: input.module,
+    type: input.type,
+    actor: actorRef(ctx),
+    ...(input.subject === undefined ? {} : { subject: input.subject }),
+    data: input.data,
+    v: 1
+  });
+
+  await ctx.db.insert(schema.eventOutbox).values({
+    id: envelope.id,
+    tenantId: ctx.tenantId,
+    module: input.module,
+    type: input.type,
+    envelopeJson: JSON.stringify(envelope),
+    publishedAt: null,
+    attempts: 0,
+    lastError: null,
+    createdAt: ctx.now
+  });
+
+  return envelope;
+}
+
+/** Oldest-first batch of unpublished events, for the queue drainer (cron or DO). */
+export async function pendingOutbox(db: CoreDb, limit = 100): Promise<Envelope[]> {
+  const rows = await db
+    .select({ envelopeJson: schema.eventOutbox.envelopeJson })
+    .from(schema.eventOutbox)
+    .where(isNull(schema.eventOutbox.publishedAt))
+    .orderBy(schema.eventOutbox.createdAt)
+    .limit(limit);
+  return rows.map((r: { envelopeJson: string }) => Envelope.parse(JSON.parse(r.envelopeJson)));
+}
+
+export async function markPublished(db: CoreDb, ids: readonly string[], at: number): Promise<void> {
+  for (const eventId of ids) {
+    await db
+      .update(schema.eventOutbox)
+      .set({ publishedAt: at })
+      .where(eq(schema.eventOutbox.id, eventId));
+  }
+}
+
+export async function markPublishFailed(db: CoreDb, eventId: string, error: string): Promise<void> {
+  await db
+    .update(schema.eventOutbox)
+    .set({ attempts: sql`${schema.eventOutbox.attempts} + 1`, lastError: error.slice(0, 500) })
+    .where(eq(schema.eventOutbox.id, eventId));
+}
+
+export const MAX_ATTEMPTS = 5;
+
+export type ConsumeResult = "processed" | "duplicate" | "retry" | "dead";
+
+/**
+ * Run a handler exactly once per (event, consumer). Failures retry until
+ * MAX_ATTEMPTS, then land in the DLQ for admin replay (docs/09).
+ */
+export async function consume(
+  db: CoreDb,
+  envelope: Envelope,
+  consumer: string,
+  handler: (e: Envelope) => Promise<void>,
+  now: number
+): Promise<ConsumeResult> {
+  const existing = await db
+    .select({ status: schema.eventInbox.status, attempts: schema.eventInbox.attempts })
+    .from(schema.eventInbox)
+    .where(and(eq(schema.eventInbox.id, envelope.id), eq(schema.eventInbox.consumer, consumer)))
+    .limit(1);
+
+  const prior = existing[0];
+  if (prior?.status === "done") return "duplicate";
+  if (prior?.status === "dead") return "dead";
+
+  const attempts = (prior?.attempts ?? 0) + 1;
+
+  try {
+    await handler(envelope);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const dead = attempts >= MAX_ATTEMPTS;
+    await upsertInbox(db, envelope, consumer, dead ? "dead" : "failed", attempts, now);
+    if (dead) {
+      await db.insert(schema.eventDlq).values({
+        id: newId("dlq", now),
+        tenantId: envelope.tenant_id,
+        type: envelope.type,
+        consumer,
+        envelopeJson: JSON.stringify(envelope),
+        error: message.slice(0, 500),
+        attempts,
+        replayedAt: null,
+        createdAt: now
+      });
+      return "dead";
+    }
+    return "retry";
+  }
+
+  await upsertInbox(db, envelope, consumer, "done", attempts, now);
+  return "processed";
+}
+
+async function upsertInbox(
+  db: CoreDb,
+  envelope: Envelope,
+  consumer: string,
+  status: "done" | "failed" | "dead",
+  attempts: number,
+  now: number
+): Promise<void> {
+  await db
+    .insert(schema.eventInbox)
+    .values({
+      id: envelope.id,
+      tenantId: envelope.tenant_id,
+      type: envelope.type,
+      consumer,
+      processedAt: now,
+      attempts,
+      status
+    })
+    .onConflictDoUpdate({
+      target: [schema.eventInbox.id, schema.eventInbox.consumer],
+      set: { processedAt: now, attempts, status }
+    });
+}
+
+/** Admin replay: clears the inbox marker so the handler can run again. */
+export async function replayDlq(
+  ctx: Ctx,
+  dlqId: string,
+  handler: (e: Envelope) => Promise<void>
+): Promise<ConsumeResult> {
+  const rows = await ctx.db
+    .select()
+    .from(schema.eventDlq)
+    .where(and(eq(schema.eventDlq.tenantId, ctx.tenantId), eq(schema.eventDlq.id, dlqId)))
+    .limit(1);
+  const row = rows[0];
+  if (!row) return "duplicate";
+
+  const envelope = Envelope.parse(JSON.parse(row.envelopeJson));
+  await ctx.db
+    .delete(schema.eventInbox)
+    .where(and(eq(schema.eventInbox.id, envelope.id), eq(schema.eventInbox.consumer, row.consumer)));
+
+  const result = await consume(ctx.db, envelope, row.consumer, handler, ctx.now);
+  if (result === "processed") {
+    await ctx.db
+      .update(schema.eventDlq)
+      .set({ replayedAt: ctx.now })
+      .where(eq(schema.eventDlq.id, dlqId));
+  }
+  return result;
+}
+
+/** Housekeeping: published outbox rows older than the cutoff are dead weight. */
+export async function pruneOutbox(db: CoreDb, before: number): Promise<void> {
+  await db.delete(schema.eventOutbox).where(lt(schema.eventOutbox.publishedAt, before));
+}

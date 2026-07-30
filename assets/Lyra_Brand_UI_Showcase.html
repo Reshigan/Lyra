@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lyra — Brand &amp; Interface Showcase</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Arabic:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink-900:#070B14;--ink-800:#0C1322;--ink-700:#131C31;--ink-600:#1C2842;
+  --star-100:#F4F7FC;--star-300:#AEB9CF;--star-500:#5E6B87;
+  --vega:#FFB020;--vega-600:#D98E0B;--ion:#37D3B2;--flare:#FF5D5D;--photon:#6E9BFF;
+  --comet:#FF7A45;--nebula:#C08BFF;
+  --disp:'Space Grotesk',Inter,Arial,sans-serif;--ui:'Inter',Arial,sans-serif;
+  --mono:'IBM Plex Mono',monospace;--ar:'IBM Plex Sans Arabic',Inter,sans-serif;
+  --ease:cubic-bezier(.2,.8,.2,1);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{background:var(--ink-900)}
+body{font-family:var(--ui);color:var(--star-100);background:var(--ink-900);line-height:1.5;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1280px;margin:0 auto;padding:56px 32px 90px}
+.eyebrow{font-family:var(--disp);font-size:12px;font-weight:500;letter-spacing:3px;color:var(--vega);text-transform:uppercase}
+h1{font-family:var(--disp);font-weight:700;font-size:clamp(34px,4.6vw,54px);letter-spacing:.4px;margin:14px 0 10px}
+.lede{color:var(--star-300);font-size:16.5px;max-width:66ch}
+.section{margin-top:76px}
+.sec-h{display:flex;align-items:baseline;gap:14px;margin-bottom:20px;flex-wrap:wrap}
+.sec-h h2{font-family:var(--disp);font-weight:500;font-size:24px;letter-spacing:.4px}
+.sec-h span{font-family:var(--mono);font-size:11.5px;color:var(--star-500)}
+.panel{background:var(--ink-800);border:1px solid var(--ink-600);border-radius:16px}
+.tabnum{font-variant-numeric:tabular-nums}
+.chip{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--ink-600);background:var(--ink-700);border-radius:999px;padding:5px 12px;font-size:11.5px;color:var(--star-300)}
+.dot{width:6px;height:6px;border-radius:50%;flex:none}
+.ai{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--vega);border:1px solid rgba(255,176,32,.35);border-radius:999px;padding:2px 9px}
+.kbd{font-family:var(--mono);font-size:10.5px;border:1px solid var(--ink-600);border-radius:5px;padding:1px 6px;color:var(--star-300);background:var(--ink-800)}
+.ev{color:var(--vega);border-bottom:1px dotted var(--vega-600)}
+.up{color:var(--ion)}.dn{color:var(--flare)}
+.note{color:var(--star-500);font-size:12.5px;margin-top:14px;max-width:92ch}
+@media (prefers-reduced-motion:no-preference){
+  .pulse{animation:pl 2.6s ease-in-out infinite}@keyframes pl{0%,100%{opacity:.5}50%{opacity:1}}
+  .caret{animation:ck 1.1s steps(1) infinite}@keyframes ck{50%{opacity:0}}
+}
+/* brand board */
+.board{padding:44px 40px}
+.brandrow{display:flex;gap:44px;align-items:center;flex-wrap:wrap}
+.wordmark{font-family:var(--disp);font-weight:500;font-size:60px;letter-spacing:3px;line-height:1;display:flex;align-items:center;gap:14px}
+.tick{width:30px;height:3.6px;background:var(--vega);border-radius:2px;transform:rotate(-45deg);transform-origin:center}
+.divider{height:1px;background:var(--ink-600);margin:30px 0}
+.lockups{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px 22px;font-family:var(--disp);font-weight:500;font-size:15.5px;letter-spacing:1px}
+.swatches{display:grid;grid-template-columns:repeat(auto-fit,minmax(94px,1fr));gap:10px}
+.sw{border-radius:10px;padding:10px;height:76px;display:flex;flex-direction:column;justify-content:flex-end;border:1px solid var(--ink-600)}
+.sw b{font-size:11px}.sw span{font-family:var(--mono);font-size:9.5px;opacity:.85}
+.types{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px}
+.types .cell{background:var(--ink-700);border:1px solid var(--ink-600);border-radius:12px;padding:16px 18px}
+.types label{font-size:10.5px;color:var(--star-500);letter-spacing:1.6px;text-transform:uppercase}
+/* app frame */
+.frame{overflow:hidden}
+.bar{display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid var(--ink-600);background:var(--ink-800)}
+.bar i{width:10px;height:10px;border-radius:50%;background:var(--ink-600)}
+.bar .url{margin-left:12px;font-family:var(--mono);font-size:11px;color:var(--star-500)}
+.app{display:grid;grid-template-columns:58px 1fr;background:var(--ink-900)}
+.rail{border-right:1px solid var(--ink-600);background:var(--ink-800);display:flex;flex-direction:column;align-items:center;padding:14px 0;gap:6px}
+.gl{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;position:relative;color:var(--star-500)}
+.gl svg{width:18px;height:18px;stroke-width:1.6}
+.gl.active{background:var(--ink-600)}
+.gl.active::before{content:"";position:absolute;inset-inline-start:-11px;width:3px;height:17px;border-radius:2px}
+.gl .w{position:absolute;top:5px;right:5px;width:5px;height:5px;border-radius:50%;background:var(--vega)}
+.topbar{display:flex;align-items:center;gap:14px;padding:11px 20px;border-bottom:1px solid var(--ink-600)}
+.tenant{display:flex;align-items:center;gap:9px;font-family:var(--disp);font-weight:500;font-size:13.5px}
+.tmark{width:22px;height:22px;border-radius:6px;background:var(--ion);color:#04342C;display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:700}
+.search{flex:1;max-width:420px;display:flex;align-items:center;gap:9px;background:var(--ink-800);border:1px solid var(--ink-600);border-radius:999px;padding:6px 13px;color:var(--star-500);font-size:12.5px}
+.avatar{width:27px;height:27px;border-radius:50%;background:var(--ink-600);display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:600;color:var(--star-300)}
+/* social studio */
+.studio{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr) 250px;gap:0;min-height:660px}
+.col{padding:16px 18px;border-inline-end:1px solid var(--ink-600);min-width:0}
+.col:last-child{border:0}
+.col h5{font-family:var(--disp);font-size:12.5px;font-weight:500;letter-spacing:.6px;color:var(--star-300);margin-bottom:12px;display:flex;align-items:center;gap:8px;justify-content:space-between}
+.tabs{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+.tab{font-size:11.5px;padding:4px 10px;border-radius:999px;border:1px solid var(--ink-600);color:var(--star-500)}
+.tab.on{background:var(--ink-600);color:var(--star-100);border-color:var(--comet)}
+.field{background:var(--ink-800);border:1px solid var(--ink-600);border-radius:11px;padding:11px 13px;margin-bottom:10px}
+.field label{font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--star-500)}
+.field .txt{font-size:13.5px;margin-top:5px;line-height:1.6}
+.ghost{color:var(--star-500)}
+.ar{font-family:var(--ar);direction:rtl;text-align:right}
+.assets{display:flex;gap:8px;margin-top:4px;flex-wrap:wrap}
+.as{width:52px;height:52px;border-radius:9px;border:1px solid var(--ink-600);background:linear-gradient(135deg,#1C2842,#131C31);display:flex;align-items:center;justify-content:center;font-size:9px;color:var(--star-500)}
+.as.sel{border-color:var(--vega)}
+.ratios{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.ratio{font-family:var(--mono);font-size:9.5px;color:var(--star-300);border:1px solid var(--ink-600);border-radius:5px;padding:2px 6px}
+.ratio.ok::after{content:" ✓";color:var(--ion)}
+/* previews */
+.prev{background:var(--ink-800);border:1px solid var(--ink-600);border-radius:13px;overflow:hidden;margin-bottom:12px}
+.prev .ph{display:flex;align-items:center;gap:8px;padding:8px 11px;border-bottom:1px solid var(--ink-600);font-size:11px;color:var(--star-300)}
+.prev .pb{padding:10px 11px;font-size:12.5px;line-height:1.55}
+.media{height:96px;border-radius:8px;background:
+  radial-gradient(120px 60px at 30% 40%, rgba(255,176,32,.28), transparent),
+  radial-gradient(140px 70px at 75% 65%, rgba(110,155,255,.22), transparent),
+  linear-gradient(135deg,#131C31,#1C2842);
+  border:1px solid var(--ink-600);display:flex;align-items:flex-end;padding:8px;margin-bottom:8px}
+.media span{font-family:var(--disp);font-size:12px;color:var(--star-100)}
+.reel{height:150px}
+.meta{display:flex;gap:12px;font-size:10.5px;color:var(--star-500);margin-top:6px}
+/* governance */
+.gate{border:1px solid rgba(55,211,178,.4);background:rgba(55,211,178,.07);border-radius:11px;padding:11px 12px;margin-bottom:12px}
+.gate b{font-size:12.5px;color:var(--ion)}
+.gate p{font-size:11px;color:var(--star-300);margin-top:4px}
+.rowk{display:flex;justify-content:space-between;font-size:11.5px;color:var(--star-300);padding:6px 0;border-bottom:1px dashed var(--ink-600)}
+.rowk:last-child{border:0}
+.btn{font-size:12.5px;font-weight:500;border-radius:9px;padding:8px 13px;border:1px solid var(--ink-600);color:var(--star-100);background:var(--ink-700);text-align:center}
+.btn.primary{background:var(--vega);border-color:var(--vega);color:#412402}
+.btn.block{display:block;width:100%;margin-top:10px}
+/* launch rail */
+.rail-h{display:flex;gap:10px;overflow-x:auto;padding:18px 20px}
+.gcard{min-width:158px;flex:none;background:var(--ink-800);border:1px solid var(--ink-600);border-radius:12px;padding:12px}
+.gcard.done{border-color:rgba(55,211,178,.5)}
+.gcard.now{border-color:var(--vega);background:rgba(255,176,32,.06)}
+.gcard .n{font-family:var(--mono);font-size:9.5px;color:var(--star-500)}
+.gcard .t{font-size:13px;font-weight:500;margin-top:3px}
+.gcard .s{font-size:10.5px;margin-top:6px}
+.gcard .who{display:flex;align-items:center;gap:5px;margin-top:9px;font-size:10px;color:var(--star-500)}
+.mini{width:19px;height:19px;border-radius:50%;background:var(--ink-600);display:flex;align-items:center;justify-content:center;font-size:8.5px;color:var(--star-300)}
+/* ledger */
+.ledger{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(280px,1fr);gap:0}
+.jtable{width:100%;border-collapse:collapse;font-size:12px}
+.jtable th{text-align:left;font-size:10px;letter-spacing:1.3px;text-transform:uppercase;color:var(--star-500);padding:8px 10px;border-bottom:1px solid var(--ink-600);font-weight:500}
+.jtable td{padding:9px 10px;border-bottom:1px solid rgba(28,40,66,.6);color:var(--star-300)}
+.jtable tr.sealed td{background:var(--ink-800);box-shadow:inset 3px 0 0 var(--ion)}
+.jtable tr.draft td{background:var(--ink-700);box-shadow:inset 3px 0 0 var(--star-500)}
+.jtable .num{text-align:right;font-variant-numeric:tabular-nums;color:var(--star-100)}
+.jtable code{font-family:var(--mono);font-size:10.5px;color:var(--vega)}
+.tb-foot{display:flex;align-items:center;justify-content:space-between;padding:11px 12px;background:var(--ink-800);border-top:1px solid var(--ink-600);font-size:12px}
+.balchip{display:inline-flex;align-items:center;gap:6px;background:rgba(55,211,178,.12);border:1px solid rgba(55,211,178,.45);color:var(--ion);border-radius:999px;padding:3px 10px;font-size:11.5px}
+.flow{padding:16px 18px}
+.fbar{display:flex;align-items:center;gap:8px;margin-bottom:9px;font-size:11.5px}
+.fbar .lbl{width:104px;color:var(--star-300);flex:none}
+.fbar .bar{height:12px;border-radius:3px}
+.fbar .val{color:var(--star-100);font-variant-numeric:tabular-nums;font-size:11px}
+.seg{margin-top:16px;background:var(--ink-800);border:1px solid var(--ink-600);border-radius:11px;padding:12px}
+.seg .track{height:26px;border-radius:6px;background:var(--ink-600);position:relative;overflow:hidden;margin-top:9px}
+.seg .held{position:absolute;inset:0;width:100%;background:linear-gradient(90deg,rgba(55,211,178,.35),rgba(55,211,178,.18))}
+.seg .oblig{position:absolute;top:0;bottom:0;left:0;width:88%;border-right:2px solid var(--star-100)}
+/* phones */
+.phones{display:flex;gap:32px;flex-wrap:wrap;justify-content:center;padding:38px 20px}
+.phone{width:312px;border-radius:38px;border:1px solid var(--ink-600);background:var(--ink-900);padding:12px;box-shadow:0 0 0 6px var(--ink-800)}
+.screen{border-radius:28px;overflow:hidden;background:var(--ink-900);border:1px solid var(--ink-700);display:flex;flex-direction:column;height:598px}
+.status{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--star-500);padding:10px 18px 4px}
+.mh{padding:8px 18px 4px}
+.mh h3{font-family:var(--disp);font-weight:500;font-size:19px}
+.mh .hi{font-size:11.5px;color:var(--star-500)}
+.mb{flex:1;padding:6px 18px;display:flex;flex-direction:column;gap:11px;overflow:hidden}
+.mb p{font-size:13px;line-height:1.62;color:#DEE5F1}
+.mcard{background:var(--ink-800);border:1px solid var(--ink-600);border-radius:14px;padding:12px 13px}
+.faceid{display:flex;align-items:center;justify-content:center;gap:9px;background:var(--vega);color:#412402;border-radius:12px;padding:11px;font-weight:600;font-size:13px;margin-top:auto}
+.tabbar{display:flex;justify-content:space-around;border-top:1px solid var(--ink-600);padding:9px 6px 13px;background:var(--ink-800)}
+.tb{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:9px;color:var(--star-500)}
+.tb svg{width:18px;height:18px;stroke-width:1.6}
+.tb.on{color:var(--vega)}
+.footer{margin-top:84px;border-top:1px solid var(--ink-600);padding-top:22px;display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;color:var(--star-500);font-size:12.5px}
+@media(max-width:1080px){.studio{grid-template-columns:1fr}.ledger{grid-template-columns:1fr}.col{border-inline-end:0;border-bottom:1px solid var(--ink-600)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="eyebrow">goNXT · Constellation design language</div>
+  <h1>Lyra — brand &amp; interface</h1>
+  <p class="lede">The instrument you navigate by. Rendered to the token spec: Deep Field surfaces, Vega accent, Space Grotesk display, IBM Plex Sans Arabic, and ambient AI that completes your intent instead of interrupting it.</p>
+
+  <!-- 01 BRAND -->
+  <div class="section">
+    <div class="sec-h"><h2>01 · The mark</h2><span>Vega + Lyra's parallelogram · fixed 68°/112°</span></div>
+    <div class="panel board">
+      <div class="brandrow">
+        <svg width="182" height="182" viewBox="0 0 182 182" role="img" aria-label="Lyra Vega mark">
+          <g fill="none" stroke="#AEB9CF" stroke-width="1.6" opacity="0.75">
+            <path d="M74 84 L124 70 L142 124 L92 138 Z"/><path d="M46 54 L74 84"/>
+          </g>
+          <g fill="#F4F7FC">
+            <circle cx="74" cy="84" r="3.6"/><circle cx="124" cy="70" r="3"/>
+            <circle cx="142" cy="124" r="3"/><circle cx="92" cy="138" r="3"/>
+          </g>
+          <circle cx="46" cy="54" r="12" fill="#FFB020"/>
+          <circle cx="46" cy="54" r="20" fill="none" stroke="#FFB020" stroke-width="1.2" opacity="0.4" class="pulse"/>
+        </svg>
+        <div>
+          <div class="wordmark">LYRA<span class="tick"></span></div>
+          <div style="margin-top:14px;color:var(--star-300);font-size:15px">See everything. Act first.</div>
+          <div style="margin-top:6px;color:var(--star-500);font-size:12.5px;max-width:52ch">Vega is the bright fixed point; the parallelogram is the constellation that carries it. The lifted stroke on the <b style="color:var(--star-300)">A</b> is a string plucked — and a sightline taken.</div>
+          <div style="margin-top:10px" class="chip"><span class="dot" style="background:var(--flare)"></span>Working mark — screening conflicts recorded in docs/23</div>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div class="lockups">
+        <div>LYRA <span style="color:var(--star-500)">·</span> <span style="color:var(--vega)">AXIS</span></div>
+        <div>LYRA <span style="color:var(--star-500)">·</span> <span style="color:var(--ion)">ORBIT</span></div>
+        <div>LYRA <span style="color:var(--star-500)">·</span> <span style="color:var(--comet)">SIGNAL</span></div>
+        <div>LYRA <span style="color:var(--star-500)">·</span> <span style="color:var(--photon)">SCOUT</span></div>
+        <div>LYRA <span style="color:var(--star-500)">·</span> <span style="color:var(--nebula)">NORTH</span></div>
+      </div>
+      <div class="divider"></div>
+      <div class="swatches">
+        <div class="sw" style="background:#070B14"><b>Deep Field</b><span>#070B14</span></div>
+        <div class="sw" style="background:#0C1322"><b>Surface 1</b><span>#0C1322</span></div>
+        <div class="sw" style="background:#131C31"><b>Surface 2</b><span>#131C31</span></div>
+        <div class="sw" style="background:#F4F7FC"><b style="color:#0C1322">Starlight</b><span style="color:#5B6575">#F4F7FC</span></div>
+        <div class="sw" style="background:#FFB020"><b style="color:#412402">Vega</b><span style="color:#633806">#FFB020</span></div>
+        <div class="sw" style="background:#37D3B2"><b style="color:#04342C">Ion</b><span style="color:#085041">#37D3B2</span></div>
+        <div class="sw" style="background:#FF7A45"><b style="color:#4A1B0C">Comet</b><span style="color:#712B13">#FF7A45</span></div>
+        <div class="sw" style="background:#6E9BFF"><b style="color:#042C53">Photon</b><span style="color:#0C447C">#6E9BFF</span></div>
+        <div class="sw" style="background:#C08BFF"><b style="color:#26215C">Nebula</b><span style="color:#3C3489">#C08BFF</span></div>
+      </div>
+      <div class="divider"></div>
+      <div class="types">
+        <div class="cell"><label>Display · Space Grotesk</label><div style="font-family:var(--disp);font-weight:700;font-size:29px;margin-top:8px" class="tabnum">AED 4,218,940</div></div>
+        <div class="cell"><label>UI · Inter</label><div style="font-size:14.5px;margin-top:10px;color:#DEE5F1">Renewal retention rose 4.2 pts after the requote journey went live.</div></div>
+        <div class="cell"><label>Mono · IBM Plex Mono</label><div style="font-family:var(--mono);font-size:12.5px;margin-top:11px;color:var(--star-300)">txn_01J9ZK · CMSN-ACCR · 4000</div></div>
+        <div class="cell"><label>Arabic · IBM Plex Sans Arabic</label><div class="ar" style="font-size:16px;margin-top:9px;color:#DEE5F1">نرى كل شيء. نتحرّك أولاً.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 02 SOCIAL STUDIO -->
+  <div class="section">
+    <div class="sec-h"><h2>02 · SIGNAL — Social Studio</h2><span>lyra.vantax.co.za/m/signal/studio · compose once, preview everywhere, publish natively</span></div>
+    <div class="panel frame">
+      <div class="bar"><i></i><i></i><i></i><span class="url">aldebaran.lyra.vantax.co.za/m/signal/studio/post_01J9ZK</span></div>
+      <div class="app">
+        <div class="rail">
+          <div style="margin-bottom:10px">
+            <svg width="24" height="24" viewBox="0 0 40 40" aria-hidden="true">
+              <g fill="none" stroke="#AEB9CF" stroke-width="1.4" opacity=".7"><path d="M16 19 L27 16 L31 28 L20 31 Z"/><path d="M10 12 L16 19"/></g>
+              <circle cx="10" cy="12" r="4" fill="#FFB020"/>
+            </svg>
+          </div>
+          <div class="gl" title="AXIS"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.6"/><path d="M12 4v3M12 17v3M4 12h3M17 12h3"/></svg></div>
+          <div class="gl" title="ORBIT"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="3.4"/><ellipse cx="12" cy="12" rx="9.5" ry="4.2" transform="rotate(-24 12 12)"/></svg><span class="w"></span></div>
+          <div class="gl active" style="color:var(--comet)" title="SIGNAL"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="7" cy="12" r="1.6"/><path d="M11 7.5a6.4 6.4 0 010 9M14.5 4.8a10.2 10.2 0 010 14.4"/></svg><span style="position:absolute;inset-inline-start:-11px;width:3px;height:17px;border-radius:2px;background:var(--comet)"></span></div>
+          <div class="gl" title="SCOUT"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="7.5"/><path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4"/></svg></div>
+          <div class="gl" title="NORTH"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3l2.1 6.4L21 12l-6.9 2.6L12 21l-2.1-6.4L3 12l6.9-2.6z"/></svg></div>
+        </div>
+        <div>
+          <div class="topbar">
+            <div class="tenant"><span class="tmark">AL</span>Aldebaran Insurance</div>
+            <div class="search"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>Search or ask — "posts underperforming vs pillar target"<span style="margin-inline-start:auto" class="kbd">⌘K</span></div>
+            <span class="chip"><span class="dot" style="background:var(--comet)"></span>Launch: EV Motor Cover</span>
+            <div class="avatar">RG</div>
+          </div>
+          <div class="studio">
+            <!-- content -->
+            <div class="col">
+              <h5>Content <span class="ai">✦ drafted from brief</span></h5>
+              <div class="tabs"><span class="tab on">EN</span><span class="tab">AR</span><span class="tab">Variant B</span><span class="tab">Variant C</span></div>
+              <div class="field">
+                <label>Hook</label>
+                <div class="txt">Your EV isn't a petrol car. Your insurance shouldn't be either.</div>
+              </div>
+              <div class="field">
+                <label>Body</label>
+                <div class="txt">Battery cover, home-charger liability and mobile charging included from day one — compare 7 insurers in under two minutes.<span class="ghost"> Written for first-time EV owners in Dubai who searched "battery warranty insurance" this month.<span class="caret" style="color:var(--vega)">▌</span></span></div>
+                <div style="margin-top:8px"><span class="kbd">Tab ↹ accept</span> <span style="font-size:10.5px;color:var(--star-500)">· 3 candidates</span></div>
+              </div>
+              <div class="field">
+                <label>Arabic — parallel authoring</label>
+                <div class="txt ar">سيارتك الكهربائية ليست سيارة بنزين، ولا يجب أن يكون تأمينها كذلك. تغطية البطارية وشاحن المنزل من اليوم الأول.</div>
+                <div style="margin-top:7px"><span class="chip" style="padding:3px 9px"><span class="dot" style="background:var(--vega)"></span>Native review pending — Gulf register</span></div>
+              </div>
+              <div class="field">
+                <label>Assets</label>
+                <div class="assets"><div class="as sel">EV-01</div><div class="as">EV-02</div><div class="as">reel</div><div class="as">+</div></div>
+                <div class="ratios"><span class="ratio ok">1:1</span><span class="ratio ok">4:5</span><span class="ratio ok">9:16</span><span class="ratio ok">16:9</span><span class="ratio">1.91:1</span></div>
+                <div style="font-size:10.5px;color:var(--star-500);margin-top:7px">1.91:1 crop pushes the logo into the safe-area margin — regenerate or nudge.</div>
+              </div>
+            </div>
+            <!-- previews -->
+            <div class="col">
+              <h5>Live previews <span style="font-size:10.5px;color:var(--star-500)">real platform chrome · re-renders as you type</span></h5>
+              <div class="prev">
+                <div class="ph"><span class="dot" style="background:var(--comet)"></span>Instagram · Feed 4:5</div>
+                <div class="pb">
+                  <div class="media"><span>Battery cover from day one</span></div>
+                  <div><b style="font-weight:600">aldebaran.ae</b> Your EV isn't a petrol car. Your insurance shouldn't be either. <span style="color:var(--photon)">#EVUAE #DubaiDrivers</span></div>
+                  <div class="meta"><span>alt text set ✓</span><span>first comment queued</span></div>
+                </div>
+              </div>
+              <div class="prev">
+                <div class="ph"><span class="dot" style="background:var(--nebula)"></span>TikTok · Reel 9:16 · direct post</div>
+                <div class="pb">
+                  <div class="media reel"><span>0:06 hook — "EV ≠ petrol"</span></div>
+                  <div style="font-size:12px">Captions burned · ar subtitles sidecar · sound: licensed (lic_2291)</div>
+                </div>
+              </div>
+              <div class="prev">
+                <div class="ph"><span class="dot" style="background:var(--photon)"></span>X · thread 1/3</div>
+                <div class="pb">Your EV isn't a petrol car. Your insurance shouldn't be either. 🧵 <span style="color:var(--star-500)">(238/280)</span></div>
+              </div>
+              <div class="prev">
+                <div class="ph"><span class="dot" style="background:var(--star-500)"></span>WhatsApp · template (opt-in only)</div>
+                <div class="pb ar" style="font-size:12.5px">تغطية جديدة للسيارات الكهربائية — هل تريد مقارنة الأسعار؟</div>
+              </div>
+            </div>
+            <!-- governance -->
+            <div class="col">
+              <h5>Governance</h5>
+              <div class="gate">
+                <b>✓ Compliance pre-flight passed</b>
+                <p>Claims substantiated · disclosure appended (motor, UAE) · AI-content label applied for TikTok · no restricted terms.</p>
+              </div>
+              <div class="rowk"><span>Disclosure</span><b style="color:var(--star-100)">Motor UAE v4</b></div>
+              <div class="rowk"><span>Rights</span><b style="color:var(--ion)">All assets licensed</b></div>
+              <div class="rowk"><span>Approvals</span><b style="color:var(--vega)">1 pending — Arabic</b></div>
+              <div class="rowk"><span>Pillar</span><b style="color:var(--star-100)">Product education</b></div>
+              <div class="rowk"><span>Window</span><b style="color:var(--star-100)">Tue 19:30 GST</b></div>
+              <div class="rowk"><span>Channels</span><b style="color:var(--star-100)">IG · TikTok · X · WA</b></div>
+              <div style="margin-top:12px;font-size:11px;color:var(--star-500)">Snapchat is <b style="color:var(--star-300)">assisted publish only</b> — organic API unavailable; asset + caption handed off with a checklist.</div>
+              <span class="btn primary block">Schedule 4 targets</span>
+              <span class="btn block">Save &amp; request Arabic review</span>
+              <div style="margin-top:12px;font-size:10.5px;color:var(--star-500)">✦ Evidence: SCOUT whitespace <span class="ev">EV cover gap</span> · 3 competitor gaps · demand +38% QoQ</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="note">The compliance chip is the gate, not a suggestion: the schedule control is not rendered at all until pre-flight passes — no disabled-button guesswork. Arabic is authored in parallel with its own review state, and every platform limitation (here, Snapchat) is stated with its fallback rather than failing silently.</p>
+  </div>
+
+  <!-- 03 LAUNCH COCKPIT -->
+  <div class="section">
+    <div class="sec-h"><h2>03 · Launch Cockpit</h2><span>whitespace → live, as one legible rail</span></div>
+    <div class="panel">
+      <div class="rail-h">
+        <div class="gcard done"><div class="n">GATE 1</div><div class="t">Evidence</div><div class="s up">✓ SCOUT validated</div><div class="who"><span class="mini">PM</span>Nadia</div></div>
+        <div class="gcard done"><div class="n">GATE 2</div><div class="t">Product</div><div class="s up">✓ 3 insurers on panel</div><div class="who"><span class="mini">AX</span>Omar</div></div>
+        <div class="gcard done"><div class="n">GATE 3</div><div class="t">Pricing</div><div class="s up">✓ signed off</div><div class="who"><span class="mini">FI</span>Sara</div></div>
+        <div class="gcard now"><div class="n">GATE 4</div><div class="t">Compliance</div><div class="s" style="color:var(--vega)">◐ 1 item — Arabic wording</div><div class="who"><span class="mini">CO</span>Layla</div></div>
+        <div class="gcard"><div class="n">GATE 5</div><div class="t">Content</div><div class="s" style="color:var(--star-500)">12 of 18 assets</div><div class="who"><span class="mini">MK</span>Yusuf</div></div>
+        <div class="gcard"><div class="n">GATE 6</div><div class="t">Channels</div><div class="s" style="color:var(--star-500)">plan drafted ✦</div><div class="who"><span class="mini">MK</span>Yusuf</div></div>
+        <div class="gcard"><div class="n">GATE 7</div><div class="t">Paid</div><div class="s" style="color:var(--star-500)">AED 60k proposed</div><div class="who"><span class="mini">GL</span>Dana</div></div>
+        <div class="gcard"><div class="n">GATE 8</div><div class="t">Launch</div><div class="s" style="color:var(--star-500)">T‑9 days</div><div class="who"><span class="mini">PM</span>Nadia</div></div>
+        <div class="gcard"><div class="n">GATE 9</div><div class="t">Measure</div><div class="s" style="color:var(--star-500)">metrics registered</div><div class="who"><span class="mini">NO</span>NORTH</div></div>
+      </div>
+      <div style="padding:0 20px 18px;font-size:11.5px;color:var(--star-500)">✦ Launch Conductor: 2 owners nudged · Gate 4 at risk (Arabic review median 2.1 days vs 1 day remaining) · suggested: parallelise Gate 5 copy review</div>
+    </div>
+  </div>
+
+  <!-- 04 LEDGER -->
+  <div class="section">
+    <div class="sec-h"><h2>04 · Ledger Explorer &amp; Money Map</h2><span>posted entries are sealed — no edit affordance exists in the DOM</span></div>
+    <div class="panel frame">
+      <div class="bar"><i></i><i></i><i></i><span class="url">aldebaran.lyra.vantax.co.za/finance/ledger?period=2026-07</span></div>
+      <div class="ledger">
+        <div>
+          <table class="jtable">
+            <thead><tr><th>Date</th><th>Txn</th><th>Account</th><th style="text-align:right">Debit</th><th style="text-align:right">Credit</th><th>Cur</th></tr></thead>
+            <tbody>
+              <tr class="sealed"><td>29 Jul</td><td><code>CM-RECEIPT</code></td><td>1010 Cash–Client Money</td><td class="num">10,000</td><td class="num">—</td><td>AED</td></tr>
+              <tr class="sealed"><td>29 Jul</td><td><code>CM-RECEIPT</code></td><td>2010 Client Money Liability</td><td class="num">—</td><td class="num">10,000</td><td>AED</td></tr>
+              <tr class="sealed"><td>29 Jul</td><td><code>PREM-REMIT</code></td><td>2010 Client Money Liability</td><td class="num">9,000</td><td class="num">—</td><td>AED</td></tr>
+              <tr class="sealed"><td>29 Jul</td><td><code>PREM-REMIT</code></td><td>1010 Cash–Client Money</td><td class="num">—</td><td class="num">9,000</td><td>AED</td></tr>
+              <tr class="sealed"><td>29 Jul</td><td><code>CM-TRANSFER</code></td><td>1000 Cash–Operating</td><td class="num">1,000</td><td class="num">—</td><td>AED</td></tr>
+              <tr class="sealed"><td>29 Jul</td><td><code>CM-TRANSFER</code></td><td>4000 Commission–New</td><td class="num">—</td><td class="num">950</td><td>AED</td></tr>
+              <tr class="sealed"><td>29 Jul</td><td><code>CM-TRANSFER</code></td><td>2200 Tax Payable</td><td class="num">—</td><td class="num">50</td><td>AED</td></tr>
+              <tr class="sealed"><td>29 Jul</td><td><code>RSHARE-ACCR</code></td><td>5400 Partner Revenue Share</td><td class="num">300</td><td class="num">—</td><td>AED</td></tr>
+              <tr class="sealed"><td>29 Jul</td><td><code>RSHARE-ACCR</code></td><td>2100 Partner Payable</td><td class="num">—</td><td class="num">300</td><td>AED</td></tr>
+              <tr class="draft"><td>30 Jul</td><td><code>REFUND-ISSUE</code></td><td>2400 Refunds Payable · <span style="color:var(--vega)">awaiting 2nd approval</span></td><td class="num">420</td><td class="num">—</td><td>AED</td></tr>
+            </tbody>
+          </table>
+          <div class="tb-foot">
+            <span style="color:var(--star-300)">Trial balance · period 2026-07 · 41,882 lines</span>
+            <span class="balchip">✓ Balanced — AED and base</span>
+          </div>
+        </div>
+        <div class="flow" style="border-inline-start:1px solid var(--ink-600)">
+          <h5 style="font-family:var(--disp);font-size:12.5px;font-weight:500;color:var(--star-300);margin-bottom:12px">Money Map · July</h5>
+          <div class="fbar"><span class="lbl">Premium in</span><span class="bar" style="width:100%;background:var(--photon)"></span></div>
+          <div class="fbar"><span class="lbl"></span><span class="val">AED 8.42m</span></div>
+          <div class="fbar"><span class="lbl">To insurers</span><span class="bar" style="width:82%;background:var(--ink-600)"></span></div>
+          <div class="fbar"><span class="lbl"></span><span class="val">AED 6.90m</span></div>
+          <div class="fbar"><span class="lbl">Commission</span><span class="bar" style="width:18%;background:var(--ion)"></span></div>
+          <div class="fbar"><span class="lbl"></span><span class="val">AED 1.52m</span></div>
+          <div class="fbar"><span class="lbl">Partner share</span><span class="bar" style="width:5%;background:var(--comet)"></span></div>
+          <div class="fbar"><span class="lbl"></span><span class="val">AED 0.41m</span></div>
+          <div class="fbar"><span class="lbl">Tax</span><span class="bar" style="width:3%;background:var(--star-500)"></span></div>
+          <div class="fbar"><span class="lbl"></span><span class="val">AED 0.26m</span></div>
+          <div class="seg">
+            <div style="display:flex;justify-content:space-between;font-size:11.5px"><b style="font-weight:500">Client-money segregation</b><span class="chip" style="padding:2px 9px"><span class="dot" style="background:var(--ion)"></span>invariant holding</span></div>
+            <div class="track"><div class="held"></div><div class="oblig"></div></div>
+            <div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--star-500);margin-top:7px"><span>Held AED 3.11m</span><span>Obligations AED 2.74m</span></div>
+            <div style="font-size:10.5px;color:var(--star-500);margin-top:5px">Margin 12% · any breach raises a hard alarm and blocks transfers.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="note">Sealed rows carry an ion left-rule and no hover elevation; the pending refund is visibly a draft with its approval requirement stated inline. The trial-balance chip is the most important pixel on the screen — it recomputes live in both transaction and base currency.</p>
+  </div>
+
+  <!-- 05 MOBILE -->
+  <div class="section">
+    <div class="sec-h"><h2>05 · Mobile</h2><span>the 7am brief and the unified approvals centre</span></div>
+    <div class="panel phones">
+      <div class="phone"><div class="screen">
+        <div class="status"><span>07:02</span><span>GST · 5G · 94%</span></div>
+        <div class="mh"><div class="hi">Good morning, Reshigan</div><h3>The Brief <span class="ai" style="vertical-align:3px">✦ verified</span></h3></div>
+        <div class="mb">
+          <p><b style="font-weight:600">Yesterday earned more and spent less</b> — renewals did the work: <span class="ev">61% one-tap conversion</span> added AED 214k at near-zero acquisition cost.</p>
+          <p>Two exceptions: KSA motor CAC <span class="dn">+22%</span> (Meta CPM), and the EV launch's Arabic review is now the critical path.</p>
+          <div class="mcard">
+            <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--star-500)"><span>Anomaly 1 of 2</span><span>swipe →</span></div>
+            <div style="font-family:var(--disp);font-weight:700;font-size:21px;color:var(--flare);margin-top:4px" class="tabnum">Motor CAC +22%</div>
+            <div style="font-size:11.5px;color:var(--star-300);margin-top:2px">80% Meta CPM · autopilot throttled ✦</div>
+            <div style="display:flex;gap:8px;margin-top:10px"><span class="btn primary" style="flex:1">Assign</span><span class="btn" style="flex:1">Snooze</span></div>
+          </div>
+          <div class="mcard" style="display:flex;align-items:center;gap:10px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFB020" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l2.5 2.5"/></svg><span style="font-size:12px;color:var(--star-300)">2 min read · ask Lyra by voice</span></div>
+        </div>
+        <div class="tabbar">
+          <div class="tb on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3l2.1 6.4L21 12l-6.9 2.6L12 21l-2.1-6.4L3 12l6.9-2.6z"/></svg>Today</div>
+          <div class="tb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 19V9M10 19V4M16 19v-7M21 19H3"/></svg>Metrics</div>
+          <div class="tb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="8"/><path d="M12 8v5M12 16h.01"/></svg>Anomalies</div>
+          <div class="tb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12l4.5 4.5L19 7"/></svg>Approvals</div>
+        </div>
+      </div></div>
+      <div class="phone"><div class="screen">
+        <div class="status"><span>07:04</span><span>GST · 5G · 94%</span></div>
+        <div class="mh"><h3>Approvals</h3><div class="hi">4 waiting · every module, one queue</div></div>
+        <div class="mb">
+          <div class="mcard">
+            <div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:13px">Refund · AXIS</b><span class="chip" style="padding:2px 9px;font-size:10px"><span class="dot" style="background:var(--flare)"></span>irreversible</span></div>
+            <div style="font-size:12px;color:var(--star-300);margin-top:5px">AED 420 · policy A‑99213 · pro‑rata cancellation</div>
+            <div style="font-size:11px;color:var(--star-500);margin-top:5px">Dual control — you are the second approver. <span class="ev">Journal preview</span></div>
+          </div>
+          <div class="mcard">
+            <div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:13px">Budget move · SIGNAL</b><span class="chip" style="padding:2px 9px;font-size:10px"><span class="dot" style="background:var(--comet)"></span>reversible 7d</span></div>
+            <div style="font-size:12px;color:var(--star-300);margin-top:5px">AED 8,000/day Meta → Google · KSA motor</div>
+            <div style="font-size:11px;color:var(--star-500);margin-top:5px">✦ CPM +38%; marginal LTV/CAC 1.8× better. <span class="ev">Evidence</span></div>
+          </div>
+          <div class="mcard">
+            <div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:13px">Publish 4 targets · SIGNAL</b><span class="chip" style="padding:2px 9px;font-size:10px">EV launch</span></div>
+            <div style="font-size:12px;color:var(--star-300);margin-top:5px">Arabic wording approved → releases Gate 4</div>
+          </div>
+          <div class="mcard">
+            <div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:13px">Settlement run · Partners</b><span class="chip" style="padding:2px 9px;font-size:10px">statement attached</span></div>
+            <div style="font-size:12px;color:var(--star-300);margin-top:5px">AED 412k · 14 partners · 0 open exceptions</div>
+          </div>
+          <div class="faceid"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#412402" stroke-width="2"><path d="M7 3H5a2 2 0 00-2 2v2M17 3h2a2 2 0 012 2v2M7 21H5a2 2 0 01-2-2v-2M17 21h2a2 2 0 002-2v-2M9 9.5v1M15 9.5v1M9.5 15a3.5 3.5 0 005 0"/></svg>Approve selected with Face ID</div>
+        </div>
+        <div class="tabbar">
+          <div class="tb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3l2.1 6.4L21 12l-6.9 2.6L12 21l-2.1-6.4L3 12l6.9-2.6z"/></svg>Today</div>
+          <div class="tb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 19V9M10 19V4M16 19v-7M21 19H3"/></svg>Metrics</div>
+          <div class="tb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="8"/><path d="M12 8v5M12 16h.01"/></svg>Anomalies</div>
+          <div class="tb on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12l4.5 4.5L19 7"/></svg>Approvals</div>
+        </div>
+      </div></div>
+    </div>
+    <p class="note">One queue across all five modules. Every card states its reversibility, the money cards preview their journal entries, and dual-control approvals name your role in the chain. Consequential approval requires biometrics.</p>
+  </div>
+
+  <div class="footer">
+    <span>Lyra · Constellation design language · rendered to docs/01, docs/15 and docs/22</span>
+    <span>goNXT Technology — a Vanta X Holdings company · lyra.vantax.co.za · confidential concept</span>
+  </div>
+</div>
+</body>
+</html>
