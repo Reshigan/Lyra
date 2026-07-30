@@ -13,6 +13,7 @@ import { pdfSafe, toPdf } from "./engines/export/pdf.js";
 import { crc32 } from "./engines/export/zip.js";
 import { nextRun } from "./routes/analytics.js";
 import { openapi } from "./openapi.js";
+import { app } from "./index.js";
 
 const MIGRATIONS = join(import.meta.dirname, "..", "..", "..", "packages", "db", "migrations");
 
@@ -298,7 +299,44 @@ describe("openapi", () => {
       .flatMap(([p, ops]) => Object.entries(ops).filter(([, op]) => !op.security).map(([m]) => `${m} ${p}`));
     expect(open).toEqual([]);
   });
+
+  /**
+   * A documented path that no handler answers is a lie, and a documented path
+   * answered by a *different* handler is a worse one. Hono returns handlers in
+   * registration order, so a generated `/:id` route registered before a
+   * hand-written `/statement` route silently swallows it. Both failures show up
+   * as "the first route matching this path is not the route we documented".
+   */
+  it("routes every documented path to the handler that documents it", () => {
+    const registered = app.routes
+      .filter((r) => r.method !== "ALL")
+      .map((r) => ({ method: r.method.toLowerCase(), segments: r.path.split("/") }));
+
+    const wrong: string[] = [];
+    for (const [path, ops] of Object.entries(spec.paths)) {
+      // `{id}` in the spec is `:id` on the router; compare on shape, not name.
+      const want = path.replace(/\{\w+\}/g, ":p").split("/");
+      for (const method of Object.keys(ops)) {
+        const first = registered.find((r) => r.method === method && matches(r.segments, want));
+        if (!first) wrong.push(`${method} ${path} — no handler`);
+        else if (!same(first.segments, want)) wrong.push(`${method} ${path} — shadowed by ${first.segments.join("/")}`);
+      }
+    }
+    expect(wrong).toEqual([]);
+  });
 });
+
+/** Whether a registered route pattern would answer a request for `want`. */
+function matches(route: string[], want: string[]): boolean {
+  if (route.length !== want.length) return false;
+  return route.every((seg, i) => seg.startsWith(":") || seg === want[i]);
+}
+
+/** Same shape: literals equal, parameters in the same positions. */
+function same(route: string[], want: string[]): boolean {
+  if (route.length !== want.length) return false;
+  return route.every((seg, i) => (seg.startsWith(":") ? want[i]?.startsWith(":") === true : seg === want[i]));
+}
 
 /* -------------------------------------------------------------------- seed */
 

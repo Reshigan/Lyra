@@ -32,15 +32,21 @@ app.get("/openapi.json", (c) => c.json(openapi()));
 app.route("/v1/auth", authRoutes);
 app.route("/v1/me", meRoutes);
 
-for (const [module, resources] of Object.entries(BY_MODULE)) {
-  mountAll(app.basePath(`/v1/${module}`) as unknown as Hono<App>, resources);
-}
-
-// Hand-written routes mount after CRUD so a specific path wins over `/:id`.
+// Hand-written routes mount BEFORE generated CRUD. Hono returns handlers in
+// registration order, so whatever registers first wins a path both can serve —
+// and where both can serve one, the hand-written engine is the one that must
+// run. Generated CRUD would otherwise swallow `POST /v1/ai/runs` (the agent
+// invocation), `POST /v1/analytics/reports` (which derives the required
+// permission from the dataset instead of trusting the body) and
+// `GET /v1/dist/commission-entries/statement` (read as an id).
 app.route("/v1/dist", distRoutes);
 app.route("/v1/ledger", ledgerRoutes);
 app.route("/v1/ai", aiRoutes);
 app.route("/v1/analytics", analyticsRoutes);
+
+for (const [module, resources] of Object.entries(BY_MODULE)) {
+  mountAll(app.basePath(`/v1/${module}`) as unknown as Hono<App>, resources);
+}
 
 app.notFound((c) => onError(new Error("not found"), c));
 
