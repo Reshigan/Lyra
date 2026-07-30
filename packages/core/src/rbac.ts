@@ -77,7 +77,10 @@ export const PERMISSIONS = [
   "dist:channels:read", "dist:channels:write", "dist:channels:suspend",
   "dist:offerings:read", "dist:offerings:write", "dist:offerings:publish", "dist:offerings:withdraw",
   "dist:rates:read", "dist:rates:write", "dist:rates:approve",
-  "dist:ai:invoke", "dist:quote_requests:read", "dist:quote_requests:create", "dist:quote_requests:share",
+  // `dist:ai:invoke` is not listed here: the per-module invoke permissions are
+  // declared together further down, and declaring it twice made the catalogue
+  // 256 entries long while only 255 distinct permissions existed.
+  "dist:quote_requests:read", "dist:quote_requests:create", "dist:quote_requests:share",
   "dist:commissions:read", "dist:commissions:adjust", "dist:commissions:settle",
   "dist:offers:read", "dist:offers:surface", "dist:offers:override",
   // The commercial agreement behind a partnership. Countersigning is separate
@@ -462,7 +465,10 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
   "dev.developer": ["dev:consoles:read", "dev:sandbox:use", "dev:keys_test:issue", "core:webhooks:read"],
   "dev.admin": [
     "dev:consoles:read", "dev:sandbox:use", "dev:keys_test:issue", "dev:keys_live:issue",
-    "core:api_keys:read", "core:api_keys:create", "core:api_keys:revoke", "core:webhooks:write"
+    // `core:webhooks:read` was missing while `:write` was granted, so the
+    // integrations role could not open the webhooks tab it is meant to run.
+    "core:api_keys:read", "core:api_keys:create", "core:api_keys:revoke",
+    "core:webhooks:read", "core:webhooks:write"
   ],
 
   /* external */
