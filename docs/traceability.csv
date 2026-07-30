@@ -1,5 +1,5 @@
 req_id,requirement,priority,milestone,verify_method,integration_only,spec_ref,test_ref,evidence_ref,status,verified_by,verified_at
-PLAT-001,Every persisted table carries `tenant_id`; no table exists without it,M,M0,T,no,,,,not_started,,
+PLAT-001,Every persisted table carries `tenant_id`; no table exists without it,M,M0,T,no,docs/02 §3,packages/db/src/tenancy.test.ts::every persisted table carries tenant_id,packages/db/migrations,verified,build,2026-07-30
 PLAT-002,All data access passes the tenancy guard (`withTenant`/`tenantWhere`); a lint rule fails builds on raw cross-tenant queries,M,M0,T,no,docs/02 §3,apps/api/src/api.test.ts::scopes every query to the caller's tenant,apps/api/src/engines/report.ts,verified,build,2026-07-30
 PLAT-003,A cross-tenant read attempt returns 403/404 and raises `CrossTenantError` internally; never leaks existence,M,M0,T,no,docs/02 §3,packages/core/src/rbac.test.ts::denies across tenants before looking at permissions;packages/core/src/core.test.ts::keeps another tenant's audit rows out of the chain,"packages/core/src/rbac.ts, audit.ts",verified,build,2026-07-30
 PLAT-004,"Tenant resolution by hostname via registry (KV) → tenant record with brand, policy, entitlements, db binding",M,M1,T,no,,,,not_started,,
@@ -581,17 +581,17 @@ TXN-005,Failed and rejected transactions never post journal lines,M,P1,T,no,,,,n
 TXN-006,Every transaction type is schema-validated against its version,M,P1,T,no,,,,not_started,,
 TXN-007,Saga engine with per-step compensation; partial success impossible,M,P2,T,no,docs/19 §3,packages/ledger/src/ledger.test.ts::a failed step unwinds the ones before it,saga compensation,verified,build,2026-07-30
 TXN-008,Stalled sagas alert rather than expiring silently,M,P2,T,no,,,,not_started,,
-TXN-009,"Transaction APIs: create with idempotency header, read, reverse, adjust (permissioned, reason-coded)",M,P1,T,no,,,,not_started,,
+TXN-009,"Transaction APIs: create with idempotency header, read, reverse, adjust (permissioned, reason-coded)",M,P1,T,no,,packages/ledger/src/ledger.test.ts::replaying a transaction with the same key posts nothing new;packages/ledger/src/ledger.test.ts::returns net-zero economics and leaves the original intact,apps/api/src/routes/ledger.ts,verified,build,2026-07-30
 TXN-010,Every transaction emits `txn.{type}.{state}` events consumed idempotently,M,P1,T,no,,,,not_started,,
 TXN-020,"Distribution lifecycle transactions implemented (quote request, panel quote, presentation, bind, group bind, endorse, cancel, lapse, reinstate, renew)",M,P2,T,no,,,,not_started,,
 TXN-021,FNOL registration recorded as guidance-only with no adjudication capability,M,P3,"T,A",no,,,,not_started,,
 TXN-022,Claim status synchronisation from provider,S,P3,T,no,,,,not_started,,
-TXN-023,"Money-in transactions: premium collection, instalment, deposit, PSP settlement, chargeback and chargeback reversal",M,P2,T,no,,,,not_started,,
-TXN-024,"Money-out transactions: premium remittance, refund, payout instruction, revenue-share settlement, creator payout, supplier payment",M,P2,T,no,,,,not_started,,
-TXN-025,"Earnings transactions: commission accrual/settlement/clawback, brokerage fee, service fee, referral qualify/settle, financing commission, revenue-share accrual, advertising placement",M,P2,T,no,,,,not_started,,
+TXN-023,"Money-in transactions: premium collection, instalment, deposit, PSP settlement, chargeback and chargeback reversal",M,P2,T,no,,"packages/ledger/src/ledger.test.ts::holds for every financial transaction type, fuzzed","apps/api/src/journeys.test.ts::J-O3 money out clears: the controller instructs, a second controller decides",verified,build,2026-07-30
+TXN-024,"Money-out transactions: premium remittance, refund, payout instruction, revenue-share settlement, creator payout, supplier payment",M,P2,T,no,,packages/ledger/src/ledger.test.ts::every payout type is gated by an approval policy,"apps/api/src/journeys.test.ts::J-O3 money out clears: the controller instructs, a second controller decides",verified,build,2026-07-30
+TXN-025,"Earnings transactions: commission accrual/settlement/clawback, brokerage fee, service fee, referral qualify/settle, financing commission, revenue-share accrual, advertising placement",M,P2,T,no,,packages/ledger/src/ledger.test.ts::every financial transaction type has a posting recipe,packages/ledger/src/recipes.ts,verified,build,2026-07-30
 TXN-026,"Subscription and usage transactions: create, invoice, recognise, change with proration, cancel, usage meter, overage, credit note, dunning",M,P4,T,no,,,,not_started,,
 TXN-027,Success-fee transaction cannot post without a verified metric snapshot reference,M,P6,T,no,,,,not_started,,
-TXN-028,"Client-money transactions: receipt, permitted transfer, reconciliation, breach flag",M,P2,T,no,,,,not_started,,
+TXN-028,"Client-money transactions: receipt, permitted transfer, reconciliation, breach flag",M,P2,T,no,,packages/ledger/src/ledger.test.ts::1010 >= 2010 after any random sequence of client-money transactions;packages/ledger/src/ledger.test.ts::refuses a posting that would take client money below the liability,packages/ledger/src/recipes.ts,verified,build,2026-07-30
 TXN-029,"Partner transactions: onboarding, partner quote, partner bind, revenue-share adjustment",M,P3,T,no,,,,not_started,,
 TXN-030,"Marketplace transactions: extension install with scope consent, extension revenue share",S,P7,T,no,,,,not_started,,
 TXN-031,"Marketing transactions: media commit, media spend, budget move, publish, boost, creator brief, creator verify",M,P4,T,no,,,,not_started,,
@@ -603,7 +603,7 @@ TXN-036,Takaful surplus distribution recorded where the structure applies,S,P5,T
 TXN-037,Parametric trigger requires dual-source confirmation before any payout instruction,M,P5,T,no,,,,not_started,,
 TXN-038,Telematics ingestion and usage-based repricing recorded with declared inputs only,C,v1.1,T,no,,,,not_started,,
 TXN-050,Double-entry posting engine; every batch balances in transaction and base currency,M,P1,T,no,docs/19 §5,"packages/ledger/src/ledger.test.ts::holds for every financial transaction type, fuzzed",double-entry property test,verified,build,2026-07-30
-TXN-051,"Chart of accounts per docs/19 §5.1, tenant-scoped and extensible",M,P1,T,no,,,,not_started,,
+TXN-051,"Chart of accounts per docs/19 §5.1, tenant-scoped and extensible",M,P1,T,no,,packages/ledger/src/ledger.test.ts::the balances cache agrees with a rebuild from lines,packages/core/src/seed.ts chart of accounts,verified,build,2026-07-30
 TXN-052,Worked flow A (commission-only) posts exactly as specified,M,P2,T,no,,,,not_started,,
 TXN-053,Worked flow B (broker-collected client money) posts exactly as specified,M,P2,T,no,,,,not_started,,
 TXN-054,Client-money invariant: segregated cash ≥ client-money liability at every instant,M,P2,T,no,docs/19 §5,packages/ledger/src/ledger.test.ts::1010 >= 2010 after any random sequence of client-money transactions,"client-money invariant, property-tested",verified,build,2026-07-30
@@ -618,21 +618,21 @@ TXN-062,"Tax treatment driven by market rulepack, never inferred in code",M,P4,T
 TXN-063,Period lifecycle: open → soft-close (reason-coded adjustments) → hard-close (contra only),M,P4,T,no,docs/19 §6,packages/ledger/src/ledger.test.ts::blocks a posting into a hard-closed period unless it is a contra batch;packages/ledger/src/ledger.test.ts::will not hard close straight from open,period lifecycle,verified,build,2026-07-30
 TXN-064,Trial balance equals the sum of all journal lines at any point in time,M,P1,T,no,docs/19 §6,packages/ledger/src/ledger.test.ts::the balances cache agrees with a rebuild from lines,trial balance,verified,build,2026-07-30
 TXN-065,Revenue recognition never exceeds amounts invoiced,M,P4,T,no,,,,not_started,,
-TXN-070,"Insurer statement reconciliation with matched, variance and missing-both-ways queues",M,P2,T,no,,,,not_started,,
+TXN-070,"Insurer statement reconciliation with matched, variance and missing-both-ways queues",M,P2,T,no,,"packages/ledger/src/ledger.test.ts::matches exactly, within tolerance, and leaves the rest for a human",apps/api/src/routes/ledger.ts recon,verified,build,2026-07-30
 TXN-071,PSP settlement reconciliation clearing the clearing account to zero with fee recognition,M,P2,T,no,,,,not_started,,
-TXN-072,Client-money reconciliation producing a segregation proof bundle,M,P2,"T,D",no,,,,not_started,,
+TXN-072,Client-money reconciliation producing a segregation proof bundle,M,P2,"T,D",no,,packages/ledger/src/ledger.test.ts::client money reconciles at zero tolerance,packages/ledger/src/recon.ts,verified,build,2026-07-30
 TXN-073,Partner statement reconciliation with dispute adjustments,M,P3,T,no,,,,not_started,,
 TXN-074,Media invoice reconciliation with accrual true-up,S,P4,T,no,,,,not_started,,
-TXN-075,"Matching engine: deterministic keys, then tolerance matching, then AI proposals that require human confirmation",M,P2,T,no,,,,not_started,,
-TXN-076,AI-proposed matches are never auto-posted,M,P2,T,no,,,,not_started,,
+TXN-075,"Matching engine: deterministic keys, then tolerance matching, then AI proposals that require human confirmation",M,P2,T,no,,"packages/ledger/src/ledger.test.ts::matches exactly, within tolerance, and leaves the rest for a human",packages/ledger/src/recon.ts,verified,build,2026-07-30
+TXN-076,AI-proposed matches are never auto-posted,M,P2,T,no,,"packages/ledger/src/ledger.test.ts::matches exactly, within tolerance, and leaves the rest for a human",packages/ledger/src/recon.ts,verified,build,2026-07-30
 TXN-077,Settlement run cannot be approved with open exceptions,M,P3,T,no,,,,not_started,,
 TXN-078,"Period close produces a signed, immutable close pack",M,P4,"T,D",no,,,,not_started,,
-TXN-079,"Dual control enforced (approver ≠ initiator) for refunds above threshold, all payouts, client-money transfers and settlement batches",M,P2,T,no,,,,not_started,,
-TXN-080,"No transaction type debiting client money, issuing a payout or crossing a regulatory floor can be added to an auto-approve allowlist",M,P2,T,no,,,,not_started,,
+TXN-079,"Dual control enforced (approver ≠ initiator) for refunds above threshold, all payouts, client-money transfers and settlement batches",M,P2,T,no,,packages/ledger/src/ledger.test.ts::no payout or client-money type is auto-approvable,"apps/api/src/journeys.test.ts::J-O3 money out clears: the controller instructs, a second controller decides",verified,build,2026-07-30
+TXN-080,"No transaction type debiting client money, issuing a payout or crossing a regulatory floor can be added to an auto-approve allowlist",M,P2,T,no,,packages/ledger/src/ledger.test.ts::no payout or client-money type is auto-approvable,packages/ledger/src/recipes.ts,verified,build,2026-07-30
 TXN-081,Ledger Explorer renders posted entries with no edit affordance present in the DOM,M,P2,T,no,,,,not_started,,
 TXN-082,Money always displayed with currency and base-currency equivalent,M,P2,T,no,,,,not_started,,
-TXN-083,Reversal of any settled transaction yields net-zero economics with the original intact,M,P1,T,no,,,,not_started,,
-TXN-084,Random saga interruption at any step ends settled or fully compensated,M,P2,T,no,,,,not_started,,
+TXN-083,Reversal of any settled transaction yields net-zero economics with the original intact,M,P1,T,no,,packages/ledger/src/ledger.test.ts::returns net-zero economics and leaves the original intact;packages/ledger/src/ledger.test.ts::nets to zero even when FX left a rounding residual,packages/ledger/src/txn.ts,verified,build,2026-07-30
+TXN-084,Random saga interruption at any step ends settled or fully compensated,M,P2,T,no,,packages/ledger/src/ledger.test.ts::a failed step unwinds the ones before it,packages/ledger/src/txn.ts,verified,build,2026-07-30
 SOC-001,The business can run marketing end to end without third-party management or production tooling,M,P4,"D,A",no,,,,not_started,,
 SOC-002,Brief generator produces evidence-linked briefs; `[∫SCOUT]` whitespace auto-generates launch briefs,M,P4,T,yes,,,,not_started,,
 SOC-003,`[∫ORBIT]` Voice-of-customer angles mined from conversations under privacy filters,S,P4,T,yes,,,,not_started,,
