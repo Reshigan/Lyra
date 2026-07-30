@@ -81,6 +81,9 @@ const PEOPLE: ReadonlyArray<{ local: string; name: string; role: string; locale?
   { local: "hala.zayed", name: "Hala Zayed", role: "north.exec" },
   { local: "rana.hadid", name: "Rana Hadid", role: "north.analyst" },
   { local: "faisal.omar", name: "Faisal Omar", role: "finance.controller" },
+  // Money out is dual-control and only a controller may decide it, so one
+  // controller means no payout, refund or client-money transfer can ever clear.
+  { local: "nadia.rahman", name: "Nadia Rahman", role: "finance.controller" },
   { local: "mona.idris", name: "Mona Idris", role: "finance.analyst" },
   { local: "raed.samir", name: "Raed Samir", role: "dev.admin" }
 ];

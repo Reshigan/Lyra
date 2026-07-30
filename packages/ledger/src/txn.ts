@@ -299,7 +299,11 @@ export async function runTxn(ctx: Ctx, input: OpenTxnInput, opts: RunOptions = {
       await transition(ctx, txn.id, "settled");
     }
   } catch (err) {
-    await failTxn(ctx, txn.id, err);
+    // An approval gate is a pause, not a failure. Burning the transaction here
+    // would make the retry-with-approval hit "already failed" forever, so every
+    // dual-control payout would be unpayable. The row stays in `validated` and
+    // the retry resumes at the gate.
+    if ((err as { code?: string }).code !== "approval_required") await failTxn(ctx, txn.id, err);
     throw err;
   }
 

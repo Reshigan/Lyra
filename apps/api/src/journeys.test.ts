@@ -40,6 +40,9 @@ const PEOPLE: Record<string, string> = {
   "north.exec": "hala.zayed",
   "north.analyst": "rana.hadid",
   "finance.controller": "faisal.omar",
+  // Second controller: dual control means money out needs one of these to
+  // initiate and a different one to decide.
+  "finance.approver": "nadia.rahman",
   "finance.analyst": "mona.idris",
   "dev.admin": "raed.samir"
 };
@@ -518,6 +521,36 @@ describe("J-O3 month-end reconciliation", () => {
       201
     );
     expect(run.run ?? run).toBeTruthy();
+  });
+
+  it("money out clears: the controller instructs, a second controller decides", async () => {
+    // Client money, payouts and refunds are all dual-control and only a
+    // controller may decide them. With a single controller in the tenant the
+    // whole money-out side is unpayable, so the seed carries two.
+    const paid = ok(
+      await throughApproval("finance.controller", "finance.approver", "POST", "/v1/ledger/txn/PAYOUT-INSTRUCT", {
+        idempotencyKey: "j-o3-payout-1",
+        currency: "AED",
+        args: { amountMinor: 25_000_00, memo: "channel share to broker" }
+      }),
+      201
+    );
+    expect(paid.txn.state).toBe("settled");
+
+    const remitted = ok(
+      await throughApproval("finance.controller", "finance.approver", "POST", "/v1/ledger/txn/PREM-REMIT", {
+        idempotencyKey: "j-o3-remit-1",
+        currency: "AED",
+        args: { amountMinor: 275_000_00, memo: "remitted to underwriter" }
+      }),
+      201
+    );
+    expect(remitted.txn.state).toBe("settled");
+
+    const tb = ok(await call("finance.controller", "GET", "/v1/ledger/reports/trial-balance"));
+    const debits = tb.rows.reduce((s: number, r: any) => s + (r.debitMinor ?? 0), 0);
+    const credits = tb.rows.reduce((s: number, r: any) => s + (r.creditMinor ?? 0), 0);
+    expect(debits).toBe(credits);
   });
 
   it("the analyst may run a reconciliation but not close the period", async () => {
