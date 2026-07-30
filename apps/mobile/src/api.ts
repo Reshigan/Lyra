@@ -119,6 +119,10 @@ export interface Brand {
   name?: string;
   logo?: { light?: string; dark?: string; mark?: string };
   palette?: { accent?: string; accentHover?: string; accentContrast?: string };
+  /** One of BrandJson's approved typefaces (packages/db/src/json.ts). Typed as a
+   *  plain string on purpose: it arrives over the wire, so it is validated at
+   *  the point it becomes a style (theme.ts `fontFamilyFor`), not by this type. */
+  font?: string;
 }
 
 export interface Me {

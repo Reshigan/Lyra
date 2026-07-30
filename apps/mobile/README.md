@@ -54,10 +54,50 @@ the binary.
   key is deleted.
 - **Locale and direction.** `en` and `ar` catalogues, locale from `/v1/me`
   falling back to the device. `ar` sets `I18nManager` RTL and every screen uses
-  logical (start/end) edges and `writingDirection`.
+  logical (start/end) edges. Every piece of text goes through `textOf()`
+  (`src/ui.tsx`), which sets `writingDirection` *and* an explicit `textAlign` —
+  natural alignment follows `I18nManager.isRTL`, which only flips on the next
+  launch, so without it the first Arabic session renders left-aligned.
 - **Accessibility.** 44pt minimum touch targets, `accessibilityRole`/`Label`/
   `State` on every interactive element, errors announced as live-region alerts,
-  Deep Field palette contrast ≥ 4.5:1 for body text.
+  Deep Field palette contrast ≥ 4.5:1 for body text. The stack draws no native
+  header, so the list and detail screens carry their own **Back** control: an
+  edge swipe is not something a screen-reader or switch-control user can perform.
+- **Brand.** Name, logo, the three accent tokens (`accent`, `accentHover`,
+  `accentContrast`) and the typeface all come from `tenant.brand` — see
+  *Typeface* below for what the typeface can and cannot do on a device.
+
+## Typeface
+
+`brand.font` is validated against the same three approved values `BrandJson`
+allows (`packages/db/src/json.ts`) and the same set the web shell maps to
+`--font-display`/`--font-ui` (`apps/web/app/components/shell.tsx`). The lookup
+is `src/theme.ts` `fontFamilyFor` — a `Map`, not an object literal, so a
+tenant-supplied `__proto__` or `constructor` resolves to nothing rather than to
+something inherited. Anything off the list falls back to the platform typeface.
+The resolved family is applied to every `Text` and `TextInput` through
+`textOf()`.
+
+**What this does not do on a stock build:** nothing here *registers* those
+families. React Native's `fontFamily` is one registered family name — there is
+no font stack, no `system-ui` fallback, no `@font-face`. This repo ships no font
+assets, and `expo-font` is not a dependency of this package, so on a build made
+from this repo all three approved values resolve to the platform typeface (San
+Francisco / Roboto), which is the same as choosing none. It does not fail, and
+Arabic still renders, because the platform typeface has Arabic coverage.
+
+The mapping is the seam, not decoration: making a tenant's saved typeface
+actually render needs three things this repo does not have — the `.ttf` files
+committed as assets, `expo-font` added as a direct dependency, and an
+`["expo-font", { fonts: [...] }]` entry in `app.json` so the family is
+registered natively at build time. Add those in a white-label build and the
+tenant's choice starts rendering with no change to this code.
+
+(The web shell no longer has the mirror-image gap: `packages/ui/src/tokens.css`
+declares `@font-face` for all four families and `apps/web/public/fonts/` ships
+the woff2 files — see `packages/ui/FONTS.md`. Those files are **woff2 only** and
+subsetted, so they are not usable here: React Native loads `.ttf`/`.otf`, and
+the Latin cuts carry no Arabic coverage.)
 
 ## What does not work / is deliberately absent
 
@@ -80,7 +120,11 @@ the binary.
 - **No pagination.** First 50 rows only. The API's `cursor` is parsed and
   ignored; there is no infinite scroll and no pull-to-refresh.
 - **No offline.** No cache, no outbox, no optimistic writes. Every screen is a
-  live fetch; no network means an error and a retry button.
+  live fetch; no network means an error and a retry button — including at
+  launch: a stored session that cannot reach `/v1/me` keeps its token and shows
+  the reason plus a retry on the sign-in screen, rather than presenting a bare
+  password form to someone who is merely offline.
+- **No custom fonts bundled.** See *Typeface* above.
 - **No push notifications, no deep links** beyond the `lyra://` scheme being
   declared, **no biometrics**, **no camera/document capture**, **no maps**,
   **no tabs** (a single stack), **no web target**.
@@ -100,7 +144,9 @@ unreadable keystore reads as signed-out), the nav-href → route/resource mappin
 (including that every href `apps/api/src/routes/me.ts` can return has a label
 key both catalogues translate), generic row title/subtitle/field derivation, the
 sign-in step machine (which screen a login response and a 403 `mfa_required`
-each land on), and i18n + brand-token resolution.
+each land on), and i18n + brand-token resolution — including the typeface
+mapping (the approved three, and that an unapproved or prototype-chain value
+never reaches a style) and all three accent tokens.
 
 **Nothing renders in the tests.** There is no component test: that needs
 `jest-expo` and a React Native transform, which is a second test runner in the

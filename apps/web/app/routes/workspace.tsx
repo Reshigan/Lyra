@@ -11,7 +11,6 @@ import { cloudflare } from "../context";
 import { ApiError, fetchMe } from "../api.server";
 import { Shell } from "../components/shell";
 import { translator } from "../i18n";
-import { landingFor } from "../routing";
 
 // Everything behind a session hangs off this layout. One bootstrap call feeds
 // the whole shell: actor, tenant brand, permissions and the nav the API already
@@ -36,10 +35,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     throw error;
   }
 
-  // docs/07 §3: "/" is not a screen, it is a decision about where this actor
-  // works. Made here so it costs no extra round trip.
-  if (new URL(request.url).pathname === "/") throw redirect(landingFor(me.roles, me.nav));
-
+  // "/" used to redirect to the actor's primary workspace. It is now a real
+  // screen (routes/home.tsx): what is waiting on me, how the business is doing,
+  // where I go next — which beats being teleported into a list.
   return {
     locale: me.locale,
     nav: me.nav,

@@ -27,7 +27,7 @@ const { entriesFor, labelKeyFor, navKeyFor, resourceFor, resourceForNavKey, rout
   await import("./nav");
 const { subtitleOf, titleOf, fieldsOf } = await import("./rows");
 const { CATALOGUES, en, dirFor, resolveLocale, translator } = await import("./i18n");
-const { themeFor, productName } = await import("./theme");
+const { fontFamilyFor, themeFor, productName } = await import("./theme");
 const { ApiError, mfaStepOf, stepAfterClearing, stepAfterLogin } = await import("./api");
 
 describe("token store", () => {
@@ -249,5 +249,52 @@ describe("i18n and brand", () => {
     // that is not a colour never reaches a style.
     expect(themeFor(null).accent).toBe("#ffb020");
     expect(themeFor({ palette: { accent: "red; drop table" } }).accent).toBe("#ffb020");
+  });
+
+  it("maps all three accent tokens the web contract defines", () => {
+    // apps/web/app/components/shell.tsx brandStyle re-maps exactly --accent,
+    // --accent-hover and --accent-contrast; mobile must honour the same three or
+    // a tenant's button text ends up unreadable on its own accent.
+    const theme = themeFor({
+      palette: { accent: "#123456", accentHover: "#0a1a2b", accentContrast: "#ffffff" }
+    });
+    expect([theme.accent, theme.accentHover, theme.accentContrast]).toEqual([
+      "#123456",
+      "#0a1a2b",
+      "#ffffff"
+    ]);
+    // A partial override leaves the rest of the default skin intact rather than
+    // producing a half-branded palette.
+    const partial = themeFor({ palette: { accent: "#123456" } });
+    expect(partial.accentHover).toBe("#d98e0b");
+    expect(partial.accentContrast).toBe("#412402");
+  });
+
+  it("maps only the approved typefaces, and nothing else, to a font family", () => {
+    // The same enum BrandJson.font validates (packages/db/src/json.ts) and the
+    // same set apps/web FONT_STACKS maps.
+    expect(fontFamilyFor("space-grotesk")).toBe("Space Grotesk");
+    expect(fontFamilyFor("inter")).toBe("Inter");
+    expect(fontFamilyFor("ibm-plex-sans-arabic")).toBe("IBM Plex Sans Arabic");
+  });
+
+  it("never lets an unapproved or hostile font value reach a style", () => {
+    expect(fontFamilyFor(undefined)).toBeUndefined();
+    expect(fontFamilyFor("")).toBeUndefined();
+    expect(fontFamilyFor("Comic Sans")).toBeUndefined();
+    // The reason this is a Map and not an object literal: an object literal
+    // answers these from the prototype and hands a function to fontFamily.
+    for (const hostile of ["__proto__", "constructor", "toString", "hasOwnProperty"]) {
+      expect(fontFamilyFor(hostile), hostile).toBeUndefined();
+    }
+    expect(themeFor({ font: "__proto__" }).font).toBeUndefined();
+  });
+
+  it("reads the tenant typeface off the brand payload, and defaults to none", () => {
+    expect(themeFor({ font: "inter" }).font).toBe("Inter");
+    // No brand, or a brand that never chose one: the platform typeface, which is
+    // what `fontFamily: undefined` means to React Native.
+    expect(themeFor(null).font).toBeUndefined();
+    expect(themeFor({ name: "Northwind" }).font).toBeUndefined();
   });
 });

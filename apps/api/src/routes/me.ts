@@ -89,8 +89,19 @@ meRoutes.patch("/", async (c) => {
     .update(schema.users)
     .set({ ...input, updatedAt: ctx.now })
     .where(and(eq(schema.users.tenantId, ctx.tenantId), eq(schema.users.id, ctx.actor.id)));
-  await audit(ctx, { action: "core.user.update_self", subjectRef: ctx.actor.id, before, after: input });
-  return c.json({ ...before, ...input, updatedAt: ctx.now });
+  // Neither the audit image nor the response may carry the whole user row: it
+  // holds `passwordHash`, `mfaSecret` and `mfaRecoveryJson`, and an audit row is
+  // readable with `core:audit:read`. Only the two editable fields matter here.
+  const was = { name: before.name, locale: before.locale };
+  await audit(ctx, { action: "core.user.update_self", subjectRef: ctx.actor.id, before: was, after: input });
+  return c.json({
+    id: before.id,
+    name: input.name ?? before.name,
+    email: before.email,
+    locale: input.locale ?? before.locale,
+    status: before.status,
+    updatedAt: ctx.now
+  });
 });
 
 const PasswordBody = z.object({

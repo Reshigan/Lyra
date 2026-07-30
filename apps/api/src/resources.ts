@@ -1,6 +1,13 @@
 import { schema } from "@lyra/db";
 import { CUSTOMER_PII } from "@lyra/core";
 import { register, type Resource } from "./crud.js";
+import {
+  dashboardVisible,
+  exportVisible,
+  reportRunVisible,
+  reportVisible,
+  savedViewVisible
+} from "./routes/analytics.js";
 
 // Every table the API exposes as CRUD, in one list. A table that is missing here
 // has no HTTP surface at all, which is the intended default for anything the
@@ -54,6 +61,11 @@ export const CORE = register(
   r("users", schema.users, "us", "core", rcud("core:users"), {
     searchable: ["name", "email"],
     pii: { email: "email", phone: "phone", name: "name" },
+    // ...and never comes back out either. Refusing a credential in the body
+    // while `GET /users/:id` returned it was half a defence: the hash is what an
+    // offline cracker wants, and `mfa_secret` is the second factor itself —
+    // anyone who read it could mint valid codes forever.
+    secretColumns: ["passwordHash", "mfaSecret", "mfaRecoveryJson"],
     // A credential must never round-trip through a CRUD body — not the password
     // hash, not the TOTP secret, and not the recovery codes that bypass it.
     beforeWrite: (_ctx, values) => {
@@ -88,7 +100,10 @@ export const CORE = register(
     read: "core:files:read",
     create: "core:files:create",
     remove: "core:files:delete"
-  }, { searchable: ["filename"] }),
+    // ponytail: no filename column exists — files are found by what they are
+    // attached to. Add a `filename` column and put it here when someone needs
+    // to search by the name the browser uploaded.
+  }, { searchable: ["subjectRef"] }),
   r("approvals", schema.approvals, "apr", "core", ro("core:approvals:read")),
   r("mandates", schema.mandates, "mnd", "core", ru("core:settings")),
   r("identity-verifications", schema.identityVerifications, "idv", "core", ro("core:customers:read")),
@@ -99,16 +114,28 @@ export const CORE = register(
     create: "compliance:rulepacks:apply",
     update: "compliance:rulepacks:apply"
   }),
+  // No `create` here on purpose: minting a key generates a plaintext that is
+  // shown once and never stored, so generated CRUD (which would want the client
+  // to supply `prefix` and `keyHash`) cannot serve it. POST /v1/core/api-keys
+  // lives in routes/core.ts; list and record still come from here.
   r("api-keys", schema.apiKeys, "key", "core", {
     read: "core:api_keys:read",
     remove: "core:api_keys:revoke"
+  }, {
+    // The hash is the whole verification test: `sha256(presented) === keyHash`.
+    // Handing it out turns a read permission into an offline oracle for guessing
+    // a live key. The plaintext is shown once at mint and nowhere else.
+    secretColumns: ["keyHash"]
   }),
   // The client secret is never here: the row names a worker secret, it does not
   // hold one (routes/sso.ts).
   r("identity-providers", schema.identityProviders, "idp", "core", rw("core:identity_providers"), {
     searchable: ["name", "emailDomain"]
   }),
-  r("webhooks", schema.webhooks, "whk", "core", rw("core:webhooks")),
+  // `secret` is the raw HMAC signing key, not a hash of one: whoever reads it
+  // can forge a delivery the receiver will verify as ours. It is writable (a
+  // tenant sets or rotates it) and never readable back.
+  r("webhooks", schema.webhooks, "whk", "core", rw("core:webhooks"), { secretColumns: ["secret"] }),
   r("webhook-deliveries", schema.webhookDeliveries, "whd", "core", ro("core:webhooks:read")),
   r("notifications", schema.notifications, "ntf", "core", ro("core:notifications:read")),
   r("audit-log", schema.auditLog, "aud", "core", ro("core:audit:read"), { immutable: true }),
@@ -130,7 +157,7 @@ export const DIST = register(
   r("commission-rates", schema.distCommissionRates, "cr", "dist", {
     read: "dist:rates:read",
     create: "dist:rates:write"
-  }, { immutable: true, approval: { create: "dist.rate_change" } }),
+  }, { immutable: true, actorColumns: ["createdBy"], approval: { create: "dist.rate_change" } }),
   r("quote-requests", schema.distQuoteRequests, "qr", "dist", {
     read: "dist:quote_requests:read",
     create: "dist:quote_requests:create",
@@ -140,7 +167,11 @@ export const DIST = register(
   r("commission-entries", schema.distCommissionEntries, "ce", "dist", {
     read: "dist:commissions:read",
     update: "dist:commissions:adjust"
-  }, { approval: { update: "dist.commission_adjust", amountField: "netMinor" } }),
+  }, {
+    // `netCommissionMinor` is the column; the old `netMinor` (a settlements
+    // column) named nothing here, so the approval carried no amount at all.
+    approval: { update: "dist.commission_adjust", amountField: "netCommissionMinor" }
+  }),
   r("next-best-offers", schema.distNextBestOffers, "nb", "dist", {
     read: "dist:offers:read",
     update: "dist:offers:override"
@@ -150,7 +181,7 @@ export const DIST = register(
 /* -------------------------------------------------------------------- axis */
 
 export const AXIS = register(
-  r("cases", schema.axisCases, "cas", "axis", rcud("axis:cases"), { searchable: ["reference", "title"] }),
+  r("cases", schema.axisCases, "cas", "axis", rcud("axis:cases"), { searchable: ["ref"] }),
   r("quotes", schema.axisQuotes, "qt", "axis", {
     read: "axis:quotes:read",
     create: "axis:quotes:create",
@@ -161,7 +192,7 @@ export const AXIS = register(
     create: "axis:documents:upload",
     update: "axis:documents:verify"
   }),
-  r("tasks", schema.axisTasks, "tsk", "axis", rw("axis:tasks")),
+  r("tasks", schema.axisTasks, "tsk", "axis", rw("axis:tasks"), { actorColumns: ["createdBy"] }),
   r("case-approvals", schema.axisApprovals, "cap", "axis", ro("axis:cases:approve")),
   r("policies", schema.axisPolicies, "pol", "axis", {
     read: "axis:policies:read",
@@ -171,8 +202,12 @@ export const AXIS = register(
   r("escrow-batches", schema.axisEscrowBatches, "esc", "axis", {
     read: "axis:escrow:read",
     update: "axis:escrow:reconcile"
-  }, { approval: { update: "axis.escrow_release", amountField: "amountMinor" } }),
-  r("sops", schema.axisSops, "sop", "axis", rw("axis:sops")),
+  }, {
+    // The batch has no `amountMinor`; what is released is what was received,
+    // so the reviewer sees `receivedMinor` rather than nothing.
+    approval: { update: "axis.escrow_release", amountField: "receivedMinor" }
+  }),
+  r("sops", schema.axisSops, "sop", "axis", rw("axis:sops"), { actorColumns: ["createdBy"] }),
   r("process-events", schema.axisProcessEvents, "pev", "axis", ro("axis:metrics:read"), { immutable: true }),
   r("claims", schema.axisClaims, "clm", "axis", {
     read: "axis:claims:read",
@@ -192,12 +227,14 @@ export const ORBIT = register(
   r("messages", schema.orbitMessages, "msg", "orbit", {
     read: "orbit:messages:read",
     create: "orbit:messages:send"
-  }, { immutable: true, pii: { body: "text" } }),
+    // The column is `content`; `body` named nothing, so every message body was
+    // readable without `core:pii:view` — a masking rule that masked no column.
+  }, { immutable: true, pii: { content: "text" } }),
   r("renewals", schema.orbitRenewals, "rnw", "orbit", {
     read: "orbit:renewals:read",
     update: "orbit:renewals:update"
   }),
-  r("journeys", schema.orbitJourneys, "jrn", "orbit", rw("orbit:journeys")),
+  r("journeys", schema.orbitJourneys, "jrn", "orbit", rw("orbit:journeys"), { actorColumns: ["createdBy"] }),
   r("journey-runs", schema.orbitJourneyRuns, "jrr", "orbit", ro("orbit:journeys:read")),
   r("partners", schema.orbitPartners, "ptn", "orbit", {
     read: "orbit:partners:read",
@@ -209,7 +246,7 @@ export const ORBIT = register(
   r("qa-scores", schema.orbitQaScores, "qas", "orbit", {
     read: "orbit:qa:read",
     create: "orbit:qa:score"
-  })
+  }, { actorColumns: ["scoredBy"] })
 );
 
 /* ------------------------------------------------------------------ signal */
@@ -219,12 +256,18 @@ export const SIGNAL = register(
     read: "signal:audiences:read",
     create: "signal:audiences:create",
     update: "signal:audiences:create"
-  }),
+  }, { actorColumns: ["createdBy"] }),
   r("campaigns", schema.signalCampaigns, "cmp", "signal", {
     read: "signal:campaigns:read",
     create: "signal:campaigns:create",
     update: "signal:campaigns:update"
-  }, { searchable: ["name"], approval: { update: "signal.campaign_launch", amountField: "budgetMinor" } }),
+  }, {
+    searchable: ["name"],
+    // No amountField: a campaign's budget lives in `budgetJson` (per channel,
+    // per period), not in a scalar column, and `amountField` reads one column.
+    // The launch approval shows the campaign, not a number.
+    approval: { update: "signal.campaign_launch" }
+  }),
   r("creatives", schema.signalCreatives, "crv", "signal", {
     read: "signal:creatives:read",
     create: "signal:creatives:generate",
@@ -363,6 +406,7 @@ export const LEDGER = register(
 export const AI = register(
   r("agents", schema.aiAgents, "agt", "ai", rw("ai:agents")),
   r("prompts", schema.aiPrompts, "prm", "ai", rw("ai:prompts"), {
+    actorColumns: ["createdBy"],
     approval: { update: "ai.prompt_publish" }
   }),
   r("runs", schema.aiRuns, "run", "ai", ro("ai:runs:read"), { immutable: true }),
@@ -396,46 +440,63 @@ export const COMPLIANCE = register(
   r("disclosures", schema.disclosures, "dsc", "compliance", ro("compliance:disclosures:read"), {
     immutable: true
   }),
-  r("screenings", schema.screenings, "scr", "compliance", {
-    read: "compliance:screenings:read",
-    create: "compliance:screenings:run"
-  }),
-  r("retention-runs", schema.retentionRuns, "ret", "compliance", {
-    read: "compliance:retention:read",
-    create: "compliance:retention:run"
-  }),
+  // Read-only here: these three are produced by run/export endpoints in
+  // routes/compliance.ts, which hash and gather server-side. A generated
+  // `create` would let a caller post the hash it wants.
+  r("screenings", schema.screenings, "scr", "compliance", ro("compliance:screenings:read")),
+  r("retention-runs", schema.retentionRuns, "ret", "compliance", ro("compliance:retention:read")),
   r("legal-holds", schema.legalHolds, "lgh", "compliance", rw("compliance:legal_holds"), {
+    actorColumns: ["placedBy"],
     approval: { remove: "compliance.legal_hold_release" }
   }),
-  r("evidence-bundles", schema.evidenceBundles, "evb", "compliance", {
-    read: "compliance:evidence:read",
-    create: "compliance:evidence:export"
-  }, { immutable: true }),
-  r("incidents", schema.incidents, "inc", "compliance", rw("compliance:incidents")),
+  r("evidence-bundles", schema.evidenceBundles, "evb", "compliance", ro("compliance:evidence:read"), {
+    immutable: true,
+    actorColumns: ["requestedBy"]
+  }),
+  r("incidents", schema.incidents, "inc", "compliance", rw("compliance:incidents"), {
+    actorColumns: ["openedBy"]
+  }),
   r("rulepack-applications", schema.rulepackApplications, "rpa", "compliance", {
     read: "compliance:rulepacks:read",
     create: "compliance:rulepacks:apply"
   }),
-  r("policy-thresholds", schema.policyThresholds, "pth", "compliance", rw("compliance:thresholds"))
+  r("policy-thresholds", schema.policyThresholds, "pth", "compliance", rw("compliance:thresholds"), {
+    actorColumns: ["setBy"]
+  })
 );
 
 /* --------------------------------------------------------------- analytics */
 
 export const ANALYTICS = register(
+  // The row rules live beside the module routes that also enforce them, so a
+  // record read through generic CRUD and the same record read through
+  // /v1/analytics/* cannot disagree.
   r("dashboards", schema.dashboards, "dsh", "analytics", rw("analytics:dashboards"), {
-    searchable: ["name"]
+    searchable: ["name"],
+    rowVisible: dashboardVisible as NonNullable<Resource["rowVisible"]>
   }),
-  r("reports", schema.reports, "rpt", "analytics", rw("analytics:reports"), { searchable: ["name"] }),
+  r("reports", schema.reports, "rpt", "analytics", rw("analytics:reports"), {
+    searchable: ["name"],
+    rowVisible: reportVisible as NonNullable<Resource["rowVisible"]>
+  }),
   r("report-runs", schema.reportRuns, "rrn", "analytics", {
     read: "analytics:reports:read",
     create: "analytics:reports:run"
-  }),
+  }, { actorColumns: ["requestedBy"], rowVisible: reportRunVisible as NonNullable<Resource["rowVisible"]> }),
   r("exports", schema.analyticsExports, "exp", "analytics", {
     read: "analytics:exports:download",
     create: "analytics:exports:create"
-  }, { immutable: true }),
-  r("schedules", schema.analyticsSchedules, "sch", "analytics", rw("analytics:schedules")),
-  r("saved-views", schema.savedViews, "svw", "analytics", rw("analytics:saved_views")),
+  }, {
+    immutable: true,
+    actorColumns: ["requestedBy"],
+    rowVisible: exportVisible as NonNullable<Resource["rowVisible"]>
+  }),
+  r("schedules", schema.analyticsSchedules, "sch", "analytics", rw("analytics:schedules"), {
+    actorColumns: ["createdBy"]
+  }),
+  r("saved-views", schema.savedViews, "svw", "analytics", rw("analytics:saved_views"), {
+    rowVisible: savedViewVisible as NonNullable<Resource["rowVisible"]>
+  }),
   r("unit-economics", schema.unitEconomics, "uec", "analytics", ro("analytics:reports:read")),
   r("journey-events", schema.journeyEvents, "jev", "analytics", ro("analytics:reports:read"), {
     immutable: true

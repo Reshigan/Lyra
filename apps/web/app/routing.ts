@@ -2,13 +2,18 @@
 // says nothing about what a person may see — visibility and labels come from
 // /v1/me, so a role change takes effect on the next request (docs/07 §3).
 
-/** Module workspaces, in rail order. */
+/** Module workspaces, in rail order. Must match what /v1/me can emit, or the
+ *  rail silently drops an item the actor is entitled to (isRouted filters it). */
 export const WORKSPACE_PATHS = [
   "/axis",
   "/orbit",
   "/signal",
   "/scout",
   "/north",
+  "/distribution",
+  "/ledger",
+  "/analytics",
+  "/compliance",
   "/admin",
   "/settings"
 ] as const;
@@ -22,7 +27,32 @@ export type WorkspacePath = (typeof WORKSPACE_PATHS)[number];
 export const HIDDEN_ROUTES: Record<string, string> = {
   "/login": "pre-session: renders outside the shell, so there is no nav to be in",
   "/logout": "action only, no UI",
-  "/settings": "reached from the account menu in the header, not the module rail"
+  "/settings": "reached from the account menu in the header, not the module rail",
+  "/approvals": "reached from the decisions-waiting panel on the home dashboard",
+  "/admin/ai/console": "a screen inside the admin workspace, reached from its AI tabs",
+  "/admin/ai/budget": "the AI spending ceilings, reached from the admin workspace tools list",
+  "/admin/ai/runs/:id": "opens one agent run from the AI runs list or the console",
+  "/ledger/reports/:report": "a report inside the ledger workspace, reached from its tabs",
+  "/ledger/transactions": "opens a transaction inside the ledger workspace, linked from its tools list",
+  "/ledger/transactions/:id": "opens one transaction from the ledger transactions list",
+  "/ledger/period-close": "closes an accounting period, linked from the ledger workspace tools list",
+  "/ledger/statement": "one account's journal lines, linked from the ledger workspace tools list",
+  "/ledger/recon": "reconciliation runs inside the ledger workspace, linked from its tools list",
+  "/analytics/report/:id": "opens one saved report from the analytics report list",
+  "/analytics/dashboard/:id": "opens one dashboard from the analytics dashboard list",
+  "/distribution/quote-requests/:id/compare": "opens from a single quote request record",
+  "/orbit/conversations/:id/thread": "opens from a single conversation record",
+  "/distribution/commission-entries/statement":
+    "a report inside the distribution workspace, linked from its commission tab",
+  "/distribution/commission-entries/:id/clawback":
+    "opens from a single commission entry on the statement",
+  "/distribution/next-best-offers/suggest":
+    "asks for offers inside the distribution workspace, linked from its offers tab",
+  "/compliance/run/:kind":
+    "starts a screening, evidence export or retention run, linked from the compliance workspace",
+  "/:module": "the generic workspace list; the rail links the real paths",
+  "/:module/:resource": "a resource tab inside a workspace, linked from its tab strip",
+  "/:module/:resource/:id": "a single record, linked from the list that holds it"
 };
 
 /**

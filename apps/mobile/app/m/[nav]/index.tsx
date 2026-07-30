@@ -15,6 +15,7 @@ import {
   Title,
   errorKeyFor,
   requestIdOf,
+  textOf,
   type Chrome
 } from "../../../src/ui";
 import { useLoad } from "../../../src/useLoad";
@@ -59,6 +60,17 @@ export default function ModuleList() {
       }}
       ListHeaderComponent={
         <View style={{ gap: SPACE.md, marginBottom: SPACE.xs }}>
+          {/* The stack draws no header (app/_layout.tsx), so this is the only
+              way back other than an edge swipe — which is not a control a
+              screen-reader or switch-control user can reach. */}
+          <View style={{ alignSelf: session.dir === "rtl" ? "flex-end" : "flex-start" }}>
+            <Button
+              chrome={chrome}
+              variant="quiet"
+              label={t("nav.back")}
+              onPress={() => router.back()}
+            />
+          </View>
           <Title chrome={chrome}>{heading}</Title>
           {page.loading ? <Muted chrome={chrome}>{t("app.loading")}</Muted> : null}
           {page.error ? (
@@ -104,12 +116,12 @@ export default function ModuleList() {
           >
             <Text
               numberOfLines={2}
-              style={{ color: theme.text, fontSize: TEXT.s16, writingDirection: session.dir }}
+              style={textOf(chrome, { color: theme.text, fontSize: TEXT.s16 })}
             >
               {title}
             </Text>
             {subtitle ? (
-              <Text style={{ color: theme.muted, fontSize: TEXT.s13, writingDirection: session.dir }}>
+              <Text style={textOf(chrome, { color: theme.muted, fontSize: TEXT.s13 })}>
                 {subtitle}
               </Text>
             ) : null}

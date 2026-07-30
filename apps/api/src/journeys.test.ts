@@ -428,7 +428,6 @@ describe("J-O1 clearing the exception queue", () => {
       await call("axis.agent", "POST", "/v1/axis/tasks", {
         type: "document_missing",
         titleKey: "task.document_missing",
-        createdBy: "axis.agent",
         caseId,
         state: "open"
       }),
@@ -543,6 +542,27 @@ describe("J-O3 month-end reconciliation", () => {
     expect(run.run ?? run).toBeTruthy();
   });
 
+  it("a resubmitted statement starts one run, not two", async () => {
+    // A run posts matches against money, so a retried submit must replay the
+    // first run rather than open a second against the same statement.
+    const body = {
+      process: "client_money",
+      period: "2026-01",
+      currency: "AED",
+      lines: [{ ref: "BANK-2", amountMinor: 300_000_00, currency: "AED", description: "retry" }]
+    };
+    const key = { "idempotency-key": "j-o3-recon-1" };
+    const first = ok(await call("finance.analyst", "POST", "/v1/ledger/recon/runs", body, key), 201);
+    const second = ok(await call("finance.analyst", "POST", "/v1/ledger/recon/runs", body, key), 201);
+
+    expect(second.runId).toBe(first.runId);
+    const runs = await database
+      .select()
+      .from(schema.ledgerReconRuns)
+      .where(eq(schema.ledgerReconRuns.id, first.runId));
+    expect(runs).toHaveLength(1);
+  });
+
   it("money out clears: the controller instructs, a second controller decides", async () => {
     // Client money, payouts and refunds are all dual-control and only a
     // controller may decide them. With a single controller in the tenant the
@@ -609,7 +629,6 @@ describe("J-X1 catching a handover", () => {
       conversationId: list.data[0].id,
       rubricKey: "handover.quality",
       score: 4,
-      scoredBy: "orbit.agent",
       ts: Date.now()
     });
     expect(denied.status).toBe(403);
@@ -744,8 +763,7 @@ describe("J-M1 a campaign in a day", () => {
     const audience = ok(
       await call("signal.lead", "POST", "/v1/signal/audiences", {
         name: "Motor renewals, 30 days",
-        definitionJson: JSON.stringify({ segment: "renewals", withinDays: 30 }),
-        createdBy: "signal.lead"
+        definitionJson: JSON.stringify({ segment: "renewals", withinDays: 30 })
       }),
       201
     );
@@ -928,8 +946,7 @@ describe("J-P2 panel negotiation", () => {
       channelId: seeded.channels.brokerAlpha,
       baseCommissionPpm: 150_000,
       channelSharePpm: 500_000,
-      effectiveFrom: Date.now(),
-      createdBy: "amina.saleh"
+      effectiveFrom: Date.now()
     });
     // dist.rate_change is never auto-approved and always dual control, so the
     // first attempt is always a refusal carrying an approval id.
@@ -1139,12 +1156,42 @@ describe("J-A3 pausing an agent mid-incident", () => {
         kind: "ai_behaviour",
         title: "Quoting agent paused after a pricing anomaly",
         severity: "medium",
-        state: "open",
-        openedBy: "khalid.rashed"
+        state: "open"
       }),
       201
     );
     expect(incident.state).toBe("open");
+    // Nobody types who they are: the session says it (SEC — actor columns).
+    expect(incident.openedBy).toBe(`user:${seeded.users["tenant.compliance"]}`);
+  });
+
+  it("an actor column cannot be forged from the request body", async () => {
+    const forged = await call("tenant.compliance", "POST", "/v1/compliance/incidents", {
+      kind: "ai_behaviour",
+      title: "Filed under someone else's name",
+      severity: "low",
+      state: "open",
+      openedBy: `user:${seeded.users["tenant.admin"]}`
+    });
+    expect(forged.status).toBe(400);
+    // Same rule for the other two compliance actor columns.
+    const hold = ok(
+      await call("tenant.compliance", "POST", "/v1/compliance/legal-holds", {
+        subjectRef: "case:cas_1",
+        reason: "Regulator request 2026-14"
+      }),
+      201
+    );
+    expect(hold.placedBy).toBe(`user:${seeded.users["tenant.compliance"]}`);
+    const threshold = ok(
+      await call("tenant.compliance", "POST", "/v1/compliance/policy-thresholds", {
+        key: "axis.bind",
+        valueJson: { amountMinor: 5_000_000 },
+        effectiveFrom: Date.now()
+      }),
+      201
+    );
+    expect(threshold.setBy).toBe(`user:${seeded.users["tenant.compliance"]}`);
   });
 });
 

@@ -7,10 +7,33 @@ import {
   ScrollRestoration,
   useRouteError,
   useRouteLoaderData,
+  type LinksFunction,
   type LoaderFunctionArgs
 } from "react-router";
 import "./app.css";
 import { DEFAULT_LOCALE, dirFor, localeFrom, translator } from "./i18n";
+
+// Only the two first-paint faces (packages/ui/FONTS.md §"Known gap: preload").
+// The mono and the four Arabic cuts are discovered when they first match an
+// element — preloading them would fetch bytes most page loads never render.
+// `crossOrigin` is mandatory even same-origin: fonts are fetched in CORS mode,
+// and a preload without it is a second, unused request.
+export const links: LinksFunction = () => [
+  {
+    rel: "preload",
+    href: "/fonts/inter-latin-wght-normal.woff2",
+    as: "font",
+    type: "font/woff2",
+    crossOrigin: "anonymous"
+  },
+  {
+    rel: "preload",
+    href: "/fonts/space-grotesk-latin-wght-normal.woff2",
+    as: "font",
+    type: "font/woff2",
+    crossOrigin: "anonymous"
+  }
+];
 
 // The document. Locale is resolved here rather than in the shell so that the
 // login page — which has no session and therefore no profile — still renders in

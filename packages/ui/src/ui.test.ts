@@ -12,6 +12,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { fromSelectValue, toSelectValue } from "./primitives.js";
 
 const SRC = dirname(fileURLToPath(import.meta.url));
 const REPO = join(SRC, "..", "..", "..");
@@ -191,6 +192,56 @@ describe("navigation always renders a visible label", () => {
 
   it("marks decorative icons aria-hidden", () => {
     expect(nav).toContain('aria-hidden="true"');
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+
+describe("Select reserves the empty string for Radix", () => {
+  // Radix reads `value === ""` on Select.Root as "nothing selected" — it is what
+  // raises the placeholder — so a Select.Item may not carry it: Radix says so on
+  // the console and the row can never read as chosen. Screens still need an
+  // "All" / "System default" row, so the wrapper encodes it. This harness is
+  // DOM-free (see the file header), so the contract is asserted where it is
+  // decided — the codec and the one call site that feeds Select.Item.
+  const primitives = read(join(SRC, "primitives.tsx"));
+
+  it("never hands Select.Item an empty value", () => {
+    expect(toSelectValue("")).not.toBe("");
+    // Anything Radix would accept passes through untouched.
+    for (const value of ["open", "1", "IBM Plex Sans Arabic", "0"]) {
+      expect(toSelectValue(value)).toBe(value);
+    }
+  });
+
+  it("clears the field when the empty row is chosen", () => {
+    // What onValueChange reports, and what `name` submits, is "" — not the
+    // sentinel — so picking "All" drops the filter instead of inventing one.
+    expect(fromSelectValue(toSelectValue(""))).toBe("");
+    for (const value of ["open", "1"]) {
+      expect(fromSelectValue(toSelectValue(value))).toBe(value);
+    }
+  });
+
+  it("keeps the sentinel inside the design system", () => {
+    // Exported for this test and for nothing else: a call site that could name
+    // the sentinel could also mean it, and then it would reach the API.
+    const escaped = componentFiles.filter(
+      ([name, source]) => name !== "primitives.tsx" && source.includes("SENTINEL")
+    );
+    expect(escaped.map(([name]) => name)).toEqual([]);
+    expect(toSelectValue("")).not.toBe(fromSelectValue(toSelectValue("")));
+  });
+
+  it("routes every Select.Item value through the codec", () => {
+    const items = [...primitives.matchAll(/<RSelect\.Item[^>]*?\bvalue=\{([^\n]*)\}/g)];
+    expect(items.length).toBeGreaterThan(0);
+    for (const [, expression] of items) {
+      expect(expression, "a Select.Item value must be encoded").toContain("toSelectValue(");
+    }
+    // …and the value Radix is told is current is the decoded one, so the
+    // sentinel never reaches the hidden native input that `name` submits.
+    expect(primitives).toContain("fromSelectValue(next)");
   });
 });
 

@@ -58,6 +58,10 @@ export const APPROVAL_POLICIES: Record<string, ApprovalPolicy> = Object.fromEntr
     // distribution — commercial terms with a counterparty, so a second pair of eyes
     policy({ key: "dist.rate_change", module: "core", decide: "dist:rates:approve", dualControl: "always", neverAutoApprove: true }),
     policy({ key: "dist.commission_adjust", module: "core", decide: "dist:commissions:adjust", dualControl: "above_threshold", defaultThresholdMinor: 1_000_00 }),
+    // An accrual is a financial position, not a note: it books a receivable from
+    // the underwriter and a payable to the channel (CLAUDE.md §4, §12), so it is
+    // gated on the same terms as the reversal that undoes it.
+    policy({ key: "dist.commission_accrue", module: "core", decide: "dist:commissions:adjust", dualControl: "above_threshold", defaultThresholdMinor: 1_000_00 }),
     policy({ key: "dist.offering_publish", module: "core", decide: "dist:offerings:publish", dualControl: "never" }),
     policy({ key: "dist.settlement_run", module: "core", decide: "dist:commissions:settle", dualControl: "always", neverAutoApprove: true }),
     policy({ key: "dist.partner_activate", module: "core", decide: "orbit:partners:certify", dualControl: "never" }),

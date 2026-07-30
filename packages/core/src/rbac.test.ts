@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  PERMISSIONS,
   ROLES,
+  TENANT_ROLE_KEYS,
   can,
   expand,
   isValidGrantString,
@@ -70,6 +72,25 @@ describe("role catalogue", () => {
     for (const p of expand(permissionsForRole("north.board"))) {
       expect(p.endsWith(":read"), `north.board may not hold ${p}`).toBe(true);
     }
+  });
+
+  /**
+   * The class, not the instance. A permission the API's `require_()` and the web
+   * app's gates name, that no tenant role resolves — directly or through a
+   * wildcard — is a screen no tenant user can ever reach. Three separate
+   * instances of that have been found and patched one at a time; this asserts
+   * the invariant instead.
+   *
+   * `admin:*` is the one legitimate exception: docs/06 reserves it for goNXT
+   * staff, and TENANT_ROLE_KEYS deliberately excludes the platform.* roles that
+   * hold it. Everything else in the catalogue is a tenant surface, so something
+   * inside the tenant must be able to reach it. Widening this exemption to make
+   * a new permission pass is the bug, not the fix — grant it to a role.
+   */
+  it("puts every non-platform permission in reach of at least one tenant role", () => {
+    const held = new Set(TENANT_ROLE_KEYS.flatMap((key) => expand(permissionsForRole(key))));
+    const unreachable = PERMISSIONS.filter((p) => !p.startsWith("admin:") && !held.has(p));
+    expect(unreachable).toEqual([]);
   });
 
   it("gives external roles no tenant-staff reach", () => {

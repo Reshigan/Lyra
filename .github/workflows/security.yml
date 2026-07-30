@@ -89,7 +89,37 @@ jobs:
           fi
           echo "No GPL/AGPL dependencies."
 
+  # SEC-007, second half — the OS layer of the on-prem image (ops/Dockerfile;
+  # there is no infra/onprem and never will be — ADR-0010).
+  # `audit` above already gates the npm dependency tree from the lockfile, which
+  # is the same tree the image installs, so the gap this closes is the base
+  # image's distro packages.
+  #
+  # ponytail: scans the base image the Dockerfile declares, not a locally built
+  # one — building the monorepo image on every PR costs a full `pnpm install &&
+  # pnpm build` to rescan packages `audit` has already gated. Ceiling: CVEs
+  # introduced by this Dockerfile's own layers (currently one `apt-get install
+  # ca-certificates`) are not seen. Upgrade path: when the on-prem image is
+  # published to a registry, point image-ref at the published tag.
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve base image from ops/Dockerfile
+        id: base
+        run: |
+          base="$(grep -m1 -E '^FROM ' ops/Dockerfile | awk '{print $2}')"
+          test -n "$base" || { echo "::error::no FROM in ops/Dockerfile"; exit 1; }
+          echo "image=$base" >> "$GITHUB_OUTPUT"
+      # ignore-unfixed: an unpatched distro CVE has no action available, and a
+      # permanently red gate is a gate someone turns off.
+      - uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ steps.base.outputs.image }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
 # ponytail: SEC-019 (prompt-injection / tool-escape red-team suite) is M3 and
 # has no runner yet — it belongs in packages/model-gateway/evals and gets its
-# own job here once that suite exists. Container image scanning (SEC-007's
-# second half) lands when infra/onprem ships a Dockerfile.
+# own job here once that suite exists.

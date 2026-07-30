@@ -182,7 +182,7 @@ export const qaScores = sqliteTable(
     score: integer("score").notNull(), // 0-100
     breakdownJson: text("breakdown_json"),
     flagsJson: text("flags_json"),
-    scoredBy: text("scored_by").notNull(), // ai|user:<id>
+    scoredBy: text("scored_by").notNull(), // actor ref: user:<id> | agent:<key>
     disputedBy: text("disputed_by"),
     ts: integer("ts").notNull()
   },

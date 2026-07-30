@@ -1,5 +1,5 @@
 import { ScrollView, StyleSheet, Text, View } from "react-native";
-import { Redirect, useLocalSearchParams } from "expo-router";
+import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { getRow } from "../../../src/api";
 import { resourceForNavKey } from "../../../src/nav";
@@ -7,6 +7,7 @@ import { fieldsOf, titleOf } from "../../../src/rows";
 import { useSession } from "../../../src/session";
 import { SPACE, TEXT } from "../../../src/theme";
 import {
+  Body,
   Button,
   Loading,
   Muted,
@@ -14,6 +15,7 @@ import {
   Title,
   errorKeyFor,
   requestIdOf,
+  textOf,
   type Chrome
 } from "../../../src/ui";
 import { useLoad } from "../../../src/useLoad";
@@ -27,6 +29,7 @@ export default function ModuleDetail() {
   const chrome: Chrome = { theme: session.theme, t: session.t, dir: session.dir };
   const { t, theme, token } = session;
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { nav, id } = useLocalSearchParams<{ nav: string; id: string }>();
   const resource = resourceForNavKey(nav ?? "");
 
@@ -50,6 +53,17 @@ export default function ModuleDetail() {
         paddingBottom: insets.bottom + SPACE.xl
       }}
     >
+      {/* The stack draws no header (app/_layout.tsx); an edge swipe is not a
+          control every user can reach. */}
+      <View style={{ alignSelf: session.dir === "rtl" ? "flex-end" : "flex-start" }}>
+        <Button
+          chrome={chrome}
+          variant="quiet"
+          label={t("nav.back")}
+          onPress={() => router.back()}
+        />
+      </View>
+
       <Title chrome={chrome}>
         {(record && titleOf(record)) ?? t(row.loading ? "app.loading" : "detail.title")}
       </Title>
@@ -80,18 +94,26 @@ export default function ModuleDetail() {
               <Muted chrome={chrome}>{field.key}</Muted>
               <Text
                 selectable
-                style={{
+                style={textOf(chrome, {
                   color: theme.text,
                   fontSize: TEXT.s14,
-                  lineHeight: TEXT.s14 * 1.5,
-                  writingDirection: session.dir
-                }}
+                  lineHeight: TEXT.s14 * 1.5
+                })}
               >
                 {field.value}
               </Text>
             </View>
           ))}
         </View>
+      ) : null}
+
+      {/* Nothing loaded and nothing failed: either this workspace has no mobile
+          screen, or the record simply is not there. Both need saying — a title
+          over blank space reads as a screen that is still working. */}
+      {!record && !row.loading && !row.error ? (
+        <Body chrome={chrome} style={{ color: theme.muted }}>
+          {resource ? t("error.notFound") : t("nav.unavailable")}
+        </Body>
       ) : null}
     </ScrollView>
   );

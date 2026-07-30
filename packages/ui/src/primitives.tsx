@@ -308,6 +308,29 @@ export interface SelectOption {
   disabled?: boolean;
 }
 
+/**
+ * Radix reserves the empty string on `Select.Root`: `value === ""` *is* "nothing
+ * selected" — it is what raises the placeholder — so a `Select.Item` may not use
+ * it. Radix says so on the console, and the row could never read as chosen even
+ * when it is.
+ *
+ * Screens still need a row that means "no filter" ("All", "System default"), so
+ * the empty option travels to Radix under this sentinel and is decoded back to
+ * "" on the way out: the value a call site passes in, reads back from
+ * `onValueChange`, and submits through `name`, is "" throughout. The sentinel
+ * never leaves this file, which is the point — a call site cannot reintroduce
+ * the bug by writing `{ value: "" }`, because that is the supported spelling.
+ */
+const EMPTY_SENTINEL = "__lyra_select_empty";
+
+/** "" → sentinel. Every value handed to a `Select.Item` goes through here. */
+export const toSelectValue = (value: string): string =>
+  value === "" ? EMPTY_SENTINEL : value;
+
+/** sentinel → "". Every value Radix hands back goes through here. */
+export const fromSelectValue = (value: string): string =>
+  value === EMPTY_SENTINEL ? "" : value;
+
 export interface SelectProps {
   options: SelectOption[];
   value?: string;
@@ -327,7 +350,11 @@ export function Select({
   value,
   defaultValue,
   onValueChange,
-  placeholder = "Select…",
+  // Not "Select…": this package has no catalogue, and an English word baked
+  // into a shared control is a string no tenant can translate (CLAUDE.md §7).
+  // The ellipsis alone reads the same in every locale — a screen that wants
+  // words passes them, as the filter strips and the statement form do.
+  placeholder = "…",
   disabled,
   size = "md",
   name,
@@ -335,11 +362,20 @@ export function Select({
   ...aria
 }: SelectProps) {
   const field = useFieldControl();
+  // Held here rather than in Radix so the sentinel is a rendering detail: what
+  // Radix sees selected — and so what `name` submits — is always the decoded
+  // value, "" included. Picking the empty row therefore clears the field
+  // instead of submitting a made-up token.
+  const [chosen, setChosen] = React.useState(defaultValue ?? "");
+  const current = value ?? chosen;
   return (
     <RSelect.Root
-      {...(value !== undefined ? { value } : {})}
-      {...(defaultValue !== undefined ? { defaultValue } : {})}
-      {...(onValueChange ? { onValueChange } : {})}
+      value={current}
+      onValueChange={(next) => {
+        const decoded = fromSelectValue(next);
+        setChosen(decoded);
+        onValueChange?.(decoded);
+      }}
       {...(disabled !== undefined ? { disabled } : {})}
       {...(name !== undefined ? { name } : {})}
     >
@@ -367,7 +403,7 @@ export function Select({
             {options.map((o) => (
               <RSelect.Item
                 key={o.value}
-                value={o.value}
+                value={toSelectValue(o.value)}
                 {...(o.disabled ? { disabled: true } : {})}
                 className={cn(
                   "flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-2 text-14 text-muted",

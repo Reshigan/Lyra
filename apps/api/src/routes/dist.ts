@@ -1,16 +1,19 @@
 import { Hono } from "hono";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lte, sql, type AnyColumn } from "drizzle-orm";
 import { z } from "zod";
 import { id as newId, schema } from "@lyra/db";
 import {
+  actorRef,
   audit,
   badRequest,
+  canonicalJson,
   conflict,
   emit,
   gate,
   notFound,
   quoteCommission,
   require_,
+  sha256Hex,
   withIdempotency,
   type Ctx
 } from "@lyra/core";
@@ -347,6 +350,16 @@ distRoutes.post("/commission-entries/accrue", async (c) => {
         premiumMinor: policy.premiumMinor
       });
 
+      // The position is only knowable once the rate has been applied, so the
+      // gate sits here: it is the commission that is approved, not the request.
+      // Keyed by policy and kind, because that pair is what may exist once.
+      await gate(ctx, {
+        policyKey: "dist.commission_accrue",
+        subjectRef: `${policy.id}:${input.kind}`,
+        amountMinor: split.grossMinor,
+        context: { policyId: policy.id, kind: input.kind, premiumMinor: policy.premiumMinor }
+      });
+
       const row: typeof schema.distCommissionEntries.$inferInsert = {
         id: newId("ce", ctx.now),
         tenantId: ctx.tenantId,
@@ -393,6 +406,10 @@ distRoutes.post("/commission-entries/:id/clawback", async (c) => {
   const entry = await one(ctx, schema.distCommissionEntries, c.req.param("id"));
   if (!entry) throw notFound("commission entry");
   if (entry.reversalOf) throw conflict("cannot claw back a reversal");
+  // Before the gate: an approval lives for 24h against (subject, policy), so
+  // without this the same approval reverses the same accrual twice and credits
+  // the reversal twice (CLAUDE.md §12).
+  if (entry.state === "clawed_back") throw conflict("entry has already been clawed back");
 
   await gate(ctx, {
     policyKey: "dist.commission_adjust",
@@ -437,28 +454,57 @@ distRoutes.post("/commission-entries/:id/clawback", async (c) => {
 distRoutes.get("/commission-entries/statement", async (c) => {
   const ctx = ctxOf(c);
   require_(ctx.actor, "dist:commissions:read", { tenantId: ctx.tenantId, module: "dist" });
-  const { filters } = listParams(c);
+  const { list, filters } = listParams(c);
   const e = schema.distCommissionEntries;
 
   const where = [eq(e.tenantId, ctx.tenantId)];
   if (filters.providerId) where.push(eq(e.providerId, filters.providerId));
   if (filters.channelId) where.push(eq(e.channelId, filters.channelId));
   if (filters.state) where.push(eq(e.state, filters.state));
+  // The window applies to the column the statement orders by, so the page and
+  // the range agree about what "the last N entries" means.
+  if (list.from !== undefined) where.push(gte(e.createdAt, list.from));
+  if (list.to !== undefined) where.push(lte(e.createdAt, list.to));
 
-  const rows = await ctx.db.select().from(e).where(and(...where)).orderBy(desc(e.createdAt)).limit(1000);
+  const rows = await ctx.db.select().from(e).where(and(...where)).orderBy(desc(e.createdAt)).limit(list.limit);
 
-  const totals = rows.reduce(
-    (acc, r) => ({
-      premiumMinor: acc.premiumMinor + r.premiumMinor,
-      receivableMinor: acc.receivableMinor + r.grossCommissionMinor,
-      payableMinor: acc.payableMinor + r.channelCommissionMinor,
-      netMinor: acc.netMinor + r.netCommissionMinor,
-      taxMinor: acc.taxMinor + r.taxMinor
-    }),
-    { premiumMinor: 0, receivableMinor: 0, payableMinor: 0, netMinor: 0, taxMinor: 0 }
-  );
+  // Totals come from SQL over the whole matching set, never from the page: a
+  // statement that silently totals the first N entries is a wrong statement.
+  // Grouped by currency, because adding AED to USD produces a number that means
+  // nothing (docs/22 §5.1).
+  const sum = (col: AnyColumn) => sql<number>`coalesce(sum(${col}), 0)`;
+  const grouped = await ctx.db
+    .select({
+      currency: e.currency,
+      count: sql<number>`count(*)`,
+      premiumMinor: sum(e.premiumMinor),
+      receivableMinor: sum(e.grossCommissionMinor),
+      payableMinor: sum(e.channelCommissionMinor),
+      netMinor: sum(e.netCommissionMinor),
+      taxMinor: sum(e.taxMinor)
+    })
+    .from(e)
+    .where(and(...where))
+    .groupBy(e.currency)
+    .orderBy(e.currency);
 
-  return c.json({ totals, currency: rows[0]?.currency ?? null, count: rows.length, entries: rows });
+  // SQLite drivers return aggregates as string or number depending on width.
+  const totals = grouped.map((t) => ({
+    currency: t.currency,
+    count: Number(t.count),
+    premiumMinor: Number(t.premiumMinor),
+    receivableMinor: Number(t.receivableMinor),
+    payableMinor: Number(t.payableMinor),
+    netMinor: Number(t.netMinor),
+    taxMinor: Number(t.taxMinor)
+  }));
+
+  return c.json({
+    totals,
+    count: totals.reduce((n, t) => n + t.count, 0),
+    limit: list.limit,
+    entries: rows
+  });
 });
 
 /* ------------------------------------------------------------------- nbo */
@@ -475,14 +521,55 @@ distRoutes.post("/next-best-offers/propose", async (c) => {
       limit: z.number().int().min(1).max(10).optional()
     })
   );
+  const startedAt = Date.now();
   const offers = await proposeOffers(ctx, input);
-  return c.json({ data: offers });
+
+  // rules/v1 is still a model as far as docs/12 is concerned: it ranks offers
+  // put in front of a customer, so the run is audited like any other and the id
+  // goes back so the ✦ marker has a "why" to link to (CLAUDE.md §3, §11).
+  const aiAuditId = newId("aia", ctx.now);
+  await ctx.db.insert(schema.aiAuditLog).values({
+    id: aiAuditId,
+    tenantId: ctx.tenantId,
+    module: "dist",
+    purpose: "dist.nbo.propose",
+    model: offers[0]?.model ?? "rules/v1",
+    provider: "internal",
+    tier: "fast",
+    inputHash: await sha256Hex(canonicalJson(input)),
+    outputHash: await sha256Hex(canonicalJson(offers.map((o) => [o.id, o.offeringId, o.score]))),
+    latencyMs: Date.now() - startedAt,
+    actorRef: actorRef(ctx),
+    subjectRef: input.customerId,
+    outcome: "ok",
+    ts: ctx.now
+  });
+
+  return c.json({ data: offers, aiAuditId });
 });
 
 distRoutes.post("/next-best-offers/:id/surface", async (c) => {
   const ctx = ctxOf(c);
   require_(ctx.actor, "dist:offers:override", { tenantId: ctx.tenantId, module: "dist" });
-  await markSurfaced(ctx, c.req.param("id"));
+  const offer = await one(ctx, schema.distNextBestOffers, c.req.param("id"));
+  if (!offer) throw notFound("next best offer");
+  // markSurfaced only moves `proposed`, so without this a caller surfacing a
+  // dismissed offer was told 204 and nothing happened.
+  if (offer.state !== "proposed") throw conflict(`offer is ${offer.state}, not proposed`);
+
+  await markSurfaced(ctx, offer.id);
+  await audit(ctx, {
+    action: "dist.nbo.surface",
+    subjectRef: offer.id,
+    before: { state: offer.state },
+    after: { state: "surfaced" }
+  });
+  await emit(ctx, {
+    module: "dist",
+    type: "dist.nbo.surfaced",
+    subject: offer.id,
+    data: { customerId: offer.customerId, offeringId: offer.offeringId, kind: offer.kind }
+  });
   return c.body(null, 204);
 });
 

@@ -1,6 +1,6 @@
 import { and, eq, sql } from "drizzle-orm";
-import { id, schema } from "@lyra/db";
-import { tooManyRequests, type Ctx } from "@lyra/core";
+import { PolicyJson, id, schema, toJson } from "@lyra/db";
+import { audit, tooManyRequests, type Ctx } from "@lyra/core";
 
 // docs/02 §5: "Budget metering per tenant/day in a Durable Object counter; hard
 // stop + admin alert at 100%."
@@ -12,6 +12,7 @@ import { tooManyRequests, type Ctx } from "@lyra/core";
 export const WARN_AT = 0.8;
 
 export interface BudgetState {
+  id: string;
   day: string;
   module: string;
   tokensUsed: number;
@@ -154,7 +155,21 @@ export async function charge(
   };
 }
 
-/** Admin raise: takes effect immediately and clears the stop. Gated by ai.budget_raise. */
+/**
+ * Admin raise: takes effect immediately and clears the stop. Gated by
+ * `ai:budgets:write` + the `ai.budget_raise` approval policy at the route.
+ *
+ * Two things happen here rather than at the caller, so that every caller gets
+ * them and not just `POST /v1/ai/budget/limits`:
+ *
+ * 1. The audit row (CLAUDE.md §4). Moving a spend ceiling is consequential; the
+ *    before/after images are the budget window either side of the change.
+ * 2. The write-through to tenant policy. `ai_budgets` rows are per (tenant, day,
+ *    module) and `upsertRow` seeds tomorrow's from `ctx.policy`, so a ceiling
+ *    that lived only in today's row reverted at the UTC day boundary — silently,
+ *    because nothing in the product writes tenant policy. Policy is the durable
+ *    home for the ceiling; the row is one day's window onto it.
+ */
 export async function setLimits(
   ctx: Ctx,
   limits: { tokensLimit?: number | undefined; costMicroLimit?: number | undefined },
@@ -176,5 +191,36 @@ export async function setLimits(
         eq(schema.aiBudgets.module, module)
       )
     );
-  return { ...row, ...next, stoppedAt: clears ? null : row.stoppedAt };
+
+  // The tenant-wide ceiling is the one policy can express, and it is what both
+  // the API and the screen default to (`module` defaults to `*`).
+  //
+  // ponytail: a per-module ceiling still lapses at midnight — PolicyJson has one
+  // pair of budget fields, not a per-module map. Upgrade path: a
+  // `aiBudgetByModule` record on PolicyJson (packages/db) once a tenant actually
+  // wants a standing per-module cap; today `*` is the standing ceiling and a
+  // module cap is a same-day throttle.
+  if (module === "*") {
+    const policy: PolicyJson = {
+      ...ctx.policy,
+      aiBudgetDailyTokens: next.tokensLimit,
+      aiBudgetDailyCostMicro: next.costMicroLimit
+    };
+    await ctx.db
+      .update(schema.tenants)
+      .set({ policyJson: toJson(PolicyJson, policy), updatedAt: ctx.now })
+      // core_tenants is scoped by its own id — the row *is* the tenant.
+      .where(eq(schema.tenants.id, ctx.tenantId));
+    // Later reads in this same request see the ceiling they just moved.
+    ctx.policy = policy;
+  }
+
+  const after: BudgetState = { ...row, ...next, stoppedAt: clears ? null : row.stoppedAt };
+  await audit(ctx, {
+    action: "ai.budget.set_limits",
+    subjectRef: row.id,
+    before: row,
+    after
+  });
+  return after;
 }

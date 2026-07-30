@@ -11,16 +11,49 @@ import {
 } from "react-router";
 import { cloudflare } from "../context";
 import { Button, Card, Field, Input } from "@lyra/ui";
-import { ApiError, apiFetch, relayCookies } from "../api.server";
-import { CATALOGUES, localeFrom, translator } from "../i18n";
+import { ApiError, api, apiFetch, relayCookies } from "../api.server";
+import { CATALOGUES, DEFAULT_LOCALE, localeFrom, translator } from "../i18n";
 
 // Password, then a TOTP step when the account is enrolled. Both hops run
 // server-side and relay the API's Set-Cookie verbatim, so the session cookie
-// stays HttpOnly and script never holds a credential.
+// stays HttpOnly and script never holds a credential. Federated addresses never
+// reach the password field at all: discovery runs first and hands the browser
+// to the provider.
 //
 // No product name on this page: there is no session yet, so there is no tenant
 // brand to read one from, and a literal would be the hard-coded string the
 // brand tokens exist to prevent.
+
+/**
+ * Strings that exist only on this screen. The shared catalogue carries the
+ * vocabulary the whole shell speaks; a sentence said once, here, does not
+ * belong in it.
+ */
+const LABELS: Record<string, Record<string, string>> = {
+  en: {
+    "sso.title": "Organisation sign-in",
+    "sso.intro": "If your company signs you in, enter your work email and continue there.",
+    "sso.button": "Continue with your organisation",
+    "sso.error.email": "Enter your work email address first.",
+    "sso.error.none": "That address does not use organisation sign-in. Use your password below.",
+    "sso.error.failed": "Organisation sign-in could not be started. You can sign in with a password below.",
+    "totp.recoveryHint": "Lost the device? Enter one of your recovery codes instead."
+  },
+  ar: {
+    "sso.title": "تسجيل الدخول عبر المؤسسة",
+    "sso.intro": "إذا كانت مؤسستك تتولّى تسجيل دخولك، أدخل بريد العمل ثم تابع لديها.",
+    "sso.button": "المتابعة عبر مؤسستك",
+    "sso.error.email": "أدخل بريد العمل أولًا.",
+    "sso.error.none": "هذا العنوان لا يستخدم تسجيل الدخول عبر المؤسسة. استخدم كلمة المرور أدناه.",
+    "sso.error.failed": "تعذّر بدء تسجيل الدخول عبر المؤسسة. يمكنك تسجيل الدخول بكلمة المرور أدناه.",
+    "totp.recoveryHint": "فقدت جهازك؟ أدخل أحد رموز الاسترداد بدلًا من ذلك."
+  }
+};
+
+function labeller(locale: string): (key: string) => string {
+  const table = LABELS[locale] ?? LABELS[DEFAULT_LOCALE];
+  return (key) => table?.[key] ?? LABELS[DEFAULT_LOCALE]?.[key] ?? key;
+}
 
 interface LoginResponse {
   mfaRequired: boolean;
@@ -44,6 +77,8 @@ type ActionData = {
   step: Step;
   /** i18n key, never a message. */
   errorKey?: string;
+  /** Key into this file's own LABELS, for failures the shared catalogue has no word for. */
+  localErrorKey?: string;
   /** The API's own words, shown under the translated message when it has any. */
   detail?: string;
   requestId?: string;
@@ -95,6 +130,36 @@ export async function action({ request, context }: ActionFunctionArgs) {
     : "password";
   const next = safeNext(String(form.get("next") ?? ""));
   const headers = new Headers();
+
+  // A button, not a separate form: the address is already typed into the field
+  // above it, and asking for it twice is the reason nobody uses these.
+  if (form.get("intent") === "sso") {
+    const email = String(form.get("email") ?? "").trim();
+    if (!email.includes("@")) return data<ActionData>({ step, localErrorKey: "sso.error.email" });
+    try {
+      const found = (await api<{ id?: string; startUrl?: string }>(
+        `/v1/auth/sso/discover?email=${encodeURIComponent(email)}`,
+        { env }
+      )) ?? {};
+      // Discovery answers `{}` for the ordinary case, which is not an error —
+      // most addresses are not federated and the password form below is right.
+      if (!found.id) return data<ActionData>({ step, localErrorKey: "sso.error.none" });
+      // The provider hop is a browser navigation to the API origin, so this is
+      // the one absolute redirect on the page. `next` rides in the state the API
+      // holds for the round trip and comes back on the callback.
+      const start = found.startUrl ?? `/v1/auth/sso/${found.id}/start`;
+      return redirect(
+        new URL(`${start}?next=${encodeURIComponent(next)}`, env.API_ORIGIN).toString()
+      );
+    } catch (error) {
+      if (!(error instanceof ApiError)) throw error;
+      return data<ActionData>({
+        step,
+        localErrorKey: "sso.error.failed",
+        ...(error.requestId ? { requestId: error.requestId } : {})
+      });
+    }
+  }
 
   try {
     if (submitted === "demo") {
@@ -216,6 +281,7 @@ export default function Login() {
   const result = useActionData<ActionData>();
   const navigation = useNavigation();
   const t = translator(locale);
+  const label = labeller(locale);
   const busy = navigation.state !== "idle";
   // The step the API put us on survives a rejected code — a bad TOTP must not
   // drop the user back to a password form the session has already passed.
@@ -239,9 +305,18 @@ export default function Login() {
         <h1 className="font-display text-22">{t(title)}</h1>
         <p className="mt-1 text-13 text-muted">{t(intro)}</p>
 
-        {result?.errorKey ? (
+        {result?.errorKey || result?.localErrorKey ? (
           <div role="alert" className="mt-4 rounded-md border border-danger/40 bg-danger/10 p-3">
-            <p className="text-13">{t(result.errorKey)}</p>
+            <p className="text-13">
+              {result.localErrorKey ? label(result.localErrorKey) : t(result.errorKey ?? "")}
+            </p>
+            {/* The API's own words, when it had any. Translated copy says what to
+                do; this says what actually happened, and support needs both. */}
+            {result.detail ? (
+              <p className="mt-1 break-words text-12 text-muted">
+                {t("error.detail")}: {result.detail}
+              </p>
+            ) : null}
             {result.requestId ? (
               <p className="mt-1 font-mono text-12 text-muted">
                 {t("error.requestId", { id: result.requestId })}
@@ -298,6 +373,7 @@ export default function Login() {
                   autoFocus
                 />
               </Field>
+              <p className="-mt-2 text-12 text-muted">{label("totp.recoveryHint")}</p>
             </>
           ) : step === "enrol" ? (
             <>
@@ -346,7 +422,15 @@ export default function Login() {
             <>
               <input type="hidden" name="step" value="password" />
               <Field label={t("auth.email")} id="email">
-                <Input name="email" type="email" autoComplete="email" required autoFocus />
+                {/* Focus follows the thing the user still has to answer: after a
+                    workspace prompt the email is already right. */}
+                <Input
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  autoFocus={!result?.needTenant}
+                />
               </Field>
               <Field label={t("auth.password")} id="password">
                 <Input
@@ -358,7 +442,12 @@ export default function Login() {
               </Field>
               {result?.needTenant ? (
                 <Field label={t("auth.tenantSlug")} id="tenantSlug">
-                  <Input name="tenantSlug" required />
+                  <Input
+                    name="tenantSlug"
+                    autoComplete="organization"
+                    required
+                    autoFocus
+                  />
                 </Field>
               ) : null}
             </>
@@ -376,6 +465,26 @@ export default function Login() {
                   }[step]
                 )}
           </Button>
+
+          {step === "password" ? (
+            <div className="flex flex-col gap-1 border-t border-border pt-4">
+              <h2 className="text-13 font-medium">{label("sso.title")}</h2>
+              <p className="text-12 text-muted">{label("sso.intro")}</p>
+              {/* Same form, same email field. `formNoValidate` because the
+                  password below is required for the other button and not for
+                  this one; the address is checked in the action either way. */}
+              <Button
+                type="submit"
+                name="intent"
+                value="sso"
+                formNoValidate
+                disabled={busy}
+                className="mt-2"
+              >
+                {label("sso.button")}
+              </Button>
+            </div>
+          ) : null}
         </Form>
       </Card>
     </main>

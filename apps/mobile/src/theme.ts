@@ -19,9 +19,15 @@ export interface Theme {
   accentContrast: string;
   /** Tenant logo URL, when the brand payload carries one. */
   logo: string | undefined;
+  /**
+   * Tenant typeface, as a React Native `fontFamily`. `undefined` means the
+   * platform typeface — which is also what an unregistered family resolves to,
+   * so no value here can break rendering.
+   */
+  font: string | undefined;
 }
 
-const DEEP_FIELD: Omit<Theme, "logo"> = {
+const DEEP_FIELD: Omit<Theme, "logo" | "font"> = {
   bg: "#070b14", // ink-900
   surface: "#0c1322", // ink-800
   surfaceRaised: "#131c31", // ink-700
@@ -49,6 +55,42 @@ function hex(value: string | undefined, fallback: string): string {
   return value && /^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(value) ? value : fallback;
 }
 
+/**
+ * The typeface half of the tenant override contract — the same three values
+ * `BrandJson.font` accepts (packages/db/src/json.ts) and the same set the web
+ * shell re-maps `--font-display`/`--font-ui` to
+ * (apps/web/app/components/shell.tsx `FONT_STACKS`).
+ *
+ * A `Map`, not an object literal, for exactly the web's reason: `brand.font` is
+ * tenant-controlled text on its way into a style value, and an object literal
+ * answers `__proto__` or `constructor` from the prototype chain. A Map answers
+ * nothing, and nothing means the platform default.
+ *
+ * React Native has no font *stacks* — `fontFamily` is one registered family
+ * name, with no fallback list and no `system-ui`. So the web's Arabic fallback
+ * has no analogue here and needs none: the platform typeface (San Francisco /
+ * Roboto) covers Arabic, and it is what an unregistered family resolves to.
+ *
+ * WHAT ACTUALLY RENDERS: nothing in this repo registers these three families —
+ * there are no font assets, and `expo-font` is not a dependency of this package.
+ * On a stock build every value here therefore renders as the platform typeface,
+ * identical to choosing none. This mapping is the seam (CLAUDE.md §15): a
+ * white-label build that ships the `.ttf` and registers it (the `expo-font`
+ * config plugin registers a family natively, with no JS import) makes the
+ * tenant's saved choice render with no code change. See README "Typeface".
+ */
+const FONT_FAMILIES = new Map<string, string>([
+  ["space-grotesk", "Space Grotesk"],
+  ["inter", "Inter"],
+  ["ibm-plex-sans-arabic", "IBM Plex Sans Arabic"]
+]);
+
+/** The `fontFamily` for a saved brand typeface, or `undefined` for anything off
+ *  the approved list. Exported so the mapping is testable without a device. */
+export function fontFamilyFor(font: string | undefined): string | undefined {
+  return font === undefined ? undefined : FONT_FAMILIES.get(font);
+}
+
 export function themeFor(brand: Brand | null | undefined): Theme {
   const palette = brand?.palette;
   return {
@@ -58,7 +100,8 @@ export function themeFor(brand: Brand | null | undefined): Theme {
     accentContrast: hex(palette?.accentContrast, DEEP_FIELD.accentContrast),
     // Dark UI, so the dark-background logo is the right one; the mark is the
     // square fallback for a tenant that only uploaded one asset.
-    logo: brand?.logo?.dark ?? brand?.logo?.mark ?? brand?.logo?.light
+    logo: brand?.logo?.dark ?? brand?.logo?.mark ?? brand?.logo?.light,
+    font: fontFamilyFor(brand?.font)
   };
 }
 

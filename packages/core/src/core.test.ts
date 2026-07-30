@@ -9,7 +9,6 @@ import { consume, emit, pendingOutbox, type Envelope } from "./events.js";
 import { assertChannel, assertPurpose, recordConsent } from "./consent.js";
 import { decide, gate } from "./approvals.js";
 import { withIdempotency } from "./idempotency.js";
-import { mask, CUSTOMER_PII } from "./pii.js";
 import { permissionsForRole, type Actor } from "./rbac.js";
 import type { Ctx } from "./context.js";
 import { AppError } from "./errors.js";
@@ -213,21 +212,9 @@ describe("idempotency", () => {
   });
 });
 
-describe("pii", () => {
-  it("masks for actors without core:pii:view", async () => {
-    const record = { name: { en: "Layla Ahmed" }, email: "layla@example.com", phone: "+971501234567" };
-    const agent = actor("axis.agent");
-    const lead = actor("axis.lead");
-
-    const masked = mask(agent, record, CUSTOMER_PII, "t_1");
-    expect(masked.email).toBe("l••••@example.com");
-    expect(masked.phone).toContain("4567");
-    expect(masked.phone).not.toContain("50123");
-    expect(masked.name.en).toBe("Layla A••••");
-
-    expect(mask(lead, record, CUSTOMER_PII, "t_1")).toEqual(record);
-  });
-});
+// PII masking lives in pii.test.ts: the fixture there is shaped like a real
+// hydrated `core_customers` row, which is the thing the block that used to sit
+// here never checked.
 
 describe("tenancy", () => {
   it("keeps another tenant's audit rows out of the chain", async () => {

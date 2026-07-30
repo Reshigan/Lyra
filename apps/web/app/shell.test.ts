@@ -61,7 +61,9 @@ describe("no hard-coded user-facing English", () => {
   // the attributes that reach a user, which is every way a literal has actually
   // shipped. Swap for an eslint rule if it ever needs to be exact.
   const TEXT_ATTRIBUTES = /\b(aria-label|aria-description|placeholder|title|alt|label)\s*=\s*"([^"]*[A-Za-z]{2}[^"]*)"/g;
-  const JSX_TEXT = />([^<>{}]+)</g;
+  // The `>` of an arrow function is not the end of a JSX tag: `() => Promise<T>`
+  // would otherwise read as the literal "Promise".
+  const JSX_TEXT = /(?<![=-])>([^<>{}]+)</g;
 
   for (const file of sources(APP_DIR)) {
     it(`keeps ${file.replace(`${APP_DIR}/`, "")} translated`, () => {
@@ -83,7 +85,9 @@ function declaredRoutes(): string[] {
   const source = readFileSync(join(APP_DIR, "routes.ts"), "utf8");
   const literal = [...source.matchAll(/\broute\(\s*"([^"]+)"/g)].map((m) => `/${m[1]}`);
   const hasIndex = /\bindex\(/.test(source);
-  const spreadsWorkspaces = /WORKSPACE_PATHS\.map/.test(source);
+  // Workspaces are served by the generic `:module` route rather than one entry
+  // each, so that dynamic segment is what covers WORKSPACE_PATHS.
+  const spreadsWorkspaces = /WORKSPACE_PATHS\.map/.test(source) || /route\(\s*":module"/.test(source);
   return [
     ...(hasIndex ? ["/"] : []),
     ...literal,

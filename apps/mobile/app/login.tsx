@@ -5,7 +5,17 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ApiError, NetworkError, type Enrolment } from "../src/api";
 import { useSession } from "../src/session";
 import { RADIUS, SPACE, TEXT } from "../src/theme";
-import { Body, Button, Field, Loading, Notice, Title, type Chrome } from "../src/ui";
+import {
+  Body,
+  Button,
+  Field,
+  Loading,
+  Notice,
+  Title,
+  errorKeyFor,
+  requestIdOf,
+  type Chrome
+} from "../src/ui";
 
 // Password, then the second factor: an enrolled account types a code, a role
 // that must have one but never set it up enrols here and reads its recovery
@@ -168,6 +178,35 @@ export default function Login() {
         </View>
 
         {errorKey ? <Notice chrome={chrome} message={t(errorKey)} requestId={requestId} /> : null}
+
+        {/* A stored session that could not be restored — offline, or the API
+            unreachable. Without this the user is shown a password form with no
+            explanation for why they were signed out, and retyping a password
+            fixes nothing when the network is the problem. */}
+        {!errorKey && session.restoreError ? (
+          <>
+            <Notice
+              chrome={chrome}
+              message={t(errorKeyFor(session.restoreError))}
+              requestId={requestIdOf(session.restoreError)}
+            />
+            {session.token ? (
+              <Button
+                chrome={chrome}
+                variant="quiet"
+                label={t("error.retry")}
+                busy={busy}
+                onPress={() => {
+                  setBusy(true);
+                  void session
+                    .refresh()
+                    .catch(() => undefined)
+                    .finally(() => setBusy(false));
+                }}
+              />
+            ) : null}
+          </>
+        ) : null}
 
         {screen === "recovery" ? (
           <View style={box}>

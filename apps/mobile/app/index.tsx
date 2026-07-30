@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { entriesFor, type NavEntry } from "../src/nav";
 import { useSession } from "../src/session";
 import { RADIUS, SPACE, TEXT, TOUCH_TARGET } from "../src/theme";
-import { Body, Button, Loading, Muted, Title, type Chrome } from "../src/ui";
+import { Body, Button, Loading, Muted, Title, textOf, type Chrome } from "../src/ui";
 
 // The menu is the `nav` array from /v1/me, filtered server-side by the actor's
 // permissions — never a list in this file. A role change therefore lands on the
@@ -36,11 +36,20 @@ export default function Home() {
         {theme.logo ? (
           <Image
             // The brand payload names the tenant; the alt text is the same
-            // tenant-configured string, never a literal.
+            // tenant-configured string, never a literal. `accessible` is not the
+            // default for Image — without it the label is never announced.
+            accessible
+            accessibilityRole="image"
             accessibilityLabel={session.brandName}
             source={{ uri: theme.logo }}
             resizeMode="contain"
-            style={{ width: 160, height: 40, alignSelf: "flex-start" }}
+            style={{
+              width: 160,
+              height: 40,
+              // Explicit rather than `flex-start`: natural alignment follows
+              // I18nManager.isRTL, which lags a locale change by one launch.
+              alignSelf: session.dir === "rtl" ? "flex-end" : "flex-start"
+            }}
           />
         ) : (
           <Title chrome={chrome}>{session.brandName}</Title>
@@ -51,14 +60,13 @@ export default function Home() {
       <View style={{ gap: SPACE.md }}>
         <Text
           accessibilityRole="header"
-          style={{
+          style={textOf(chrome, {
             color: theme.muted,
             fontSize: TEXT.s13,
             fontWeight: "600",
             letterSpacing: 0.5,
-            textTransform: "uppercase",
-            writingDirection: session.dir
-          }}
+            textTransform: "uppercase"
+          })}
         >
           {t("home.workspaces")}
         </Text>
@@ -127,17 +135,16 @@ function NavRow({
       })}
     >
       <Text
-        style={{
+        style={textOf(chrome, {
           color: chrome.theme.text,
           fontSize: TEXT.s16,
-          fontWeight: "600",
-          writingDirection: chrome.dir
-        }}
+          fontWeight: "600"
+        })}
       >
         {label}
       </Text>
       {reachable ? null : (
-        <Text style={{ color: chrome.theme.muted, fontSize: TEXT.s12, writingDirection: chrome.dir }}>
+        <Text style={textOf(chrome, { color: chrome.theme.muted, fontSize: TEXT.s12 })}>
           {chrome.t("nav.unavailable")}
         </Text>
       )}

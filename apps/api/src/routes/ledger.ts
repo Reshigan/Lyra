@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { require_, withIdempotency, type Ctx } from "@lyra/core";
+import { actorRef, audit, badRequest, notFound, require_, withIdempotency, type Ctx } from "@lyra/core";
 import {
   RECIPES,
   TXN_STATES,
@@ -31,9 +31,11 @@ import {
   trialBalanceTable,
   txnType,
   type MatchProposer,
+  type ReportTable,
   type TxnState
 } from "@lyra/ledger";
 import type { Gateway } from "@lyra/model-gateway";
+import { EXPORT_FORMATS, isExportFormat, render } from "../engines/export/render.js";
 import { body } from "../http.js";
 import type { App } from "../env.js";
 
@@ -162,7 +164,13 @@ ledgerRoutes.post("/txn/:id/reverse", async (c) => {
 
 /* ----------------------------------------------------------------- periods */
 
-ledgerRoutes.get("/periods/:code", async (c) => {
+/**
+ * Singular on purpose. `/periods/:id` belongs to the generated CRUD record
+ * handler, and a hand-written route registered first would swallow it — the
+ * record screen would then get this `{period, checks}` wrapper where it expects
+ * a flat row and render nothing. The enriched view lives one path over.
+ */
+ledgerRoutes.get("/period/:code", async (c) => {
   const ctx = ctxOf(c);
   require_(ctx.actor, "ledger:periods:read", { tenantId: ctx.tenantId, module: "ledger" });
   const code = c.req.param("code");
@@ -187,20 +195,42 @@ ledgerRoutes.post("/periods/:code/reopen", async (c) => {
 
 /* ----------------------------------------------------------------- reports */
 
-const asOf = (c: { req: { query(k: string): string | undefined } }): number | undefined => {
-  const raw = c.req.query("asOf");
+/** The one way a report reads its parameters, shared by the JSON and file routes. */
+type Query = (key: string) => string | undefined;
+
+const qOf =
+  (c: { req: { query(k: string): string | undefined } }): Query =>
+  (key) =>
+    c.req.query(key);
+
+const asOf = (q: Query): number | undefined => {
+  const raw = q("asOf");
   return raw ? Number(raw) : undefined;
 };
+
+/** Built once so the file and the screen are answers to the same question. */
+function trialBalanceOpts(q: Query): { periodCode?: string; currency?: string; asOf?: number } {
+  const at = asOf(q);
+  return {
+    ...(q("period") ? { periodCode: q("period") as string } : {}),
+    ...(q("currency") ? { currency: q("currency") as string } : {}),
+    ...(at !== undefined ? { asOf: at } : {})
+  };
+}
+
+function agedOpts(q: Query): { accountCodes?: string[]; asOf?: number } {
+  const codes = q("accounts")?.split(",").filter(Boolean);
+  const at = asOf(q);
+  return {
+    ...(codes?.length ? { accountCodes: codes } : {}),
+    ...(at !== undefined ? { asOf: at } : {})
+  };
+}
 
 ledgerRoutes.get("/reports/trial-balance", async (c) => {
   const ctx = ctxOf(c);
   require_(ctx.actor, "ledger:journals:read", { tenantId: ctx.tenantId, module: "ledger" });
-  const at = asOf(c);
-  const tb = await trialBalance(ctx, {
-    ...(c.req.query("period") ? { periodCode: c.req.query("period") as string } : {}),
-    ...(c.req.query("currency") ? { currency: c.req.query("currency") as string } : {}),
-    ...(at !== undefined ? { asOf: at } : {})
-  });
+  const tb = await trialBalance(ctx, trialBalanceOpts(qOf(c)));
   // `?format=table` returns the export shape the reporting engine feeds to XLSX
   // and PDF, so a spreadsheet and the screen cannot drift apart.
   return c.json(c.req.query("format") === "table" ? trialBalanceTable(tb) : tb);
@@ -215,20 +245,13 @@ ledgerRoutes.get("/reports/pnl", async (c) => {
 ledgerRoutes.get("/reports/balance-sheet", async (c) => {
   const ctx = ctxOf(c);
   require_(ctx.actor, "ledger:journals:read", { tenantId: ctx.tenantId, module: "ledger" });
-  return c.json(await balanceSheet(ctx, asOf(c)));
+  return c.json(await balanceSheet(ctx, asOf(qOf(c))));
 });
 
 ledgerRoutes.get("/reports/aged", async (c) => {
   const ctx = ctxOf(c);
   require_(ctx.actor, "ledger:journals:read", { tenantId: ctx.tenantId, module: "ledger" });
-  const codes = c.req.query("accounts")?.split(",").filter(Boolean);
-  const at = asOf(c);
-  return c.json({
-    data: await agedBalances(ctx, {
-      ...(codes?.length ? { accountCodes: codes } : {}),
-      ...(at !== undefined ? { asOf: at } : {})
-    })
-  });
+  return c.json({ data: await agedBalances(ctx, agedOpts(qOf(c))) });
 });
 
 ledgerRoutes.get("/reports/commission", async (c) => {
@@ -253,6 +276,227 @@ ledgerRoutes.get("/reports/chart-of-accounts", (c) => {
   const ctx = ctxOf(c);
   require_(ctx.actor, "ledger:journals:read", { tenantId: ctx.tenantId, module: "ledger" });
   return c.json(chartOfAccountsTable());
+});
+
+/* ---------------------------------------------------------- report exports */
+
+// The six finance reports as files. Every builder calls the very function its
+// JSON route calls, so the spreadsheet a controller emails and the screen they
+// read are the same numbers — a second summing path is the first thing to
+// disagree with the ledger (docs/19 §9).
+//
+// ponytail: money cells carry minor units under `kind: "money"`, which is the
+// renderer's contract — engines/export/xlsx.ts divides by 100 and applies the
+// currency number format, so Excel receives a real number in major units rather
+// than a formatted string. The currency travels in the column label or in its
+// own column, never inside the number.
+
+type ExportBuild = (ctx: Ctx, q: Query) => Promise<{ table: ReportTable; totals?: Record<string, number> }>;
+
+interface ExportSpec {
+  /** Exactly the permission the matching JSON route enforces. */
+  permission: string;
+  build: ExportBuild;
+}
+
+type Col = ReportTable["columns"][number];
+
+const money = (key: string, label: string): Col => ({ key, label, kind: "money" });
+const text = (key: string, label: string): Col => ({ key, label, kind: "text" });
+
+/**
+ * A single-currency statement says its currency once, in the money headers. A
+ * multi-currency one already carries a `currency` column and is left alone.
+ */
+function labelCurrency(table: ReportTable): ReportTable {
+  if (!table.currency || table.columns.some((col) => col.key === "currency")) return table;
+  const currency = table.currency;
+  return {
+    ...table,
+    columns: table.columns.map((col) => (col.kind === "money" ? { ...col, label: `${col.label} (${currency})` } : col))
+  };
+}
+
+interface SectionLike {
+  label: string;
+  rows: { accountCode: string; name: string; amountMinor: number }[];
+  totalMinor: number;
+}
+
+/** A section's accounts, then its total — how a finance reader expects to read it. */
+function sectionRows(section: SectionLike): Record<string, unknown>[] {
+  return [
+    ...section.rows.map((r) => ({ section: section.label, accountCode: r.accountCode, name: r.name, amountMinor: r.amountMinor })),
+    { section: section.label, accountCode: "", name: `Total ${section.label}`, amountMinor: section.totalMinor }
+  ];
+}
+
+const SECTION_COLUMNS: Col[] = [
+  text("section", "Section"),
+  text("accountCode", "Account"),
+  text("name", "Name"),
+  money("amountMinor", "Amount")
+];
+
+const REPORT_EXPORTS: Record<string, ExportSpec> = {
+  "trial-balance": {
+    permission: "ledger:journals:read",
+    build: async (ctx, q) => {
+      const tb = await trialBalance(ctx, trialBalanceOpts(q));
+      return {
+        table: trialBalanceTable(tb),
+        totals: { debitMinor: tb.totalDebitMinor, creditMinor: tb.totalCreditMinor, balanceMinor: tb.totalDebitMinor - tb.totalCreditMinor }
+      };
+    }
+  },
+  pnl: {
+    permission: "ledger:journals:read",
+    build: async (ctx, q) => {
+      const pnl = await profitAndLoss(ctx, q("period") ?? periodCode(ctx.now));
+      return {
+        table: {
+          title: `Profit and loss ${pnl.periodCode}`,
+          columns: SECTION_COLUMNS,
+          rows: [
+            ...sectionRows(pnl.income),
+            ...sectionRows(pnl.expense),
+            { section: "", accountCode: "", name: "Gross margin", amountMinor: pnl.grossMarginMinor }
+          ],
+          currency: pnl.currency,
+          generatedAt: ctx.now
+        }
+      };
+    }
+  },
+  "balance-sheet": {
+    permission: "ledger:journals:read",
+    build: async (ctx, q) => {
+      const bs = await balanceSheet(ctx, asOf(q));
+      return {
+        table: {
+          title: "Balance sheet",
+          columns: SECTION_COLUMNS,
+          rows: [
+            ...sectionRows(bs.assets),
+            ...sectionRows(bs.liabilities),
+            // Equity is derived from the journal rather than posted, so it is a
+            // line of its own and not a section with accounts under it.
+            { section: "Equity", accountCode: "", name: "Equity", amountMinor: bs.equityMinor }
+          ],
+          currency: bs.currency,
+          generatedAt: bs.asOf
+        }
+      };
+    }
+  },
+  aged: {
+    permission: "ledger:journals:read",
+    build: async (ctx, q) => {
+      const rows = await agedBalances(ctx, agedOpts(q));
+      return {
+        table: {
+          title: "Aged analysis",
+          columns: [
+            text("counterparty", "Counterparty"),
+            text("currency", "Currency"),
+            money("currentMinor", "0-30 days"),
+            money("d30Minor", "31-60 days"),
+            money("d60Minor", "61-90 days"),
+            money("d90Minor", "91-120 days"),
+            money("olderMinor", "Over 120 days"),
+            money("totalMinor", "Total")
+          ],
+          rows: rows as unknown as Record<string, unknown>[],
+          generatedAt: asOf(q) ?? ctx.now
+        }
+      };
+    }
+  },
+  commission: {
+    permission: "ledger:journals:read",
+    build: async (ctx, q) => {
+      const dimension = q("by") ?? "provider";
+      const rows = await commissionByDimension(ctx, dimension, {
+        ...(q("period") ? { periodCode: q("period") as string } : {})
+      });
+      return {
+        table: {
+          title: `Commission by ${dimension}`,
+          columns: [
+            text("value", dimension),
+            text("currency", "Currency"),
+            money("grossMinor", "Gross"),
+            money("channelShareMinor", "Channel share"),
+            money("netMinor", "Net")
+          ],
+          rows: rows as unknown as Record<string, unknown>[],
+          generatedAt: ctx.now
+        }
+      };
+    }
+  },
+  "client-money": {
+    permission: "ledger:client_money:read",
+    build: async (ctx, q) => {
+      const rows = await clientMoneyPosition(ctx, q("currency"));
+      return {
+        table: {
+          title: "Client money position",
+          columns: [
+            text("currency", "Currency"),
+            money("assetMinor", "Client bank"),
+            money("liabilityMinor", "Owed to clients"),
+            money("surplusMinor", "Surplus or shortfall"),
+            text("status", "Status")
+          ],
+          // A breach is the only thing on this report anyone reads first, so it
+          // is a word in a column and not a flag the spreadsheet drops.
+          rows: rows.map((r) => ({ ...r, status: r.breach ? "SHORT" : "whole" })),
+          generatedAt: ctx.now
+        }
+      };
+    }
+  }
+};
+
+/**
+ * LED-REP. The same six reports, downloadable. Permission-for-permission with the
+ * JSON route beside it, tenant-scoped by the report functions themselves, and
+ * audited — a finance export leaving the building is a read worth a record.
+ */
+ledgerRoutes.get("/reports/:report/export", async (c) => {
+  const ctx = ctxOf(c);
+  const key = c.req.param("report");
+  const spec = REPORT_EXPORTS[key];
+  if (!spec) throw notFound(`report ${key}`);
+  require_(ctx.actor, spec.permission, { tenantId: ctx.tenantId, module: "ledger" });
+
+  const format = c.req.query("format") ?? "xlsx";
+  if (!isExportFormat(format)) throw badRequest(`format must be one of ${EXPORT_FORMATS.join(", ")}`);
+
+  const q = qOf(c);
+  const { table, totals } = await spec.build(ctx, q);
+  const shaped = labelCurrency(table);
+  const rendered = render(format, shaped, {
+    ...(totals ? { totals } : {}),
+    meta: { "Requested by": actorRef(ctx), Rows: String(table.rows.length) }
+  });
+
+  const params = Object.fromEntries(new URL(c.req.url).searchParams);
+  await audit(ctx, {
+    action: "ledger.report.export",
+    subjectRef: `report:${key}`,
+    after: { format, rows: table.rows.length, params }
+  });
+
+  const stamp = new Date(ctx.now).toISOString().slice(0, 10);
+  return new Response(rendered.bytes, {
+    headers: {
+      "content-type": rendered.contentType,
+      "content-disposition": `attachment; filename="${key}-${stamp}.${format}"`,
+      "cache-control": "no-store"
+    }
+  });
 });
 
 ledgerRoutes.get("/accounts/:code/statement", async (c) => {
@@ -317,11 +561,15 @@ ledgerRoutes.post("/recon/runs", async (c) => {
   );
 
   const { propose, ...rest } = input;
+  // A run posts matches against money, so a double submit must not start two of
+  // them — same wrapper the transaction endpoint uses, keyed on the statement.
   return c.json(
-    await reconcile(ctx, {
-      ...rest,
-      ...(propose ? { propose: aiProposer(ctx, c.get("gateway")) } : {})
-    }),
+    await withIdempotency(ctx, c.req.header("idempotency-key"), `ledger.recon.${input.process}`, input, () =>
+      reconcile(ctx, {
+        ...rest,
+        ...(propose ? { propose: aiProposer(ctx, c.get("gateway")) } : {})
+      })
+    ),
     201
   );
 });

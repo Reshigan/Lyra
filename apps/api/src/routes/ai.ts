@@ -125,8 +125,16 @@ aiRoutes.post("/runs", async (c) => {
   }
 });
 
-/** Explainability: the run, its model call and the guardrails that fired. */
-aiRoutes.get("/runs/:id", async (c) => {
+/**
+ * Explainability: the run, its model call and the guardrails that fired.
+ *
+ * Mounted at `/detail`, not at `/runs/:id`. Hand-written routes register before
+ * the generated CRUD, so an enriched handler on the bare `:id` path shadows the
+ * record endpoint every generic surface reads (record.tsx expects a flat row and
+ * renders blank against a wrapper). The wrapper is a second view, so it gets a
+ * second path.
+ */
+aiRoutes.get("/runs/:id/detail", async (c) => {
   const ctx = ctxOf(c);
   require_(ctx.actor, "ai:runs:read", { tenantId: ctx.tenantId, module: "ai" });
   const run = await must(ctx, schema.aiRuns, c.req.param("id"), "ai run");
@@ -160,6 +168,11 @@ aiRoutes.get("/runs/:id", async (c) => {
  */
 aiRoutes.post("/suggestions", async (c) => {
   const ctx = ctxOf(c);
+  // Suggestion rows are the evidence behind "does this surface earn its place"
+  // and behind /suggestions/acceptance. Ungated, any session in the tenant could
+  // manufacture that evidence. Same permission the CRUD resource uses for the
+  // suggestions table (resources.ts), so there is one answer per actor.
+  require_(ctx.actor, "ai:suggestions:read", { tenantId: ctx.tenantId, module: "ai" });
   const input = await body(
     c,
     z.object({
@@ -187,6 +200,7 @@ aiRoutes.post("/suggestions", async (c) => {
 
 aiRoutes.post("/suggestions/:id/outcome", async (c) => {
   const ctx = ctxOf(c);
+  require_(ctx.actor, "ai:suggestions:read", { tenantId: ctx.tenantId, module: "ai" });
   const input = await body(
     c,
     z.object({

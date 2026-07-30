@@ -1,0 +1,282 @@
+import {
+  data,
+  Form,
+  Link,
+  redirect,
+  useActionData,
+  useLoaderData,
+  useNavigation,
+  type ActionFunctionArgs,
+  type LoaderFunctionArgs
+} from "react-router";
+import { Button, DateTime } from "@lyra/ui";
+import { ApiError, api } from "../api.server";
+import { Cell, FieldInput } from "../components/fields";
+import { cloudflare } from "../context";
+import { translator } from "../i18n";
+import { workspaceFor } from "../modules";
+import {
+  bodyFrom,
+  labelsFor,
+  tabOf,
+  visibleActions,
+  type ActionSpec,
+  type ResourceSpec,
+  type Row,
+  type WorkspaceSpec
+} from "../modules/spec";
+import { runAction } from "../record.server";
+import { Problem } from "./module";
+import { useShellData } from "./workspace";
+
+// One record, read and edited in the same place. The form is the record: no
+// separate edit mode, because a screen that shows values and a screen that
+// changes them drift apart the moment a column is added to the spec.
+
+function resolve(params: { module?: string; resource?: string }): {
+  spec: WorkspaceSpec;
+  tab: ResourceSpec;
+} {
+  const spec = workspaceFor(`/${params.module ?? ""}`);
+  if (!spec) throw data("workspace", { status: 404 });
+  const tab = tabOf(spec, params.resource);
+  if (!tab) throw data("resource", { status: 404 });
+  return { spec, tab };
+}
+
+export async function loader({ request, params, context }: LoaderFunctionArgs) {
+  const { spec, tab } = resolve(params);
+  const env = context.get(cloudflare).env;
+  const row = await api<Row>(`${tab.api}/${params.id}`, { env, request });
+  return { modulePath: spec.path, resource: tab.key, row };
+}
+
+export async function action({ request, params, context }: ActionFunctionArgs) {
+  const { spec, tab } = resolve(params);
+  const env = context.get(cloudflare).env;
+  const form = await request.formData();
+  const intent = String(form.get("intent") ?? "");
+  const id = String(params.id ?? "");
+
+  // A declared action is its own endpoint, not a PATCH wearing a different hat:
+  // the API does work either side of the column it sets, so the generic update
+  // path must never claim one. Permission is re-checked there, not here.
+  const declared = (tab.actions ?? []).find((entry) => entry.intent === intent);
+  if (declared) return runAction(tab, declared, id, form, { env, request });
+
+  try {
+    if (intent === "delete") {
+      await api(`${tab.api}/${id}`, { env, request, method: "DELETE" });
+      return redirect(`${spec.path}/${tab.key}`);
+    }
+    const fields = tab.editable ?? tab.fields ?? [];
+    await api(`${tab.api}/${id}`, {
+      env,
+      request,
+      method: "PATCH",
+      body: bodyFrom(fields, form)
+    });
+  } catch (error) {
+    if (error instanceof ApiError) return { problem: error.problem, done: null };
+    throw error;
+  }
+  return { problem: null, done: null };
+}
+
+export default function Record() {
+  const loaded = useLoaderData<typeof loader>();
+  const result = useActionData<typeof action>();
+  const problem = result?.problem ?? null;
+  const done = result?.done ?? null;
+  const shell = useShellData();
+  const navigation = useNavigation();
+
+  const locale = shell?.locale ?? "en";
+  const held = new Set(shell?.permissions ?? []);
+  const t = translator(locale);
+  const spec = workspaceFor(loaded.modulePath);
+  if (!spec) return null;
+  const tab = tabOf(spec, loaded.resource);
+  if (!tab) return null;
+
+  const label = labelsFor(spec, locale);
+  const row = loaded.row;
+  const busy = navigation.state !== "idle";
+  const editable = tab.editable ?? tab.fields ?? [];
+  const canEdit = Boolean(tab.update && held.has(tab.update)) && editable.length > 0;
+  const canDelete = Boolean(tab.remove && held.has(tab.remove));
+  const actions = visibleActions(tab, shell?.permissions ?? []);
+  const completed = actions.find((entry) => entry.intent === done) ?? null;
+  // The heading is whatever this resource calls itself first — a case reference,
+  // a policy number — falling back to the identifier.
+  const heading = String(row[tab.columns[0]?.name ?? "id"] ?? row.id ?? "");
+
+  return (
+    <div className="flex flex-col gap-6">
+      <header className="flex flex-col gap-2">
+        <Link
+          to={`${spec.path}/${tab.key}`}
+          className="font-ui text-12 text-subtle underline-offset-2 hover:underline"
+        >
+          {t("common.back")}
+        </Link>
+        <h1 className="font-display text-24 text-text">{heading}</h1>
+        <p className="font-ui text-12 text-subtle">
+          {label(tab.key)} · <span className="font-mono">{String(row.id ?? "")}</span>
+        </p>
+        {tab.recordLink ? (
+          <div>
+            <Button asChild variant="secondary" size="sm">
+              <Link to={tab.recordLink.href.replace("{id}", String(row.id ?? ""))}>
+                {label(tab.recordLink.labelKey)}
+              </Link>
+            </Button>
+          </div>
+        ) : null}
+      </header>
+
+      {problem ? <Problem problem={problem} /> : null}
+
+      {/* What the action actually did, said once, where the button was. */}
+      {completed ? (
+        <p
+          role="status"
+          className="rounded-md border border-success/40 bg-success/10 px-3 py-2 font-ui text-13 text-text"
+        >
+          {orElse(label, `${completed.labelKey}.done`, t("common.saved"))}
+        </p>
+      ) : null}
+
+      {/* Field name in plain sentence case above its value: an uppercase tracked
+          micro-label is decoration that costs legibility, and these labels are
+          read far more often than the heading. */}
+      <dl className="grid gap-x-8 gap-y-4 rounded-lg border border-border bg-surface-1 p-4 sm:grid-cols-2 lg:grid-cols-3">
+        {tab.columns.map((column) => (
+          <div key={column.name} className="flex min-w-0 flex-col gap-1">
+            <dt className="font-ui text-12 text-subtle">{label(column.name)}</dt>
+            <dd className="font-ui text-13 text-text">
+              <Cell column={column} row={row} locale={locale} label={label} />
+            </dd>
+          </div>
+        ))}
+        {["createdAt", "updatedAt"].map((key) =>
+          row[key] ? (
+            <div key={key} className="flex min-w-0 flex-col gap-1">
+              <dt className="font-ui text-12 text-subtle">{t(`common.${key}`)}</dt>
+              <dd className="font-ui text-13 text-text">
+                <DateTime value={Number(row[key])} locale={locale} precision="minute" />
+              </dd>
+            </div>
+          ) : null
+        )}
+      </dl>
+
+      {/* State the API owns, not columns this screen may set. Withheld actions
+          are absent rather than disabled — the same rule the tabs follow. */}
+      {actions.length ? (
+        <section
+          aria-labelledby="record-actions"
+          className="flex flex-col gap-4 rounded-lg border border-border p-4"
+        >
+          <h2 id="record-actions" className="font-display text-16 text-text">
+            {t("common.actions")}
+          </h2>
+          <div className="flex flex-wrap items-end gap-4">
+            {actions.map((entry) => (
+              <ActionForm key={entry.intent} action={entry} label={label} busy={busy} />
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {canEdit ? (
+        <Form method="post" className="flex flex-col gap-4 rounded-lg border border-border p-4">
+          <h2 className="font-display text-16 text-text">{t("common.edit")}</h2>
+          <input type="hidden" name="intent" value="update" />
+          <div className="grid gap-4 sm:grid-cols-2">
+            {editable.map((field) => (
+              <FieldInput key={field.name} field={field} row={row} label={label} />
+            ))}
+          </div>
+          <div>
+            <Button type="submit" loading={busy}>
+              {t("common.save")}
+            </Button>
+          </div>
+        </Form>
+      ) : null}
+
+      {canDelete ? (
+        <Form
+          className="border-t border-border pt-4"
+          method="post"
+          onSubmit={(event) => {
+            // Soft delete, but it still leaves the actor's view — ask once.
+            if (!confirm(t("common.deleteConfirm"))) event.preventDefault();
+          }}
+        >
+          <input type="hidden" name="intent" value="delete" />
+          <Button type="submit" variant="danger" size="sm">
+            {t("common.delete")}
+          </Button>
+        </Form>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * One declared action. Its own form, so the fields it collects submit with it
+ * and nothing else on the screen goes along for the ride.
+ */
+function ActionForm({
+  action: spec,
+  label,
+  busy
+}: {
+  action: ActionSpec;
+  label: (key: string) => string;
+  busy: boolean;
+}) {
+  // Action fields are fresh input the endpoint asks for — a reason, a note —
+  // not the record's own columns, so nothing is pre-filled from the row.
+  const fields = spec.fields ?? [];
+  return (
+    <Form
+      method="post"
+      // An action that collects input takes its own line; a bare button does not
+      // need one. `basis-full` rather than a second container to nest it in.
+      className={`flex min-w-0 flex-col gap-3${fields.length ? " basis-full" : ""}`}
+      onSubmit={(event) => {
+        if (!spec.confirm) return;
+        // Consequential (CLAUDE.md §4): the same single ask delete uses.
+        if (!confirm(orElse(label, `${spec.labelKey}.confirm`, label(spec.labelKey)))) {
+          event.preventDefault();
+        }
+      }}
+    >
+      <input type="hidden" name="intent" value={spec.intent} />
+      {fields.length ? (
+        <div className="grid gap-4 sm:grid-cols-2">
+          {fields.map((field) => (
+            <FieldInput key={field.name} field={field} label={label} />
+          ))}
+        </div>
+      ) : null}
+      <div>
+        <Button type="submit" variant="secondary" loading={busy}>
+          {label(spec.labelKey)}
+        </Button>
+      </div>
+    </Form>
+  );
+}
+
+/**
+ * The workspace's own wording where it wrote one, the shared string otherwise.
+ * A module that has not written `<labelKey>.done` must not show the raw key.
+ */
+function orElse(label: (key: string) => string, key: string, fallback: string): string {
+  const found = label(key);
+  return found === key ? fallback : found;
+}

@@ -9,7 +9,14 @@ export const BrandJson = z.object({
   name: z.string(),
   shortName: z.string().optional(),
   logo: z.object({ light: z.string(), dark: z.string(), mark: z.string() }).partial().default({}),
-  palette: z.object({ accent: z.string(), accentHover: z.string() }).partial().default({}),
+  // accentContrast is text/icons placed ON --accent. It completes the five-property
+  // tenant override contract in packages/ui/src/tokens.css; without it here, zod
+  // stripped the field on write and the settings screen's AA check guarded a value
+  // that never survived the round trip.
+  palette: z
+    .object({ accent: z.string(), accentHover: z.string(), accentContrast: z.string() })
+    .partial()
+    .default({}),
   font: z.enum(["space-grotesk", "inter", "ibm-plex-sans-arabic"]).optional(),
   domain: z.string().optional(),
   email: z.object({ from: z.string(), replyTo: z.string() }).partial().default({}),

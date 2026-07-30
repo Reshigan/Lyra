@@ -1,4 +1,5 @@
 import type { ReportTable } from "@lyra/ledger";
+import { majorUnits, minorExponent } from "./money.js";
 import { concat, utf8 } from "./zip.js";
 
 // A PDF table renderer in one file. Same reason as the XLSX writer: no approved
@@ -9,6 +10,13 @@ import { concat, utf8 } from "./zip.js";
 // needs an embedded font with shaping, which is a font subsetter's worth of code
 // — so `toPdf` refuses non-Latin text rather than drawing boxes, and the caller
 // falls back to XLSX. Upgrade path: embed a TTF subset + Harfbuzz-style shaping.
+//
+// Typographic punctuation is the other half of that: business copy is full of
+// en dashes and curly quotes ("Cash – Client Money" is a seeded account name),
+// none of which are Latin-1, so a plain English report used to be refused over
+// one dash. `transliterate` folds those to their exact ASCII equivalents at the
+// single point every string passes through, so the refusal is left to mean what
+// it says: text this font genuinely cannot draw.
 
 export interface PdfOptions {
   meta?: Record<string, string>;
@@ -138,8 +146,9 @@ function columnWidths(t: ReportTable, usable: number): number[] {
 function format(v: unknown, kind: string, currency?: string): string {
   if (v === null || v === undefined) return "";
   if (kind === "money") {
-    const n = Number(v) / 100;
-    const s = n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const dp = minorExponent(currency);
+    const n = majorUnits(Number(v), currency);
+    const s = n.toLocaleString("en-US", { minimumFractionDigits: dp, maximumFractionDigits: dp });
     return currency ? `${currency} ${s}` : s;
   }
   if (kind === "number") return Number(v).toLocaleString("en-US");
@@ -192,8 +201,12 @@ const W = (() => {
 })();
 
 function textWidth(s: string, size: number): number {
+  // Measured after folding, because folding is what gets drawn: an ellipsis is
+  // one character to measure and three to print, and a right-aligned column
+  // whose width was measured on the wrong string sits in the wrong place.
+  const t = transliterate(s);
   let total = 0;
-  for (let i = 0; i < s.length; i++) total += W[s.charCodeAt(i) & 0xff]!;
+  for (let i = 0; i < t.length; i++) total += W[t.charCodeAt(i) & 0xff]!;
   return (total / 1000) * size;
 }
 
@@ -204,14 +217,67 @@ function clip(s: string, max: number, size: number): string {
   return `${out}...`;
 }
 
+/**
+ * Typographic characters with an *exact* ASCII equivalent, and the ASCII they
+ * become. This is the Windows-1252-and-adjacent punctuation that word
+ * processors, CRMs and pasted email produce by default, so it arrives in real
+ * data constantly: an en dash in an account name, a curly apostrophe in a
+ * counterparty, a non-breaking space in a pasted amount.
+ *
+ * The test is *exact*, never approximate. Punctuation, spacing and symbols fold,
+ * because "–" and "-" are the same mark. Letters never fold: "Ÿ" -> "Y"
+ * silently renames a person and "ش" -> "?" silently deletes one, so a
+ * letter outside Latin-1 is left alone and refused by `pdfSafe` instead. An
+ * export that is quietly wrong is worse than one that will not be written.
+ */
+const FOLD: Record<string, string> = {
+  // Dashes, hyphens and the minus sign.
+  "‐": "-", "‑": "-", "‒": "-", "–": "-", "—": "-", "―": "-", "−": "-",
+  // Single quotes, primes and the modifier apostrophe.
+  "‘": "'", "’": "'", "‚": "'", "‛": "'", "′": "'", "ʼ": "'",
+  // Double quotes and the double prime.
+  "“": '"', "”": '"', "„": '"', "‟": '"', "″": '"',
+  // Single angle quotes. The double << >> are Latin-1 already and are kept.
+  "‹": "<", "›": ">",
+  "…": "...",
+  "⁄": "/",
+  "•": "*", "‣": "*",
+  // Currency and marks that are Windows-1252 but not Latin-1.
+  "€": "EUR", "™": "(TM)", "℠": "(SM)", "№": "No.",
+  // Presentation ligatures — pasted out of PDFs, and exactly two letters each.
+  "ﬁ": "fi", "ﬂ": "fl", "Œ": "OE", "œ": "oe",
+  // Zero-width and bidi formatting marks carry no meaning in a printed cell.
+  "\u200b": "", "\u200c": "", "\u200d": "", "\u200e": "", "\u200f": "", "\u2060": "", "\ufeff": "",
+  "\u202a": "", "\u202b": "", "\u202c": "", "\u202d": "", "\u202e": ""
+};
+
+// Every key of FOLD, plus the spaces that are not U+0020 — no-break, the
+// U+2000–U+200A quads, narrow, medium-mathematical and ideographic. Those carry
+// no FOLD entry and take the default in `transliterate`: a plain space.
+const FOLDABLE =
+  /[\u00a0\u02bc\u0152\u0153\u2000-\u200f\u2010-\u2015\u2018-\u201f\u2022\u2023\u2026\u202a-\u202e\u202f\u2032\u2033\u2039\u203a\u2044\u205f\u2060\u20ac\u2116\u2120\u2122\u2212\u3000\ufb01\ufb02\ufeff]/gu;
+
+/** Fold typographic punctuation to its ASCII equivalent. Everything else is untouched. */
+export function transliterate(s: string): string {
+  return s.replace(FOLDABLE, (ch) => FOLD[ch] ?? " ");
+}
+
 function escapePdf(s: string): string {
-  // Latin-1 only; anything else becomes a question mark rather than a wrong
-  // glyph, so a mojibake row is visible instead of silently plausible.
+  // The content stream is UTF-8 encoded but the font is WinAnsi, so a literal
+  // high byte would arrive as two and render as mojibake. Escaping everything
+  // above ASCII as octal keeps the stream pure ASCII and lets the viewer decode
+  // it against WinAnsi — which is how "Müller" stays "Müller".
+  //
+  // ponytail: anything still outside Latin-1 at this point was never in a table
+  // (`pdfSafe` gates those) — it is a footer, watermark or meta value, which no
+  // caller currently populates from tenant-supplied text. It becomes a visible
+  // question mark. Widen `pdfSafe` to cover PdfOptions if one ever does.
   let out = "";
-  for (const ch of s) {
+  for (const ch of transliterate(s)) {
     const code = ch.codePointAt(0)!;
     if (ch === "(" || ch === ")" || ch === "\\") out += `\\${ch}`;
     else if (code < 32 || code > 255) out += "?";
+    else if (code > 126) out += `\\${code.toString(8).padStart(3, "0")}`;
     else out += ch;
   }
   return out;
@@ -220,14 +286,26 @@ function escapePdf(s: string): string {
 /** True when every table can be rendered without substitution. */
 export function pdfSafe(tables: readonly ReportTable[]): boolean {
   // Latin-1 is the whole of WinAnsiEncoding; anything outside it needs an
-  // embedded font, so the caller is told to export xlsx instead.
+  // embedded font, so the caller is told to export xlsx instead. Tested on the
+  // *folded* string so this and `escapePdf` agree on what is renderable: a gate
+  // stricter than the renderer refuses exports that would have rendered fine,
+  // which is what made "Cash – Client Money" a 400.
   // eslint-disable-next-line no-control-regex -- the range starts at NUL by design
-  const bad = /[^\u0000-\u00FF]/;
+  const bad = (v: string): boolean => /[^\u0000-\u00FF]/.test(transliterate(v));
   return tables.every(
     (t) =>
-      !bad.test(t.title) &&
-      t.columns.every((c) => !bad.test(c.label)) &&
-      t.rows.every((r) => Object.values(r).every((v) => typeof v !== "string" || !bad.test(v)))
+      !bad(t.title) &&
+      t.columns.every((c) => !bad(c.label)) &&
+      // Only the values a column projects: report rows carry more fields than
+      // they render (a chart-of-accounts row holds an Arabic `ar` name that no
+      // column draws), and refusing over a field that never reaches the page is
+      // the same false refusal in a different place.
+      t.rows.every((r) =>
+        t.columns.every((c) => {
+          const v = r[c.key];
+          return typeof v !== "string" || !bad(v);
+        })
+      )
   );
 }
 

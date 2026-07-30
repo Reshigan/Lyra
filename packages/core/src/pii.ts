@@ -67,18 +67,64 @@ function walk(value: unknown, map: PiiMap, path: string): unknown {
     );
   }
   const kind = map[path];
+  if (typeof value === "string" && (kind || hasNestedPath(map, path))) {
+    // A JSON column that never went through `hydrate()` — a raw Drizzle row, or
+    // text that hydrate() failed to parse and handed back verbatim. Parse it so
+    // the declared paths still match, then hand back a string so the column
+    // keeps its shape.
+    const parsed = parseJsonContainer(value);
+    if (parsed !== undefined) return JSON.stringify(walk(parsed, map, path));
+    // Paths were declared *inside* this blob and it will not parse: a blob we
+    // cannot read is a blob we cannot prove is safe.
+    if (!kind) return "[redacted]";
+  }
   if (kind && typeof value === "string") return MASKERS[kind](value);
   return value;
 }
 
-/** The customer spine's PII fields — used by every module that reads a customer. */
+/** True if any declared path sits inside `path` — i.e. it should be an object. */
+function hasNestedPath(map: PiiMap, path: string): boolean {
+  if (!path) return false;
+  const prefix = `${path}.`;
+  // ponytail: linear scan per string field. Maps hold a handful of paths and
+  // rows are small; precompute a prefix set if a map ever grows past ~50.
+  return Object.keys(map).some((k) => k.startsWith(prefix));
+}
+
+/** JSON.parse, but only objects and arrays — `"12"` and `"null"` are values, not blobs. */
+function parseJsonContainer(value: string): unknown {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return parsed && typeof parsed === "object" ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The customer spine's PII fields — used by every module that reads a customer.
+ *
+ * Paths are the physical `core_customers` column names, because masking runs on
+ * the hydrated row: apps/api/src/crud.ts `view()` calls `hydrate()` (every
+ * `*Json` column parsed from TEXT into an object/array) and only then `mask()`.
+ * So `nameJson` is `{en, ar}` and `emailsJson` / `phonesJson` are arrays of
+ * strings by the time a path is matched.
+ *
+ * A raw Drizzle row works too — `walk` parses a JSON string when a path points
+ * into it — so a hand-written route that skips `hydrate()` is masked as well.
+ *
+ * ponytail: one map keyed on physical columns, no DTO layer and no parallel
+ * raw/hydrated maps. If an endpoint ever reshapes a customer into an API DTO
+ * (`{email, phone}`), that DTO needs its own map — mask at the shape you emit.
+ * `pii.test.ts` pins every path to a real column so this cannot silently rot.
+ */
 export const CUSTOMER_PII: PiiMap = {
-  "name.en": "name",
-  "name.ar": "name",
-  email: "email",
-  phone: "phone",
-  emails: "email",
-  phones: "phone",
-  nationalId: "id",
-  iban: "id"
+  "nameJson.en": "name",
+  "nameJson.ar": "name",
+  emailsJson: "email",
+  phonesJson: "phone",
+  // A national ID hash is a re-identification vector, not an opaque token: the
+  // ID space is small enough to brute-force offline. Masking it is a floor, not
+  // a fix — it should not leave the API at all (see the report on resources.ts).
+  nationalIdHash: "id"
 };

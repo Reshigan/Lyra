@@ -19,6 +19,7 @@ import type { CoreDb } from "./context.js";
 
 const T0 = Date.UTC(2026, 0, 6, 8, 0, 0); // deterministic ids: same seed, same ULIDs prefix time
 const DAY = 86_400_000;
+const HOUR = 3_600_000;
 
 /** Overridable so a real deployment never ships a known password. */
 const DEFAULT_PASSWORD = "Gonxt-Demo-2026!";
@@ -118,7 +119,13 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
         name: "GONXT",
         shortName: "GONXT",
         domain: "gonxt.ae",
-        palette: { accent: "#5B8CFF", accentHover: "#3F6FE0" },
+        // accentContrast is explicit because the dark-theme fallback (#412402,
+        // cut for vega-500) measures only 4.49:1 on this blue and fails AA for
+        // body text. Ink-900 measures 6.22:1 — the same choice, for the same
+        // reason, as the light-theme token in packages/ui/src/tokens.css.
+        // The hover fill brightens rather than darkens: the label colour does
+        // not change on hover, and a darker blue (#3F6FE0) drops it to 4.28:1.
+        palette: { accent: "#5B8CFF", accentHover: "#7FA6FF", accentContrast: "#070b14" },
         font: "space-grotesk",
         email: { from: "hello@gonxt.ae", replyTo: "support@gonxt.ae" },
         legal: { company: "GONXT Insurance Services LLC", privacyUrl: "https://gonxt.ae/privacy" }
@@ -1046,6 +1053,849 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
 
   await db.insert(schema.aiPrompts).values(promptRows);
   await db.insert(schema.aiAgents).values(agentRows);
+
+  /* ------------------------------------------------------------------ north */
+  // NORTH is a rollup, never a hot-table read (docs/modules/north.md §2.1), so
+  // these rows describe the *same* book the panel above describes — five lines
+  // from five underwriters, three b2c channels and two b2b channels — one
+  // closed accounting period behind the live sale seeded above. Money is minor
+  // units (fils); every percent and ratio is basis points, and the scale is
+  // carried in `targetJson` because the registry has no scale column.
+  //
+  // Periods are literal strings for the same reason the case ref above is
+  // "GNX-2601-0001": the dataset is a January 2026 demo. Timestamps stay
+  // derived from `now` so an overridden clock still lands in order.
+  const BPS = "bps";
+
+  const METRICS: ReadonlyArray<{
+    key: string;
+    en: string;
+    ar: string;
+    def: string;
+    unit: "count" | "money" | "percent" | "ratio" | "duration_ms";
+    grain: "day" | "week" | "month";
+    direction: "up" | "down";
+    owner: string;
+    sensitivity?: "public" | "internal" | "restricted";
+    target: Record<string, unknown>;
+  }> = [
+    {
+      key: "gwp",
+      en: "Gross written premium",
+      ar: "إجمالي الأقساط المكتتبة",
+      def: "v_exec_daily.premium_minor",
+      unit: "money",
+      grain: "month",
+      direction: "up",
+      owner: "faisal.omar",
+      target: { value: 230_000_000, scale: "minor", currency: "AED" }
+    },
+    {
+      key: "net_commission",
+      en: "Net commission retained",
+      ar: "صافي العمولة المحتفظ بها",
+      def: "dist_commission_entries.net_commission_minor",
+      unit: "money",
+      grain: "month",
+      direction: "up",
+      owner: "faisal.omar",
+      target: { value: 21_000_000, scale: "minor", currency: "AED" }
+    },
+    {
+      key: "active_policies",
+      en: "Policies in force",
+      ar: "الوثائق السارية",
+      def: "axis_policies WHERE status = 'active'",
+      unit: "count",
+      grain: "month",
+      direction: "up",
+      owner: "omar.farouk",
+      target: { value: 4_800, scale: "count" }
+    },
+    {
+      key: "renewal_retention_rate",
+      en: "Renewal retention rate",
+      ar: "معدل الاحتفاظ عند التجديد",
+      def: "v_renewal_book: accepted / (accepted + lost)",
+      unit: "percent",
+      grain: "month",
+      direction: "up",
+      owner: "yusuf.karim",
+      target: { value: 8_500, scale: BPS }
+    },
+    {
+      key: "cac_per_policy",
+      en: "Acquisition cost per policy",
+      ar: "تكلفة اكتساب الوثيقة",
+      def: "v_cac_ltv.spend_minor / v_cac_ltv.binds",
+      unit: "money",
+      grain: "month",
+      direction: "down",
+      owner: "noor.jamal",
+      target: { value: 19_000, scale: "minor", currency: "AED" }
+    },
+    {
+      key: "broker_channel_share",
+      en: "Share of premium through b2b channels",
+      ar: "حصة الأقساط عبر قنوات الأعمال",
+      def: "axis_policies JOIN dist_channels ON kind = 'b2b'",
+      unit: "percent",
+      grain: "month",
+      direction: "up",
+      owner: "dana.aziz",
+      target: { value: 4_000, scale: BPS }
+    },
+    {
+      key: "loss_ratio",
+      en: "Loss ratio — own paper",
+      ar: "نسبة الخسارة — الاكتتاب الذاتي",
+      def: "axis_claims / axis_policies WHERE provider is internal",
+      unit: "ratio",
+      grain: "month",
+      direction: "down",
+      owner: "faisal.omar",
+      // Only GONXT's own underwriting result, so it is not a number the panel
+      // partners or the b2b channels get to see.
+      sensitivity: "restricted",
+      target: { value: 6_000, scale: BPS }
+    },
+    {
+      key: "ai_cost_per_case",
+      en: "AI cost per case",
+      ar: "تكلفة الذكاء الاصطناعي لكل ملف",
+      def: "v_exec_daily.ai_cost_micro / v_exec_daily.cases_created",
+      unit: "money",
+      grain: "month",
+      direction: "down",
+      owner: "raed.samir",
+      target: { value: 100, scale: "minor", currency: "AED" }
+    },
+    {
+      key: "policies_issued",
+      en: "Policies issued",
+      ar: "الوثائق المُصدرة",
+      def: "v_exec_daily.policies_issued",
+      unit: "count",
+      grain: "day",
+      direction: "up",
+      owner: "omar.farouk",
+      target: { value: 55, scale: "count" }
+    },
+    {
+      key: "quote_to_bind_rate",
+      en: "Quote to bind rate",
+      ar: "معدل التحويل من عرض إلى وثيقة",
+      def: "axis_policies / dist_quote_requests WHERE state = 'complete'",
+      unit: "percent",
+      grain: "day",
+      direction: "up",
+      owner: "layla.hassan",
+      target: { value: 2_400, scale: BPS }
+    },
+    {
+      key: "panel_response_rate",
+      en: "Panel response rate",
+      ar: "معدل استجابة لوحة المزوّدين",
+      def: "dist_quote_requests.responded_count / dist_quote_requests.fanout_count",
+      unit: "percent",
+      grain: "day",
+      direction: "up",
+      owner: "dana.aziz",
+      target: { value: 9_700, scale: BPS }
+    },
+    {
+      key: "quote_latency_p95",
+      en: "Quote latency p95",
+      ar: "زمن استجابة التسعير — المئين ٩٥",
+      def: "dist_quote_responses.latency_ms, p95",
+      unit: "duration_ms",
+      grain: "day",
+      direction: "down",
+      owner: "raed.samir",
+      sensitivity: "public",
+      target: { value: 2_500, scale: "ms" }
+    }
+  ];
+
+  let m = 0;
+  await db.insert(schema.northMetrics).values(
+    METRICS.map((metric) => ({
+      id: id("mtr", now + m++),
+      tenantId,
+      key: metric.key,
+      nameJson: JSON.stringify({ en: metric.en, ar: metric.ar }),
+      definitionSqlRef: metric.def,
+      unit: metric.unit,
+      currency: metric.unit === "money" ? "AED" : null,
+      grain: metric.grain,
+      owner: metric.owner,
+      targetJson: JSON.stringify(metric.target),
+      sensitivity: metric.sensitivity ?? "internal",
+      direction: metric.direction,
+      createdAt: now,
+      updatedAt: now
+    }))
+  );
+
+  /* --------------------------------------------------------- snapshots */
+  // The nightly rollup runs at 02:00Z: a daily period is written the morning
+  // after it closes, a monthly period on the 1st, and the open month is
+  // rewritten every night. Both are expressed as an offset from `now`.
+  const MONTHS = ["2025-10", "2025-11", "2025-12", "2026-01"] as const;
+  const MONTH_ROLLUP_DAYS_AGO: Record<(typeof MONTHS)[number], number> = {
+    "2025-10": 66,
+    "2025-11": 36,
+    "2025-12": 5,
+    "2026-01": 0 // month to date, rewritten this morning
+  };
+  const DAYS = ["2026-01-01", "2026-01-02", "2026-01-03", "2026-01-04", "2026-01-05"] as const;
+
+  const MONTHLY: Record<string, readonly [number, number, number, number]> = {
+    gwp: [186_400_000, 201_750_000, 238_900_000, 74_300_000],
+    net_commission: [17_708_000, 19_166_000, 22_695_000, 7_058_000],
+    active_policies: [4_182, 4_361, 4_608, 4_690],
+    renewal_retention_rate: [7_920, 8_050, 8_310, 8_180],
+    cac_per_policy: [21_400, 20_150, 18_900, 24_600],
+    broker_channel_share: [3_120, 3_380, 3_611, 3_740],
+    loss_ratio: [6_140, 5_980, 6_420, 6_050],
+    ai_cost_per_case: [118, 104, 96, 91]
+  };
+  const DAILY: Record<string, readonly [number, number, number, number, number]> = {
+    policies_issued: [41, 38, 52, 61, 57],
+    quote_to_bind_rate: [2_310, 2_280, 2_405, 2_360, 1_890],
+    panel_response_rate: [9_650, 9_720, 9_580, 9_240, 8_810],
+    quote_latency_p95: [2_150, 2_080, 2_310, 3_040, 3_620]
+  };
+
+  // Readable and unique per dimension set, which is all the unique index needs.
+  // ponytail: a digest buys nothing at this cardinality — swap it for one when
+  // a dimension value can contain "=" or "&".
+  const dimsHash = (dims: Record<string, string>): string =>
+    Object.entries(dims)
+      .map(([k, v]) => `${k}=${v}`)
+      .join("&");
+
+  // December by channel and by underwriter — both sum to the December total,
+  // so drilling into the metric never disagrees with the headline.
+  const DECEMBER_SPLITS: ReadonlyArray<{ dims: Record<string, string>; value: number }> = [
+    { dims: { channel: "gonxt-web" }, value: 96_420_000 },
+    { dims: { channel: "gonxt-app" }, value: 41_880_000 },
+    { dims: { channel: "gonxt-call" }, value: 14_320_000 },
+    { dims: { channel: "alpha-brokers" }, value: 62_190_000 },
+    { dims: { channel: "meridian-embed" }, value: 24_090_000 },
+    { dims: { provider: "Cedar General Insurance" }, value: 84_500_000 },
+    { dims: { provider: "Falcon Insurance" }, value: 61_300_000 },
+    { dims: { provider: "Oryx Takaful" }, value: 33_700_000 },
+    { dims: { provider: "Gulf Health Assurance" }, value: 28_900_000 },
+    { dims: { provider: "GONXT Underwriting" }, value: 30_500_000 }
+  ];
+
+  const snapshotRows: (typeof schema.northSnapshots.$inferInsert)[] = [];
+  let s = 0;
+  const snapshot = (
+    metricKey: string,
+    grain: "day" | "month",
+    period: string,
+    value: number,
+    ts: number,
+    dims?: Record<string, string>
+  ): void => {
+    snapshotRows.push({
+      id: id("snp", now + s++),
+      tenantId,
+      metricKey,
+      grain,
+      period,
+      dimsJson: dims ? JSON.stringify(dims) : null,
+      dimsHash: dims ? dimsHash(dims) : "",
+      value,
+      ts
+    });
+  };
+
+  for (const [key, series] of Object.entries(MONTHLY)) {
+    MONTHS.forEach((period, i) => {
+      snapshot(key, "month", period, series[i]!, now - MONTH_ROLLUP_DAYS_AGO[period] * DAY - 6 * HOUR);
+    });
+  }
+  for (const [key, series] of Object.entries(DAILY)) {
+    DAYS.forEach((period, i) => {
+      snapshot(key, "day", period, series[i]!, now - (4 - i) * DAY - 6 * HOUR);
+    });
+  }
+  for (const split of DECEMBER_SPLITS) {
+    snapshot("gwp", "month", "2025-12", split.value, now - 5 * DAY - 6 * HOUR, split.dims);
+  }
+  await db.insert(schema.northSnapshots).values(snapshotRows);
+
+  /* --------------------------------------------------------- briefings */
+  // Ids are declared up front because an anomaly points at the decision it
+  // opened and that decision points back at the briefing that raised it.
+  const briefingIds = {
+    jan05En: id("brf", now),
+    jan05Ar: id("brf", now + 1),
+    jan04En: id("brf", now + 2),
+    jan02Board: id("brf", now + 3),
+    dec31Investor: id("brf", now + 4)
+  };
+  const anomalyIds = {
+    bindRate: id("ano", now),
+    panelResponse: id("ano", now + 1),
+    cac: id("ano", now + 2),
+    december: id("ano", now + 3),
+    latency: id("ano", now + 4)
+  };
+  const boardpackIds = { q4: id("bpk", now), q1: id("bpk", now + 1) };
+  const decisionIds = {
+    panel: id("dec", now),
+    brokerShare: id("dec", now + 1),
+    oryxPricing: id("dec", now + 2),
+    campaign: id("dec", now + 3),
+    ownPaper: id("dec", now + 4),
+    callCentre: id("dec", now + 5)
+  };
+
+  const briefingRef = (b: string): string => `briefings/${tenantId}/${b}.md`;
+  await db.insert(schema.northBriefings).values([
+    {
+      id: briefingIds.jan05En,
+      tenantId,
+      // 2026-01-06/exec/en is deliberately left free: J-E1 generates that
+      // briefing at runtime and the unique index would reject a second one.
+      date: "2026-01-05",
+      audience: "exec",
+      locale: "en",
+      narrativeRef: briefingRef(briefingIds.jan05En),
+      highlightsJson: JSON.stringify([
+        {
+          metricKey: "gwp",
+          period: "2025-12",
+          value: 238_900_000,
+          deltaBps: 1_841,
+          note: "December closed above every prior month, led by motor on the web and app channels."
+        },
+        {
+          metricKey: "broker_channel_share",
+          period: "2025-12",
+          value: 3_611,
+          deltaBps: 683,
+          note: "Alpha Brokers and the Meridian embed together wrote just over a third of premium."
+        },
+        {
+          metricKey: "quote_to_bind_rate",
+          period: "2026-01-05",
+          value: 1_890,
+          deltaBps: -1_923,
+          note: "Yesterday's conversion fell well below the five-day average; see the open anomaly."
+        }
+      ]),
+      anomaliesJson: JSON.stringify([anomalyIds.bindRate, anomalyIds.panelResponse]),
+      status: "published",
+      generatedBy: "ai",
+      approvedBy: "hala.zayed",
+      publishedAt: now - DAY - 5 * HOUR,
+      createdAt: now - DAY - 6 * HOUR
+    },
+    {
+      id: briefingIds.jan05Ar,
+      tenantId,
+      date: "2026-01-05",
+      audience: "exec",
+      locale: "ar",
+      narrativeRef: briefingRef(briefingIds.jan05Ar),
+      highlightsJson: JSON.stringify([
+        {
+          metricKey: "gwp",
+          period: "2025-12",
+          value: 238_900_000,
+          deltaBps: 1_841,
+          note: "أغلق ديسمبر أعلى من كل الأشهر السابقة، بقيادة تأمين المركبات عبر الموقع والتطبيق."
+        },
+        {
+          metricKey: "renewal_retention_rate",
+          period: "2025-12",
+          value: 8_310,
+          deltaBps: 323,
+          note: "تحسّن الاحتفاظ عند التجديد للشهر الثالث على التوالي."
+        }
+      ]),
+      anomaliesJson: JSON.stringify([anomalyIds.bindRate]),
+      status: "published",
+      generatedBy: "ai",
+      approvedBy: "khalid.rashed",
+      publishedAt: now - DAY - 5 * HOUR,
+      createdAt: now - DAY - 6 * HOUR
+    },
+    {
+      id: briefingIds.jan04En,
+      tenantId,
+      date: "2026-01-04",
+      audience: "exec",
+      locale: "en",
+      narrativeRef: briefingRef(briefingIds.jan04En),
+      highlightsJson: JSON.stringify([
+        {
+          metricKey: "policies_issued",
+          period: "2026-01-04",
+          value: 61,
+          deltaBps: 1_731,
+          note: "Best issuing day of the new year so far, mostly motor renewals coming back."
+        },
+        {
+          metricKey: "quote_latency_p95",
+          period: "2026-01-04",
+          value: 3_040,
+          deltaBps: 3_160,
+          note: "Panel latency drifted above target; the manual-priced Oryx row is the slowest leg."
+        }
+      ]),
+      anomaliesJson: JSON.stringify([anomalyIds.latency]),
+      status: "published",
+      generatedBy: "ai",
+      approvedBy: "hala.zayed",
+      publishedAt: now - 2 * DAY - 5 * HOUR,
+      createdAt: now - 2 * DAY - 6 * HOUR
+    },
+    {
+      id: briefingIds.jan02Board,
+      tenantId,
+      date: "2026-01-02",
+      audience: "board",
+      locale: "en",
+      narrativeRef: briefingRef(briefingIds.jan02Board),
+      highlightsJson: JSON.stringify([
+        {
+          metricKey: "gwp",
+          period: "2025-12",
+          value: 238_900_000,
+          deltaBps: 1_841,
+          note: "Q4 finished ahead of plan on premium and slightly behind on acquisition cost."
+        },
+        {
+          metricKey: "active_policies",
+          period: "2025-12",
+          value: 4_608,
+          deltaBps: 566,
+          note: "The book grew every month of the quarter."
+        },
+        {
+          metricKey: "loss_ratio",
+          period: "2025-12",
+          value: 6_420,
+          deltaBps: 736,
+          note: "Own-paper loss ratio widened in December and is worth a closer look in Q1."
+        }
+      ]),
+      anomaliesJson: JSON.stringify([anomalyIds.december]),
+      status: "review",
+      generatedBy: "ai",
+      approvedBy: null,
+      publishedAt: null,
+      createdAt: now - 4 * DAY - 6 * HOUR
+    },
+    {
+      id: briefingIds.dec31Investor,
+      tenantId,
+      date: "2025-12-31",
+      audience: "investor",
+      locale: "en",
+      narrativeRef: briefingRef(briefingIds.dec31Investor),
+      highlightsJson: JSON.stringify([
+        {
+          metricKey: "net_commission",
+          period: "2025-12",
+          value: 22_695_000,
+          deltaBps: 1_842,
+          note: "Retained commission tracked premium; the b2b mix shift did not dilute the margin."
+        },
+        {
+          metricKey: "cac_per_policy",
+          period: "2025-12",
+          value: 18_900,
+          deltaBps: -620,
+          note: "Acquisition cost per policy improved for the third month."
+        }
+      ]),
+      anomaliesJson: null,
+      status: "draft",
+      generatedBy: "ai",
+      approvedBy: null,
+      publishedAt: null,
+      createdAt: now - 6 * DAY - 6 * HOUR
+    }
+  ]);
+
+  /* --------------------------------------------------------- anomalies */
+  // `magnitude` is signed basis points against the expected value, so every
+  // row here is round((actual - expected) / expected * 10_000).
+  await db.insert(schema.northAnomalies).values([
+    {
+      id: anomalyIds.bindRate,
+      tenantId,
+      metricKey: "quote_to_bind_rate",
+      window: "2026-01-05",
+      magnitude: -1_923,
+      expected: 2_340,
+      actual: 1_890,
+      driverAnalysisJson: JSON.stringify({
+        method: "period_over_period",
+        baseline: "trailing_4_day",
+        drivers: [
+          { dimension: "channel", key: "alpha-brokers", contributionBps: -1_180 },
+          { dimension: "channel", key: "gonxt-web", contributionBps: -520 },
+          { dimension: "line", key: "motor", contributionBps: -1_640 }
+        ]
+      }),
+      state: "explained",
+      linkedActionRef: null,
+      explainedBy: "rana.hadid",
+      detectedAt: now - 6 * HOUR
+    },
+    {
+      id: anomalyIds.panelResponse,
+      tenantId,
+      metricKey: "panel_response_rate",
+      window: "2026-01-01..2026-01-05",
+      magnitude: -861,
+      expected: 9_640,
+      actual: 8_810,
+      driverAnalysisJson: JSON.stringify({
+        method: "trend",
+        baseline: "trailing_30_day",
+        drivers: [
+          { dimension: "provider", key: "Oryx Takaful", contributionBps: -790 },
+          { dimension: "provider", key: "Gulf Health Assurance", contributionBps: -71 }
+        ],
+        note: "Both are off-API rows: Oryx prices manually and Gulf Health quotes by email."
+      }),
+      state: "action_created",
+      linkedActionRef: `north_decision:${decisionIds.oryxPricing}`,
+      explainedBy: "rana.hadid",
+      detectedAt: now - 6 * HOUR
+    },
+    {
+      id: anomalyIds.cac,
+      tenantId,
+      metricKey: "cac_per_policy",
+      window: "2026-01",
+      magnitude: 2_813,
+      expected: 19_200,
+      actual: 24_600,
+      driverAnalysisJson: JSON.stringify({
+        method: "period_over_period",
+        baseline: "2025-12",
+        drivers: [
+          { dimension: "channel", key: "gonxt-web", contributionBps: 1_940 },
+          { dimension: "channel", key: "gonxt-app", contributionBps: 873 }
+        ]
+      }),
+      state: "new",
+      linkedActionRef: null,
+      explainedBy: null,
+      detectedAt: now - 6 * HOUR
+    },
+    {
+      id: anomalyIds.december,
+      tenantId,
+      metricKey: "gwp",
+      window: "2025-12",
+      magnitude: 1_269,
+      expected: 212_000_000,
+      actual: 238_900_000,
+      driverAnalysisJson: JSON.stringify({
+        method: "seasonal",
+        baseline: "trailing_12_month_seasonal",
+        drivers: [{ dimension: "line", key: "motor", contributionBps: 1_104 }],
+        note: "December renewals land in the same week every year."
+      }),
+      state: "dismissed",
+      linkedActionRef: null,
+      explainedBy: "rana.hadid",
+      detectedAt: now - 5 * DAY - 6 * HOUR
+    },
+    {
+      id: anomalyIds.latency,
+      tenantId,
+      metricKey: "quote_latency_p95",
+      window: "2026-01-04",
+      magnitude: 6_606,
+      expected: 2_180,
+      actual: 3_620,
+      driverAnalysisJson: JSON.stringify({
+        method: "period_over_period",
+        baseline: "trailing_7_day",
+        drivers: [{ dimension: "provider", key: "Oryx Takaful", contributionBps: 5_980 }]
+      }),
+      state: "new",
+      linkedActionRef: null,
+      explainedBy: null,
+      detectedAt: now - DAY - 6 * HOUR
+    }
+  ]);
+
+  /* --------------------------------------------------------- scenarios */
+  // Assumptions are the input the answer can be re-derived from (J-E3); the
+  // result is the model's, so it stays a stored object rather than prose.
+  // `modelRunRef` is null because this seed writes no ai_audit_log rows —
+  // a dangling run id would be worse than an empty column.
+  await db.insert(schema.northScenarios).values([
+    {
+      id: id("scn", now),
+      tenantId,
+      question: "What if Alpha Brokers' motor share moves from 35% to 45%?",
+      assumptionsJson: JSON.stringify({
+        channelKey: "alpha-brokers",
+        line: "motor",
+        channelSharePpm: 450_000,
+        currentChannelSharePpm: 350_000,
+        volumeUpliftBps: 1_200,
+        horizonMonths: 6,
+        currency: "AED"
+      }),
+      modelRunRef: null,
+      resultJson: JSON.stringify({
+        gwpDeltaMinor: 18_600_000,
+        netCommissionDeltaMinor: -1_284_000,
+        policiesDelta: 214,
+        brokerChannelShareBps: 4_180,
+        breakEvenMonths: 4,
+        sensitivity: "A volume uplift under 700bps leaves retained commission below today."
+      }),
+      author: "hala.zayed",
+      sharedWithJson: JSON.stringify(["faisal.omar", "dana.aziz"]),
+      createdAt: now - 3 * DAY,
+      updatedAt: now - 3 * DAY
+    },
+    {
+      id: id("scn", now + 1),
+      tenantId,
+      question: "What if we add a fifth motor underwriter to the panel?",
+      assumptionsJson: JSON.stringify({
+        line: "motor",
+        currentPanelSize: 4,
+        panelSize: 5,
+        assumedBaseCommissionPpm: 160_000,
+        assumedWinRateBps: 1_400,
+        quoteLatencyBudgetMs: 2_500,
+        horizonMonths: 12
+      }),
+      modelRunRef: null,
+      resultJson: JSON.stringify({
+        gwpDeltaMinor: 26_400_000,
+        netCommissionDeltaMinor: 2_910_000,
+        quoteToBindRateDeltaBps: 180,
+        quoteLatencyP95DeltaMs: 340,
+        note: "Upside holds only while the new row answers over the API; a manual row spends the whole latency budget."
+      }),
+      author: "rana.hadid",
+      sharedWithJson: JSON.stringify(["hala.zayed", "omar.farouk"]),
+      createdAt: now - 2 * DAY,
+      updatedAt: now - 2 * DAY
+    },
+    {
+      id: id("scn", now + 2),
+      tenantId,
+      question: "What if Oryx motor moves from manual pricing to a rate table?",
+      assumptionsJson: JSON.stringify({
+        offeringCode: "ORX-MOT-TKF",
+        fromPricingMode: "manual",
+        toPricingMode: "table",
+        currentSlaSeconds: 120,
+        targetSlaSeconds: 5,
+        horizonMonths: 3
+      }),
+      modelRunRef: null,
+      resultJson: JSON.stringify({
+        panelResponseRateDeltaBps: 620,
+        quoteLatencyP95DeltaMs: -980,
+        quoteToBindRateDeltaBps: 140,
+        gwpDeltaMinor: 7_200_000,
+        note: "Recovers most of the response-rate drift seen across the first week of January."
+      }),
+      author: "rana.hadid",
+      sharedWithJson: JSON.stringify(["dana.aziz"]),
+      createdAt: now - DAY,
+      updatedAt: now - DAY
+    }
+  ]);
+
+  /* -------------------------------------------------------- board packs */
+  // No pdfFileId: nothing has rendered a PDF into R2 in a fresh install, and a
+  // file id pointing at a missing object would fail on the first download.
+  await db.insert(schema.northBoardpacks).values([
+    {
+      id: boardpackIds.q4,
+      tenantId,
+      period: "2025-Q4",
+      title: "Q4 2025 board pack",
+      sectionsJson: JSON.stringify([
+        { key: "growth", metricKeys: ["gwp", "policies_issued", "active_policies"] },
+        { key: "distribution_mix", metricKeys: ["broker_channel_share"] },
+        { key: "retention", metricKeys: ["renewal_retention_rate"] },
+        { key: "acquisition_cost", metricKeys: ["cac_per_policy", "net_commission"] },
+        { key: "own_paper", metricKeys: ["loss_ratio"] },
+        { key: "decisions", decisionRefs: [decisionIds.campaign, decisionIds.ownPaper] }
+      ]),
+      pdfFileId: null,
+      xlsxFileId: null,
+      distributionLogJson: JSON.stringify([
+        { to: "board@gonxt.ae", medium: "email", ts: now - 4 * DAY },
+        { to: "hala.zayed@gonxt.ae", medium: "email", ts: now - 4 * DAY }
+      ]),
+      status: "distributed",
+      approvedBy: "hala.zayed",
+      createdAt: now - 6 * DAY,
+      updatedAt: now - 4 * DAY
+    },
+    {
+      id: boardpackIds.q1,
+      tenantId,
+      period: "2026-Q1",
+      title: "Q1 2026 board pack",
+      sectionsJson: JSON.stringify([
+        { key: "growth", metricKeys: ["gwp", "policies_issued", "active_policies"] },
+        { key: "panel_health", metricKeys: ["panel_response_rate", "quote_latency_p95"] },
+        { key: "conversion", metricKeys: ["quote_to_bind_rate"] },
+        { key: "decisions", decisionRefs: [decisionIds.panel, decisionIds.brokerShare] }
+      ]),
+      pdfFileId: null,
+      xlsxFileId: null,
+      distributionLogJson: null,
+      status: "draft",
+      approvedBy: null,
+      createdAt: now - DAY,
+      updatedAt: now - DAY
+    }
+  ]);
+
+  /* ---------------------------------------------------------- decisions */
+  await db.insert(schema.northDecisions).values([
+    {
+      id: decisionIds.panel,
+      tenantId,
+      title: "Add a fifth motor underwriter to the panel",
+      contextRef: `north_briefing:${briefingIds.jan02Board}`,
+      optionsJson: JSON.stringify([
+        { key: "invite_two", label: "Invite two underwriters to quote in Q1", costMinor: 0 },
+        { key: "invite_one", label: "Invite one underwriter and review in Q2", costMinor: 0 },
+        { key: "hold", label: "Hold the panel at four and revisit after Q1" }
+      ]),
+      chosen: "invite_two",
+      owner: "hala.zayed",
+      reviewAt: now + 60 * DAY,
+      outcomeReviewJson: null,
+      status: "open",
+      createdAt: now - 4 * DAY,
+      updatedAt: now - 4 * DAY
+    },
+    {
+      id: decisionIds.brokerShare,
+      tenantId,
+      title: "Raise the Alpha Brokers motor share to 40% for Q1",
+      contextRef: `north_briefing:${briefingIds.jan05En}`,
+      optionsJson: JSON.stringify([
+        { key: "raise_40", label: "Raise the motor share to 40% for Q1 only" },
+        { key: "raise_45", label: "Raise the motor share to 45% with a volume floor" },
+        { key: "hold_35", label: "Hold at 35% and revisit at renewal" }
+      ]),
+      chosen: "raise_40",
+      owner: "dana.aziz",
+      reviewAt: now + 90 * DAY,
+      outcomeReviewJson: null,
+      status: "open",
+      createdAt: now - DAY,
+      updatedAt: now - DAY
+    },
+    {
+      id: decisionIds.oryxPricing,
+      tenantId,
+      title: "Move Oryx motor quotes off manual pricing",
+      contextRef: `north_anomaly:${anomalyIds.panelResponse}`,
+      optionsJson: JSON.stringify([
+        { key: "rate_table", label: "Agree a rate table with Oryx and price in-platform" },
+        { key: "tighten_sla", label: "Keep manual pricing and tighten the SLA to 30 seconds" },
+        { key: "drop_row", label: "Drop the row from the default panel" }
+      ]),
+      chosen: "rate_table",
+      owner: "omar.farouk",
+      reviewAt: now + 30 * DAY,
+      outcomeReviewJson: null,
+      status: "open",
+      createdAt: now - 6 * HOUR,
+      updatedAt: now - 6 * HOUR
+    },
+    {
+      id: decisionIds.campaign,
+      tenantId,
+      title: "Pause the December brand campaign and move the budget to search",
+      contextRef: `north_briefing:${briefingIds.dec31Investor}`,
+      optionsJson: JSON.stringify([
+        { key: "move_to_search", label: "Move the remaining budget to search" },
+        { key: "keep", label: "Keep the campaign running to the end of the quarter" }
+      ]),
+      chosen: "move_to_search",
+      owner: "noor.jamal",
+      reviewAt: now - 5 * DAY,
+      outcomeReviewJson: JSON.stringify({
+        reviewedAt: now - 5 * DAY,
+        reviewedBy: "hala.zayed",
+        metricKey: "cac_per_policy",
+        before: 21_400,
+        after: 18_900,
+        verdict: "worked",
+        note: "Acquisition cost per policy fell over the two months after the switch."
+      }),
+      status: "reviewed",
+      createdAt: now - 40 * DAY,
+      updatedAt: now - 5 * DAY
+    },
+    {
+      id: decisionIds.ownPaper,
+      tenantId,
+      title: "Keep GONXT motor on own paper for the 25–39 age band",
+      contextRef: `north_boardpack:${boardpackIds.q4}`,
+      optionsJson: JSON.stringify([
+        { key: "keep", label: "Keep writing the band on own paper" },
+        { key: "cede", label: "Cede the band to the panel and keep only travel" }
+      ]),
+      chosen: "keep",
+      owner: "faisal.omar",
+      reviewAt: now - 2 * DAY,
+      outcomeReviewJson: JSON.stringify({
+        reviewedAt: now - 2 * DAY,
+        reviewedBy: "faisal.omar",
+        metricKey: "loss_ratio",
+        before: 5_980,
+        after: 6_420,
+        verdict: "mixed",
+        note: "The band stayed profitable but the December loss ratio is worth watching in Q1."
+      }),
+      status: "reviewed",
+      createdAt: now - 30 * DAY,
+      updatedAt: now - 2 * DAY
+    },
+    {
+      id: decisionIds.callCentre,
+      tenantId,
+      title: "Withdraw Cedar Motor Essential from the call centre",
+      contextRef: `north_briefing:${briefingIds.jan04En}`,
+      optionsJson: JSON.stringify([
+        { key: "withdraw", label: "Withdraw the row from the call centre panel" },
+        { key: "keep", label: "Keep the row and script the excess difference" }
+      ]),
+      chosen: "keep",
+      owner: "omar.farouk",
+      reviewAt: now + 14 * DAY,
+      outcomeReviewJson: JSON.stringify({
+        reversedAt: now - 3 * DAY,
+        reversedBy: "hala.zayed",
+        note: "Withdrawing it removed the cheapest row from the call-centre comparison, so the original decision was undone and the excess is explained in the script instead."
+      }),
+      status: "reversed",
+      createdAt: now - 20 * DAY,
+      updatedAt: now - 3 * DAY
+    }
+  ]);
 
   return { tenantId, users, channels, providers, offerings };
 }

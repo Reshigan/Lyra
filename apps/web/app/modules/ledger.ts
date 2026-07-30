@@ -1,0 +1,1024 @@
+import type { WorkspaceSpec } from "./spec";
+
+// LEDGER — money and the transactions that move it (docs/19). The transaction is
+// the unit: everything else is either what a transaction produced (journal
+// batches, lines, balances) or what it will be reconciled and settled against
+// (recon runs, invoices, payments, settlements). Posted rows are never amended.
+
+export const ledger: WorkspaceSpec = {
+  path: "/ledger",
+  // A report is a query over the lines, not a list of them — each one is its own
+  // screen over `GET /v1/ledger/reports/*`.
+  // Permissions are the ones the screen's own loader checks, so a link that
+  // renders is a screen that opens — see routes/ledger-reports.tsx §REPORTS.
+  links: [
+    { href: "/ledger/reports/trial-balance", labelKey: "report.trial-balance", permission: "ledger:journals:read" },
+    { href: "/ledger/reports/pnl", labelKey: "report.pnl", permission: "ledger:journals:read" },
+    { href: "/ledger/reports/balance-sheet", labelKey: "report.balance-sheet", permission: "ledger:journals:read" },
+    { href: "/ledger/reports/aged", labelKey: "report.aged", permission: "ledger:journals:read" },
+    { href: "/ledger/reports/commission", labelKey: "report.commission", permission: "ledger:journals:read" },
+    { href: "/ledger/reports/client-money", labelKey: "report.client-money", permission: "ledger:client_money:read" },
+    // The chart is a resource, not a report: it lists rows and is edited, so it
+    // is the generic `/ledger/accounts` list rather than a seventh report screen.
+    { href: "/ledger/accounts", labelKey: "report.chart-of-accounts", permission: "ledger:accounts:read" },
+    // The writable screens: a transaction is opened by a recipe, a period is
+    // closed by its checks, a run is decided by a person.
+    { href: "/ledger/transactions", labelKey: "link.open-txn", permission: "ledger:txns:create" },
+    { href: "/ledger/period-close", labelKey: "link.period-close", permission: "ledger:periods:read" },
+    { href: "/ledger/statement", labelKey: "link.statement", permission: "ledger:journals:read" },
+    { href: "/ledger/recon", labelKey: "link.recon", permission: "ledger:recon:read" }
+  ],
+  labels: {
+    en: {
+      txns: "Transactions",
+      "txn-transitions": "Transitions",
+      "saga-steps": "Saga steps",
+      accounts: "Chart of accounts",
+      "journal-batches": "Journal batches",
+      "journal-lines": "Journal lines",
+      "account-balances": "Balances",
+      periods: "Periods",
+      "recon-runs": "Reconciliations",
+      "recon-matches": "Matches",
+      "client-money-checks": "Client money checks",
+      subscriptions: "Subscriptions",
+      invoices: "Invoices",
+      "revenue-schedules": "Revenue schedules",
+      "usage-meters": "Usage meters",
+      payments: "Payments",
+      "payment-plans": "Payment plans",
+      "fx-rates": "FX rates",
+      "tax-rules": "Tax rules",
+      settlements: "Settlements",
+
+      "report.trial-balance": "Trial balance",
+      "report.pnl": "Profit and loss",
+      "report.balance-sheet": "Balance sheet",
+      "report.aged": "Aged analysis",
+      "report.commission": "Commission report",
+      "report.client-money": "Client money",
+      "report.chart-of-accounts": "Chart of accounts",
+
+      "link.open-txn": "Open a transaction",
+      "link.txn-detail": "Journal, approvals and next steps",
+      "link.period-close": "Period close",
+      "link.statement": "Account statement",
+      "link.recon": "Reconciliation",
+
+      idempotencyKey: "Reference",
+      type: "Type",
+      state: "State",
+      status: "Status",
+      grossMinor: "Gross",
+      currency: "Currency",
+      actorKind: "Actor",
+      correlationId: "Correlation",
+      settledAt: "Settled",
+      txnId: "Transaction",
+      fromState: "From",
+      toState: "To",
+      actorRef: "Actor",
+      reason: "Reason",
+      ts: "When",
+      seq: "Sequence",
+      name: "Step",
+      attempts: "Attempts",
+      startedAt: "Started",
+      endedAt: "Ended",
+      code: "Code",
+      nameJson: "Name",
+      normalSide: "Normal side",
+      clientMoney: "Client money",
+      parentCode: "Parent account",
+      periodId: "Period",
+      totalDebitMinor: "Total debit",
+      totalCreditMinor: "Total credit",
+      fxRatePpm: "FX rate",
+      postedBy: "Posted by",
+      postedAt: "Posted",
+      accountCode: "Account",
+      side: "Side",
+      amountMinor: "Amount",
+      baseAmountMinor: "Base amount",
+      batchId: "Batch",
+      memo: "Memo",
+      debitMinor: "Debit",
+      creditMinor: "Credit",
+      startAt: "Starts",
+      endAt: "Ends",
+      closedBy: "Closed by",
+      closedAt: "Closed",
+      checklistJson: "Close checklist",
+      closePackFileId: "Close pack",
+      process: "Process",
+      period: "Period",
+      counterpartyRef: "Counterparty",
+      statementFileId: "Statement",
+      matchedCount: "Matched",
+      varianceCount: "Variances",
+      varianceMinor: "Variance",
+      statementLineRef: "Statement line",
+      deltaMinor: "Difference",
+      method: "Method",
+      confidence: "Confidence",
+      reasonCode: "Reason code",
+      assetMinor: "Client asset",
+      liabilityMinor: "Client liability",
+      shortfallMinor: "Shortfall",
+      breach: "Breach",
+      triggeredBy: "Triggered by",
+      customerRef: "Customer",
+      plan: "Plan",
+      edition: "Edition",
+      priceMinor: "Price",
+      interval: "Interval",
+      seats: "Seats",
+      termsJson: "Terms",
+      number: "Invoice number",
+      subscriptionId: "Subscription",
+      subtotalMinor: "Subtotal",
+      taxMinor: "Tax",
+      totalMinor: "Total",
+      linesJson: "Lines",
+      dueAt: "Due",
+      issuedAt: "Issued",
+      pdfFileId: "Invoice file",
+      invoiceId: "Invoice",
+      plannedMinor: "Planned",
+      recognizedMinor: "Recognised",
+      meter: "Meter",
+      quantity: "Quantity",
+      includedQuantity: "Included",
+      unitPriceMicro: "Unit price",
+      direction: "Direction",
+      providerRef: "Provider reference",
+      feeMinor: "Fee",
+      settlementBatch: "Settlement batch",
+      subjectRef: "Subject",
+      financierRef: "Financier",
+      instalments: "Instalments",
+      scheduleJson: "Schedule",
+      fromCurrency: "From",
+      toCurrency: "To",
+      ratePpm: "Rate",
+      asOf: "As of",
+      source: "Source",
+      market: "Market",
+      placeOfSupply: "Place of supply",
+      reverseCharge: "Reverse charge",
+      exempt: "Exempt",
+      effectiveFrom: "Effective from",
+      effectiveTo: "Effective to",
+      counterpartyKind: "Counterparty type",
+      adjustmentsMinor: "Adjustments",
+      netMinor: "Net",
+
+      "state.initiated": "Initiated",
+      "state.validated": "Validated",
+      "state.authorized": "Authorised",
+      "state.executing": "Executing",
+      "state.pending_external": "Awaiting external",
+      "state.settled": "Settled",
+      "state.reversing": "Reversing",
+      "state.reversed": "Reversed",
+      "state.adjusting": "Adjusting",
+      "state.adjusted": "Adjusted",
+      "state.failed": "Failed",
+      "state.rejected": "Rejected",
+      "state.expired": "Expired",
+      "state.pending": "Pending",
+      "state.running": "Running",
+      "state.done": "Done",
+      "state.compensating": "Compensating",
+      "state.compensated": "Compensated",
+      "state.open": "Open",
+      "state.soft_closed": "Soft closed",
+      "state.hard_closed": "Hard closed",
+      "state.review": "In review",
+      "state.closed": "Closed",
+      "state.proposed": "Proposed",
+      "state.confirmed": "Confirmed",
+      "state.unmatched": "Unmatched",
+      "state.active": "Active",
+      "state.paused": "Paused",
+      "state.cancelled": "Cancelled",
+      "state.past_due": "Past due",
+      "state.draft": "Draft",
+      "state.issued": "Issued",
+      "state.paid": "Paid",
+      "state.void": "Void",
+      "state.credited": "Credited",
+      "state.overdue": "Overdue",
+      "state.scheduled": "Scheduled",
+      "state.recognized": "Recognised",
+      "state.authorised": "Authorised",
+      "state.captured": "Captured",
+      "state.refunded": "Refunded",
+      "state.charged_back": "Charged back",
+      "state.completed": "Completed",
+      "state.defaulted": "Defaulted",
+      "state.approved": "Approved",
+      "state.disputed": "Disputed",
+
+      "actorKind.user": "User",
+      "actorKind.agent": "Agent",
+      "actorKind.partner": "Partner",
+      "actorKind.system": "System",
+      "actorKind.customer": "Customer",
+
+      "type.asset": "Asset",
+      "type.liability": "Liability",
+      "type.income": "Income",
+      "type.expense": "Expense",
+      "type.equity": "Equity",
+
+      "normalSide.debit": "Debit",
+      "normalSide.credit": "Credit",
+      "side.debit": "Debit",
+      "side.credit": "Credit",
+
+      "process.insurer": "Insurer",
+      "process.psp": "Payment provider",
+      "process.client_money": "Client money",
+      "process.partner": "Partner",
+      "process.media": "Media",
+
+      "method.deterministic": "Exact",
+      "method.tolerance": "Within tolerance",
+      "method.ai_proposed": "Proposed by model",
+      "method.card": "Card",
+      "method.bank": "Bank transfer",
+      "method.wallet": "Wallet",
+      "method.cash": "Cash",
+      "method.offset": "Offset",
+
+      "interval.month": "Monthly",
+      "interval.year": "Yearly",
+
+      "direction.in": "Incoming",
+      "direction.out": "Outgoing",
+
+      "counterpartyKind.partner": "Partner",
+      "counterpartyKind.creator": "Creator",
+      "counterpartyKind.publisher": "Publisher",
+      "counterpartyKind.insurer": "Insurer"
+    },
+    ar: {
+      txns: "المعاملات",
+      "txn-transitions": "تحولات الحالة",
+      "saga-steps": "خطوات العملية",
+      accounts: "دليل الحسابات",
+      "journal-batches": "دفعات القيود",
+      "journal-lines": "بنود القيود",
+      "account-balances": "الأرصدة",
+      periods: "الفترات",
+      "recon-runs": "عمليات التسوية",
+      "recon-matches": "المطابقات",
+      "client-money-checks": "فحوصات أموال العملاء",
+      subscriptions: "الاشتراكات",
+      invoices: "الفواتير",
+      "revenue-schedules": "جداول الإيراد",
+      "usage-meters": "عدادات الاستخدام",
+      payments: "المدفوعات",
+      "payment-plans": "خطط السداد",
+      "fx-rates": "أسعار الصرف",
+      "tax-rules": "قواعد الضريبة",
+      settlements: "التسويات",
+
+      "report.trial-balance": "ميزان المراجعة",
+      "report.pnl": "الأرباح والخسائر",
+      "report.balance-sheet": "الميزانية العمومية",
+      "report.aged": "تحليل الأعمار",
+      "report.commission": "تقرير العمولات",
+      "report.client-money": "أموال العملاء",
+      "report.chart-of-accounts": "دليل الحسابات",
+
+      "link.open-txn": "فتح معاملة",
+      "link.txn-detail": "القيود والموافقات والخطوات التالية",
+      "link.period-close": "إقفال الفترة",
+      "link.statement": "كشف حساب",
+      "link.recon": "المطابقة",
+
+      idempotencyKey: "المرجع",
+      type: "النوع",
+      state: "الوضع",
+      status: "الحالة",
+      grossMinor: "الإجمالي",
+      currency: "العملة",
+      actorKind: "نوع الفاعل",
+      correlationId: "معرّف الارتباط",
+      settledAt: "تاريخ التسوية",
+      txnId: "المعاملة",
+      fromState: "من",
+      toState: "إلى",
+      actorRef: "الفاعل",
+      reason: "السبب",
+      ts: "الوقت",
+      seq: "التسلسل",
+      name: "الخطوة",
+      attempts: "المحاولات",
+      startedAt: "البداية",
+      endedAt: "النهاية",
+      code: "الرمز",
+      nameJson: "الاسم",
+      normalSide: "الجانب الطبيعي",
+      clientMoney: "أموال العملاء",
+      parentCode: "الحساب الأب",
+      periodId: "الفترة",
+      totalDebitMinor: "إجمالي المدين",
+      totalCreditMinor: "إجمالي الدائن",
+      fxRatePpm: "سعر الصرف",
+      postedBy: "قيّده",
+      postedAt: "تاريخ القيد",
+      accountCode: "الحساب",
+      side: "الجانب",
+      amountMinor: "المبلغ",
+      baseAmountMinor: "المبلغ بالعملة الأساسية",
+      batchId: "الدفعة",
+      memo: "البيان",
+      debitMinor: "مدين",
+      creditMinor: "دائن",
+      startAt: "يبدأ",
+      endAt: "ينتهي",
+      closedBy: "أغلقها",
+      closedAt: "تاريخ الإغلاق",
+      checklistJson: "قائمة الإقفال",
+      closePackFileId: "ملف الإقفال",
+      process: "العملية",
+      period: "الفترة",
+      counterpartyRef: "الطرف المقابل",
+      statementFileId: "كشف الحساب",
+      matchedCount: "المطابق",
+      varianceCount: "عدد الفروقات",
+      varianceMinor: "قيمة الفرق",
+      statementLineRef: "بند الكشف",
+      deltaMinor: "الفرق",
+      method: "الطريقة",
+      confidence: "الثقة",
+      reasonCode: "رمز السبب",
+      assetMinor: "أصول العملاء",
+      liabilityMinor: "التزامات العملاء",
+      shortfallMinor: "العجز",
+      breach: "مخالفة",
+      triggeredBy: "مصدر التشغيل",
+      customerRef: "العميل",
+      plan: "الخطة",
+      edition: "الإصدار",
+      priceMinor: "السعر",
+      interval: "الدورة",
+      seats: "المقاعد",
+      termsJson: "الشروط",
+      number: "رقم الفاتورة",
+      subscriptionId: "الاشتراك",
+      subtotalMinor: "المجموع الفرعي",
+      taxMinor: "الضريبة",
+      totalMinor: "الإجمالي",
+      linesJson: "البنود",
+      dueAt: "تاريخ الاستحقاق",
+      issuedAt: "تاريخ الإصدار",
+      pdfFileId: "ملف الفاتورة",
+      invoiceId: "الفاتورة",
+      plannedMinor: "المخطط",
+      recognizedMinor: "المعترف به",
+      meter: "العداد",
+      quantity: "الكمية",
+      includedQuantity: "المتضمَّن",
+      unitPriceMicro: "سعر الوحدة",
+      direction: "الاتجاه",
+      providerRef: "مرجع المزود",
+      feeMinor: "الرسوم",
+      settlementBatch: "دفعة التسوية",
+      subjectRef: "الموضوع",
+      financierRef: "جهة التمويل",
+      instalments: "عدد الأقساط",
+      scheduleJson: "جدول السداد",
+      fromCurrency: "من عملة",
+      toCurrency: "إلى عملة",
+      ratePpm: "السعر",
+      asOf: "بتاريخ",
+      source: "المصدر",
+      market: "السوق",
+      placeOfSupply: "مكان التوريد",
+      reverseCharge: "الاحتساب العكسي",
+      exempt: "معفى",
+      effectiveFrom: "ساري من",
+      effectiveTo: "ساري حتى",
+      counterpartyKind: "نوع الطرف المقابل",
+      adjustmentsMinor: "التسويات",
+      netMinor: "الصافي",
+
+      "state.initiated": "بدأت",
+      "state.validated": "تم التحقق",
+      "state.authorized": "مصرّح بها",
+      "state.executing": "قيد التنفيذ",
+      "state.pending_external": "بانتظار طرف خارجي",
+      "state.settled": "مسددة",
+      "state.reversing": "قيد العكس",
+      "state.reversed": "معكوسة",
+      "state.adjusting": "قيد التعديل",
+      "state.adjusted": "معدّلة",
+      "state.failed": "فشلت",
+      "state.rejected": "مرفوضة",
+      "state.expired": "منتهية الصلاحية",
+      "state.pending": "قيد الانتظار",
+      "state.running": "قيد التشغيل",
+      "state.done": "منتهية",
+      "state.compensating": "قيد التعويض",
+      "state.compensated": "تم التعويض",
+      "state.open": "مفتوحة",
+      "state.soft_closed": "إغلاق مبدئي",
+      "state.hard_closed": "إغلاق نهائي",
+      "state.review": "قيد المراجعة",
+      "state.closed": "مغلقة",
+      "state.proposed": "مقترحة",
+      "state.confirmed": "مؤكدة",
+      "state.unmatched": "غير مطابقة",
+      "state.active": "نشط",
+      "state.paused": "متوقف مؤقتًا",
+      "state.cancelled": "ملغاة",
+      "state.past_due": "متأخرة",
+      "state.draft": "مسودة",
+      "state.issued": "صادرة",
+      "state.paid": "مدفوعة",
+      "state.void": "ملغاة نهائيًا",
+      "state.credited": "مقيدة دائنًا",
+      "state.overdue": "متأخرة السداد",
+      "state.scheduled": "مجدولة",
+      "state.recognized": "معترف بها",
+      "state.authorised": "مصرّح بها",
+      "state.captured": "محجوزة",
+      "state.refunded": "مستردة",
+      "state.charged_back": "مرتجعة",
+      "state.completed": "مكتملة",
+      "state.defaulted": "متعثرة",
+      "state.approved": "معتمدة",
+      "state.disputed": "متنازع عليها",
+
+      "actorKind.user": "مستخدم",
+      "actorKind.agent": "وكيل",
+      "actorKind.partner": "شريك",
+      "actorKind.system": "النظام",
+      "actorKind.customer": "عميل",
+
+      "type.asset": "أصول",
+      "type.liability": "التزامات",
+      "type.income": "إيرادات",
+      "type.expense": "مصروفات",
+      "type.equity": "حقوق ملكية",
+
+      "normalSide.debit": "مدين",
+      "normalSide.credit": "دائن",
+      "side.debit": "مدين",
+      "side.credit": "دائن",
+
+      "process.insurer": "شركة التأمين",
+      "process.psp": "مزود الدفع",
+      "process.client_money": "أموال العملاء",
+      "process.partner": "الشريك",
+      "process.media": "الإعلام",
+
+      "method.deterministic": "مطابقة تامة",
+      "method.tolerance": "ضمن الهامش",
+      "method.ai_proposed": "مقترحة من النموذج",
+      "method.card": "بطاقة",
+      "method.bank": "تحويل بنكي",
+      "method.wallet": "محفظة",
+      "method.cash": "نقدًا",
+      "method.offset": "مقاصة",
+
+      "interval.month": "شهري",
+      "interval.year": "سنوي",
+
+      "direction.in": "وارد",
+      "direction.out": "صادر",
+
+      "counterpartyKind.partner": "شريك",
+      "counterpartyKind.creator": "صانع محتوى",
+      "counterpartyKind.publisher": "ناشر",
+      "counterpartyKind.insurer": "شركة تأمين"
+    }
+  },
+  tabs: [
+    {
+      key: "txns",
+      api: "/v1/ledger/txns",
+      read: "ledger:txns:read",
+      // No create form: a transaction is opened by `POST /v1/ledger/txn/:type`
+      // with an idempotency key and a state machine (CLAUDE.md §12), never typed
+      // into a table row. The permission stays so the bespoke screen can gate on it.
+      create: "ledger:txns:create",
+      // The generic record screen shows the row; the money screen shows the
+      // journal lines, the balance check, the approvals and what may happen next.
+      recordLink: { href: "/ledger/transactions/{id}", labelKey: "link.txn-detail" },
+      filters: [
+        {
+          name: "state",
+          options: [
+            "initiated",
+            "validated",
+            "authorized",
+            "executing",
+            "pending_external",
+            "settled",
+            "reversing",
+            "reversed",
+            "adjusting",
+            "adjusted",
+            "failed",
+            "rejected",
+            "expired"
+          ]
+        },
+        { name: "actorKind", options: ["user", "agent", "partner", "system", "customer"] }
+      ],
+      columns: [
+        { name: "idempotencyKey", type: "text" },
+        { name: "type", type: "text", sortable: true },
+        { name: "state", type: "text", badge: true },
+        { name: "grossMinor", type: "money", currencyFrom: "currency" },
+        { name: "actorKind", type: "text" },
+        { name: "correlationId", type: "text" },
+        { name: "createdAt", type: "datetime", sortable: true },
+        { name: "settledAt", type: "datetime" }
+      ]
+    },
+    {
+      key: "txn-transitions",
+      api: "/v1/ledger/txn-transitions",
+      read: "ledger:txns:read",
+      sort: "ts",
+      columns: [
+        { name: "txnId", type: "text" },
+        { name: "fromState", type: "text" },
+        { name: "toState", type: "text", badge: true },
+        { name: "actorRef", type: "text" },
+        { name: "reason", type: "text" },
+        { name: "ts", type: "datetime", sortable: true }
+      ]
+    },
+    {
+      key: "saga-steps",
+      api: "/v1/ledger/saga-steps",
+      read: "ledger:txns:read",
+      filters: [
+        {
+          name: "state",
+          options: ["pending", "running", "done", "compensating", "compensated", "failed"]
+        }
+      ],
+      columns: [
+        { name: "txnId", type: "text" },
+        { name: "seq", type: "number" },
+        { name: "name", type: "text" },
+        { name: "state", type: "text", badge: true },
+        { name: "attempts", type: "number" },
+        { name: "startedAt", type: "datetime" },
+        { name: "endedAt", type: "datetime" }
+      ]
+    },
+    {
+      key: "accounts",
+      api: "/v1/ledger/accounts",
+      read: "ledger:accounts:read",
+      create: "ledger:accounts:write",
+      update: "ledger:accounts:write",
+      remove: "ledger:accounts:write",
+      sort: "code",
+      order: "asc",
+      filters: [
+        { name: "type", options: ["asset", "liability", "income", "expense", "equity"] },
+        { name: "normalSide", options: ["debit", "credit"] }
+      ],
+      columns: [
+        { name: "code", type: "text", sortable: true },
+        { name: "type", type: "text" },
+        { name: "normalSide", type: "text" },
+        { name: "clientMoney", type: "boolean" },
+        { name: "currency", type: "text" },
+        { name: "parentCode", type: "text" },
+        { name: "status", type: "text", badge: true }
+      ],
+      fields: [
+        { name: "code", type: "text", required: true },
+        { name: "nameJson", type: "json", required: true },
+        {
+          name: "type",
+          type: "select",
+          required: true,
+          options: ["asset", "liability", "income", "expense", "equity"]
+        },
+        { name: "normalSide", type: "select", required: true, options: ["debit", "credit"] },
+        { name: "clientMoney", type: "boolean" },
+        { name: "currency", type: "text" },
+        { name: "parentCode", type: "text" }
+      ],
+      // The code, type and side are what every posted line was written against;
+      // renaming an account is safe, re-typing one is not.
+      editable: [
+        { name: "nameJson", type: "json" },
+        { name: "parentCode", type: "text" },
+        { name: "clientMoney", type: "boolean" },
+        { name: "currency", type: "text" }
+      ]
+    },
+    {
+      key: "journal-batches",
+      api: "/v1/ledger/journal-batches",
+      read: "ledger:journals:read",
+      sort: "postedAt",
+      columns: [
+        { name: "txnId", type: "text" },
+        { name: "periodId", type: "text" },
+        { name: "totalDebitMinor", type: "money", currencyFrom: "currency" },
+        { name: "totalCreditMinor", type: "money", currencyFrom: "currency" },
+        { name: "fxRatePpm", type: "number" },
+        { name: "postedBy", type: "text" },
+        { name: "postedAt", type: "datetime", sortable: true }
+      ]
+    },
+    {
+      key: "journal-lines",
+      api: "/v1/ledger/journal-lines",
+      read: "ledger:journals:read",
+      sort: "postedAt",
+      filters: [{ name: "side", options: ["debit", "credit"] }],
+      columns: [
+        { name: "accountCode", type: "text", sortable: true },
+        { name: "side", type: "text", badge: true },
+        { name: "amountMinor", type: "money", currencyFrom: "currency" },
+        { name: "baseAmountMinor", type: "money", currencyFrom: "baseCurrency" },
+        { name: "batchId", type: "text" },
+        { name: "txnId", type: "text" },
+        { name: "memo", type: "text" },
+        { name: "postedAt", type: "datetime", sortable: true }
+      ]
+    },
+    {
+      key: "account-balances",
+      api: "/v1/ledger/account-balances",
+      read: "ledger:accounts:read",
+      sort: "accountCode",
+      order: "asc",
+      // Maintained inside the posting transaction and rebuildable from the lines
+      // (`POST /v1/ledger/balances/rebuild`); nothing here is ever hand-written.
+      columns: [
+        { name: "accountCode", type: "text", sortable: true },
+        { name: "currency", type: "text" },
+        { name: "debitMinor", type: "money", currencyFrom: "currency" },
+        { name: "creditMinor", type: "money", currencyFrom: "currency" },
+        { name: "updatedAt", type: "datetime", sortable: true }
+      ]
+    },
+    {
+      key: "periods",
+      api: "/v1/ledger/periods",
+      read: "ledger:periods:read",
+      update: "ledger:periods:close",
+      sort: "code",
+      order: "desc",
+      filters: [{ name: "state", options: ["open", "soft_closed", "hard_closed"] }],
+      columns: [
+        { name: "code", type: "text", sortable: true },
+        { name: "state", type: "text", badge: true },
+        { name: "startAt", type: "date" },
+        { name: "endAt", type: "date" },
+        { name: "closedBy", type: "text" },
+        { name: "closedAt", type: "datetime" }
+      ],
+      // Closing is consequential: the API routes the state change through
+      // `ledger.period_close` (resources.ts) before it takes effect.
+      editable: [
+        { name: "state", type: "select", options: ["open", "soft_closed", "hard_closed"] },
+        { name: "checklistJson", type: "json" },
+        { name: "closePackFileId", type: "text" }
+      ]
+    },
+    {
+      key: "recon-runs",
+      api: "/v1/ledger/recon-runs",
+      read: "ledger:recon:read",
+      create: "ledger:recon:run",
+      filters: [
+        { name: "process", options: ["insurer", "psp", "client_money", "partner", "media"] },
+        { name: "state", options: ["running", "review", "closed", "failed"] }
+      ],
+      columns: [
+        { name: "period", type: "text", sortable: true },
+        { name: "process", type: "text" },
+        { name: "counterpartyRef", type: "text" },
+        { name: "matchedCount", type: "number" },
+        { name: "varianceCount", type: "number" },
+        { name: "varianceMinor", type: "money", currencyFrom: "currency" },
+        { name: "state", type: "text", badge: true },
+        { name: "createdAt", type: "datetime", sortable: true }
+      ],
+      // Opens the run; the matching itself is `POST /v1/ledger/recon/runs`, which
+      // is what loads a statement and proposes matches.
+      fields: [
+        {
+          name: "process",
+          type: "select",
+          required: true,
+          options: ["insurer", "psp", "client_money", "partner", "media"]
+        },
+        { name: "period", type: "text", required: true },
+        { name: "counterpartyRef", type: "text" },
+        { name: "statementFileId", type: "text" },
+        { name: "currency", type: "text", required: true }
+      ]
+    },
+    {
+      key: "recon-matches",
+      api: "/v1/ledger/recon-matches",
+      read: "ledger:recon:read",
+      update: "ledger:recon:confirm",
+      filters: [
+        { name: "state", options: ["proposed", "confirmed", "rejected", "unmatched"] },
+        { name: "method", options: ["deterministic", "tolerance", "ai_proposed"] }
+      ],
+      columns: [
+        { name: "statementLineRef", type: "text" },
+        { name: "txnId", type: "text" },
+        { name: "amountMinor", type: "money", currencyFrom: "currency" },
+        { name: "deltaMinor", type: "money", currencyFrom: "currency" },
+        { name: "method", type: "text" },
+        { name: "confidence", type: "number" },
+        { name: "state", type: "text", badge: true },
+        { name: "createdAt", type: "datetime", sortable: true }
+      ],
+      // A model proposes, a human confirms (docs/19 §6) — the decision and its
+      // reason are the only things a person writes on a match.
+      editable: [
+        { name: "state", type: "select", options: ["proposed", "confirmed", "rejected", "unmatched"] },
+        { name: "reasonCode", type: "text" }
+      ]
+    },
+    {
+      key: "client-money-checks",
+      api: "/v1/ledger/client-money-checks",
+      read: "ledger:client_money:read",
+      sort: "ts",
+      columns: [
+        { name: "triggeredBy", type: "text" },
+        { name: "currency", type: "text" },
+        { name: "assetMinor", type: "money", currencyFrom: "currency" },
+        { name: "liabilityMinor", type: "money", currencyFrom: "currency" },
+        { name: "shortfallMinor", type: "money", currencyFrom: "currency" },
+        { name: "breach", type: "boolean" },
+        { name: "ts", type: "datetime", sortable: true }
+      ]
+    },
+    {
+      key: "subscriptions",
+      api: "/v1/ledger/subscriptions",
+      read: "admin:billing:read",
+      create: "admin:billing:write",
+      update: "admin:billing:write",
+      remove: "admin:billing:write",
+      filters: [
+        { name: "state", options: ["active", "paused", "cancelled", "past_due"] },
+        { name: "interval", options: ["month", "year"] }
+      ],
+      columns: [
+        { name: "customerRef", type: "text" },
+        { name: "plan", type: "text" },
+        { name: "edition", type: "text" },
+        { name: "priceMinor", type: "money", currencyFrom: "currency" },
+        { name: "interval", type: "text" },
+        { name: "seats", type: "number" },
+        { name: "state", type: "text", badge: true },
+        { name: "endAt", type: "date" }
+      ],
+      fields: [
+        { name: "customerRef", type: "text", required: true },
+        { name: "plan", type: "text", required: true },
+        { name: "edition", type: "text" },
+        { name: "priceMinor", type: "money", required: true },
+        { name: "currency", type: "text", required: true },
+        { name: "interval", type: "select", options: ["month", "year"] },
+        { name: "seats", type: "number" },
+        { name: "startAt", type: "date", required: true },
+        { name: "endAt", type: "date" },
+        { name: "termsJson", type: "json" }
+      ],
+      editable: [
+        { name: "state", type: "select", options: ["active", "paused", "cancelled", "past_due"] },
+        { name: "seats", type: "number" },
+        { name: "priceMinor", type: "money" },
+        { name: "endAt", type: "date" },
+        { name: "termsJson", type: "json" }
+      ]
+    },
+    {
+      key: "invoices",
+      api: "/v1/ledger/invoices",
+      read: "ledger:invoices:read",
+      create: "ledger:invoices:create",
+      update: "ledger:invoices:approve",
+      sort: "dueAt",
+      filters: [
+        { name: "state", options: ["draft", "issued", "paid", "void", "credited", "overdue"] }
+      ],
+      columns: [
+        { name: "number", type: "text", sortable: true },
+        { name: "customerRef", type: "text" },
+        { name: "subtotalMinor", type: "money", currencyFrom: "currency" },
+        { name: "taxMinor", type: "money", currencyFrom: "currency" },
+        { name: "totalMinor", type: "money", currencyFrom: "currency" },
+        { name: "state", type: "text", badge: true },
+        { name: "dueAt", type: "date", sortable: true },
+        { name: "issuedAt", type: "datetime" }
+      ],
+      // A draft invoice is a document, not a posting — issuing it is what raises
+      // the transaction, and that is the permission on `update`.
+      fields: [
+        { name: "number", type: "text", required: true },
+        { name: "customerRef", type: "text", required: true },
+        { name: "subscriptionId", type: "text" },
+        { name: "subtotalMinor", type: "money", required: true },
+        { name: "taxMinor", type: "money" },
+        { name: "totalMinor", type: "money", required: true },
+        { name: "currency", type: "text", required: true },
+        { name: "linesJson", type: "json", required: true },
+        { name: "dueAt", type: "date" }
+      ],
+      editable: [
+        {
+          name: "state",
+          type: "select",
+          options: ["draft", "issued", "paid", "void", "credited", "overdue"]
+        },
+        { name: "dueAt", type: "date" },
+        { name: "pdfFileId", type: "text" }
+      ]
+    },
+    {
+      key: "revenue-schedules",
+      api: "/v1/ledger/revenue-schedules",
+      read: "ledger:journals:read",
+      filters: [{ name: "state", options: ["scheduled", "recognized", "cancelled"] }],
+      columns: [
+        { name: "invoiceId", type: "text" },
+        { name: "accountCode", type: "text" },
+        { name: "period", type: "text" },
+        { name: "plannedMinor", type: "money", currencyFrom: "currency" },
+        { name: "recognizedMinor", type: "money", currencyFrom: "currency" },
+        { name: "state", type: "text", badge: true }
+      ]
+    },
+    {
+      key: "usage-meters",
+      api: "/v1/ledger/usage-meters",
+      read: "admin:billing:read",
+      columns: [
+        { name: "meter", type: "text" },
+        { name: "period", type: "text", sortable: true },
+        { name: "subscriptionId", type: "text" },
+        { name: "quantity", type: "number" },
+        { name: "includedQuantity", type: "number" },
+        { name: "unitPriceMicro", type: "number" },
+        { name: "updatedAt", type: "datetime", sortable: true }
+      ]
+    },
+    {
+      key: "payments",
+      api: "/v1/ledger/payments",
+      read: "ledger:payments:read",
+      // No create form: a payment is captured by its transaction type, with the
+      // idempotency key the PSP callback replays against.
+      create: "ledger:payments:create",
+      filters: [
+        { name: "direction", options: ["in", "out"] },
+        {
+          name: "state",
+          options: [
+            "pending",
+            "authorized",
+            "captured",
+            "settled",
+            "failed",
+            "refunded",
+            "charged_back"
+          ]
+        },
+        { name: "method", options: ["card", "bank", "wallet", "cash", "offset"] }
+      ],
+      columns: [
+        { name: "providerRef", type: "text" },
+        { name: "direction", type: "text" },
+        { name: "method", type: "text" },
+        { name: "amountMinor", type: "money", currencyFrom: "currency" },
+        { name: "feeMinor", type: "money", currencyFrom: "currency" },
+        { name: "state", type: "text", badge: true },
+        { name: "settlementBatch", type: "text" },
+        { name: "createdAt", type: "datetime", sortable: true }
+      ]
+    },
+    {
+      key: "payment-plans",
+      api: "/v1/ledger/payment-plans",
+      read: "ledger:payments:read",
+      create: "ledger:payments:create",
+      update: "ledger:payments:create",
+      filters: [{ name: "state", options: ["active", "completed", "defaulted", "cancelled"] }],
+      columns: [
+        { name: "subjectRef", type: "text" },
+        { name: "financierRef", type: "text" },
+        { name: "totalMinor", type: "money", currencyFrom: "currency" },
+        { name: "instalments", type: "number" },
+        { name: "state", type: "text", badge: true },
+        { name: "createdAt", type: "datetime", sortable: true }
+      ],
+      // The plan is opened by PLAN-CREATE and each instalment posts its own
+      // transaction; a person only ever moves the plan's own state.
+      editable: [
+        { name: "state", type: "select", options: ["active", "completed", "defaulted", "cancelled"] }
+      ]
+    },
+    {
+      key: "fx-rates",
+      api: "/v1/ledger/fx-rates",
+      read: "ledger:accounts:read",
+      // Immutable in the API: a rate is stamped onto postings, so a corrected
+      // rate is a new row for a new `asOf`, never an edit of the old one.
+      create: "ledger:accounts:write",
+      sort: "asOf",
+      columns: [
+        { name: "fromCurrency", type: "text" },
+        { name: "toCurrency", type: "text" },
+        { name: "ratePpm", type: "number" },
+        { name: "asOf", type: "text", sortable: true },
+        { name: "source", type: "text" }
+      ],
+      fields: [
+        { name: "fromCurrency", type: "text", required: true },
+        { name: "toCurrency", type: "text", required: true },
+        { name: "ratePpm", type: "number", required: true },
+        { name: "asOf", type: "text", required: true, hintKey: "asOf" },
+        { name: "source", type: "text" }
+      ]
+    },
+    {
+      key: "tax-rules",
+      api: "/v1/ledger/tax-rules",
+      read: "ledger:accounts:read",
+      create: "ledger:accounts:write",
+      update: "ledger:accounts:write",
+      remove: "ledger:accounts:write",
+      sort: "effectiveFrom",
+      columns: [
+        { name: "code", type: "text" },
+        { name: "market", type: "text" },
+        { name: "ratePpm", type: "number" },
+        { name: "placeOfSupply", type: "text" },
+        { name: "reverseCharge", type: "boolean" },
+        { name: "exempt", type: "boolean" },
+        { name: "effectiveFrom", type: "date", sortable: true },
+        { name: "effectiveTo", type: "date" }
+      ],
+      fields: [
+        { name: "market", type: "text", required: true },
+        { name: "code", type: "text", required: true },
+        { name: "ratePpm", type: "number", required: true },
+        { name: "placeOfSupply", type: "text" },
+        { name: "reverseCharge", type: "boolean" },
+        { name: "exempt", type: "boolean" },
+        { name: "effectiveFrom", type: "date", required: true },
+        { name: "effectiveTo", type: "date" }
+      ],
+      editable: [
+        { name: "ratePpm", type: "number" },
+        { name: "reverseCharge", type: "boolean" },
+        { name: "exempt", type: "boolean" },
+        { name: "effectiveTo", type: "date" }
+      ]
+    },
+    {
+      key: "settlements",
+      api: "/v1/ledger/settlements",
+      read: "dist:commissions:read",
+      // No create or edit form: a settlement run is raised by the module with an
+      // approval on the net amount (`dist.settlement_run`), and paying one is a
+      // transaction, not a field.
+      create: "dist:commissions:settle",
+      update: "dist:commissions:settle",
+      filters: [
+        { name: "state", options: ["draft", "approved", "paid", "disputed"] },
+        {
+          name: "counterpartyKind",
+          options: ["partner", "creator", "publisher", "insurer"]
+        }
+      ],
+      columns: [
+        { name: "counterpartyRef", type: "text" },
+        { name: "counterpartyKind", type: "text" },
+        { name: "period", type: "text", sortable: true },
+        { name: "grossMinor", type: "money", currencyFrom: "currency" },
+        { name: "adjustmentsMinor", type: "money", currencyFrom: "currency" },
+        { name: "netMinor", type: "money", currencyFrom: "currency" },
+        { name: "state", type: "text", badge: true },
+        { name: "createdAt", type: "datetime", sortable: true }
+      ]
+    }
+  ]
+};

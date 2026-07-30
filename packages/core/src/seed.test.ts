@@ -82,4 +82,46 @@ describe("seed", () => {
 
     await expect(seed(db)).rejects.toThrow(/already seeded/);
   });
+
+  it("gives NORTH a coherent set to read: every reference resolves", async () => {
+    await seed(db, { password: "gonxt-test-password" });
+
+    const metricKeys = new Set(
+      (await db.select().from(schema.northMetrics)).map((r) => r.key)
+    );
+    expect(metricKeys.size).toBeGreaterThanOrEqual(10);
+
+    // Snapshots and anomalies are the metric layer measured — neither may name
+    // a metric the registry does not define.
+    const snaps = await db.select().from(schema.northSnapshots);
+    expect(snaps.length).toBeGreaterThanOrEqual(20);
+    for (const s of snaps) expect(metricKeys.has(s.metricKey)).toBe(true);
+    const anomalies = await db.select().from(schema.northAnomalies);
+    for (const a of anomalies) expect(metricKeys.has(a.metricKey)).toBe(true);
+
+    // A drill-down that disagrees with the headline is the bug this catches.
+    const decemberGwp = snaps.filter((s) => s.metricKey === "gwp" && s.period === "2025-12");
+    const total = decemberGwp.find((s) => s.dimsHash === "")!.value;
+    for (const dim of ["channel", "provider"]) {
+      const split = decemberGwp.filter((s) => s.dimsHash.startsWith(`${dim}=`));
+      expect(split.length).toBeGreaterThan(1);
+      expect(split.reduce((sum, s) => sum + s.value, 0)).toBe(total);
+    }
+
+    // Decisions cite the briefing, anomaly or pack that raised them.
+    const ids = new Set([
+      ...(await db.select().from(schema.northBriefings)).map((r) => `north_briefing:${r.id}`),
+      ...anomalies.map((r) => `north_anomaly:${r.id}`),
+      ...(await db.select().from(schema.northBoardpacks)).map((r) => `north_boardpack:${r.id}`)
+    ]);
+    const decisions = await db.select().from(schema.northDecisions);
+    expect(decisions.length).toBeGreaterThanOrEqual(3);
+    for (const d of decisions) expect(ids.has(d.contextRef!)).toBe(true);
+
+    // ...and an anomaly that opened one points back at a decision that exists.
+    const decisionIds = new Set(decisions.map((d) => `north_decision:${d.id}`));
+    for (const a of anomalies.filter((x) => x.linkedActionRef)) {
+      expect(decisionIds.has(a.linkedActionRef!)).toBe(true);
+    }
+  });
 });

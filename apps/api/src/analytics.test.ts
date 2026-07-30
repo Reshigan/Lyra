@@ -7,7 +7,9 @@ import { Hono } from "hono";
 import { beforeEach, describe, expect, it } from "vitest";
 import { EntitlementsJson, PolicyJson, schema } from "@lyra/db";
 import type { Ctx } from "@lyra/core";
+import { crudRouter } from "./crud.js";
 import { onError } from "./mw.js";
+import { ANALYTICS } from "./resources.js";
 import { analyticsRoutes, runDueSchedules } from "./routes/analytics.js";
 import type { App, Env } from "./env.js";
 
@@ -82,6 +84,19 @@ beforeEach(async () => {
           values ('u_owner','t_test','owner@test','Owner','en','active','password',0,?,?),
                  ('u_recipient','t_test','rec@test','Recipient','en','active','password',0,?,?)`,
     args: [now, now, now, now]
+  });
+  // Delivery re-reads each recipient's real grants, so a test recipient needs
+  // real role rows — a user with none is a user who was never given the report.
+  await client.execute({
+    sql: `insert into core_roles (id, tenant_id, key, name, permissions_json, system, created_at)
+          values ('rol_reader','t_test','test.reader','Reader',?,1,?)`,
+    args: [JSON.stringify(["axis:policies:read", "analytics:exports:download"]), now]
+  });
+  await client.execute({
+    sql: `insert into core_user_roles (id, tenant_id, user_id, role_id, created_at)
+          values ('ur_owner','t_test','u_owner','rol_reader',?),
+                 ('ur_recipient','t_test','u_recipient','rol_reader',?)`,
+    args: [now, now]
   });
   ctx = {
     db: drizzle(client) as unknown as Ctx["db"],
@@ -256,6 +271,21 @@ describe("scheduled delivery", () => {
     expect(notes.filter((n) => n.kind === "alert").map((n) => n.userId)).toEqual(["u_owner"]);
   });
 
+  // A schedule outlives the roles of everyone named on it. Delivering to someone
+  // who has since lost the report is a leak if the download trusts the inbox row,
+  // and a lie if it doesn't — so they are dropped before the row is written.
+  it("does not deliver to a recipient who cannot read the report", async () => {
+    await seedPolicies();
+    await ctx.db.delete(schema.userRoles).where(eq(schema.userRoles.userId, "u_recipient"));
+    await seedSchedule({ recipients: ["u_recipient"] });
+    expect(await runDueSchedules(system(), bucket)).toBe(1);
+
+    const notes = await ctx.db.select().from(schema.notifications);
+    expect(notes.map((n) => n.userId)).toEqual(["u_owner"]);
+    expect(notes[0]?.kind).toBe("alert");
+    expect((await ctx.db.select().from(schema.analyticsSchedules))[0]?.lastState).toBe("undelivered");
+  });
+
   it("masks PII in a scheduled artefact — the scheduler holds no permissions", async () => {
     await seedPolicies();
     await seedSchedule({ format: "csv", dimensions: ["customerId"] });
@@ -265,7 +295,356 @@ describe("scheduled delivery", () => {
   });
 });
 
+/* ------------------------------------------------- row visibility by id */
+
+// The class of bug: a list narrows to the rows you may see, the by-id handler
+// next to it only checks the tenant. Knowing an id then beats the filter. Each
+// pair below asserts the list and the by-id read give the same answer.
+
+describe("dashboard visibility", () => {
+  const reader = (roleKey: string, id = "u_test"): Ctx["actor"] => ({
+    kind: "user",
+    id,
+    tenantId: "t_test",
+    grants: [{ roleKey, permissions: ["analytics:dashboards:read", "axis:policies:read"] }]
+  });
+
+  async function dashboards(over: Partial<Ctx>): Promise<string[]> {
+    const res = await router(over).fetch(new Request("http://api.test/v1/analytics/dashboards"), env as never);
+    const body = (await res.json()) as { data: { id: string }[] };
+    return body.data.map((d) => d.id);
+  }
+
+  async function data(dashId: string, over: Partial<Ctx>): Promise<number> {
+    const res = await router(over).fetch(
+      new Request(`http://api.test/v1/analytics/dashboards/${dashId}/data`),
+      env as never
+    );
+    return res.status;
+  }
+
+  it("refuses a role-restricted dashboard by id to an actor outside its roles", async () => {
+    await seedDashboard({ id: "dsh_board", roles: ["north.board"] });
+    const outsider = { actor: reader("axis.agent") };
+    // The two must agree: invisible in the list, unreadable by id.
+    expect(await dashboards(outsider)).toEqual([]);
+    expect(await data("dsh_board", outsider)).toBe(404);
+  });
+
+  it("serves a role-restricted dashboard to an actor inside its roles", async () => {
+    await seedPolicies();
+    await seedDashboard({ id: "dsh_board", roles: ["north.board"] });
+    const insider = { actor: reader("north.board") };
+    expect(await dashboards(insider)).toEqual(["dsh_board"]);
+    expect(await data("dsh_board", insider)).toBe(200);
+  });
+
+  it("keeps a personal dashboard to its owner", async () => {
+    await seedPolicies();
+    await seedDashboard({ id: "dsh_mine", scope: "personal", ownerRef: "user:u_owner" });
+    const owner = { actor: reader("axis.agent", "u_owner") };
+    expect(await dashboards(owner)).toEqual(["dsh_mine"]);
+    expect(await data("dsh_mine", owner)).toBe(200);
+
+    const other = { actor: reader("axis.agent", "u_other") };
+    expect(await dashboards(other)).toEqual([]);
+    expect(await data("dsh_mine", other)).toBe(404);
+  });
+
+  it("does not reach across tenants", async () => {
+    await seedDashboard({ id: "dsh_theirs", tenantId: "t_other" });
+    const here = { actor: reader("axis.agent") };
+    expect(await dashboards(here)).toEqual([]);
+    expect(await data("dsh_theirs", here)).toBe(404);
+  });
+
+  it("leaves an unrestricted dashboard readable to anyone who can read dashboards", async () => {
+    await seedPolicies();
+    await seedDashboard({ id: "dsh_all" });
+    const anyone = { actor: reader("orbit.agent") };
+    expect(await dashboards(anyone)).toEqual(["dsh_all"]);
+    expect(await data("dsh_all", anyone)).toBe(200);
+  });
+
+  // The module router is not the only way in. Generated CRUD serves
+  // `GET /v1/analytics/dashboards/:id` from the same table, and it honoured the
+  // permission and the tenant but not the row rule — so the board's dashboard
+  // was one URL away for anyone who could read any dashboard.
+  it("applies the same rule through generated CRUD, not just the module router", async () => {
+    await seedDashboard({ id: "dsh_board", roles: ["north.board"] });
+    const crud = (over: Partial<Ctx>): Hono<App> => {
+      const app = new Hono<App>();
+      app.onError(onError);
+      app.use("*", async (c, next) => {
+        c.set("ctx", { ...ctx, ...over });
+        await next();
+      });
+      app.route("/", crudRouter(ANALYTICS.find((r) => r.path === "dashboards")!));
+      return app;
+    };
+    const url = new Request("http://api.test/dsh_board");
+    expect((await crud({ actor: reader("axis.agent") }).fetch(url, env as never)).status).toBe(404);
+    expect((await crud({ actor: reader("north.board") }).fetch(url, env as never)).status).toBe(200);
+  });
+});
+
+describe("export visibility", () => {
+  const downloader = (id: string): Ctx["actor"] => ({
+    kind: "user",
+    id,
+    tenantId: "t_test",
+    grants: [{ roleKey: "test", permissions: ["analytics:exports:download"] }]
+  });
+
+  async function get(path: string, over: Partial<Ctx>): Promise<Response> {
+    return router(over).fetch(new Request(`http://api.test${path}`), env as never);
+  }
+
+  it("shows the register to a download-only actor", async () => {
+    await seedExport({ id: "exp_mine", requestedBy: "user:u_owner" });
+    const res = await get("/v1/analytics/exports", { actor: downloader("u_owner") });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { data: { id: string }[] }).data.map((e) => e.id)).toEqual(["exp_mine"]);
+  });
+
+  it("refuses another actor's export by id, exactly as the register hides it", async () => {
+    await seedExport({ id: "exp_hers", requestedBy: "user:u_owner" });
+    const them = { actor: downloader("u_other") };
+    const list = (await (await get("/v1/analytics/exports", them)).json()) as { data: { id: string }[] };
+    expect(list.data).toEqual([]);
+    expect((await get("/v1/analytics/exports/exp_hers/download", them)).status).toBe(404);
+  });
+
+  it("lets an audit reader see and fetch any export in the tenant", async () => {
+    await seedExport({ id: "exp_hers", requestedBy: "user:u_owner" });
+    const auditor = {
+      actor: {
+        kind: "user" as const,
+        id: "u_other",
+        tenantId: "t_test",
+        grants: [{ roleKey: "test", permissions: ["analytics:exports:download", "core:audit:read"] }]
+      }
+    };
+    const list = (await (await get("/v1/analytics/exports", auditor)).json()) as { data: { id: string }[] };
+    expect(list.data.map((e) => e.id)).toEqual(["exp_hers"]);
+    expect((await get("/v1/analytics/exports/exp_hers/download", auditor)).status).toBe(200);
+  });
+
+  it("still delivers a scheduled artefact to the recipient it was filed with", async () => {
+    await seedPolicies();
+    await seedSchedule({ recipients: ["u_recipient"] });
+    expect(await runDueSchedules(system(), bucket)).toBe(1);
+    const exportId = (await ctx.db.select().from(schema.analyticsExports))[0]!.id;
+    // The scheduler requested it, not the recipient — the inbox row is what
+    // identifies them. It is not what authorises them: being sent a file is not
+    // permission to read it, so the report's own permission still has to hold.
+    const recipient = (permissions: string[]): Ctx["actor"] => ({
+      kind: "user",
+      id: "u_recipient",
+      tenantId: "t_test",
+      grants: [{ roleKey: "test", permissions }]
+    });
+    expect(
+      (await get(`/v1/analytics/exports/${exportId}/download`, { actor: recipient(["analytics:exports:download"]) })).status
+    ).toBe(404);
+    expect(
+      (
+        await get(`/v1/analytics/exports/${exportId}/download`, {
+          actor: recipient(["analytics:exports:download", "axis:policies:read"])
+        })
+      ).status
+    ).toBe(200);
+    // …and someone the schedule never named stays out either way.
+    expect(
+      (
+        await get(`/v1/analytics/exports/${exportId}/download`, {
+          actor: {
+            kind: "user",
+            id: "u_other",
+            tenantId: "t_test",
+            grants: [{ roleKey: "test", permissions: ["analytics:exports:download", "axis:policies:read"] }]
+          }
+        })
+      ).status
+    ).toBe(404);
+  });
+
+  // An export is the report's data in a file. Having asked for the file, or
+  // having been sent it, is not authority to read it — otherwise an export is a
+  // way around the report's own permission that outlives the role that made it.
+  it("refuses an export whose report the actor cannot read, even to its requester", async () => {
+    await ctx.db.insert(schema.reports).values({
+      id: "rep_locked",
+      tenantId: "t_test",
+      key: "board",
+      module: "north",
+      nameJson: JSON.stringify({ en: "Board" }),
+      definitionJson: JSON.stringify({ dataset: "policies", metrics: ["gwp"] }),
+      piiLevel: "none",
+      requiredPermission: "north:board:read",
+      ownerRef: "user:u_owner",
+      scope: "tenant",
+      system: false,
+      createdAt: NOW,
+      updatedAt: NOW
+    });
+    await seedExport({ id: "exp_locked", requestedBy: "user:u_owner", reportId: "rep_locked" });
+    // `downloader` holds `analytics:exports:download` and nothing else.
+    expect((await get("/v1/analytics/exports/exp_locked/download", { actor: downloader("u_owner") })).status).toBe(404);
+
+    const allowed: Ctx["actor"] = {
+      kind: "user",
+      id: "u_owner",
+      tenantId: "t_test",
+      grants: [{ roleKey: "test", permissions: ["analytics:exports:download", "north:board:read"] }]
+    };
+    expect((await get("/v1/analytics/exports/exp_locked/download", { actor: allowed })).status).toBe(200);
+  });
+
+  it("does not reach across tenants", async () => {
+    await seedExport({ id: "exp_theirs", requestedBy: "user:u_owner", tenantId: "t_other" });
+    expect((await get("/v1/analytics/exports/exp_theirs/download", { actor: downloader("u_owner") })).status).toBe(404);
+  });
+});
+
+describe("report visibility by id", () => {
+  const writer: Ctx["actor"] = {
+    kind: "user",
+    id: "u_other",
+    tenantId: "t_test",
+    // Can write reports, cannot read the dataset the report is built on.
+    grants: [{ roleKey: "test", permissions: ["analytics:reports:read", "analytics:reports:write"] }]
+  };
+
+  async function call(method: string, path: string, over: Partial<Ctx>, json?: unknown): Promise<number> {
+    const res = await router(over).fetch(
+      new Request(`http://api.test${path}`, {
+        method,
+        ...(json ? { body: JSON.stringify(json), headers: { "content-type": "application/json" } } : {})
+      }),
+      env as never
+    );
+    return res.status;
+  }
+
+  it("refuses PATCH and DELETE on a report the list would not show", async () => {
+    await seedSchedule({}); // seeds rep_1, requiredPermission axis:policies:read
+    const over = { actor: writer };
+    const list = await router(over).fetch(new Request("http://api.test/v1/analytics/reports"), env as never);
+    expect(((await list.json()) as { data: unknown[] }).data).toEqual([]);
+    expect(await call("PATCH", "/v1/analytics/reports/rep_1", over, { piiLevel: "low" })).toBe(403);
+    expect(await call("DELETE", "/v1/analytics/reports/rep_1", over)).toBe(403);
+  });
+
+  it("refuses a run belonging to a report the caller cannot read", async () => {
+    await seedSchedule({});
+    await ctx.db.insert(schema.reportRuns).values({
+      id: "run_1",
+      tenantId: "t_test",
+      reportId: "rep_1",
+      paramsJson: "{}",
+      requestedBy: "user:u_owner",
+      trigger: "user",
+      state: "done",
+      truncated: false,
+      startedAt: NOW,
+      endedAt: NOW
+    });
+    expect(await call("GET", "/v1/analytics/runs/run_1", { actor: writer })).toBe(403);
+    expect(await call("GET", "/v1/analytics/runs/run_1", {})).toBe(200);
+  });
+});
+
+describe("report name round-trip", () => {
+  it("returns the i18n maps PATCH accepts, so an edit form loads what it saves", async () => {
+    await seedSchedule({});
+    const res = await router().fetch(new Request("http://api.test/v1/analytics/reports/rep_1"), env as never);
+    const report = (await res.json()) as { name: Record<string, string>; nameJson: string };
+    expect(report.name).toEqual({ en: "Premium" });
+
+    const patched = await router().fetch(
+      new Request("http://api.test/v1/analytics/reports/rep_1", {
+        method: "PATCH",
+        body: JSON.stringify({ name: report.name, description: { en: "GWP" } }),
+        headers: { "content-type": "application/json" }
+      }),
+      env as never
+    );
+    const after = (await patched.json()) as { name: Record<string, string>; description: Record<string, string> };
+    expect(after.name).toEqual({ en: "Premium" });
+    expect(after.description).toEqual({ en: "GWP" });
+  });
+});
+
 /* -------------------------------------------------------------------- seeds */
+
+async function seedDashboard(over: {
+  id: string;
+  roles?: string[];
+  scope?: string;
+  ownerRef?: string;
+  tenantId?: string;
+}): Promise<void> {
+  await ctx.db.insert(schema.dashboards).values({
+    id: over.id,
+    tenantId: over.tenantId ?? "t_test",
+    key: over.id,
+    module: "axis",
+    nameJson: JSON.stringify({ en: "Board" }),
+    layoutJson: JSON.stringify({ tiles: [{ key: "gwp", viz: "number", span: 4, definition: { dataset: "policies", metrics: ["gwp"] } }] }),
+    scope: over.scope ?? "tenant",
+    ownerRef: over.ownerRef ?? "user:u_owner",
+    rolesJson: over.roles ? JSON.stringify(over.roles) : null,
+    isDefault: false,
+    createdAt: NOW,
+    updatedAt: NOW
+  });
+}
+
+async function seedExport(over: {
+  id: string;
+  requestedBy: string;
+  tenantId?: string;
+  reportId?: string;
+}): Promise<void> {
+  const tenantId = over.tenantId ?? "t_test";
+  stored.set(`exports/${tenantId}/${over.id}.csv`, new TextEncoder().encode("a,b\n1,2\n"));
+  await ctx.db.insert(schema.files).values({
+    id: `file_${over.id}`,
+    tenantId,
+    r2Key: `exports/${tenantId}/${over.id}.csv`,
+    kind: "analytics_export",
+    subjectRef: over.id,
+    sha256: "x",
+    sizeBytes: 8,
+    contentType: "text/csv",
+    piiLevel: "none",
+    createdAt: NOW,
+    deletedAt: null
+  });
+  await ctx.db.insert(schema.analyticsExports).values({
+    id: over.id,
+    tenantId,
+    runId: `run_${over.id}`,
+    reportId: over.reportId ?? null,
+    subjectRef: null,
+    format: "csv",
+    fileId: `file_${over.id}`,
+    sizeBytes: 8,
+    rowCount: 1,
+    piiMasked: true,
+    piiJustification: null,
+    watermark: null,
+    requestedBy: over.requestedBy,
+    approvedBy: null,
+    state: "ready",
+    downloadCount: 0,
+    expiresAt: NOW + 7 * 24 * HOUR,
+    error: null,
+    createdAt: NOW,
+    updatedAt: NOW
+  });
+}
 
 /** The cron actor: a system principal with no grants at all. */
 function system(): Ctx {

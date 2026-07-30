@@ -1,4 +1,5 @@
 import type { ReportTable } from "@lyra/ledger";
+import { majorUnits, minorExponent, rowCurrency } from "./money.js";
 import { utf8, zip } from "./zip.js";
 
 // XLSX by hand. Excel is the format finance actually reconciles in, so a CSV
@@ -29,7 +30,7 @@ export function toXlsx(tables: readonly ReportTable[], opts: SheetOptions = {}):
     { path: "_rels/.rels", data: utf8(ROOT_RELS) },
     { path: "xl/workbook.xml", data: utf8(workbook(names)) },
     { path: "xl/_rels/workbook.xml.rels", data: utf8(workbookRels(sheets.length)) },
-    { path: "xl/styles.xml", data: utf8(styles(tables[0]?.currency ?? "AED")) },
+    { path: "xl/styles.xml", data: utf8(styles(tables[0])) },
     ...sheets.map((xml, i) => ({ path: `xl/worksheets/sheet${i + 1}.xml`, data: utf8(xml) }))
   ]);
 }
@@ -59,7 +60,7 @@ function sheetXml(t: ReportTable, opts: SheetOptions, index: number): string {
         t.columns.map((c, i) => {
           const v = data[c.key];
           if (v === null || v === undefined) return cell(col(i), at, "", S.normal);
-          if (c.kind === "money") return num(col(i), at, Number(v) / 100, S.money);
+          if (c.kind === "money") return num(col(i), at, majorUnits(Number(v), rowCurrency(data, t)), S.money);
           if (c.kind === "number") return num(col(i), at, Number(v), S.number);
           if (c.kind === "date") return cell(col(i), at, iso(Number(v)), S.date);
           return cell(col(i), at, String(v), S.normal);
@@ -77,7 +78,8 @@ function sheetXml(t: ReportTable, opts: SheetOptions, index: number): string {
           const v = opts.totals?.[c.key];
           if (i === 0) return cell(col(i), at, "Total", S.total);
           if (v === undefined) return cell(col(i), at, "", S.total);
-          return num(col(i), at, c.kind === "money" ? v / 100 : v, c.kind === "money" ? S.totalMoney : S.total);
+          const major = c.kind === "money" ? majorUnits(v, t.currency) : v;
+          return num(col(i), at, major, c.kind === "money" ? S.totalMoney : S.total);
         })
       )
     );
@@ -185,14 +187,34 @@ function workbookRels(sheets: number): string {
   );
 }
 
-function styles(currency: string): string {
+/**
+ * The number format for money cells. Two things it must not get wrong: a
+ * currency with something other than two minor digits (JPY has none, KWD has
+ * three), and a report that holds more than one currency — which carries its
+ * own `currency` column, and where stamping the first row's code on every cell
+ * would label a USD figure "AED".
+ *
+ * ponytail: one format per sheet, so a mixed-currency sheet shows two decimals
+ * even if one of its currencies has three. The cell *values* are always right
+ * (each row is divided by its own currency's exponent); only the displayed
+ * decimal count follows the sheet. Split the money style per exponent if a
+ * report ever mixes JPY with KWD.
+ */
+function moneyFormat(t: ReportTable | undefined): string {
+  const mixed = t?.columns.some((c) => c.key === "currency") ?? false;
+  const decimals = "0".repeat(minorExponent(t?.currency));
+  const digits = `#,##0${decimals ? `.${decimals}` : ""}`;
+  return mixed ? digits : `&quot;${esc(t?.currency ?? "AED")} &quot;${digits}`;
+}
+
+function styles(t: ReportTable | undefined): string {
   // numFmtId 164 is the first id available to a document; anything below 164 is
   // reserved by the spec.
   return (
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
     `<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">` +
     `<numFmts count="2">` +
-    `<numFmt numFmtId="164" formatCode="&quot;${esc(currency)} &quot;#,##0.00"/>` +
+    `<numFmt numFmtId="164" formatCode="${moneyFormat(t)}"/>` +
     `<numFmt numFmtId="165" formatCode="#,##0"/>` +
     `</numFmts>` +
     `<fonts count="4">` +

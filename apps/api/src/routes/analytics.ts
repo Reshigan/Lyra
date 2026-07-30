@@ -1,7 +1,7 @@
 import { Hono } from "hono";
-import { and, desc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import { desc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
-import { id, schema } from "@lyra/db";
+import { id, schema, type Db } from "@lyra/db";
 import {
   actorRef,
   audit,
@@ -19,7 +19,6 @@ import {
   type Ctx,
   type PiiMap
 } from "@lyra/core";
-import type { ReportTable } from "@lyra/ledger";
 import {
   DATASETS,
   MAX_ROWS,
@@ -31,8 +30,8 @@ import {
   type ReportDefinition,
   type RunResult
 } from "../engines/report.js";
-import { toXlsx } from "../engines/export/xlsx.js";
-import { pdfSafe, toPdf } from "../engines/export/pdf.js";
+import { render, type Rendered } from "../engines/export/render.js";
+import { grantsFor } from "../auth.js";
 import { body, decodeCursor, encodeCursor, listParams, parse, MAX_PAGE } from "../http.js";
 import { must } from "../rows.js";
 import type { App } from "../env.js";
@@ -108,7 +107,11 @@ analyticsRoutes.get("/reports", async (c) => {
     )
     .orderBy(desc(schema.reports.updatedAt))
     .limit(list.limit);
-  return c.json({ data: rows.filter((r) => can(ctx.actor, r.requiredPermission, { tenantId: ctx.tenantId, module: r.module })) });
+  return c.json({
+    data: rows
+      .filter((r) => can(ctx.actor, r.requiredPermission, { tenantId: ctx.tenantId, module: r.module }))
+      .map(reportView)
+  });
 });
 
 analyticsRoutes.post("/reports", async (c) => {
@@ -138,19 +141,19 @@ analyticsRoutes.post("/reports", async (c) => {
   };
   await ctx.db.insert(schema.reports).values(row);
   await audit(ctx, { action: "analytics.report.create", subjectRef: row.id, after: row });
-  return c.json(row, 201);
+  return c.json(reportView(row), 201);
 });
 
 analyticsRoutes.get("/reports/:id", async (c) => {
   const ctx = c.get("ctx");
   require_(ctx.actor, "analytics:reports:read", { tenantId: ctx.tenantId });
-  return c.json(await readableReport(ctx, c.req.param("id")));
+  return c.json(reportView(await readableReport(ctx, c.req.param("id"))));
 });
 
 analyticsRoutes.patch("/reports/:id", async (c) => {
   const ctx = c.get("ctx");
   require_(ctx.actor, "analytics:reports:write", { tenantId: ctx.tenantId });
-  const before = await must(ctx, schema.reports, c.req.param("id"), "report");
+  const before = await readableReport(ctx, c.req.param("id"));
   if (before.system) throw conflict("a system report cannot be edited; clone it first");
   const input = await body(c, ReportBody.partial());
 
@@ -168,13 +171,13 @@ analyticsRoutes.patch("/reports/:id", async (c) => {
   }
   await ctx.db.update(schema.reports).set(patch).where(scoped(ctx, schema.reports, eq(schema.reports.id, before.id)));
   await audit(ctx, { action: "analytics.report.update", subjectRef: before.id, before, after: patch });
-  return c.json({ ...before, ...patch });
+  return c.json(reportView({ ...before, ...patch } as typeof before));
 });
 
 analyticsRoutes.delete("/reports/:id", async (c) => {
   const ctx = c.get("ctx");
   require_(ctx.actor, "analytics:reports:write", { tenantId: ctx.tenantId });
-  const row = await must(ctx, schema.reports, c.req.param("id"), "report");
+  const row = await readableReport(ctx, c.req.param("id"));
   if (row.system) throw conflict("a system report cannot be deleted");
   await ctx.db
     .update(schema.reports)
@@ -220,7 +223,15 @@ analyticsRoutes.post("/run", async (c) => {
 analyticsRoutes.get("/runs/:id", async (c) => {
   const ctx = c.get("ctx");
   require_(ctx.actor, "analytics:reports:read", { tenantId: ctx.tenantId });
-  return c.json(await must(ctx, schema.reportRuns, c.req.param("id"), "run"));
+  const run = await must(ctx, schema.reportRuns, c.req.param("id"), "run");
+  // A run carries the definition it ran, so it inherits its report's gate. An
+  // ad-hoc run belongs to whoever asked for it — there is no report to ask.
+  if (run.reportId === "adhoc") {
+    if (run.requestedBy !== actorRef(ctx)) throw notFound("run");
+  } else {
+    await readableReport(ctx, run.reportId);
+  }
+  return c.json(run);
 });
 
 /* -------------------------------------------------------------------- exports */
@@ -313,7 +324,9 @@ analyticsRoutes.post("/exports", async (c) => {
 
 analyticsRoutes.get("/exports", async (c) => {
   const ctx = c.get("ctx");
-  require_(ctx.actor, "analytics:exports:create", { tenantId: ctx.tenantId });
+  // Reading the register is not creating an export; `:download` is the gate that
+  // matches what comes back, and it is the gate the download itself uses.
+  require_(ctx.actor, "analytics:exports:download", { tenantId: ctx.tenantId });
   const { list } = listParams(c);
   const mine = can(ctx.actor, "core:audit:read", { tenantId: ctx.tenantId })
     ? undefined
@@ -331,6 +344,9 @@ analyticsRoutes.get("/exports/:id/download", async (c) => {
   const ctx = c.get("ctx");
   require_(ctx.actor, "analytics:exports:download", { tenantId: ctx.tenantId });
   const row = await must(ctx, schema.analyticsExports, c.req.param("id"), "export");
+  // The same rule the register narrows on. Holding `:download` is permission to
+  // fetch your own artefacts, not everyone else's by id.
+  if (!(await exportVisible(ctx, row))) throw notFound("export");
   if (row.state !== "ready" || !row.fileId) throw notFound("export file");
   if (row.expiresAt && row.expiresAt < ctx.now) throw notFound("export file");
   // An unmasked export is readable only by the person who justified it, or by
@@ -534,21 +550,13 @@ const DashboardBody = z.object({
 analyticsRoutes.get("/dashboards", async (c) => {
   const ctx = c.get("ctx");
   require_(ctx.actor, "analytics:dashboards:read", { tenantId: ctx.tenantId });
-  const roles = new Set(ctx.actor.grants.map((g) => g.roleKey));
   const rows = await ctx.db
     .select()
     .from(schema.dashboards)
     .where(scoped(ctx, schema.dashboards))
     .orderBy(desc(schema.dashboards.isDefault))
     .limit(200);
-  // A roles list narrows visibility; no list means "anyone who can read dashboards".
-  return c.json({
-    data: rows.filter((r) => {
-      const allowed = r.rolesJson ? (JSON.parse(r.rolesJson) as string[]) : null;
-      const owned = r.scope !== "personal" || r.ownerRef === actorRef(ctx);
-      return owned && (!allowed?.length || allowed.some((role) => roles.has(role)));
-    })
-  });
+  return c.json({ data: rows.filter((r) => dashboardVisible(ctx, r)) });
 });
 
 analyticsRoutes.post("/dashboards", async (c) => {
@@ -582,6 +590,10 @@ analyticsRoutes.get("/dashboards/:id/data", async (c) => {
   const ctx = c.get("ctx");
   require_(ctx.actor, "analytics:dashboards:read", { tenantId: ctx.tenantId });
   const dash = await must(ctx, schema.dashboards, c.req.param("id"), "dashboard");
+  // The same rule the list applies. Without it a board-only dashboard is readable
+  // by anyone who can guess its id — a filter that lives only on the list is not
+  // a filter at all.
+  if (!dashboardVisible(ctx, dash)) throw notFound("dashboard");
   const layout = JSON.parse(dash.layoutJson) as { tiles: { key: string; reportId?: string; definition?: ReportDefinition }[] };
 
   const tiles = await Promise.all(
@@ -699,9 +711,104 @@ async function readableReport(ctx: Ctx, reportId: string): Promise<typeof schema
   const row = await must(ctx, schema.reports, reportId, "report");
   // The report's own permission is the gate — `analytics:reports:read` gets you
   // the list, not the contents of a report about a module you cannot see.
+  // `require_` first so a missing permission still reads as 403 on the module
+  // routes; `reportVisible` then owns the rule, so this and generic CRUD agree.
   require_(ctx.actor, row.requiredPermission, { tenantId: ctx.tenantId, module: row.module });
-  if (row.scope === "personal" && row.ownerRef !== actorRef(ctx)) throw notFound("report");
+  if (!reportVisible(ctx, row)) throw notFound("report");
   return row;
+}
+
+/**
+ * Row-level visibility for a report. Generic CRUD reaches this through
+ * `Resource.rowVisible`, where a hidden row is a 404; the module routes reach
+ * the same rule through `readableReport`.
+ */
+export function reportVisible(ctx: Ctx, row: typeof schema.reports.$inferSelect): boolean {
+  if (!can(ctx.actor, row.requiredPermission, { tenantId: ctx.tenantId, module: row.module })) {
+    return false;
+  }
+  return row.scope !== "personal" || row.ownerRef === actorRef(ctx);
+}
+
+/** Can this actor see the report behind an artefact? A missing report hides it. */
+async function reportReadable(ctx: Ctx, reportId: string): Promise<boolean> {
+  const [report] = await ctx.db
+    .select()
+    .from(schema.reports)
+    .where(scoped(ctx, schema.reports, eq(schema.reports.id, reportId)))
+    .limit(1);
+  return report ? reportVisible(ctx, report) : false;
+}
+
+/** A run is as visible as the report it ran — the payload is that report's data. */
+export async function reportRunVisible(
+  ctx: Ctx,
+  row: typeof schema.reportRuns.$inferSelect
+): Promise<boolean> {
+  return reportReadable(ctx, row.reportId);
+}
+
+/** A saved view with no `userId` is the tenant's; one with a `userId` is that person's. */
+export function savedViewVisible(ctx: Ctx, row: typeof schema.savedViews.$inferSelect): boolean {
+  return row.userId === null || row.userId === ctx.actor.id;
+}
+
+/**
+ * Row-level visibility for a dashboard, shared by the list and by every read of
+ * one dashboard. A `roles` list narrows visibility; no list means "anyone who
+ * can read dashboards". A personal dashboard belongs to its owner.
+ */
+export function dashboardVisible(ctx: Ctx, row: typeof schema.dashboards.$inferSelect): boolean {
+  if (row.scope === "personal" && row.ownerRef !== actorRef(ctx)) return false;
+  const allowed = row.rolesJson ? (JSON.parse(row.rolesJson) as string[]) : null;
+  if (!allowed?.length) return true;
+  return allowed.some((role) => ctx.actor.grants.some((g) => g.roleKey === role));
+}
+
+/**
+ * Row-level visibility for an export, shared by the register and the download.
+ * Your own exports, plus everything if you can read the audit trail — the same
+ * two clauses `GET /exports` narrows on in SQL. A scheduled artefact is
+ * requested by the scheduler, so its recipients are recognised by the inbox row
+ * that delivered it (ANL-012) rather than by a permission nobody would hold.
+ */
+export async function exportVisible(ctx: Ctx, row: typeof schema.analyticsExports.$inferSelect): Promise<boolean> {
+  if (can(ctx.actor, "core:audit:read", { tenantId: ctx.tenantId })) return true;
+  // The artefact is the report's data, so the report's own permission gates it —
+  // checked before the clauses below, because neither having asked for the file
+  // nor having been sent it is authority to read it. A requester who has since
+  // lost the role, and a schedule recipient who never held it, both stop here.
+  if (row.reportId && !(await reportReadable(ctx, row.reportId))) return false;
+  if (row.requestedBy === actorRef(ctx)) return true;
+  const delivered = await ctx.db
+    .select({ id: schema.notifications.id })
+    .from(schema.notifications)
+    .where(
+      scoped(
+        ctx,
+        schema.notifications,
+        eq(schema.notifications.userId, ctx.actor.id),
+        eq(schema.notifications.subjectRef, row.id)
+      )
+    )
+    .limit(1);
+  return delivered.length > 0;
+}
+
+/** The stored row plus its i18n maps decoded, so a GET body is a valid PATCH body. */
+function reportView<T extends { nameJson: string; descriptionJson: string | null }>(
+  row: T
+): T & { name: Record<string, string>; description?: Record<string, string> } {
+  const map = (json: string | null): Record<string, string> | undefined => {
+    if (!json) return undefined;
+    try {
+      return JSON.parse(json) as Record<string, string>;
+    } catch {
+      return undefined;
+    }
+  };
+  const description = map(row.descriptionJson);
+  return { ...row, name: map(row.nameJson) ?? {}, ...(description ? { description } : {}) };
 }
 
 function requireDataset(ctx: Ctx, dataset: string): Dataset {
@@ -776,11 +883,6 @@ async function materialise(
   }
 }
 
-interface Rendered {
-  bytes: Uint8Array;
-  contentType: string;
-}
-
 /** Put the bytes in the object store and leave the two rows that describe them. */
 async function storeExport(
   ctx: Ctx,
@@ -842,45 +944,6 @@ async function storeExport(
   };
   await ctx.db.insert(schema.analyticsExports).values(row);
   return row;
-}
-
-function render(
-  format: "xlsx" | "pdf" | "csv" | "json",
-  table: ReportTable & { rowCount?: number },
-  opts: { totals?: Record<string, number>; watermark?: string; orientation?: "portrait" | "landscape"; meta?: Record<string, string> }
-): Rendered {
-  switch (format) {
-    case "xlsx":
-      return {
-        bytes: toXlsx([table], opts),
-        contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-      };
-    case "pdf": {
-      // Arabic needs an embedded font the base-14 set does not have, so rather
-      // than draw question marks the caller is told to ask for XLSX.
-      if (!pdfSafe([table])) throw badRequest("this report contains non-Latin text; export it as xlsx");
-      return { bytes: toPdf([table], opts), contentType: "application/pdf" };
-    }
-    case "csv":
-      return { bytes: new TextEncoder().encode(toCsv(table)), contentType: "text/csv; charset=utf-8" };
-    default:
-      return {
-        bytes: new TextEncoder().encode(JSON.stringify({ ...table, totals: opts.totals }, null, 2)),
-        contentType: "application/json"
-      };
-  }
-}
-
-function toCsv(table: ReportTable): string {
-  const esc = (v: unknown): string => {
-    const s = v === null || v === undefined ? "" : String(v);
-    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-  const head = table.columns.map((c) => esc(c.label)).join(",");
-  const rows = table.rows.map((r) => table.columns.map((c) => esc(r[c.key])).join(","));
-  // A leading BOM so Excel opens UTF-8 CSV without mangling Arabic.
-  // eslint-disable-next-line no-irregular-whitespace
-  return `﻿${[head, ...rows].join("\r\n")}\r\n`;
 }
 
 /**
@@ -996,7 +1059,7 @@ async function deliverSchedule(ctx: Ctx, s: Schedule, bucket: R2Bucket | undefin
   if (row.state !== "ready") throw new Error("no object store bound");
 
   const recipients = JSON.parse(s.recipientsJson) as string[];
-  const reachable = recipients.length
+  const named = recipients.length
     ? await ctx.db
         .select({ id: schema.users.id })
         .from(schema.users)
@@ -1009,6 +1072,20 @@ async function deliverSchedule(ctx: Ctx, s: Schedule, bucket: R2Bucket | undefin
           )
         )
     : [];
+
+  // Being named on a schedule is not permission to read the report — a schedule
+  // outlives the roles of everyone on it. Filter here rather than at download,
+  // so nobody is handed an artefact they will then be refused; the shortfall
+  // lands in `state` below and alerts the schedule's owner.
+  const permitted = await Promise.all(
+    named.map(async (u) => {
+      // `Ctx["db"]` is the schema-free core alias; grantsFor reads named tables.
+      const grants = await grantsFor(ctx.db as unknown as Db, ctx.tenantId, u.id);
+      const actor = { kind: "user" as const, id: u.id, tenantId: ctx.tenantId, grants };
+      return reportVisible({ ...ctx, actor }, report) ? u : null;
+    })
+  );
+  const reachable = permitted.filter((u): u is { id: string } => u !== null);
 
   // ponytail: the inbox is the one delivery channel that is built. Email, R2
   // hand-off, webhook and Slack are the same seam — a `deliver(kind, target)`

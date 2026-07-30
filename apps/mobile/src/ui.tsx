@@ -24,6 +24,29 @@ export interface Chrome {
   dir: "ltr" | "rtl";
 }
 
+/**
+ * The three things every piece of text on every screen has to carry, in one
+ * place so a new screen cannot forget one:
+ *
+ *  - `fontFamily` — the tenant's saved typeface (theme.ts). A brand token, not a
+ *    constant, and `undefined` correctly means the platform typeface.
+ *  - `writingDirection` — bidi resolution for mixed Arabic/Latin runs.
+ *  - `textAlign` — explicitly, not `auto`. Natural alignment follows
+ *    `I18nManager.isRTL`, which only flips after a reload, so an Arabic session
+ *    would otherwise render left-aligned until the app is restarted.
+ *
+ * The caller's own style is spread last and wins — the mono runs on the sign-in
+ * screen deliberately override `fontFamily`.
+ */
+export function textOf(chrome: Chrome, style?: TextStyle): TextStyle {
+  return {
+    fontFamily: chrome.theme.font,
+    writingDirection: chrome.dir,
+    textAlign: chrome.dir === "rtl" ? "right" : "left",
+    ...style
+  };
+}
+
 export function Body({ chrome, style, selectable, children }: {
   chrome: Chrome;
   style?: TextStyle;
@@ -35,12 +58,11 @@ export function Body({ chrome, style, selectable, children }: {
     <Text
       selectable={selectable}
       style={[
-        {
+        textOf(chrome, {
           color: chrome.theme.text,
           fontSize: TEXT.s14,
-          lineHeight: TEXT.s14 * 1.5,
-          writingDirection: chrome.dir
-        },
+          lineHeight: TEXT.s14 * 1.5
+        }),
         style
       ]}
     >
@@ -53,13 +75,12 @@ export function Title({ chrome, children }: { chrome: Chrome; children: ReactNod
   return (
     <Text
       accessibilityRole="header"
-      style={{
+      style={textOf(chrome, {
         color: chrome.theme.text,
         fontSize: TEXT.s28,
         fontWeight: "700",
-        lineHeight: TEXT.s28 * 1.15,
-        writingDirection: chrome.dir
-      }}
+        lineHeight: TEXT.s28 * 1.15
+      })}
     >
       {children}
     </Text>
@@ -69,12 +90,11 @@ export function Title({ chrome, children }: { chrome: Chrome; children: ReactNod
 export function Muted({ chrome, children }: { chrome: Chrome; children: ReactNode }) {
   return (
     <Text
-      style={{
+      style={textOf(chrome, {
         color: chrome.theme.muted,
         fontSize: TEXT.s13,
-        lineHeight: TEXT.s13 * 1.5,
-        writingDirection: chrome.dir
-      }}
+        lineHeight: TEXT.s13 * 1.5
+      })}
     >
       {children}
     </Text>
@@ -128,12 +148,12 @@ export function Button({
         <ActivityIndicator color={primary ? chrome.theme.accentContrast : chrome.theme.text} />
       ) : (
         <Text
-          style={{
+          style={textOf(chrome, {
             color: primary ? chrome.theme.accentContrast : chrome.theme.text,
             fontSize: TEXT.s16,
             fontWeight: "600",
-            writingDirection: chrome.dir
-          }}
+            textAlign: "center"
+          })}
         >
           {label}
         </Text>
@@ -150,12 +170,11 @@ export const Field = forwardRef<TextInput, { chrome: Chrome; label: string } & T
       <View style={{ gap: SPACE.sm }}>
         <Text
           nativeID={`${label}-label`}
-          style={{
+          style={textOf(chrome, {
             color: chrome.theme.muted,
             fontSize: TEXT.s13,
-            fontWeight: "500",
-            writingDirection: chrome.dir
-          }}
+            fontWeight: "500"
+          })}
         >
           {label}
         </Text>
@@ -165,7 +184,7 @@ export const Field = forwardRef<TextInput, { chrome: Chrome; label: string } & T
           accessibilityLabelledBy={`${label}-label`}
           placeholderTextColor={chrome.theme.subtle}
           style={[
-            {
+            textOf(chrome, {
               minHeight: TOUCH_TARGET,
               paddingHorizontal: SPACE.md,
               paddingVertical: SPACE.sm,
@@ -174,10 +193,8 @@ export const Field = forwardRef<TextInput, { chrome: Chrome; label: string } & T
               borderColor: chrome.theme.border,
               backgroundColor: chrome.theme.surfaceRaised,
               color: chrome.theme.text,
-              fontSize: TEXT.s16,
-              textAlign: chrome.dir === "rtl" ? "right" : "left",
-              writingDirection: chrome.dir
-            },
+              fontSize: TEXT.s16
+            }),
             style
           ]}
           {...props}
@@ -212,11 +229,11 @@ export function Notice({
         backgroundColor: chrome.theme.surface
       }}
     >
-      <Text style={{ color: chrome.theme.text, fontSize: TEXT.s14, writingDirection: chrome.dir }}>
+      <Text style={textOf(chrome, { color: chrome.theme.text, fontSize: TEXT.s14 })}>
         {message}
       </Text>
       {requestId ? (
-        <Text style={{ color: chrome.theme.muted, fontSize: TEXT.s12 }}>
+        <Text style={textOf(chrome, { color: chrome.theme.muted, fontSize: TEXT.s12 })}>
           {chrome.t("error.requestId", { id: requestId })}
         </Text>
       ) : null}

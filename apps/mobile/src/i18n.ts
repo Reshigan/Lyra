@@ -22,6 +22,7 @@ export const en = {
   "nav.admin": "Administration",
   "nav.settings": "Settings",
   "nav.unavailable": "Not on mobile yet",
+  "nav.back": "Back",
 
   "home.signedInAs": "Signed in as {name}",
   "home.workspaces": "Workspaces",
@@ -95,6 +96,7 @@ export const ar: Messages = {
   "nav.admin": "الإدارة",
   "nav.settings": "الإعدادات",
   "nav.unavailable": "غير متاح على الجوال بعد",
+  "nav.back": "رجوع",
 
   "home.signedInAs": "تسجيل الدخول باسم {name}",
   "home.workspaces": "مساحات العمل",

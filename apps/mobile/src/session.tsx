@@ -45,6 +45,13 @@ interface Session {
   theme: Theme;
   /** Tenant product name, for the one place a title is shown. */
   brandName: string;
+  /**
+   * Why the stored session could not be restored — a dead network, not a
+   * rejection. The token is kept, so this is a "try again", not a sign-out; the
+   * sign-in screen shows it rather than presenting a bare password form to
+   * someone who is already signed in and merely offline.
+   */
+  restoreError: unknown;
   signIn(input: { email: string; password: string; tenantSlug?: string }): Promise<Status>;
   verifyCode(code: string): Promise<void>;
   /** Starts enrolment and hands back the setup key to display. */
@@ -70,11 +77,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [mfaStep, setMfaStep] = useState<AuthStep | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [me, setMe] = useState<Me | null>(null);
+  const [restoreError, setRestoreError] = useState<unknown>(null);
   // Before sign-in there is no account locale, so the device's is the best
   // guess; /v1/me replaces it the moment there is a session.
   const [deviceLocale] = useState(() => resolveLocale(getLocales().map((l) => l.languageTag)));
 
   const load = useCallback(async (candidate: string): Promise<Status> => {
+    setRestoreError(null);
     try {
       const loaded = await fetchMe(candidate);
       setMe(loaded);
@@ -101,6 +110,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setStatus("signedOut");
         return "signedOut";
       }
+      // Not a rejection — the API could not be reached at all. Record it before
+      // rethrowing so a failed retry keeps showing why, rather than clearing the
+      // message and leaving a bare form behind.
+      setRestoreError(error);
       throw error;
     }
   }, []);
@@ -119,6 +132,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       try {
         await load(stored);
       } catch {
+        // `load` has already recorded why; the token stays so a retry is possible.
         if (live) {
           setToken(stored);
           setStatus("signedOut");
@@ -185,6 +199,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setToken(null);
     setMe(null);
     setMfaStep(null);
+    setRestoreError(null);
     setStatus("signedOut");
   }, [token]);
 
@@ -210,6 +225,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       t: translator(locale),
       theme: themeFor(me?.tenant.brand),
       brandName: productName(me?.tenant.brand, me?.tenant.name ?? ""),
+      restoreError,
       signIn,
       verifyCode,
       enrol,
@@ -217,7 +233,20 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       refresh,
       signOut
     }),
-    [status, mfaStep, token, me, locale, signIn, verifyCode, enrol, confirmEnrol, refresh, signOut]
+    [
+      status,
+      mfaStep,
+      token,
+      me,
+      locale,
+      restoreError,
+      signIn,
+      verifyCode,
+      enrol,
+      confirmEnrol,
+      refresh,
+      signOut
+    ]
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

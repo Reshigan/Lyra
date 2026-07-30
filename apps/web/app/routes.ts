@@ -1,17 +1,39 @@
 import { index, layout, route, type RouteConfig } from "@react-router/dev/routes";
-import { WORKSPACE_PATHS } from "./routing";
 
-// One placeholder file backs every workspace: the screens are a later phase, and
-// seven identical files would be seven files to delete. Each route still gets
-// its own id and its own URL, so replacing one with a real screen is a one-line
-// change here.
+// Two kinds of screen live behind the session. Most of a workspace is lists and
+// records, so those are one pair of generic routes driven by the specs in
+// app/modules — adding a module adds a spec file, not a route. The screens that
+// are genuinely their own thing (a quote comparison, a trial balance, the
+// approvals queue) get a static path, which React Router ranks above the
+// dynamic `:module` segment, so they win the match without extra ceremony.
 export default [
   route("login", "routes/login.tsx"),
   route("logout", "routes/logout.tsx"),
   layout("routes/workspace.tsx", [
     index("routes/home.tsx"),
-    ...WORKSPACE_PATHS.map((path) =>
-      route(path.slice(1), "routes/placeholder.tsx", { id: `workspace${path}` })
-    )
+
+    route("settings", "routes/settings.tsx"),
+    route("approvals", "routes/approvals.tsx"),
+    route("admin/ai/console", "routes/ai-console.tsx"),
+    route("admin/ai/budget", "routes/ai-budget.tsx"),
+    route("admin/ai/runs/:id", "routes/ai-run.tsx"),
+    route("ledger/reports/:report", "routes/ledger-reports.tsx"),
+    route("ledger/transactions", "routes/ledger-open-txn.tsx"),
+    route("ledger/transactions/:id", "routes/ledger-transaction.tsx"),
+    route("ledger/period-close", "routes/ledger-periods.tsx"),
+    route("ledger/statement", "routes/ledger-account.tsx"),
+    route("ledger/recon", "routes/ledger-recon.tsx"),
+    route("analytics/report/:id", "routes/analytics-report.tsx"),
+    route("analytics/dashboard/:id", "routes/analytics-dashboard.tsx"),
+    route("distribution/quote-requests/:id/compare", "routes/quote-compare.tsx"),
+    route("orbit/conversations/:id/thread", "routes/conversation.tsx"),
+    route("distribution/commission-entries/statement", "routes/commission-statement.tsx"),
+    route("distribution/commission-entries/:id/clawback", "routes/commission-clawback.tsx"),
+    route("distribution/next-best-offers/suggest", "routes/dist-offers.tsx"),
+    route("compliance/run/:kind", "routes/compliance-run.tsx"),
+
+    route(":module", "routes/module.tsx"),
+    route(":module/:resource", "routes/module.tsx", { id: "module-resource" }),
+    route(":module/:resource/:id", "routes/record.tsx")
   ])
 ] satisfies RouteConfig;

@@ -194,13 +194,28 @@ function readsOf(module: string): Permission[] {
 
 /* ------------------------------------------------------------------ roles */
 
-/** docs/06 §1. `system: true` roles are provisioned into every tenant. */
+/**
+ * docs/06 §1. `system: true` roles are provisioned into every tenant.
+ *
+ * `ai:suggestions:read` rides with every `<module>:ai:invoke`. It gates reading a
+ * suggestion row *and* recording its outcome, so a persona that is shown an
+ * ambient suggestion (docs/15 §4) cannot report back without it — and a surface
+ * nobody can measure is a surface that can never be retired. It stops at roles
+ * that only read finished artefacts (north.board) or only move money.
+ *
+ * By the same rule, `analytics:saved_views:read` and `analytics:schedules:read`
+ * ride with their matching `:write`: a role that may create a saved view or a
+ * schedule cannot manage the one it just created without being able to list it.
+ * It stops there — roles that hold neither `:write` nor an `analytics:*` wildcard
+ * have no tab to reach, and granting them the read would be a product decision,
+ * not a fix.
+ */
 export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
   /* platform (goNXT staff) */
   "platform.admin": ["*:*:*"],
   "platform.support": [
     "admin:diagnostics:read", "admin:dlq:read", "core:impersonate:use",
-    "core:audit:read", "ai:runs:read"
+    "core:audit:read", "ai:runs:read", "ai:suggestions:read"
   ],
   "platform.engineer": ["admin:diagnostics:read", "admin:dlq:read", "admin:dlq:replay", "admin:flags:write"],
 
@@ -208,7 +223,19 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
   "tenant.admin": [
     "core:*:*", "axis:*:read", "orbit:*:read", "signal:*:read", "scout:*:read",
     "north:*:read", "ledger:*:read", "ai:*:read", "analytics:*:*",
-    "ai:agents:write", "ai:budgets:read", "ai:killswitch:use",
+    // The tenant's AI operator. It already runs the agents (`ai:agents:write`)
+    // and can stop them dead (`ai:killswitch:use`); the three writes below are
+    // the rest of that same job and belong to no other tenant role:
+    //   budgets — the spend ceiling, a finance/admin control (docs/19 §7 keeps
+    //     money separate from operations, and this is the admin side of it);
+    //   prompts — an agent's instructions, the same act as writing the agent;
+    //   evals   — the gate a prompt change has to pass (docs/13 §EDD), so the
+    //     role that may change a prompt must be able to prove it still passes.
+    // tenant.compliance deliberately does not get these: it reads, audits and
+    // pauses (`ai:evals:read`, `ai:agents:pause`) and must not also be the party
+    // that authors what it reviews.
+    "ai:agents:write", "ai:budgets:read", "ai:budgets:write",
+    "ai:prompts:write", "ai:evals:run", "ai:killswitch:use",
     "compliance:*:read", "admin:billing:read",
     "dist:*:read", "dist:channels:write", "dist:offerings:write", "dist:offerings:publish",
     "dist:rates:write"
@@ -216,7 +243,8 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
   "tenant.compliance": [
     "core:audit:read", "core:audit:export", "core:consents:read", "core:customers:read",
     "core:pii:view", "core:approvals:read", "core:approvals:decide",
-    "compliance:*:*", "ai:audit:read", "ai:runs:read", "ai:agents:read", "ai:agents:pause",
+    "compliance:*:*", "ai:audit:read", "ai:runs:read", "ai:suggestions:read",
+    "ai:agents:read", "ai:agents:pause",
     "ai:killswitch:use", "ai:evals:read",
     "signal:creatives:read", "signal:creatives:approve",
     "analytics:exports:create", "analytics:exports:download", "analytics:exports:unmasked",
@@ -231,7 +259,8 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
 
   /* AXIS */
   "axis.agent": [
-    ...readsOf("axis"), "axis:ai:invoke", "axis:cases:create", "axis:cases:update",
+    ...readsOf("axis"), "axis:ai:invoke", "ai:suggestions:read",
+    "axis:cases:create", "axis:cases:update",
     "axis:quotes:create", "axis:quotes:compare",
     "axis:documents:upload", "axis:documents:extract",
     "axis:tasks:write", "axis:claims:create", "axis:claims:update",
@@ -242,7 +271,8 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     "dist:offers:read", "dist:offers:surface"
   ],
   "axis.lead": [
-    ...readsOf("axis"), "axis:ai:invoke", "axis:cases:create", "axis:cases:update", "axis:cases:assign",
+    ...readsOf("axis"), "axis:ai:invoke", "ai:suggestions:read",
+    "axis:cases:create", "axis:cases:update", "axis:cases:assign",
     "axis:cases:approve", "axis:quotes:create", "axis:quotes:compare", "axis:quotes:approve",
     "axis:documents:upload", "axis:documents:extract", "axis:documents:verify",
     "axis:tasks:write", "axis:policies:create", "axis:policies:update", "axis:policies:cancel",
@@ -251,13 +281,14 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     "core:consents:read", "core:consents:create", "core:files:read", "core:files:create",
     "core:search:read", "core:approvals:read", "core:approvals:decide",
     "ledger:txns:read", "analytics:reports:read", "analytics:reports:run",
-    "analytics:exports:create", "analytics:exports:download", "analytics:saved_views:write",
+    "analytics:exports:create", "analytics:exports:download",
+    "analytics:saved_views:read", "analytics:saved_views:write",
     "dist:channels:read", "dist:offerings:read", "dist:rates:read",
     "dist:ai:invoke", "dist:quote_requests:read", "dist:quote_requests:create", "dist:quote_requests:share",
     "dist:commissions:read", "dist:offers:read", "dist:offers:surface", "dist:offers:override"
   ],
   "axis.admin": [
-    "axis:*:*", "core:customers:*", "core:products:*", "core:providers:*",
+    "axis:*:*", "ai:suggestions:read", "core:customers:*", "core:products:*", "core:providers:*",
     "core:pii:view", "core:approvals:read", "core:approvals:decide", "core:files:*",
     "ledger:txns:read", "ledger:recon:read", "ledger:recon:run",
     "analytics:*:read", "analytics:reports:run", "analytics:exports:create", "analytics:exports:download",
@@ -267,23 +298,26 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
 
   /* ORBIT */
   "orbit.agent": [
-    ...readsOf("orbit"), "orbit:ai:invoke", "orbit:conversations:reply", "orbit:conversations:close",
+    ...readsOf("orbit"), "orbit:ai:invoke", "ai:suggestions:read",
+    "orbit:conversations:reply", "orbit:conversations:close",
     "orbit:messages:send", "orbit:handover:write",
     "core:customers:read", "core:consents:read", "core:search:read", "core:files:read",
     "axis:policies:read", "axis:cases:read", "axis:cases:create"
   ],
   "orbit.lead": [
-    ...readsOf("orbit"), "orbit:ai:invoke", "orbit:conversations:reply", "orbit:conversations:assign",
+    ...readsOf("orbit"), "orbit:ai:invoke", "ai:suggestions:read",
+    "orbit:conversations:reply", "orbit:conversations:assign",
     "orbit:conversations:close", "orbit:messages:send", "orbit:handover:write",
     "orbit:qa:score", "orbit:renewals:update", "orbit:journeys:write",
     "core:customers:read", "core:pii:view", "core:consents:read", "core:search:read",
     "core:approvals:read", "core:approvals:decide", "core:files:read",
     "axis:policies:read", "axis:cases:read", "axis:cases:create",
     "analytics:reports:read", "analytics:reports:run", "analytics:exports:create", "analytics:exports:download",
-    "analytics:saved_views:write"
+    "analytics:saved_views:read", "analytics:saved_views:write"
   ],
   "orbit.retention": [
-    ...readsOf("orbit"), "orbit:ai:invoke", "orbit:renewals:update", "orbit:conversations:reply",
+    ...readsOf("orbit"), "orbit:ai:invoke", "ai:suggestions:read",
+    "orbit:renewals:update", "orbit:conversations:reply",
     "orbit:messages:send",
     "core:customers:read", "core:consents:read", "core:search:read",
     "axis:policies:read", "axis:quotes:create", "axis:quotes:compare",
@@ -292,14 +326,15 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     "dist:offers:read", "dist:offers:surface"
   ],
   "orbit.partners": [
-    ...readsOf("orbit"), "orbit:ai:invoke", "orbit:partners:create", "orbit:partners:update",
+    ...readsOf("orbit"), "orbit:ai:invoke", "ai:suggestions:read",
+    "orbit:partners:create", "orbit:partners:update",
     "orbit:partners:certify", "orbit:partner_keys:issue_test",
     "ledger:txns:read", "analytics:reports:read", "analytics:reports:run",
     "dist:channels:read", "dist:channels:write", "dist:rates:read", "dist:commissions:read",
     "dist:offerings:read"
   ],
   "orbit.admin": [
-    "orbit:*:*", "core:customers:*", "core:pii:view", "core:consents:*",
+    "orbit:*:*", "ai:suggestions:read", "core:customers:*", "core:pii:view", "core:consents:*",
     "core:approvals:read", "core:approvals:decide", "core:files:*",
     "axis:policies:read", "axis:cases:read",
     "analytics:*:read", "analytics:reports:run", "analytics:exports:create", "analytics:exports:download"
@@ -307,14 +342,16 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
 
   /* SIGNAL */
   "signal.marketer": [
-    ...readsOf("signal"), "signal:ai:invoke", "signal:campaigns:create", "signal:campaigns:update",
+    ...readsOf("signal"), "signal:ai:invoke", "ai:suggestions:read",
+    "signal:campaigns:create", "signal:campaigns:update",
     "signal:audiences:create", "signal:audiences:estimate",
     "signal:creatives:generate", "signal:aeo:write", "signal:experiments:create",
     "core:consents:read", "core:search:read", "core:files:read", "core:files:create",
     "analytics:reports:read", "analytics:reports:run"
   ],
   "signal.lead": [
-    ...readsOf("signal"), "signal:ai:invoke", "signal:campaigns:create", "signal:campaigns:update",
+    ...readsOf("signal"), "signal:ai:invoke", "ai:suggestions:read",
+    "signal:campaigns:create", "signal:campaigns:update",
     "signal:campaigns:launch", "signal:campaigns:pause",
     "signal:audiences:create", "signal:audiences:estimate",
     "signal:creatives:generate", "signal:creatives:publish",
@@ -323,48 +360,56 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     "core:consents:read", "core:search:read", "core:approvals:read", "core:approvals:decide",
     "core:files:read", "core:files:create",
     "ledger:txns:read", "analytics:reports:read", "analytics:reports:run",
-    "analytics:exports:create", "analytics:exports:download", "analytics:saved_views:write"
+    "analytics:exports:create", "analytics:exports:download",
+    "analytics:saved_views:read", "analytics:saved_views:write"
   ],
   "signal.admin": [
-    "signal:*:*", "core:consents:read", "core:files:*", "core:approvals:read",
+    "signal:*:*", "ai:suggestions:read", "core:consents:read", "core:files:*", "core:approvals:read",
     "core:approvals:decide", "ledger:txns:read",
     "analytics:*:read", "analytics:reports:run", "analytics:exports:create", "analytics:exports:download"
   ],
 
   /* SCOUT */
   "scout.pm": [
-    ...readsOf("scout"), "scout:ai:invoke", "scout:experiments:create", "scout:whitespaces:promote",
+    ...readsOf("scout"), "scout:ai:invoke", "ai:suggestions:read",
+    "scout:experiments:create", "scout:whitespaces:promote",
     "core:products:read", "core:providers:read", "dist:offerings:read",
     "analytics:reports:read", "analytics:reports:run"
   ],
   "scout.lead": [
-    ...readsOf("scout"), "scout:ai:invoke", "scout:experiments:create", "scout:experiments:decide",
+    ...readsOf("scout"), "scout:ai:invoke", "ai:suggestions:read",
+    "scout:experiments:create", "scout:experiments:decide",
     "scout:whitespaces:promote", "scout:data_products:create",
     "core:products:read", "core:providers:read", "core:approvals:read", "core:approvals:decide",
     "analytics:reports:read", "analytics:reports:run", "analytics:exports:create", "analytics:exports:download"
   ],
   "scout.admin": [
-    "scout:*:*", "core:products:*", "core:providers:*",
+    "scout:*:*", "ai:suggestions:read", "core:products:*", "core:providers:*",
     "analytics:*:read", "analytics:reports:run", "analytics:exports:create", "analytics:exports:download"
   ],
 
   /* NORTH */
   "north.exec": [
-    ...readsOf("north"), "north:ai:invoke", "north:anomalies:assign", "north:scenarios:run",
+    ...readsOf("north"), "north:ai:invoke", "ai:suggestions:read",
+    "north:anomalies:assign", "north:scenarios:run",
     "north:decisions:write", "north:boardpacks:generate",
     "axis:metrics:read", "signal:attribution:read", "signal:spend:read",
     "orbit:renewals:read", "scout:clusters:read", "ledger:txns:read",
     "dist:commissions:read", "dist:channels:read",
     "analytics:dashboards:read", "analytics:reports:read", "analytics:reports:run",
-    "analytics:exports:create", "analytics:exports:download", "analytics:saved_views:write"
+    "analytics:exports:create", "analytics:exports:download",
+    "analytics:saved_views:read", "analytics:saved_views:write"
   ],
   "north.analyst": [
-    ...readsOf("north"), "north:ai:invoke", "north:metrics:write", "north:briefings:generate",
+    ...readsOf("north"), "north:ai:invoke", "ai:suggestions:read",
+    "north:metrics:write", "north:briefings:generate",
     "north:scenarios:run",
     "axis:metrics:read", "signal:attribution:read", "signal:spend:read",
     "orbit:renewals:read", "scout:clusters:read", "ledger:journals:read",
     "analytics:dashboards:write", "analytics:reports:write", "analytics:reports:run",
-    "analytics:exports:create", "analytics:exports:download", "analytics:schedules:write", "analytics:saved_views:write"
+    "analytics:exports:create", "analytics:exports:download",
+    "analytics:schedules:read", "analytics:schedules:write",
+    "analytics:saved_views:read", "analytics:saved_views:write"
   ],
   /** Board pack readers. Read-only by design — never grant write here. */
   "north.board": [
@@ -372,7 +417,7 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     "north:decisions:read", "analytics:dashboards:read"
   ],
   "north.admin": [
-    "north:*:*", "analytics:*:*", "ledger:journals:read", "ledger:txns:read"
+    "north:*:*", "ai:suggestions:read", "analytics:*:*", "ledger:journals:read", "ledger:txns:read"
   ],
 
   /* finance — money movement is separated from operations by design (docs/19 §7) */
