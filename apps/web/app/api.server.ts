@@ -1,3 +1,4 @@
+import { data } from "react-router";
 import type { Env } from "./env";
 
 // The only way this app talks to apps/api. Server-side by design: every call
@@ -47,6 +48,22 @@ export class ApiError extends Error {
     problem.instance ??= path;
     return new ApiError(problem, requestId);
   }
+}
+
+/**
+ * For a loader that has nothing to render when the API says no: `await
+ * api(…).catch(asRouteError)`.
+ *
+ * `api()` throws an `ApiError`, which React Router can only treat as a crash —
+ * so a screen the actor simply may not read rendered "could not load this page"
+ * with a 500 behind it. Rethrown as a route error, the boundary in root.tsx
+ * reads the status and says the true thing: signed out, not permitted, or gone.
+ * The request id travels as the error's data, which is the one thing support
+ * needs. Anything that is not an `ApiError` is a real fault and is left alone.
+ */
+export function asRouteError(error: unknown): never {
+  if (error instanceof ApiError) throw data(error.requestId, { status: error.status });
+  throw error;
 }
 
 export interface ApiOptions {

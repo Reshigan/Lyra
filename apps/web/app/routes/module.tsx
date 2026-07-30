@@ -2,6 +2,7 @@ import {
   data,
   Form,
   Link,
+  redirect,
   useActionData,
   useLoaderData,
   useNavigation,
@@ -10,7 +11,7 @@ import {
   type LoaderFunctionArgs
 } from "react-router";
 import { Button, EmptyState, Input, Select, Table, type Column } from "@lyra/ui";
-import { ApiError, api } from "../api.server";
+import { ApiError, api, asRouteError, fetchMe } from "../api.server";
 import { Cell, FieldInput } from "../components/fields";
 import { cloudflare } from "../context";
 import { translator } from "../i18n";
@@ -80,7 +81,20 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   const deleted = incoming.get("deleted") === "1";
   if (deleted) query.set("deleted", "1");
 
-  const page = await api<Page>(`${tab.api}?${query.toString()}`, { env, request });
+  const page = await api<Page>(`${tab.api}?${query.toString()}`, { env, request }).catch(
+    async (error: unknown) => {
+      // `/admin` with no resource lands on the first declared tab, which is not
+      // always a tab this actor may read — a compliance officer's first
+      // readable admin tab may be the fifth. Rather than tell them the whole
+      // workspace is closed, send them to the first one they do hold.
+      if (error instanceof ApiError && error.status === 403 && !params.resource) {
+        const me = await fetchMe(env, request).catch(asRouteError);
+        const readable = visibleTabs(spec, me.permissions).find((other) => other.key !== tab.key);
+        if (readable) throw redirect(`${spec.path}/${readable.key}`);
+      }
+      return asRouteError(error);
+    }
+  );
 
   return {
     modulePath: spec.path,

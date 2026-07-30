@@ -97,7 +97,7 @@ function me(...permissions: string[]): Response {
 }
 
 /** Loader args with just the pieces these loaders read. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 function args(url: string, init?: RequestInit): any {
   return {
     request: new Request(url, init),

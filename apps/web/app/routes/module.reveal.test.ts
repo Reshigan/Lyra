@@ -23,7 +23,7 @@ function stubCreate(body: unknown) {
   );
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 function args(module: string, resource: string): any {
   return {
     request: new Request(`https://web.test/${module}/${resource}`, {

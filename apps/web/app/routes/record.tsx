@@ -10,7 +10,7 @@ import {
   type LoaderFunctionArgs
 } from "react-router";
 import { Button, DateTime } from "@lyra/ui";
-import { ApiError, api } from "../api.server";
+import { ApiError, api, asRouteError } from "../api.server";
 import { Cell, FieldInput } from "../components/fields";
 import { cloudflare } from "../context";
 import { translator } from "../i18n";
@@ -47,7 +47,7 @@ function resolve(params: { module?: string; resource?: string }): {
 export async function loader({ request, params, context }: LoaderFunctionArgs) {
   const { spec, tab } = resolve(params);
   const env = context.get(cloudflare).env;
-  const row = await api<Row>(`${tab.api}/${params.id}`, { env, request });
+  const row = await api<Row>(`${tab.api}/${params.id}`, { env, request }).catch(asRouteError);
   return { modulePath: spec.path, resource: tab.key, row };
 }
 
