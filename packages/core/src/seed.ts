@@ -786,6 +786,27 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
     createdAt: issuedAt,
     updatedAt: issuedAt
   });
+  // Last year's cover for the same customer, ending inside the renewal window.
+  // The sweep on the scheduled tick raises it, so the retention desk opens on a
+  // real queue instead of an empty one (docs/05 J-C3).
+  await db.insert(schema.axisPolicies).values({
+    id: id("pol", issuedAt + 1),
+    tenantId,
+    customerId,
+    providerId: won.providerId,
+    productId: products.motor,
+    offeringId: offerings[won.key],
+    channelId: channels.web,
+    policyNo: "CDR-MOT-2501-664118",
+    startAt: now - 345 * DAY,
+    endAt: now + 20 * DAY,
+    premiumMinor: won.premiumMinor,
+    currency: "AED",
+    commissionMinor: sale.grossMinor,
+    status: "active",
+    createdAt: now - 345 * DAY,
+    updatedAt: now - 345 * DAY
+  });
   await db.insert(schema.distCommissionEntries).values({
     id: id("ce", issuedAt),
     tenantId,

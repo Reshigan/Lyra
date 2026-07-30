@@ -7,6 +7,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { schema, type Db } from "@lyra/db";
 import { seed, type SeedResult } from "@lyra/core";
 import { app } from "./index.js";
+import { sweepRenewals } from "./engines/renewals.js";
 import type { Env } from "./env.js";
 
 // docs/06 §2. One describe per journey id, driven through the real router with
@@ -310,20 +311,22 @@ describe("J-C3 one-tap renewal", () => {
   let offerId: string;
 
   it("a renewal in the window is proposed a next-best offer", async () => {
-    // A renewal is raised by the renewal sweep, not by a person: `orbit:renewals`
-    // carries read and update permissions and no create, so there is no POST route
-    // to call. The sweep's row is stood up directly.
-    renewalId = "rnw_j_c3_0000000000000000000";
-    await database.insert(schema.orbitRenewals).values({
-      id: renewalId,
-      tenantId,
-      policyRef: "POL-DEMO-1",
-      customerId,
-      expiryAt: Date.now() + 20 * 86_400_000,
-      state: "due",
-      createdAt: Date.now(),
-      updatedAt: Date.now()
-    } as never);
+    // A renewal is raised by the sweep on the scheduled tick, not by a person:
+    // `orbit:renewals` carries read and update and no create, so the sweep is the
+    // only thing that can fill the retention desk's queue. Walk the real one.
+    const now = Date.now();
+    await database
+      .update(schema.axisPolicies)
+      .set({ endAt: now + 20 * 86_400_000, status: "active" })
+      .where(eq(schema.axisPolicies.tenantId, tenantId));
+    const raised = await sweepRenewals({ db: database, tenantId, now } as never);
+    expect(raised).toBeGreaterThan(0);
+    // Second tick inside the same window must not double up.
+    expect(await sweepRenewals({ db: database, tenantId, now } as never)).toBe(0);
+
+    const queue = ok(await call("orbit.retention", "GET", "/v1/orbit/renewals?limit=5"));
+    renewalId = queue.data[0].id;
+    expect(queue.data[0].state).toBe("scheduled");
     expect((await call("orbit.retention", "GET", `/v1/orbit/renewals/${renewalId}`)).status).toBe(200);
 
     const proposed = ok(

@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { PolicyJson, EntitlementsJson, schema } from "@lyra/db";
 import { notFound, pruneIdempotency } from "@lyra/core";
 import { drainOutbox } from "./dispatch.js";
+import { sweepRenewals } from "./engines/renewals.js";
 import { authRoutes, ctxFor, db, pruneSessions } from "./auth.js";
 import { mountAll } from "./crud.js";
 import { BY_MODULE } from "./resources.js";
@@ -78,6 +79,7 @@ export default {
             now
           );
           await drainOutbox(ctx);
+          await sweepRenewals(ctx);
         }
       })()
     );
