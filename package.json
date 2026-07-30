@@ -1,6 +1,7 @@
 {
   "name": "lyra",
   "private": true,
+  "type": "module",
   "packageManager": "pnpm@9.15.9",
   "engines": { "node": ">=22" },
   "scripts": {
@@ -9,19 +10,21 @@
     "test": "turbo run test",
     "test:watch": "vitest",
     "e2e": "playwright test",
-    "lint": "turbo run lint",
+    "lint": "eslint .",
     "typecheck": "turbo run typecheck",
     "db:generate": "pnpm --filter @lyra/db generate",
     "db:migrate": "pnpm --filter @lyra/db migrate",
     "seed": "pnpm --filter @lyra/core seed",
-    "onprem:up": "docker compose -f infra/onprem/docker-compose.yml up -d",
-    "onprem:down": "docker compose -f infra/onprem/docker-compose.yml down",
+    "onprem:up": "docker compose -f ops/docker-compose.yml up -d",
+    "onprem:down": "docker compose -f ops/docker-compose.yml down",
     "check": "pnpm lint && pnpm typecheck && pnpm test"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",
     "@vitest/coverage-v8": "^2.1.8",
     "eslint": "^9.17.0",
+    "@eslint/js": "^9.17.0",
+    "typescript-eslint": "^8.18.0",
     "turbo": "^2.3.3",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"

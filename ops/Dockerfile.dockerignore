@@ -1,0 +1,15 @@
+**/node_modules
+**/.wrangler
+**/.turbo
+**/dist
+**/build
+**/coverage
+.data
+.git
+.github
+docs
+assets
+ops
+**/.env
+**/.env.*
+!**/.env.example

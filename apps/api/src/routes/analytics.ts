@@ -784,6 +784,7 @@ function toCsv(table: ReportTable): string {
   const head = table.columns.map((c) => esc(c.label)).join(",");
   const rows = table.rows.map((r) => table.columns.map((c) => esc(r[c.key])).join(","));
   // A leading BOM so Excel opens UTF-8 CSV without mangling Arabic.
+  // eslint-disable-next-line no-irregular-whitespace
   return `﻿${[head, ...rows].join("\r\n")}\r\n`;
 }
 

@@ -8,8 +8,7 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "lint": "eslint src"
+    "test": "vitest run"
   },
   "dependencies": {
     "@lyra/core": "workspace:*",

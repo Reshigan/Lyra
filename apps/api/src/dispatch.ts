@@ -41,7 +41,8 @@ export async function drainOutbox(ctx: Ctx, limit = 100): Promise<DrainResult> {
     const targets = hooks.filter((h) => subscribes(h.eventTypesJson, event.type));
     for (const hook of targets) {
       const outcome = await deliver(ctx, hook, event, 0);
-      outcome.ok ? delivered++ : failed++;
+      if (outcome.ok) delivered++;
+      else failed++;
     }
     done.push(event.id);
   }

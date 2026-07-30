@@ -1,0 +1,35 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Version comes from `packageManager` in package.json — no duplicate pin.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # docs/10 §5 order. Separate steps so a failure names its own gate.
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+
+# ponytail: e2e (Playwright), evals, mutation and a11y gates from docs/13 §6 are
+# not wired here — there is no playwright.config or eval runner in the repo yet.
+# Add each as its own job when the suite it gates actually exists.

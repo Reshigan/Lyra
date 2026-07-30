@@ -1,0 +1,19 @@
+# TLS + reverse proxy for the on-prem stack (docs/11 §1). Caddy is the only
+# service exposed to the tenant network; everything else stays internal.
+# Both values come from the compose env file — nothing is hard-coded here.
+
+{
+	email {$ACME_EMAIL}
+}
+
+{$LYRA_DOMAIN} {
+	encode zstd gzip
+
+	reverse_proxy {$APP_UPSTREAM} {
+		health_uri /health
+	}
+}
+
+# ponytail: no OIDC forward-auth block yet (docs/11 §5). Add `forward_auth`
+# here once the tenant IdP is known — it needs a real issuer URL to be
+# anything but a broken redirect.

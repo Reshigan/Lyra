@@ -3,7 +3,7 @@ import { drizzle } from "drizzle-orm/libsql";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
-import { PolicyJson, EntitlementsJson, schema } from "@lyra/db";
+import { PolicyJson, EntitlementsJson } from "@lyra/db";
 import { audit, chainFor, verifyChain } from "./audit.js";
 import { consume, emit, pendingOutbox, type Envelope } from "./events.js";
 import { assertChannel, assertPurpose, recordConsent } from "./consent.js";

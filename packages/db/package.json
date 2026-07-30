@@ -15,8 +15,7 @@
     "generate": "drizzle-kit generate",
     "migrate": "drizzle-kit migrate",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "lint": "eslint src"
+    "test": "vitest run"
   },
   "dependencies": {
     "drizzle-orm": "^0.38.2",

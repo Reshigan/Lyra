@@ -1,80 +1,164 @@
-# LYRA — The AI Growth Operating System
+# LYRA
 
-**One sky of data. Five instruments.**
+LYRA is a multi-tenant, whitelabel AI platform for financial-services
+distribution — aggregators, brokers, banks and embedded partners. It replaces
+human minutes per transaction, paid acquisition spend and lagging management
+information with governed AI on a single data spine (docs/00-vision.md).
 
-LYRA is a multi-tenant, whitelabel AI platform for financial-services distribution
-(insurance aggregation, banking comparison, embedded finance), built by goNXT.
-It ships as five standalone-sellable modules on one shared core:
+Five modules sit on that spine. Each is meant to demo, deploy and bill on its
+own; the shared core is not a prerequisite purchase.
 
-| Module | Pillar | One-liner |
+| Module | Pillar | Scope |
 |---|---|---|
-| **LYRA AXIS** | AI Operations | The policy factory — quote-to-bind automation, document intelligence, compliance ops |
-| **LYRA ORBIT** | AI Customer & Partners | Agentic CX, renewal defence, embedded-insurance partner APIs |
-| **LYRA SIGNAL** | AI Marketing | Generative creative, audience/LTV intelligence, SEO+AEO, autonomous budgets |
-| **LYRA SCOUT** | AI Products | Whitespace detection, panel/price intelligence, product experiments, data products |
-| **LYRA NORTH** | AI Insights | Executive intelligence — narrated daily briefing, anomalies, simulations, board packs |
+| **AXIS** | AI Operations | Quote-to-bind automation, document intelligence, compliance ops |
+| **ORBIT** | AI Customer & Partners | Agentic CX, renewal defence, embedded-insurance partner APIs |
+| **SIGNAL** | AI Marketing | Generative creative, audience/LTV intelligence, SEO+AEO, budgets |
+| **SCOUT** | AI Products | Whitespace detection, panel/price intelligence, product experiments |
+| **NORTH** | AI Insights | Narrated executive briefing, anomalies, simulations, board packs |
 
-Two deployment targets from one codebase:
+One codebase, two deployment homes:
 
-1. **Cloud (primary):** Cloudflare Workers platform — Workers, D1, KV, R2, Queues,
-   Durable Objects, Workflows, Vectorize, Workers AI, AI Gateway, Pages/Assets, Zero Trust.
-2. **On-prem (regulated tenants):** Docker Compose stack with an internal LLM
-   (vLLM or Ollama serving an open-weights model), SQLite/libSQL, MinIO, Redis.
+1. **Cloud (primary)** — Cloudflare Workers, D1, KV, R2, Queues, Durable
+   Objects, Workflows, Vectorize, Workers AI, AI Gateway. See
+   docs/10-deployment-cloudflare.md.
+2. **On-prem** — Docker Compose with an internal LLM (vLLM or Ollama),
+   libSQL, MinIO, Redis, Qdrant, for tenants requiring data residency. See
+   docs/11-deployment-onprem.md.
 
-## How to use this pack (VS Code + Claude Code / Claude Fable)
+Capability flags switch the adapters (`RUNTIME=node` on-prem); the domain code
+does not branch on which home it is running in.
 
-1. Clone/copy this folder to the root of a new repo.
-2. Open in VS Code. `CLAUDE.md` at the root is the operating manual for Claude Code —
-   it defines conventions, commands, guardrails and the build order.
-3. Start Claude Code and say: *"Read CLAUDE.md and docs/14-roadmap.md, then scaffold
-   Milestone 0."* Work milestone by milestone; each doc is written to be executable
-   as a spec.
-4. Every module doc (docs/modules/*.md) is self-sufficient: personas, screens,
-   internal tools, data entities, APIs, events, agents, KPIs and acceptance criteria.
+Security, privacy and AI-governance controls are specified in
+docs/12-security-compliance.md. That document is engineering-facing: it names
+target regulatory regimes and the controls built for them, and it is explicit
+that regulatory positions must be confirmed by counsel. Do not restate it as a
+claim of compliance.
 
-## Reading order
+> Trademark: LYRA passed preliminary knock-out screening only. Formal registry
+> clearance via counsel is required before public launch (docs/23).
 
-- docs/00-vision.md — what we're building and why
-- docs/01-brand.md — brand system ("Constellation" design language)
-- docs/02-architecture.md — system architecture, Cloudflare + on-prem twin
-- docs/03-data-model.md — core schema (Drizzle/SQLite dialect, runs on D1 and on-prem)
-- docs/04-api.md — API gateway, conventions, auth, webhooks, rate limits
-- docs/05-module-functionality.md — comprehensive per-module feature & subsection reference
-- docs/modules/{axis,orbit,signal,scout,north}.md — module deep specs
-- docs/06-roles-and-journeys.md — every role, every journey
-- docs/07-ui-design-system.md — web design system, all role workspaces
-- docs/08-mobile.md — mobile app spec (Expo), offline, RTL
-- docs/09-admin-and-devtools.md — per-module admin + the developer platform
-- docs/10-deployment-cloudflare.md — envs, wrangler, CI/CD
-- docs/11-deployment-onprem.md — Docker Compose + internal LLM
-- docs/12-security-compliance.md — PDPL, CBUAE, AI governance, audit
-- docs/13-testing-quality.md — TDD/EDD method, pyramid, gates
-- docs/15-experience-excellence.md — premium bar, Lens engine, ambient-AI grammar
-- docs/16-future-horizons.md — future functionality and the seams that carry it
-- docs/14-roadmap.md — milestones and acceptance gates
-- docs/17-user-spec-benchmark.md — **BUILD BENCHMARK**: 574 numbered, testable requirements + scoring method
-- docs/traceability.csv — machine-readable register (tick off as you verify)
-- docs/18-business-models.md — YallaCompare current & future models, generic monetisation
-- docs/19-transactions-and-ledger.md — **transaction-level spec**: catalogue, state machines, double-entry ledger
-- docs/20-content-and-social-engine.md — self-sufficient marketing: content production → publishing → listening
-- docs/21-editions-and-verticals.md — standalone editions (Lyra Bots etc.) + domain packs
-- docs/22-ui-new-surfaces.md — UI for money, social, launch and builder surfaces
-- docs/23-naming-and-trademark.md — LYRA screening record and options
-- docs/24-build-execution.md — **max-speed build playbook + Claude Code prompts** (live: lyra.vantax.co.za)
-- docs/IMPLEMENTATION.md — **START HERE for build**: runnable M0 skeleton, config files, failing tests, and the Claude Code prompt playbook
+## Layout
 
-## Naming & whitelabel
+```
+apps/api            Hono on Cloudflare Workers — API gateway + module routers
+apps/web            React Router v7 (framework mode) on Workers
+packages/core       Domain logic: tenancy, RBAC, audit, events, fixtures
+packages/db         Drizzle schema + forward-only migrations (SQLite dialect)
+packages/ledger     Double-entry ledger and transaction state machines
+packages/model-gateway  LLM provider abstraction + eval suite
+packages/ui         Constellation design system
+packages/config     Shared eslint / tsconfig
+ops/                On-prem Docker stack (compose, Dockerfile, Caddyfile)
+.github/workflows/  CI and deploy pipelines
+docs/               Specs. Source of truth — the spec wins over the code.
+```
 
-`LYRA` is the house mark; `AXIS/ORBIT/SIGNAL/SCOUT/NORTH` are functional
-sub-brands that travel with the product. Whitelabel = tenant config (name, logo,
-palette, domain) — **never** hard-code the house mark in UI strings; always use
-the `brand.*` tokens from tenant config. A rebrand must be a config change.
+Not yet built out: `apps/mobile` (Expo), `apps/agents` (Durable Objects +
+Workflows), `packages/sdk`. The target layout is in CLAUDE.md.
 
-> Trademark status: LYRA passed preliminary knock-out screening (no software,
-> finance, insurance or MENA use found). Formal registry clearance via counsel is
-> required before public launch. Do not ship public marketing surfaces before
-> legal sign-off.
+pnpm workspaces + turbo. Node 22, TypeScript strict. The pnpm version is
+pinned by `packageManager` in the root `package.json` — use `corepack enable`
+rather than a global install.
 
-Live target: **lyra.vantax.co.za** — see docs/24 §2 for domain topology.
+## Run locally
+
+```sh
+corepack enable
+pnpm install
+cp .env.example .env.local     # fill in AUTH_SECRET at minimum
+pnpm dev                       # turbo dev -> wrangler dev for apps/api
+```
+
+`wrangler dev` runs against local D1/KV/R2 simulators, so no Cloudflare
+account is needed for day-to-day work. `GET /health` and `GET /openapi.json`
+are the two unauthenticated routes.
+
+Schema changes:
+
+```sh
+pnpm db:generate               # drizzle-kit generate, writes packages/db/migrations
+LIBSQL_URL=file:./.data/lyra.db pnpm db:migrate
+```
+
+Migrations are forward-only. Never edit one that has been applied.
+
+## Run the tests
+
+```sh
+pnpm test        # vitest across the workspace
+pnpm typecheck   # tsc --noEmit per package
+pnpm lint        # eslint per package
+pnpm check       # all three, in that order — same gates as CI
+```
+
+`pnpm test:watch` is the inner loop. LYRA is built test-first: the method, the
+pyramid and the merge gates are in docs/13-testing-quality.md, and the AI
+surfaces are eval-first (`packages/model-gateway/evals`).
+
+Known gap: `pnpm lint` currently fails in every package. ESLint 9 resolves its
+flat config from the package it is invoked in, and only `packages/config` has
+an `eslint.config.js`. Each package needs one re-exporting `@lyra/config/eslint`
+before the lint gate can go green.
+
+## Deploy
+
+### Cloudflare
+
+Naming is fixed by the wrangler configs: workers `lyra-api` / `lyra-web` and
+`lyra-api-staging` / `lyra-web-staging`, D1 database `lyra` / `lyra-staging`,
+migrations read from `packages/db/migrations`.
+
+| Environment | Trigger | Workers | Hosts |
+|---|---|---|---|
+| staging | push to `main` (automatic) | `lyra-api-staging`, `lyra-web-staging` | api-staging / staging.lyra.vantax.co.za |
+| production | `deploy` workflow, manual dispatch | `lyra-api`, `lyra-web` | api.lyra.vantax.co.za, lyra.vantax.co.za |
+
+`.github/workflows/deploy.yml` runs lint/typecheck/test, applies D1 migrations,
+then deploys. Production additionally waits on the `production` GitHub
+Environment's approval gate. Both need two repository secrets:
+`CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
+
+To deploy by hand from a workstation:
+
+```sh
+cd apps/api
+pnpm exec wrangler d1 migrations apply lyra-staging --env staging --remote
+pnpm exec wrangler deploy --env staging
+```
+
+Runtime secrets are set on the worker, not in CI:
+
+```sh
+pnpm exec wrangler secret put ANTHROPIC_API_KEY --env staging
+pnpm exec wrangler secret put AUTH_SECRET --env staging
+```
+
+### On-prem
+
+```sh
+cp .env.example .env           # LYRA_DOMAIN, AUTH_SECRET, MINIO_*, RENDER_TOKEN
+docker compose -f ops/docker-compose.yml up -d
+```
+
+The `migrate` service runs the Drizzle migrations against libSQL before `app`
+and `worker` start. Only `caddy` publishes a port; every other service stays on
+the internal network. Optional profiles: `--profile gpu` swaps Ollama for vLLM,
+`--profile observability` adds the bundled OTEL/Grafana stack.
+
+Upgrades are pull tag → migrate → rolling restart; the app is stateless.
+
+**On-prem status:** the stack definition is complete, but `app` and `worker`
+will not start yet. They need the Node entrypoint that `RUNTIME=node` selects
+(docs/11 §3) — `apps/api` currently ships only the Workers `fetch` export and
+binds D1 directly. `libsql` and `migrate` work today.
+
+## Conventions
+
+CLAUDE.md is the operating manual: tenancy, model-gateway-only provider access,
+human-in-the-loop on consequential actions, brand tokens over brand strings,
+events over cross-module calls, RTL/i18n and accessibility from day one. Read
+it before contributing.
+
+---
 
 © goNXT Technology (Pty) Ltd — a Vanta X Holdings company. Confidential.
