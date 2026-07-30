@@ -9,11 +9,14 @@ import { BY_MODULE } from "./resources.js";
 import { onError, withContext, withCors, withHeaders } from "./mw.js";
 import { openapi } from "./openapi.js";
 import { meRoutes } from "./routes/me.js";
+import { coreRoutes } from "./routes/core.js";
+import { axisRoutes } from "./routes/axis.js";
 import { distRoutes } from "./routes/dist.js";
 import { ledgerRoutes } from "./routes/ledger.js";
 import { aiRoutes } from "./routes/ai.js";
 import { ssoRoutes } from "./routes/sso.js";
 import { analyticsRoutes, runDueSchedules } from "./routes/analytics.js";
+import { complianceRoutes } from "./routes/compliance.js";
 import type { App, Env } from "./env.js";
 
 // docs/04. One worker, one router. `/v1/<module>/<resource>` is generated CRUD;
@@ -42,10 +45,13 @@ app.route("/v1/me", meRoutes);
 // invocation), `POST /v1/analytics/reports` (which derives the required
 // permission from the dataset instead of trusting the body) and
 // `GET /v1/dist/commission-entries/statement` (read as an id).
+app.route("/v1/core", coreRoutes);
+app.route("/v1/axis", axisRoutes);
 app.route("/v1/dist", distRoutes);
 app.route("/v1/ledger", ledgerRoutes);
 app.route("/v1/ai", aiRoutes);
 app.route("/v1/analytics", analyticsRoutes);
+app.route("/v1/compliance", complianceRoutes);
 
 for (const [module, resources] of Object.entries(BY_MODULE)) {
   mountAll(app.basePath(`/v1/${module}`) as unknown as Hono<App>, resources);

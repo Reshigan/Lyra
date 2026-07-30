@@ -133,7 +133,7 @@ export interface AiPrompts {
   body: string;
   variablesJson?: string;
   status?: string;
-  createdBy: string;
+  createdBy?: string;
   createdAt?: number;
 }
 
@@ -222,7 +222,7 @@ export interface AnalyticsExports {
   piiMasked?: boolean;
   piiJustification?: string;
   watermark?: string;
-  requestedBy: string;
+  requestedBy?: string;
   approvedBy?: string;
   state?: string;
   downloadCount?: number;
@@ -249,7 +249,7 @@ export interface AnalyticsReportRuns {
   tenantId?: string;
   reportId: string;
   paramsJson?: string;
-  requestedBy: string;
+  requestedBy?: string;
   trigger?: string;
   state?: string;
   rowCount?: number;
@@ -310,7 +310,7 @@ export interface AnalyticsSchedules {
   lastRunAt?: number;
   lastState?: string;
   nextRunAt?: number;
-  createdBy: string;
+  createdBy?: string;
   createdAt?: number;
   updatedAt?: number;
 }
@@ -478,7 +478,7 @@ export interface AxisSops {
   stepsJson: string;
   appliesTo?: string;
   status?: string;
-  createdBy: string;
+  createdBy?: string;
   createdAt?: number;
 }
 
@@ -492,7 +492,7 @@ export interface AxisTasks {
   state?: string;
   dueAt?: number;
   checklistJson?: string;
-  createdBy: string;
+  createdBy?: string;
   completedAt?: number;
   createdAt?: number;
   updatedAt?: number;
@@ -551,7 +551,7 @@ export interface ComplianceEvidenceBundles {
   manifestJson: string;
   bundleHash: string;
   fileId?: string;
-  requestedBy: string;
+  requestedBy?: string;
   approvedBy?: string;
   state?: string;
   deliveredTo?: string;
@@ -571,7 +571,7 @@ export interface ComplianceIncidents {
   notifiableAt?: number;
   notifiedAt?: number;
   state?: string;
-  openedBy: string;
+  openedBy?: string;
   resolvedAt?: number;
   postmortemRef?: string;
   createdAt?: number;
@@ -584,7 +584,7 @@ export interface ComplianceLegalHolds {
   subjectRef: string;
   reason: string;
   authority?: string;
-  placedBy: string;
+  placedBy?: string;
   releasedBy?: string;
   releasedAt?: number;
   createdAt?: number;
@@ -599,7 +599,7 @@ export interface CompliancePolicyThresholds {
   dualControl?: boolean;
   effectiveFrom: number;
   effectiveTo?: number;
-  setBy: string;
+  setBy?: string;
 }
 
 export interface ComplianceRetentionRuns {
@@ -1021,7 +1021,7 @@ export interface DistCommissionRates {
   clawbackDays?: number;
   effectiveFrom: number;
   effectiveTo?: number;
-  createdBy: string;
+  createdBy?: string;
   createdAt?: number;
 }
 
@@ -1607,7 +1607,7 @@ export interface OrbitJourneys {
   nameJson: string;
   graphJson: string;
   status?: string;
-  createdBy: string;
+  createdBy?: string;
   createdAt?: number;
 }
 
@@ -1662,7 +1662,7 @@ export interface OrbitQaScores {
   score: number;
   breakdownJson?: string;
   flagsJson?: string;
-  scoredBy: string;
+  scoredBy?: string;
   disputedBy?: string;
   ts: number;
 }
@@ -1814,7 +1814,7 @@ export interface SignalAudiences {
   refreshPolicy?: string;
   lastRefreshedAt?: number;
   consentPurposes?: string;
-  createdBy: string;
+  createdBy?: string;
   createdAt?: number;
   updatedAt?: number;
 }
@@ -1910,7 +1910,7 @@ export interface Operations {
   "PATCH /v1/ai/agents/{id}": Op<{ id: string }, never, AiAgents, AiAgents>;
   "DELETE /v1/ai/agents/{id}": Op<{ id: string }, never, never, void>;
   "POST /v1/ai/agents/{key}/autonomy": Op<{ key: string }, never, Record<string, unknown>, Record<string, unknown>>;
-  "POST /v1/ai/agents/{key}/pause": Op<{ key: string }, never, never, Record<string, unknown>>;
+  "POST /v1/ai/agents/{key}/pause": Op<{ key: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/ai/agents/{key}/resume": Op<{ key: string }, never, never, Record<string, unknown>>;
   "GET /v1/ai/ai-audit-log": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<AiAiAuditLog>>;
   "GET /v1/ai/ai-audit-log/{id}": Op<{ id: string }, never, never, AiAiAuditLog>;
@@ -1940,7 +1940,8 @@ export interface Operations {
   "DELETE /v1/ai/prompts/{id}": Op<{ id: string }, never, never, void>;
   "GET /v1/ai/runs": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<AiRuns>>;
   "POST /v1/ai/runs": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
-  "GET /v1/ai/runs/{id}": Op<{ id: string }, never, never, Record<string, unknown>>;
+  "GET /v1/ai/runs/{id}": Op<{ id: string }, never, never, AiRuns>;
+  "GET /v1/ai/runs/{id}/detail": Op<{ id: string }, never, never, Record<string, unknown>>;
   "GET /v1/ai/suggestions": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<AiSuggestions>>;
   "POST /v1/ai/suggestions": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/ai/suggestions/acceptance": Op<never, never, never, Record<string, unknown>>;
@@ -1971,6 +1972,7 @@ export interface Operations {
   "GET /v1/analytics/reports/{id}": Op<{ id: string }, never, never, Record<string, unknown>>;
   "PATCH /v1/analytics/reports/{id}": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "DELETE /v1/analytics/reports/{id}": Op<{ id: string }, never, never, Record<string, unknown>>;
+  "POST /v1/analytics/reports/{id}/restore": Op<{ id: string }, never, never, AnalyticsReports>;
   "POST /v1/analytics/reports/{id}/run": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/analytics/run": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/analytics/runs/{id}": Op<{ id: string }, never, never, Record<string, unknown>>;
@@ -2006,6 +2008,7 @@ export interface Operations {
   "GET /v1/axis/cases/{id}": Op<{ id: string }, never, never, AxisCases>;
   "PATCH /v1/axis/cases/{id}": Op<{ id: string }, never, AxisCases, AxisCases>;
   "DELETE /v1/axis/cases/{id}": Op<{ id: string }, never, never, void>;
+  "POST /v1/axis/cases/{id}/restore": Op<{ id: string }, never, never, AxisCases>;
   "GET /v1/axis/claims": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<AxisClaims>>;
   "POST /v1/axis/claims": Op<never, never, AxisClaims, AxisClaims>;
   "GET /v1/axis/claims/{id}": Op<{ id: string }, never, never, AxisClaims>;
@@ -2014,6 +2017,7 @@ export interface Operations {
   "POST /v1/axis/documents": Op<never, never, AxisDocuments, AxisDocuments>;
   "GET /v1/axis/documents/{id}": Op<{ id: string }, never, never, AxisDocuments>;
   "PATCH /v1/axis/documents/{id}": Op<{ id: string }, never, AxisDocuments, AxisDocuments>;
+  "POST /v1/axis/documents/{id}/verify": Op<{ id: string }, never, never, Record<string, unknown>>;
   "GET /v1/axis/escrow-batches": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<AxisEscrowBatches>>;
   "GET /v1/axis/escrow-batches/{id}": Op<{ id: string }, never, never, AxisEscrowBatches>;
   "PATCH /v1/axis/escrow-batches/{id}": Op<{ id: string }, never, AxisEscrowBatches, AxisEscrowBatches>;
@@ -2046,8 +2050,9 @@ export interface Operations {
   "GET /v1/compliance/erasure-log": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<ComplianceErasureLog>>;
   "GET /v1/compliance/erasure-log/{id}": Op<{ id: string }, never, never, ComplianceErasureLog>;
   "GET /v1/compliance/evidence-bundles": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<ComplianceEvidenceBundles>>;
-  "POST /v1/compliance/evidence-bundles": Op<never, never, ComplianceEvidenceBundles, ComplianceEvidenceBundles>;
+  "POST /v1/compliance/evidence-bundles/export": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/compliance/evidence-bundles/{id}": Op<{ id: string }, never, never, ComplianceEvidenceBundles>;
+  "GET /v1/compliance/evidence-bundles/{id}/download": Op<{ id: string }, never, never, Record<string, unknown>>;
   "GET /v1/compliance/incidents": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<ComplianceIncidents>>;
   "POST /v1/compliance/incidents": Op<never, never, ComplianceIncidents, ComplianceIncidents>;
   "GET /v1/compliance/incidents/{id}": Op<{ id: string }, never, never, ComplianceIncidents>;
@@ -2064,15 +2069,16 @@ export interface Operations {
   "PATCH /v1/compliance/policy-thresholds/{id}": Op<{ id: string }, never, CompliancePolicyThresholds, CompliancePolicyThresholds>;
   "DELETE /v1/compliance/policy-thresholds/{id}": Op<{ id: string }, never, never, void>;
   "GET /v1/compliance/retention-runs": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<ComplianceRetentionRuns>>;
-  "POST /v1/compliance/retention-runs": Op<never, never, ComplianceRetentionRuns, ComplianceRetentionRuns>;
   "GET /v1/compliance/retention-runs/{id}": Op<{ id: string }, never, never, ComplianceRetentionRuns>;
+  "POST /v1/compliance/retention/run": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/compliance/rulepack-applications": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<ComplianceRulepackApplications>>;
   "POST /v1/compliance/rulepack-applications": Op<never, never, ComplianceRulepackApplications, ComplianceRulepackApplications>;
   "GET /v1/compliance/rulepack-applications/{id}": Op<{ id: string }, never, never, ComplianceRulepackApplications>;
   "GET /v1/compliance/screenings": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<ComplianceScreenings>>;
-  "POST /v1/compliance/screenings": Op<never, never, ComplianceScreenings, ComplianceScreenings>;
+  "POST /v1/compliance/screenings/run": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/compliance/screenings/{id}": Op<{ id: string }, never, never, ComplianceScreenings>;
   "GET /v1/core/api-keys": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<CoreApiKeys>>;
+  "POST /v1/core/api-keys": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/core/api-keys/{id}": Op<{ id: string }, never, never, CoreApiKeys>;
   "DELETE /v1/core/api-keys/{id}": Op<{ id: string }, never, never, void>;
   "GET /v1/core/approvals": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<CoreApprovals>>;
@@ -2087,12 +2093,14 @@ export interface Operations {
   "GET /v1/core/customers/{id}": Op<{ id: string }, never, never, CoreCustomers>;
   "PATCH /v1/core/customers/{id}": Op<{ id: string }, never, CoreCustomers, CoreCustomers>;
   "DELETE /v1/core/customers/{id}": Op<{ id: string }, never, never, void>;
+  "POST /v1/core/customers/{id}/restore": Op<{ id: string }, never, never, CoreCustomers>;
   "GET /v1/core/event-dlq": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<CoreEventDlq>>;
   "GET /v1/core/event-dlq/{id}": Op<{ id: string }, never, never, CoreEventDlq>;
   "GET /v1/core/files": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<CoreFiles>>;
   "POST /v1/core/files": Op<never, never, CoreFiles, CoreFiles>;
   "GET /v1/core/files/{id}": Op<{ id: string }, never, never, CoreFiles>;
   "DELETE /v1/core/files/{id}": Op<{ id: string }, never, never, void>;
+  "POST /v1/core/files/{id}/restore": Op<{ id: string }, never, never, CoreFiles>;
   "GET /v1/core/identity-providers": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<CoreIdentityProviders>>;
   "POST /v1/core/identity-providers": Op<never, never, CoreIdentityProviders, CoreIdentityProviders>;
   "GET /v1/core/identity-providers/{id}": Op<{ id: string }, never, never, CoreIdentityProviders>;
@@ -2153,10 +2161,11 @@ export interface Operations {
   "GET /v1/core/users/{id}": Op<{ id: string }, never, never, CoreUsers>;
   "PATCH /v1/core/users/{id}": Op<{ id: string }, never, CoreUsers, CoreUsers>;
   "DELETE /v1/core/users/{id}": Op<{ id: string }, never, never, void>;
+  "POST /v1/core/users/{id}/restore": Op<{ id: string }, never, never, CoreUsers>;
   "GET /v1/core/webhook-deliveries": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<CoreWebhookDeliveries>>;
   "GET /v1/core/webhook-deliveries/{id}": Op<{ id: string }, never, never, CoreWebhookDeliveries>;
   "GET /v1/core/webhooks": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<CoreWebhooks>>;
-  "POST /v1/core/webhooks": Op<never, never, CoreWebhooks, CoreWebhooks>;
+  "POST /v1/core/webhooks": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/core/webhooks/{id}": Op<{ id: string }, never, never, CoreWebhooks>;
   "PATCH /v1/core/webhooks/{id}": Op<{ id: string }, never, CoreWebhooks, CoreWebhooks>;
   "DELETE /v1/core/webhooks/{id}": Op<{ id: string }, never, never, void>;
@@ -2165,6 +2174,7 @@ export interface Operations {
   "GET /v1/dist/channels/{id}": Op<{ id: string }, never, never, DistChannels>;
   "PATCH /v1/dist/channels/{id}": Op<{ id: string }, never, DistChannels, DistChannels>;
   "DELETE /v1/dist/channels/{id}": Op<{ id: string }, never, never, void>;
+  "POST /v1/dist/channels/{id}/restore": Op<{ id: string }, never, never, DistChannels>;
   "GET /v1/dist/commission-entries": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<DistCommissionEntries>>;
   "POST /v1/dist/commission-entries/accrue": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/dist/commission-entries/statement": Op<never, never, never, Record<string, unknown>>;
@@ -2185,6 +2195,7 @@ export interface Operations {
   "GET /v1/dist/offerings/{id}": Op<{ id: string }, never, never, DistOfferings>;
   "PATCH /v1/dist/offerings/{id}": Op<{ id: string }, never, DistOfferings, DistOfferings>;
   "DELETE /v1/dist/offerings/{id}": Op<{ id: string }, never, never, void>;
+  "POST /v1/dist/offerings/{id}/restore": Op<{ id: string }, never, never, DistOfferings>;
   "GET /v1/dist/quote-requests": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<DistQuoteRequests>>;
   "POST /v1/dist/quote-requests": Op<never, never, DistQuoteRequests, DistQuoteRequests>;
   "POST /v1/dist/quote-requests/shop": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
@@ -2225,8 +2236,8 @@ export interface Operations {
   "GET /v1/ledger/payments": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<LedgerPayments>>;
   "POST /v1/ledger/payments": Op<never, never, LedgerPayments, LedgerPayments>;
   "GET /v1/ledger/payments/{id}": Op<{ id: string }, never, never, LedgerPayments>;
+  "GET /v1/ledger/period/{code}": Op<{ code: string }, never, never, Record<string, unknown>>;
   "GET /v1/ledger/periods": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<LedgerPeriods>>;
-  "GET /v1/ledger/periods/{code}": Op<{ code: string }, never, never, Record<string, unknown>>;
   "POST /v1/ledger/periods/{code}/close": Op<{ code: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/ledger/periods/{code}/reopen": Op<{ code: string }, never, never, Record<string, unknown>>;
   "GET /v1/ledger/periods/{id}": Op<{ id: string }, never, never, LedgerPeriods>;
@@ -2247,6 +2258,7 @@ export interface Operations {
   "GET /v1/ledger/reports/commission": Op<never, never, never, Record<string, unknown>>;
   "GET /v1/ledger/reports/pnl": Op<never, never, never, Record<string, unknown>>;
   "GET /v1/ledger/reports/trial-balance": Op<never, never, never, Record<string, unknown>>;
+  "GET /v1/ledger/reports/{report}/export": Op<{ report: string }, never, never, Record<string, unknown>>;
   "GET /v1/ledger/revenue-schedules": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<LedgerRevenueSchedules>>;
   "GET /v1/ledger/revenue-schedules/{id}": Op<{ id: string }, never, never, LedgerRevenueSchedules>;
   "GET /v1/ledger/saga-steps": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<LedgerSagaSteps>>;
@@ -2400,7 +2412,7 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "PATCH /v1/ai/agents/{id}": { tag: "ai", summary: "Update a agent", permission: "ai:agents:write", public: false },
   "DELETE /v1/ai/agents/{id}": { tag: "ai", summary: "Soft-delete a agent", permission: "ai:agents:write", public: false },
   "POST /v1/ai/agents/{key}/autonomy": { tag: "ai", summary: "Change an agent's autonomy level", permission: "ai:agents:write", public: false },
-  "POST /v1/ai/agents/{key}/pause": { tag: "ai", summary: "Pause an agent", permission: "ai:agents:write", public: false },
+  "POST /v1/ai/agents/{key}/pause": { tag: "ai", summary: "Pause an agent", permission: "ai:agents:pause", public: false },
   "POST /v1/ai/agents/{key}/resume": { tag: "ai", summary: "Resume a paused agent", permission: "ai:agents:write", public: false },
   "GET /v1/ai/ai-audit-log": { tag: "ai", summary: "List ai-audit-log", permission: "ai:audit:read", public: false },
   "GET /v1/ai/ai-audit-log/{id}": { tag: "ai", summary: "Fetch one ai audit log", permission: "ai:audit:read", public: false },
@@ -2430,13 +2442,14 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "DELETE /v1/ai/prompts/{id}": { tag: "ai", summary: "Soft-delete a prompt", permission: "ai:prompts:write", public: false },
   "GET /v1/ai/runs": { tag: "ai", summary: "List runs", permission: "ai:runs:read", public: false },
   "POST /v1/ai/runs": { tag: "ai", summary: "Run an agent through the gateway, budgeted and audited (needs the agent module's :ai:invoke)", permission: "core:ai:invoke", public: false },
-  "GET /v1/ai/runs/{id}": { tag: "ai", summary: "One agent run with its trace", permission: "ai:runs:read", public: false },
+  "GET /v1/ai/runs/{id}": { tag: "ai", summary: "Fetch one run", permission: "ai:runs:read", public: false },
+  "GET /v1/ai/runs/{id}/detail": { tag: "ai", summary: "One agent run with its tool calls and audit trail", permission: "ai:runs:read", public: false },
   "GET /v1/ai/suggestions": { tag: "ai", summary: "List suggestions", permission: "ai:suggestions:read", public: false },
-  "POST /v1/ai/suggestions": { tag: "ai", summary: "Record a suggestion shown to the current user", permission: null, public: false },
+  "POST /v1/ai/suggestions": { tag: "ai", summary: "Record a suggestion shown to the current user", permission: "ai:suggestions:read", public: false },
   "GET /v1/ai/suggestions/acceptance": { tag: "ai", summary: "Acceptance rate by surface and module", permission: "ai:runs:read", public: false },
   "GET /v1/ai/suggestions/{id}": { tag: "ai", summary: "Fetch one suggestion", permission: "ai:suggestions:read", public: false },
   "PATCH /v1/ai/suggestions/{id}": { tag: "ai", summary: "Update a suggestion", permission: "ai:suggestions:read", public: false },
-  "POST /v1/ai/suggestions/{id}/outcome": { tag: "ai", summary: "Record whether the current user accepted, edited or dismissed it", permission: null, public: false },
+  "POST /v1/ai/suggestions/{id}/outcome": { tag: "ai", summary: "Record whether the current user accepted, edited or dismissed it", permission: "ai:suggestions:read", public: false },
   "GET /v1/ai/tool-calls": { tag: "ai", summary: "List tool-calls", permission: "ai:runs:read", public: false },
   "GET /v1/ai/tool-calls/{id}": { tag: "ai", summary: "Fetch one tool call", permission: "ai:runs:read", public: false },
   "GET /v1/analytics/dashboards": { tag: "analytics", summary: "Dashboards the caller may open", permission: "analytics:dashboards:read", public: false },
@@ -2461,6 +2474,7 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "GET /v1/analytics/reports/{id}": { tag: "analytics", summary: "One saved report definition", permission: "analytics:reports:read", public: false },
   "PATCH /v1/analytics/reports/{id}": { tag: "analytics", summary: "Edit a saved report (system reports must be cloned first)", permission: "analytics:reports:write", public: false },
   "DELETE /v1/analytics/reports/{id}": { tag: "analytics", summary: "Delete a saved report", permission: "analytics:reports:write", public: false },
+  "POST /v1/analytics/reports/{id}/restore": { tag: "analytics", summary: "Restore a soft-deleted report", permission: "analytics:reports:write", public: false },
   "POST /v1/analytics/reports/{id}/run": { tag: "analytics", summary: "Run a saved report", permission: "analytics:reports:run", public: false },
   "POST /v1/analytics/run": { tag: "analytics", summary: "Run an ad-hoc report definition without saving it", permission: "analytics:reports:run", public: false },
   "GET /v1/analytics/runs/{id}": { tag: "analytics", summary: "A completed run with its rows, totals and truncation flag", permission: "analytics:reports:read", public: false },
@@ -2496,6 +2510,7 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "GET /v1/axis/cases/{id}": { tag: "axis", summary: "Fetch one cas", permission: "axis:cases:read", public: false },
   "PATCH /v1/axis/cases/{id}": { tag: "axis", summary: "Update a cas", permission: "axis:cases:update", public: false },
   "DELETE /v1/axis/cases/{id}": { tag: "axis", summary: "Soft-delete a cas", permission: "axis:cases:delete", public: false },
+  "POST /v1/axis/cases/{id}/restore": { tag: "axis", summary: "Restore a soft-deleted cas", permission: "axis:cases:delete", public: false },
   "GET /v1/axis/claims": { tag: "axis", summary: "List claims", permission: "axis:claims:read", public: false },
   "POST /v1/axis/claims": { tag: "axis", summary: "Create a claim", permission: "axis:claims:create", public: false },
   "GET /v1/axis/claims/{id}": { tag: "axis", summary: "Fetch one claim", permission: "axis:claims:read", public: false },
@@ -2504,6 +2519,7 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "POST /v1/axis/documents": { tag: "axis", summary: "Create a document", permission: "axis:documents:upload", public: false },
   "GET /v1/axis/documents/{id}": { tag: "axis", summary: "Fetch one document", permission: "axis:documents:read", public: false },
   "PATCH /v1/axis/documents/{id}": { tag: "axis", summary: "Update a document", permission: "axis:documents:verify", public: false },
+  "POST /v1/axis/documents/{id}/verify": { tag: "axis", summary: "Mark a document verified; the verifier and the time are stamped server-side", permission: "axis:documents:verify", public: false },
   "GET /v1/axis/escrow-batches": { tag: "axis", summary: "List escrow-batches", permission: "axis:escrow:read", public: false },
   "GET /v1/axis/escrow-batches/{id}": { tag: "axis", summary: "Fetch one escrow batche", permission: "axis:escrow:read", public: false },
   "PATCH /v1/axis/escrow-batches/{id}": { tag: "axis", summary: "Update a escrow batche", permission: "axis:escrow:reconcile", public: false },
@@ -2536,8 +2552,9 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "GET /v1/compliance/erasure-log": { tag: "compliance", summary: "List erasure-log", permission: "compliance:dsar:read", public: false },
   "GET /v1/compliance/erasure-log/{id}": { tag: "compliance", summary: "Fetch one erasure log", permission: "compliance:dsar:read", public: false },
   "GET /v1/compliance/evidence-bundles": { tag: "compliance", summary: "List evidence-bundles", permission: "compliance:evidence:read", public: false },
-  "POST /v1/compliance/evidence-bundles": { tag: "compliance", summary: "Create a evidence bundle", permission: "compliance:evidence:export", public: false },
+  "POST /v1/compliance/evidence-bundles/export": { tag: "compliance", summary: "Assemble an evidence bundle and record its manifest and hash", permission: "compliance:evidence:export", public: false },
   "GET /v1/compliance/evidence-bundles/{id}": { tag: "compliance", summary: "Fetch one evidence bundle", permission: "compliance:evidence:read", public: false },
+  "GET /v1/compliance/evidence-bundles/{id}/download": { tag: "compliance", summary: "Download an assembled evidence bundle", permission: "compliance:evidence:read", public: false },
   "GET /v1/compliance/incidents": { tag: "compliance", summary: "List incidents", permission: "compliance:incidents:read", public: false },
   "POST /v1/compliance/incidents": { tag: "compliance", summary: "Create a incident", permission: "compliance:incidents:write", public: false },
   "GET /v1/compliance/incidents/{id}": { tag: "compliance", summary: "Fetch one incident", permission: "compliance:incidents:read", public: false },
@@ -2554,15 +2571,16 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "PATCH /v1/compliance/policy-thresholds/{id}": { tag: "compliance", summary: "Update a policy threshold", permission: "compliance:thresholds:write", public: false },
   "DELETE /v1/compliance/policy-thresholds/{id}": { tag: "compliance", summary: "Soft-delete a policy threshold", permission: "compliance:thresholds:write", public: false },
   "GET /v1/compliance/retention-runs": { tag: "compliance", summary: "List retention-runs", permission: "compliance:retention:read", public: false },
-  "POST /v1/compliance/retention-runs": { tag: "compliance", summary: "Create a retention run", permission: "compliance:retention:run", public: false },
   "GET /v1/compliance/retention-runs/{id}": { tag: "compliance", summary: "Fetch one retention run", permission: "compliance:retention:read", public: false },
+  "POST /v1/compliance/retention/run": { tag: "compliance", summary: "Run a retention class and record what it purged", permission: "compliance:retention:run", public: false },
   "GET /v1/compliance/rulepack-applications": { tag: "compliance", summary: "List rulepack-applications", permission: "compliance:rulepacks:read", public: false },
   "POST /v1/compliance/rulepack-applications": { tag: "compliance", summary: "Create a rulepack application", permission: "compliance:rulepacks:apply", public: false },
   "GET /v1/compliance/rulepack-applications/{id}": { tag: "compliance", summary: "Fetch one rulepack application", permission: "compliance:rulepacks:read", public: false },
   "GET /v1/compliance/screenings": { tag: "compliance", summary: "List screenings", permission: "compliance:screenings:read", public: false },
-  "POST /v1/compliance/screenings": { tag: "compliance", summary: "Create a screening", permission: "compliance:screenings:run", public: false },
+  "POST /v1/compliance/screenings/run": { tag: "compliance", summary: "Screen a customer or name against the watchlists and record the hashed query", permission: "compliance:screenings:run", public: false },
   "GET /v1/compliance/screenings/{id}": { tag: "compliance", summary: "Fetch one screening", permission: "compliance:screenings:read", public: false },
   "GET /v1/core/api-keys": { tag: "core", summary: "List api-keys", permission: "core:api_keys:read", public: false },
+  "POST /v1/core/api-keys": { tag: "core", summary: "Mint an API key; the plaintext is returned once and never again", permission: "core:api_keys:create", public: false },
   "GET /v1/core/api-keys/{id}": { tag: "core", summary: "Fetch one api key", permission: "core:api_keys:read", public: false },
   "DELETE /v1/core/api-keys/{id}": { tag: "core", summary: "Soft-delete a api key", permission: "core:api_keys:revoke", public: false },
   "GET /v1/core/approvals": { tag: "core", summary: "List approvals", permission: "core:approvals:read", public: false },
@@ -2577,12 +2595,14 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "GET /v1/core/customers/{id}": { tag: "core", summary: "Fetch one customer", permission: "core:customers:read", public: false },
   "PATCH /v1/core/customers/{id}": { tag: "core", summary: "Update a customer", permission: "core:customers:update", public: false },
   "DELETE /v1/core/customers/{id}": { tag: "core", summary: "Soft-delete a customer", permission: "core:customers:delete", public: false },
+  "POST /v1/core/customers/{id}/restore": { tag: "core", summary: "Restore a soft-deleted customer", permission: "core:customers:delete", public: false },
   "GET /v1/core/event-dlq": { tag: "core", summary: "List event-dlq", permission: "admin:dlq:read", public: false },
   "GET /v1/core/event-dlq/{id}": { tag: "core", summary: "Fetch one event dlq", permission: "admin:dlq:read", public: false },
   "GET /v1/core/files": { tag: "core", summary: "List files", permission: "core:files:read", public: false },
   "POST /v1/core/files": { tag: "core", summary: "Create a file", permission: "core:files:create", public: false },
   "GET /v1/core/files/{id}": { tag: "core", summary: "Fetch one file", permission: "core:files:read", public: false },
   "DELETE /v1/core/files/{id}": { tag: "core", summary: "Soft-delete a file", permission: "core:files:delete", public: false },
+  "POST /v1/core/files/{id}/restore": { tag: "core", summary: "Restore a soft-deleted file", permission: "core:files:delete", public: false },
   "GET /v1/core/identity-providers": { tag: "core", summary: "List identity-providers", permission: "core:identity_providers:read", public: false },
   "POST /v1/core/identity-providers": { tag: "core", summary: "Create a identity provider", permission: "core:identity_providers:write", public: false },
   "GET /v1/core/identity-providers/{id}": { tag: "core", summary: "Fetch one identity provider", permission: "core:identity_providers:read", public: false },
@@ -2643,10 +2663,11 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "GET /v1/core/users/{id}": { tag: "core", summary: "Fetch one user", permission: "core:users:read", public: false },
   "PATCH /v1/core/users/{id}": { tag: "core", summary: "Update a user", permission: "core:users:update", public: false },
   "DELETE /v1/core/users/{id}": { tag: "core", summary: "Soft-delete a user", permission: "core:users:delete", public: false },
+  "POST /v1/core/users/{id}/restore": { tag: "core", summary: "Restore a soft-deleted user", permission: "core:users:delete", public: false },
   "GET /v1/core/webhook-deliveries": { tag: "core", summary: "List webhook-deliveries", permission: "core:webhooks:read", public: false },
   "GET /v1/core/webhook-deliveries/{id}": { tag: "core", summary: "Fetch one webhook delivery", permission: "core:webhooks:read", public: false },
   "GET /v1/core/webhooks": { tag: "core", summary: "List webhooks", permission: "core:webhooks:read", public: false },
-  "POST /v1/core/webhooks": { tag: "core", summary: "Create a webhook", permission: "core:webhooks:write", public: false },
+  "POST /v1/core/webhooks": { tag: "core", summary: "Register a webhook; the signing secret is generated server-side and returned once", permission: "core:webhooks:write", public: false },
   "GET /v1/core/webhooks/{id}": { tag: "core", summary: "Fetch one webhook", permission: "core:webhooks:read", public: false },
   "PATCH /v1/core/webhooks/{id}": { tag: "core", summary: "Update a webhook", permission: "core:webhooks:write", public: false },
   "DELETE /v1/core/webhooks/{id}": { tag: "core", summary: "Soft-delete a webhook", permission: "core:webhooks:write", public: false },
@@ -2655,6 +2676,7 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "GET /v1/dist/channels/{id}": { tag: "dist", summary: "Fetch one channel", permission: "dist:channels:read", public: false },
   "PATCH /v1/dist/channels/{id}": { tag: "dist", summary: "Update a channel", permission: "dist:channels:write", public: false },
   "DELETE /v1/dist/channels/{id}": { tag: "dist", summary: "Soft-delete a channel", permission: "dist:channels:write", public: false },
+  "POST /v1/dist/channels/{id}/restore": { tag: "dist", summary: "Restore a soft-deleted channel", permission: "dist:channels:write", public: false },
   "GET /v1/dist/commission-entries": { tag: "dist", summary: "List commission-entries", permission: "dist:commissions:read", public: false },
   "POST /v1/dist/commission-entries/accrue": { tag: "dist", summary: "Accrue the commission split between the provider, us and the channel", permission: "dist:commissions:adjust", public: false },
   "GET /v1/dist/commission-entries/statement": { tag: "dist", summary: "Commission statement for a channel over a period", permission: "dist:commissions:read", public: false },
@@ -2675,6 +2697,7 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "GET /v1/dist/offerings/{id}": { tag: "dist", summary: "Fetch one offering", permission: "dist:offerings:read", public: false },
   "PATCH /v1/dist/offerings/{id}": { tag: "dist", summary: "Update a offering", permission: "dist:offerings:write", public: false },
   "DELETE /v1/dist/offerings/{id}": { tag: "dist", summary: "Soft-delete a offering", permission: "dist:offerings:write", public: false },
+  "POST /v1/dist/offerings/{id}/restore": { tag: "dist", summary: "Restore a soft-deleted offering", permission: "dist:offerings:write", public: false },
   "GET /v1/dist/quote-requests": { tag: "dist", summary: "List quote-requests", permission: "dist:quote_requests:read", public: false },
   "POST /v1/dist/quote-requests": { tag: "dist", summary: "Create a quote request", permission: "dist:quote_requests:create", public: false },
   "POST /v1/dist/quote-requests/shop": { tag: "dist", summary: "Shop one risk to every eligible offering and collect provider quotes", permission: "dist:quote_requests:create", public: false },
@@ -2715,8 +2738,8 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "GET /v1/ledger/payments": { tag: "ledger", summary: "List payments", permission: "ledger:payments:read", public: false },
   "POST /v1/ledger/payments": { tag: "ledger", summary: "Create a payment", permission: "ledger:payments:create", public: false },
   "GET /v1/ledger/payments/{id}": { tag: "ledger", summary: "Fetch one payment", permission: "ledger:payments:read", public: false },
+  "GET /v1/ledger/period/{code}": { tag: "ledger", summary: "One accounting period and its close checklist", permission: "ledger:periods:read", public: false },
   "GET /v1/ledger/periods": { tag: "ledger", summary: "List periods", permission: "ledger:periods:read", public: false },
-  "GET /v1/ledger/periods/{code}": { tag: "ledger", summary: "One accounting period and its close checklist", permission: "ledger:periods:read", public: false },
   "POST /v1/ledger/periods/{code}/close": { tag: "ledger", summary: "Soft or hard close a period (dual control)", permission: "ledger:periods:close", public: false },
   "POST /v1/ledger/periods/{code}/reopen": { tag: "ledger", summary: "Reopen a soft-closed period", permission: "ledger:periods:close", public: false },
   "GET /v1/ledger/periods/{id}": { tag: "ledger", summary: "Fetch one period", permission: "ledger:periods:read", public: false },
@@ -2737,6 +2760,7 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "GET /v1/ledger/reports/commission": { tag: "ledger", summary: "Commission earned, clawed back and payable by channel", permission: "ledger:journals:read", public: false },
   "GET /v1/ledger/reports/pnl": { tag: "ledger", summary: "Profit and loss for a period", permission: "ledger:journals:read", public: false },
   "GET /v1/ledger/reports/trial-balance": { tag: "ledger", summary: "Trial balance as at a moment", permission: "ledger:journals:read", public: false },
+  "GET /v1/ledger/reports/{report}/export": { tag: "ledger", summary: "Render any ledger report to xlsx, pdf, csv or json", permission: "ledger:journals:read", public: false },
   "GET /v1/ledger/revenue-schedules": { tag: "ledger", summary: "List revenue-schedules", permission: "ledger:journals:read", public: false },
   "GET /v1/ledger/revenue-schedules/{id}": { tag: "ledger", summary: "Fetch one revenue schedule", permission: "ledger:journals:read", public: false },
   "GET /v1/ledger/saga-steps": { tag: "ledger", summary: "List saga-steps", permission: "ledger:txns:read", public: false },

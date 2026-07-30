@@ -50,6 +50,16 @@ const HAND_WRITTEN: Op[] = [
   { method: "post", path: "/v1/me/approvals/{id}/decide", summary: "Approve or reject a pending approval (permission comes from the approval policy)", tag: "me", requestBody: true },
   { method: "post", path: "/v1/me/notifications/{id}/read", summary: "Mark one of the caller's notifications read", tag: "me" },
 
+  // Both mint a credential the client may not choose, so neither can be the
+  // generated create — a CRUD body would ask the caller for the very column the
+  // server owns. Each returns its plaintext once and never again.
+  { method: "post", path: "/v1/core/api-keys", summary: "Mint an API key; the plaintext is returned once and never again", permission: "core:api_keys:create", tag: "core", requestBody: true },
+  { method: "post", path: "/v1/core/webhooks", summary: "Register a webhook; the signing secret is generated server-side and returned once", permission: "core:webhooks:write", tag: "core", requestBody: true },
+
+  // `verifiedBy` and `verifiedAt` are evidence that a named person looked at the
+  // file at a known time, so they come from the session and the clock. No body.
+  { method: "post", path: "/v1/axis/documents/{id}/verify", summary: "Mark a document verified; the verifier and the time are stamped server-side", permission: "axis:documents:verify", tag: "axis" },
+
   { method: "post", path: "/v1/dist/quote-requests/shop", summary: "Shop one risk to every eligible offering and collect provider quotes", permission: "dist:quote_requests:create", tag: "dist", requestBody: true },
   { method: "get", path: "/v1/dist/quote-requests/{id}/comparison", summary: "Ranked comparison across the responses received", permission: "dist:quote_requests:read", tag: "dist" },
   { method: "post", path: "/v1/dist/quote-requests/{id}/share", summary: "Share the comparison with the customer over their consented channel", permission: "dist:quote_requests:share", tag: "dist", requestBody: true },
@@ -66,7 +76,11 @@ const HAND_WRITTEN: Op[] = [
   { method: "get", path: "/v1/ledger/txn-types", summary: "Every transaction type and the states it may move through", permission: "ledger:txns:read", tag: "ledger" },
   { method: "post", path: "/v1/ledger/txn/{id}/transition", summary: "Advance a transaction through its state machine", permission: "ledger:txns:authorize", tag: "ledger", requestBody: true },
   { method: "post", path: "/v1/ledger/txn/{id}/reverse", summary: "Post a compensating reversal, leaving the original intact", permission: "ledger:txns:reverse", tag: "ledger", requestBody: true },
-  { method: "get", path: "/v1/ledger/periods/{code}", summary: "One accounting period and its close checklist", permission: "ledger:periods:read", tag: "ledger" },
+  // Singular `period`, deliberately: `/v1/ledger/periods/{id}` is the generated
+  // CRUD record, and the enriched `{period, checks}` view used to sit on it and
+  // swallow it (src/ledger.test.ts). This entry named the plural path, so it
+  // documented the wrong handler.
+  { method: "get", path: "/v1/ledger/period/{code}", summary: "One accounting period and its close checklist", permission: "ledger:periods:read", tag: "ledger" },
   { method: "post", path: "/v1/ledger/periods/{code}/close", summary: "Soft or hard close a period (dual control)", permission: "ledger:periods:close", tag: "ledger", requestBody: true },
   { method: "post", path: "/v1/ledger/periods/{code}/reopen", summary: "Reopen a soft-closed period", permission: "ledger:periods:close", tag: "ledger" },
   { method: "get", path: "/v1/ledger/reports/trial-balance", summary: "Trial balance as at a moment", permission: "ledger:journals:read", tag: "ledger" },
@@ -76,6 +90,10 @@ const HAND_WRITTEN: Op[] = [
   { method: "get", path: "/v1/ledger/reports/commission", summary: "Commission earned, clawed back and payable by channel", permission: "ledger:journals:read", tag: "ledger" },
   { method: "get", path: "/v1/ledger/reports/client-money", summary: "Client money sufficiency: what is held against what is owed", permission: "ledger:client_money:read", tag: "ledger" },
   { method: "get", path: "/v1/ledger/reports/chart-of-accounts", summary: "The chart of accounts with current balances", permission: "ledger:journals:read", tag: "ledger" },
+  // One handler for every report above. The permission is the report's own —
+  // `ledger:journals:read` for all of them except client-money, which needs
+  // `ledger:client_money:read`.
+  { method: "get", path: "/v1/ledger/reports/{report}/export", summary: "Render any ledger report to xlsx, pdf, csv or json", permission: "ledger:journals:read", tag: "ledger" },
   { method: "get", path: "/v1/ledger/accounts/{code}/statement", summary: "Every line that hit one account, in order", permission: "ledger:journals:read", tag: "ledger" },
   { method: "get", path: "/v1/ledger/accounts/{code}/balance", summary: "One account's balance as at a moment", permission: "ledger:journals:read", tag: "ledger" },
   { method: "post", path: "/v1/ledger/balances/rebuild", summary: "Rebuild cached balances from the journal lines", permission: "ledger:journals:post", tag: "ledger", requestBody: true },
@@ -86,17 +104,30 @@ const HAND_WRITTEN: Op[] = [
   // Invoking an agent is authorised per module, so the scope below is the core
   // module's; an AXIS agent needs axis:ai:invoke, and so on for each module.
   { method: "post", path: "/v1/ai/runs", summary: "Run an agent through the gateway, budgeted and audited (needs the agent module's :ai:invoke)", permission: "core:ai:invoke", tag: "ai", requestBody: true },
-  { method: "get", path: "/v1/ai/runs/{id}", summary: "One agent run with its trace", permission: "ai:runs:read", tag: "ai" },
+  // The bare `/runs/{id}` is the generated CRUD record (a flat row); this is the
+  // second, enriched view and so it gets a second path.
+  { method: "get", path: "/v1/ai/runs/{id}/detail", summary: "One agent run with its tool calls and audit trail", permission: "ai:runs:read", tag: "ai" },
   { method: "get", path: "/v1/ai/budget", summary: "Remaining AI budget for the period", permission: "ai:budgets:read", tag: "ai" },
   { method: "post", path: "/v1/ai/budget/limits", summary: "Set per-module AI spend limits", permission: "ai:budgets:write", tag: "ai", requestBody: true },
-  { method: "post", path: "/v1/ai/suggestions", summary: "Record a suggestion shown to the current user", tag: "ai", requestBody: true },
-  { method: "post", path: "/v1/ai/suggestions/{id}/outcome", summary: "Record whether the current user accepted, edited or dismissed it", tag: "ai", requestBody: true },
+  { method: "post", path: "/v1/ai/suggestions", summary: "Record a suggestion shown to the current user", permission: "ai:suggestions:read", tag: "ai", requestBody: true },
+  { method: "post", path: "/v1/ai/suggestions/{id}/outcome", summary: "Record whether the current user accepted, edited or dismissed it", permission: "ai:suggestions:read", tag: "ai", requestBody: true },
   { method: "get", path: "/v1/ai/suggestions/acceptance", summary: "Acceptance rate by surface and module", permission: "ai:runs:read", tag: "ai" },
-  { method: "post", path: "/v1/ai/agents/{key}/pause", summary: "Pause an agent", permission: "ai:agents:write", tag: "ai" },
+  // The killswitch is `pause`, not `write`: compliance may pull it mid-incident
+  // without also being able to reconfigure the agent. A reason is required.
+  { method: "post", path: "/v1/ai/agents/{key}/pause", summary: "Pause an agent", permission: "ai:agents:pause", tag: "ai", requestBody: true },
   { method: "post", path: "/v1/ai/agents/{key}/resume", summary: "Resume a paused agent", permission: "ai:agents:write", tag: "ai" },
   { method: "post", path: "/v1/ai/agents/{key}/autonomy", summary: "Change an agent's autonomy level", permission: "ai:agents:write", tag: "ai", requestBody: true },
   { method: "get", path: "/v1/ai/audit", summary: "Every model call, prompt hash and cost", permission: "ai:audit:read", tag: "ai" },
   { method: "get", path: "/v1/ai/audit/spend", summary: "Spend rolled up by module and purpose", permission: "ai:budgets:read", tag: "ai" },
+
+  // The three compliance runs and the bundle they produce. The matching CRUD
+  // creates are shadowed by handlers that only ever 400: a screening's query
+  // hash and a bundle's manifest are evidence, and evidence a caller can type
+  // is not evidence (routes/compliance.ts).
+  { method: "post", path: "/v1/compliance/screenings/run", summary: "Screen a customer or name against the watchlists and record the hashed query", permission: "compliance:screenings:run", tag: "compliance", requestBody: true },
+  { method: "post", path: "/v1/compliance/evidence-bundles/export", summary: "Assemble an evidence bundle and record its manifest and hash", permission: "compliance:evidence:export", tag: "compliance", requestBody: true },
+  { method: "get", path: "/v1/compliance/evidence-bundles/{id}/download", summary: "Download an assembled evidence bundle", permission: "compliance:evidence:read", tag: "compliance" },
+  { method: "post", path: "/v1/compliance/retention/run", summary: "Run a retention class and record what it purged", permission: "compliance:retention:run", tag: "compliance", requestBody: true },
 
   // The dataset list carries no permission of its own: it returns only the
   // datasets the caller may already read, so an empty list is the answer for
@@ -188,6 +219,17 @@ export function openapi(): Record<string, unknown> {
           security: perm(res.perms.remove),
           responses: { "204": { description: "Deleted" }, ...errors(res.approval?.remove) }
         });
+        // Same condition crud.ts uses to mount it: delete is soft where the
+        // table carries `deletedAt`, and a soft delete has an undo.
+        if ("deletedAt" in getTableColumns(res.table)) {
+          put(paths, `${item}/restore`, "post", {
+            tags: [module],
+            summary: `Restore a soft-deleted ${singular(res.path)}`,
+            parameters: [idParam()],
+            security: perm(res.perms.remove),
+            responses: { "200": ok(ref), ...errors() }
+          });
+        }
       }
     }
   }
@@ -266,7 +308,7 @@ function tableSchema(res: Resource): Record<string, unknown> {
   const required: string[] = [];
   for (const [key, col] of Object.entries(cols)) {
     properties[key] = columnSchema(key, col, res);
-    if (col.notNull && !col.hasDefault && !SYSTEM.has(key)) required.push(key);
+    if (col.notNull && !col.hasDefault && !SYSTEM.has(key) && !res.actorColumns?.includes(key)) required.push(key);
   }
   return { type: "object", properties, required };
 }
@@ -274,6 +316,9 @@ function tableSchema(res: Resource): Record<string, unknown> {
 const SYSTEM = new Set(["id", "tenantId", "createdAt", "updatedAt", "deletedAt"]);
 
 function columnSchema(key: string, col: SQLiteColumn, res: Resource): Record<string, unknown> {
+  if (res.actorColumns?.includes(key)) {
+    return { type: "string", readOnly: true, description: "Set from the authenticated session; refused in a request body" };
+  }
   const pii = res.pii && key in res.pii ? { description: "PII — masked unless the actor holds core:pii:view" } : {};
   if (key.endsWith("Json")) return { type: "string", description: "JSON document, stored as text", ...pii };
   if (key.endsWith("Minor")) return { type: "integer", description: "Minor units of the row's currency", ...pii };

@@ -324,7 +324,48 @@ describe("openapi", () => {
     }
     expect(wrong).toEqual([]);
   });
+
+  /**
+   * The other direction, and the one that was missing. The test above walks the
+   * spec and asks whether a handler answers it, so it can only ever catch a
+   * documented endpoint — `POST /v1/core/api-keys` shipped with a handler, a
+   * permission and no entry, and nothing failed. Walk the router instead: every
+   * route it mounts is either in the document or in `UNDOCUMENTED` with a reason.
+   */
+  it("documents every route the router mounts", () => {
+    const documented = new Set(
+      Object.entries(spec.paths).flatMap(([path, ops]) =>
+        Object.keys(ops).map((method) => `${method} ${path.replace(/\{\w+\}/g, ":p")}`)
+      )
+    );
+    const missing = app.routes
+      .filter((r) => r.method !== "ALL")
+      .map((r) => `${r.method.toLowerCase()} ${r.path.replace(/:\w+/g, ":p")}`)
+      .filter((id) => !documented.has(id))
+      // PUT on an item path is registered as a byte-identical alias of PATCH
+      // (crud.ts); one entry describes both.
+      .filter((id) => !documented.has(id.replace(/^put /, "patch ")))
+      .filter((id) => !UNDOCUMENTED.has(id));
+    expect([...new Set(missing)].sort()).toEqual([]);
+  });
 });
+
+/**
+ * Routes deliberately outside the published contract. An addition here is a
+ * decision to keep an endpoint off the SDK and out of every integrator's view,
+ * so it needs the reason beside it — the empty case is a route someone forgot.
+ */
+const UNDOCUMENTED = new Set([
+  // Operational, not part of /v1: a load balancer's probe and the spec itself.
+  "get /health",
+  "get /openapi.json",
+  // Shadows that exist only to answer 400. These three rows are produced by a
+  // run endpoint and may never be written directly (routes/compliance.ts
+  // §run-only rows), so documenting them as creatable would be the lie.
+  "post /v1/compliance/screenings",
+  "post /v1/compliance/evidence-bundles",
+  "post /v1/compliance/retention-runs"
+]);
 
 /** Whether a registered route pattern would answer a request for `want`. */
 function matches(route: string[], want: string[]): boolean {
