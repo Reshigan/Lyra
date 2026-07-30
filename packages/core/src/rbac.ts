@@ -69,7 +69,7 @@ export const PERMISSIONS = [
   "dist:channels:read", "dist:channels:write", "dist:channels:suspend",
   "dist:offerings:read", "dist:offerings:write", "dist:offerings:publish", "dist:offerings:withdraw",
   "dist:rates:read", "dist:rates:write", "dist:rates:approve",
-  "dist:quote_requests:read", "dist:quote_requests:create", "dist:quote_requests:share",
+  "dist:ai:invoke", "dist:quote_requests:read", "dist:quote_requests:create", "dist:quote_requests:share",
   "dist:commissions:read", "dist:commissions:adjust", "dist:commissions:settle",
   "dist:offers:read", "dist:offers:surface", "dist:offers:override",
 
@@ -219,6 +219,12 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     "ai:killswitch:use", "ai:evals:read",
     "signal:creatives:read", "signal:creatives:approve",
     "analytics:exports:create", "analytics:exports:unmasked",
+    // A regulator asks for a customer's quote and policy trail (docs/06 J-CO1).
+    // Without a readable dataset the export permission has nothing to export,
+    // so the officer's core duty dead-ends. Read-only, and the unmasked path
+    // still costs a justification and an approval.
+    "analytics:reports:read", "analytics:reports:run",
+    "axis:policies:read", "dist:quote_requests:read",
     "ledger:client_money:read", "ledger:journals:read"
   ],
 
@@ -231,7 +237,7 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     "core:customers:read", "core:customers:create", "core:customers:update",
     "core:consents:read", "core:consents:create", "core:files:read", "core:files:create",
     "core:search:read", "core:notifications:read", "ledger:txns:read",
-    "dist:offerings:read", "dist:quote_requests:read", "dist:quote_requests:create",
+    "dist:ai:invoke", "dist:offerings:read", "dist:quote_requests:read", "dist:quote_requests:create",
     "dist:offers:read", "dist:offers:surface"
   ],
   "axis.lead": [
@@ -246,7 +252,7 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     "ledger:txns:read", "analytics:reports:read", "analytics:reports:run",
     "analytics:exports:create", "analytics:saved_views:write",
     "dist:channels:read", "dist:offerings:read", "dist:rates:read",
-    "dist:quote_requests:read", "dist:quote_requests:create", "dist:quote_requests:share",
+    "dist:ai:invoke", "dist:quote_requests:read", "dist:quote_requests:create", "dist:quote_requests:share",
     "dist:commissions:read", "dist:offers:read", "dist:offers:surface", "dist:offers:override"
   ],
   "axis.admin": [
@@ -281,7 +287,8 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     "core:customers:read", "core:consents:read", "core:search:read",
     "axis:policies:read", "axis:quotes:create", "axis:quotes:compare",
     "analytics:reports:read", "analytics:reports:run",
-    "dist:offerings:read", "dist:quote_requests:create", "dist:offers:read", "dist:offers:surface"
+    "dist:ai:invoke", "dist:offerings:read", "dist:quote_requests:create",
+    "dist:offers:read", "dist:offers:surface"
   ],
   "orbit.partners": [
     ...readsOf("orbit"), "orbit:ai:invoke", "orbit:partners:create", "orbit:partners:update",

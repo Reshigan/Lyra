@@ -168,7 +168,16 @@ distRoutes.post("/quote-requests/shop", async (c) => {
         data: { productId: input.productId, channelId: input.channelId, fanout: panel.length }
       });
 
-      return { request: { ...request, respondedCount: responded, bestOfferingId: best?.offeringId ?? null }, responses: rows };
+      return {
+        request: {
+          ...request,
+          respondedCount: responded,
+          bestOfferingId: best?.offeringId ?? null,
+          bestPremiumMinor: best?.premiumMinor ?? null,
+          state: responded === panel.length ? "complete" : "fanned_out"
+        },
+        responses: rows
+      };
     }),
     201
   );

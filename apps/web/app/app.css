@@ -1,0 +1,23 @@
+@import "tailwindcss";
+/* Deep Field tokens + Tailwind wiring (docs/01 §3–4). Every colour, size and
+   font utility in this app resolves through @lyra/ui — the shell defines no
+   parallel scale, and a tenant override (--accent, --font-ui) re-maps both. */
+@import "@lyra/ui/tokens.css";
+
+@source "../../../packages/ui/src";
+
+@layer base {
+  body {
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: var(--font-ui);
+    font-size: var(--text-14);
+    line-height: var(--leading-body);
+  }
+
+  /* Focus is a 2px accent ring with 2px offset, everywhere (docs/15 §3). */
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+}

@@ -79,6 +79,7 @@ const PEOPLE: ReadonlyArray<{ local: string; name: string; role: string; locale?
   { local: "noor.jamal", name: "Noor Jamal", role: "signal.lead" },
   { local: "tariq.mansour", name: "Tariq Mansour", role: "scout.lead" },
   { local: "hala.zayed", name: "Hala Zayed", role: "north.exec" },
+  { local: "rana.hadid", name: "Rana Hadid", role: "north.analyst" },
   { local: "faisal.omar", name: "Faisal Omar", role: "finance.controller" },
   { local: "mona.idris", name: "Mona Idris", role: "finance.analyst" },
   { local: "raed.samir", name: "Raed Samir", role: "dev.admin" }
@@ -398,6 +399,24 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
     ...extra
   });
 
+  // Rate tables, not live underwriter APIs. A seeded panel has to price for
+  // real — the comparison is the product — and there is no third-party endpoint
+  // to call from a demo, an e2e run or an on-prem box. `pricingMode: "api"` is
+  // exercised by the adapter tests instead, where a stub quoter stands in.
+  const motorTable = (base: number, ratePpm: number, minPremiumMinor: number): string =>
+    JSON.stringify({
+      base,
+      bands: [
+        { field: "age", min: 18, max: 24, factorPpm: 1_450_000 },
+        { field: "age", min: 25, max: 39, factorPpm: 1_050_000 },
+        { field: "age", min: 40, max: 120, factorPpm: 900_000 }
+      ],
+      rates: [{ field: "sumInsuredMinor", ratePpm }],
+      loadings: [{ field: "priorClaims", whenTrue: 30_000 }],
+      minPremiumMinor,
+      taxPpm: 50_000 // 5% VAT
+    });
+
   await db.insert(schema.distOfferings).values([
     // Our own paper: no external commission, the whole margin is underwriting result.
     offering(
@@ -408,13 +427,32 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
       "GONXT Motor Standard",
       "جي أو إن إكس تي – تأمين مركبات قياسي",
       0,
-      { pricingMode: "table", crossSellTagsJson: JSON.stringify(["motor_owner"]) }
+      {
+        pricingMode: "table",
+        ratingTableJson: motorTable(60_000, 7_800, 95_000),
+        coverageJson: JSON.stringify({ excessMinor: 100_000, agencyRepair: false, roadside: true }),
+        crossSellTagsJson: JSON.stringify(["motor_owner"])
+      }
     ),
     offering("falconMotor", providers.falcon, products.motor, "FAL-MOT-COMP", "Falcon Motor Comprehensive", "فالكون – شامل للمركبات", 150_000, {
+      pricingMode: "table",
+      ratingTableJson: motorTable(80_000, 9_100, 120_000),
+      eligibilityJson: JSON.stringify({ minAge: 21, markets: ["AE"], requires: { vehicleUse: "private" } }),
+      coverageJson: JSON.stringify({ excessMinor: 50_000, agencyRepair: true, roadside: true }),
       crossSellTagsJson: JSON.stringify(["motor_owner"])
     }),
-    offering("cedarMotor", providers.cedar, products.motor, "CDR-MOT-ESS", "Cedar Motor Essential", "سيدار – أساسي للمركبات", 125_000),
+    offering("cedarMotor", providers.cedar, products.motor, "CDR-MOT-ESS", "Cedar Motor Essential", "سيدار – أساسي للمركبات", 125_000, {
+      pricingMode: "table",
+      ratingTableJson: motorTable(52_000, 7_200, 85_000),
+      coverageJson: JSON.stringify({ excessMinor: 150_000, agencyRepair: false, roadside: false })
+    }),
     offering("cedarMotorPlus", providers.cedar, products.motor, "CDR-MOT-PLUS", "Cedar Motor Plus", "سيدار – بلس للمركبات", 175_000, {
+      pricingMode: "table",
+      ratingTableJson: motorTable(96_000, 10_400, 150_000),
+      // Priced for higher-value vehicles: a small risk is declined, and the
+      // comparison shows why rather than quietly returning a shorter panel.
+      eligibilityJson: JSON.stringify({ minSumInsuredMinor: 5_000_000 }),
+      coverageJson: JSON.stringify({ excessMinor: 0, agencyRepair: true, roadside: true }),
       upsellOfOfferingId: offerings.cedarMotor
     }),
     offering("oryxMotor", providers.oryx, products.motor, "ORX-MOT-TKF", "Oryx Motor Takaful", "أوريكس – تكافل المركبات", 140_000, {
@@ -428,9 +466,28 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
     }),
     offering("gonxtTravel", providers.gonxt, products.travel, "GNX-TRV-ANN", "GONXT Travel Annual", "جي أو إن إكس تي – سفر سنوي", 0, {
       pricingMode: "table",
+      ratingTableJson: JSON.stringify({
+        base: 18_000,
+        bands: [
+          { field: "tripDays", min: 1, max: 14, factorPpm: 1_000_000 },
+          { field: "tripDays", min: 15, max: 60, factorPpm: 1_600_000 },
+          { field: "tripDays", min: 61, max: 365, factorPpm: 2_400_000 }
+        ],
+        loadings: [{ field: "winterSports", whenTrue: 12_000 }],
+        minPremiumMinor: 15_000,
+        taxPpm: 50_000
+      }),
       crossSellTagsJson: JSON.stringify(["traveller", "motor_owner"])
     }),
     offering("cedarHome", providers.cedar, products.home, "CDR-HOM-CONT", "Cedar Home Contents", "سيدار – محتويات المنزل", 200_000, {
+      pricingMode: "table",
+      ratingTableJson: JSON.stringify({
+        base: 24_000,
+        rates: [{ field: "sumInsuredMinor", ratePpm: 3_400 }],
+        loadings: [{ field: "priorClaims", whenTrue: 20_000 }],
+        minPremiumMinor: 40_000,
+        taxPpm: 50_000
+      }),
       crossSellTagsJson: JSON.stringify(["homeowner", "motor_owner"])
     }),
     offering("oryxLife", providers.oryx, products.life, "ORX-LIF-TERM", "Oryx Term Takaful", "أوريكس – تكافل الحياة", 300_000, {
@@ -766,6 +823,195 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
     createdAt: now,
     updatedAt: now
   });
+
+  /* --------------------------------------------------------------- ai */
+  // One agent per module, each pointing at a versioned prompt row. Without
+  // these `POST /v1/ai/runs` 404s on every key, so the demo tenant would ship
+  // with no AI at all — and an inline prompt in code cannot be diffed against
+  // the version that produced a bad answer (docs/15).
+  const agents: { key: string; module: string; tier: string; autonomy: string; en: string; ar: string; desc: string; tools: string[]; prompt: string }[] = [
+    {
+      key: "quoting",
+      module: "dist",
+      tier: "standard",
+      autonomy: "suggest_only",
+      en: "Quote adviser",
+      ar: "مستشار التسعير",
+      desc: "Explains a comparison panel in plain language and flags the cross-sell worth raising.",
+      tools: ["dist.quote_requests.read", "dist.offerings.read", "dist.next_best_offers.propose"],
+      prompt:
+        "You compare insurance offerings for a customer of an aggregator. You are given the ranked panel " +
+        "as JSON: premium, cover differences, excess, and any declined or referred rows. Explain in at most " +
+        "five sentences why the best-value row won, what the cheapest row gives up, and why any row was " +
+        "declined. Name a cross-sell only when a signal in the input supports it. Never invent a price, a " +
+        "cover term or a provider that is not in the input. Answer in the customer's locale."
+    },
+    {
+      key: "copilot",
+      module: "axis",
+      tier: "standard",
+      autonomy: "act_with_approval",
+      en: "Case copilot",
+      ar: "مساعد الملفات",
+      desc: "Summarises a case, drafts the next action, and prepares the quote comparison for the agent.",
+      tools: ["axis.cases.read", "axis.quotes.compare", "core.customers.read", "axis.tasks.write"],
+      prompt:
+        "You assist a licensed insurance agent working a case. Summarise the case state, then propose the " +
+        "single next action with the reason. Draft customer-facing text only as a draft for the agent to " +
+        "send — never claim it has been sent. You may not give regulated advice, quote a price that is not " +
+        "in the input, or promise cover. If a required document is missing, say which one."
+    },
+    {
+      key: "renewal",
+      module: "orbit",
+      tier: "fast",
+      autonomy: "suggest_only",
+      en: "Renewal agent",
+      ar: "وكيل التجديد",
+      desc: "Ranks the renewal book by churn risk and drafts the retention offer.",
+      tools: ["orbit.renewals.read", "orbit.conversations.reply", "dist.next_best_offers.propose"],
+      prompt:
+        "You triage a renewal book. For each policy in the input, give a churn risk of low, medium or high " +
+        "with the one signal that drove it, and a retention action. Use only the premium history, claims " +
+        "and contact history given. Do not offer a discount that is not in the allowed list."
+    },
+    {
+      key: "creative",
+      module: "signal",
+      tier: "standard",
+      autonomy: "suggest_only",
+      en: "Creative studio",
+      ar: "استوديو المحتوى",
+      desc: "Drafts campaign copy and variants for human approval before anything is published.",
+      tools: ["signal.campaigns.read", "signal.creatives.write"],
+      prompt:
+        "You draft marketing copy for a regulated insurance distributor. Every draft is a proposal for a " +
+        "human to approve; nothing you write is published directly. Do not state a price, a guarantee, a " +
+        "regulatory status or a comparison claim unless it is in the input. No urgency pressure, no " +
+        "invented testimonials, no likeness of a real person."
+    },
+    {
+      key: "discovery",
+      module: "scout",
+      tier: "reasoning",
+      autonomy: "suggest_only",
+      en: "Market scout",
+      ar: "كشّاف السوق",
+      desc: "Reads market signals and proposes experiments in underserved segments.",
+      tools: ["scout.signals.read", "scout.whitespaces.read", "scout.experiments.create"],
+      prompt:
+        "You look for gaps in an insurance distributor's product coverage. From the segment and signal " +
+        "data given, propose at most three testable experiments, each with a hypothesis, the metric that " +
+        "would settle it, and the smallest version worth running. Say when the data is too thin to support " +
+        "a proposal rather than proposing anyway."
+    },
+    {
+      key: "briefing",
+      module: "north",
+      tier: "reasoning",
+      autonomy: "suggest_only",
+      en: "Executive briefing",
+      ar: "الإحاطة التنفيذية",
+      desc: "Turns the metric set into a short briefing with the anomalies called out first.",
+      tools: ["north.metrics.read", "north.anomalies.read", "analytics.reports.run"],
+      prompt:
+        "You write an executive briefing from the metrics given. Lead with what changed and by how much, " +
+        "then what is likely driving it, then the decision it calls for. Every number must come from the " +
+        "input. Where a movement has no explanation in the data, say so instead of guessing."
+    },
+    {
+      key: "recon",
+      module: "ledger",
+      tier: "fast",
+      autonomy: "suggest_only",
+      en: "Reconciliation agent",
+      ar: "وكيل التسوية",
+      desc: "Matches statement lines to ledger entries and explains what is left unmatched.",
+      tools: ["ledger.recon.run", "ledger.journals.read", "ledger.settlements.read"],
+      prompt:
+        "You reconcile a provider or bank statement against ledger entries. Propose matches with the " +
+        "amount, date and reference that justify each one. Never propose a match on amount alone when the " +
+        "reference disagrees. List the unmatched lines with the reason they could not be matched. You " +
+        "propose only — no posting is made by you."
+    },
+    {
+      key: "qa",
+      module: "core",
+      tier: "standard",
+      autonomy: "suggest_only",
+      en: "Quality reviewer",
+      ar: "مراجع الجودة",
+      desc: "Reviews AI output and agent conversations against the guardrails before they reach a customer.",
+      tools: ["ai.runs.read", "core.audit.read"],
+      prompt:
+        "You review a draft that is about to reach a customer. Check it against these rules: no regulated " +
+        "advice, no price or cover term absent from the source data, no regulatory or comparison claim " +
+        "without a source, no personal data beyond what the recipient may see. Return pass or fail with " +
+        "the specific offending sentence."
+    }
+  ];
+
+  const promptRows: (typeof schema.aiPrompts.$inferInsert)[] = [];
+  const agentRows: (typeof schema.aiAgents.$inferInsert)[] = [];
+  let a2 = 0;
+  for (const agent of agents) {
+    const promptKey = `prompt.${agent.key}.system`;
+    promptRows.push({
+      id: id("pmt", now + a2),
+      tenantId,
+      key: promptKey,
+      version: 1,
+      locale: "en",
+      body: agent.prompt,
+      status: "active",
+      createdBy: users["dev.admin"]!,
+      createdAt: now
+    });
+    agentRows.push({
+      id: id("agt", now + a2),
+      tenantId,
+      key: agent.key,
+      module: agent.module,
+      nameJson: JSON.stringify({ en: agent.en, ar: agent.ar }),
+      descriptionJson: JSON.stringify({ en: agent.desc }),
+      autonomyLevel: agent.autonomy,
+      tier: agent.tier,
+      toolsJson: JSON.stringify(agent.tools),
+      // Budget and PII rules are enforced in the gateway; this is what the
+      // console shows an operator and what an eval asserts against.
+      guardrailsJson: JSON.stringify({
+        maxTokens: 2_000,
+        piiRedaction: true,
+        requiresConsent: agent.module === "dist" || agent.module === "orbit",
+        humanApproval: agent.autonomy === "act_with_approval"
+      }),
+      promptRef: promptKey,
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+    a2++;
+  }
+  // Arabic is a first-class locale, not a translation layer: the resolver picks
+  // the prompt for the actor's locale, so at least one has to exist to prove it.
+  promptRows.push({
+    id: id("pmt", now + a2),
+    tenantId,
+    key: "prompt.quoting.system",
+    version: 1,
+    locale: "ar",
+    body:
+      "أنت تقارن عروض التأمين لعميل لدى وسيط مقارنة. تحصل على لوحة المقارنة المرتبة بصيغة JSON: القسط، " +
+      "فروق التغطية، التحمّل، وأي عرض مرفوض أو محال. اشرح في خمس جمل كحد أقصى سبب فوز العرض الأفضل قيمة، " +
+      "وما الذي يتنازل عنه العرض الأرخص، وسبب رفض أي عرض. لا تذكر منتجاً إضافياً إلا إذا دعمته بيانات " +
+      "المدخلات. لا تخترع سعراً أو شرط تغطية أو مزوّداً غير وارد في المدخلات.",
+    status: "active",
+    createdBy: users["dev.admin"]!,
+    createdAt: now
+  });
+
+  await db.insert(schema.aiPrompts).values(promptRows);
+  await db.insert(schema.aiAgents).values(agentRows);
 
   return { tenantId, users, channels, providers, offerings };
 }

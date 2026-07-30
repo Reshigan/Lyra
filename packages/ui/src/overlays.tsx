@@ -1,0 +1,493 @@
+/**
+ * Overlays — Dialog, Drawer, Toast, Tooltip, Menu, Popover, CommandBar.
+ * All Radix-backed: focus trap, escape/dismiss, and portal behaviour come from
+ * the primitive; we only supply Constellation surfaces.
+ *
+ * docs/15 §4: AI never opens a modal. These are for human-initiated work.
+ */
+import * as React from "react";
+import {
+  Dialog as RDialog,
+  DropdownMenu as RMenu,
+  Popover as RPopover,
+  Toast as RToast,
+  Tooltip as RTooltip,
+  VisuallyHidden as RVisuallyHidden
+} from "radix-ui";
+import { cn, focusRing } from "./cn.js";
+import { Input } from "./primitives.js";
+
+const overlayScrim =
+  "fixed inset-0 z-40 bg-ink-900/70 data-[state=open]:animate-in data-[state=open]:fade-in";
+
+/* -------------------------------------------------------------------------- */
+/* Dialog (Modal)                                                              */
+/* -------------------------------------------------------------------------- */
+
+export interface DialogProps {
+  open?: boolean;
+  defaultOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** Required: it is the dialog's accessible name. */
+  title: string;
+  /** Strongly recommended; irreversible actions must state the consequence. */
+  description?: React.ReactNode;
+  trigger?: React.ReactNode;
+  footer?: React.ReactNode;
+  size?: "sm" | "md" | "lg";
+  children?: React.ReactNode;
+}
+
+const dialogSizes = { sm: "max-w-md", md: "max-w-xl", lg: "max-w-3xl" } as const;
+
+export function Dialog({
+  open,
+  defaultOpen,
+  onOpenChange,
+  title,
+  description,
+  trigger,
+  footer,
+  size = "md",
+  children
+}: DialogProps) {
+  return (
+    <RDialog.Root
+      {...(open !== undefined ? { open } : {})}
+      {...(defaultOpen !== undefined ? { defaultOpen } : {})}
+      {...(onOpenChange ? { onOpenChange } : {})}
+    >
+      {trigger ? <RDialog.Trigger asChild>{trigger}</RDialog.Trigger> : null}
+      <RDialog.Portal>
+        <RDialog.Overlay className={overlayScrim} />
+        <RDialog.Content
+          className={cn(
+            "fixed top-1/2 z-50 w-[calc(100%-2rem)] -translate-y-1/2 rounded-lg border border-border bg-surface-2 p-6 text-start shadow-raised",
+            "start-1/2 -translate-x-1/2 rtl:translate-x-1/2",
+            dialogSizes[size]
+          )}
+        >
+          <RDialog.Title className="font-display text-18 font-medium text-text">
+            {title}
+          </RDialog.Title>
+          {description ? (
+            <RDialog.Description className="mt-2 font-ui text-14 text-muted">
+              {description}
+            </RDialog.Description>
+          ) : (
+            <RVisuallyHidden.Root>
+              <RDialog.Description>{title}</RDialog.Description>
+            </RVisuallyHidden.Root>
+          )}
+          <div className="mt-4">{children}</div>
+          {footer ? <div className="mt-6 flex justify-end gap-2">{footer}</div> : null}
+          <RDialog.Close
+            aria-label="Close"
+            className={cn(
+              "absolute top-4 end-4 rounded-sm p-1 text-subtle hover:text-text",
+              focusRing
+            )}
+          >
+            <span aria-hidden="true">✕</span>
+          </RDialog.Close>
+        </RDialog.Content>
+      </RDialog.Portal>
+    </RDialog.Root>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Drawer — side sheets. `side` is logical, so it mirrors under RTL.           */
+/* -------------------------------------------------------------------------- */
+
+export interface DrawerProps extends Omit<DialogProps, "size"> {
+  side?: "inline-start" | "inline-end" | "block-end";
+  width?: string;
+}
+
+const drawerSides = {
+  "inline-start": "inset-block-0 start-0 h-full border-e",
+  "inline-end": "inset-block-0 end-0 h-full border-s",
+  "block-end": "inset-inline-0 bottom-0 w-full border-t rounded-t-lg"
+} as const;
+
+export function Drawer({
+  open,
+  defaultOpen,
+  onOpenChange,
+  title,
+  description,
+  trigger,
+  footer,
+  side = "inline-end",
+  width = "26rem",
+  children
+}: DrawerProps) {
+  return (
+    <RDialog.Root
+      {...(open !== undefined ? { open } : {})}
+      {...(defaultOpen !== undefined ? { defaultOpen } : {})}
+      {...(onOpenChange ? { onOpenChange } : {})}
+    >
+      {trigger ? <RDialog.Trigger asChild>{trigger}</RDialog.Trigger> : null}
+      <RDialog.Portal>
+        <RDialog.Overlay className={overlayScrim} />
+        <RDialog.Content
+          style={side === "block-end" ? undefined : { inlineSize: width, maxInlineSize: "100%" }}
+          className={cn(
+            "fixed z-50 flex flex-col border-border bg-surface-1 text-start shadow-raised",
+            drawerSides[side]
+          )}
+        >
+          <header className="flex items-start justify-between gap-4 border-b border-border p-5">
+            <div>
+              <RDialog.Title className="font-display text-16 font-medium text-text">
+                {title}
+              </RDialog.Title>
+              {description ? (
+                <RDialog.Description className="mt-1 font-ui text-13 text-subtle">
+                  {description}
+                </RDialog.Description>
+              ) : (
+                <RVisuallyHidden.Root>
+                  <RDialog.Description>{title}</RDialog.Description>
+                </RVisuallyHidden.Root>
+              )}
+            </div>
+            <RDialog.Close
+              aria-label="Close"
+              className={cn("rounded-sm p-1 text-subtle hover:text-text", focusRing)}
+            >
+              <span aria-hidden="true">✕</span>
+            </RDialog.Close>
+          </header>
+          <div className="flex-1 overflow-y-auto p-5">{children}</div>
+          {footer ? (
+            <footer className="flex justify-end gap-2 border-t border-border p-5">{footer}</footer>
+          ) : null}
+        </RDialog.Content>
+      </RDialog.Portal>
+    </RDialog.Root>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Tooltip                                                                     */
+/* -------------------------------------------------------------------------- */
+
+export interface TooltipProps {
+  content: React.ReactNode;
+  children: React.ReactNode;
+  side?: "top" | "bottom";
+  delayDuration?: number;
+}
+
+/**
+ * A tooltip is never the only source of a label (docs/07 §5) — controls carry
+ * their own accessible name; this adds detail, not identity.
+ */
+export function Tooltip({ content, children, side = "top", delayDuration = 200 }: TooltipProps) {
+  return (
+    <RTooltip.Provider delayDuration={delayDuration}>
+      <RTooltip.Root>
+        <RTooltip.Trigger asChild>{children}</RTooltip.Trigger>
+        <RTooltip.Portal>
+          <RTooltip.Content
+            side={side}
+            sideOffset={6}
+            className="z-50 max-w-72 rounded-md border border-border bg-surface-3 px-2.5 py-1.5 font-ui text-12 text-text shadow-glow"
+          >
+            {content}
+            <RTooltip.Arrow className="fill-surface-3" />
+          </RTooltip.Content>
+        </RTooltip.Portal>
+      </RTooltip.Root>
+    </RTooltip.Provider>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Popover                                                                     */
+/* -------------------------------------------------------------------------- */
+
+export interface PopoverProps {
+  trigger: React.ReactNode;
+  /** Accessible name for the popover surface. */
+  label: string;
+  children: React.ReactNode;
+  side?: "top" | "bottom";
+  className?: string;
+}
+
+export function Popover({ trigger, label, children, side = "bottom", className }: PopoverProps) {
+  return (
+    <RPopover.Root>
+      <RPopover.Trigger asChild>{trigger}</RPopover.Trigger>
+      <RPopover.Portal>
+        <RPopover.Content
+          side={side}
+          sideOffset={6}
+          aria-label={label}
+          className={cn(
+            "z-50 w-80 rounded-md border border-border bg-surface-2 p-4 text-start font-ui text-14 text-muted shadow-glow",
+            className
+          )}
+        >
+          {children}
+        </RPopover.Content>
+      </RPopover.Portal>
+    </RPopover.Root>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Menu                                                                        */
+/* -------------------------------------------------------------------------- */
+
+export interface MenuItem {
+  id: string;
+  label: string;
+  onSelect?: () => void;
+  disabled?: boolean;
+  tone?: "default" | "danger";
+  /** Decorative only — the label is always rendered. */
+  icon?: React.ReactNode;
+  shortcut?: string;
+}
+
+export interface MenuProps {
+  trigger: React.ReactNode;
+  items: MenuItem[];
+  /** Accessible name for the menu. */
+  label: string;
+}
+
+export function Menu({ trigger, items, label }: MenuProps) {
+  return (
+    <RMenu.Root>
+      <RMenu.Trigger asChild>{trigger}</RMenu.Trigger>
+      <RMenu.Portal>
+        <RMenu.Content
+          aria-label={label}
+          sideOffset={6}
+          align="start"
+          className="z-50 min-w-52 rounded-md border border-border bg-surface-2 p-1 text-start shadow-glow"
+        >
+          {items.map((item) => (
+            <RMenu.Item
+              key={item.id}
+              {...(item.disabled ? { disabled: true } : {})}
+              {...(item.onSelect ? { onSelect: item.onSelect } : {})}
+              className={cn(
+                "flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-2 font-ui text-14",
+                "data-[highlighted]:bg-surface-3 data-[highlighted]:outline-none data-[disabled]:opacity-40",
+                item.tone === "danger" ? "text-danger" : "text-muted data-[highlighted]:text-text"
+              )}
+            >
+              {item.icon ? <span aria-hidden="true">{item.icon}</span> : null}
+              <span className="flex-1">{item.label}</span>
+              {item.shortcut ? (
+                <kbd className="font-mono text-11 text-subtle">{item.shortcut}</kbd>
+              ) : null}
+            </RMenu.Item>
+          ))}
+        </RMenu.Content>
+      </RMenu.Portal>
+    </RMenu.Root>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Toast                                                                       */
+/* -------------------------------------------------------------------------- */
+
+export interface ToastMessage {
+  id: string;
+  title: string;
+  description?: string;
+  tone?: "neutral" | "success" | "danger" | "info";
+  /** Errors carry a copyable trace id (docs/07 §5). */
+  traceId?: string;
+  duration?: number;
+}
+
+interface ToastApi {
+  toast: (message: Omit<ToastMessage, "id"> & { id?: string }) => void;
+  dismiss: (id: string) => void;
+}
+
+const ToastContext = React.createContext<ToastApi | null>(null);
+
+export function useToast(): ToastApi {
+  const ctx = React.useContext(ToastContext);
+  if (!ctx) throw new Error("useToast must be used inside <ToastProvider>");
+  return ctx;
+}
+
+const toastTones = {
+  neutral: "border-border",
+  success: "border-success/50",
+  danger: "border-danger/50",
+  info: "border-info/50"
+} as const;
+
+export function ToastProvider({ children }: { children: React.ReactNode }) {
+  const [messages, setMessages] = React.useState<ToastMessage[]>([]);
+  const api = React.useMemo<ToastApi>(
+    () => ({
+      toast: (m) =>
+        setMessages((prev) => [...prev, { ...m, id: m.id ?? `t${Date.now()}${prev.length}` }]),
+      dismiss: (id) => setMessages((prev) => prev.filter((m) => m.id !== id))
+    }),
+    []
+  );
+
+  return (
+    <ToastContext.Provider value={api}>
+      <RToast.Provider swipeDirection="right">
+        {children}
+        {messages.map((m) => (
+          <RToast.Root
+            key={m.id}
+            duration={m.duration ?? 6000}
+            onOpenChange={(open) => {
+              if (!open) api.dismiss(m.id);
+            }}
+            className={cn(
+              "rounded-md border bg-surface-2 p-4 text-start shadow-raised",
+              toastTones[m.tone ?? "neutral"]
+            )}
+          >
+            <RToast.Title className="font-ui text-14 font-medium text-text">{m.title}</RToast.Title>
+            {m.description ? (
+              <RToast.Description className="mt-1 font-ui text-13 text-muted">
+                {m.description}
+              </RToast.Description>
+            ) : null}
+            {m.traceId ? (
+              <p className="mt-2 font-mono text-11 text-subtle">
+                trace <span>{m.traceId}</span>
+              </p>
+            ) : null}
+            <RToast.Close
+              aria-label="Dismiss"
+              className={cn("absolute top-2 end-2 rounded-sm p-1 text-subtle hover:text-text", focusRing)}
+            >
+              <span aria-hidden="true">✕</span>
+            </RToast.Close>
+          </RToast.Root>
+        ))}
+        <RToast.Viewport className="fixed bottom-0 end-0 z-50 m-4 flex w-88 max-w-[calc(100vw-2rem)] flex-col gap-2" />
+      </RToast.Provider>
+    </ToastContext.Provider>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* CommandBar (⌘K) — docs/07 §3                                                */
+/* -------------------------------------------------------------------------- */
+
+export interface CommandItem {
+  id: string;
+  label: string;
+  /** Group heading, e.g. "Entities", "Actions", "Docs". */
+  group?: string;
+  hint?: string;
+  onSelect: () => void;
+}
+
+export interface CommandBarProps {
+  items: CommandItem[];
+  placeholder?: string;
+  /** Accessible name for the palette. */
+  label?: string;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}
+
+/**
+ * Global palette. Opens on ⌘K / Ctrl-K when uncontrolled. Results are a plain
+ * listbox of buttons: native tab order and Enter already do the right thing.
+ */
+export function CommandBar({
+  items,
+  placeholder = "Search entities, actions, docs…",
+  label = "Command palette",
+  open,
+  onOpenChange
+}: CommandBarProps) {
+  const [internalOpen, setInternalOpen] = React.useState(false);
+  const isOpen = open ?? internalOpen;
+  const setOpen = React.useCallback(
+    (next: boolean) => {
+      setInternalOpen(next);
+      onOpenChange?.(next);
+    },
+    [onOpenChange]
+  );
+  const [query, setQuery] = React.useState("");
+
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() === "k" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setOpen(!isOpen);
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [isOpen, setOpen]);
+
+  const q = query.trim().toLowerCase();
+  const results = q ? items.filter((i) => i.label.toLowerCase().includes(q)) : items;
+
+  return (
+    <RDialog.Root open={isOpen} onOpenChange={setOpen}>
+      <RDialog.Portal>
+        <RDialog.Overlay className={overlayScrim} />
+        <RDialog.Content
+          aria-label={label}
+          className="fixed top-24 start-1/2 z-50 w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2 rounded-lg border border-border bg-surface-2 text-start shadow-raised rtl:translate-x-1/2"
+        >
+          <RVisuallyHidden.Root>
+            <RDialog.Title>{label}</RDialog.Title>
+            <RDialog.Description>{placeholder}</RDialog.Description>
+          </RVisuallyHidden.Root>
+          <div className="border-b border-border p-3">
+            <Input
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.currentTarget.value)}
+              placeholder={placeholder}
+              aria-label={placeholder}
+            />
+          </div>
+          <ul className="max-h-96 overflow-y-auto p-2" role="listbox" aria-label={label}>
+            {results.map((item) => (
+              <li key={item.id} role="option" aria-selected={false}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    item.onSelect();
+                    setOpen(false);
+                  }}
+                  className={cn(
+                    "flex w-full items-center justify-between gap-3 rounded-sm px-3 py-2 text-start font-ui text-14 text-muted",
+                    "hover:bg-surface-3 hover:text-text",
+                    focusRing
+                  )}
+                >
+                  <span>{item.label}</span>
+                  {item.hint ? <span className="font-mono text-11 text-subtle">{item.hint}</span> : null}
+                </button>
+              </li>
+            ))}
+            {results.length === 0 ? (
+              <li className="px-3 py-6 text-center font-ui text-13 text-subtle">No matches.</li>
+            ) : null}
+          </ul>
+        </RDialog.Content>
+      </RDialog.Portal>
+    </RDialog.Root>
+  );
+}

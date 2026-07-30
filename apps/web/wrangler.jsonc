@@ -1,0 +1,30 @@
+{
+  // Deploy targets: `wrangler deploy` for production, `--env staging` for staging.
+  // The shell holds no secrets — it never talks to a provider, only to the API
+  // over a session cookie the browser owns.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "lyra-web",
+  "main": "./workers/app.ts",
+  "compatibility_date": "2025-01-15",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "observability": { "enabled": true },
+  "assets": { "directory": "./build/client/" },
+  "vars": {
+    "ENVIRONMENT": "production",
+    "API_ORIGIN": "https://api.lyra.vantax.co.za",
+    "SESSION_COOKIE": "lyra_session"
+  },
+  "routes": [{ "pattern": "lyra.vantax.co.za", "custom_domain": true }],
+  "env": {
+    "staging": {
+      "name": "lyra-web-staging",
+      "vars": {
+        "ENVIRONMENT": "staging",
+        "API_ORIGIN": "https://api-staging.lyra.vantax.co.za",
+        "SESSION_COOKIE": "lyra_session"
+      },
+      "routes": [{ "pattern": "staging.lyra.vantax.co.za", "custom_domain": true }]
+    }
+  }
+}

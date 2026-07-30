@@ -40,7 +40,7 @@ const LoginBody = z.object({
 const DUMMY_HASH = "$scrypt$n=16384,r=8,p=1$0000000000000000000000$0000000000000000000000000000000000000000000";
 
 export function db(env: Env) {
-  return makeDb(env.DB);
+  return env.DB_CLIENT ?? makeDb(env.DB);
 }
 
 /* ------------------------------------------------------------------ actor */

@@ -3,9 +3,11 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { schema } from "@lyra/db";
 import {
+  APPROVAL_POLICIES,
   audit,
   badRequest,
   can,
+  decide,
   expand,
   hashPassword,
   notFound,
@@ -171,9 +173,13 @@ meRoutes.delete("/sessions/:id", async (c) => {
 /** The caller's work queue: approvals they can decide, unread notifications. */
 meRoutes.get("/inbox", async (c) => {
   const ctx = ctxOf(c);
-  const approvals = (await pendingApprovals(ctx)).filter((a) =>
-    can(ctx.actor, `${a.module}:approval:decide`, { tenantId: ctx.tenantId, module: a.module })
-  );
+  // The permission to decide comes from the policy, not from the module name:
+  // there is no `axis:approval:decide` in the vocabulary, so deriving one would
+  // filter every approval out and leave the queue permanently empty.
+  const approvals = (await pendingApprovals(ctx)).filter((a) => {
+    const p = APPROVAL_POLICIES[a.policyKey];
+    return p ? can(ctx.actor, p.decide, { tenantId: ctx.tenantId, module: p.module }) : false;
+  });
   const notifications = await ctx.db
     .select()
     .from(schema.notifications)
@@ -187,6 +193,19 @@ meRoutes.get("/inbox", async (c) => {
     .orderBy(desc(schema.notifications.createdAt))
     .limit(50);
   return c.json({ approvals, notifications, counts: { approvals: approvals.length, notifications: notifications.length } });
+});
+
+/**
+ * Decide an approval from the inbox. Without this an approval-gated action —
+ * a price match, a payout, an unmasked export — can be raised over the API but
+ * never cleared, so the flow dead-ends. The permission check, the dual-control
+ * rule and the audit row all live in `decide()`; this is only the transport.
+ */
+meRoutes.post("/approvals/:id/decide", async (c) => {
+  const ctx = ctxOf(c);
+  const input = await body(c, z.object({ decision: z.enum(["approved", "rejected"]), reason: z.string().max(2000).optional() }));
+  const row = await decide(ctx, c.req.param("id"), input.decision, input.reason);
+  return c.json(row);
 });
 
 meRoutes.post("/notifications/:id/read", async (c) => {
@@ -219,8 +238,10 @@ export interface NavItem {
  * decoration beside it, never instead of it. An icon-only rail costs every user
  * a hover to read and a screen-reader user the label entirely.
  */
-const NAV: (NavItem & { permission: string })[] = [
-  { labelKey: "nav.home", href: "/", icon: "home", permission: "core:tenants:read" },
+const NAV: (NavItem & { permission?: string })[] = [
+  // Home is ungated: every signed-in actor has somewhere to land, and a nav
+  // whose first item is missing reads as a broken app rather than a scoped one.
+  { labelKey: "nav.home", href: "/", icon: "home" },
   { labelKey: "nav.axis", href: "/axis", icon: "shield", permission: "axis:cases:read" },
   { labelKey: "nav.orbit", href: "/orbit", icon: "orbit", permission: "orbit:conversations:read" },
   { labelKey: "nav.signal", href: "/signal", icon: "megaphone", permission: "signal:campaigns:read" },
@@ -234,9 +255,9 @@ const NAV: (NavItem & { permission: string })[] = [
 ];
 
 function navFor(ctx: Ctx): NavItem[] {
-  return NAV.filter((item) => can(ctx.actor, item.permission, { tenantId: ctx.tenantId })).map(
-    ({ permission: _p, ...item }) => item
-  );
+  return NAV.filter(
+    (item) => !item.permission || can(ctx.actor, item.permission, { tenantId: ctx.tenantId })
+  ).map(({ permission: _p, ...item }) => item);
 }
 
 function safe(raw: string | null): unknown {

@@ -1,0 +1,35 @@
+{
+  "name": "@lyra/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "react-router dev",
+    "build": "react-router build",
+    "deploy": "pnpm build && wrangler deploy -c build/server/wrangler.json",
+    "deploy:staging": "CLOUDFLARE_ENV=staging pnpm build && wrangler deploy -c build/server/wrangler.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@lyra/ui": "workspace:*",
+    "isbot": "^5.1.17",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router": "^7.18.2"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.48.0",
+    "@lyra/config": "workspace:*",
+    "@react-router/dev": "^7.18.2",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^22",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.7.2",
+    "vite": "^7.1.0",
+    "vitest": "^3.2.7",
+    "wrangler": "^4.115.0"
+  }
+}

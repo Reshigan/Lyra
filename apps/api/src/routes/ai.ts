@@ -285,7 +285,10 @@ aiRoutes.post("/budget/limits", async (c) => {
 /** The kill switch. One row, immediate, audited — docs/15 §7 requires it reachable. */
 aiRoutes.post("/agents/:key/pause", async (c) => {
   const ctx = ctxOf(c);
-  require_(ctx.actor, "ai:agents:write", { tenantId: ctx.tenantId, module: "ai" });
+  // Stopping an agent is the killswitch, not an edit: compliance holds
+  // `ai:agents:pause` precisely so they can pull it mid-incident without also
+  // holding the write permission that would let them reconfigure the agent.
+  require_(ctx.actor, "ai:agents:pause", { tenantId: ctx.tenantId, module: "ai" });
   const input = await body(c, z.object({ reason: z.string().min(3).max(500) }));
   const agent = await agentByKey(ctx, c.req.param("key"));
   await ctx.db

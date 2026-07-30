@@ -1,6 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { id as newId, schema } from "@lyra/db";
-import { approvalRequired, badRequest, conflict, internal, notFound } from "./errors.js";
+import { approvalRequired, badRequest, conflict, forbidden, internal, notFound } from "./errors.js";
 import { audit } from "./audit.js";
 import { emit, type MODULES } from "./events.js";
 import { actorRef, type Ctx } from "./context.js";
@@ -208,7 +208,10 @@ export async function decide(
   if (!p) throw internal(`unknown approval policy ${row.policyKey}`);
 
   const subject = { tenantId: ctx.tenantId, module: p.module };
-  if (!can(ctx.actor, p.decide, subject)) throw approvalRequired(p.key, row.id);
+  // Lacking the deciding permission is a refusal, not a request for another
+  // approval: answering "approval_required" here would send the caller round a
+  // loop that can never terminate.
+  if (!can(ctx.actor, p.decide, subject)) throw forbidden(p.decide);
 
   const context = row.contextJson ? (JSON.parse(row.contextJson) as { dualControl?: boolean }) : {};
   const decider = actorRef(ctx);

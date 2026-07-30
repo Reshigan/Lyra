@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { PolicyJson, EntitlementsJson, schema } from "@lyra/db";
-import { pruneIdempotency } from "@lyra/core";
+import { notFound, pruneIdempotency } from "@lyra/core";
 import { drainOutbox } from "./dispatch.js";
 import { authRoutes, ctxFor, db, pruneSessions } from "./auth.js";
 import { mountAll } from "./crud.js";
@@ -48,7 +48,9 @@ for (const [module, resources] of Object.entries(BY_MODULE)) {
   mountAll(app.basePath(`/v1/${module}`) as unknown as Hono<App>, resources);
 }
 
-app.notFound((c) => onError(new Error("not found"), c));
+// A route that does not exist is a 404, not a 500. This is the answer a client
+// gets when it POSTs to a read-only resource, so it has to be the honest one.
+app.notFound((c) => onError(notFound(c.req.path), c));
 
 export default {
   fetch: app.fetch,

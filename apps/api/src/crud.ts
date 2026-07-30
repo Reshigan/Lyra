@@ -15,6 +15,7 @@ import {
   require_,
   scoped,
   scopedWithDeleted,
+  sha256Hex,
   withIdempotency,
   type Ctx,
   type MODULES,
@@ -293,8 +294,11 @@ export function crudRouter(r: Resource): Hono<App> {
         const rowId = newId(r.idPrefix, ctx.now);
         if (r.approval?.create) {
           await gate(ctx, {
+            // The row does not exist yet, so the subject is the request, not the
+            // id: a fresh id per attempt would raise a new approval every retry
+            // and the approved one could never be spent.
+            subjectRef: `${r.path}:new:${await sha256Hex(JSON.stringify(input))}`,
             policyKey: r.approval.create,
-            subjectRef: `${r.path}:${rowId}`,
             ...(r.approval.amountField && typeof values[r.approval.amountField] === "number"
               ? { amountMinor: values[r.approval.amountField] as number }
               : {})

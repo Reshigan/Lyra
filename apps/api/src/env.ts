@@ -1,3 +1,4 @@
+import type { Db } from "@lyra/db";
 import type { Ctx } from "@lyra/core";
 import type { Gateway } from "@lyra/model-gateway";
 
@@ -8,6 +9,12 @@ import type { Gateway } from "@lyra/model-gateway";
  */
 export interface Env {
   DB: D1Database;
+  /**
+   * A ready-made client, used instead of `DB` when there is no D1 to bind: the
+   * on-prem adapter puts a libsql client here, and the journey tests put an
+   * in-memory one, so both drive the real handlers rather than a copy of them.
+   */
+  DB_CLIENT?: Db;
   /** Workers AI. Default provider for every tier until a tenant overrides it. */
   AI?: { run(model: string, input: unknown): Promise<unknown> };
   KV?: KVNamespace;

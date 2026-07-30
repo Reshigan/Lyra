@@ -34,6 +34,7 @@ const HAND_WRITTEN: Op[] = [
   { method: "get", path: "/v1/me/sessions", summary: "The caller's active sessions, newest first", tag: "me" },
   { method: "delete", path: "/v1/me/sessions/{id}", summary: "Revoke one of the caller's sessions", tag: "me" },
   { method: "get", path: "/v1/me/inbox", summary: "Notifications and approvals waiting on the caller", tag: "me" },
+  { method: "post", path: "/v1/me/approvals/{id}/decide", summary: "Approve or reject a pending approval (permission comes from the approval policy)", tag: "me", requestBody: true },
   { method: "post", path: "/v1/me/notifications/{id}/read", summary: "Mark one of the caller's notifications read", tag: "me" },
 
   { method: "post", path: "/v1/dist/quote-requests/shop", summary: "Shop one risk to every eligible offering and collect provider quotes", permission: "dist:quote_requests:create", tag: "dist", requestBody: true },

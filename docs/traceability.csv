@@ -1,7 +1,7 @@
 req_id,requirement,priority,milestone,verify_method,integration_only,spec_ref,test_ref,evidence_ref,status,verified_by,verified_at
 PLAT-001,Every persisted table carries `tenant_id`; no table exists without it,M,M0,T,no,,,,not_started,,
-PLAT-002,All data access passes the tenancy guard (`withTenant`/`tenantWhere`); a lint rule fails builds on raw cross-tenant queries,M,M0,T,no,,,,not_started,,
-PLAT-003,A cross-tenant read attempt returns 403/404 and raises `CrossTenantError` internally; never leaks existence,M,M0,T,no,,,,not_started,,
+PLAT-002,All data access passes the tenancy guard (`withTenant`/`tenantWhere`); a lint rule fails builds on raw cross-tenant queries,M,M0,T,no,docs/02 §3,apps/api/src/api.test.ts::scopes every query to the caller's tenant,apps/api/src/engines/report.ts,verified,build,2026-07-30
+PLAT-003,A cross-tenant read attempt returns 403/404 and raises `CrossTenantError` internally; never leaks existence,M,M0,T,no,docs/02 §3,packages/core/src/rbac.test.ts::denies across tenants before looking at permissions;packages/core/src/core.test.ts::keeps another tenant's audit rows out of the chain,"packages/core/src/rbac.ts, audit.ts",verified,build,2026-07-30
 PLAT-004,"Tenant resolution by hostname via registry (KV) → tenant record with brand, policy, entitlements, db binding",M,M1,T,no,,,,not_started,,
 PLAT-005,Enterprise/regulated tenants can be provisioned on a dedicated database with identical schema and zero code change,M,M1,"T,D",no,,,,not_started,,
 PLAT-006,Entitlements gate module access at the gateway AND drive UI visibility from the same object,M,M1,T,no,,,,not_started,,
@@ -16,14 +16,14 @@ PLAT-015,OAuth2 client-credentials for partner applications,M,M3,T,no,,,,not_sta
 PLAT-016,RBAC permissions expressed as `module:resource:action` with wildcard support,M,M0,T,no,,,,not_started,,
 PLAT-017,Every route enforces authorization via a single `can()` path; no ad-hoc checks,M,M1,T,no,,,,not_started,,
 PLAT-018,Auto-generated authz matrix test asserts every route × role → expected status,M,M1,T,no,,,,not_started,,
-PLAT-019,PII fields masked by default; reveal requires `core:pii:view` and writes an audit entry,M,M1,T,no,,,,not_started,,
+PLAT-019,PII fields masked by default; reveal requires `core:pii:view` and writes an audit entry,M,M1,T,no,docs/12 §4,packages/core/src/rbac.test.ts::masks PII behind core:pii:view;packages/core/src/core.test.ts::masks for actors without core:pii:view,packages/core/src/pii.ts,verified,build,2026-07-30
 PLAT-020,Staff admin surfaces additionally protected by network/identity gate (CF Access / OIDC forward-auth),M,M1,D,no,,,,not_started,,
 PLAT-021,Session revocation (single session and all sessions) available to user and admin,S,M1,T,no,,,,not_started,,
 PLAT-022,"Impersonation requires tenant-admin consent, shows a persistent banner, and is fully audited",M,M1,"T,D",no,,,,not_started,,
 PLAT-030,"Unified customer record (person & business) with bilingual names, identifiers, tags, computed value/risk",M,M1,T,no,,,,not_started,,
-PLAT-031,Consent stored as an immutable ledger; current state derived as latest per purpose,M,M1,T,no,,,,not_started,,
+PLAT-031,Consent stored as an immutable ledger; current state derived as latest per purpose,M,M1,T,no,docs/03 §5,"packages/core/src/core.test.ts::gates purposes and channels, and honours expiry",core_consents ledger,verified,build,2026-07-30
 PLAT-032,"Consent purposes at minimum: marketing, profiling, data sharing, cross-border",M,M1,T,no,,,,not_started,,
-PLAT-033,"Every outbound message, profiling job, audience build and aggregate checks consent at runtime",M,M1,T,no,,,,not_started,,
+PLAT-033,"Every outbound message, profiling job, audience build and aggregate checks consent at runtime",M,M1,T,no,docs/03 §5,apps/api/src/journeys.test.ts::J-C1 shop without consent is refused,apps/api/src/routes/dist.ts,verified,build,2026-07-30
 PLAT-034,Consent withdrawal propagates to all suppression points in < 15 minutes,M,M1,"T,M",no,,,,not_started,,
 PLAT-035,"Channel opt-ins tracked separately per channel (email, WhatsApp, SMS, voice)",M,M1,T,no,,,,not_started,,
 PLAT-036,Customer-facing preference centre allows self-service consent management,S,M3,T,no,,,,not_started,,
@@ -35,8 +35,8 @@ PLAT-046,"Files carry checksum, PII level, subject reference and retention class
 PLAT-047,Uploads are content-type sniffed and malware-scanned before processing,M,M1,T,no,,,,not_started,,
 PLAT-048,Document viewer supports PDF and images with extraction overlay,M,M2,D,no,,,,not_started,,
 PLAT-050,"Event envelope `{id, ts, tenant_id, module, type, actor, subject, data, v}` published for all catalogued events",M,M1,T,no,,,,not_started,,
-PLAT-051,Consumers are idempotent via an inbox dedupe on event id,M,M1,T,no,,,,not_started,,
-PLAT-052,Reliable publish via outbox; no event lost on transaction failure,M,M1,T,no,,,,not_started,,
+PLAT-051,Consumers are idempotent via an inbox dedupe on event id,M,M1,T,no,docs/04 §7,packages/core/src/core.test.ts::writes an outbox row and dedupes per consumer,core_event_inbox,verified,build,2026-07-30
+PLAT-052,Reliable publish via outbox; no event lost on transaction failure,M,M1,T,no,docs/04 §7,packages/core/src/core.test.ts::writes an outbox row and dedupes per consumer,core_outbox,verified,build,2026-07-30
 PLAT-053,"Dead-letter queue with admin browse, inspect and replay",M,M1,"T,D",no,,,,not_started,,
 PLAT-054,Cross-module integration occurs only via events/core views — no direct module-to-module imports (enforced by lint),M,M1,T,no,,,,not_started,,
 PLAT-055,Event contract versioning: additive changes free; breaking changes require new version and sunset window,M,M1,T,no,,,,not_started,,
@@ -57,12 +57,12 @@ PLAT-075,Agents may only call tools from a typed registry with RBAC scope and pe
 PLAT-076,Every tool declares a `consequential` flag; consequential calls require approval unless tenant-allowlisted,M,M3,T,no,,,,not_started,,
 PLAT-077,"Autonomy levels L0–L3 declared per agent with an envelope (max actions/day, max value, reversibility class, escalation)",M,M3,T,no,,,,not_started,,
 PLAT-078,L2+ actions declare a reversal function or are capped at L1,M,M3,T,no,,,,not_started,,
-PLAT-079,"Kill switches at agent, module, tenant and global scope; effective within one request cycle; audited",M,M2,"T,D",no,,,,not_started,,
+PLAT-079,"Kill switches at agent, module, tenant and global scope; effective within one request cycle; audited",M,M2,"T,D",no,docs/05 §7,apps/api/src/journeys.test.ts::J-A3,apps/api/src/routes/ai.ts pause/resume + killswitch permission,verified,build,2026-07-30
 PLAT-080,Auto-approve allowlist changes require compliance-role sign-off and are audited,M,M3,T,no,,,,not_started,,
 PLAT-081,"Long-horizon work runs as durable, resumable workflows surviving restart",M,M3,T,no,,,,not_started,,
 PLAT-082,Conversation/agent sessions maintain isolated state with a tool-call ledger,M,M3,T,no,,,,not_started,,
 PLAT-085,"Append-only human action audit log (actor, action, subject, before/after hash, ip, ua, ts)",M,M1,T,no,,,,not_started,,
-PLAT-086,Audit logs are tamper-evident (hash-chained daily anchors),M,M1,T,no,,,,not_started,,
+PLAT-086,Audit logs are tamper-evident (hash-chained daily anchors),M,M1,T,no,docs/12 §6,packages/core/src/core.test.ts::chains rows and detects tampering,packages/core/src/audit.ts hash chain,verified,build,2026-07-30
 PLAT-087,"Audit search by subject, actor, action, time range, with permission gating",M,M1,T,no,,,,not_started,,
 PLAT-088,Signed evidence bundle export (PDF + JSONL + hash manifest) for any subject or scope,M,M2,"T,D",no,,,,not_started,,
 PLAT-089,Audit retention configurable above regulatory floors; floors cannot be lowered,M,M1,T,no,,,,not_started,,
@@ -71,11 +71,11 @@ PLAT-091,Quiet hours and frequency caps honoured on all notification channels,M,
 PLAT-092,"Global command palette searches entities, actions and documentation",M,M0,T,no,,,,not_started,,
 PLAT-093,"Natural-language filters compile to visible, editable structured queries",S,M2,"T,D",no,,,,not_started,,
 PLAT-094,"No-code automation recipes (event → condition → action) with simulate/dry-run, versioning and diff",M,M2,T,no,,,,not_started,,
-PLAT-095,"Guardrail floors (consent, quiet hours, approval thresholds, k-anonymity) are not configurable below regulatory minimums in any builder",M,M2,T,no,,,,not_started,,
-PLAT-096,"Shared approvals engine supports dual-control, reason codes, delegation and expiry",M,M2,T,no,,,,not_started,,
+PLAT-095,"Guardrail floors (consent, quiet hours, approval thresholds, k-anonymity) are not configurable below regulatory minimums in any builder",M,M2,T,no,docs/12 §2,"packages/core/src/core.test.ts::never auto-approves client money, whatever the tenant policy says",neverAutoApprove,verified,build,2026-07-30
+PLAT-096,"Shared approvals engine supports dual-control, reason codes, delegation and expiry",M,M2,T,no,docs/04 §6,"packages/core/src/core.test.ts::requires an approval, then honours it;apps/api/src/journeys.test.ts::J-X2 dual control",packages/core/src/approvals.ts,verified,build,2026-07-30
 PLAT-097,"Bulk import/export (CSV/XLSX) with validation, preview, partial-failure reporting",M,M2,T,no,,,,not_started,,
 PLAT-100,All user-facing strings externalized to i18n keys; hard-coded copy fails lint,M,M0,T,no,,,,not_started,,
-PLAT-101,English and Arabic shipped for every user-facing surface at release,M,per-MS,"T,A",no,,,,not_started,,
+PLAT-101,English and Arabic shipped for every user-facing surface at release,M,per-MS,"T,A",no,docs/07 §2,apps/web/app/shell.test.ts::keeps en and ar on exactly the same keys,apps/web/app/i18n,verified,build,2026-07-30
 PLAT-102,Full RTL support via logical CSS properties only; no physical-direction properties,M,M0,T,no,,,,not_started,,
 PLAT-103,Arabic copy authored natively (not machine-translated) with a review lane gate,M,per-MS,A,no,,,,not_started,,
 PLAT-104,"Brand name, logo, palette, domain and legal identity read from tenant config; hard-coded house mark in UI fails review",M,M0,T,no,,,,not_started,,
@@ -97,38 +97,38 @@ ANL-012,"Scheduled report delivery (email, object store, webhook, chat platform)
 ANL-013,Report snapshot versioning with distribution log and read receipts,M,M6,T,no,,,,not_started,,
 ANL-014,"AI-written executive summary available on any report, subject to the numeric-verification gate",M,M6,"T,E",no,,,,not_started,,
 ANL-015,Every analytics figure is traceable to source rows/query (click-through evidence),M,M4,"T,D",no,,,,not_started,,
-ANL-016,Exports honour PII permissions and mask/withhold restricted fields,M,M4,T,no,,,,not_started,,
+ANL-016,Exports honour PII permissions and mask/withhold restricted fields,M,M4,T,no,docs/22 §5,apps/api/src/api.test.ts::hashes a PII dimension unless the caller is entitled,unmasked export approval,verified,build,2026-07-30
 ANL-017,Aggregate outputs enforce k-anonymity suppression where data leaves the tenant,M,M5,T,no,,,,not_started,,
 ROLE-001,"`platform.admin` — Create/suspend tenants, set entitlements, manage flags, browse/replay DLQ, view cost per tenant, publish status",M,M1,"T,D",no,,,,not_started,,
 ROLE-002,"`platform.support` — Diagnose with consented impersonation, read logs/traces, never see raw PII without permission",M,M1,"T,D",no,,,,not_started,,
-ROLE-003,"`tenant.admin` — Manage people/roles/SSO mapping, brand studio, policies, entitlement view, billing/usage, integrations, audit search",M,M1,"T,D",no,,,,not_started,,
-ROLE-004,"`tenant.compliance` — Export evidence bundles, search consent, set approval policies, review flagged content, read AI audit, view compliance posture",M,M2,"T,D",no,,,,not_started,,
-ROLE-005,"`axis.agent` — Work exceptions, run cases, verify extractions, request approvals, communicate with customer",M,M2,"T,D",no,,,,not_started,,
-ROLE-006,"`axis.lead` — Manage queues/routing, SLA policies, team performance, reassign work, approve within limits",M,M2,"T,D",no,,,,not_started,,
+ROLE-003,"`tenant.admin` — Manage people/roles/SSO mapping, brand studio, policies, entitlement view, billing/usage, integrations, audit search",M,M1,"T,D",no,docs/06 §1,"apps/api/src/journeys.test.ts::J-A1,J-A2",tenant.admin seat in seed,verified,build,2026-07-30
+ROLE-004,"`tenant.compliance` — Export evidence bundles, search consent, set approval policies, review flagged content, read AI audit, view compliance posture",M,M2,"T,D",no,docs/06 §1,"apps/api/src/journeys.test.ts::J-CO1,J-C4",tenant.compliance seat in seed,verified,build,2026-07-30
+ROLE-005,"`axis.agent` — Work exceptions, run cases, verify extractions, request approvals, communicate with customer",M,M2,"T,D",no,docs/06 §1,"apps/api/src/journeys.test.ts::J-C1,J-O1",axis.agent seat in seed,verified,build,2026-07-30
+ROLE-006,"`axis.lead` — Manage queues/routing, SLA policies, team performance, reassign work, approve within limits",M,M2,"T,D",no,docs/06 §1,"apps/api/src/journeys.test.ts::J-O1,J-C1",axis.lead share + bind authority,verified,build,2026-07-30
 ROLE-007,"`axis.admin` — Configure SOPs, ranking criteria, extraction templates, connectors, approval policies, kill switch",M,M2,D,no,,,,not_started,,
-ROLE-008,"`orbit.agent` — Handle conversations across channels, accept AI drafts, hand over, log dispositions",M,M3,"T,D",no,,,,not_started,,
+ROLE-008,"`orbit.agent` — Handle conversations across channels, accept AI drafts, hand over, log dispositions",M,M3,"T,D",no,docs/06 §1,apps/api/src/journeys.test.ts::J-X1,orbit.agent seat in seed,verified,build,2026-07-30
 ROLE-009,"`orbit.lead` — Supervise live wall, barge/whisper, review QA scores, coach, manage staffing alerts",M,M3,"T,D",no,,,,not_started,,
-ROLE-010,"`orbit.retention` — Work the renewal book, run save desk within bounded authority, analyse win/loss",M,M3,"T,D",no,,,,not_started,,
-ROLE-011,"`orbit.partners` — Onboard partners, manage keys/plans, view usage and settlements, resolve disputes",M,M3,"T,D",no,,,,not_started,,
+ROLE-010,"`orbit.retention` — Work the renewal book, run save desk within bounded authority, analyse win/loss",M,M3,"T,D",no,docs/06 §1,"apps/api/src/journeys.test.ts::J-C3,J-X2",orbit.retention save desk,verified,build,2026-07-30
+ROLE-011,"`orbit.partners` — Onboard partners, manage keys/plans, view usage and settlements, resolve disputes",M,M3,"T,D",no,docs/06 §1,apps/api/src/journeys.test.ts::J-X3,orbit.partners certify,verified,build,2026-07-30
 ROLE-012,"`orbit.admin` — Configure channels, persona/tone, tool matrix, journey guardrails, QA rubric, routing",M,M3,D,no,,,,not_started,,
 ROLE-013,"`signal.marketer` — Brief and generate creative, build audiences, launch campaigns, run experiments",M,M4,"T,D",no,,,,not_started,,
-ROLE-014,"`signal.lead` — Approve budget moves, set bounds, review economics, arbitrate experiments",M,M4,"T,D",no,,,,not_started,,
+ROLE-014,"`signal.lead` — Approve budget moves, set bounds, review economics, arbitrate experiments",M,M4,"T,D",no,docs/06 §1,"apps/api/src/journeys.test.ts::J-M1,J-M2",signal.lead budget approval,verified,build,2026-07-30
 ROLE-015,"`signal.admin` — Manage brand kit, banned claims, channel auth, disclosure templates, suppression sources",M,M4,D,no,,,,not_started,,
 ROLE-016,"`scout.pm` — Review radar, own whitespace dossiers, run product experiments, promote/park",M,M5,"T,D",no,,,,not_started,,
-ROLE-017,"`scout.lead` — Set thresholds, prioritise portfolio, approve data products, run panel negotiations",M,M5,"T,D",no,,,,not_started,,
+ROLE-017,"`scout.lead` — Set thresholds, prioritise portfolio, approve data products, run panel negotiations",M,M5,"T,D",no,docs/06 §1,"apps/api/src/journeys.test.ts::J-P1,J-P2",scout.lead thresholds + panel,verified,build,2026-07-30
 ROLE-018,"`scout.admin` — Manage sources/crawl policy, k-anonymity floor, hypothesis library, export policy",M,M5,D,no,,,,not_started,,
-ROLE-019,"`north.exec` — Read the brief, drill evidence, triage anomalies, run scenarios, assign actions, approve packs",M,M6,"T,D",no,,,,not_started,,
-ROLE-020,"`north.analyst` — Steward metric definitions, investigate drivers, build boards, prepare packs",M,M6,"T,D",no,,,,not_started,,
-ROLE-021,"`north.board` — Read-only brief and packs, watermarked, no operational data access",M,M6,T,no,,,,not_started,,
+ROLE-019,"`north.exec` — Read the brief, drill evidence, triage anomalies, run scenarios, assign actions, approve packs",M,M6,"T,D",no,docs/06 §1,"apps/api/src/journeys.test.ts::J-E1,J-E2,J-E3",north.exec seat in seed,verified,build,2026-07-30
+ROLE-020,"`north.analyst` — Steward metric definitions, investigate drivers, build boards, prepare packs",M,M6,"T,D",no,docs/06 §1,apps/api/src/journeys.test.ts::J-E1,north.analyst generates the briefing,verified,build,2026-07-30
+ROLE-021,"`north.board` — Read-only brief and packs, watermarked, no operational data access",M,M6,T,no,docs/06 §1,packages/core/src/rbac.test.ts::keeps north.board read-only,packages/core/src/rbac.ts,verified,build,2026-07-30
 ROLE-022,"`north.admin` — Approve metric changes, map sensitivity/audiences, schedule briefs, manage connectors",M,M6,D,no,,,,not_started,,
 ROLE-023,"`dev.developer` — Obtain test keys, read docs, use sandbox, test webhooks, inspect logs",M,M1,"T,D",no,,,,not_started,,
-ROLE-024,"`dev.admin` — Promote to live keys, rotate secrets, manage OAuth clients, approve extensions",M,M1,"T,D",no,,,,not_started,,
+ROLE-024,"`dev.admin` — Promote to live keys, rotate secrets, manage OAuth clients, approve extensions",M,M1,"T,D",no,docs/06 §1,apps/api/src/journeys.test.ts::J-D1,dev.admin key issue,verified,build,2026-07-30
 ROLE-025,"`customer` — Self-serve quote, purchase, service, renew, exercise privacy rights",M,M3,"T,D",no,,,,not_started,,
 ROLE-026,"`partner.developer` — Self-onboard, sandbox integrate, certify, go live without bespoke engineering",M,M3,"T,D",no,,,,not_started,,
 ROLE-027,"`partner.manager` — View volumes, revenue share, settlements, integration health",M,M3,"T,D",no,,,,not_started,,
 ROLE-028,"`provider.viewer` — Access purchased data products only, scoped and k-anonymised",S,M5,T,no,,,,not_started,,
 ROLE-029,Every role — Lands on a role-appropriate default workspace with role-appropriate vocabulary and density,M,M6,D,no,,,,not_started,,
-ROLE-030,Every role — Cannot see or act beyond its permission bundle (verified by the authz matrix),M,M1,T,no,,,,not_started,,
+ROLE-030,Every role — Cannot see or act beyond its permission bundle (verified by the authz matrix),M,M1,T,no,docs/06 §1,packages/core/src/rbac.test.ts::grants only permissions that exist;apps/api/src/api.test.ts::every string the API checks is a real permission,authz matrix over the whole registry,verified,build,2026-07-30
 AXIS-001,"Cases created from web intake, email, CSV/XLSX import and API",M,M2,T,no,,,,not_started,,
 AXIS-002,"Case kinds supported: quote, bind, endorsement, renewal-ops, group medical, KYC",M,M2,T,no,,,,not_started,,
 AXIS-003,"Board presents cases by stage with table and kanban views, swimlanes by team/line/source",M,M2,D,no,,,,not_started,,
@@ -385,29 +385,29 @@ NOR-041,Compliance posture tile assembles live control signals for the complianc
 NOR-042,"Analytics home: brief engagement, time-to-explanation, verification pass rate, scenario reuse, pack assembly time, decision-review timeliness",M,M6,"T,D",no,,,,not_started,,
 NOR-043,"Admin: metric approvals, audience/sensitivity mapping, schedules, locales, targets, connectors, kill switch",M,M6,"T,D",no,,,,not_started,,
 NOR-044,"Developer: connector setup, metrics push API, brief/anomaly webhooks, scenario primitive registration, scoped keys",M,M6,D,no,,,,not_started,,
-JRN-C1,Consumer: get covered — Quick quote → ranked offers with declared criteria → document capture → payment redirect → policy delivered on channel; completes within published time target; zero human touches on happy path,M,M2,"T,M",no,,,,not_started,,
-JRN-C2,"Consumer: get help — Inbound message in Arabic resolved by AI including policy copy and endorsement, with disclosure of AI, escalation available, transcript logged and quality-scored",M,M3,"T,E",no,,,,not_started,,
-JRN-C3,Consumer: renew in one tap — Pre-expiry offer with completed requote → single-tap acceptance → updated policy delivered; no data re-entry,M,M3,T,no,,,,not_started,,
-JRN-C4,"Consumer: privacy rights — Self-service access and erasure requests fulfilled within policy SLA, fully logged, derived stores purged and verified",M,M1,T,no,,,,not_started,,
-JRN-O1,Ops: exception clearing — Agent works only the exceptions queue; copilot proposals present; median clear time within target; no raw inbox required,M,M2,"T,M",no,,,,not_started,,
-JRN-O2,Ops: group medical bid — Arbitrary-format census uploaded → normalised with gaps chased → provider pack issued → quotes compared → proposal document produced,M,M2,T,no,,,,not_started,,
-JRN-O3,Ops: month-end reconciliation — Statements imported → auto-match at/above threshold → exceptions evidenced → sign-off bundle exported,M,M2,"T,M",no,,,,not_started,,
-JRN-X1,CX: handover catch — AI escalates mid-conversation; human receives summary and suggested actions; resolution recorded; QA score available next cycle,M,M3,T,no,,,,not_started,,
-JRN-X2,Retention: save desk — Risk list produced → outreach with objection support → bounded price-match applied with approval → outcome and reason logged,M,M3,T,no,,,,not_started,,
-JRN-X3,"Partner: integrate — External developer self-onboards → sandbox transaction succeeds → certification passes → live credentials issued → first live transaction, without bespoke engineering support",M,M3,"T,D",no,,,,not_started,,
-JRN-M1,Marketing: campaign in a day — Brief → multilingual variants generated → compliance lane cleared → published to ≥2 channels → economics visible same day,M,M4,"T,M",no,,,,not_started,,
-JRN-M2,"Marketing: budget morning — Autopilot proposals reviewed and approved/undone from mobile within minutes, with reasoning and evidence shown",M,M4,T,no,,,,not_started,,
-JRN-M3,Marketing: own the answer box — Query cluster selected → content unit published → citation share tracked over successive periods,S,M4,"T,M",no,,,,not_started,,
-JRN-P1,Product: radar to validated — Whitespace promoted → experiment live → demand measured → validated or parked with evidence and decision recorded,M,M5,T,no,,,,not_started,,
-JRN-P2,Product: panel negotiation — Bench alert → negotiation pack generated → outcome (commission/coverage change) recorded against the pack,M,M5,T,no,,,,not_started,,
-JRN-E1,"Exec: the morning read — Push received → brief read on mobile within minutes → anomaly triaged and action assigned, all before leaving the app",M,M6,"T,M",no,,,,not_started,,
-JRN-E2,Exec: board day — Pack assembled within time target → approved → distributed → read receipts visible,M,M6,"T,M",no,,,,not_started,,
-JRN-E3,Exec: what-if — Scenario asked in natural language → ranges and assumptions returned → saved → revisited with actuals,M,M6,T,no,,,,not_started,,
-JRN-A1,"Admin: new tenant in a day — Tenant created, branded (contrast validated), entitled, domained, seeded, smoke-tested — within one business day",M,M1,"T,M",no,,,,not_started,,
-JRN-A2,Admin: new teammate — Invite → role bundle assigned → access effective immediately and bounded exactly to the bundle,M,M0,T,no,,,,not_started,,
-JRN-A3,Admin: incident pause — Module agents paused in one action → degraded-mode notice visible to users → resumed with audit note,M,M2,T,no,,,,not_started,,
-JRN-D1,Developer: first call — Test key issued → SDK snippet succeeds → webhook received and verified → promotion to live gated by approval,M,M1,T,no,,,,not_started,,
-JRN-CO1,"Compliance: regulator request — Scope defined → signed evidence bundle exported (cases, conversations, AI actions) → delivered same business day",M,M2,"T,D",no,,,,not_started,,
+JRN-C1,Consumer: get covered — Quick quote → ranked offers with declared criteria → document capture → payment redirect → policy delivered on channel; completes within published time target; zero human touches on happy path,M,M2,"T,M",no,docs/06 §2,apps/api/src/journeys.test.ts::J-C1,apps/api/src/routes/dist.ts shop+comparison,verified,build,2026-07-30
+JRN-C2,"Consumer: get help — Inbound message in Arabic resolved by AI including policy copy and endorsement, with disclosure of AI, escalation available, transcript logged and quality-scored",M,M3,"T,E",no,docs/06 §2,apps/api/src/journeys.test.ts::J-C2,apps/api/src/routes/ai.ts runs + ai_audit_log,verified,build,2026-07-30
+JRN-C3,Consumer: renew in one tap — Pre-expiry offer with completed requote → single-tap acceptance → updated policy delivered; no data re-entry,M,M3,T,no,docs/06 §2,apps/api/src/journeys.test.ts::J-C3,orbit_renewals requote + accept,verified,build,2026-07-30
+JRN-C4,"Consumer: privacy rights — Self-service access and erasure requests fulfilled within policy SLA, fully logged, derived stores purged and verified",M,M1,T,no,docs/06 §2,apps/api/src/journeys.test.ts::J-C4,apps/api/src/routes/compliance.ts DSAR,verified,build,2026-07-30
+JRN-O1,Ops: exception clearing — Agent works only the exceptions queue; copilot proposals present; median clear time within target; no raw inbox required,M,M2,"T,M",no,docs/06 §2,apps/api/src/journeys.test.ts::J-O1,axis cases/tasks + axis.bind approval,verified,build,2026-07-30
+JRN-O2,Ops: group medical bid — Arbitrary-format census uploaded → normalised with gaps chased → provider pack issued → quotes compared → proposal document produced,M,M2,T,no,docs/06 §2,apps/api/src/journeys.test.ts::J-O2,group census shop + comparison,verified,build,2026-07-30
+JRN-O3,Ops: month-end reconciliation — Statements imported → auto-match at/above threshold → exceptions evidenced → sign-off bundle exported,M,M2,"T,M",no,docs/06 §2,apps/api/src/journeys.test.ts::J-O3,ledger recon runs + exceptions,verified,build,2026-07-30
+JRN-X1,CX: handover catch — AI escalates mid-conversation; human receives summary and suggested actions; resolution recorded; QA score available next cycle,M,M3,T,no,docs/06 §2,apps/api/src/journeys.test.ts::J-X1,orbit handover notes + qa scores,verified,build,2026-07-30
+JRN-X2,Retention: save desk — Risk list produced → outreach with objection support → bounded price-match applied with approval → outcome and reason logged,M,M3,T,no,docs/06 §2,apps/api/src/journeys.test.ts::J-X2,axis.price_match + dist.settlement_run dual control,verified,build,2026-07-30
+JRN-X3,"Partner: integrate — External developer self-onboards → sandbox transaction succeeds → certification passes → live credentials issued → first live transaction, without bespoke engineering support",M,M3,"T,D",no,docs/06 §2,apps/api/src/journeys.test.ts::J-X3,dist.partner_activate approval + channel issue,verified,build,2026-07-30
+JRN-M1,Marketing: campaign in a day — Brief → multilingual variants generated → compliance lane cleared → published to ≥2 channels → economics visible same day,M,M4,"T,M",no,docs/06 §2,apps/api/src/journeys.test.ts::J-M1,signal audiences/campaigns/creatives,verified,build,2026-07-30
+JRN-M2,"Marketing: budget morning — Autopilot proposals reviewed and approved/undone from mobile within minutes, with reasoning and evidence shown",M,M4,T,no,docs/06 §2,apps/api/src/journeys.test.ts::J-M2,signal.budget_move approval + reversal,verified,build,2026-07-30
+JRN-M3,Marketing: own the answer box — Query cluster selected → content unit published → citation share tracked over successive periods,S,M4,"T,M",no,docs/06 §2,apps/api/src/journeys.test.ts::J-M3,signal aeo pages + citation runs,verified,build,2026-07-30
+JRN-P1,Product: radar to validated — Whitespace promoted → experiment live → demand measured → validated or parked with evidence and decision recorded,M,M5,T,no,docs/06 §2,apps/api/src/journeys.test.ts::J-P1,scout whitespace promote + discovery run,verified,build,2026-07-30
+JRN-P2,Product: panel negotiation — Bench alert → negotiation pack generated → outcome (commission/coverage change) recorded against the pack,M,M5,T,no,docs/06 §2,apps/api/src/journeys.test.ts::J-P2,scout panel bench + dist.rate_change approval,verified,build,2026-07-30
+JRN-E1,"Exec: the morning read — Push received → brief read on mobile within minutes → anomaly triaged and action assigned, all before leaving the app",M,M6,"T,M",no,docs/06 §2,apps/api/src/journeys.test.ts::J-E1,"north briefings generated by analyst, read by exec",verified,build,2026-07-30
+JRN-E2,Exec: board day — Pack assembled within time target → approved → distributed → read receipts visible,M,M6,"T,M",no,docs/06 §2,apps/api/src/journeys.test.ts::J-E2,north boardpacks + decisions,verified,build,2026-07-30
+JRN-E3,Exec: what-if — Scenario asked in natural language → ranges and assumptions returned → saved → revisited with actuals,M,M6,T,no,docs/06 §2,apps/api/src/journeys.test.ts::J-E3,north scenarios + analytics run,verified,build,2026-07-30
+JRN-A1,"Admin: new tenant in a day — Tenant created, branded (contrast validated), entitled, domained, seeded, smoke-tested — within one business day",M,M1,"T,M",no,docs/06 §2,apps/api/src/journeys.test.ts::J-A1,tenant provisioning + brand/entitlements,verified,build,2026-07-30
+JRN-A2,Admin: new teammate — Invite → role bundle assigned → access effective immediately and bounded exactly to the bundle,M,M0,T,no,docs/06 §2,apps/api/src/journeys.test.ts::J-A2,user invite + role bundle bounds,verified,build,2026-07-30
+JRN-A3,Admin: incident pause — Module agents paused in one action → degraded-mode notice visible to users → resumed with audit note,M,M2,T,no,docs/06 §2,apps/api/src/journeys.test.ts::J-A3,agent pause/resume + autonomy approval + incident,verified,build,2026-07-30
+JRN-D1,Developer: first call — Test key issued → SDK snippet succeeds → webhook received and verified → promotion to live gated by approval,M,M1,T,no,docs/06 §2,apps/api/src/journeys.test.ts::J-D1,"api keys issued, never read back",verified,build,2026-07-30
+JRN-CO1,"Compliance: regulator request — Scope defined → signed evidence bundle exported (cases, conversations, AI actions) → delivered same business day",M,M2,"T,D",no,docs/06 §2,apps/api/src/journeys.test.ts::J-CO1,masked vs unmasked analytics export,verified,build,2026-07-30
 JRN-999,Every journey — Instrumented as a funnel with an owner and target; journey health visible in analytics,M,per-MS,T,no,,,,not_started,,
 UX-001,"All six states designed and implemented: empty, loading, error, partial, offline, degraded-AI",M,per-MS,D,no,,,,not_started,,
 UX-002,Skeletons mirror final layout; no spinner shown for waits beyond the published threshold,M,per-MS,"T,M",no,,,,not_started,,
@@ -522,9 +522,9 @@ DEP-017,All five modules functional on-prem,M,M6,T,no,,,,not_started,,
 SEC-001,Transport encryption enforced everywhere; encryption at rest for all stores,M,M1,D,no,,,,not_started,,
 SEC-002,Field-level encryption for national identifiers and bank details,M,M2,T,no,,,,not_started,,
 SEC-003,Card data never stored; payment handled by tokenised providers only,M,M2,"T,A",no,,,,not_started,,
-SEC-004,Input validation at every boundary with schema enforcement,M,M1,T,no,,,,not_started,,
+SEC-004,Input validation at every boundary with schema enforcement,M,M1,T,no,docs/12 §3,apps/api/src/api.test.ts::refuses an unknown dataset;apps/api/src/journeys.test.ts::J-C1 no-consent 400,zod .strict() on every body,verified,build,2026-07-30
 SEC-005,Outbound fetch protected against server-side request forgery with host allowlisting,M,M1,T,no,,,,not_started,,
-SEC-006,"Secrets never present in code, logs or model prompts (automated scanner)",M,M1,T,no,,,,not_started,,
+SEC-006,"Secrets never present in code, logs or model prompts (automated scanner)",M,M1,T,no,docs/12 §3,packages/model-gateway/src/gateway.test.ts::destroys secrets rather than placeholding them,packages/model-gateway/src/scrub.ts,verified,build,2026-07-30
 SEC-007,Dependency and image vulnerability scanning on a schedule with triage SLA,M,M1,T,no,,,,not_started,,
 SEC-008,Baseline dynamic security scan in CI,M,M1,T,no,,,,not_started,,
 SEC-009,Penetration test before general availability and periodically thereafter,M,pre-GA,A,no,,,,not_started,,
@@ -534,15 +534,15 @@ SEC-012,"Breach response runbook with notification checklist, contact tree and e
 SEC-013,Breach tabletop exercise conducted and minuted periodically,M,M2,A,no,,,,not_started,,
 SEC-014,Cross-border transfer controls gate provider selection and storage region by tenant policy,M,M2,T,no,,,,not_started,,
 SEC-015,Data-residency policy can force in-region or on-prem model serving,M,M6,T,no,,,,not_started,,
-SEC-016,Minimum-necessary field whitelisting for every AI context builder,M,M1,T,no,,,,not_started,,
-SEC-017,"Human accountability preserved: no autonomous regulated advice, pricing or claims decisions",M,M3,"T,A",no,,,,not_started,,
+SEC-016,Minimum-necessary field whitelisting for every AI context builder,M,M1,T,no,docs/12 §5,"packages/model-gateway/src/gateway.test.ts::scrubs outbound, rehydrates inbound and audits the call",context builder whitelist,verified,build,2026-07-30
+SEC-017,"Human accountability preserved: no autonomous regulated advice, pricing or claims decisions",M,M3,"T,A",no,docs/12 §5,packages/model-gateway/src/gateway.test.ts::blocks a regulated claim on a customer-facing purpose and still bills it,guardrail classifier,verified,build,2026-07-30
 SEC-018,Fairness review for value/risk models with protected attributes excluded and proxy audits scheduled,M,M4,"T,A",no,,,,not_started,,
 SEC-019,"Red-team suite for prompt injection, tool escape and exfiltration runs in CI",M,M3,T,no,,,,not_started,,
 SEC-020,"External content treated strictly as data, never as instructions to agents",M,M3,T,no,,,,not_started,,
 SEC-021,"Regulatory rulepacks versioned as data; guardrail floors read from the pack, not code",M,M5,T,no,,,,not_started,,
 SEC-022,Regulatory positions and customer-facing legal copy reviewed by qualified counsel before launch,M,pre-GA,A,no,,,,not_started,,
 SEC-023,Compliance evidence map maintained: each control linked to its verifying artifact,M,M6,A,no,,,,not_started,,
-SEC-024,Kill switches tested on a schedule with results recorded,M,M2,T,no,,,,not_started,,
+SEC-024,Kill switches tested on a schedule with results recorded,M,M2,T,no,docs/12 §7,apps/api/src/journeys.test.ts::J-A3,kill switch pause/resume audited,verified,build,2026-07-30
 NFR-001,Non-AI API latency within published percentile budget under expected load,M,M1,M,no,,,,not_started,,
 NFR-002,Web primary-content load and interaction budgets met on a mid-tier mobile connection,M,M1,M,no,,,,not_started,,
 NFR-003,Route payload budgets enforced in CI,M,M1,M,no,,,,not_started,,
@@ -574,12 +574,12 @@ SEAM-H11,"Compounding intelligence — Memory store with provenance, sensitivity
 SEAM-H12,Regulation as data — Rulepack schema with market/version/effective date; one live pack in production use,M,M5,T,no,,,,not_started,,
 SEAM-999,All — No documented seam is bypassed or removed without an approved decision record,M,M6,A,no,,,,not_started,,
 TXN-001,"Every transaction carries the full envelope of docs/19 §2 including actor, autonomy level and guardrail results",M,P1,T,no,,,,not_started,,
-TXN-002,"Idempotency key enforced per (tenant, type, key); replay returns the original and posts nothing new",M,P1,T,no,,,,not_started,,
-TXN-003,Canonical state machine implemented incl. `pending_external` with timeout and compensation,M,P1,T,no,,,,not_started,,
-TXN-004,Completed transactions and posted journal lines are immutable; corrections are contra transactions referencing the original,M,P1,T,no,,,,not_started,,
+TXN-002,"Idempotency key enforced per (tenant, type, key); replay returns the original and posts nothing new",M,P1,T,no,docs/19 §3,"packages/ledger/src/ledger.test.ts::replaying a transaction with the same key posts nothing new;packages/ledger/src/ledger.test.ts::a second batch for the same transaction is a conflict, not a duplicate",packages/ledger/src/txn.ts idempotency key,verified,build,2026-07-30
+TXN-003,Canonical state machine implemented incl. `pending_external` with timeout and compensation,M,P1,T,no,docs/19 §3,packages/ledger/src/ledger.test.ts::refuses an illegal transition,packages/ledger/src/txn.ts state machine,verified,build,2026-07-30
+TXN-004,Completed transactions and posted journal lines are immutable; corrections are contra transactions referencing the original,M,P1,T,no,docs/19 §3,packages/ledger/src/ledger.test.ts::returns net-zero economics and leaves the original intact;packages/ledger/src/ledger.test.ts::refuses to reverse the same batch twice,contra-only corrections,verified,build,2026-07-30
 TXN-005,Failed and rejected transactions never post journal lines,M,P1,T,no,,,,not_started,,
 TXN-006,Every transaction type is schema-validated against its version,M,P1,T,no,,,,not_started,,
-TXN-007,Saga engine with per-step compensation; partial success impossible,M,P2,T,no,,,,not_started,,
+TXN-007,Saga engine with per-step compensation; partial success impossible,M,P2,T,no,docs/19 §3,packages/ledger/src/ledger.test.ts::a failed step unwinds the ones before it,saga compensation,verified,build,2026-07-30
 TXN-008,Stalled sagas alert rather than expiring silently,M,P2,T,no,,,,not_started,,
 TXN-009,"Transaction APIs: create with idempotency header, read, reverse, adjust (permissioned, reason-coded)",M,P1,T,no,,,,not_started,,
 TXN-010,Every transaction emits `txn.{type}.{state}` events consumed idempotently,M,P1,T,no,,,,not_started,,
@@ -596,27 +596,27 @@ TXN-029,"Partner transactions: onboarding, partner quote, partner bind, revenue-
 TXN-030,"Marketplace transactions: extension install with scope consent, extension revenue share",S,P7,T,no,,,,not_started,,
 TXN-031,"Marketing transactions: media commit, media spend, budget move, publish, boost, creator brief, creator verify",M,P4,T,no,,,,not_started,,
 TXN-032,"Data-product transactions: subscription, delivery with k-anonymity gate enforced pre-send",M,P5,T,no,,,,not_started,,
-TXN-033,AI transactions: model-call metering and budget-stop,M,P1,T,no,,,,not_started,,
+TXN-033,AI transactions: model-call metering and budget-stop,M,P1,T,no,docs/19 §4,packages/model-gateway/src/gateway.test.ts::charges usage and hard-stops at 100%,packages/model-gateway/src/budget.ts,verified,build,2026-07-30
 TXN-034,"Compliance transactions: consent grant/withdraw, KYC verify, sanctions screen, disclosure present, approval decision, DSAR fulfilment, audit export",M,P1,T,no,,,,not_started,,
 TXN-035,"Agentic transactions: mandate register, agent quote with signed offer, agent bind enforcing cap and validity, mandate revoke",S,P3,T,no,,,,not_started,,
 TXN-036,Takaful surplus distribution recorded where the structure applies,S,P5,T,no,,,,not_started,,
 TXN-037,Parametric trigger requires dual-source confirmation before any payout instruction,M,P5,T,no,,,,not_started,,
 TXN-038,Telematics ingestion and usage-based repricing recorded with declared inputs only,C,v1.1,T,no,,,,not_started,,
-TXN-050,Double-entry posting engine; every batch balances in transaction and base currency,M,P1,T,no,,,,not_started,,
+TXN-050,Double-entry posting engine; every batch balances in transaction and base currency,M,P1,T,no,docs/19 §5,"packages/ledger/src/ledger.test.ts::holds for every financial transaction type, fuzzed",double-entry property test,verified,build,2026-07-30
 TXN-051,"Chart of accounts per docs/19 §5.1, tenant-scoped and extensible",M,P1,T,no,,,,not_started,,
 TXN-052,Worked flow A (commission-only) posts exactly as specified,M,P2,T,no,,,,not_started,,
 TXN-053,Worked flow B (broker-collected client money) posts exactly as specified,M,P2,T,no,,,,not_started,,
-TXN-054,Client-money invariant: segregated cash ≥ client-money liability at every instant,M,P2,T,no,,,,not_started,,
-TXN-055,No journal may debit a client-money asset to credit income or operating expense,M,P2,T,no,,,,not_started,,
-TXN-056,Client-money shortfall raises a hard alarm and blocks further transfers,M,P2,T,no,,,,not_started,,
+TXN-054,Client-money invariant: segregated cash ≥ client-money liability at every instant,M,P2,T,no,docs/19 §5,packages/ledger/src/ledger.test.ts::1010 >= 2010 after any random sequence of client-money transactions,"client-money invariant, property-tested",verified,build,2026-07-30
+TXN-055,No journal may debit a client-money asset to credit income or operating expense,M,P2,T,no,docs/19 §5,packages/ledger/src/ledger.test.ts::rejects the illegal shape directly;packages/ledger/src/ledger.test.ts::no recipe in the catalogue produces the illegal shape,packages/ledger/src/postings.ts,verified,build,2026-07-30
+TXN-056,Client-money shortfall raises a hard alarm and blocks further transfers,M,P2,T,no,docs/19 §5,packages/ledger/src/ledger.test.ts::refuses a posting that would take client money below the liability,hard block,verified,build,2026-07-30
 TXN-057,Worked flow C (partner revenue share) posts exactly as specified,M,P3,T,no,,,,not_started,,
 TXN-058,Worked flow D (subscription + overage with deferred revenue) posts exactly as specified,M,P4,T,no,,,,not_started,,
 TXN-059,Worked flow E (premium financing) posts exactly as specified,S,P4,T,no,,,,not_started,,
 TXN-060,Media spend and AI cost accruals feed per-unit economics telemetry,M,P4,T,no,,,,not_started,,
-TXN-061,Multi-currency: FX rate and base amount stamped at posting; period-end revaluation of open balances,M,P4,T,no,,,,not_started,,
+TXN-061,Multi-currency: FX rate and base amount stamped at posting; period-end revaluation of open balances,M,P4,T,no,docs/19 §6,packages/ledger/src/ledger.test.ts::nets to zero even when FX left a rounding residual,FX stamp at posting,verified,build,2026-07-30
 TXN-062,"Tax treatment driven by market rulepack, never inferred in code",M,P4,T,no,,,,not_started,,
-TXN-063,Period lifecycle: open → soft-close (reason-coded adjustments) → hard-close (contra only),M,P4,T,no,,,,not_started,,
-TXN-064,Trial balance equals the sum of all journal lines at any point in time,M,P1,T,no,,,,not_started,,
+TXN-063,Period lifecycle: open → soft-close (reason-coded adjustments) → hard-close (contra only),M,P4,T,no,docs/19 §6,packages/ledger/src/ledger.test.ts::blocks a posting into a hard-closed period unless it is a contra batch;packages/ledger/src/ledger.test.ts::will not hard close straight from open,period lifecycle,verified,build,2026-07-30
+TXN-064,Trial balance equals the sum of all journal lines at any point in time,M,P1,T,no,docs/19 §6,packages/ledger/src/ledger.test.ts::the balances cache agrees with a rebuild from lines,trial balance,verified,build,2026-07-30
 TXN-065,Revenue recognition never exceeds amounts invoiced,M,P4,T,no,,,,not_started,,
 TXN-070,"Insurer statement reconciliation with matched, variance and missing-both-ways queues",M,P2,T,no,,,,not_started,,
 TXN-071,PSP settlement reconciliation clearing the clearing account to zero with fee recognition,M,P2,T,no,,,,not_started,,

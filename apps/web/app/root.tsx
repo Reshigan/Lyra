@@ -1,0 +1,86 @@
+import {
+  isRouteErrorResponse,
+  Links,
+  Meta,
+  Outlet,
+  Scripts,
+  ScrollRestoration,
+  useRouteError,
+  useRouteLoaderData,
+  type LoaderFunctionArgs
+} from "react-router";
+import "./app.css";
+import { DEFAULT_LOCALE, dirFor, localeFrom, translator } from "./i18n";
+
+// The document. Locale is resolved here rather than in the shell so that the
+// login page — which has no session and therefore no profile — still renders in
+// the right direction on the first frame.
+
+export function loader({ request }: LoaderFunctionArgs) {
+  return { locale: localeFrom(request) };
+}
+
+export function Layout({ children }: { children: React.ReactNode }) {
+  // Undefined while the root loader itself is failing; the document still has
+  // to render, so fall back rather than throw a second time.
+  const data = useRouteLoaderData<typeof loader>("root");
+  const locale = data?.locale ?? DEFAULT_LOCALE;
+
+  return (
+    <html lang={locale} dir={dirFor(locale)}>
+      <head>
+        <meta charSet="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="referrer" content="no-referrer" />
+        <Meta />
+        <Links />
+      </head>
+      <body className="min-h-screen bg-bg text-text antialiased">
+        {children}
+        <ScrollRestoration />
+        <Scripts />
+      </body>
+    </html>
+  );
+}
+
+export default function App() {
+  return <Outlet />;
+}
+
+/**
+ * What happened → what we did → what you can do, with a copyable reference
+ * (docs/07 §5). No stack traces: they are in the logs, keyed by that reference.
+ */
+export function ErrorBoundary() {
+  const error = useRouteError();
+  const data = useRouteLoaderData<typeof loader>("root");
+  const t = translator(data?.locale ?? DEFAULT_LOCALE);
+
+  let messageKey = "error.generic";
+  if (isRouteErrorResponse(error)) {
+    if (error.status === 404) messageKey = "error.notFound";
+    else if (error.status === 403) messageKey = "error.forbidden";
+    else if (error.status === 401) messageKey = "error.unauthorized";
+  }
+  const requestId =
+    isRouteErrorResponse(error) && typeof error.data === "string" ? error.data : null;
+
+  return (
+    <main className="mx-auto flex min-h-screen max-w-prose flex-col justify-center gap-4 p-8">
+      <h1 className="font-display text-28">{t("error.title")}</h1>
+      <p className="text-muted">{t(messageKey)}</p>
+      {requestId ? (
+        <p className="font-mono text-12 text-muted">{t("error.requestId", { id: requestId })}</p>
+      ) : null}
+      <p>
+        <a
+          className="text-accent underline underline-offset-4"
+          href={typeof location === "undefined" ? "/" : location.pathname}
+        >
+          {t("error.retry")}
+        </a>
+      </p>
+    </main>
+  );
+}
