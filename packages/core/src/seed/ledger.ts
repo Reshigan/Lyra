@@ -69,10 +69,14 @@ export async function seedLedger(ctx: SeedContext): Promise<void> {
     ]);
 
   const periodIds: Record<string, string> = {};
+  // Next month is opened too: the sale is issued at `now + 2 days`, which lands in
+  // the following month whenever the seed clock sits near a month end, and a batch
+  // with no period to belong to is a NOT NULL violation.
   for (const [delta, state] of [
     [-2, "hard_closed"],
     [-1, "soft_closed"],
-    [0, "open"]
+    [0, "open"],
+    [1, "open"]
   ] as const) {
     const code = codeOf(monthStart(delta));
     const periodId = nid("per");
