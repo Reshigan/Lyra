@@ -218,7 +218,7 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     "compliance:*:*", "ai:audit:read", "ai:runs:read", "ai:agents:read", "ai:agents:pause",
     "ai:killswitch:use", "ai:evals:read",
     "signal:creatives:read", "signal:creatives:approve",
-    "analytics:exports:create", "analytics:exports:unmasked",
+    "analytics:exports:create", "analytics:exports:download", "analytics:exports:unmasked",
     // A regulator asks for a customer's quote and policy trail (docs/06 J-CO1).
     // Without a readable dataset the export permission has nothing to export,
     // so the officer's core duty dead-ends. Read-only, and the unmasked path
@@ -250,7 +250,7 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     "core:consents:read", "core:consents:create", "core:files:read", "core:files:create",
     "core:search:read", "core:approvals:read", "core:approvals:decide",
     "ledger:txns:read", "analytics:reports:read", "analytics:reports:run",
-    "analytics:exports:create", "analytics:saved_views:write",
+    "analytics:exports:create", "analytics:exports:download", "analytics:saved_views:write",
     "dist:channels:read", "dist:offerings:read", "dist:rates:read",
     "dist:ai:invoke", "dist:quote_requests:read", "dist:quote_requests:create", "dist:quote_requests:share",
     "dist:commissions:read", "dist:offers:read", "dist:offers:surface", "dist:offers:override"
@@ -259,7 +259,7 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     "axis:*:*", "core:customers:*", "core:products:*", "core:providers:*",
     "core:pii:view", "core:approvals:read", "core:approvals:decide", "core:files:*",
     "ledger:txns:read", "ledger:recon:read", "ledger:recon:run",
-    "analytics:*:read", "analytics:reports:run", "analytics:exports:create",
+    "analytics:*:read", "analytics:reports:run", "analytics:exports:create", "analytics:exports:download",
     "dist:channels:*", "dist:offerings:*", "dist:quote_requests:*", "dist:offers:*",
     "dist:rates:read", "dist:commissions:read"
   ],
@@ -278,7 +278,7 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     "core:customers:read", "core:pii:view", "core:consents:read", "core:search:read",
     "core:approvals:read", "core:approvals:decide", "core:files:read",
     "axis:policies:read", "axis:cases:read", "axis:cases:create",
-    "analytics:reports:read", "analytics:reports:run", "analytics:exports:create",
+    "analytics:reports:read", "analytics:reports:run", "analytics:exports:create", "analytics:exports:download",
     "analytics:saved_views:write"
   ],
   "orbit.retention": [
@@ -301,7 +301,7 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     "orbit:*:*", "core:customers:*", "core:pii:view", "core:consents:*",
     "core:approvals:read", "core:approvals:decide", "core:files:*",
     "axis:policies:read", "axis:cases:read",
-    "analytics:*:read", "analytics:reports:run", "analytics:exports:create"
+    "analytics:*:read", "analytics:reports:run", "analytics:exports:create", "analytics:exports:download"
   ],
 
   /* SIGNAL */
@@ -322,12 +322,12 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     "core:consents:read", "core:search:read", "core:approvals:read", "core:approvals:decide",
     "core:files:read", "core:files:create",
     "ledger:txns:read", "analytics:reports:read", "analytics:reports:run",
-    "analytics:exports:create", "analytics:saved_views:write"
+    "analytics:exports:create", "analytics:exports:download", "analytics:saved_views:write"
   ],
   "signal.admin": [
     "signal:*:*", "core:consents:read", "core:files:*", "core:approvals:read",
     "core:approvals:decide", "ledger:txns:read",
-    "analytics:*:read", "analytics:reports:run", "analytics:exports:create"
+    "analytics:*:read", "analytics:reports:run", "analytics:exports:create", "analytics:exports:download"
   ],
 
   /* SCOUT */
@@ -340,11 +340,11 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     ...readsOf("scout"), "scout:ai:invoke", "scout:experiments:create", "scout:experiments:decide",
     "scout:whitespaces:promote", "scout:data_products:create",
     "core:products:read", "core:providers:read", "core:approvals:read", "core:approvals:decide",
-    "analytics:reports:read", "analytics:reports:run", "analytics:exports:create"
+    "analytics:reports:read", "analytics:reports:run", "analytics:exports:create", "analytics:exports:download"
   ],
   "scout.admin": [
     "scout:*:*", "core:products:*", "core:providers:*",
-    "analytics:*:read", "analytics:reports:run", "analytics:exports:create"
+    "analytics:*:read", "analytics:reports:run", "analytics:exports:create", "analytics:exports:download"
   ],
 
   /* NORTH */
@@ -355,7 +355,7 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     "orbit:renewals:read", "scout:clusters:read", "ledger:txns:read",
     "dist:commissions:read", "dist:channels:read",
     "analytics:dashboards:read", "analytics:reports:read", "analytics:reports:run",
-    "analytics:exports:create", "analytics:saved_views:write"
+    "analytics:exports:create", "analytics:exports:download", "analytics:saved_views:write"
   ],
   "north.analyst": [
     ...readsOf("north"), "north:ai:invoke", "north:metrics:write", "north:briefings:generate",
@@ -363,7 +363,7 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     "axis:metrics:read", "signal:attribution:read", "signal:spend:read",
     "orbit:renewals:read", "scout:clusters:read", "ledger:journals:read",
     "analytics:dashboards:write", "analytics:reports:write", "analytics:reports:run",
-    "analytics:exports:create", "analytics:schedules:write", "analytics:saved_views:write"
+    "analytics:exports:create", "analytics:exports:download", "analytics:schedules:write", "analytics:saved_views:write"
   ],
   /** Board pack readers. Read-only by design — never grant write here. */
   "north.board": [
@@ -377,13 +377,13 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
   /* finance — money movement is separated from operations by design (docs/19 §7) */
   "finance.analyst": [
     ...readsOf("ledger"), "ledger:ai:invoke", "ledger:recon:run", "ledger:invoices:create",
-    "analytics:reports:read", "analytics:reports:run", "analytics:exports:create",
+    "analytics:reports:read", "analytics:reports:run", "analytics:exports:create", "analytics:exports:download",
     "dist:commissions:read", "dist:rates:read", "dist:channels:read"
   ],
   "finance.controller": [
     "ledger:*:*", "core:approvals:read", "core:approvals:decide",
     "dist:commissions:*", "dist:rates:read", "dist:rates:approve", "dist:channels:read",
-    "analytics:*:read", "analytics:reports:run", "analytics:exports:create",
+    "analytics:*:read", "analytics:reports:run", "analytics:exports:create", "analytics:exports:download",
     "analytics:exports:unmasked", "compliance:evidence:read", "compliance:evidence:export"
   ],
 

@@ -81,7 +81,8 @@ async function call<T = any>(
     env as never,
     exec as never
   );
-  const text = await res.text();
+  // Downloads answer with a workbook, not JSON. Body stays null for those.
+  const text = res.headers.get("content-type")?.includes("json") ? await res.text() : "";
   return { status: res.status, body: text ? (JSON.parse(text) as T) : (null as T) };
 }
 
@@ -129,7 +130,20 @@ beforeAll(async () => {
     APP_ORIGIN: "http://localhost:5173",
     // Workers AI, stubbed at the binding rather than inside the gateway, so the
     // budget, the guardrails and the audit row are all still exercised.
-    AI: { run: async () => ({ response: "Suggested: renew at the same premium." }) }
+    AI: { run: async () => ({ response: "Suggested: renew at the same premium." }) },
+    // ponytail: a Map is the whole of R2 that exports use — put then get.
+    // Without it every export lands in state "failed" and the download leg of
+    // J-CO1 can never be walked here.
+    FILES: (() => {
+      const objects = new Map<string, Uint8Array>();
+      return {
+        put: async (key: string, bytes: Uint8Array) => void objects.set(key, bytes),
+        get: async (key: string) => {
+          const bytes = objects.get(key);
+          return bytes ? { body: new Response(bytes).body } : null;
+        }
+      };
+    })()
   } as unknown as Env;
 
   tokens = {};
@@ -979,6 +993,16 @@ describe("J-A1 a new tenant", () => {
     const agents = ok(await call("tenant.admin", "GET", "/v1/ai/agents?limit=50"));
     expect(agents.data.length).toBeGreaterThanOrEqual(8);
   });
+
+  it("lists its own tenant row and nobody else's", async () => {
+    // core_tenants has no tenant_id column — scoping it by its own id is the
+    // only thing that keeps this list from erroring or spanning tenants.
+    const tenants = ok(await call("tenant.admin", "GET", "/v1/core/tenants"));
+    expect(tenants.data).toHaveLength(1);
+    expect(tenants.data[0].slug).toBe("gonxt");
+    const one = ok(await call("tenant.admin", "GET", `/v1/core/tenants/${tenants.data[0].id}`));
+    expect(one.slug).toBe("gonxt");
+  });
 });
 
 /* ------------------------------------------------------------------ J-A2 */
@@ -1110,12 +1134,20 @@ describe("J-CO1 a regulator asks", () => {
     expect(res.body.type).toContain("approval_required");
   });
 
-  it("a masked export is produced without ceremony", async () => {
-    const res = await call("tenant.compliance", "POST", "/v1/analytics/exports", {
-      format: "xlsx",
-      definition: { dataset: "quotes", dimensions: ["state"], metrics: ["requests"], grain: "none" }
-    });
-    expect([200, 201]).toContain(res.status);
+  it("a masked export is produced without ceremony, and comes back down again", async () => {
+    const created = ok(
+      await call("tenant.compliance", "POST", "/v1/analytics/exports", {
+        format: "xlsx",
+        definition: { dataset: "quotes", dimensions: ["state"], metrics: ["requests"], grain: "none" }
+      }),
+      200,
+      201
+    );
+    expect(created.state).toBe("ready");
+    // An export nobody may fetch is not a report. Every role that can create one
+    // can download it; the unmasked file keeps its own separate gate below.
+    const file = await call("tenant.compliance", "GET", `/v1/analytics/exports/${created.id}/download`);
+    expect(file.status).toBe(200);
   });
 
   it("the audit log is append-only over the API", async () => {

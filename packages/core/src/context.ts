@@ -23,10 +23,23 @@ export interface Ctx {
   ua?: string;
 }
 
-/** Tables that carry tenant_id (every table, per docs/03). */
+/** Tables that carry tenant_id (every table, per docs/03) — plus core_tenants. */
 interface TenantTable {
-  tenantId: SQLiteColumn;
+  tenantId?: SQLiteColumn;
+  id?: SQLiteColumn;
   deletedAt?: SQLiteColumn;
+}
+
+/**
+ * The column that scopes a row to a tenant. `core_tenants` carries no tenant_id
+ * because the row *is* the tenant, so its own id scopes it. A table with
+ * neither would produce a WHERE with no tenant filter at all — that is a leak,
+ * so it throws instead.
+ */
+function tenantCol(table: TenantTable): SQLiteColumn {
+  const col = table.tenantId ?? table.id;
+  if (!col) throw new Error("table has no tenant column and cannot be scoped");
+  return col;
 }
 
 /**
@@ -34,7 +47,7 @@ interface TenantTable {
  * filter when the table has one, so `deleted_at` rows never leak by omission.
  */
 export function scoped(ctx: Ctx, table: TenantTable, ...extra: (SQL | undefined)[]): SQL {
-  const parts: (SQL | undefined)[] = [eq(table.tenantId, ctx.tenantId)];
+  const parts: (SQL | undefined)[] = [eq(tenantCol(table), ctx.tenantId)];
   if (table.deletedAt) parts.push(isNull(table.deletedAt));
   parts.push(...extra);
   return and(...parts) as SQL;
@@ -42,19 +55,21 @@ export function scoped(ctx: Ctx, table: TenantTable, ...extra: (SQL | undefined)
 
 /** Include soft-deleted rows (restore flows, audit exports, DSAR). */
 export function scopedWithDeleted(ctx: Ctx, table: TenantTable, ...extra: (SQL | undefined)[]): SQL {
-  return and(eq(table.tenantId, ctx.tenantId), ...extra) as SQL;
+  return and(eq(tenantCol(table), ctx.tenantId), ...extra) as SQL;
 }
 
 /**
  * Runtime backstop for rows that arrived from anywhere but `scoped()`.
  * Cross-tenant rows read as missing — never as forbidden, which would confirm they exist.
  */
-export function assertTenant<T extends { tenantId: string }>(
+export function assertTenant<T extends { tenantId: string } | { id: string }>(
   ctx: Ctx,
   row: T | undefined | null,
   resource = "resource"
 ): T {
-  if (!row || row.tenantId !== ctx.tenantId) throw notFound(resource);
+  // Same rule as scoped(): a core_tenants row is identified by its own id.
+  const owner = (row as { tenantId?: string; id?: string } | null)?.tenantId ?? (row as { id?: string } | null)?.id;
+  if (!row || owner !== ctx.tenantId) throw notFound(resource);
   return row;
 }
 
