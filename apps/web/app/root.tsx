@@ -11,7 +11,7 @@ import {
   type LoaderFunctionArgs
 } from "react-router";
 import "./app.css";
-import { DEFAULT_LOCALE, dirFor, localeFrom, translator } from "./i18n";
+import { DEFAULT_LOCALE, dirFor, langFor, localeFrom, translator } from "./i18n";
 
 // Only the two first-paint faces (packages/ui/FONTS.md §"Known gap: preload").
 // The mono and the four Arabic cuts are discovered when they first match an
@@ -50,7 +50,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const locale = data?.locale ?? DEFAULT_LOCALE;
 
   return (
-    <html lang={locale} dir={dirFor(locale)}>
+    <html lang={langFor(locale)} dir={dirFor(locale)}>
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />

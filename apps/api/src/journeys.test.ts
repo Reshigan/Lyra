@@ -7,7 +7,6 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { schema, type Db } from "@lyra/db";
 import { seed, totpAt, TOTP_STEP_SEC, type SeedResult } from "@lyra/core";
 import { app } from "./index.js";
-import { sweepRenewals } from "./engines/renewals.js";
 import type { Env } from "./env.js";
 
 // docs/06 §2. One describe per journey id, driven through the real router with
@@ -291,8 +290,7 @@ describe("J-C2 help on WhatsApp", () => {
       await call("orbit.agent", "POST", "/v1/orbit/messages", {
         conversationId: conversation.id,
         role: "customer",
-        content: "Is my windscreen covered?",
-        ts: Date.now()
+        content: "Is my windscreen covered?"
       }),
       201
     );
@@ -329,17 +327,22 @@ describe("J-C3 one-tap renewal", () => {
 
   it("a renewal in the window is proposed a next-best offer", async () => {
     // A renewal is raised by the sweep on the scheduled tick, not by a person:
-    // `orbit:renewals` carries read and update and no create, so the sweep is the
-    // only thing that can fill the retention desk's queue. Walk the real one.
-    const now = Date.now();
+    // `orbit:renewals` carries read and update and no create, so
+    // POST /v1/orbit/renewals/sweep (the same operator-trigger idiom as
+    // staff.ts's /delegations/expire) is the only thing that can fill the
+    // retention desk's queue outside the Workers cron tick. Walk the real one.
     await database
       .update(schema.axisPolicies)
-      .set({ endAt: now + 20 * 86_400_000, status: "active" })
+      .set({ endAt: Date.now() + 20 * 86_400_000, status: "active" })
       .where(eq(schema.axisPolicies.tenantId, tenantId));
-    const raised = await sweepRenewals({ db: database, tenantId, now } as never);
-    expect(raised).toBeGreaterThan(0);
+
+    const denied = await call("orbit.agent", "POST", "/v1/orbit/renewals/sweep");
+    expect(denied.status).toBe(403);
+
+    const raised = ok(await call("orbit.retention", "POST", "/v1/orbit/renewals/sweep"));
+    expect(raised.raised).toBeGreaterThan(0);
     // Second tick inside the same window must not double up.
-    expect(await sweepRenewals({ db: database, tenantId, now } as never)).toBe(0);
+    expect(ok(await call("orbit.retention", "POST", "/v1/orbit/renewals/sweep")).raised).toBe(0);
 
     const queue = ok(await call("orbit.retention", "GET", "/v1/orbit/renewals?limit=5"));
     renewalId = queue.data[0].id;
@@ -718,6 +721,43 @@ describe("J-X2 the save desk", () => {
     expect(pending.counts.approvals).toBeGreaterThanOrEqual(0);
     expect(Array.isArray(pending.approvals)).toBe(true);
   });
+
+  it("a delegation puts the approval in the delegate's inbox and lets them decide it", async () => {
+    const day = 86_400_000;
+    const before = ok(await call("finance.analyst", "GET", "/v1/me/inbox"));
+    expect(before.approvals.some((a: { id: string }) => a.id === settlementApprovalId)).toBe(false);
+
+    await database.insert(schema.delegations).values({
+      id: "dlg_journey_settle",
+      tenantId: seeded.tenantId,
+      fromUserId: seeded.users["finance.controller"] as string,
+      toUserId: seeded.users["finance.analyst"] as string,
+      reason: "controller on leave",
+      scopeJson: null,
+      maxAmountMinor: null,
+      currency: null,
+      startsAt: Date.now() - day,
+      endsAt: Date.now() + day,
+      status: "active",
+      createdBy: `user:${seeded.users["tenant.admin"] as string}`,
+      createdAt: Date.now() - day
+    });
+
+    // Seeing it and deciding it are the same authority: a delegate who could
+    // decide but not see would be told the approval does not exist.
+    const inbox = ok(await call("finance.analyst", "GET", "/v1/me/inbox"));
+    expect(inbox.approvals.some((a: { id: string }) => a.id === settlementApprovalId)).toBe(true);
+
+    const decided = ok(
+      await call("finance.analyst", "POST", `/v1/me/approvals/${settlementApprovalId}/decide`, {
+        decision: "approved"
+      })
+    );
+    expect(decided.decision).toBe("approved");
+
+    const [row] = await database.select().from(schema.approvals).where(eq(schema.approvals.id, settlementApprovalId));
+    expect(row!.delegationId).toBe("dlg_journey_settle");
+  });
 });
 
 /* ------------------------------------------------------------------ J-X3 */
@@ -798,6 +838,35 @@ describe("J-M1 a campaign in a day", () => {
     campaignId = campaign.id;
   });
 
+  it("creative variants are generated for the campaign, compliance-checked and audited", async () => {
+    const denied = await call("scout.lead", "POST", "/v1/signal/creatives/generate", {
+      campaignId,
+      kind: "ad",
+      brief: "Renew now and save.",
+      locales: ["en"],
+      count: 1
+    });
+    expect(denied.status).toBe(403);
+
+    const generated = ok(
+      await call("signal.lead", "POST", "/v1/signal/creatives/generate", {
+        campaignId,
+        kind: "ad",
+        brief: "Renew now and save.",
+        locales: ["en"],
+        count: 1
+      }),
+      201
+    );
+    expect(generated.variants).toHaveLength(1);
+    expect(generated.variants[0].locale).toBe("en");
+    expect(generated.auditIds).toHaveLength(1);
+
+    const creative = ok(await call("signal.lead", "GET", `/v1/signal/creatives/${generated.variants[0].id}`));
+    expect(creative.campaignId).toBe(campaignId);
+    expect(creative.generatedBy).toBe("ai");
+  });
+
   it("launching is auto-approved by tenant policy but still audited", async () => {
     const launched = ok(
       await call("signal.lead", "PATCH", `/v1/signal/campaigns/${campaignId}`, { state: "live" })
@@ -810,6 +879,50 @@ describe("J-M1 a campaign in a day", () => {
   it("a marketer without the launch permission cannot go live", async () => {
     const denied = await call("scout.lead", "PATCH", `/v1/signal/campaigns/${campaignId}`, { state: "paused" });
     expect(denied.status).toBe(403);
+  });
+});
+
+/* ------------------------------------------------------------------ J-S1 */
+
+describe("J-S1 whitespace from the tenant's own book", () => {
+  it("a marketer cannot run the whitespace sweep", async () => {
+    const denied = await call("signal.lead", "POST", "/v1/scout/whitespaces/compute");
+    expect(denied.status).toBe(403);
+  });
+
+  it("the product lead runs it against real quote demand vs. policy coverage", async () => {
+    const first = ok(await call("scout.lead", "POST", "/v1/scout/whitespaces/compute"), 201);
+    expect(typeof first.candidates).toBe("number");
+
+    // Idempotent: a category that already has a live row is skipped, so a
+    // second run right after the first raises nothing new.
+    const second = ok(await call("scout.lead", "POST", "/v1/scout/whitespaces/compute"), 201);
+    expect(second.candidates).toBe(0);
+  });
+
+  it("diffs two coverage wordings word by word", async () => {
+    const diff = ok(
+      await call("scout.lead", "POST", "/v1/scout/wording-diff", {
+        textA: "excludes flood damage",
+        textB: "includes flood damage"
+      })
+    );
+    expect(diff.spans.some((s: { type: string }) => s.type !== "equal")).toBe(true);
+  });
+
+  it("downloads the negotiation pack as a PDF", async () => {
+    const res = await app.fetch(
+      new Request("http://api.test/v1/scout/panel-bench/negotiation-pack", {
+        headers: { authorization: `Bearer ${tokens["scout.lead"]}` }
+      }),
+      env as never,
+      exec as never
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("application/pdf");
+    expect(res.headers.get("content-disposition")).toContain("negotiation-pack-");
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    expect(new TextDecoder().decode(bytes.slice(0, 4))).toBe("%PDF");
   });
 });
 
@@ -852,6 +965,22 @@ describe("J-M2 the budget morning", () => {
   it("spend is readable and joins to attribution", async () => {
     const spend = ok(await call("signal.lead", "GET", "/v1/signal/spend"));
     expect(Array.isArray(spend.data)).toBe(true);
+  });
+
+  it("one-click pause and resume toggle the tenant-wide autopilot switch", async () => {
+    // docs/modules/signal.md §8 clause 2: a global kill switch, gated to the
+    // budget-oversight role (same permission as approve/reverse), not any role
+    // outside SIGNAL.
+    const denied = await call("scout.lead", "POST", "/v1/signal/autopilot/pause");
+    expect(denied.status).toBe(403);
+
+    const paused = ok(await call("signal.lead", "POST", "/v1/signal/autopilot/pause"));
+    expect(paused.signalAutopilotPaused).toBe(true);
+    const [tenantRow] = await database.select().from(schema.tenants).where(eq(schema.tenants.id, tenantId));
+    expect(JSON.parse(tenantRow!.policyJson!).signalAutopilotPaused).toBe(true);
+
+    const resumed = ok(await call("signal.lead", "POST", "/v1/signal/autopilot/resume"));
+    expect(resumed.signalAutopilotPaused).toBe(false);
   });
 });
 
@@ -985,32 +1114,39 @@ describe("J-P2 panel negotiation", () => {
 /* ------------------------------------------------------------------ J-E1 */
 
 describe("J-E1 the 7am read", () => {
-  it("the briefing agent produces a briefing the exec can open", async () => {
-    const run = ok(
-      await call("north.analyst", "POST", "/v1/ai/runs", {
-        agentKey: "briefing",
-        purpose: "briefing.daily",
-        input: "What changed yesterday across distribution and retention?"
-      }),
-      200,
-      201
-    );
-    expect(run.text).toBeTruthy();
+  it("the briefing engine generates a real briefing from live metrics", async () => {
     // Generating is the analyst's permission; the exec reads what lands.
     const briefing = ok(
-      await call("north.analyst", "POST", "/v1/north/briefings", { date: "2026-01-06", status: "ready" }),
+      await call("north.analyst", "POST", "/v1/north/briefings/generate", { date: "2026-01-06" }),
       201
     );
-    expect(briefing.date).toBe("2026-01-06");
+    expect(briefing.narrativeRef).toBeTruthy();
+    expect(briefing.mismatches).toEqual([]);
+    expect(briefing.auditId).toBeTruthy();
     const seen = ok(await call("north.exec", "GET", `/v1/north/briefings/${briefing.id}`));
     expect(seen.date).toBe("2026-01-06");
+  });
+
+  it("a marketer cannot generate a briefing", async () => {
+    const denied = await call("scout.lead", "POST", "/v1/north/briefings/generate", { date: "2026-01-07" });
+    expect(denied.status).toBe(403);
   });
 });
 
 /* ------------------------------------------------------------------ J-E2 */
 
 describe("J-E2 the board pack", () => {
+  it("an analyst cannot assemble a board pack", async () => {
+    const denied = await call("north.analyst", "POST", "/v1/north/boardpacks", {
+      period: "2026-Q1",
+      title: "Q1 board pack"
+    });
+    expect(denied.status).toBe(403);
+  });
+
   it("a board pack is generated and a decision is recorded against it", async () => {
+    // Client-supplied sectionsJson is ignored — the pack is a real assembly
+    // from live briefings/snapshots/decisions, never a client-fabricated body.
     const pack = ok(
       await call("north.exec", "POST", "/v1/north/boardpacks", {
         period: "2026-Q1",
@@ -1019,6 +1155,10 @@ describe("J-E2 the board pack", () => {
       }),
       201
     );
+    expect(pack.status).toBe("review");
+    expect(pack.pdfFileId).toBeTruthy();
+    expect(pack.approvedBy).toBeNull();
+
     const decision = ok(
       await call("north.exec", "POST", "/v1/north/decisions", {
         title: "Expand the motor panel to five underwriters",
@@ -1028,7 +1168,6 @@ describe("J-E2 the board pack", () => {
       201
     );
     expect(decision.title).toContain("motor panel");
-    expect(pack).toBeTruthy();
   });
 });
 
@@ -1225,6 +1364,17 @@ describe("J-D1 the first API call", () => {
   it("health needs no credential; everything else does", async () => {
     expect((await call(null, "GET", "/health")).status).toBe(200);
     expect((await call(null, "GET", "/v1/me")).status).toBe(401);
+  });
+
+  it("carries security headers on every response, success or error (docs/10 §6)", async () => {
+    for (const path of ["/health", "/v1/me"]) {
+      const res = await app.fetch(new Request(`http://api.test${path}`), env as never, exec as never);
+      expect(res.headers.get("content-security-policy")).toBe("default-src 'none'; frame-ancestors 'none'");
+      expect(res.headers.get("strict-transport-security")).toContain("max-age=63072000");
+      expect(res.headers.get("x-frame-options")).toBe("DENY");
+      expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+      expect(res.headers.get("referrer-policy")).toBe("no-referrer");
+    }
   });
 
   it("a bad session token is refused, not ignored", async () => {

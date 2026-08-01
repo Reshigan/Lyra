@@ -4,8 +4,8 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { schema } from "@lyra/db";
-import { seed } from "./seed.js";
+import { CHART_OF_ACCOUNTS, schema } from "@lyra/db";
+import { seed, SEED_TENANT_SLUG } from "./seed.js";
 import { hashPassword, needsRehash, verifyPassword } from "./password.js";
 import { permissionsForRole } from "./rbac.js";
 import type { CoreDb } from "./context.js";
@@ -123,5 +123,485 @@ describe("seed", () => {
     for (const a of anomalies.filter((x) => x.linkedActionRef)) {
       expect(decisionIds.has(a.linkedActionRef!)).toBe(true);
     }
+  });
+
+  it("exposes the constant that guards re-seeding as the gonxt slug", () => {
+    expect(SEED_TENANT_SLUG).toBe("gonxt");
+  });
+
+  it("names the gonxt tenant with the slug every provisioning path checks", async () => {
+    await seed(db, { password: "gonxt-test-password" });
+    const [tenant] = await db.select().from(schema.tenants);
+    expect(tenant!.slug).toBe(SEED_TENANT_SLUG);
+    expect(tenant!.name).toBe("GONXT");
+  });
+
+  it("logs in each named persona with their exact name and role", async () => {
+    await seed(db, { password: "gonxt-test-password" });
+
+    const roleKeyFor = async (email: string): Promise<{ name: string; role: string }> => {
+      const [user] = await db.select().from(schema.users).where(eq(schema.users.email, email));
+      const [ur] = await db
+        .select({ key: schema.roles.key })
+        .from(schema.userRoles)
+        .innerJoin(schema.roles, eq(schema.roles.id, schema.userRoles.roleId))
+        .where(eq(schema.userRoles.userId, user!.id));
+      return { name: user!.name, role: ur!.key };
+    };
+
+    expect(await roleKeyFor("rana.hadid@gonxt.ae")).toEqual({ name: "Rana Hadid", role: "north.analyst" });
+    expect(await roleKeyFor("faisal.omar@gonxt.ae")).toEqual({ name: "Faisal Omar", role: "finance.controller" });
+    expect(await roleKeyFor("nadia.rahman@gonxt.ae")).toEqual({ name: "Nadia Rahman", role: "finance.controller" });
+    expect(await roleKeyFor("mona.idris@gonxt.ae")).toEqual({ name: "Mona Idris", role: "finance.analyst" });
+    expect(await roleKeyFor("raed.samir@gonxt.ae")).toEqual({ name: "Raed Samir", role: "dev.admin" });
+  });
+
+  it("opens the three desks scoped to their owning module", async () => {
+    await seed(db, { password: "gonxt-test-password" });
+    const teams = await db.select().from(schema.teams);
+    const byName = Object.fromEntries(teams.map((t) => [t.name, t]));
+
+    expect(teams).toHaveLength(3);
+    expect(byName["Motor desk"]).toMatchObject({ moduleScope: "axis" });
+    expect(byName["Health desk"]).toMatchObject({ moduleScope: "axis" });
+    expect(byName["Retention"]).toMatchObject({ moduleScope: "orbit" });
+  });
+
+  it("wires every chart-of-accounts entry into a ledger account with matching fields", async () => {
+    await seed(db, { password: "gonxt-test-password" });
+    const accounts = await db.select().from(schema.ledgerAccounts);
+    expect(accounts).toHaveLength(CHART_OF_ACCOUNTS.length);
+
+    const byCode = Object.fromEntries(accounts.map((a) => [a.code, a]));
+    for (const acc of CHART_OF_ACCOUNTS) {
+      expect(byCode[acc.code]).toMatchObject({
+        nameJson: JSON.stringify({ en: acc.en, ar: acc.ar }),
+        type: acc.type,
+        normalSide: acc.normalSide,
+        clientMoney: acc.clientMoney ?? false,
+        currency: "AED",
+        status: "active"
+      });
+    }
+
+    // Spot-check the client-money account explicitly: this is the flag the
+    // ledger relies on to segregate client funds, so its wiring must be exact.
+    expect(byCode["1010"]).toMatchObject({ clientMoney: true });
+    expect(byCode["1000"]).toMatchObject({ clientMoney: false });
+  });
+
+  it("seeds the panel with GONXT's own paper plus five external providers", async () => {
+    await seed(db, { password: "gonxt-test-password" });
+    const providers = await db.select().from(schema.providers);
+    const byName = Object.fromEntries(providers.map((p) => [p.name, p]));
+
+    expect(byName["GONXT Underwriting"]).toMatchObject({ kind: "insurer", isInternal: true, panelStatus: "active" });
+    expect(JSON.parse(byName["GONXT Underwriting"]!.linesJson!)).toEqual(["motor", "travel"]);
+
+    expect(byName["Falcon Insurance"]).toMatchObject({ kind: "insurer", isInternal: false });
+    expect(JSON.parse(byName["Falcon Insurance"]!.linesJson!)).toEqual(["motor", "home"]);
+    expect(JSON.parse(byName["Falcon Insurance"]!.quoteEndpointJson!)).toEqual({
+      url: "https://api.falcon.example/quote",
+      authRef: "FALCON_API_KEY"
+    });
+    expect(JSON.parse(byName["Falcon Insurance"]!.settlementTermsJson!)).toEqual({ frequency: "monthly", netDays: 30 });
+
+    expect(JSON.parse(byName["Cedar General Insurance"]!.linesJson!)).toEqual(["motor", "home", "travel"]);
+    expect(JSON.parse(byName["Cedar General Insurance"]!.settlementTermsJson!)).toEqual({ frequency: "monthly", netDays: 45 });
+
+    expect(JSON.parse(byName["Oryx Takaful"]!.linesJson!)).toEqual(["motor", "life"]);
+    expect(JSON.parse(byName["Oryx Takaful"]!.settlementTermsJson!)).toEqual({ frequency: "monthly", netDays: 60 });
+
+    expect(JSON.parse(byName["Gulf Health Assurance"]!.linesJson!)).toEqual(["health"]);
+    expect(JSON.parse(byName["Gulf Health Assurance"]!.settlementTermsJson!)).toEqual({ frequency: "monthly", netDays: 30 });
+
+    expect(byName["Meridian Bank"]).toMatchObject({ kind: "financier", isInternal: false });
+    expect(JSON.parse(byName["Meridian Bank"]!.linesJson!)).toEqual(["loan"]);
+  });
+
+  it("lists the five insurance products with their bilingual names", async () => {
+    await seed(db, { password: "gonxt-test-password" });
+    const products = await db.select().from(schema.products);
+    const byLine = Object.fromEntries(products.map((p) => [p.line, p]));
+
+    expect(JSON.parse(byLine["motor"]!.nameJson)).toEqual({ en: "Motor comprehensive", ar: "تأمين شامل للمركبات" });
+    expect(JSON.parse(byLine["health"]!.nameJson)).toEqual({ en: "Health – individual", ar: "تأمين صحي – فردي" });
+    expect(JSON.parse(byLine["travel"]!.nameJson)).toEqual({ en: "Travel", ar: "تأمين السفر" });
+    expect(JSON.parse(byLine["home"]!.nameJson)).toEqual({ en: "Home contents", ar: "تأمين محتويات المنزل" });
+    expect(byLine["life"]).toMatchObject({ structure: "takaful" });
+    expect(JSON.parse(byLine["life"]!.nameJson)).toEqual({ en: "Term life", ar: "تأمين على الحياة" });
+  });
+
+  it("opens five distribution channels with their commission and settlement terms", async () => {
+    await seed(db, { password: "gonxt-test-password" });
+    const channels = await db.select().from(schema.distChannels);
+    const byKey = Object.fromEntries(channels.map((c) => [c.key, c]));
+
+    expect(byKey["gonxt-web"]).toMatchObject({ kind: "b2c", medium: "web", collectsPayment: "us" });
+    expect(byKey["gonxt-app"]).toMatchObject({ kind: "b2c", medium: "app", collectsPayment: "us" });
+    expect(byKey["gonxt-call"]).toMatchObject({ kind: "b2c", medium: "call_centre", collectsPayment: "us" });
+
+    expect(byKey["alpha-brokers"]).toMatchObject({ kind: "b2b", medium: "portal", defaultCommissionPpm: 300_000 });
+    expect(JSON.parse(byKey["alpha-brokers"]!.settlementTermsJson!)).toEqual({
+      frequency: "monthly",
+      dayOfMonth: 10,
+      netDays: 15,
+      minPayoutMinor: 50_000
+    });
+
+    expect(byKey["meridian-embed"]).toMatchObject({
+      kind: "b2b",
+      medium: "embed",
+      collectsPayment: "partner",
+      defaultCommissionPpm: 400_000
+    });
+    expect(JSON.parse(byKey["meridian-embed"]!.settlementTermsJson!)).toEqual({
+      frequency: "monthly",
+      dayOfMonth: 5,
+      netDays: 30
+    });
+  });
+
+  it("prices the panel's nine offerings with their code, name and commission", async () => {
+    await seed(db, { password: "gonxt-test-password" });
+    const offerings = await db.select().from(schema.distOfferings);
+    const byCode = Object.fromEntries(offerings.map((o) => [o.code, o]));
+
+    expect(byCode["GNX-MOT-STD"]).toMatchObject({ baseCommissionPpm: 0, pricingMode: "table" });
+    expect(byCode["FAL-MOT-COMP"]).toMatchObject({ baseCommissionPpm: 150_000, pricingMode: "table" });
+    expect(byCode["CDR-MOT-ESS"]).toMatchObject({ baseCommissionPpm: 125_000, pricingMode: "table" });
+    expect(byCode["CDR-MOT-PLUS"]).toMatchObject({ baseCommissionPpm: 175_000 });
+    expect(byCode["CDR-MOT-PLUS"]!.upsellOfOfferingId).toBe(byCode["CDR-MOT-ESS"]!.id);
+    expect(byCode["ORX-MOT-TKF"]).toMatchObject({ baseCommissionPpm: 140_000, pricingMode: "manual", slaSeconds: 120 });
+    expect(byCode["GHA-IND-SILVER"]).toMatchObject({ baseCommissionPpm: 100_000, pricingMode: "referral", slaSeconds: 300 });
+    expect(byCode["GNX-TRV-ANN"]).toMatchObject({ baseCommissionPpm: 0, pricingMode: "table" });
+    expect(byCode["CDR-HOM-CONT"]).toMatchObject({ baseCommissionPpm: 200_000, pricingMode: "table" });
+    expect(byCode["ORX-LIF-TERM"]).toMatchObject({ baseCommissionPpm: 300_000, pricingMode: "manual" });
+
+    // Two rows share zero external commission: our own paper keeps the whole margin.
+    expect(offerings.filter((o) => o.baseCommissionPpm === 0)).toHaveLength(2);
+  });
+
+  it("sets channel commission rates per product, offering and line", async () => {
+    await seed(db, { password: "gonxt-test-password" });
+    const rates = await db.select().from(schema.distCommissionRates);
+    expect(rates).toHaveLength(4);
+    const byShare = Object.fromEntries(rates.map((r) => [r.channelSharePpm, r]));
+
+    expect(byShare[350_000]).toMatchObject({ earnedOn: "collection", clawbackDays: 30, flatFeeMinor: 0 });
+    expect(byShare[450_000]).toMatchObject({ earnedOn: "collection", clawbackDays: 30 });
+    expect(byShare[250_000]).toMatchObject({ earnedOn: "collection", flatFeeMinor: 2_500, clawbackDays: 0 });
+    expect(byShare[400_000]).toMatchObject({ earnedOn: "issue", clawbackDays: 45 });
+  });
+
+  it("shops with full consent so the fan-out is licensed to share data", async () => {
+    await seed(db, { password: "gonxt-test-password" });
+    const [customer] = await db.select().from(schema.customers);
+    expect(JSON.parse(customer!.nameJson)).toEqual({ en: "Rania Haddad", ar: "رانيا حداد" });
+    expect(customer!.kycStatus).toBe("verified");
+
+    const [consent] = await db.select().from(schema.consents);
+    expect(JSON.parse(consent!.purposesJson)).toEqual({
+      marketing: true,
+      profiling: true,
+      dataSharing: true,
+      crossBorder: false
+    });
+  });
+
+  it("issues the case and both policies with their exact reference numbers", async () => {
+    await seed(db, { password: "gonxt-test-password" });
+    const [kase] = await db.select().from(schema.axisCases);
+    expect(kase!.ref).toBe("GNX-2601-0001");
+    expect(kase!.status).toBe("issued");
+
+    // Other module seeders add their own policies to round out the book, so
+    // this asserts the two core-story policy numbers are present, not that
+    // they are the only ones.
+    const policyNos = (await db.select().from(schema.axisPolicies)).map((p) => p.policyNo);
+    expect(policyNos).toEqual(expect.arrayContaining(["CDR-MOT-2501-664118", "CDR-MOT-2601-778201"]));
+  });
+
+  it("proposes the motor-to-home cross-sell as the seeded next best offer", async () => {
+    await seed(db, { password: "gonxt-test-password" });
+    const [nbo] = await db.select().from(schema.distNextBestOffers);
+    expect(nbo!.kind).toBe("cross_sell");
+    expect(nbo!.reasonKey).toBe("nbo.reason.motor_to_home");
+    expect(nbo!.score).toBe(72);
+    expect(nbo!.expectedValueMinor).toBe(96_000);
+  });
+
+  it("registers one AI agent per module with its tier, autonomy and guardrails", async () => {
+    await seed(db, { password: "gonxt-test-password" });
+    const agents = await db.select().from(schema.aiAgents);
+    const byKey = Object.fromEntries(agents.map((a) => [a.key, a]));
+
+    expect(byKey["quoting"]).toMatchObject({ module: "dist", tier: "standard", autonomyLevel: "suggest_only" });
+    expect(byKey["copilot"]).toMatchObject({ module: "axis", tier: "standard", autonomyLevel: "act_with_approval" });
+    expect(byKey["renewal"]).toMatchObject({ module: "orbit", tier: "fast", autonomyLevel: "suggest_only" });
+    expect(byKey["creative"]).toMatchObject({ module: "signal", tier: "standard", autonomyLevel: "suggest_only" });
+    expect(byKey["discovery"]).toMatchObject({ module: "scout", tier: "reasoning", autonomyLevel: "suggest_only" });
+    expect(byKey["briefing"]).toMatchObject({ module: "north", tier: "reasoning", autonomyLevel: "suggest_only" });
+    expect(byKey["recon"]).toMatchObject({ module: "ledger", tier: "fast", autonomyLevel: "suggest_only" });
+    expect(byKey["qa"]).toMatchObject({ module: "core", tier: "standard", autonomyLevel: "suggest_only" });
+
+    // Only the two customer-facing modules require consent, and only the
+    // one agent with approval-gated autonomy demands a human in the loop.
+    for (const agent of agents) {
+      const guardrails = JSON.parse(agent.guardrailsJson!);
+      expect(guardrails.requiresConsent).toBe(agent.module === "dist" || agent.module === "orbit");
+      expect(guardrails.humanApproval).toBe(agent.autonomyLevel === "act_with_approval");
+    }
+
+    const prompts = await db.select().from(schema.aiPrompts);
+    expect(prompts).toHaveLength(9);
+    const arPrompt = prompts.find((p) => p.locale === "ar");
+    expect(arPrompt?.key).toBe("prompt.quoting.system");
+    expect(arPrompt?.body).toContain("أنت تقارن عروض التأمين");
+  });
+
+  it("registers every NORTH metric with its exact unit, owner and target", async () => {
+    await seed(db, { password: "gonxt-test-password" });
+    const rows = await db.select().from(schema.northMetrics);
+    const byKey = Object.fromEntries(rows.map((r) => [r.key, r]));
+
+    const expected: Record<
+      string,
+      { unit: string; grain: string; direction: string; owner: string; sensitivity: string; target: unknown }
+    > = {
+      gwp: {
+        unit: "money",
+        grain: "month",
+        direction: "up",
+        owner: "faisal.omar",
+        sensitivity: "internal",
+        target: { value: 230_000_000, scale: "minor", currency: "AED" }
+      },
+      net_commission: {
+        unit: "money",
+        grain: "month",
+        direction: "up",
+        owner: "faisal.omar",
+        sensitivity: "internal",
+        target: { value: 21_000_000, scale: "minor", currency: "AED" }
+      },
+      active_policies: {
+        unit: "count",
+        grain: "month",
+        direction: "up",
+        owner: "omar.farouk",
+        sensitivity: "internal",
+        target: { value: 4_800, scale: "count" }
+      },
+      renewal_retention_rate: {
+        unit: "percent",
+        grain: "month",
+        direction: "up",
+        owner: "yusuf.karim",
+        sensitivity: "internal",
+        target: { value: 8_500, scale: "bps" }
+      },
+      cac_per_policy: {
+        unit: "money",
+        grain: "month",
+        direction: "down",
+        owner: "noor.jamal",
+        sensitivity: "internal",
+        target: { value: 19_000, scale: "minor", currency: "AED" }
+      },
+      broker_channel_share: {
+        unit: "percent",
+        grain: "month",
+        direction: "up",
+        owner: "dana.aziz",
+        sensitivity: "internal",
+        target: { value: 4_000, scale: "bps" }
+      },
+      loss_ratio: {
+        unit: "ratio",
+        grain: "month",
+        direction: "down",
+        owner: "faisal.omar",
+        sensitivity: "restricted",
+        target: { value: 6_000, scale: "bps" }
+      },
+      ai_cost_per_case: {
+        unit: "money",
+        grain: "month",
+        direction: "down",
+        owner: "raed.samir",
+        sensitivity: "internal",
+        target: { value: 100, scale: "minor", currency: "AED" }
+      },
+      policies_issued: {
+        unit: "count",
+        grain: "day",
+        direction: "up",
+        owner: "omar.farouk",
+        sensitivity: "internal",
+        target: { value: 55, scale: "count" }
+      },
+      quote_to_bind_rate: {
+        unit: "percent",
+        grain: "day",
+        direction: "up",
+        owner: "layla.hassan",
+        sensitivity: "internal",
+        target: { value: 2_400, scale: "bps" }
+      },
+      panel_response_rate: {
+        unit: "percent",
+        grain: "day",
+        direction: "up",
+        owner: "dana.aziz",
+        sensitivity: "internal",
+        target: { value: 9_700, scale: "bps" }
+      },
+      quote_latency_p95: {
+        unit: "duration_ms",
+        grain: "day",
+        direction: "down",
+        owner: "raed.samir",
+        sensitivity: "public",
+        target: { value: 2_500, scale: "ms" }
+      }
+    };
+
+    expect(Object.keys(byKey).sort()).toEqual(Object.keys(expected).sort());
+    for (const [key, exp] of Object.entries(expected)) {
+      const row = byKey[key]!;
+      expect(row, key).toBeTruthy();
+      expect(row.unit, key).toBe(exp.unit);
+      expect(row.grain, key).toBe(exp.grain);
+      expect(row.direction, key).toBe(exp.direction);
+      expect(row.owner, key).toBe(exp.owner);
+      expect(row.sensitivity, key).toBe(exp.sensitivity);
+      expect(JSON.parse(row.targetJson!), key).toEqual(exp.target);
+    }
+  });
+
+  it("writes the exact monthly and daily NORTH snapshot series", async () => {
+    await seed(db, { password: "gonxt-test-password" });
+    const snaps = await db.select().from(schema.northSnapshots);
+    const totalsFor = (metricKey: string, grain: "day" | "month"): number[] =>
+      snaps
+        .filter((s) => s.metricKey === metricKey && s.grain === grain && s.dimsHash === "")
+        .sort((a, b) => a.period.localeCompare(b.period))
+        .map((s) => s.value);
+
+    expect(totalsFor("gwp", "month")).toEqual([186_400_000, 201_750_000, 238_900_000, 74_300_000]);
+    expect(totalsFor("net_commission", "month")).toEqual([17_708_000, 19_166_000, 22_695_000, 7_058_000]);
+    expect(totalsFor("active_policies", "month")).toEqual([4_182, 4_361, 4_608, 4_690]);
+    expect(totalsFor("renewal_retention_rate", "month")).toEqual([7_920, 8_050, 8_310, 8_180]);
+    expect(totalsFor("cac_per_policy", "month")).toEqual([21_400, 20_150, 18_900, 24_600]);
+    expect(totalsFor("broker_channel_share", "month")).toEqual([3_120, 3_380, 3_611, 3_740]);
+    expect(totalsFor("loss_ratio", "month")).toEqual([6_140, 5_980, 6_420, 6_050]);
+    expect(totalsFor("ai_cost_per_case", "month")).toEqual([118, 104, 96, 91]);
+
+    expect(totalsFor("policies_issued", "day")).toEqual([41, 38, 52, 61, 57]);
+    expect(totalsFor("quote_to_bind_rate", "day")).toEqual([2_310, 2_280, 2_405, 2_360, 1_890]);
+    expect(totalsFor("panel_response_rate", "day")).toEqual([9_650, 9_720, 9_580, 9_240, 8_810]);
+    expect(totalsFor("quote_latency_p95", "day")).toEqual([2_150, 2_080, 2_310, 3_040, 3_620]);
+
+    // The December GWP split by channel sums to the same headline the
+    // channel-less row reports — proven per-dimension, not just per-total.
+    const decemberByChannel = snaps.filter(
+      (s) => s.metricKey === "gwp" && s.period === "2025-12" && s.dimsHash.startsWith("channel=")
+    );
+    const byChannel = Object.fromEntries(decemberByChannel.map((s) => [s.dimsHash, s.value]));
+    expect(byChannel["channel=gonxt-web"]).toBe(96_420_000);
+    expect(byChannel["channel=gonxt-app"]).toBe(41_880_000);
+    expect(byChannel["channel=gonxt-call"]).toBe(14_320_000);
+    expect(byChannel["channel=alpha-brokers"]).toBe(62_190_000);
+    expect(byChannel["channel=meridian-embed"]).toBe(24_090_000);
+  });
+
+  it("staggers NORTH briefings across audiences, statuses and locales", async () => {
+    await seed(db, { password: "gonxt-test-password" });
+    const briefings = await db.select().from(schema.northBriefings);
+    expect(briefings).toHaveLength(5);
+    const byKey = Object.fromEntries(briefings.map((b) => [`${b.date}:${b.audience}:${b.locale}`, b]));
+
+    expect(byKey["2026-01-05:exec:en"]).toMatchObject({ status: "published", approvedBy: "hala.zayed" });
+    expect(byKey["2026-01-05:exec:ar"]).toMatchObject({ status: "published", approvedBy: "khalid.rashed" });
+    expect(byKey["2026-01-04:exec:en"]).toMatchObject({ status: "published", approvedBy: "hala.zayed" });
+    expect(byKey["2026-01-02:board:en"]).toMatchObject({ status: "review", approvedBy: null, publishedAt: null });
+    expect(byKey["2025-12-31:investor:en"]).toMatchObject({ status: "draft", approvedBy: null, publishedAt: null });
+  });
+
+  it("detects NORTH anomalies with the right state, magnitude and driver", async () => {
+    await seed(db, { password: "gonxt-test-password" });
+    const anomalies = await db.select().from(schema.northAnomalies);
+    const byKey = Object.fromEntries(anomalies.map((a) => [`${a.metricKey}:${a.window}`, a]));
+
+    expect(byKey["quote_to_bind_rate:2026-01-05"]).toMatchObject({
+      state: "explained",
+      magnitude: -1_923,
+      expected: 2_340,
+      actual: 1_890,
+      explainedBy: "rana.hadid"
+    });
+    expect(byKey["panel_response_rate:2026-01-01..2026-01-05"]).toMatchObject({
+      state: "action_created",
+      magnitude: -861
+    });
+    expect(byKey["cac_per_policy:2026-01"]).toMatchObject({ state: "new", magnitude: 2_813, explainedBy: null });
+    expect(byKey["gwp:2025-12"]).toMatchObject({ state: "dismissed", magnitude: 1_269 });
+    expect(byKey["quote_latency_p95:2026-01-04"]).toMatchObject({ state: "new", magnitude: 6_606 });
+  });
+
+  it("records NORTH decisions with the chosen option and lifecycle status", async () => {
+    await seed(db, { password: "gonxt-test-password" });
+    const decisions = await db.select().from(schema.northDecisions);
+    const byTitle = Object.fromEntries(decisions.map((d) => [d.title, d]));
+
+    expect(byTitle["Add a fifth motor underwriter to the panel"]).toMatchObject({
+      chosen: "invite_two",
+      owner: "hala.zayed",
+      status: "open"
+    });
+    expect(byTitle["Raise the Alpha Brokers motor share to 40% for Q1"]).toMatchObject({
+      chosen: "raise_40",
+      owner: "dana.aziz",
+      status: "open"
+    });
+    expect(byTitle["Move Oryx motor quotes off manual pricing"]).toMatchObject({
+      chosen: "rate_table",
+      owner: "omar.farouk",
+      status: "open"
+    });
+    expect(byTitle["Pause the December brand campaign and move the budget to search"]).toMatchObject({
+      chosen: "move_to_search",
+      status: "reviewed"
+    });
+    expect(byTitle["Keep GONXT motor on own paper for the 25–39 age band"]).toMatchObject({
+      chosen: "keep",
+      status: "reviewed"
+    });
+    expect(byTitle["Withdraw Cedar Motor Essential from the call centre"]).toMatchObject({
+      chosen: "keep",
+      status: "reversed"
+    });
+  });
+
+  it("models NORTH scenarios against real channels, offerings and authors", async () => {
+    await seed(db, { password: "gonxt-test-password" });
+    const scenarios = await db.select().from(schema.northScenarios);
+    expect(scenarios.map((s) => s.author)).toEqual(["hala.zayed", "rana.hadid", "rana.hadid"]);
+    const brokerShare = scenarios.find((s) => s.question.includes("Alpha Brokers"))!;
+    expect(JSON.parse(brokerShare.assumptionsJson)).toMatchObject({
+      channelKey: "alpha-brokers",
+      channelSharePpm: 450_000,
+      currentChannelSharePpm: 350_000
+    });
+  });
+
+  it("distributes the Q4 board pack while Q1's stays in draft", async () => {
+    await seed(db, { password: "gonxt-test-password" });
+    const packs = await db.select().from(schema.northBoardpacks);
+    const byPeriod = Object.fromEntries(packs.map((p) => [p.period, p]));
+
+    expect(byPeriod["2025-Q4"]).toMatchObject({ status: "distributed", approvedBy: "hala.zayed" });
+    expect(byPeriod["2026-Q1"]).toMatchObject({ status: "draft", approvedBy: null });
   });
 });

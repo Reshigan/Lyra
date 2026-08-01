@@ -353,7 +353,7 @@ export default function Login() {
           </section>
         ) : null}
 
-        <Form method="post" className="mt-6 flex flex-col gap-4">
+        <Form method="post" className="mt-6 flex flex-col gap-4" key={step}>
           <input type="hidden" name="next" value={next} />
           {step === "totp" ? (
             <>

@@ -27,6 +27,9 @@ const PUBLIC = new Set([
   // (auth.ts §demoOnly), so being listed here costs nothing in production.
   "/v1/auth/demo/personas",
   "/v1/auth/demo/login",
+  // J-X3: portal signup has no session to authenticate against yet — that is
+  // the whole point of the route (routes/onboarding.ts §partner signup).
+  "/v1/onboarding/partners/signup",
   "/openapi.json"
 ]);
 
@@ -62,7 +65,8 @@ export function gatewayFor(env: Env): Gateway {
       ...(env.ANTHROPIC_API_KEY ? { ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY } : {}),
       ...(env.AI_GATEWAY_URL ? { AI_GATEWAY_URL: env.AI_GATEWAY_URL } : {}),
       ...(env.OPENAI_COMPAT_URL ? { OPENAI_COMPAT_URL: env.OPENAI_COMPAT_URL } : {}),
-      ...(env.OPENAI_COMPAT_API_KEY ? { OPENAI_COMPAT_API_KEY: env.OPENAI_COMPAT_API_KEY } : {})
+      ...(env.OPENAI_COMPAT_API_KEY ? { OPENAI_COMPAT_API_KEY: env.OPENAI_COMPAT_API_KEY } : {}),
+      ...(env.TELEMETRY ? { TELEMETRY: env.TELEMETRY } : {})
     }
   });
 }
@@ -70,11 +74,23 @@ export function gatewayFor(env: Env): Gateway {
 /** Response headers that apply to every route, including error responses. */
 export const withHeaders: MiddlewareHandler<App> = async (c, next) => {
   await next();
+  const latencyMs = Date.now() - (c.get("startedAt") ?? Date.now());
   c.header("x-request-id", c.get("requestId") ?? "");
-  c.header("x-response-time-ms", String(Date.now() - (c.get("startedAt") ?? Date.now())));
+  c.header("x-response-time-ms", String(latencyMs));
   c.header("referrer-policy", "no-referrer");
   c.header("x-content-type-options", "nosniff");
   c.header("cache-control", "no-store");
+  // docs/10 §6: security headers. This is a JSON API — no inline scripts/styles to
+  // allow, so default-src 'none' plus frame-ancestors is the whole policy.
+  c.header("content-security-policy", "default-src 'none'; frame-ancestors 'none'");
+  c.header("strict-transport-security", "max-age=63072000; includeSubDomains; preload");
+  c.header("x-frame-options", "DENY");
+  // docs/10 §2: request metrics half of TELEMETRY (AI-usage half is Gateway.writeAudit).
+  c.env.TELEMETRY?.writeDataPoint({
+    blobs: [c.req.method, c.req.routePath ?? c.req.path, String(c.res.status), c.get("ctx")?.tenantId ?? "anonymous"],
+    doubles: [latencyMs],
+    indexes: [c.get("ctx")?.tenantId ?? "anonymous"]
+  });
 };
 
 /**

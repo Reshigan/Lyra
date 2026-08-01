@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { id as newId, schema } from "@lyra/db";
 import {
@@ -14,13 +15,15 @@ import {
   type Ctx
 } from "@lyra/core";
 import { body, created } from "../http.js";
+import { must } from "../rows.js";
 import type { App } from "../env.js";
 
-// docs/06 §2. Everything about the core module that generated CRUD cannot do.
-// Today that is one endpoint: minting an API key. The plaintext is shown once
-// and never stored, so the client can neither supply `prefix` nor `keyHash` —
-// which is exactly what a CRUD create would ask it for. List, record and revoke
-// stay on the generated resource in resources.ts.
+// docs/06 §2. Everything about the core module that generated CRUD cannot do:
+// minting an API key (the plaintext is shown once and never stored, so the
+// client can neither supply `prefix` nor `keyHash` — exactly what a CRUD
+// create would ask it for) and revoking one (generic CRUD delete only
+// soft-deletes off a `deletedAt` column; api-keys has `revokedAt` instead).
+// List and record still come from the generated resource in resources.ts.
 
 export const coreRoutes = new Hono<App>();
 
@@ -100,6 +103,25 @@ coreRoutes.post("/api-keys", async (c) => {
   return created(c, { ...safe, key: plaintext });
 });
 
+// Same structural problem as create, the other direction: `core_api_keys` has
+// `revokedAt`, not `deletedAt`, so generic CRUD's delete (which only takes the
+// soft-delete branch off a `deletedAt` column) would hard-delete the row.
+// That destroys the audit trail a revoked credential is supposed to leave
+// behind. Mounted before CRUD, this shadows that delete and revokes instead —
+// same shape as meRoutes' session revoke in routes/me.ts.
+coreRoutes.delete("/api-keys/:id", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "core:api_keys:revoke", { tenantId: ctx.tenantId, module: "core" });
+  const rowId = c.req.param("id");
+  await must(ctx, schema.apiKeys, rowId, "api-keys");
+  await ctx.db
+    .update(schema.apiKeys)
+    .set({ revokedAt: ctx.now })
+    .where(and(eq(schema.apiKeys.tenantId, ctx.tenantId), eq(schema.apiKeys.id, rowId)));
+  await audit(ctx, { action: "core.api-keys.revoke", subjectRef: `api-keys:${rowId}` });
+  return c.body(null, 204);
+});
+
 /* ------------------------------------------------------------- webhooks */
 
 // Same structural problem as the key: `core_webhooks.secret` is notNull with no
@@ -116,18 +138,22 @@ const WebhookBody = z
   })
   .strict();
 
+// Stored in plaintext, unlike the API key, and deliberately: dispatch.ts HMACs
+// every delivery with it and the SDK verifies with the same shared secret, so
+// a digest here would leave nothing able to sign. `secretColumns: ["secret"]`
+// on the resource keeps it off every read path and out of audit images.
+function mintWebhookSecret(): string {
+  const bytes = new Uint8Array(SECRET_BYTES);
+  crypto.getRandomValues(bytes);
+  return `whsec_${base32Encode(bytes)}`;
+}
+
 coreRoutes.post("/webhooks", async (c) => {
   const ctx = ctxOf(c);
   require_(ctx.actor, "core:webhooks:write", { tenantId: ctx.tenantId, module: "core" });
   const input = await body(c, WebhookBody);
 
-  const bytes = new Uint8Array(SECRET_BYTES);
-  crypto.getRandomValues(bytes);
-  // Stored in plaintext, unlike the API key, and deliberately: dispatch.ts HMACs
-  // every delivery with it and the SDK verifies with the same shared secret, so
-  // a digest here would leave nothing able to sign. `secretColumns: ["secret"]`
-  // on the resource keeps it off every read path and out of audit images.
-  const secret = `whsec_${base32Encode(bytes)}`;
+  const secret = mintWebhookSecret();
   const row = {
     id: newId("whk", ctx.now),
     tenantId: ctx.tenantId,
@@ -146,4 +172,24 @@ coreRoutes.post("/webhooks", async (c) => {
   // Event types go back as they came, parsed — the read path hydrates the column
   // too, so the mint's shape matches the record the client fetches next.
   return created(c, { ...safe, eventTypesJson: input.eventTypesJson, secret });
+});
+
+// docs/10 §6: "webhook secrets rotation UI". Generic CRUD's PATCH already lets
+// a tenant set the secret to a value of their own choosing (resources.ts) —
+// this is the other case, a fresh CSPRNG secret on demand, same mint the
+// create route uses, so a receiver stuck accepting an old leaked secret has a
+// one-click way off it without deleting and recreating the endpoint.
+coreRoutes.post("/webhooks/:id/rotate", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "core:webhooks:write", { tenantId: ctx.tenantId, module: "core" });
+  const rowId = c.req.param("id");
+  const before = await must(ctx, schema.webhooks, rowId, "webhooks");
+  const secret = mintWebhookSecret();
+  await ctx.db
+    .update(schema.webhooks)
+    .set({ secret })
+    .where(and(eq(schema.webhooks.tenantId, ctx.tenantId), eq(schema.webhooks.id, rowId)));
+  await audit(ctx, { action: "core.webhooks.rotate", subjectRef: `webhooks:${rowId}` });
+  const { secret: _before, ...safe } = before;
+  return c.json({ ...safe, secret });
 });

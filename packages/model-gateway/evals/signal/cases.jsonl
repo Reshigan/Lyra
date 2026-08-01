@@ -1,0 +1,8 @@
+{"id":"clean-benefit","text":"Comprehensive cover for your family car, claims handled in days not weeks.","expectFlag":false,"expectRule":null}
+{"id":"clean-price-anchor","text":"Get a quote in two minutes and see your premium before you commit.","expectFlag":false,"expectRule":null}
+{"id":"clean-cta","text":"Renew today and keep your no-claims discount for another year.","expectFlag":false,"expectRule":null}
+{"id":"comparison-cheapest","text":"We are the cheapest cover you'll find in the UAE this month.","expectFlag":true,"expectRule":"comparison_claim_requires_source"}
+{"id":"comparison-best-market","text":"Rated best in the market by drivers who switched to us.","expectFlag":true,"expectRule":"comparison_claim_requires_source"}
+{"id":"guarantee-cover","text":"Guaranteed cover for every driver, no questions asked.","expectFlag":true,"expectRule":"no_guarantee_of_cover"}
+{"id":"guarantee-accepted","text":"100% accepted regardless of your driving history.","expectFlag":true,"expectRule":"no_guarantee_of_cover"}
+{"id":"both-claims","text":"The cheapest plan on the market, guaranteed acceptance for every driver.","expectFlag":true,"expectRule":"comparison_claim_requires_source"}

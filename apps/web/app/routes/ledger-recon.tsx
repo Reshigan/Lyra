@@ -104,7 +104,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     runId && held.has(PERM.reconRead)
       ? soft(
           api<{ data: ReconMatch[] }>(
-            `/v1/ledger/recon-matches?runId=${encodeURIComponent(runId)}&sort=createdAt&order=asc&limit=500`,
+            `/v1/ledger/recon-matches?runId=${encodeURIComponent(runId)}&sort=createdAt&order=asc&limit=200`,
             { env, request }
           )
         )

@@ -56,7 +56,7 @@ interface QuoteRequest {
   customerId: string | null;
   consentId: string | null;
   caseId: string | null;
-  inputsJson: string;
+  inputsJson: Record<string, unknown>;
   currency: string;
   state: string;
   fanoutCount: number | null;
@@ -441,11 +441,13 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
           ...(current.consentId ? { consentId: current.consentId } : {}),
           ...(current.caseId ? { caseId: current.caseId } : {}),
           currency: current.currency,
-          inputs: JSON.parse(current.inputsJson) as Record<string, unknown>
+          inputs: current.inputsJson
         }
       });
-      const path = new URL(request.url).pathname;
-      return redirect(path.replace(/[^/]+\/compare\/?$/, `${fresh.request.id}/compare`));
+      // Not a path.replace() on request.url: single-fetch actions post to the
+      // `.data` URL, so its pathname ends in "compare.data" and the swap
+      // silently no-ops, redirecting back to a URL no route matches.
+      return redirect(`/distribution/quote-requests/${fresh.request.id}/compare`);
     } else {
       return { problem: { title: "unknown intent", status: 400 }, done: null };
     }

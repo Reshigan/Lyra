@@ -24,8 +24,44 @@
       "migrations_dir": "../../packages/db/migrations"
     }
   ],
-  "kv_namespaces": [{ "binding": "KV", "id": "d0e3a0b5e70f4bbbad797a0fdd9dbae0" }],
-  "r2_buckets": [{ "binding": "FILES", "bucket_name": "lyra-files" }],
+  // KV was one namespace named "KV"; split into CACHE (same id, same data —
+  // SSO nonces, rate-limit fallback) and CONFIG (new, tenant/domain-pack config).
+  "kv_namespaces": [
+    { "binding": "CACHE", "id": "d0e3a0b5e70f4bbbad797a0fdd9dbae0" },
+    { "binding": "CONFIG", "id": "ff82d2eeb8ce4b9fb6bef1c4c4d1957e" }
+  ],
+  "r2_buckets": [
+    { "binding": "FILES", "bucket_name": "lyra-files" },
+    { "binding": "EXPORTS", "bucket_name": "lyra-exports" },
+    { "binding": "LOGS", "bucket_name": "lyra-logs" }
+  ],
+  "queues": {
+    "producers": [{ "binding": "EVENTS", "queue": "lyra-events" }],
+    "consumers": [{ "queue": "lyra-events", "max_batch_size": 25 }]
+  },
+  "vectorize": [
+    { "binding": "VEC_KB", "index_name": "lyra-vec-kb" },
+    { "binding": "VEC_MARKET", "index_name": "lyra-vec-market" },
+    { "binding": "VEC_CONVO", "index_name": "lyra-vec-convo" }
+  ],
+  "analytics_engine_datasets": [{ "binding": "TELEMETRY", "dataset": "lyra_telemetry" }],
+  "browser": { "binding": "BROWSER" },
+  // docs/10 §2: day-0/7/21/30 renewal campaign (engines/renewal-workflow.ts),
+  // one instance per orbit_renewals row (sweepRenewals, engines/renewals.ts).
+  "workflows": [{ "binding": "WF", "name": "lyra-workflows", "class_name": "RenewalWorkflow" }],
+  // docs/16 H3 / docs/02 §4: one AgentRoom per ORBIT conversation. RATE is one
+  // instance per throttle key (auth.ts); REALTIME is one per user (SSE push).
+  "durable_objects": {
+    "bindings": [
+      { "name": "AGENT_ROOM", "class_name": "AgentRoom" },
+      { "name": "RATE", "class_name": "RateCounter" },
+      { "name": "REALTIME", "class_name": "UserChannel" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["AgentRoom"] },
+    { "tag": "v2", "new_sqlite_classes": ["RateCounter", "UserChannel"] }
+  ],
   // Outbox drain and session sweep. Both idempotent, so a missed tick only costs
   // latency.
   "triggers": { "crons": ["*/5 * * * *"] },
@@ -47,8 +83,38 @@
           "migrations_dir": "../../packages/db/migrations"
         }
       ],
-      "kv_namespaces": [{ "binding": "KV", "id": "fe4fd013a5ac4b9e8125c9c1301d3a5e" }],
-      "r2_buckets": [{ "binding": "FILES", "bucket_name": "lyra-files-staging" }],
+      "kv_namespaces": [
+        { "binding": "CACHE", "id": "fe4fd013a5ac4b9e8125c9c1301d3a5e" },
+        { "binding": "CONFIG", "id": "99a71581517e4eb4bdfde38de06ded98" }
+      ],
+      "r2_buckets": [
+        { "binding": "FILES", "bucket_name": "lyra-files-staging" },
+        { "binding": "EXPORTS", "bucket_name": "lyra-exports-staging" },
+        { "binding": "LOGS", "bucket_name": "lyra-logs-staging" }
+      ],
+      "queues": {
+        "producers": [{ "binding": "EVENTS", "queue": "lyra-events-staging" }],
+        "consumers": [{ "queue": "lyra-events-staging", "max_batch_size": 25 }]
+      },
+      "vectorize": [
+        { "binding": "VEC_KB", "index_name": "lyra-vec-kb-staging" },
+        { "binding": "VEC_MARKET", "index_name": "lyra-vec-market-staging" },
+        { "binding": "VEC_CONVO", "index_name": "lyra-vec-convo-staging" }
+      ],
+      "analytics_engine_datasets": [{ "binding": "TELEMETRY", "dataset": "lyra_telemetry_staging" }],
+      "browser": { "binding": "BROWSER" },
+      "workflows": [{ "binding": "WF", "name": "lyra-workflows-staging", "class_name": "RenewalWorkflow" }],
+      "durable_objects": {
+        "bindings": [
+          { "name": "AGENT_ROOM", "class_name": "AgentRoom" },
+          { "name": "RATE", "class_name": "RateCounter" },
+          { "name": "REALTIME", "class_name": "UserChannel" }
+        ]
+      },
+      "migrations": [
+        { "tag": "v1", "new_sqlite_classes": ["AgentRoom"] },
+        { "tag": "v2", "new_sqlite_classes": ["RateCounter", "UserChannel"] }
+      ],
       "triggers": { "crons": ["*/15 * * * *"] },
       "routes": [{ "pattern": "api-staging.lyra.vantax.co.za", "custom_domain": true }]
     }

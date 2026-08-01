@@ -511,7 +511,7 @@ distRoutes.get("/commission-entries/statement", async (c) => {
 
 distRoutes.post("/next-best-offers/propose", async (c) => {
   const ctx = ctxOf(c);
-  require_(ctx.actor, "dist:offers:surface", { tenantId: ctx.tenantId, module: "dist" });
+  require_(ctx.actor, "dist:offers:read", { tenantId: ctx.tenantId, module: "dist" });
   const input = await body(
     c,
     z.object({
@@ -550,7 +550,7 @@ distRoutes.post("/next-best-offers/propose", async (c) => {
 
 distRoutes.post("/next-best-offers/:id/surface", async (c) => {
   const ctx = ctxOf(c);
-  require_(ctx.actor, "dist:offers:override", { tenantId: ctx.tenantId, module: "dist" });
+  require_(ctx.actor, "dist:offers:surface", { tenantId: ctx.tenantId, module: "dist" });
   const offer = await one(ctx, schema.distNextBestOffers, c.req.param("id"));
   if (!offer) throw notFound("next best offer");
   // markSurfaced only moves `proposed`, so without this a caller surfacing a

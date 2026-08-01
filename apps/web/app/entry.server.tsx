@@ -25,5 +25,16 @@ export default async function handleRequest(
   if (isbot(request.headers.get("user-agent") ?? "")) await body.allReady;
 
   responseHeaders.set("content-type", "text/html; charset=utf-8");
+  // docs/10 §6: security headers. Vite's dev/build output is hashed inline
+  // scripts/styles under React Router's own nonce-free bundling, so 'self' plus
+  // the framework's own asset origin covers it without 'unsafe-inline'.
+  responseHeaders.set(
+    "content-security-policy",
+    "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'"
+  );
+  responseHeaders.set("strict-transport-security", "max-age=63072000; includeSubDomains; preload");
+  responseHeaders.set("x-frame-options", "DENY");
+  responseHeaders.set("x-content-type-options", "nosniff");
+  responseHeaders.set("referrer-policy", "no-referrer");
   return new Response(body, { status, headers: responseHeaders });
 }

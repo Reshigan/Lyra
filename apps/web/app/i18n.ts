@@ -12,10 +12,49 @@ export const DEFAULT_LOCALE = "en";
 /** Locales that lay out right-to-left. Drives `dir` and every logical property. */
 const RTL = new Set(["ar", "fa", "he", "ur"]);
 
+// @accept:M0-rtl (docs/IMPLEMENTATION.md §5): a pseudo-locale catches hardcoded
+// strings and layout breaks that en/ar (both real, both fit) never would.
+// Deliberately absent from CATALOGUES/LOCALES: it must never appear in the
+// settings language picker, only reachable via the same lyra_locale cookie
+// mechanism settings.tsx already writes (see e2e/pseudo-locale.spec.ts).
+export const PSEUDO_LOCALE = "pseudo";
+
+const ACCENTS: Record<string, string> = {
+  a: "á", b: "ß", c: "ç", d: "ð", e: "é", f: "ƒ", g: "ĝ", h: "ĥ", i: "í",
+  j: "ĵ", k: "ķ", l: "ĺ", m: "ɱ", n: "ñ", o: "ó", p: "ρ", q: "ɋ", r: "ŕ",
+  s: "š", t: "ţ", u: "ú", v: "ѵ", w: "ŵ", x: "х", y: "ý", z: "ž"
+};
+
+function pseudoize(text: string): string {
+  // Split on {placeholders} and leave them untouched — translator()'s
+  // interpolation regex requires plain ASCII \w+ inside the braces.
+  const mapped = text
+    .split(/(\{\w+\})/g)
+    .map((part) => (part.startsWith("{") ? part : part.replace(/[a-zA-Z]/g, (c) => ACCENTS[c.toLowerCase()] ?? c)))
+    .join("");
+  // Pad ~30% longer so truncation/overflow shows up under a real screen, not
+  // just in the string table.
+  const pad = "‧".repeat(Math.max(3, Math.ceil(mapped.length * 0.3)));
+  return `⟦${mapped}${pad}⟧`;
+}
+
+const PSEUDO_CATALOGUE: Messages = Object.fromEntries(
+  Object.entries(en).map(([key, value]) => [key, pseudoize(value)])
+) as Messages;
+
 export type Translate = (key: string, vars?: Record<string, string | number>) => string;
 
 export function dirFor(locale: string): "rtl" | "ltr" {
   return RTL.has(baseOf(locale)) ? "rtl" : "ltr";
+}
+
+/**
+ * `<html lang>` must be a valid BCP-47 tag (WCAG 3.1.1 / axe `html-lang-valid`)
+ * — "pseudo" alone fails that check. "en-x-pseudo" is valid: a real primary
+ * subtag plus the standard "-x-" private-use extension.
+ */
+export function langFor(locale: string): string {
+  return locale === PSEUDO_LOCALE ? "en-x-pseudo" : locale;
 }
 
 /**
@@ -24,6 +63,7 @@ export function dirFor(locale: string): "rtl" | "ltr" {
  */
 export function localeFrom(request: Request): string {
   const cookie = readCookie(request.headers.get("cookie"), "lyra_locale");
+  if (cookie === PSEUDO_LOCALE) return PSEUDO_LOCALE;
   if (cookie && CATALOGUES[cookie]) return cookie;
 
   for (const part of (request.headers.get("accept-language") ?? "").split(",")) {
@@ -34,7 +74,7 @@ export function localeFrom(request: Request): string {
 }
 
 export function translator(locale: string): Translate {
-  const catalogue = CATALOGUES[locale] ?? CATALOGUES[DEFAULT_LOCALE]!;
+  const catalogue = locale === PSEUDO_LOCALE ? PSEUDO_CATALOGUE : (CATALOGUES[locale] ?? CATALOGUES[DEFAULT_LOCALE]!);
   return (key, vars) => {
     // An unknown key renders as itself rather than as an empty box: a missing
     // string should look wrong in review, not invisible in production.

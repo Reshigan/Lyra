@@ -248,6 +248,8 @@ export interface ApprovalStripProps {
   /** Explains why approval is unavailable — shown instead of a dead control. */
   blockedReason?: React.ReactNode;
   className?: string;
+  /** Region landmark name — pass the caller's i18n string; defaults to English (CLAUDE.md §7). */
+  label?: string;
 }
 
 /**
@@ -262,12 +264,13 @@ export function ApprovalStrip({
   onApprove,
   onReject,
   blockedReason,
-  className
+  className,
+  label = "Pending approval"
 }: ApprovalStripProps) {
   return (
     <div
       role="region"
-      aria-label="Pending approval"
+      aria-label={label}
       className={cn(
         "flex flex-wrap items-center justify-between gap-4 rounded-lg border border-accent/40 bg-accent/8 p-4 text-start",
         className

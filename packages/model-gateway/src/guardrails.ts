@@ -1,4 +1,3 @@
-import { and, eq } from "drizzle-orm";
 import { id, schema } from "@lyra/db";
 import type { Ctx } from "@lyra/core";
 
@@ -103,17 +102,4 @@ export async function recordGuardrails(
       ts: ctx.now
     }))
   );
-}
-
-/** Agents may only call tools on their allowlist (docs/02 §4). */
-export async function toolAllowed(ctx: Ctx, agentKey: string, tool: string): Promise<boolean> {
-  const rows = await ctx.db
-    .select({ toolsJson: schema.aiAgents.toolsJson, status: schema.aiAgents.status })
-    .from(schema.aiAgents)
-    .where(and(eq(schema.aiAgents.tenantId, ctx.tenantId), eq(schema.aiAgents.key, agentKey)))
-    .limit(1);
-  const row = rows[0];
-  if (!row || row.status !== "active") return false;
-  if (!row.toolsJson) return false;
-  return (JSON.parse(row.toolsJson) as string[]).includes(tool);
 }

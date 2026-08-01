@@ -7,8 +7,18 @@
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
-    "ios": { "supportsTablet": true, "bundleIdentifier": "co.za.vantax.lyra" },
-    "android": { "package": "co.za.vantax.lyra", "edgeToEdgeEnabled": true },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "co.za.vantax.lyra",
+      "infoPlist": {
+        "NSAppTransportSecurity": { "NSAllowsLocalNetworking": true }
+      }
+    },
+    "android": {
+      "package": "co.za.vantax.lyra",
+      "edgeToEdgeEnabled": true,
+      "usesCleartextTraffic": true
+    },
     "plugins": ["expo-router", "expo-secure-store", "expo-localization"],
     "extra": { "router": {} },
     "experiments": { "typedRoutes": false }

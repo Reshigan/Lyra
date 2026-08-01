@@ -10,8 +10,12 @@ import {
   decide,
   expand,
   hashPassword,
+  heldDelegation,
   notFound,
   pendingApprovals,
+  recordLensUsage,
+  resetLens,
+  resolveLens,
   verifyPassword,
   type Ctx
 } from "@lyra/core";
@@ -186,11 +190,25 @@ meRoutes.get("/inbox", async (c) => {
   const ctx = ctxOf(c);
   // The permission to decide comes from the policy, not from the module name:
   // there is no `axis:approval:decide` in the vocabulary, so deriving one would
-  // filter every approval out and leave the queue permanently empty.
-  const approvals = (await pendingApprovals(ctx)).filter((a) => {
-    const p = APPROVAL_POLICIES[a.policyKey];
-    return p ? can(ctx.actor, p.decide, { tenantId: ctx.tenantId, module: p.module }) : false;
-  });
+  // filter every approval out and leave the queue permanently empty. A delegate
+  // holding no permission of their own still needs this row to show up here —
+  // otherwise `decide()` would accept a decision the inbox never offered.
+  const pending = await pendingApprovals(ctx);
+  const decidable = await Promise.all(
+    pending.map(async (a) => {
+      const p = APPROVAL_POLICIES[a.policyKey];
+      if (!p) return null;
+      if (can(ctx.actor, p.decide, { tenantId: ctx.tenantId, module: p.module })) return a;
+      const context = a.contextJson ? (JSON.parse(a.contextJson) as { amountMinor?: number | null }) : {};
+      const held = await heldDelegation(ctx, {
+        policyKey: a.policyKey,
+        module: p.module,
+        ...(context.amountMinor == null ? {} : { amountMinor: context.amountMinor })
+      });
+      return held ? a : null;
+    })
+  );
+  const approvals = decidable.filter((a): a is NonNullable<typeof a> => a !== null);
   const notifications = await ctx.db
     .select()
     .from(schema.notifications)
@@ -232,6 +250,41 @@ meRoutes.post("/notifications/:id/read", async (c) => {
       )
     );
   return c.body(null, 204);
+});
+
+/* ------------------------------------------------------------------ lens */
+// docs/15 §5. The lens is per-user, so only a user actor has one — an agent,
+// partner or system credential has no `core_users` row for it to key on.
+
+function rolesOf(ctx: Ctx): string[] {
+  return ctx.actor.grants.map((g) => g.roleKey);
+}
+
+/** The lens in force for the caller right now: their own if ever written, else the role default. */
+meRoutes.get("/lens", async (c) => {
+  const ctx = ctxOf(c);
+  if (ctx.actor.kind !== "user") throw badRequest("only a user has a lens");
+  const resolved = await resolveLens(ctx, ctx.actor.id, rolesOf(ctx));
+  return c.json(resolved);
+});
+
+const LensUsageBody = z.object({ key: z.string().min(1).max(120) });
+
+/** Learned adaptation: the caller interacted with `key` (a view, filter or pin). */
+meRoutes.post("/lens/usage", async (c) => {
+  const ctx = ctxOf(c);
+  if (ctx.actor.kind !== "user") throw badRequest("only a user has a lens");
+  const input = await body(c, LensUsageBody);
+  const lens = await recordLensUsage(ctx, ctx.actor.id, rolesOf(ctx), input.key);
+  return c.json(lens);
+});
+
+/** Discards learned adaptation and reverts the caller to their role's default lens. */
+meRoutes.post("/lens/reset", async (c) => {
+  const ctx = ctxOf(c);
+  if (ctx.actor.kind !== "user") throw badRequest("only a user has a lens");
+  const lens = await resetLens(ctx, ctx.actor.id, rolesOf(ctx));
+  return c.json(lens);
 });
 
 /* ------------------------------------------------------------------- nav */

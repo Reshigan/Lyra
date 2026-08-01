@@ -254,13 +254,13 @@
     --border-strong: #b6c1d5;
     --text: var(--ink-900);
     --text-muted: #47536b;
-    --text-subtle: #6a768c;
+    --text-subtle: #5d6a86; /* was #6a768c: 4.27:1 on --star-100, failed AA (4.5:1) */
     --accent: var(--vega-600); /* vega-500 fails AA as text on light */
     --accent-hover: #b8760a;
     /* Ink, not white: #ffffff on vega-600 measures 2.68:1 and fails AA at every
        size. Ink-900 measures 7.33:1 on --accent and 5.28:1 on --accent-hover. */
     --accent-contrast: var(--ink-900);
-    --success: #0f7f68;
+    --success: #0d6b57; /* was #0f7f68: 4.31:1 on the Active badge bg, failed AA (4.5:1) */
     --danger: #c02626;
     --warning: #b8410f;
     --info: #2a55bf;
@@ -279,11 +279,11 @@
   --border-strong: #b6c1d5;
   --text: var(--ink-900);
   --text-muted: #47536b;
-  --text-subtle: #6a768c;
+  --text-subtle: #5d6a86; /* was #6a768c: 4.27:1 on --star-100, failed AA (4.5:1) */
   --accent: var(--vega-600);
   --accent-hover: #b8760a;
   --accent-contrast: var(--ink-900); /* 7.33:1; #ffffff was 2.68:1 — see above */
-  --success: #0f7f68;
+  --success: #0d6b57; /* was #0f7f68: 4.31:1 on the Active badge bg, failed AA (4.5:1) */
   --danger: #c02626;
   --warning: #b8410f;
   --info: #2a55bf;

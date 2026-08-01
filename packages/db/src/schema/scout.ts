@@ -45,6 +45,10 @@ export const whitespaces = sqliteTable(
     id: text("id").primaryKey(),
     tenantId: text("tenant_id").notNull(),
     description: text("description").notNull(),
+    // Grouping key computeWhitespaceCandidates flagged this row for — same
+    // role core_products.line plays on scout_panel_bench, kept as a real
+    // column rather than parsed back out of `description`.
+    category: text("category"),
     clusterId: text("cluster_id"),
     evidenceRefsJson: text("evidence_refs_json"),
     demandEstimate: integer("demand_estimate"),

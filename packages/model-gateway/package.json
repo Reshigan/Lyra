@@ -10,7 +10,9 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "eval": "tsx evals/run.ts",
+    "mutation": "cd ../.. && stryker run packages/model-gateway/stryker.config.mjs"
   },
   "dependencies": {
     "@lyra/core": "workspace:*",
@@ -22,6 +24,8 @@
     "@cloudflare/workers-types": "^4.20241230.0",
     "@libsql/client": "^0.14.0",
     "@lyra/config": "workspace:*",
+    "@stryker-mutator/core": "9.6.1",
+    "@stryker-mutator/vitest-runner": "9.6.1",
     "@types/node": "^22",
     "typescript": "^5.7.2",
     "vitest": "^3.2.7"

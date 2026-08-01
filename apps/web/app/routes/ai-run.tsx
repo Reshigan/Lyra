@@ -68,6 +68,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "stopped.reason":
       "The daily ceiling was already spent when this run asked for a model, so it was refused before any tokens were bought.",
     "stopped.link": "Open spending ceilings",
+    "approval.region": "Pending approval",
     "approval.summary": "This run is waiting for a decision before it can finish.",
     "approval.consequence":
       "The agent reached a step it is not allowed to take on its own at its current autonomy level.",
@@ -138,6 +139,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "stopped.reason":
       "كان الحد اليومي مستنفدًا عندما طلب هذا التشغيل نموذجًا، فرُفض قبل شراء أي رموز.",
     "stopped.link": "فتح حدود الإنفاق",
+    "approval.region": "بانتظار الموافقة",
     "approval.summary": "هذا التشغيل بانتظار قرار قبل أن يكتمل.",
     "approval.consequence": "بلغ الوكيل خطوة لا يُسمح له باتخاذها وحده عند مستوى استقلاليته الحالي.",
     "approval.blocked": "احسمه من شاشة الموافقات حيث يظهر الطلب كاملًا.",
@@ -473,6 +475,7 @@ export default function AiRun() {
 
       {run.state === "awaiting_approval" ? (
         <ApprovalStrip
+          label={L("approval.region")}
           summary={L("approval.summary")}
           consequence={L("approval.consequence")}
           blockedReason={

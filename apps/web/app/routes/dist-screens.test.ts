@@ -289,7 +289,7 @@ describe("the offers loader", () => {
 
   it("separates reading offers from proposing and surfacing them", async () => {
     stubApi([
-      ["/v1/me", me("dist:offers:read", "dist:offers:surface")],
+      ["/v1/me", me("dist:offers:read")],
       ["next-best-offers?", json({ data: [offer] })]
     ]);
     const loaded = await offersLoader(

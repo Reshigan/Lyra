@@ -262,7 +262,7 @@ complianceRoutes.post("/evidence-bundles/export", async (c) => {
   const contents = [
     { path: "audit.jsonl", data: utf8(jsonl(auditRows)) },
     { path: "ai-audit.jsonl", data: utf8(jsonl(aiRows)) },
-    { path: "summary.pdf", data: render("pdf", summary, {}).bytes }
+    { path: "summary.pdf", data: (await render("pdf", summary, {}, c.env.BROWSER)).bytes }
   ];
   const manifest = {
     version: 1,

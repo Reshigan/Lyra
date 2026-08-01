@@ -1,0 +1,195 @@
+import { expect, test } from "@playwright/test";
+import { and, asc, eq } from "drizzle-orm";
+import { EntitlementsJson, PolicyJson, schema } from "@lyra/db";
+import { makeLibsqlDb } from "@lyra/db/libsql";
+import type { Ctx } from "@lyra/core";
+import { sweepRenewals } from "../apps/api/src/engines/renewals.js";
+import { LIBSQL_URL, TENANT_SLUG } from "./env.js";
+import { loginAsAxisLead, loginAsOrbitAgent, loginAsOrbitRetention } from "./fixtures.js";
+
+// J-C2 "help on WhatsApp" (docs/06-roles-and-journeys.md): a customer message
+// lands, the AI drafts a reply as ghost text, the agent approves it in one
+// click and it queues as an AI turn — it does not leave on its own
+// (CLAUDE.md §11, ambient AI grammar). Matches journeys.test.ts:279-321's
+// shape (POST conversation, POST customer message, an AI turn), but drives it
+// through apps/web/app/routes/conversation.tsx instead of the raw AI-run
+// endpoint, since that page is where the draft/approve UI actually lives.
+//
+// Conversation and both messages are seeded through the real "New — <Tab>"
+// panels (same idiom as handover.spec.ts) — a raw page.request call shares no
+// cookies with the API origin (apps/web/app/api.server.ts's apiFetch forwards
+// the browser's cookie header itself; a direct API-origin request bypasses
+// that and 401s).
+test("J-C2 an agent approves the AI's suggested reply and it queues, not sends", async ({ page }) => {
+  await loginAsOrbitAgent(page);
+
+  const customerId = `cus-e2e-jc2-${Date.now()}`;
+  await page.goto("/orbit/conversations");
+  await page.getByText("New — Conversations").click();
+  // Radix combobox, not a native <select> — its listbox can reposition after
+  // Playwright's pre-click stability check, so retry the open+select as a unit
+  // (same flake fix as handover.spec.ts).
+  await expect(async () => {
+    await page.getByLabel("Channel*", { exact: true }).click();
+    await page.getByRole("option", { name: "WhatsApp", exact: true }).click({ timeout: 2000 });
+  }).toPass({ timeout: 15000 });
+  await page.getByLabel("Customer", { exact: true }).fill(customerId);
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+
+  const convRow = page.getByRole("row", { name: new RegExp(customerId) });
+  await expect(convRow).toBeVisible();
+  await convRow.getByRole("link").first().click();
+  await page.waitForURL(/\/orbit\/conversations\/[^/]+$/);
+  const conversationId = page.url().split("/").pop()!;
+
+  await page.goto("/orbit/messages");
+  await page.getByText("New — Messages").click();
+  await page.getByLabel("Conversation*", { exact: true }).fill(conversationId);
+  await expect(async () => {
+    await page.getByLabel("Sender*", { exact: true }).click();
+    await page.getByRole("option", { name: "Customer", exact: true }).click({ timeout: 2000 });
+  }).toPass({ timeout: 15000 });
+  await page.getByLabel("Message*", { exact: true }).fill("Is my windscreen covered?");
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+  // Message content is PII-masked in this list view ("[redacted]"), so match
+  // on the conversation id column instead of the text just typed in.
+  await expect(page.getByRole("row", { name: new RegExp(conversationId) }).first()).toBeVisible();
+
+  // The panel is a real stateful disclosure now (module.tsx's CreatePanel):
+  // a successful create leaves it open, so clicking "New — Messages" again
+  // would toggle it shut rather than opening a fresh one.
+  const draftContent =
+    "Yes — windscreen is covered under your comprehensive add-on, subject to the excess.";
+  // No deliveryStatus field on this panel: conversation.tsx's loader only
+  // renders the last agent_ai message as a draft when it has none yet
+  // (apps/web/app/routes/conversation.tsx:175-207).
+  const conversationInput = page.getByLabel("Conversation*", { exact: true });
+  await conversationInput.fill(conversationId);
+  await expect(async () => {
+    await page.getByLabel("Sender*", { exact: true }).click();
+    await page.getByRole("option", { name: "AI agent", exact: true }).click({ timeout: 2000 });
+  }).toPass({ timeout: 15000 });
+  await page.getByLabel("Message*", { exact: true }).fill(draftContent);
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+  // Unlike the first create, nothing here waits on the result before this test
+  // navigates away — without a wait, the client-side POST races page.goto and
+  // can get cancelled mid-flight, silently dropping the draft message.
+  await expect(page.getByRole("row", { name: new RegExp(conversationId) })).toHaveCount(2);
+
+  await page.goto(`/orbit/conversations/${conversationId}/thread`);
+
+  const draftSection = page.getByRole("region", { name: "Suggested reply" });
+  await expect(draftSection).toBeVisible();
+  await expect(draftSection.getByText(draftContent)).toBeVisible();
+
+  await draftSection.getByRole("button", { name: "Approve and queue" }).click();
+
+  await expect(
+    page.getByRole("status").getByText("Draft approved and queued as an AI turn. It has not left yet.")
+  ).toBeVisible();
+});
+
+/**
+ * orbit_renewals has no `create` permission and there's no UI trigger for the
+ * nightly sweep — a renewal is raised by `sweepRenewals` on a schedule, never
+ * by hand (apps/api/src/routes/orbit.ts). Playwright's page.request can't
+ * authenticate against the API origin either (see J-C2's comment above), so
+ * this calls the real engine function directly against the e2e DB, the same
+ * "reach past the UI/API via direct DB access" idiom global-setup.ts already
+ * uses for its own fixture resets. Only db/tenantId/now are actually read by
+ * sweepRenewals; the rest of Ctx is unused stub filler.
+ */
+async function runRenewalsSweep(): Promise<void> {
+  const db = makeLibsqlDb(LIBSQL_URL);
+  const [tenant] = await db
+    .select({ id: schema.tenants.id })
+    .from(schema.tenants)
+    .where(eq(schema.tenants.slug, TENANT_SLUG));
+  if (!tenant) throw new Error(`no tenant with slug ${TENANT_SLUG}`);
+
+  // seed.ts anchors every fixture date off its own fixed T0 (2026-01-06), not
+  // the real wall clock, so the renewal-eligible policy's endAt drifts further
+  // into the past every day this repo ages. Read the soonest-expiring active
+  // policy's own endAt and sweep as of that moment, instead of Date.now(),
+  // so the window check (endAt in [now, now+45d]) holds regardless of today's
+  // real date.
+  const [soonest] = await db
+    .select({ endAt: schema.axisPolicies.endAt })
+    .from(schema.axisPolicies)
+    .where(and(eq(schema.axisPolicies.tenantId, tenant.id), eq(schema.axisPolicies.status, "active")))
+    .orderBy(asc(schema.axisPolicies.endAt))
+    .limit(1);
+  if (!soonest) throw new Error("no active policy to raise a renewal from");
+
+  await sweepRenewals({
+    db: db as unknown as Ctx["db"],
+    tenantId: tenant.id,
+    actor: { kind: "system", id: "e2e-sweep", tenantId: tenant.id, grants: [] },
+    requestId: "e2e-sweep",
+    now: soonest.endAt,
+    locale: "en",
+    policy: PolicyJson.parse({}),
+    entitlements: EntitlementsJson.parse({})
+  });
+}
+
+// J-C3 "one-tap renewal": the nightly sweep raises a renewal, the retention
+// desk scores next-best-offers for that customer, surfacing the offer is an
+// override retention does not hold (axis.lead does it), then the renewal
+// closes in one update. Mirrors journeys.test.ts:325-375's actor split
+// exactly, through the retention queue (apps/web/app/modules/orbit.ts) and
+// the NBO UI (apps/web/app/routes/dist-offers.tsx).
+test("J-C3 retention proposes and closes a renewal; surfacing needs axis.lead", async ({ page }) => {
+  // The seeded demo customer already carries a policy inside the renewal
+  // window (packages/core/src/seed/context.ts's `renewalPolicyId`), so this is
+  // idempotent and safe to call from a clean seed.
+  await runRenewalsSweep();
+
+  await loginAsOrbitRetention(page);
+  await page.goto("/orbit/renewals");
+  const rows = page.locator("tbody tr");
+  await expect(rows).toHaveCount(1);
+  const row = rows.first();
+  const customerId = (await row.locator("td").nth(1).innerText()).trim();
+
+  await row.getByRole("link").first().click();
+  await page.waitForURL(/\/orbit\/renewals\/[^/?]+$/);
+  const renewalId = page.url().split("/").pop()!;
+
+  // Propose next-best-offers for that customer. dist.ts's /propose route
+  // gates on dist:offers:read (apps/web/app/routes/dist-offers.tsx's PERM.propose),
+  // which orbit.retention holds, so this section renders for this actor.
+  // The loader reads customerId off the query string and FieldInput takes it
+  // as the field's row value (dist-offers.tsx:348-350) — already filled in.
+  await page.goto(`/distribution/next-best-offers/suggest?customerId=${customerId}`);
+  await expect(page.getByLabel("Customer*", { exact: true })).toHaveValue(customerId);
+  await page.getByRole("button", { name: "Propose offers", exact: true }).click();
+  await page.waitForURL(new RegExp(`customerId=${customerId}`));
+
+  // Surfacing is dist:offers:surface — an override retention does not hold,
+  // so the UI never renders the button for this actor (apps/web/app/routes
+  // /dist-offers.tsx's canSurface gate), matching journeys.test.ts:363-367's
+  // runtime 403 one step earlier.
+  await expect(page.getByRole("button", { name: /Surface .*to the customer/ })).toHaveCount(0);
+
+  await loginAsAxisLead(page);
+  await page.goto(`/distribution/next-best-offers/suggest?customerId=${customerId}`);
+  await page.getByRole("button", { name: /Surface .*to the customer/ }).first().click();
+  await expect(page.getByText("Surfaced.")).toBeVisible();
+
+  // Close the renewal. The vitest acceptance test (journeys.test.ts:370-375)
+  // asserts state "renewed" via a direct PATCH, but that value is not one of
+  // the module spec's real, UI-selectable options (apps/web/app/modules
+  // /orbit.ts:351: scheduled|offered|accepted|lost) — a doc/test literal that
+  // only passes because the column is untyped text with no runtime
+  // validation. "Accepted" is the real one-tap close this UI offers.
+  await loginAsOrbitRetention(page);
+  await page.goto(`/orbit/renewals/${renewalId}`);
+  await expect(async () => {
+    await page.getByLabel("State", { exact: true }).click();
+    await page.getByRole("option", { name: "Accepted", exact: true }).click({ timeout: 2000 });
+  }).toPass({ timeout: 15000 });
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+
+  await expect(page.getByText("Accepted", { exact: true }).first()).toBeVisible();
+});

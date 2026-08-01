@@ -118,4 +118,6 @@ export interface ProviderEnv {
   OPENAI_COMPAT_URL?: string;
   OPENAI_COMPAT_API_KEY?: string;
   fetch?: typeof fetch;
+  /** Analytics Engine dataset (docs/10 §2): AI-usage metrics, one point per call. */
+  TELEMETRY?: { writeDataPoint(point: { blobs?: string[]; doubles?: number[]; indexes?: string[] }): void };
 }

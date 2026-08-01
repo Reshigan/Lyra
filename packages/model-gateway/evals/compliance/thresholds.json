@@ -1,0 +1,5 @@
+{
+  "hardBlockRecallMin": 0.98,
+  "falsePositiveMax": 0,
+  "ruleMatchMin": 1.0
+}

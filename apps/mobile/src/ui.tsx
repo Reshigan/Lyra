@@ -47,16 +47,18 @@ export function textOf(chrome: Chrome, style?: TextStyle): TextStyle {
   };
 }
 
-export function Body({ chrome, style, selectable, children }: {
+export function Body({ chrome, style, selectable, testID, children }: {
   chrome: Chrome;
   style?: TextStyle;
   /** For values a user has to copy out — a setup key, a recovery code. */
   selectable?: boolean;
+  testID?: string;
   children: ReactNode;
 }) {
   return (
     <Text
       selectable={selectable}
+      testID={testID}
       style={[
         textOf(chrome, {
           color: chrome.theme.text,

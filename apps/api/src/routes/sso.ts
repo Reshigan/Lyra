@@ -30,10 +30,11 @@ interface Pending {
 }
 
 function kv(env: Env): KVNamespace {
-  // No KV means no way to hold state across the round trip to the IdP, and
+  // No CACHE means no way to hold state across the round trip to the IdP, and
   // holding it in a cookie would put the nonce where script can read it.
-  if (!env.KV) throw badRequest("sso is not available on this deployment");
-  return env.KV;
+  const cache = env.CACHE ?? env.KV;
+  if (!cache) throw badRequest("sso is not available on this deployment");
+  return cache;
 }
 
 /** Only ever come back to a path on the app origin. */

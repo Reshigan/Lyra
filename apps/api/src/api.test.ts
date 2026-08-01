@@ -34,7 +34,7 @@ beforeEach(async () => {
   ctx = {
     db: drizzle(client) as unknown as Ctx["db"],
     tenantId: "t_test",
-    actor: { kind: "user", id: "u_test", tenantId: "t_test", grants: [{ roleKey: "owner", permissions: ["*"] }] },
+    actor: { kind: "user", id: "u_test", tenantId: "t_test", grants: [{ roleKey: "owner", permissions: ["*:*:*"] }] },
     requestId: "req_test",
     now: Date.UTC(2026, 5, 15, 12),
     locale: "en",
@@ -294,8 +294,18 @@ describe("openapi", () => {
   });
 
   it("leaves no documented endpoint unauthenticated", () => {
+    // J-X3 adds exactly one deliberate exception outside /v1/auth: signup has
+    // no session to authenticate against yet, which is the entire point of the
+    // route (routes/onboarding.ts, mw.ts PUBLIC set). Every other unauthenticated
+    // path here would be a real bug.
     const open = Object.entries(spec.paths)
-      .filter(([p]) => !p.startsWith("/v1/auth") && p !== "/health" && p !== "/openapi.json")
+      .filter(
+        ([p]) =>
+          !p.startsWith("/v1/auth") &&
+          p !== "/health" &&
+          p !== "/openapi.json" &&
+          p !== "/v1/onboarding/partners/signup"
+      )
       .flatMap(([p, ops]) => Object.entries(ops).filter(([, op]) => !op.security).map(([m]) => `${m} ${p}`));
     expect(open).toEqual([]);
   });

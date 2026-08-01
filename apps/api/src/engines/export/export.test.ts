@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ReportTable } from "@lyra/ledger";
 import { pdfSafe, toPdf, transliterate } from "./pdf.js";
 import { toXlsx } from "./xlsx.js";
-import { toCsv } from "./render.js";
+import { render, toCsv, type BrowserBinding } from "./render.js";
 import { majorUnits, minorExponent } from "./money.js";
 
 // The bug these cover: `pdfSafe` rejected anything outside Latin-1, and the
@@ -171,5 +171,43 @@ describe("money in the exports", () => {
     expect(toCsv(t).charCodeAt(0)).toBe(0xfeff);
     expect(toCsv(t)).toContain("نقد");
     expect(new TextDecoder().decode(toXlsx([t]))).toContain("نقد");
+  });
+});
+
+describe("render() pdf fallback for Arabic", () => {
+  const arabicTable = table({ rows: [{ name: "نقد", balanceMinor: 1_00 }] });
+
+  it("throws when the report has Arabic and no browser binding is available", async () => {
+    await expect(render("pdf", arabicTable, {})).rejects.toMatchObject({ detail: expect.stringMatching(/non-Latin/) });
+  });
+
+  it("renders via the browser binding instead of throwing when one is bound", async () => {
+    const fakePdfBytes = new TextEncoder().encode("%PDF-fake");
+    let sawHtml = "";
+    const browser: BrowserBinding = {
+      async fetch(req) {
+        const body = JSON.parse(await req.text()) as { html: string };
+        sawHtml = body.html;
+        return new Response(fakePdfBytes, { status: 200 });
+      }
+    };
+
+    const out = await render("pdf", arabicTable, {}, browser);
+    expect(out.contentType).toBe("application/pdf");
+    expect(new TextDecoder().decode(out.bytes)).toBe("%PDF-fake");
+    // The HTML sent to the browser carries the Arabic text and is marked RTL.
+    expect(sawHtml).toContain('dir="rtl"');
+    expect(sawHtml).toContain("نقد");
+  });
+
+  it("still renders Latin-1 reports directly, without calling the browser", async () => {
+    const browser: BrowserBinding = {
+      fetch: async () => {
+        throw new Error("should not be called for a Latin-1 report");
+      }
+    };
+    const out = await render("pdf", table(), {}, browser);
+    expect(out.contentType).toBe("application/pdf");
+    expect(new TextDecoder("latin1").decode(out.bytes).startsWith("%PDF")).toBe(true);
   });
 });

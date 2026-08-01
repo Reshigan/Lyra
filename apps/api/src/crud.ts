@@ -23,7 +23,7 @@ import {
   type PiiMap
 } from "@lyra/core";
 import { created, decodeCursor, encodeCursor, listParams, parse, type Page } from "./http.js";
-import type { App } from "./env.js";
+import type { App, Env } from "./env.js";
 
 // One CRUD implementation for 120-odd tables. Writing 120 routers by hand would
 // mean 120 chances to forget the tenant filter, the audit row or the soft-delete
@@ -93,13 +93,25 @@ export interface Resource {
    * it. Columns that are a business assignment ("assigned to") are not this.
    */
   actorColumns?: readonly string[];
+  /**
+   * Columns the server derives rather than the client supplies — excluded from
+   * the create/update shape entirely (never required, never accepted in the
+   * body) and expected to be filled by `fixed`. Unlike `actorColumns`, the
+   * value isn't always `actorRef(ctx)`; e.g. a message's `ts`.
+   */
+  serverColumns?: readonly string[];
   /** Values forced onto every write, after validation. */
   fixed?: (ctx: Ctx, action: "create" | "update") => Record<string, unknown>;
-  /** Last chance to validate or derive across fields. Throw to reject. */
+  /**
+   * Last chance to validate or derive across fields. Throw to reject. `env` is
+   * the request's raw bindings — for resources that must reach a binding `Ctx`
+   * doesn't carry (Vectorize index, model-gateway) before the row lands.
+   */
   beforeWrite?: (
     ctx: Ctx,
     values: Record<string, unknown>,
-    existing: Record<string, unknown> | null
+    existing: Record<string, unknown> | null,
+    env: Env
   ) => Promise<Record<string, unknown>> | Record<string, unknown>;
   afterWrite?: (
     ctx: Ctx,
@@ -224,7 +236,7 @@ export function crudRouter(r: Resource): Hono<App> {
   const actorColumns = r.actorColumns ?? [];
   // Same category as id/tenantId: the platform owns the value, so `.strict()`
   // turns a client that sends one into a 400 rather than a silent lie.
-  const owned = new Set([...SYSTEM, ...actorColumns]);
+  const owned = new Set([...SYSTEM, ...actorColumns, ...(r.serverColumns ?? [])]);
   const createShape = shapeOf(cols, "create", owned);
   const updateShape = shapeOf(cols, "update", owned);
   const idCol = cols.id;
@@ -366,7 +378,7 @@ export function crudRouter(r: Resource): Hono<App> {
           ...Object.fromEntries(actorColumns.map((k) => [k, actorRef(ctx)])),
           ...(r.fixed?.(ctx, "create") ?? {})
         };
-        if (r.beforeWrite) values = await r.beforeWrite(ctx, values, null);
+        if (r.beforeWrite) values = await r.beforeWrite(ctx, values, null, c.env);
 
         const rowId = newId(r.idPrefix, ctx.now);
         if (r.approval?.create) {
@@ -422,7 +434,7 @@ export function crudRouter(r: Resource): Hono<App> {
       });
       let values = parse(updateShape, raw) as Record<string, unknown>;
       values = { ...values, ...(r.fixed?.(ctx, "update") ?? {}) };
-      if (r.beforeWrite) values = await r.beforeWrite(ctx, values, before);
+      if (r.beforeWrite) values = await r.beforeWrite(ctx, values, before, c.env);
       if (!Object.keys(values).length) throw badRequest("no fields to update");
 
       if (r.approval?.update) {

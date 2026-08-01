@@ -93,8 +93,11 @@ bubbles floating over workspaces, unsolicited modals, confidence theatre
 ## 5. The Lens engine — fully customized to each role
 
 A **Lens** = role default workspace + learned personal adaptation. Shipped in
-packages/core/lens; state in `core_lenses` (user_id, role_key, layout_json,
-pins_json, rhythm_json, version).
+`packages/core/src/lens.ts` (`resolveLens`, `recordLensUsage`, `resetLens`,
+wired at `GET/POST /v1/me/lens*`); state in `core_lenses` (user_id, one JSON
+blob column — workspace, pinned, hidden, density, savedViews, weights — no
+row until the user's first stored preference; absence means "still on the
+role default").
 
 - **Role defaults** (from docs/06): exec lands in NORTH Today; ops in
   Production Board; agent in Console — each with role-tuned density,

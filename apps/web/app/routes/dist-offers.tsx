@@ -37,10 +37,10 @@ import { useShellData } from "./workspace";
 /** apps/api/src/routes/dist.ts. Note the two write gates are not the same. */
 const PERM = {
   read: "dist:offers:read",
-  /** `POST /next-best-offers/propose`. */
-  propose: "dist:offers:surface",
+  /** `POST /next-best-offers/propose` — dist.ts requires only the read grant. */
+  propose: "dist:offers:read",
   /** `POST /next-best-offers/:id/surface`. */
-  surface: "dist:offers:override"
+  surface: "dist:offers:surface"
 } as const;
 
 /** ProposeBody, apps/api/src/routes/dist.ts. */

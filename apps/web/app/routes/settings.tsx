@@ -132,6 +132,15 @@ const LABELS: Record<string, Record<string, string>> = {
     "profile.locale": "Language",
     "profile.localeHint": "Changes the language and reading direction of every screen.",
 
+    "lens.title": "Workspace",
+    "lens.intro": "Which workspace opens when you sign in, and what you've pinned or hidden there.",
+    "lens.current": "Currently",
+    "lens.default": "Your role's default — nothing learned yet.",
+    "lens.custom": "Adapted from what you use.",
+    "lens.reset": "Reset to role default",
+    "lens.ok": "Your workspace is back to its role default.",
+    "lens.unavailable": "Your workspace preference is not readable from here.",
+
     "password.title": "Password",
     "password.intro":
       "Changing your password ends every session, including this one — you will be asked to sign in again.",
@@ -284,6 +293,15 @@ const LABELS: Record<string, Record<string, string>> = {
     "profile.emailHint": "يغيّره المسؤول، وليس من هنا.",
     "profile.locale": "اللغة",
     "profile.localeHint": "تُغيّر لغة جميع الشاشات واتجاه القراءة فيها.",
+
+    "lens.title": "مساحة العمل",
+    "lens.intro": "مساحة العمل التي تُفتح عند تسجيل الدخول، وما ثبّتّه أو أخفيته فيها.",
+    "lens.current": "حاليًا",
+    "lens.default": "الإعداد الافتراضي لدورك — لم يُتعلَّم شيء بعد.",
+    "lens.custom": "مُكيَّفة بحسب استخدامك.",
+    "lens.reset": "إعادة الضبط إلى الإعداد الافتراضي",
+    "lens.ok": "عادت مساحة عملك إلى الإعداد الافتراضي لدورك.",
+    "lens.unavailable": "تعذّرت قراءة تفضيل مساحة العمل من هنا.",
 
     "password.title": "كلمة المرور",
     "password.intro":
@@ -464,7 +482,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const held = new Set(me.permissions);
   const email = me.profile?.email ?? "";
 
-  const [sessions, inbox, keys, self, dsar] = await Promise.all([
+  const [sessions, inbox, keys, self, dsar, lens] = await Promise.all([
     soft(api<{ data: SessionRow[] }>("/v1/me/sessions", { env, request })),
     soft(api<{ notifications: NotificationRow[] }>("/v1/me/inbox", { env, request })),
     held.has(CAN.keysRead)
@@ -495,6 +513,11 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
           )
         )
       : Promise.resolve({ value: null }),
+    // Non-user actors (agent/partner/system) have no lens; the route 400s and
+    // `soft` turns that into "unavailable" rather than failing the screen.
+    soft(
+      api<{ lens: { workspace: string }; isDefault: boolean }>("/v1/me/lens", { env, request })
+    ),
   ]);
 
   const brand = (me.tenant.brand ?? {}) as BrandShape;
@@ -541,7 +564,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       font: brand.font ?? ""
     },
     dsar: dsar.value?.data ?? [],
-    dsarReadable: dsar.value !== null
+    dsarReadable: dsar.value !== null,
+    lens: lens.value ? { workspace: lens.value.lens.workspace, isDefault: lens.value.isDefault } : null,
+    lensReadable: lens.value !== null
   };
 }
 
@@ -674,6 +699,22 @@ export async function action({ request, context }: ActionFunctionArgs) {
         }
       }
 
+      // Second, independent pairing: `accent`/`accentHover` also render as
+      // `text-accent`/`text-accent-hover` link text directly on white surfaces
+      // (docs/07). A colour can clear the button-label check above and fail
+      // this one — a light accent reads fine as a dark-on-light button fill
+      // but not as light-on-white text.
+      for (const fill of [accent, accentHover]) {
+        const ratio = fill ? contrastRatio(fill, "#ffffff") : null;
+        if (ratio !== null && ratio < AA_RATIO) {
+          return {
+            intent,
+            errorKey: "brand.contrastFail",
+            errorVars: { ratio: AA_RATIO.toFixed(1), actual: ratio.toFixed(2) }
+          } satisfies ActionResult;
+        }
+      }
+
       const font = text("font");
       const logo = pruned({ light: text("logoLight"), dark: text("logoDark"), mark: text("logoMark") });
       const palette = pruned({ accent, accentHover, accentContrast });
@@ -716,6 +757,11 @@ export async function action({ request, context }: ActionFunctionArgs) {
         body: { subjectIdentifier: subject, type, channel: "portal", dueAt }
       });
       return { intent, ok: true, dueAt: raised.dueAt ?? dueAt } satisfies ActionResult;
+    }
+
+    if (intent === "lens-reset") {
+      await api("/v1/me/lens/reset", { env, request, method: "POST" });
+      return { intent, ok: true } satisfies ActionResult;
     }
 
     if (intent === "create-key") {
@@ -842,6 +888,32 @@ export default function Settings() {
             </Button>
           </div>
         </Form>
+      </Panel>
+
+      {/* ------------------------------------------------------------ lens */}
+      <Panel id="settings-lens" title={label("lens.title")} lead={label("lens.intro")}>
+        {failure("lens-reset")}
+        {done("lens-reset", "lens.ok")}
+        {loaded.lensReadable && loaded.lens ? (
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <p className="font-ui text-13 text-text">
+              {label("lens.current")}:{" "}
+              <span className="font-medium">{t(`nav.${loaded.lens.workspace}`)}</span>
+              {" — "}
+              {loaded.lens.isDefault ? label("lens.default") : label("lens.custom")}
+            </p>
+            {loaded.lens.isDefault ? null : (
+              <Form method="post">
+                <input type="hidden" name="intent" value="lens-reset" />
+                <Button type="submit" variant="secondary" loading={pending === "lens-reset"}>
+                  {pending === "lens-reset" ? t("common.working") : label("lens.reset")}
+                </Button>
+              </Form>
+            )}
+          </div>
+        ) : (
+          <p className="font-ui text-13 text-subtle">{label("lens.unavailable")}</p>
+        )}
       </Panel>
 
       {/* --------------------------------------------------------- password */}

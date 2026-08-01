@@ -56,13 +56,22 @@ describe("brand colours are checked against AA before they are saved", () => {
 
   it("saves a palette where both fills clear the bar", async () => {
     const calls = stubApi();
-    const result = await action(args({ accent: "#5B8CFF", accentHover: "#7FA6FF", accentContrast: CONTRAST }));
+    // #5B8CFF/#7FA6FF clear the button-label bar (vs CONTRAST) but fail the
+    // link-text bar (vs white, 2.94:1/4.20:1) — this pair clears both.
+    const result = await action(args({ accent: "#3762C4", accentHover: "#2A4FA0", accentContrast: "#ffffff" }));
     expect(result).toMatchObject({ intent: "brand", ok: true });
     const patch = calls.find((c) => c.method === "PATCH");
     expect(JSON.parse(patch?.body ?? "{}").brandJson.palette).toEqual({
-      accent: "#5B8CFF",
-      accentHover: "#7FA6FF",
-      accentContrast: CONTRAST
+      accent: "#3762C4",
+      accentHover: "#2A4FA0",
+      accentContrast: "#ffffff"
     });
+  });
+
+  it("refuses an accent that reads fine as a button label but fails as link text on white", async () => {
+    const calls = stubApi();
+    const result = await action(args({ accent: "#5B8CFF", accentHover: "#7FA6FF", accentContrast: CONTRAST }));
+    expect(result).toMatchObject({ intent: "brand", errorKey: "brand.contrastFail" });
+    expect(calls.filter((c) => c.method === "PATCH")).toHaveLength(0);
   });
 });

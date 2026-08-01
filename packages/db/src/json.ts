@@ -45,7 +45,11 @@ export const PolicyJson = z.object({
     })
     .default({ messagesMonths: 24, filesYears: 7, aiAuditYears: 7 }),
   domainPack: z.string().default("insurance-retail"),
-  currency: z.string().length(3).default("AED")
+  currency: z.string().length(3).default("AED"),
+  // docs/modules/signal.md §8: "one-click global pause" for budget autopilot —
+  // a tenant-wide kill switch, distinct from a single campaign's own
+  // state=paused (packages/db/schema/signal.ts).
+  signalAutopilotPaused: z.boolean().default(false)
 });
 export type PolicyJson = z.infer<typeof PolicyJson>;
 
@@ -145,7 +149,10 @@ export const LensJson = z.object({
   density: z.enum(["comfortable", "compact"]).default("comfortable"),
   savedViews: z
     .array(z.object({ id: z.string(), name: z.string(), route: z.string(), query: z.string() }))
-    .default([])
+    .default([]),
+  /** docs/15 §5 learned adaptation: view/filter key -> interaction count, capped
+   *  (see MAX_LENS_WEIGHT in packages/core/src/lens.ts) so this stays a small blob. */
+  weights: z.record(z.number().int().nonnegative()).default({})
 });
 export type LensJson = z.infer<typeof LensJson>;
 

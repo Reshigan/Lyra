@@ -1,5 +1,5 @@
-import { and, eq, gt, inArray, isNull, like, lte, ne, or } from "drizzle-orm";
-import { id as newId, schema, type Db } from "@lyra/db";
+import { and, eq, inArray, isNull, like, lte, ne, or } from "drizzle-orm";
+import { id as newId, schema } from "@lyra/db";
 import {
   APPROVAL_POLICIES,
   actorRef,
@@ -15,12 +15,16 @@ import {
   permissionsForRole,
   require_,
   scoped,
-  type Actor,
   type Ctx,
-  type Grant
+  type DelegationScope
 } from "@lyra/core";
-import { grantsFor } from "../auth.js";
 import { must, one } from "../rows.js";
+import { startOnboarding } from "./onboarding.js";
+
+// Resolving a delegation is the deciding path's business, so it lives beside
+// `decide()` in packages/core. Re-exported here because granting and resolving
+// are one feature to every caller.
+export { resolveDelegates, type DelegationScope, type ResolveInput } from "@lyra/core";
 
 /**
  * docs/06 §4 — the back office's own lifecycle. A person joins, moves between
@@ -39,77 +43,22 @@ import { must, one } from "../rows.js";
 
 /* ------------------------------------------------------------- checklists */
 
-export interface StaffStep {
-  key: string;
-  /** i18n key, never a string (CLAUDE.md §7). */
-  labelKey: string;
-  /** The stage this step must clear before the person may leave it. */
-  gatesStage: string;
-  evidenceKind?: string | undefined;
-  required?: false;
-}
-
-/**
- * The two staff runs, in the same shape `core_onboarding_steps` stores for
- * partners and channels. Exported so the shared onboarding engine can merge
- * them into its own `TEMPLATES` record instead of learning about staff.
- */
-export const STAFF_TEMPLATES: Record<string, readonly StaffStep[]> = {
-  "staff.onboard": [
-    { key: "contract_signed", labelKey: "onboarding.staff.contract_signed", gatesStage: "hired", evidenceKind: "agreement" },
-    { key: "right_to_work", labelKey: "onboarding.staff.right_to_work", gatesStage: "hired", evidenceKind: "verification" },
-    { key: "background_check", labelKey: "onboarding.staff.background_check", gatesStage: "hired", evidenceKind: "screening" },
-    { key: "policy_attestations", labelKey: "onboarding.staff.policy_attestations", gatesStage: "active", evidenceKind: "attestation" },
-    { key: "security_training", labelKey: "onboarding.staff.security_training", gatesStage: "active", evidenceKind: "attestation" },
-    { key: "systems_access", labelKey: "onboarding.staff.systems_access", gatesStage: "active" },
-    { key: "manager_signoff", labelKey: "onboarding.staff.manager_signoff", gatesStage: "active", evidenceKind: "attestation" }
-  ],
-  "staff.offboard": [
-    { key: "access_revoked", labelKey: "offboarding.staff.access_revoked", gatesStage: "offboarded" },
-    { key: "work_reassigned", labelKey: "offboarding.staff.work_reassigned", gatesStage: "offboarded" },
-    { key: "assets_returned", labelKey: "offboarding.staff.assets_returned", gatesStage: "offboarded" },
-    { key: "final_pay", labelKey: "offboarding.staff.final_pay", gatesStage: "offboarded", evidenceKind: "attestation" },
-    { key: "exit_interview", labelKey: "offboarding.staff.exit_interview", gatesStage: "offboarded", required: false }
-  ]
-};
-
 const STAFF = "staff";
 
 /**
- * Write a template out as rows. Conflict-do-nothing on the natural key, so
- * re-running an onboarding never duplicates a checklist and never resets a step
- * somebody already cleared.
+ * Write a staff template out as rows, through the same engine partners and
+ * channels use. Returns how many steps this run owns — the engine is idempotent
+ * and returns every step the person has, so an offboarding does not count the
+ * onboarding checklist that is still on file.
  */
 async function generateSteps(
   ctx: Ctx,
-  template: keyof typeof STAFF_TEMPLATES | string,
+  template: string,
   subjectRef: string,
   opts: { ownerRef?: string | undefined; dueAt?: number | undefined } = {}
 ): Promise<number> {
-  const steps = STAFF_TEMPLATES[template];
-  if (!steps) throw badRequest(`unknown template: ${template}`);
-
-  const rows = steps.map((step, i) => ({
-    id: newId("obs", ctx.now + i),
-    tenantId: ctx.tenantId,
-    subjectKind: STAFF,
-    subjectRef,
-    template,
-    key: step.key,
-    labelJson: JSON.stringify({ key: step.labelKey }),
-    seq: i + 1,
-    required: step.required !== false,
-    gatesStage: step.gatesStage,
-    state: "pending",
-    evidenceKind: step.evidenceKind ?? null,
-    ownerRef: opts.ownerRef ?? null,
-    dueAt: opts.dueAt ?? null,
-    createdAt: ctx.now,
-    updatedAt: ctx.now
-  }));
-
-  await ctx.db.insert(schema.onboardingSteps).values(rows).onConflictDoNothing();
-  return rows.length;
+  const steps = await startOnboarding(ctx, { subjectKind: STAFF, subjectRef, template, ...opts });
+  return steps.filter((s) => s.template === template).length;
 }
 
 /* ------------------------------------------------- privilege-escalation guard */
@@ -555,11 +504,6 @@ export async function offboardStaff(ctx: Ctx, userId: string, input: OffboardInp
 
 /* -------------------------------------------------------------- delegation */
 
-export interface DelegationScope {
-  policyKeys?: readonly string[] | undefined;
-  modules?: readonly string[] | undefined;
-}
-
 export interface GrantDelegationInput {
   /** Defaults to the caller: "while I am away, my approvals go to them." */
   fromUserId?: string | undefined;
@@ -705,99 +649,6 @@ export async function expireDelegations(ctx: Ctx): Promise<number> {
     after: { expired: rows.map((r) => r.id) }
   });
   return rows.length;
-}
-
-/* ---------------------------------------------------------------- resolve */
-
-export interface ResolveInput {
-  policyKey: string;
-  /** Overrides the policy's own module when a caller scopes more narrowly. */
-  module?: string | undefined;
-  /** The amount at stake, checked against each delegation's ceiling. */
-  amountMinor?: number | undefined;
-  /** Ask about one delegator only. Omit to ask "who may decide this at all". */
-  fromUserId?: string | undefined;
-}
-
-/**
- * Who may currently decide this policy on somebody's behalf.
- *
- * Four rules, all of them load-bearing:
- *  - the window is checked here, so a row the sweep has not reached yet is
- *    already inert;
- *  - a revoked or expired row resolves to nothing;
- *  - `maxAmountMinor` caps what may be decided under the delegation;
- *  - the delegate never gains a permission the delegator does not hold *now* —
- *    the delegator's live grants are re-read, so a mover that stripped their
- *    roles this morning silently narrows every delegation they left behind.
- *
- * Deliberately one hop. A→B and B→C are two independent loans of two different
- * people's authority; feeding a resolved delegate back in as a delegator would
- * make C an approver for A, which is precisely the chain a scoped delegation is
- * supposed to prevent.
- */
-export async function resolveDelegates(ctx: Ctx, input: ResolveInput): Promise<string[]> {
-  const policy = APPROVAL_POLICIES[input.policyKey];
-  if (!policy) return [];
-
-  const rows = await ctx.db
-    .select()
-    .from(schema.delegations)
-    .where(
-      and(
-        eq(schema.delegations.tenantId, ctx.tenantId),
-        eq(schema.delegations.status, "active"),
-        lte(schema.delegations.startsAt, ctx.now),
-        gt(schema.delegations.endsAt, ctx.now),
-        input.fromUserId ? eq(schema.delegations.fromUserId, input.fromUserId) : undefined
-      )
-    );
-
-  const module = input.module ?? policy.module;
-  const holds = new Map<string, boolean>();
-  const out = new Set<string>();
-
-  for (const row of rows) {
-    if (!inScope(row.scopeJson, input.policyKey, module)) continue;
-    if (row.maxAmountMinor != null && (input.amountMinor ?? 0) > row.maxAmountMinor) continue;
-
-    let held = holds.get(row.fromUserId);
-    if (held === undefined) {
-      held = can(await delegatorActor(ctx, row.fromUserId), policy.decide, {
-        tenantId: ctx.tenantId,
-        module: policy.module
-      });
-      holds.set(row.fromUserId, held);
-    }
-    if (held) out.add(row.toUserId);
-  }
-
-  return [...out];
-}
-
-function inScope(scopeJson: string | null, policyKey: string, module: string): boolean {
-  if (!scopeJson) return true;
-  let scope: DelegationScope;
-  try {
-    scope = JSON.parse(scopeJson) as DelegationScope;
-  } catch {
-    // An unreadable scope is not an open one.
-    return false;
-  }
-  if (scope.policyKeys?.length && !scope.policyKeys.includes(policyKey)) return false;
-  if (scope.modules?.length && !scope.modules.includes(module)) return false;
-  return true;
-}
-
-/**
- * The delegator as `can()` sees them. `grantsFor` is the same expansion login
- * uses, so a delegation can never resolve to authority a login would not give.
- */
-async function delegatorActor(ctx: Ctx, userId: string): Promise<Actor> {
-  // ponytail: reuse the login path's role expansion. Ctx["db"] is the structural
-  // subset both drivers satisfy and grantsFor only reads, so the cast is safe.
-  const grants: Grant[] = await grantsFor(ctx.db as unknown as Db, ctx.tenantId, userId);
-  return { kind: "user", id: userId, tenantId: ctx.tenantId, grants };
 }
 
 /* ------------------------------------------------------------- assignee picker */

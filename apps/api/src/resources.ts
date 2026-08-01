@@ -1,6 +1,9 @@
+import { id } from "@lyra/db";
 import { schema } from "@lyra/db";
-import { CUSTOMER_PII } from "@lyra/core";
+import { checkKAnonymity, CUSTOMER_PII, DEFAULT_K_FLOOR } from "@lyra/core";
 import { register, type Resource } from "./crud.js";
+import { gatewayFor } from "./mw.js";
+import { embedUpsert } from "./engines/vectorize.js";
 import {
   dashboardVisible,
   exportVisible,
@@ -117,10 +120,11 @@ export const CORE = register(
   // No `create` here on purpose: minting a key generates a plaintext that is
   // shown once and never stored, so generated CRUD (which would want the client
   // to supply `prefix` and `keyHash`) cannot serve it. POST /v1/core/api-keys
-  // lives in routes/core.ts; list and record still come from here.
+  // lives in routes/core.ts; same for DELETE — a key has `revokedAt`, not
+  // `deletedAt`, so generic CRUD's delete would hard-delete the row instead of
+  // revoking it. List and record still come from here.
   r("api-keys", schema.apiKeys, "key", "core", {
-    read: "core:api_keys:read",
-    remove: "core:api_keys:revoke"
+    read: "core:api_keys:read"
   }, {
     // The hash is the whole verification test: `sha256(presented) === keyHash`.
     // Handing it out turns a read permission into an offline oracle for guessing
@@ -248,7 +252,15 @@ export const ORBIT = register(
     create: "orbit:messages:send"
     // The column is `content`; `body` named nothing, so every message body was
     // readable without `core:pii:view` — a masking rule that masked no column.
-  }, { immutable: true, pii: { content: "text" } }),
+  }, {
+    immutable: true,
+    pii: { content: "text" },
+    // `ts` is the message's own arrival time; no caller — including the
+    // generic "New — Messages" panel, which has no field for it — has a
+    // reason to pick it by hand. The server's clock is authoritative.
+    serverColumns: ["ts"],
+    fixed: (ctx) => ({ ts: ctx.now })
+  }),
   r("renewals", schema.orbitRenewals, "rnw", "orbit", {
     read: "orbit:renewals:read",
     update: "orbit:renewals:update"
@@ -311,16 +323,42 @@ export const SIGNAL = register(
 /* ------------------------------------------------------------------- scout */
 
 export const SCOUT = register(
-  r("signals", schema.scoutSignals, "sig", "scout", {
-    read: "scout:signals:read",
-    create: "scout:signals:ingest"
-  }),
+  r(
+    "signals",
+    schema.scoutSignals,
+    "sig",
+    "scout",
+    { read: "scout:signals:read", create: "scout:signals:ingest" },
+    {
+      // packages/core/src/seed/scout.ts: "Embeddings live in Vectorize; the
+      // seed records the id the harvester would have written" — this is that
+      // harvester step, run on every ingested signal instead of only in seed data.
+      beforeWrite: async (ctx, values, _existing, env) => {
+        const payload = values.payloadJson;
+        const text = typeof payload === "string" ? payload : JSON.stringify(payload ?? {});
+        const embeddingRef = await embedUpsert(ctx, gatewayFor(env), env.VEC_MARKET, {
+          module: "scout",
+          purpose: "scout.signal.embed",
+          id: id("vec", ctx.now),
+          text,
+          metadata: { tenantId: ctx.tenantId, source: values.source }
+        });
+        return embeddingRef ? { ...values, embeddingRef } : values;
+      }
+    }
+  ),
   r("clusters", schema.scoutClusters, "clu", "scout", ro("scout:clusters:read")),
   r("whitespaces", schema.scoutWhitespaces, "wsp", "scout", {
     read: "scout:whitespaces:read",
     update: "scout:whitespaces:promote"
   }),
-  r("panel-bench", schema.scoutPanelBench, "pnb", "scout", ro("scout:panel_bench:read")),
+  r("panel-bench", schema.scoutPanelBench, "pnb", "scout", ro("scout:panel_bench:read"), {
+    // docs/modules/scout.md §2.5 — a bench row is one provider x line x
+    // period cut; below the k-anonymity floor it names the one counterparty
+    // behind it, so it is hidden (404) rather than served thin.
+    rowVisible: ((_ctx, row) =>
+      checkKAnonymity(row.volume as number, DEFAULT_K_FLOOR).allowed) as NonNullable<Resource["rowVisible"]>
+  }),
   r("scout-experiments", schema.scoutExperiments, "sxp", "scout", {
     read: "scout:experiments:read",
     create: "scout:experiments:create",

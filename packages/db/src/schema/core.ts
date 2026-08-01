@@ -453,7 +453,13 @@ export const approvals = sqliteTable(
     decision: text("decision").notNull().default("pending"), // pending|approved|rejected
     reason: text("reason"),
     contextJson: text("context_json"),
-    decidedAt: integer("decided_at")
+    decidedAt: integer("decided_at"),
+    /**
+     * Set when the decider held no deciding permission of their own and acted
+     * under a delegation (docs/06 §4). The audit trail has to say whose
+     * authority was spent, not just who clicked.
+     */
+    delegationId: text("delegation_id")
   },
   (t) => [
     index("core_approvals_tenant_idx").on(t.tenantId, t.decision, t.requestedAt),

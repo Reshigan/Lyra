@@ -17,6 +17,7 @@ export default [
     route("admin/ai/console", "routes/ai-console.tsx"),
     route("admin/ai/budget", "routes/ai-budget.tsx"),
     route("admin/ai/runs/:id", "routes/ai-run.tsx"),
+    route("admin/cost-explorer", "routes/cost-explorer.tsx"),
     route("ledger/reports/:report", "routes/ledger-reports.tsx"),
     route("ledger/transactions", "routes/ledger-open-txn.tsx"),
     route("ledger/transactions/:id", "routes/ledger-transaction.tsx"),
@@ -31,6 +32,10 @@ export default [
     route("distribution/commission-entries/:id/clawback", "routes/commission-clawback.tsx"),
     route("distribution/next-best-offers/suggest", "routes/dist-offers.tsx"),
     route("compliance/run/:kind", "routes/compliance-run.tsx"),
+    route("ledger/settlement", "routes/settlement.tsx"),
+    route("ledger/settlements/:id", "routes/settlement-detail.tsx"),
+    route("admin/staff", "routes/staff.tsx"),
+    route("admin/staff/:id", "routes/staff-member.tsx"),
 
     route(":module", "routes/module.tsx"),
     route(":module/:resource", "routes/module.tsx", { id: "module-resource" }),

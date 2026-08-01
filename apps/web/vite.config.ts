@@ -11,6 +11,10 @@ import { defineConfig } from "vite";
 // what keeps `react-router build` and `wrangler deploy` looking in one place.
 export default defineConfig({
   plugins: [cloudflare({ viteEnvironment: { name: "ssr" } }), tailwindcss(), reactRouter()],
+  // "localhost" resolves to ::1 first on this box, so the dev server only ever
+  // binds IPv6 — Playwright's webServer health check hits 127.0.0.1 explicitly
+  // (e2e/env.ts) and times out against a port nothing IPv4 is listening on.
+  server: { host: "127.0.0.1" },
   environments: {
     client: { build: { outDir: "build/client" } },
     ssr: { build: { outDir: "build/server" } }

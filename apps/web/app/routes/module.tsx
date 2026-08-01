@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import {
   data,
   Form,
@@ -462,8 +463,17 @@ function CreatePanel({
   busy: boolean;
   defaultOpen: boolean;
 }) {
+  const [open, setOpen] = useState(defaultOpen);
+  useEffect(() => {
+    if (defaultOpen) setOpen(true);
+  }, [defaultOpen]);
+
   return (
-    <details open={defaultOpen} className="group rounded-lg border border-border bg-surface-1">
+    <details
+      open={open}
+      onToggle={(e) => setOpen(e.currentTarget.open)}
+      className="group rounded-lg border border-border bg-surface-1"
+    >
       <summary className="flex cursor-pointer select-none items-center gap-2 px-4 py-3 font-ui text-13 text-text marker:content-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
         <span
           aria-hidden="true"

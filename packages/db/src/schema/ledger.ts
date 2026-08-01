@@ -442,6 +442,12 @@ export const settlements = sqliteTable(
     currency: text("currency").notNull(),
     statementFileId: text("statement_file_id"),
     state: text("state").notNull().default("draft"), // draft|approved|paid|disputed
+    disputeReason: text("dispute_reason"),
+    // The proof money actually left the building: a human-confirmed bank/PSP
+    // reference, required before `pay` can move a settlement to `paid` (docs/25
+    // §7 — no PSP connector here, so this is the v1 payout control).
+    externalRef: text("external_ref"),
+    paidVia: text("paid_via"), // bank_transfer|psp|other
     approvedBy: text("approved_by"),
     txnId: text("txn_id"),
     createdAt: integer("created_at").notNull(),

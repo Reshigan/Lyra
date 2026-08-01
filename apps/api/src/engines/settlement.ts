@@ -13,7 +13,7 @@ import {
   type Ctx
 } from "@lyra/core";
 import { assertPostable, buildRecipe, ensurePeriod, runTxn, type ReportTable } from "@lyra/ledger";
-import { render, type ExportFormat, type Rendered } from "./export/render.js";
+import { render, type BrowserBinding, type ExportFormat, type Rendered } from "./export/render.js";
 
 // docs/19 §5 — what a channel earned becomes what a channel is paid.
 //
@@ -38,6 +38,27 @@ import { render, type ExportFormat, type Rendered } from "./export/render.js";
  */
 export const PAYABLE_KINDS = ["partner", "creator", "publisher"] as const;
 export type PayableKind = (typeof PAYABLE_KINDS)[number];
+
+/**
+ * No PSP connector exists here (docs/25 §7 — credential-gated, out of scope).
+ * The v1 payout control is a human-confirmed bank/PSP reference: proof money
+ * actually left the building, checked before `paid` can be written at all.
+ */
+export const PAID_VIA = ["bank_transfer", "psp", "other"] as const;
+export type PaidVia = (typeof PAID_VIA)[number];
+
+export interface PaySettlementInput {
+  /** Transfer confirmation number, PSP payout id, or similar. */
+  externalRef: string;
+  paidVia: PaidVia;
+}
+
+function assertPayment(input: PaySettlementInput): void {
+  if (!input.externalRef?.trim()) throw badRequest("externalRef is required to mark a settlement paid");
+  if (!(PAID_VIA as readonly string[]).includes(input.paidVia)) {
+    throw badRequest(`paidVia must be one of ${PAID_VIA.join(", ")}`);
+  }
+}
 
 /** Entry states that are no longer money: written off is a decision, not a debt. */
 const EXCLUDED_ENTRY_STATE = "written_off";
@@ -468,7 +489,12 @@ export async function approveSettlement(ctx: Ctx, settlementId: string): Promise
  * approving the number and releasing the money are two decisions, and docs/19
  * §7 keeps them apart.
  */
-export async function paySettlement(ctx: Ctx, settlementId: string): Promise<SettlementRow> {
+export async function paySettlement(
+  ctx: Ctx,
+  settlementId: string,
+  payment: PaySettlementInput
+): Promise<SettlementRow> {
+  assertPayment(payment);
   const settlement = await getSettlement(ctx, settlementId);
   if (settlement.state !== "approved") {
     throw conflict(`settlement ${settlementId} is ${settlement.state}; only an approved settlement can be paid`);
@@ -523,7 +549,12 @@ export async function paySettlement(ctx: Ctx, settlementId: string): Promise<Set
       )
     );
 
-  const after = await setState(ctx, settlement, { state: "paid", txnId: txn.id });
+  const after = await setState(ctx, settlement, {
+    state: "paid",
+    txnId: txn.id,
+    externalRef: payment.externalRef,
+    paidVia: payment.paidVia
+  });
   await audit(ctx, { action: "ledger.settlement.pay", subjectRef: settlement.id, before: settlement, after });
   await emit(ctx, {
     module: "ledger",
@@ -540,7 +571,7 @@ export async function disputeSettlement(ctx: Ctx, settlementId: string, reason: 
   if (settlement.state !== "draft" && settlement.state !== "approved") {
     throw conflict(`settlement ${settlementId} is ${settlement.state} and can no longer be disputed`);
   }
-  const after = await setState(ctx, settlement, { state: "disputed" });
+  const after = await setState(ctx, settlement, { state: "disputed", disputeReason: reason });
   await audit(ctx, {
     action: "ledger.settlement.dispute",
     subjectRef: settlement.id,
@@ -666,21 +697,27 @@ export async function settlementStatement(
   ctx: Ctx,
   settlementId: string,
   format: ExportFormat,
-  bucket: R2Bucket | undefined
+  bucket: R2Bucket | undefined,
+  browser?: BrowserBinding
 ): Promise<StatementResult> {
   const settlement = await getSettlement(ctx, settlementId);
   const { table, totals, terms } = await statementTable(ctx, settlement);
-  const rendered = render(format, table, {
-    totals,
-    meta: {
-      "Requested by": actorRef(ctx),
-      Period: settlement.period,
-      Counterparty: settlement.counterpartyRef,
-      Agreement: terms.agreementVersion === null ? "unversioned" : `v${terms.agreementVersion}`,
-      State: settlement.state,
-      Rows: String(table.rows.length)
-    }
-  });
+  const rendered = await render(
+    format,
+    table,
+    {
+      totals,
+      meta: {
+        "Requested by": actorRef(ctx),
+        Period: settlement.period,
+        Counterparty: settlement.counterpartyRef,
+        Agreement: terms.agreementVersion === null ? "unversioned" : `v${terms.agreementVersion}`,
+        State: settlement.state,
+        Rows: String(table.rows.length)
+      }
+    },
+    browser
+  );
 
   const fileId = newId("file", ctx.now);
   const r2Key = `settlements/${ctx.tenantId}/${settlement.id}.${format}`;

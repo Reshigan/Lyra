@@ -477,10 +477,15 @@ ledgerRoutes.get("/reports/:report/export", async (c) => {
   const q = qOf(c);
   const { table, totals } = await spec.build(ctx, q);
   const shaped = labelCurrency(table);
-  const rendered = render(format, shaped, {
-    ...(totals ? { totals } : {}),
-    meta: { "Requested by": actorRef(ctx), Rows: String(table.rows.length) }
-  });
+  const rendered = await render(
+    format,
+    shaped,
+    {
+      ...(totals ? { totals } : {}),
+      meta: { "Requested by": actorRef(ctx), Rows: String(table.rows.length) }
+    },
+    c.env.BROWSER
+  );
 
   const params = Object.fromEntries(new URL(c.req.url).searchParams);
   await audit(ctx, {

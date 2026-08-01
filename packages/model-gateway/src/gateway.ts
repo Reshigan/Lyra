@@ -51,7 +51,6 @@ export class Gateway {
 
   async complete(ctx: Ctx, req: ModelRequest): Promise<ModelResponse> {
     const started = Date.now();
-    await assertBudget(ctx, req.module);
 
     const onPrem = ctx.policy.dataResidency === "on-prem";
     const def = resolveModel(req.tier, {
@@ -73,6 +72,30 @@ export class Gateway {
 
     const inputHash = await hashObject({ model: def.model, messages: scrubbed.messages, tools: req.tools ?? [] });
     const auditId = id("aia", ctx.now);
+
+    // Budget is checked after the hash/audit id exist so a blocked call still
+    // lands in ai_audit_log (CLAUDE.md §3: every call is audited, not just the
+    // ones that reach a provider).
+    try {
+      await assertBudget(ctx, req.module);
+    } catch (err) {
+      await this.writeAudit(ctx, {
+        auditId,
+        req,
+        def,
+        inputHash,
+        outputHash: null,
+        tokensIn: 0,
+        tokensOut: 0,
+        cost: 0,
+        latencyMs: Date.now() - started,
+        toolCalls: [],
+        flags: [...flags, "budget_exceeded"],
+        outcome: "budget_exceeded"
+      });
+      throw err;
+    }
+
     const outbound = { ...req, messages: scrubbed.messages };
 
     let result;
@@ -219,6 +242,12 @@ export class Gateway {
       subjectRef: a.req.subjectRef ?? null,
       outcome: a.outcome,
       ts: ctx.now
+    });
+
+    this.opts.env.TELEMETRY?.writeDataPoint({
+      blobs: [ctx.tenantId, a.req.module, a.req.purpose, a.def.model, a.def.provider, a.outcome],
+      doubles: [a.tokensIn, a.tokensOut, a.cost, a.latencyMs],
+      indexes: [ctx.tenantId]
     });
   }
 }

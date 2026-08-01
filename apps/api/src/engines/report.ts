@@ -232,6 +232,64 @@ export const DATASETS: Record<string, Dataset> = {
       clicks: { label: "Clicks", kind: "number", agg: "sum", column: "clicks" },
       conversions: { label: "Conversions", kind: "number", agg: "sum", column: "conversions" }
     }
+  },
+  signals: {
+    table: "scout_signals",
+    module: "scout",
+    permission: "scout:signals:read",
+    timeColumn: "observed_at",
+    dimensions: {
+      source: { column: "source", label: "Source", kind: "text" },
+      clusterId: { column: "cluster_id", label: "Cluster", kind: "text" }
+    },
+    metrics: {
+      signals: { label: "Signals", kind: "number", agg: "count" },
+      weight: { label: "Weight", kind: "number", agg: "sum", column: "weight" }
+    }
+  },
+  whitespaces: {
+    table: "scout_whitespaces",
+    module: "scout",
+    permission: "scout:whitespaces:read",
+    timeColumn: "created_at",
+    dimensions: {
+      status: { column: "status", label: "Status", kind: "text" },
+      clusterId: { column: "cluster_id", label: "Cluster", kind: "text" },
+      owner: { column: "owner", label: "Owner", kind: "text" }
+    },
+    metrics: {
+      whitespaces: { label: "Whitespaces", kind: "number", agg: "count" },
+      demand: { label: "Demand estimate", kind: "number", agg: "sum", column: "demand_estimate" },
+      avgCompetition: { label: "Average competition score", kind: "number", agg: "avg", column: "competition_score" }
+    }
+  },
+  boardpacks: {
+    table: "north_boardpacks",
+    module: "north",
+    permission: "north:boardpacks:read",
+    timeColumn: "created_at",
+    dimensions: {
+      period: { column: "period", label: "Period", kind: "text" },
+      status: { column: "status", label: "Status", kind: "text" },
+      approvedBy: { column: "approved_by", label: "Approved by", kind: "text" }
+    },
+    metrics: {
+      boardpacks: { label: "Boardpacks", kind: "number", agg: "count" }
+    }
+  },
+  decisions: {
+    table: "north_decisions",
+    module: "north",
+    permission: "north:decisions:read",
+    timeColumn: "created_at",
+    dimensions: {
+      status: { column: "status", label: "Status", kind: "text" },
+      owner: { column: "owner", label: "Owner", kind: "text" },
+      chosen: { column: "chosen", label: "Chosen option", kind: "text" }
+    },
+    metrics: {
+      decisions: { label: "Decisions", kind: "number", agg: "count" }
+    }
   }
 };
 

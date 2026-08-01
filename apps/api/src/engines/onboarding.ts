@@ -1,6 +1,7 @@
 import { and, desc, eq } from "drizzle-orm";
 import { id as newId, schema } from "@lyra/db";
 import {
+  ONBOARDING_TEMPLATES,
   actorRef,
   audit,
   badRequest,
@@ -46,217 +47,7 @@ export type EvidenceKind = "file" | "screening" | "agreement" | "consent" | "ver
 /** States that satisfy a gate. `failed` deliberately does not. */
 const CLEARED = new Set(["done", "waived"]);
 
-export interface StepDef {
-  key: string;
-  /** `{en, ar}` — the same shape `dist_channels.name_json` carries (CLAUDE.md §7). */
-  labelJson: { en: string; ar: string };
-  seq: number;
-  required: boolean;
-  /** The stage this step must clear before the subject may enter it. */
-  gatesStage: Stage;
-  evidenceKind: EvidenceKind;
-  /** Role key that owns the step; resolved to a user id by the caller's map. */
-  ownerRole?: string;
-}
-
 type Step = typeof schema.onboardingSteps.$inferSelect;
-
-const def = (d: StepDef): StepDef => d;
-
-/* -------------------------------------------------------------- templates */
-
-/**
- * What a real aggregator actually has to prove before a counterparty may trade.
- * The order is the order the work happens in; `gatesStage` is where it becomes
- * blocking, which is not always the same thing — a rate card is negotiated long
- * before the integration but nothing may reach `agreement` without it.
- */
-export const TEMPLATES: Record<string, readonly StepDef[]> = {
-  "partner.distribution": [
-    def({
-      key: "legal_identity",
-      labelJson: { en: "Legal identity verified", ar: "التحقق من الهوية القانونية" },
-      seq: 1,
-      required: true,
-      gatesStage: "applied",
-      evidenceKind: "verification",
-      ownerRole: "orbit.partners"
-    }),
-    def({
-      key: "sanctions_pep_screening",
-      labelJson: { en: "Sanctions and PEP screening clear", ar: "خلو فحص العقوبات والأشخاص المعرضين سياسياً" },
-      seq: 2,
-      required: true,
-      gatesStage: "screening",
-      evidenceKind: "screening",
-      ownerRole: "tenant.compliance"
-    }),
-    def({
-      key: "ubo_disclosure",
-      labelJson: { en: "Ultimate beneficial owners disclosed", ar: "الإفصاح عن المالك المستفيد النهائي" },
-      seq: 3,
-      required: true,
-      gatesStage: "diligence",
-      evidenceKind: "file",
-      ownerRole: "tenant.compliance"
-    }),
-    def({
-      key: "licence_check",
-      labelJson: { en: "Regulatory licence checked", ar: "التحقق من الترخيص التنظيمي" },
-      seq: 4,
-      required: true,
-      gatesStage: "diligence",
-      evidenceKind: "verification",
-      ownerRole: "tenant.compliance"
-    }),
-    def({
-      key: "agreement_drafted",
-      labelJson: { en: "Agreement drafted", ar: "صياغة الاتفاقية" },
-      seq: 5,
-      required: true,
-      gatesStage: "agreement",
-      evidenceKind: "agreement",
-      ownerRole: "orbit.partners"
-    }),
-    def({
-      key: "agreement_countersigned",
-      labelJson: { en: "Agreement countersigned", ar: "توقيع الاتفاقية من الطرفين" },
-      seq: 6,
-      required: true,
-      gatesStage: "agreement",
-      evidenceKind: "agreement",
-      ownerRole: "tenant.admin"
-    }),
-    def({
-      key: "rate_card_agreed",
-      labelJson: { en: "Commission rate card agreed", ar: "الاتفاق على جدول العمولات" },
-      seq: 7,
-      required: true,
-      gatesStage: "agreement",
-      evidenceKind: "attestation",
-      ownerRole: "orbit.partners"
-    }),
-    def({
-      key: "payout_method",
-      labelJson: { en: "Payout method verified", ar: "التحقق من وسيلة صرف المستحقات" },
-      seq: 8,
-      required: true,
-      gatesStage: "integration",
-      evidenceKind: "verification",
-      ownerRole: "finance.controller"
-    }),
-    def({
-      key: "api_credentials",
-      labelJson: { en: "API credentials issued", ar: "إصدار بيانات اعتماد الواجهة البرمجية" },
-      seq: 9,
-      required: true,
-      gatesStage: "integration",
-      evidenceKind: "attestation",
-      ownerRole: "dev.admin"
-    }),
-    def({
-      key: "sandbox_transactions",
-      labelJson: { en: "Sandbox transactions passed", ar: "اجتياز معاملات البيئة التجريبية" },
-      seq: 10,
-      required: true,
-      gatesStage: "sandbox",
-      evidenceKind: "attestation",
-      ownerRole: "dev.admin"
-    }),
-    def({
-      key: "go_live_signoff",
-      labelJson: { en: "Go-live sign-off", ar: "اعتماد الإطلاق" },
-      seq: 11,
-      required: true,
-      gatesStage: "live",
-      evidenceKind: "attestation",
-      ownerRole: "orbit.partners"
-    })
-  ],
-  "channel.b2b": [
-    def({
-      key: "channel_owner_assigned",
-      labelJson: { en: "Channel owner assigned", ar: "تعيين مسؤول القناة" },
-      seq: 1,
-      required: true,
-      gatesStage: "applied",
-      evidenceKind: "attestation",
-      ownerRole: "orbit.partners"
-    }),
-    def({
-      key: "partner_agreement_linked",
-      labelJson: { en: "Partner agreement in force", ar: "اتفاقية الشريك سارية" },
-      seq: 2,
-      required: true,
-      gatesStage: "agreement",
-      evidenceKind: "agreement",
-      ownerRole: "orbit.partners"
-    }),
-    def({
-      key: "rate_card_agreed",
-      labelJson: { en: "Commission rate card agreed", ar: "الاتفاق على جدول العمولات" },
-      seq: 3,
-      required: true,
-      gatesStage: "agreement",
-      evidenceKind: "attestation",
-      ownerRole: "orbit.partners"
-    }),
-    def({
-      key: "settlement_terms",
-      labelJson: { en: "Settlement terms agreed", ar: "الاتفاق على شروط التسوية" },
-      seq: 4,
-      required: true,
-      gatesStage: "agreement",
-      evidenceKind: "attestation",
-      ownerRole: "finance.controller"
-    }),
-    def({
-      key: "disclosure_copy_approved",
-      labelJson: { en: "Disclosure wording approved", ar: "اعتماد نص الإفصاح" },
-      seq: 5,
-      required: true,
-      gatesStage: "integration",
-      evidenceKind: "file",
-      ownerRole: "tenant.compliance"
-    }),
-    def({
-      key: "api_credentials",
-      labelJson: { en: "API credentials issued", ar: "إصدار بيانات اعتماد الواجهة البرمجية" },
-      seq: 6,
-      required: true,
-      gatesStage: "integration",
-      evidenceKind: "attestation",
-      ownerRole: "dev.admin"
-    }),
-    def({
-      key: "branding_assets",
-      labelJson: { en: "Branding assets received", ar: "استلام أصول العلامة التجارية" },
-      seq: 7,
-      required: false,
-      gatesStage: "integration",
-      evidenceKind: "file",
-      ownerRole: "orbit.partners"
-    }),
-    def({
-      key: "uat_transactions",
-      labelJson: { en: "UAT transactions passed", ar: "اجتياز معاملات الاختبار" },
-      seq: 8,
-      required: true,
-      gatesStage: "sandbox",
-      evidenceKind: "attestation",
-      ownerRole: "dev.admin"
-    }),
-    def({
-      key: "go_live_signoff",
-      labelJson: { en: "Go-live sign-off", ar: "اعتماد الإطلاق" },
-      seq: 9,
-      required: true,
-      gatesStage: "live",
-      evidenceKind: "attestation",
-      ownerRole: "orbit.partners"
-    })
-  ]
-};
 
 /* ------------------------------------------------------------------ steps */
 
@@ -266,6 +57,8 @@ export interface StartInput {
   template: string;
   /** Role key -> user id, so a generated step lands in somebody's queue. */
   owners?: Record<string, string> | undefined;
+  /** Owner for every step the template does not name a role for (staff runs). */
+  ownerRef?: string | undefined;
   dueAt?: number | undefined;
 }
 
@@ -276,7 +69,7 @@ export interface StartInput {
  * state of work already done.
  */
 export async function startOnboarding(ctx: Ctx, input: StartInput): Promise<Step[]> {
-  const defs = TEMPLATES[input.template];
+  const defs = ONBOARDING_TEMPLATES[input.template];
   if (!defs) throw badRequest(`unknown onboarding template ${input.template}`);
 
   const existing = await stepsFor(ctx, input.subjectKind, input.subjectRef);
@@ -297,7 +90,7 @@ export async function startOnboarding(ctx: Ctx, input: StartInput): Promise<Step
     state: "pending",
     evidenceKind: d.evidenceKind,
     evidenceRef: null,
-    ownerRef: (d.ownerRole && input.owners?.[d.ownerRole]) ?? null,
+    ownerRef: (d.ownerRole && input.owners?.[d.ownerRole]) ?? input.ownerRef ?? null,
     dueAt: input.dueAt ?? null,
     notesJson: null,
     waivedApprovalId: null,

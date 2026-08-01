@@ -20,6 +20,13 @@ export interface RenderOptions {
   meta?: Record<string, string>;
 }
 
+/** docs/02 §9 / docs/11 §3: Cloudflare Browser Rendering's REST-API shape (a
+ * `Fetcher`), so on-prem's `render` HTTP service can implement the same
+ * contract with no code branch here. */
+export interface BrowserBinding {
+  fetch(req: Request): Promise<Response>;
+}
+
 export type ExportFormat = "xlsx" | "pdf" | "csv" | "json";
 
 export const EXPORT_FORMATS: readonly ExportFormat[] = ["xlsx", "pdf", "csv", "json"];
@@ -28,7 +35,18 @@ export function isExportFormat(value: string): value is ExportFormat {
   return (EXPORT_FORMATS as readonly string[]).includes(value);
 }
 
-export function render(format: ExportFormat, table: ReportTable & { rowCount?: number }, opts: RenderOptions): Rendered {
+/**
+ * `browser` is optional and only ever needed for the pdf/non-Latin case: every
+ * other format renders the same with or without it. Unbound (on-prem with no
+ * `render` service configured yet) keeps today's behaviour — export xlsx
+ * instead — same no-op-when-unbound idiom as `wf`/`bucket` elsewhere.
+ */
+export async function render(
+  format: ExportFormat,
+  table: ReportTable & { rowCount?: number },
+  opts: RenderOptions,
+  browser?: BrowserBinding
+): Promise<Rendered> {
   switch (format) {
     case "xlsx":
       return {
@@ -36,11 +54,12 @@ export function render(format: ExportFormat, table: ReportTable & { rowCount?: n
         contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
       };
     case "pdf": {
-      // Arabic needs an embedded font the base-14 set does not have, so rather
-      // than draw question marks the caller is told to ask for XLSX. Typographic
-      // punctuation is not this case — pdf.ts folds it to ASCII — so what is
-      // left here is genuinely a script the PDF cannot carry.
+      // Arabic needs an embedded font the base-14 set does not have. Where a
+      // browser binding is available, a real browser has the font and does the
+      // shaping for free — render an HTML table and let it print to PDF.
+      // Unbound, the caller is told to ask for XLSX instead.
       if (!pdfSafe([table])) {
+        if (browser) return { bytes: await renderPdfViaBrowser(browser, table, opts), contentType: "application/pdf" };
         throw badRequest("this report contains non-Latin text the PDF fonts cannot render; export it as xlsx");
       }
       return { bytes: toPdf([table], opts), contentType: "application/pdf" };
@@ -57,6 +76,85 @@ export function render(format: ExportFormat, table: ReportTable & { rowCount?: n
         contentType: "application/json"
       };
   }
+}
+
+/** Arabic block + supplement + presentation forms — the script base-14 Helvetica cannot draw. */
+const RTL_RE = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
+
+function isRtl(table: ReportTable): boolean {
+  return (
+    RTL_RE.test(table.title) ||
+    table.columns.some((c) => RTL_RE.test(c.label)) ||
+    table.rows.some((r) => table.columns.some((c) => typeof r[c.key] === "string" && RTL_RE.test(r[c.key] as string)))
+  );
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function cellText(v: unknown, kind: ReportTable["columns"][number]["kind"], row: Record<string, unknown>, table: ReportTable): string {
+  if (v === null || v === undefined) return "";
+  if (kind === "money") {
+    const currency = rowCurrency(row, table);
+    return `${currency} ${majorUnits(Number(v), currency).toLocaleString("en-US", { minimumFractionDigits: minorExponent(currency), maximumFractionDigits: minorExponent(currency) })}`;
+  }
+  if (kind === "number") return Number(v).toLocaleString("en-US");
+  if (kind === "date") return new Date(Number(v)).toISOString().slice(0, 10);
+  return String(v);
+}
+
+/** Builds the HTML page a real browser prints to PDF — RTL-aware (CLAUDE.md rule 7: logical properties, not left/right). */
+function tableHtml(table: ReportTable & { rowCount?: number }, opts: RenderOptions): string {
+  const dir = isRtl(table) ? "rtl" : "ltr";
+  const head = table.columns.map((c) => `<th>${escapeHtml(c.label)}</th>`).join("");
+  const rows = table.rows
+    .map(
+      (r) =>
+        `<tr>${table.columns.map((c) => `<td class="${c.kind === "money" || c.kind === "number" ? "num" : ""}">${escapeHtml(cellText(r[c.key], c.kind, r, table))}</td>`).join("")}</tr>`
+    )
+    .join("");
+  const totalsRow =
+    opts.totals && Object.keys(opts.totals).length
+      ? `<tr class="totals">${table.columns
+          .map((c, i) => (i === 0 ? "<td>Total</td>" : `<td class="num">${opts.totals?.[c.key] !== undefined ? escapeHtml(cellText(opts.totals[c.key], c.kind, opts.totals as Record<string, unknown>, table)) : ""}</td>`))
+          .join("")}</tr>`
+      : "";
+  const meta = Object.entries(opts.meta ?? {})
+    .map(([k, v]) => `<div class="meta">${escapeHtml(k)}: ${escapeHtml(v)}</div>`)
+    .join("");
+  return `<!doctype html><html dir="${dir}"><head><meta charset="utf-8"><style>
+    body { font-family: "Noto Sans Arabic", "Noto Sans", Arial, sans-serif; font-size: 11px; margin: 24px; }
+    h1 { font-size: 18px; }
+    .meta, .generated { color: #6b7280; font-size: 10px; }
+    ${opts.watermark ? ".watermark { position: fixed; inset-inline-start: 15%; top: 35%; font-size: 64px; color: #e8e8ec; transform: rotate(-28deg); z-index: -1; }" : ""}
+    table { border-collapse: collapse; width: 100%; margin-top: 12px; }
+    th { background: #1e1b4b; color: #fff; text-align: start; padding: 4px 6px; }
+    td { padding: 3px 6px; border-block-end: 1px solid #e5e7eb; }
+    td.num, th.num { text-align: end; }
+    tr.totals td { font-weight: bold; border-block-start: 1px solid #9ca3af; }
+  </style></head><body>
+    ${opts.watermark ? `<div class="watermark">${escapeHtml(opts.watermark)}</div>` : ""}
+    <h1>${escapeHtml(table.title)}</h1>
+    <div class="generated">Generated ${new Date(table.generatedAt).toISOString().replace("T", " ").slice(0, 19)}</div>
+    ${meta}
+    <table><thead><tr>${head}</tr></thead><tbody>${rows}${totalsRow}</tbody></table>
+  </body></html>`;
+}
+
+async function renderPdfViaBrowser(browser: BrowserBinding, table: ReportTable & { rowCount?: number }, opts: RenderOptions): Promise<Uint8Array> {
+  const res = await browser.fetch(
+    new Request("https://browser-rendering/v1/pdf", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        html: tableHtml(table, opts),
+        pdfOptions: { landscape: (opts.orientation ?? "landscape") === "landscape", printBackground: true }
+      })
+    })
+  );
+  if (!res.ok) throw badRequest("browser-rendered PDF export failed");
+  return new Uint8Array(await res.arrayBuffer());
 }
 
 /**

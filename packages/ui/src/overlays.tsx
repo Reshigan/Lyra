@@ -36,6 +36,8 @@ export interface DialogProps {
   footer?: React.ReactNode;
   size?: "sm" | "md" | "lg";
   children?: React.ReactNode;
+  /** Close button's accessible name — pass the caller's i18n string; defaults to English (CLAUDE.md §7). */
+  closeLabel?: string;
 }
 
 const dialogSizes = { sm: "max-w-md", md: "max-w-xl", lg: "max-w-3xl" } as const;
@@ -49,7 +51,8 @@ export function Dialog({
   trigger,
   footer,
   size = "md",
-  children
+  children,
+  closeLabel = "Close"
 }: DialogProps) {
   return (
     <RDialog.Root
@@ -82,7 +85,7 @@ export function Dialog({
           <div className="mt-4">{children}</div>
           {footer ? <div className="mt-6 flex justify-end gap-2">{footer}</div> : null}
           <RDialog.Close
-            aria-label="Close"
+            aria-label={closeLabel}
             className={cn(
               "absolute top-4 end-4 rounded-sm p-1 text-subtle hover:text-text",
               focusRing
@@ -121,7 +124,8 @@ export function Drawer({
   footer,
   side = "inline-end",
   width = "26rem",
-  children
+  children,
+  closeLabel = "Close"
 }: DrawerProps) {
   return (
     <RDialog.Root
@@ -155,7 +159,7 @@ export function Drawer({
               )}
             </div>
             <RDialog.Close
-              aria-label="Close"
+              aria-label={closeLabel}
               className={cn("rounded-sm p-1 text-subtle hover:text-text", focusRing)}
             >
               <span aria-hidden="true">✕</span>
@@ -331,7 +335,14 @@ const toastTones = {
   info: "border-info/50"
 } as const;
 
-export function ToastProvider({ children }: { children: React.ReactNode }) {
+export function ToastProvider({
+  children,
+  dismissLabel = "Dismiss"
+}: {
+  children: React.ReactNode;
+  /** Dismiss button's accessible name — pass the caller's i18n string; defaults to English (CLAUDE.md §7). */
+  dismissLabel?: string;
+}) {
   const [messages, setMessages] = React.useState<ToastMessage[]>([]);
   const api = React.useMemo<ToastApi>(
     () => ({
@@ -370,7 +381,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               </p>
             ) : null}
             <RToast.Close
-              aria-label="Dismiss"
+              aria-label={dismissLabel}
               className={cn("absolute top-2 end-2 rounded-sm p-1 text-subtle hover:text-text", focusRing)}
             >
               <span aria-hidden="true">✕</span>

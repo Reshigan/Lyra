@@ -1,0 +1,41 @@
+// docs/modules/signal.md §2.1/§8 Compliance Pre-flight (CLAUDE.md rule 11's
+// inspectable "why"): every generated creative gets checked before it can be
+// marked review-ready. Pure and DB-free like momentum.ts/narrator-verify.ts so
+// both apps/api's signal-creative engine and this package's own eval harness
+// (packages/model-gateway/evals/signal) score the identical function.
+
+export interface ComplianceFinding {
+  rule: "comparison_claim_requires_source" | "no_guarantee_of_cover";
+  excerpt: string;
+  note: string;
+}
+
+export interface ComplianceResult {
+  status: "passed" | "flagged";
+  findings: ComplianceFinding[];
+}
+
+const BANNED_CLAIMS: Array<{ re: RegExp; rule: ComplianceFinding["rule"]; note: string }> = [
+  {
+    rule: "comparison_claim_requires_source",
+    re: /\b(cheapest|lowest price|best in the uae|best in the market)\b/i,
+    note: "A superlative against the whole market needs a source (panel size, published pricing) or it must be dropped."
+  },
+  {
+    rule: "no_guarantee_of_cover",
+    re: /\b(guaranteed?|100% accepted|always accepted)\b/i,
+    note: "Acceptance is the underwriter's decision, not ours. Never publishable in this form."
+  }
+];
+
+/** The inspectable "why" behind a creative's compliance badge — the ✦ marker's
+ *  rationale for this artifact (docs/15 rule 11), same shape as the seed's real
+ *  `complianceNotesJson.findings`. Runs after generation, never blocks it. */
+export function checkCompliance(text: string): ComplianceResult {
+  const findings: ComplianceFinding[] = [];
+  for (const b of BANNED_CLAIMS) {
+    const m = text.match(b.re);
+    if (m) findings.push({ rule: b.rule, excerpt: m[0], note: b.note });
+  }
+  return findings.length ? { status: "flagged", findings } : { status: "passed", findings: [] };
+}

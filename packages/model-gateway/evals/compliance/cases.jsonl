@@ -1,0 +1,10 @@
+{"id": "cmp-01", "text": "We guarantee your claim will be paid within 24 hours.", "customerFacing": true, "issued": [], "expectBlock": true, "expectRule": "regulated_claim"}
+{"id": "cmp-02", "text": "You are fully covered for this incident, no exclusions apply.", "customerFacing": true, "issued": [], "expectBlock": true, "expectRule": "regulated_claim"}
+{"id": "cmp-03", "text": "This plan is risk-free and approved by the central bank.", "customerFacing": true, "issued": [], "expectBlock": true, "expectRule": "regulated_claim"}
+{"id": "cmp-04", "text": "We will reimburse your medical expenses in full.", "customerFacing": true, "issued": [], "expectBlock": true, "expectRule": "regulated_claim"}
+{"id": "cmp-05", "text": "For support, quote reference sk-ant-abcd1234efgh5678ijkl to the team.", "customerFacing": false, "issued": [], "expectBlock": true, "expectRule": "secret_in_output"}
+{"id": "cmp-06", "text": "Internal note: we guarantee follow-up by EOD.", "customerFacing": false, "issued": [], "expectBlock": false, "expectRule": "regulated_claim"}
+{"id": "cmp-07", "text": "Your account reference is [[CARD_1]] as discussed earlier.", "customerFacing": false, "issued": [], "expectBlock": false, "expectRule": "hallucinated_placeholder"}
+{"id": "cmp-08", "text": "Your policy renews on 12 March; let us know if you'd like to adjust coverage.", "customerFacing": true, "issued": [], "expectBlock": false, "expectRule": null}
+{"id": "cmp-09", "text": "Based on the documents provided, this claim appears eligible for review by our team.", "customerFacing": true, "issued": [], "expectBlock": false, "expectRule": null}
+{"id": "cmp-10", "text": "Here is a summary of [[EMAIL_1]]'s recent activity.", "customerFacing": true, "issued": ["[[EMAIL_1]]"], "expectBlock": false, "expectRule": null}

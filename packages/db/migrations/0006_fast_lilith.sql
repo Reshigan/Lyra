@@ -1,0 +1,1 @@
+ALTER TABLE `scout_whitespaces` ADD `category` text;

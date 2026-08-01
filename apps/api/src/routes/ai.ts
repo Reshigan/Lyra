@@ -3,8 +3,10 @@ import { and, desc, eq, gte } from "drizzle-orm";
 import { z } from "zod";
 import { id as newId, schema } from "@lyra/db";
 import { actorRef, audit, badRequest, gate, notFound, require_, type Ctx } from "@lyra/core";
-import { checkBudget, setLimits } from "@lyra/model-gateway";
+import { checkBudget, setLimits, type Message } from "@lyra/model-gateway";
 import { body } from "../http.js";
+import { executeOrbitToolCalls, orbitToolsFor } from "../engines/orbit-tools.js";
+import { embedQuery } from "../engines/vectorize.js";
 import { must } from "../rows.js";
 import type { App } from "../env.js";
 
@@ -62,37 +64,97 @@ aiRoutes.post("/runs", async (c) => {
   });
 
   try {
-    const res = await c.get("gateway").complete(ctx, {
+    // docs/21 ORBIT conversation memory (VEC_CONVO): no reliable conversationId
+    // correlates a `/runs` call back to a room (routes/orbit.ts posts turns
+    // straight to the AgentRoom DO, never through here) — so recall is scoped
+    // to the tenant's ORBIT history, not one conversation.
+    const recall =
+      agent.module === "orbit"
+        ? await embedQuery(ctx, c.get("gateway"), c.env.VEC_CONVO, {
+            module: "orbit",
+            purpose: "orbit.message.recall",
+            text: input.input,
+            topK: 5,
+            filter: { tenantId: ctx.tenantId }
+          })
+        : [];
+
+    const messages: Message[] = [
+      { role: "system", content: prompt },
+      {
+        role: "user",
+        content: [
+          input.context ? `${input.input}\n\ncontext:\n${JSON.stringify(input.context)}` : input.input,
+          recall.length
+            ? `relevant past messages:\n${recall.map((m) => m.metadata?.role + ": " + m.metadata?.text).join("\n")}`
+            : ""
+        ]
+          .filter(Boolean)
+          .join("\n\n")
+      }
+    ];
+
+    // Tool calling is scoped to ORBIT for now — the registry only knows ORBIT's
+    // tools (apps/api/src/engines/orbit-tools.ts). Other modules get no `tools`
+    // field, same behaviour as before this wiring existed.
+    const first = await c.get("gateway").complete(ctx, {
       module: agent.module,
       purpose: input.purpose,
       tier: agent.tier as "fast" | "standard" | "reasoning",
       ...(input.subjectRef !== undefined ? { subjectRef: input.subjectRef } : {}),
       ...(input.locale !== undefined ? { locale: input.locale } : {}),
-      messages: [
-        { role: "system", content: prompt },
-        {
-          role: "user",
-          content: input.context
-            ? `${input.input}\n\ncontext:\n${JSON.stringify(input.context)}`
-            : input.input
-        }
-      ]
+      ...(agent.module === "orbit" ? { tools: orbitToolsFor(agent) } : {}),
+      messages
     });
+
+    // The model asked for real work: execute each call through the registry
+    // (approval gate included — CLAUDE.md rule 4), then let the model react to
+    // what actually happened, via a second, separately audited completion.
+    const final =
+      agent.module === "orbit" && first.toolCalls.length
+        ? await c.get("gateway").complete(ctx, {
+            module: agent.module,
+            purpose: input.purpose,
+            tier: agent.tier as "fast" | "standard" | "reasoning",
+            ...(input.subjectRef !== undefined ? { subjectRef: input.subjectRef } : {}),
+            ...(input.locale !== undefined ? { locale: input.locale } : {}),
+            messages: [
+              ...messages,
+              { role: "assistant", content: first.text },
+              ...(await executeOrbitToolCalls(
+                ctx,
+                runId,
+                first.toolCalls,
+                new Set(orbitToolsFor(agent).map((t) => t.name))
+              ))
+            ]
+          })
+        : first;
 
     // A refusal is a successful run with a refusal outcome, not an error. The
     // operator needs to see that the guardrail fired, not a 500.
-    const refused = res.finishReason === "refusal";
+    const refused = final.finishReason === "refusal";
+    const usage =
+      final === first
+        ? final.usage
+        : {
+            tokensIn: first.usage.tokensIn + final.usage.tokensIn,
+            tokensOut: first.usage.tokensOut + final.usage.tokensOut,
+            costMicro: first.usage.costMicro + final.usage.costMicro
+          };
+    const latencyMs = final === first ? final.latencyMs : first.latencyMs + final.latencyMs;
+
     await ctx.db
       .update(schema.aiRuns)
       .set({
         state: refused ? "refused" : "succeeded",
-        inputHash: res.auditId,
-        outputRef: res.auditId,
-        tokensIn: res.usage.tokensIn,
-        tokensOut: res.usage.tokensOut,
-        costMicro: res.usage.costMicro,
-        latencyMs: res.latencyMs,
-        evidenceJson: JSON.stringify({ flags: res.flags, model: res.model, provider: res.provider }),
+        inputHash: final.auditId,
+        outputRef: final.auditId,
+        tokensIn: usage.tokensIn,
+        tokensOut: usage.tokensOut,
+        costMicro: usage.costMicro,
+        latencyMs,
+        evidenceJson: JSON.stringify({ flags: final.flags, model: final.model, provider: final.provider }),
         endedAt: ctx.now
       })
       .where(and(eq(schema.aiRuns.tenantId, ctx.tenantId), eq(schema.aiRuns.id, runId)));
@@ -100,15 +162,15 @@ aiRoutes.post("/runs", async (c) => {
     return c.json(
       {
         runId,
-        text: res.text,
-        toolCalls: res.toolCalls,
-        model: res.model,
-        provider: res.provider,
-        tier: res.tier,
-        flags: res.flags,
-        finishReason: res.finishReason,
-        auditId: res.auditId,
-        usage: res.usage
+        text: final.text,
+        toolCalls: first.toolCalls,
+        model: final.model,
+        provider: final.provider,
+        tier: final.tier,
+        flags: final.flags,
+        finishReason: final.finishReason,
+        auditId: final.auditId,
+        usage
       },
       201
     );

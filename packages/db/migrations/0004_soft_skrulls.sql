@@ -1,0 +1,1 @@
+ALTER TABLE `ledger_settlements` ADD `dispute_reason` text;

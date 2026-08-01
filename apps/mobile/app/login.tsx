@@ -231,9 +231,15 @@ export default function Login() {
                   encoder dependency, and the web shell shows the key the same
                   way. Add one when scanning beats pasting for enough people. */}
               <View style={box}>
+                {/* ponytail: the one testID in this app — a fresh, random
+                    setup key has no fixed text or label for Detox to match on
+                    (unlike every interactive control, which already carries
+                    its own accessibilityLabel), so e2e/01-sign-in-enrol.e2e.ts
+                    reads it via getAttributes() instead. */}
                 <Body
                   chrome={chrome}
                   selectable
+                  testID="enrol-secret"
                   style={{ fontFamily: MONO, fontSize: TEXT.s16, letterSpacing: 1 }}
                 >
                   {enrolment?.secret ?? "…"}

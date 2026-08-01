@@ -45,6 +45,8 @@ export const admin: WorkspaceSpec = {
       "ai-audit-log": "AI audit log",
       aiConsole: "AI console",
       aiBudget: "Spending ceilings",
+      costExplorer: "Cost explorer",
+      staff: "Staff",
       runDetail: "Open this run",
 
       name: "Name",
@@ -336,6 +338,8 @@ export const admin: WorkspaceSpec = {
       "ai-audit-log": "سجل تدقيق الذكاء الاصطناعي",
       aiConsole: "وحدة تحكم الذكاء الاصطناعي",
       aiBudget: "حدود الإنفاق",
+      costExplorer: "مستكشف التكلفة",
+      staff: "الموظفون",
       runDetail: "فتح هذا التشغيل",
 
       name: "الاسم",
@@ -1541,6 +1545,8 @@ export const admin: WorkspaceSpec = {
   ],
   links: [
     { href: "/admin/ai/console", labelKey: "aiConsole", permission: "ai:runs:read" },
-    { href: "/admin/ai/budget", labelKey: "aiBudget", permission: "ai:budgets:read" }
+    { href: "/admin/ai/budget", labelKey: "aiBudget", permission: "ai:budgets:read" },
+    { href: "/admin/cost-explorer", labelKey: "costExplorer", permission: "analytics:reports:read" },
+    { href: "/admin/staff", labelKey: "staff", permission: "core:users:read" }
   ]
 };

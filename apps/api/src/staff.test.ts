@@ -5,7 +5,7 @@ import { drizzle } from "drizzle-orm/libsql";
 import { and, eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import { EntitlementsJson, PolicyJson, schema } from "@lyra/db";
-import { permissionsForRole, type Ctx } from "@lyra/core";
+import { decide, gate, permissionsForRole, type AppError, type Ctx } from "@lyra/core";
 import {
   changeRoles,
   expireDelegations,
@@ -508,6 +508,85 @@ describe("delegation resolution", () => {
   it("resolves nothing for an unknown policy key", async () => {
     await activeDelegation();
     expect(await resolveDelegates(ctx, { policyKey: "not.a.policy" })).toEqual([]);
+  });
+});
+
+/**
+ * The point of the whole feature: the resolution above has to actually let the
+ * delegate decide. A delegation that grants nothing is a lie in the UI, so each
+ * refusal path is asserted through `decide()` itself, not through the resolver.
+ */
+describe("delegated decision", () => {
+  const PAYOUT = "ledger.payout"; // decided with ledger:payouts:approve
+
+  beforeEach(async () => {
+    await seedUser("u_from", "from@x.test", ["finance.controller"]);
+    await seedUser("u_to", "to@x.test", ["axis.agent"]);
+  });
+
+  /** Gate a payout as the admin, and hand back the pending approval it created. */
+  async function pendingPayout(amountMinor?: number): Promise<string> {
+    try {
+      await gate(ctx, {
+        policyKey: PAYOUT,
+        subjectRef: `payouts:po_${amountMinor ?? 0}`,
+        ...(amountMinor === undefined ? {} : { amountMinor })
+      });
+    } catch (e) {
+      return (e as AppError).extras.approval_id as string;
+    }
+    throw new Error("a payout must never approve itself");
+  }
+
+  const delegate = () => as("u_to", "axis.agent");
+
+  it("lets a delegate decide what they could not decide alone", async () => {
+    const approvalId = await pendingPayout();
+    expect(await detailOf(() => decide(delegate(), approvalId, "approved"))).toBe("ledger:payouts:approve");
+
+    const dlg = await activeDelegation();
+    const out = await decide(delegate(), approvalId, "approved");
+    expect(out.decision).toBe("approved");
+    expect(out.decidedBy).toBe("user:u_to");
+    // The audit trail has to say whose authority was used.
+    expect(out.delegationId).toBe(dlg);
+
+    const [row] = await ctx.db.select().from(schema.approvals).where(eq(schema.approvals.id, approvalId));
+    expect(row!.delegationId).toBe(dlg);
+  });
+
+  it("names no delegation when the decider held the permission themselves", async () => {
+    const approvalId = await pendingPayout();
+    const out = await decide(as("u_from", "finance.controller"), approvalId, "approved");
+    expect(out.delegationId).toBeNull();
+  });
+
+  it("refuses above the delegation's cap", async () => {
+    await activeDelegation({ maxAmountMinor: 250_000, currency: "ZAR" });
+    const under = await pendingPayout(250_000);
+    const over = await pendingPayout(250_001);
+
+    expect((await decide(delegate(), under, "approved")).decision).toBe("approved");
+    expect(await detailOf(() => decide(delegate(), over, "approved"))).toBe("ledger:payouts:approve");
+  });
+
+  it("refuses outside the delegation's window", async () => {
+    await activeDelegation({ startsAt: ctx.now + DAY, endsAt: ctx.now + 10 * DAY });
+    const approvalId = await pendingPayout();
+    expect(await detailOf(() => decide(delegate(), approvalId, "approved"))).toBe("ledger:payouts:approve");
+  });
+
+  it("refuses out of scope", async () => {
+    await activeDelegation({ scopeJson: JSON.stringify({ policyKeys: ["ledger.refund"] }) });
+    const approvalId = await pendingPayout();
+    expect(await detailOf(() => decide(delegate(), approvalId, "approved"))).toBe("ledger:payouts:approve");
+  });
+
+  it("refuses once revoked", async () => {
+    const dlg = await activeDelegation();
+    const approvalId = await pendingPayout();
+    await revokeDelegation(ctx, dlg, "back early");
+    expect(await detailOf(() => decide(delegate(), approvalId, "approved"))).toBe("ledger:payouts:approve");
   });
 });
 

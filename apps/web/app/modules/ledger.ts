@@ -26,7 +26,8 @@ export const ledger: WorkspaceSpec = {
     { href: "/ledger/transactions", labelKey: "link.open-txn", permission: "ledger:txns:create" },
     { href: "/ledger/period-close", labelKey: "link.period-close", permission: "ledger:periods:read" },
     { href: "/ledger/statement", labelKey: "link.statement", permission: "ledger:journals:read" },
-    { href: "/ledger/recon", labelKey: "link.recon", permission: "ledger:recon:read" }
+    { href: "/ledger/recon", labelKey: "link.recon", permission: "ledger:recon:read" },
+    { href: "/ledger/settlement", labelKey: "link.settlement", permission: "dist:commissions:read" }
   ],
   labels: {
     en: {
@@ -64,6 +65,8 @@ export const ledger: WorkspaceSpec = {
       "link.period-close": "Period close",
       "link.statement": "Account statement",
       "link.recon": "Reconciliation",
+      "link.settlement": "Commission settlements",
+      "link.settlement-detail": "Remittance, approvals and payout",
 
       idempotencyKey: "Reference",
       type: "Type",
@@ -298,6 +301,8 @@ export const ledger: WorkspaceSpec = {
       "link.period-close": "إقفال الفترة",
       "link.statement": "كشف حساب",
       "link.recon": "المطابقة",
+      "link.settlement": "تسويات العمولات",
+      "link.settlement-detail": "الإشعار والموافقات والدفع",
 
       idempotencyKey: "المرجع",
       type: "النوع",
@@ -1018,7 +1023,8 @@ export const ledger: WorkspaceSpec = {
         { name: "netMinor", type: "money", currencyFrom: "currency" },
         { name: "state", type: "text", badge: true },
         { name: "createdAt", type: "datetime", sortable: true }
-      ]
+      ],
+      recordLink: { href: "/ledger/settlements/{id}", labelKey: "link.settlement-detail" }
     }
   ]
 };

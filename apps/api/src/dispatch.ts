@@ -1,6 +1,7 @@
 import { and, eq, inArray, lte, or, isNull } from "drizzle-orm";
 import { id as newId, schema } from "@lyra/db";
 import {
+  consume,
   hmacHex,
   markPublishFailed,
   markPublished,
@@ -9,6 +10,7 @@ import {
   type Ctx,
   type Envelope
 } from "@lyra/core";
+import { onConsentUpdated } from "./engines/signal-suppression.js";
 
 // The outbox drain. Events are written in the same request that changed the row,
 // so delivery can fail all it likes without ever losing the fact that something
@@ -22,12 +24,62 @@ export interface DrainResult {
   published: number;
   delivered: number;
   failed: number;
+  queued: number;
 }
 
-export async function drainOutbox(ctx: Ctx, limit = 100): Promise<DrainResult> {
-  const events = await pendingOutbox(ctx.db, limit);
-  if (!events.length) return { published: 0, delivered: 0, failed: 0 };
+/** Minimal surface of the `EVENTS` queue binding this file calls. */
+export interface EventQueue {
+  send(body: Envelope): Promise<unknown>;
+}
 
+/**
+ * docs/10 §2: the Queue is the fan-out hop, the D1 outbox is the durability hop.
+ * With `queue` bound, webhook delivery moves off the cron tick onto queue
+ * consumers (`deliverQueued` below, called from index.ts's `queue()` handler) so
+ * a slow subscriber endpoint no longer blocks the next tenant's drain. Without
+ * one (on-prem, tests) delivery stays inline — same `deliverQueued` call, just
+ * synchronous.
+ */
+export async function drainOutbox(ctx: Ctx, queue?: EventQueue, limit = 100): Promise<DrainResult> {
+  const events = await pendingOutbox(ctx.db, limit);
+  if (!events.length) return { published: 0, delivered: 0, failed: 0, queued: 0 };
+
+  let delivered = 0;
+  let failed = 0;
+  let queued = 0;
+  const done: string[] = [];
+
+  for (const event of events) {
+    // Internal consumers run in the same drain tick as external delivery, so a
+    // consent withdrawal reaches SIGNAL's suppression audience in one drain
+    // pass rather than waiting on a dedicated cron (docs/25 M4 SIGNAL row).
+    // ponytail: one `if`, not a registry — add a second internal consumer here
+    // when a second one exists, not before.
+    if (event.type === "core.consent.updated") {
+      await consume(ctx.db, event, "signal.suppression", (e) => onConsentUpdated(ctx, e), ctx.now);
+    }
+
+    if (queue) {
+      await queue.send(event);
+      queued++;
+    } else {
+      const outcome = await deliverQueued(ctx, event);
+      delivered += outcome.delivered;
+      failed += outcome.failed;
+    }
+    done.push(event.id);
+  }
+
+  await markPublished(ctx.db, done, ctx.now);
+  // Retries run every tick regardless of the queue: they replay rows already
+  // written to webhook_deliveries by a prior `deliver()` call, queued or not.
+  await retryFailed(ctx);
+  return { published: done.length, delivered, failed, queued };
+}
+
+/** Webhook fan-out for one event: looked up here so both the inline path and the
+ * queue consumer (index.ts `queue()`) share the same delivery logic. */
+export async function deliverQueued(ctx: Ctx, event: Envelope): Promise<{ delivered: number; failed: number }> {
   const hooks = await ctx.db
     .select()
     .from(schema.webhooks)
@@ -35,21 +87,12 @@ export async function drainOutbox(ctx: Ctx, limit = 100): Promise<DrainResult> {
 
   let delivered = 0;
   let failed = 0;
-  const done: string[] = [];
-
-  for (const event of events) {
-    const targets = hooks.filter((h) => subscribes(h.eventTypesJson, event.type));
-    for (const hook of targets) {
-      const outcome = await deliver(ctx, hook, event, 0);
-      if (outcome.ok) delivered++;
-      else failed++;
-    }
-    done.push(event.id);
+  for (const hook of hooks.filter((h) => subscribes(h.eventTypesJson, event.type))) {
+    const outcome = await deliver(ctx, hook, event, 0);
+    if (outcome.ok) delivered++;
+    else failed++;
   }
-
-  await markPublished(ctx.db, done, ctx.now);
-  await retryFailed(ctx);
-  return { published: done.length, delivered, failed };
+  return { delivered, failed };
 }
 
 /** `["*"]` or `["axis.case.*"]` or an exact type. */

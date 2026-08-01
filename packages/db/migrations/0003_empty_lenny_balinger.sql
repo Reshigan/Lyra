@@ -1,0 +1,1 @@
+ALTER TABLE `core_approvals` ADD `delegation_id` text;

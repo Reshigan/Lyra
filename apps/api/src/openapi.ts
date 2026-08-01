@@ -47,8 +47,16 @@ const HAND_WRITTEN: Op[] = [
   { method: "get", path: "/v1/me/sessions", summary: "The caller's active sessions, newest first", tag: "me" },
   { method: "delete", path: "/v1/me/sessions/{id}", summary: "Revoke one of the caller's sessions", tag: "me" },
   { method: "get", path: "/v1/me/inbox", summary: "Notifications and approvals waiting on the caller", tag: "me" },
+  { method: "get", path: "/v1/me/lens", summary: "The caller's lens: role default workspace or their own learned adaptation", tag: "me" },
+  { method: "post", path: "/v1/me/lens/usage", summary: "Record an interaction with a view/filter/pin, nudging its lens weight", tag: "me", requestBody: true },
+  { method: "post", path: "/v1/me/lens/reset", summary: "Discard learned adaptation and revert to the role default lens", tag: "me" },
   { method: "post", path: "/v1/me/approvals/{id}/decide", summary: "Approve or reject a pending approval (permission comes from the approval policy)", tag: "me", requestBody: true },
   { method: "post", path: "/v1/me/notifications/{id}/read", summary: "Mark one of the caller's notifications read", tag: "me" },
+
+  // docs/15 ambient AI grammar: a live channel for quiet chips ("your report is
+  // ready") without a modal or a page reload. Server-Sent Events, one stream per
+  // caller; `?since=<eventId>` resumes after a reconnect.
+  { method: "get", path: "/v1/realtime", summary: "Server-Sent Events stream of the caller's own live updates", tag: "realtime" },
 
   // Both mint a credential the client may not choose, so neither can be the
   // generated create — a CRUD body would ask the caller for the very column the
@@ -56,9 +64,19 @@ const HAND_WRITTEN: Op[] = [
   { method: "post", path: "/v1/core/api-keys", summary: "Mint an API key; the plaintext is returned once and never again", permission: "core:api_keys:create", tag: "core", requestBody: true },
   { method: "post", path: "/v1/core/webhooks", summary: "Register a webhook; the signing secret is generated server-side and returned once", permission: "core:webhooks:write", tag: "core", requestBody: true },
 
+  // Not the generated delete either: the key has `revokedAt`, not `deletedAt`,
+  // so generic CRUD delete would hard-delete it. This sets `revokedAt` instead.
+  { method: "delete", path: "/v1/core/api-keys/{id}", summary: "Revoke an API key; the row is kept for audit, the key stops authenticating", permission: "core:api_keys:revoke", tag: "core" },
+
+  { method: "post", path: "/v1/core/webhooks/{id}/rotate", summary: "Rotate a webhook's signing secret to a fresh, server-generated one", permission: "core:webhooks:write", tag: "core" },
+
   // `verifiedBy` and `verifiedAt` are evidence that a named person looked at the
   // file at a known time, so they come from the session and the clock. No body.
   { method: "post", path: "/v1/axis/documents/{id}/verify", summary: "Mark a document verified; the verifier and the time are stamped server-side", permission: "axis:documents:verify", tag: "axis" },
+
+  // docs/04 §4 "documents(+extract)": structures a document's already-OCR'd
+  // text into named fields via the model gateway (packages/model-gateway/src/extract.ts).
+  { method: "post", path: "/v1/axis/documents/{id}/extract", summary: "Structure a document's raw text into named fields via the model gateway", permission: "axis:documents:extract", tag: "axis", requestBody: true },
 
   { method: "post", path: "/v1/dist/quote-requests/shop", summary: "Shop one risk to every eligible offering and collect provider quotes", permission: "dist:quote_requests:create", tag: "dist", requestBody: true },
   { method: "get", path: "/v1/dist/quote-requests/{id}/comparison", summary: "Ranked comparison across the responses received", permission: "dist:quote_requests:read", tag: "dist" },
@@ -168,12 +186,38 @@ const HAND_WRITTEN: Op[] = [
   // Waiving lets something go live unproven, so it is dual-control and never
   // auto-approvable (approvals.ts `core.onboarding_waive`).
   { method: "post", path: "/v1/onboarding/steps/{id}/waive", summary: "Waive a required step (dual control; the waiver is recorded against it)", permission: "core:onboarding:waive", tag: "onboarding", requestBody: true },
+  // J-X3: the one onboarding route with no session — a developer signs up,
+  // gets a prospect-stage partner and a sandbox-scoped key back, same day.
+  { method: "post", path: "/v1/onboarding/partners/signup", summary: "Self-service partner signup: creates a prospect-stage partner and mints a sandbox API key", tag: "onboarding", requestBody: true, public: true },
   { method: "post", path: "/v1/onboarding/partners/{id}/advance", summary: "Advance a partner one stage, refused while a step gating it is open", permission: "orbit:partners:update", tag: "onboarding" },
   { method: "post", path: "/v1/onboarding/partners/{id}/suspend", summary: "Stop trading with a partner without unwinding their diligence", permission: "orbit:partners:update", tag: "onboarding", requestBody: true },
   { method: "post", path: "/v1/onboarding/partners/{id}/resume", summary: "Resume trading with a suspended partner", permission: "orbit:partners:update", tag: "onboarding" },
   { method: "post", path: "/v1/onboarding/partners/{id}/terminate", summary: "End a partnership; the record and its agreements stay readable", permission: "orbit:partners:update", tag: "onboarding", requestBody: true },
   { method: "post", path: "/v1/onboarding/agreements", summary: "Draft the next version of a partner agreement", permission: "dist:agreements:write", tag: "onboarding", requestBody: true },
   { method: "post", path: "/v1/onboarding/agreements/{id}/send", summary: "Send a drafted agreement for signature", permission: "dist:agreements:write", tag: "onboarding" },
+
+  // Orbit. The AgentRoom Durable Object holds a conversation's in-memory turn
+  // state and checkpoints it to orbit_messages/orbit_conversations (docs/02 §4).
+  { method: "post", path: "/v1/orbit/conversations/{id}/turns", summary: "Append a turn to a conversation, checkpointed to orbit_messages", permission: "orbit:messages:send", tag: "orbit", requestBody: true },
+  { method: "post", path: "/v1/orbit/renewals/sweep", summary: "Force the renewal sweep now (also runs on the scheduled tick)", permission: "orbit:renewals:update", tag: "orbit" },
+
+  // Signal. Brief in, N compliance-checked ar/en variants out — the
+  // Meta/Google publish half is credential-blocked and out of scope.
+  { method: "post", path: "/v1/signal/creatives/generate", summary: "Generate ad-copy variants from a brief, compliance-checked and audited per locale", permission: "signal:creatives:generate", tag: "signal", requestBody: true },
+  { method: "post", path: "/v1/signal/autopilot/pause", summary: "Pause the budget autopilot kill switch", permission: "signal:autopilot:pause", tag: "signal" },
+  { method: "post", path: "/v1/signal/autopilot/resume", summary: "Resume the budget autopilot", permission: "signal:autopilot:pause", tag: "signal" },
+
+  // Scout. Cold-start whitespace from real AXIS quote demand vs. own policy
+  // coverage (docs/8 clause 1); wording diffs and the negotiation pack both
+  // feed the panel-bench negotiation workflow (docs §2.3, §2.5).
+  { method: "post", path: "/v1/scout/whitespaces/compute", summary: "Run the whitespace sweep now against real quote demand vs. policy coverage", permission: "scout:whitespaces:promote", tag: "scout" },
+  { method: "post", path: "/v1/scout/wording-diff", summary: "Word-level diff of two coverage-wording texts (PDF extraction deferred, see ADR-0016)", permission: "scout:panel_bench:read", tag: "scout", requestBody: true },
+  { method: "get", path: "/v1/scout/panel-bench/negotiation-pack", summary: "Bench + whitespace negotiation pack as a downloadable PDF", permission: "scout:panel_bench:read", tag: "scout" },
+
+  // North. The daily briefing and the board pack are both real assembly + AI
+  // pipelines, gated ahead of generic CRUD so neither accepts a fabricated body.
+  { method: "post", path: "/v1/north/briefings/generate", summary: "Generate an executive briefing from live metric snapshots, numeric claims verified against the input", permission: "north:briefings:generate", tag: "north", requestBody: true },
+  { method: "post", path: "/v1/north/boardpacks", summary: "Assemble a board pack PDF from the latest briefing, period metrics and open decisions", permission: "north:boardpacks:generate", tag: "north", requestBody: true },
   // Guarded on `write` on purpose: the drafter asks, and the
   // `dist.agreement_sign` approval — decided by `dist:agreements:sign` — binds.
   { method: "post", path: "/v1/onboarding/agreements/{id}/sign", summary: "Countersign an agreement (dual control; supersedes the previous version)", permission: "dist:agreements:write", tag: "onboarding", requestBody: true },
@@ -186,7 +230,7 @@ const HAND_WRITTEN: Op[] = [
   { method: "post", path: "/v1/settlement/settlements/{id}/approve", summary: "Approve the number and accrue it (dual control; the runner may not self-approve)", permission: "dist:commissions:settle", tag: "settlement" },
   // Approving the amount and releasing the cash are two decisions by two
   // people, so the payout carries its own policy rather than reusing the accrual's.
-  { method: "post", path: "/v1/settlement/settlements/{id}/pay", summary: "Release the payout and post it (a second signature, held by a controller)", permission: "ledger:payouts:approve", tag: "settlement" },
+  { method: "post", path: "/v1/settlement/settlements/{id}/pay", summary: "Release the payout and post it, with the bank/PSP reference that proves it (a second signature, held by a controller)", permission: "ledger:payouts:approve", tag: "settlement", requestBody: true },
   { method: "post", path: "/v1/settlement/settlements/{id}/dispute", summary: "Mark a settlement disputed with the counterparty's reason", permission: "dist:commissions:settle", tag: "settlement", requestBody: true },
   { method: "post", path: "/v1/settlement/settlements/{id}/reopen", summary: "Reopen a disputed settlement so the period can be restated", permission: "dist:commissions:settle", tag: "settlement", requestBody: true },
   { method: "get", path: "/v1/settlement/settlements/{id}/statement", summary: "Remittance advice as pdf, xlsx, csv or json", permission: "dist:commissions:read", tag: "settlement" },

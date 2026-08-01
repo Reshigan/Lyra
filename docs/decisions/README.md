@@ -54,6 +54,8 @@ and do not pick.
 | [0009](ADR-0009-no-charting-library.md) | No charting library; SVG polyline and meter instead | accepted for now |
 | [0010](ADR-0010-onprem-stack-lives-in-ops.md) | The on-prem stack lives in `ops/`, and there is no `infra/` | accepted |
 | [0011](ADR-0011-nav-rail-text-labels.md) | The navigation rail carries text labels | accepted |
+| [0012](ADR-0012-autopilot-bound-check-is-amount-only.md) | SIGNAL autopilot's bound check is amount-vs-bound only | accepted |
+| [0013](ADR-0013-delete-exempt-records-use-state-transitions.md) | Six resources are delete-exempt by design; a `status`/`state` column is the only way out | accepted |
 
 ## Spec edits these ADRs imply
 

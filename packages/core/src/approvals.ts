@@ -1,10 +1,10 @@
-import { and, desc, eq } from "drizzle-orm";
-import { id as newId, schema } from "@lyra/db";
+import { and, desc, eq, gt, lte } from "drizzle-orm";
+import { id as newId, schema, ScopeJson } from "@lyra/db";
 import { approvalRequired, badRequest, conflict, forbidden, internal, notFound } from "./errors.js";
 import { audit } from "./audit.js";
 import { emit, type MODULES } from "./events.js";
-import { actorRef, type Ctx } from "./context.js";
-import { can, type Permission } from "./rbac.js";
+import { actorRef, type CoreDb, type Ctx } from "./context.js";
+import { can, permissionsForRole, type Actor, type Grant, type Permission, type Scope } from "./rbac.js";
 
 // docs/19 §7 + docs/12 §4. One engine; AXIS and the ledger are the heavy users.
 
@@ -115,6 +115,8 @@ export interface ApprovalRow {
   reason: string | null;
   contextJson: string | null;
   decidedAt: number | null;
+  /** The delegation the decider acted under, when they held no permission of their own. */
+  delegationId: string | null;
 }
 
 export interface GateInput {
@@ -190,7 +192,8 @@ export async function gate(ctx: Ctx, input: GateInput): Promise<ApprovalRow | nu
       amountMinor: input.amountMinor ?? null,
       dualControl: needsDualControl(p, input.amountMinor)
     }),
-    decidedAt: null
+    decidedAt: null,
+    delegationId: null
   };
   await ctx.db.insert(schema.approvals).values(created);
   await audit(ctx, { action: "core.approval.requested", subjectRef: input.subjectRef, after: created });
@@ -223,12 +226,24 @@ export async function decide(
   if (!p) throw internal(`unknown approval policy ${row.policyKey}`);
 
   const subject = { tenantId: ctx.tenantId, module: p.module };
+  const context = row.contextJson
+    ? (JSON.parse(row.contextJson) as { dualControl?: boolean; amountMinor?: number | null })
+    : {};
+
   // Lacking the deciding permission is a refusal, not a request for another
   // approval: answering "approval_required" here would send the caller round a
-  // loop that can never terminate.
-  if (!can(ctx.actor, p.decide, subject)) throw forbidden(p.decide);
+  // loop that can never terminate. A live delegation is the one thing that
+  // stands in for the permission, and the row records which one was spent.
+  let delegationId: string | null = null;
+  if (!can(ctx.actor, p.decide, subject)) {
+    const held = await heldDelegation(ctx, {
+      policyKey: row.policyKey,
+      ...(context.amountMinor == null ? {} : { amountMinor: context.amountMinor })
+    });
+    if (!held) throw forbidden(p.decide);
+    delegationId = held;
+  }
 
-  const context = row.contextJson ? (JSON.parse(row.contextJson) as { dualControl?: boolean }) : {};
   const decider = actorRef(ctx);
   if (context.dualControl && decider === row.requestedBy) {
     throw badRequest("dual control: the approver must differ from the initiator");
@@ -240,11 +255,12 @@ export async function decide(
     decidedBy: decider,
     decision,
     reason: reason ?? null,
-    decidedAt: ctx.now
+    decidedAt: ctx.now,
+    delegationId
   };
   await ctx.db
     .update(schema.approvals)
-    .set({ decidedBy: decider, decision, reason: reason ?? null, decidedAt: ctx.now })
+    .set({ decidedBy: decider, decision, reason: reason ?? null, decidedAt: ctx.now, delegationId })
     .where(eq(schema.approvals.id, approvalId));
 
   await audit(ctx, {
@@ -261,6 +277,159 @@ export async function decide(
   });
 
   return decided;
+}
+
+/* -------------------------------------------------------------- delegation */
+
+// docs/06 §4. Delegation lives here rather than beside the staff engine because
+// `decide()` is the only place it means anything: a loan of authority that the
+// deciding path cannot see is a row that grants nothing.
+
+export interface DelegationScope {
+  policyKeys?: readonly string[] | undefined;
+  modules?: readonly string[] | undefined;
+}
+
+export interface ResolveInput {
+  policyKey: string;
+  /** Overrides the policy's own module when a caller scopes more narrowly. */
+  module?: string | undefined;
+  /** The amount at stake, checked against each delegation's ceiling. */
+  amountMinor?: number | undefined;
+  /** Ask about one delegator only. Omit to ask "who may decide this at all". */
+  fromUserId?: string | undefined;
+}
+
+/**
+ * A user's grants as login would expand them. The stored bundle wins over the
+ * compiled ROLES table, because a tenant may author a custom role and a system
+ * role's bundle is written at provisioning time.
+ */
+export async function grantsFor(db: CoreDb, tenantId: string, userId: string): Promise<Grant[]> {
+  const rows = await db
+    .select({
+      key: schema.roles.key,
+      permissionsJson: schema.roles.permissionsJson,
+      scopeJson: schema.userRoles.scopeJson
+    })
+    .from(schema.userRoles)
+    .innerJoin(schema.roles, eq(schema.roles.id, schema.userRoles.roleId))
+    .where(and(eq(schema.userRoles.tenantId, tenantId), eq(schema.userRoles.userId, userId)));
+
+  return rows.map((row) => {
+    const stored = safeJson<string[]>(row.permissionsJson) ?? [];
+    const permissions = stored.length ? stored : [...permissionsForRole(row.key)];
+    const scope = row.scopeJson ? (ScopeJson.parse(safeJson(row.scopeJson)) as Scope) : undefined;
+    return { roleKey: row.key, permissions, ...(scope ? { scope } : {}) };
+  });
+}
+
+function safeJson<T>(raw: string | null): T | null {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Every delegation that currently authorises this policy, as rows.
+ *
+ * Four rules, all of them load-bearing:
+ *  - the window is checked here, so a row the expiry sweep has not reached yet
+ *    is already inert;
+ *  - a revoked or expired row resolves to nothing;
+ *  - `maxAmountMinor` caps what may be decided under the delegation;
+ *  - the delegate never gains a permission the delegator does not hold *now* —
+ *    the delegator's live grants are re-read, so a mover that stripped their
+ *    roles this morning silently narrows every delegation they left behind.
+ *
+ * Deliberately one hop. A→B and B→C are two independent loans of two different
+ * people's authority; feeding a resolved delegate back in as a delegator would
+ * make C an approver for A, which is precisely the chain a scoped delegation is
+ * supposed to prevent.
+ */
+async function activeDelegations(
+  ctx: Ctx,
+  input: ResolveInput
+): Promise<(typeof schema.delegations.$inferSelect)[]> {
+  const policy = APPROVAL_POLICIES[input.policyKey];
+  if (!policy) return [];
+
+  const rows = await ctx.db
+    .select()
+    .from(schema.delegations)
+    .where(
+      and(
+        eq(schema.delegations.tenantId, ctx.tenantId),
+        eq(schema.delegations.status, "active"),
+        lte(schema.delegations.startsAt, ctx.now),
+        gt(schema.delegations.endsAt, ctx.now),
+        input.fromUserId ? eq(schema.delegations.fromUserId, input.fromUserId) : undefined
+      )
+    );
+
+  const module = input.module ?? policy.module;
+  const holds = new Map<string, boolean>();
+  const out: (typeof schema.delegations.$inferSelect)[] = [];
+
+  for (const row of rows) {
+    if (!inScope(row.scopeJson, input.policyKey, module)) continue;
+    if (row.maxAmountMinor != null && (input.amountMinor ?? 0) > row.maxAmountMinor) continue;
+
+    let held = holds.get(row.fromUserId);
+    if (held === undefined) {
+      held = can(await delegatorActor(ctx, row.fromUserId), policy.decide, {
+        tenantId: ctx.tenantId,
+        module: policy.module
+      });
+      holds.set(row.fromUserId, held);
+    }
+    if (held) out.push(row);
+  }
+
+  return out;
+}
+
+/** Who may currently decide this policy on somebody's behalf. */
+export async function resolveDelegates(ctx: Ctx, input: ResolveInput): Promise<string[]> {
+  const rows = await activeDelegations(ctx, input);
+  return [...new Set(rows.map((r) => r.toUserId))];
+}
+
+/**
+ * The delegation this actor may decide under, or null. Only a signed-in person
+ * borrows authority: a scheduler or an API key has exactly the grants it was
+ * issued with, and nobody delegates to a machine.
+ */
+export async function heldDelegation(ctx: Ctx, input: ResolveInput): Promise<string | null> {
+  if (ctx.actor.kind !== "user") return null;
+  const rows = await activeDelegations(ctx, input);
+  return rows.find((r) => r.toUserId === ctx.actor.id)?.id ?? null;
+}
+
+function inScope(scopeJson: string | null, policyKey: string, module: string): boolean {
+  if (!scopeJson) return true;
+  let scope: DelegationScope;
+  try {
+    scope = JSON.parse(scopeJson) as DelegationScope;
+  } catch {
+    // An unreadable scope is not an open one.
+    return false;
+  }
+  if (scope.policyKeys?.length && !scope.policyKeys.includes(policyKey)) return false;
+  if (scope.modules?.length && !scope.modules.includes(module)) return false;
+  return true;
+}
+
+/**
+ * The delegator as `can()` sees them. `grantsFor` is the same expansion login
+ * uses, so a delegation can never resolve to authority a login would not give.
+ */
+async function delegatorActor(ctx: Ctx, userId: string): Promise<Actor> {
+  const grants = await grantsFor(ctx.db, ctx.tenantId, userId);
+  return { kind: "user", id: userId, tenantId: ctx.tenantId, grants };
 }
 
 export async function pendingApprovals(ctx: Ctx, module?: string, limit = 100): Promise<ApprovalRow[]> {

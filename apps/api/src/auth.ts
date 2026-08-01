@@ -1,18 +1,18 @@
 import { Hono, type Context } from "hono";
 import { and, eq, isNull, lt } from "drizzle-orm";
 import { z } from "zod";
-import { id as newId, makeDb, schema, EntitlementsJson, PolicyJson, ScopeJson } from "@lyra/db";
+import { id as newId, makeDb, schema, EntitlementsJson, PolicyJson } from "@lyra/db";
 import {
   audit,
   badRequest,
   emit,
   forbidden,
+  grantsFor,
   hashPassword,
   mfaRequired,
   needsRehash,
   notFound,
   otpauthUri,
-  permissionsForRole,
   randomToken,
   recoveryCodes,
   requiresMfa,
@@ -24,9 +24,8 @@ import {
   unauthorized,
   verifyPassword,
   type Actor,
-  type Ctx,
-  type Grant,
-  type Scope
+  type CoreDb,
+  type Ctx
 } from "@lyra/core";
 import { body } from "./http.js";
 import type { App, Env } from "./env.js";
@@ -58,31 +57,10 @@ export function db(env: Env) {
 
 /* ------------------------------------------------------------------ actor */
 
-/** Expand a user's role rows into the grants `can()` evaluates. */
-export async function grantsFor(
-  database: ReturnType<typeof makeDb>,
-  tenantId: string,
-  userId: string
-): Promise<Grant[]> {
-  const rows = await database
-    .select({
-      key: schema.roles.key,
-      permissionsJson: schema.roles.permissionsJson,
-      scopeJson: schema.userRoles.scopeJson
-    })
-    .from(schema.userRoles)
-    .innerJoin(schema.roles, eq(schema.roles.id, schema.userRoles.roleId))
-    .where(and(eq(schema.userRoles.tenantId, tenantId), eq(schema.userRoles.userId, userId)));
-
-  return rows.map((row) => {
-    // The stored bundle wins over the compiled ROLES table: a tenant may author
-    // a custom role, and a system role's bundle is written at provisioning time.
-    const stored = safeJson<string[]>(row.permissionsJson) ?? [];
-    const permissions = stored.length ? stored : [...permissionsForRole(row.key)];
-    const scope = row.scopeJson ? (ScopeJson.parse(safeJson(row.scopeJson)) as Scope) : undefined;
-    return { roleKey: row.key, permissions, ...(scope ? { scope } : {}) };
-  });
-}
+// Role expansion lives in packages/core beside the delegation resolver, which
+// needs the same answer: a delegate must never resolve to authority a login
+// would not have given. Re-exported so callers keep asking the auth module.
+export { grantsFor };
 
 function safeJson<T>(raw: string | null): T | null {
   if (!raw) return null;
@@ -148,7 +126,7 @@ async function fromSession(
 ): Promise<Authenticated> {
   const row = await sessionRow(database, token, now);
   const tenantId = row.session.tenantId;
-  const grants = await grantsFor(database, tenantId, row.user.id);
+  const grants = await grantsFor(database as unknown as CoreDb, tenantId, row.user.id);
 
   // PLAT-012/013. A session that has not cleared its second factor is a session
   // that cannot do anything, and a staff account that never enrolled is told to
@@ -233,22 +211,40 @@ export function readCookie(header: string | null, name: string): string | undefi
 /* ----------------------------------------------------------------- routes */
 
 /**
- * Fixed-window throttle keyed by email. KV when it is bound; otherwise the
- * attempt counter is skipped rather than faked, and the app still refuses on
- * a bad password.
- *
- * ponytail: fixed window, not a sliding one. Upgrade path is a Durable Object
- * if credential stuffing volume ever justifies the round trip.
+ * Fixed-window throttle over a caller-namespaced key. The RATE Durable Object
+ * (one instance per key) when it is bound — single-threaded per key, so it
+ * cannot lose a concurrent hit the way a KV get-then-put could. Falls back to
+ * KV/CACHE (racy under concurrency, but still bounds a single-threaded caller)
+ * when neither is bound, the counter is skipped rather than faked, and the app
+ * still refuses on a bad password (or whatever check sits behind the caller).
  */
 const LOGIN_MAX = 8;
 const LOGIN_WINDOW_SEC = 300;
 
-async function throttle(env: Env, key: string): Promise<void> {
-  if (!env.KV) return;
-  const k = `login:${key}`;
-  const n = Number((await env.KV.get(k)) ?? "0") + 1;
-  await env.KV.put(k, String(n), { expirationTtl: LOGIN_WINDOW_SEC });
-  if (n > LOGIN_MAX) throw tooManyRequests(LOGIN_WINDOW_SEC);
+export async function throttle(
+  env: Env,
+  key: string,
+  max = LOGIN_MAX,
+  windowSec = LOGIN_WINDOW_SEC
+): Promise<void> {
+  const n = await hit(env, key, windowSec);
+  if (n === undefined) return;
+  if (n > max) throw tooManyRequests(windowSec);
+}
+
+/** Shared counter for `throttle`/`mfaThrottle`. Returns the post-increment count,
+ * or `undefined` when neither RATE nor CACHE/KV is bound. */
+async function hit(env: Env, key: string, windowSec: number): Promise<number | undefined> {
+  if (env.RATE) {
+    const stub = env.RATE.get(env.RATE.idFromName(key));
+    const { count } = await stub.hit(windowSec, Date.now());
+    return count;
+  }
+  const kv = env.CACHE ?? env.KV;
+  if (!kv) return undefined;
+  const n = Number((await kv.get(key)) ?? "0") + 1;
+  await kv.put(key, String(n), { expirationTtl: windowSec });
+  return n;
 }
 
 export const authRoutes = new Hono<App>();
@@ -256,7 +252,7 @@ export const authRoutes = new Hono<App>();
 authRoutes.post("/login", async (c) => {
   const now = Date.now();
   const input = await body(c, LoginBody);
-  await throttle(c.env, input.email.toLowerCase());
+  await throttle(c.env, `login:${input.email.toLowerCase()}`);
 
   const database = db(c.env);
   const found = await database
@@ -392,7 +388,7 @@ export async function issueSession(
   mfaStep?: "verify" | "enrol";
   roles: string[];
 }> {
-  const grants = await grantsFor(database, user.tenantId, user.id);
+  const grants = await grantsFor(database as unknown as CoreDb, user.tenantId, user.id);
   // Which of the two second-factor screens the client should draw. Absent when
   // there is nothing to do, so a customer sign-in stays a single hop.
   const step = options.mfaAsserted
@@ -474,10 +470,8 @@ function sessionToken(c: { req: { header(name: string): string | undefined } }, 
 const MFA_MAX = 6;
 
 async function mfaThrottle(env: Env, sessionId: string): Promise<void> {
-  if (!env.KV) return;
-  const key = `mfa:${sessionId}`;
-  const n = Number((await env.KV.get(key)) ?? "0") + 1;
-  await env.KV.put(key, String(n), { expirationTtl: LOGIN_WINDOW_SEC });
+  const n = await hit(env, `mfa:${sessionId}`, LOGIN_WINDOW_SEC);
+  if (n === undefined) return;
   if (n > MFA_MAX) throw tooManyRequests(LOGIN_WINDOW_SEC);
 }
 
@@ -595,7 +589,7 @@ authRoutes.post("/mfa/disable", async (c) => {
   await mfaThrottle(c.env, row.session.id);
   if (!row.user.mfaEnrolled || !row.user.mfaSecret) throw badRequest("not enrolled");
 
-  const grants = await grantsFor(database, row.session.tenantId, row.user.id);
+  const grants = await grantsFor(database as unknown as CoreDb, row.session.tenantId, row.user.id);
   // PLAT-013: staff cannot turn it off, and neither can a tenant admin on their
   // behalf. The only way out of MFA for a staff account is to stop being staff.
   if (requiresMfa(grants.map((g) => g.roleKey))) throw forbidden("mfa is mandatory for this role");
@@ -619,7 +613,7 @@ async function ctxForSession(
   now: number
 ): Promise<Ctx> {
   const tenantId = row.session.tenantId;
-  const grants = await grantsFor(database, tenantId, row.user.id);
+  const grants = await grantsFor(database as unknown as CoreDb, tenantId, row.user.id);
   return ctxFor(
     c.env as Env,
     {

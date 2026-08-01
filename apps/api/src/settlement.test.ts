@@ -5,7 +5,7 @@ import { drizzle } from "drizzle-orm/libsql";
 import { and, eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import { EntitlementsJson, PolicyJson, id, schema } from "@lyra/db";
-import { decide, type Ctx } from "@lyra/core";
+import { decide, hashObject, type Ctx } from "@lyra/core";
 import { trialBalance } from "@lyra/ledger";
 import {
   approveSettlement,
@@ -33,6 +33,8 @@ const THIS_MONTH = "2026-06";
 const LAST_MONTH = "2026-05";
 const CHANNEL = "chn_alpha";
 const REF = `channel:${CHANNEL}`;
+/** A confirmed bank transfer — the proof `pay` now requires. */
+const PAYMENT = { externalRef: "TRF-2026-0615-001", paidVia: "bank_transfer" as const };
 
 function statements(): string[] {
   return readdirSync(MIGRATIONS)
@@ -157,9 +159,9 @@ async function settleFully(settlementId: string): Promise<void> {
   await signOff("dist.settlement_run", settlementId);
   await approveSettlement(ctx, settlementId);
 
-  await rejects(paySettlement(ctx, settlementId), /ledger\.partner_settlement/);
+  await rejects(paySettlement(ctx, settlementId, PAYMENT), /ledger\.partner_settlement/);
   await signOff("ledger.partner_settlement", settlementId);
-  await paySettlement(ctx, settlementId);
+  await paySettlement(ctx, settlementId, PAYMENT);
 }
 
 async function hardClose(period: string): Promise<void> {
@@ -289,7 +291,7 @@ describe("re-running a period", () => {
 
     // The retry a flaky network produces. Same idempotency key, same txn.
     const paid = await getSettlement(ctx, settlement.id);
-    await rejects(paySettlement(ctx, settlement.id), /only an approved settlement can be paid/);
+    await rejects(paySettlement(ctx, settlement.id, PAYMENT), /only an approved settlement can be paid/);
 
     const batches = await ctx.db.select().from(schema.ledgerJournalBatches);
     expect(batches).toHaveLength(2); // one accrual, one payout — not three
@@ -381,7 +383,7 @@ describe("approvals", () => {
 
     // The approve signature is still inside its 24h window and must not be
     // spent twice: releasing cash is its own decision.
-    await rejects(paySettlement(ctx, settlement.id), /ledger\.partner_settlement/);
+    await rejects(paySettlement(ctx, settlement.id, PAYMENT), /ledger\.partner_settlement/);
     expect((await getSettlement(ctx, settlement.id)).state).toBe("approved");
   });
 
@@ -412,6 +414,80 @@ describe("approvals", () => {
   });
 });
 
+/* --------------------------------------------------------- payout evidence */
+
+// No PSP connector exists (docs/25 §7 — credential-gated, out of scope), so
+// the v1 payout control is a human-confirmed bank/PSP reference: proof money
+// actually left the building, not just an internal journal entry.
+describe("the payout reference", () => {
+  async function approvedSettlement(): Promise<string> {
+    await partner(ctx, 0);
+    await entry(ctx, 30_000, NOW - 2 * DAY);
+    const { settlement } = await run(ctx);
+    await rejects(approveSettlement(ctx, settlement.id), /dist\.settlement_run/);
+    await signOff("dist.settlement_run", settlement.id);
+    await approveSettlement(ctx, settlement.id);
+    await rejects(paySettlement(ctx, settlement.id, PAYMENT), /ledger\.partner_settlement/);
+    await signOff("ledger.partner_settlement", settlement.id);
+    return settlement.id;
+  }
+
+  it("refuses to pay without an external reference", async () => {
+    const settlementId = await approvedSettlement();
+    await rejects(
+      paySettlement(ctx, settlementId, { externalRef: "", paidVia: "bank_transfer" }),
+      /externalRef is required/
+    );
+    await rejects(
+      paySettlement(ctx, settlementId, { externalRef: "   ", paidVia: "bank_transfer" }),
+      /externalRef is required/
+    );
+    expect((await getSettlement(ctx, settlementId)).state).toBe("approved");
+  });
+
+  it("refuses an unrecognised paidVia", async () => {
+    const settlementId = await approvedSettlement();
+    await rejects(
+      paySettlement(ctx, settlementId, { externalRef: "TRF-1", paidVia: "cash" as never }),
+      /paidVia must be one of/
+    );
+    expect((await getSettlement(ctx, settlementId)).state).toBe("approved");
+  });
+
+  it("persists the reference and hashes it into the audit trail", async () => {
+    const settlementId = await approvedSettlement();
+    const after = await paySettlement(ctx, settlementId, {
+      externalRef: "TRF-2026-0615-001",
+      paidVia: "bank_transfer"
+    });
+
+    expect(after.state).toBe("paid");
+    expect(after.externalRef).toBe("TRF-2026-0615-001");
+    expect(after.paidVia).toBe("bank_transfer");
+
+    const stored = await getSettlement(ctx, settlementId);
+    expect(stored.externalRef).toBe("TRF-2026-0615-001");
+    expect(stored.paidVia).toBe("bank_transfer");
+
+    const [row] = await ctx.db
+      .select()
+      .from(schema.auditLog)
+      .where(and(eq(schema.auditLog.tenantId, ctx.tenantId), eq(schema.auditLog.action, "ledger.settlement.pay")));
+    expect(row?.afterHash).toBe(await hashObject(after));
+  });
+
+  it("still holds idempotency: a retry with the same key posts nothing twice", async () => {
+    const settlementId = await approvedSettlement();
+    await paySettlement(ctx, settlementId, PAYMENT);
+    // The engine-level guard: the state machine itself, independent of the
+    // route's Idempotency-Key header, still refuses a second pay call.
+    await rejects(paySettlement(ctx, settlementId, PAYMENT), /only an approved settlement can be paid/);
+
+    const batches = await ctx.db.select().from(schema.ledgerJournalBatches);
+    expect(batches).toHaveLength(2); // one accrual, one payout — unchanged by the new field
+  });
+});
+
 /* ---------------------------------------------------------------- periods */
 
 describe("closed periods", () => {
@@ -438,7 +514,7 @@ describe("closed periods", () => {
       .set({ state: "hard_closed" })
       .where(and(eq(schema.ledgerPeriods.tenantId, ctx.tenantId), eq(schema.ledgerPeriods.code, LAST_MONTH)));
 
-    await rejects(paySettlement(ctx, settlement.id), /hard closed/);
+    await rejects(paySettlement(ctx, settlement.id, PAYMENT), /hard closed/);
     expect((await getSettlement(ctx, settlement.id)).state).toBe("approved");
 
     // The refusal must not have left a failed RSHARE-SETL holding the key.
@@ -450,9 +526,9 @@ describe("closed periods", () => {
       .update(schema.ledgerPeriods)
       .set({ state: "open" })
       .where(and(eq(schema.ledgerPeriods.tenantId, ctx.tenantId), eq(schema.ledgerPeriods.code, LAST_MONTH)));
-    await rejects(paySettlement(ctx, settlement.id), /ledger\.partner_settlement/);
+    await rejects(paySettlement(ctx, settlement.id, PAYMENT), /ledger\.partner_settlement/);
     await signOff("ledger.partner_settlement", settlement.id);
-    expect((await paySettlement(ctx, settlement.id)).state).toBe("paid");
+    expect((await paySettlement(ctx, settlement.id, PAYMENT)).state).toBe("paid");
   });
 });
 

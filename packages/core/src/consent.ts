@@ -9,6 +9,7 @@ import {
 } from "@lyra/db";
 import { consentRequired } from "./errors.js";
 import { audit } from "./audit.js";
+import { emit } from "./events.js";
 import type { Ctx } from "./context.js";
 
 // docs/12 §2 (PDPL). Consent rows are immutable; the current state is the latest
@@ -113,6 +114,16 @@ export async function recordConsent(ctx: Ctx, input: RecordConsentInput): Promis
     subjectRef: `customer:${input.customerId}`,
     ...(prior ? { before: { purposes: prior.purposes, channels: prior.channels } } : {}),
     after: { purposes, channels, source: input.source }
+  });
+
+  // Every consent write is a fact SIGNAL's suppression consumer needs to see —
+  // withdrawal is the case that matters, but re-consent must reach it too, or a
+  // customer who opts back in stays wrongly suppressed.
+  await emit(ctx, {
+    module: "core",
+    type: "core.consent.updated",
+    subject: `customer:${input.customerId}`,
+    data: { customerId: input.customerId, purposes, channels, source: input.source }
   });
 
   return {

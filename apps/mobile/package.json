@@ -8,7 +8,14 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "e2e:setup": "tsx e2e/setup.ts",
+    "e2e:prebuild": "expo prebuild --clean",
+    "e2e:build:ios": "detox build -c ios.sim.debug",
+    "e2e:build:android": "detox build -c android.emu.debug",
+    "e2e:test:ios": "detox test -c ios.sim.debug",
+    "e2e:test:android": "detox test -c android.emu.debug",
+    "e2e": "pnpm e2e:setup && pnpm e2e:test:ios"
   },
   "dependencies": {
     "expo": "~55.0.28",
@@ -24,7 +31,13 @@
     "react-native-screens": "~4.23.0"
   },
   "devDependencies": {
+    "@jest/globals": "^30.4.1",
+    "@lyra/core": "workspace:*",
     "@types/react": "~19.2.10",
+    "detox": "^20.51.4",
+    "jest": "^30.4.2",
+    "ts-jest": "^29.4.12",
+    "tsx": "^4.19.2",
     "typescript": "~5.9.2",
     "vitest": "^3.2.7"
   }

@@ -132,13 +132,13 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
         name: "GONXT",
         shortName: "GONXT",
         domain: "gonxt.ae",
-        // accentContrast is explicit because the dark-theme fallback (#412402,
-        // cut for vega-500) measures only 4.49:1 on this blue and fails AA for
-        // body text. Ink-900 measures 6.22:1 — the same choice, for the same
-        // reason, as the light-theme token in packages/ui/src/tokens.css.
-        // The hover fill brightens rather than darkens: the label colour does
-        // not change on hover, and a darker blue (#3F6FE0) drops it to 4.28:1.
-        palette: { accent: "#5B8CFF", accentHover: "#7FA6FF", accentContrast: "#070b14" },
+        // `accent` also renders as `text-accent` link text directly on white/
+        // near-white surfaces (docs/07), which the original #5B8CFF (2.94:1 on
+        // #ffffff) failed AA on — axe caught it in e2e. accentContrast has to
+        // flip light-on-dark-blue rather than dark-on-light-blue for the same
+        // reason: #3762C4 vs white is 5.67:1 (button label + link text both
+        // clear 4.5:1); #2A4FA0 for hover is 7.71:1.
+        palette: { accent: "#3762C4", accentHover: "#2A4FA0", accentContrast: "#ffffff" },
         font: "space-grotesk",
         email: { from: "hello@gonxt.ae", replyTo: "support@gonxt.ae" },
         legal: { company: "GONXT Insurance Services LLC", privacyUrl: "https://gonxt.ae/privacy" }

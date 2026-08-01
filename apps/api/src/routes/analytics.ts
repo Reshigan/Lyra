@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { desc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
-import { id, schema, type Db } from "@lyra/db";
+import { id, schema } from "@lyra/db";
 import {
   actorRef,
   audit,
@@ -30,7 +30,7 @@ import {
   type ReportDefinition,
   type RunResult
 } from "../engines/report.js";
-import { render, type Rendered } from "../engines/export/render.js";
+import { render, type BrowserBinding, type Rendered } from "../engines/export/render.js";
 import { grantsFor } from "../auth.js";
 import { body, decodeCursor, encodeCursor, listParams, parse, MAX_PAGE } from "../http.js";
 import { must } from "../rows.js";
@@ -296,12 +296,17 @@ analyticsRoutes.post("/exports", async (c) => {
   // Watermark every unmasked artefact with who asked and when. A leaked PDF that
   // names its recipient is traceable; an anonymous one is not.
   const watermark = input.unmasked ? `${actorRef(ctx)} · ${new Date(ctx.now).toISOString().slice(0, 19)}` : undefined;
-  const rendered = render(input.format, result, {
-    ...(totals ? { totals } : {}),
-    ...(watermark ? { watermark } : {}),
-    ...(input.orientation ? { orientation: input.orientation } : {}),
-    meta: { "Requested by": actorRef(ctx), Rows: String(result.rowCount), ...(input.unmasked ? { Access: "UNMASKED" } : {}) }
-  });
+  const rendered = await render(
+    input.format,
+    result,
+    {
+      ...(totals ? { totals } : {}),
+      ...(watermark ? { watermark } : {}),
+      ...(input.orientation ? { orientation: input.orientation } : {}),
+      meta: { "Requested by": actorRef(ctx), Rows: String(result.rowCount), ...(input.unmasked ? { Access: "UNMASKED" } : {}) }
+    },
+    c.env.BROWSER
+  );
 
   const row = await storeExport(ctx, c.env.FILES, {
     runId,
@@ -1001,7 +1006,7 @@ type Schedule = typeof schema.analyticsSchedules.$inferSelect;
  * Exactly-once is the idempotency key `<schedule>@<due>`: a cron that fires
  * twice for the same slot finds the first attempt's result and delivers nothing.
  */
-export async function runDueSchedules(ctx: Ctx, bucket?: R2Bucket): Promise<number> {
+export async function runDueSchedules(ctx: Ctx, bucket?: R2Bucket, browser?: BrowserBinding): Promise<number> {
   const due = await ctx.db
     .select()
     .from(schema.analyticsSchedules)
@@ -1023,7 +1028,7 @@ export async function runDueSchedules(ctx: Ctx, bucket?: R2Bucket): Promise<numb
         `${s.id}@${s.nextRunAt}`,
         "analytics.schedule.run",
         { scheduleId: s.id, due: s.nextRunAt },
-        () => deliverSchedule(ctx, s, bucket)
+        () => deliverSchedule(ctx, s, bucket, browser)
       );
     } catch (err) {
       // A failed schedule must alert its owner and then get out of the way: the
@@ -1034,7 +1039,7 @@ export async function runDueSchedules(ctx: Ctx, bucket?: R2Bucket): Promise<numb
   return delivered;
 }
 
-async function deliverSchedule(ctx: Ctx, s: Schedule, bucket: R2Bucket | undefined): Promise<number> {
+async function deliverSchedule(ctx: Ctx, s: Schedule, bucket: R2Bucket | undefined, browser?: BrowserBinding): Promise<number> {
   // ponytail: report schedules only. A dashboard schedule needs a multi-table
   // artefact; when that lands it renders every tile and calls storeExport once.
   if (!s.reportId) throw badRequest("only report schedules are delivered");
@@ -1044,10 +1049,15 @@ async function deliverSchedule(ctx: Ctx, s: Schedule, bucket: R2Bucket | undefin
   const title = labelOf(s.nameJson, s.locale);
 
   const { result, runId } = await materialise(ctx, def, { reportId: report.id, title, trigger: "schedule" });
-  const rendered = render(s.format as "xlsx" | "pdf" | "csv" | "json", result, {
-    totals: totalsOf(result),
-    meta: { Schedule: title, Rows: String(result.rowCount) }
-  });
+  const rendered = await render(
+    s.format as "xlsx" | "pdf" | "csv" | "json",
+    result,
+    {
+      totals: totalsOf(result),
+      meta: { Schedule: title, Rows: String(result.rowCount) }
+    },
+    browser
+  );
   const row = await storeExport(ctx, bucket, {
     runId,
     reportId: report.id,
@@ -1079,8 +1089,7 @@ async function deliverSchedule(ctx: Ctx, s: Schedule, bucket: R2Bucket | undefin
   // lands in `state` below and alerts the schedule's owner.
   const permitted = await Promise.all(
     named.map(async (u) => {
-      // `Ctx["db"]` is the schema-free core alias; grantsFor reads named tables.
-      const grants = await grantsFor(ctx.db as unknown as Db, ctx.tenantId, u.id);
+      const grants = await grantsFor(ctx.db, ctx.tenantId, u.id);
       const actor = { kind: "user" as const, id: u.id, tenantId: ctx.tenantId, grants };
       return reportVisible({ ...ctx, actor }, report) ? u : null;
     })

@@ -526,6 +526,7 @@ export default function Home() {
               summary={approval.policyKey}
               consequence={label("approvals.subject", { ref: approval.subjectRef })}
               requestedBy={approval.requestedBy}
+              label={label("approvals.title")}
               // A strip mid-decision explains why its buttons are gone rather
               // than offering a second click that would race the first.
               {...(busyId === approval.id

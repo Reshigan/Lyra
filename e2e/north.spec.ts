@@ -1,0 +1,122 @@
+import { expect, test } from "@playwright/test";
+import { expectNoA11yViolations } from "./a11y.js";
+import { loginAsNorthExec } from "./fixtures.js";
+
+// J-E1 "The 7am read (mobile)" (docs/06-roles-and-journeys.md §Executive): a
+// north.exec opens the already-published briefing on a phone, reads it in
+// under two minutes, then taps the anomaly it calls out and assigns an action
+// against it — done before the rest of the day starts.
+//
+// north.exec holds north:briefings:read (not generate/approve) and
+// north:anomalies:assign — so the read half of this journey is the seeded
+// jan05En briefing (packages/core/src/seed.ts) and the "tap anomaly, assign
+// action" half is the seeded cac_per_policy anomaly, still in state "new".
+test("J-E1 exec reads the morning briefing on a phone and assigns an action on the anomaly it flags", async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await loginAsNorthExec(page);
+
+  await page.goto("/north/briefings");
+  // Both the "exec en" and "exec ar" variants of the same day's briefing are
+  // seeded (packages/core/src/seed.ts), so the row match has to pin down the
+  // English one specifically or Playwright's strict mode rejects the
+  // ambiguity.
+  const briefingRow = page.getByRole("row", { name: /2026-01-05 exec en/ });
+  await expect(briefingRow).toBeVisible();
+  await expect(briefingRow.getByText("Published")).toBeVisible();
+  await briefingRow.getByRole("link", { name: "2026-01-05" }).click();
+  await expect(page.getByRole("heading", { name: "2026-01-05", level: 1 })).toBeVisible();
+  await expectNoA11yViolations(page);
+
+  await page.goto("/north/anomalies");
+  const anomalyRow = page.getByRole("row", { name: /cac_per_policy/ });
+  await expect(anomalyRow).toBeVisible();
+  await anomalyRow.getByRole("link", { name: "cac_per_policy" }).click();
+
+  await page.getByLabel("State", { exact: true }).click();
+  await page.getByRole("option", { name: "Action created", exact: true }).click();
+  await page.getByLabel("Linked action", { exact: true }).fill("J-E1-follow-up");
+  await page.getByRole("button", { name: "Save changes" }).click();
+  // A plain field edit (as opposed to a declared action, record.tsx line 141)
+  // has no "Saved" toast — the definition list re-rendering with the new
+  // state is the confirmation, same convention as e2e/ops.spec.ts's J-O1.
+  // Scoped to the <dl>: the edit form's own Select re-renders below it with
+  // the same selected-option text ("Action created"), which would otherwise
+  // make this a strict-mode ambiguous match.
+  await expect(page.locator("dl").getByText("Action created")).toBeVisible();
+});
+
+// J-E3 "What-if" (docs/06-roles-and-journeys.md §Executive): a north.exec asks
+// a scenario question, gets ranges and assumptions back, saves it, and later
+// revisits it at the review date with actuals overlaid on the same record.
+//
+// north.exec holds north:scenarios:run for both create and update, so
+// "revisit ... with actuals overlay" is modelled here as editing the saved
+// scenario's assumptions once results are in — the only write this journey's
+// persona can make against a scenario record.
+test("J-E3 exec saves a what-if scenario and revisits it with updated assumptions", async ({ page }) => {
+  await loginAsNorthExec(page);
+
+  const question = `J-E3-${Date.now()} What if renewal retention drops 5pt next quarter?`;
+  await page.goto("/north/scenarios");
+  await page.getByText("New — Scenarios").click();
+  await page.getByLabel("Question*", { exact: true }).fill(question);
+  await page
+    .getByLabel("Assumptions*", { exact: true })
+    .fill(JSON.stringify({ retentionDeltaPts: -5, horizon: "Q3" }));
+  await page.getByLabel("Author*", { exact: true }).fill("Hala Zayed");
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+
+  const row = page.getByRole("row", { name: new RegExp(question.slice(0, 30)) });
+  await expect(row).toBeVisible();
+  await row.getByRole("link", { name: question }).click();
+
+  // Revisit at the review date: the assumptions are updated with what actually
+  // happened, on the same saved scenario rather than a new one.
+  await page
+    .getByLabel("Assumptions", { exact: true })
+    .fill(JSON.stringify({ retentionDeltaPts: -5, horizon: "Q3", actualDeltaPts: -3.2 }));
+  const saveButton = page.getByRole("button", { name: "Save changes" });
+  await saveButton.click();
+  // Button.loading sets aria-busy/disabled for the life of the submission
+  // (packages/ui/src/primitives.tsx) — wait for that round-trip to actually
+  // finish before reloading, or the reload races the in-flight PATCH and
+  // cancels it before the server ever sees the new assumptions.
+  await expect(saveButton).toBeDisabled();
+  await expect(saveButton).toBeEnabled();
+  // Scenarios have no declared action (no "Saved" toast) and "assumptionsJson"
+  // is not one of the dl's own columns, so the edit form's own uncontrolled
+  // textarea can't prove persistence either — it would still show what we
+  // just typed even if the POST failed. Reload to force a fresh loader read
+  // and confirm the actuals overlay actually reached the server.
+  await page.reload();
+  await expect(page.getByLabel("Assumptions", { exact: true })).toHaveValue(/actualDeltaPts/);
+});
+
+// J-E2 "Board Thursday" (docs/06-roles-and-journeys.md §Executive): assemble
+// the board pack, approve it, distribute it, and see read receipts before the
+// meeting.
+//
+// Only "assemble" is wired up anywhere in apps/web: boardpacks.ts declares
+// create ("north:boardpacks:generate") and no update, no actions array, and
+// no module in the codebase declares a real ActionSpec (grep confirms the
+// mechanism the type comment shows has zero real users). There is no approve
+// button, no distribute button and no read-receipt UI to test — this spec
+// covers what exists, and the report notes the rest as a gap, not a fake pass.
+test("J-E2 exec assembles a board pack for Thursday", async ({ page }) => {
+  await loginAsNorthExec(page);
+
+  const title = `J-E2 Board pack ${Date.now()}`;
+  await page.goto("/north/boardpacks");
+  await page.getByText("New — Board packs").click();
+  await page.getByLabel("Title*", { exact: true }).fill(title);
+  await page.getByLabel("Period*", { exact: true }).fill("2026-Q1");
+  await page
+    .getByLabel("Sections*", { exact: true })
+    .fill(JSON.stringify([{ heading: "Highlights", body: "GWP up, CAC down." }]));
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+
+  const row = page.getByRole("row", { name: new RegExp(title) });
+  await expect(row).toBeVisible();
+});

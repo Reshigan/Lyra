@@ -30,6 +30,58 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
 
-# ponytail: e2e (Playwright), evals, mutation and a11y gates from docs/13 §6 are
-# not wired here — there is no playwright.config or eval runner in the repo yet.
-# Add each as its own job when the suite it gates actually exists.
+  eval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm eval
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm e2e
+
+  # docs/13 §6 / CLAUDE.md §7: mutation score gate, break threshold 70.
+  # packages/core cleared it 2026-07-31 (97.57%, was 28.56%). model-gateway
+  # cleared it 2026-08-01 (84.92%, was 40.98%). Both packages now block.
+  mutation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm mutation
+
+# a11y gate (CLAUDE.md WCAG 2.2 AA): e2e/a11y.ts's expectNoA11yViolations
+# (axe-core, tags wcag2a/wcag2aa/wcag22aa) runs inside the existing journey
+# specs (e2e/login.spec.ts, e2e/staff.spec.ts) — no separate job needed, the
+# `e2e` job above already fails the build on any assertion failure, this one
+# included.
+#
+# ponytail: as of 2026-07-31 `pnpm e2e` cannot boot locally at all — unrelated
+# pre-existing bug, not caused by the a11y specs. apps/api/src/node.ts (the
+# on-prem/e2e entrypoint) transitively imports engines/agent-room.ts, which
+# does `import { DurableObject } from "cloudflare:workers"`; that specifier is
+# only aliased for vitest (apps/api/vitest.config.ts), never for plain
+# tsx/node, so the webServer process this job's `pnpm e2e` step starts crashes
+# before any spec — old or new — can run. Fix apps/api's node runtime alias
+# separately; this job stays blocking (unchanged) since that failure is
+# already there regardless of these a11y assertions.

@@ -70,7 +70,7 @@ export function decodeCursor(raw: string): { value: string | number | null; id: 
 export const ListQuery = z.object({
   limit: z.coerce.number().int().min(1).max(MAX_PAGE).default(50),
   cursor: z.string().optional(),
-  q: z.string().min(1).max(200).optional(),
+  q: z.string().max(200).optional(),
   sort: z.string().max(64).optional(),
   order: z.enum(["asc", "desc"]).default("desc"),
   /** Include soft-deleted rows. Requires the resource's delete permission. */

@@ -41,7 +41,7 @@ async function freshCtx(): Promise<Ctx> {
       kind: "user",
       id: "u_test",
       tenantId: "t_test",
-      grants: [{ roleKey: "owner", permissions: ["*"] }]
+      grants: [{ roleKey: "owner", permissions: ["*:*:*"] }]
     },
     requestId: "req_test",
     now: Date.UTC(2026, 5, 15, 12),

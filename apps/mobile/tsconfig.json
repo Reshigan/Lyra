@@ -9,5 +9,5 @@
     "types": [],
     "paths": { "~/*": ["./src/*"] }
   },
-  "include": ["app/**/*.ts", "app/**/*.tsx", "src/**/*.ts", "src/**/*.tsx", "*.ts"]
+  "include": ["app/**/*.ts", "app/**/*.tsx", "src/**/*.ts", "src/**/*.tsx", "e2e/**/*.ts", "*.ts"]
 }

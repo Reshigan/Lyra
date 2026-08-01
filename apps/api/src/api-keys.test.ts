@@ -104,7 +104,7 @@ async function foreignTenantKey(): Promise<string> {
     prefix: token.slice(0, 17),
     keyHash: await sha256Hex(token),
     mode: "test",
-    scopesJson: JSON.stringify(["core:api_keys:read"]),
+    scopesJson: JSON.stringify(["core:api_keys:read", "core:api_keys:revoke", "core:webhooks:write"]),
     createdBy: "system:test",
     createdAt: now
   });
@@ -230,6 +230,44 @@ async function countNamed(name: string): Promise<number> {
   return rows.length;
 }
 
+describe("DELETE /v1/core/api-keys/:id", () => {
+  it("revokes rather than deletes: the row survives, the key stops authenticating", async () => {
+    const created = await mint("admin", { name: "to be revoked", scopes: ["core:api_keys:read"] });
+    expect(created.status).toBe(201);
+    const plaintext = created.body.key as string;
+
+    const del = await call(tokens.admin!, "DELETE", `/v1/core/api-keys/${created.body.id}`);
+    expect(del.status).toBe(204);
+
+    const rows = await database.select().from(schema.apiKeys).where(eq(schema.apiKeys.id, created.body.id));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.revokedAt).toBeTruthy();
+
+    const asKey = await call(plaintext, "GET", "/v1/core/api-keys");
+    expect(asKey.status).toBe(401);
+  });
+
+  it("writes an audit entry and refuses without core:api_keys:revoke", async () => {
+    const created = await mint("admin", { name: "audited revoke", scopes: [] });
+    const denied = await call(tokens.agent!, "DELETE", `/v1/core/api-keys/${created.body.id}`);
+    expect(denied.status).toBe(403);
+
+    const ok = await call(tokens.admin!, "DELETE", `/v1/core/api-keys/${created.body.id}`);
+    expect(ok.status).toBe(204);
+    const rows = await database.select().from(schema.auditLog);
+    const entry = rows.find((a) => a.subjectRef === `api-keys:${created.body.id}` && a.action === "core.api-keys.revoke");
+    expect(entry).toBeTruthy();
+  });
+
+  it("404s revoking another tenant's key", async () => {
+    const created = await mint("admin", { name: "not yours to revoke", scopes: [] });
+    const res = await call(otherKey, "DELETE", `/v1/core/api-keys/${created.body.id}`);
+    expect(res.status).toBe(404);
+    const rows = await database.select().from(schema.apiKeys).where(eq(schema.apiKeys.id, created.body.id));
+    expect(rows[0]?.revokedAt).toBeFalsy();
+  });
+});
+
 /* ------------------------------------------------------------- webhooks */
 
 const register = (who: string, payload: unknown) =>
@@ -302,5 +340,45 @@ describe("POST /v1/core/webhooks", () => {
     expect(res.status).toBe(400);
     const rows = await database.select().from(schema.webhooks);
     expect(rows.every((w) => w.tenantId !== "t_somewhere_else")).toBe(true);
+  });
+});
+
+describe("POST /v1/core/webhooks/:id/rotate", () => {
+  it("replaces the secret with a fresh one and returns it once", async () => {
+    const created = await register("admin", { url: "https://hooks.example.com/rotate", eventTypesJson: [] });
+    const before = created.body.secret as string;
+
+    const res = await call(tokens.admin!, "POST", `/v1/core/webhooks/${created.body.id}/rotate`);
+    expect(res.status).toBe(200);
+    const after = res.body.secret as string;
+    expect(after).toMatch(/^whsec_[A-Z2-7]{40,}$/);
+    expect(after).not.toBe(before);
+
+    const rows = await database.select().from(schema.webhooks).where(eq(schema.webhooks.id, created.body.id));
+    expect(rows[0]?.secret).toBe(after);
+
+    const record = await call(tokens.admin!, "GET", `/v1/core/webhooks/${created.body.id}`);
+    expect(record.body.secret).toBeUndefined();
+  });
+
+  it("writes an audit entry without the secret in it", async () => {
+    const created = await register("admin", { url: "https://hooks.example.com/rotate-audit", eventTypesJson: [] });
+    const res = await call(tokens.admin!, "POST", `/v1/core/webhooks/${created.body.id}/rotate`);
+    const rows = await database.select().from(schema.auditLog);
+    const entry = rows.find((a) => a.subjectRef === `webhooks:${created.body.id}` && a.action === "core.webhooks.rotate");
+    expect(entry).toBeTruthy();
+    expect(JSON.stringify(rows)).not.toContain(res.body.secret as string);
+  });
+
+  it("is 403 for a session without core:webhooks:write", async () => {
+    const created = await register("admin", { url: "https://hooks.example.com/rotate-403", eventTypesJson: [] });
+    const res = await call(tokens.agent!, "POST", `/v1/core/webhooks/${created.body.id}/rotate`);
+    expect(res.status).toBe(403);
+  });
+
+  it("404s rotating another tenant's webhook", async () => {
+    const created = await register("admin", { url: "https://hooks.example.com/rotate-foreign", eventTypesJson: [] });
+    const res = await call(otherKey, "POST", `/v1/core/webhooks/${created.body.id}/rotate`);
+    expect(res.status).toBe(404);
   });
 });

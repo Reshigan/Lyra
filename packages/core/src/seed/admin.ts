@@ -180,8 +180,8 @@ export async function seedAdmin(ctx: SeedContext): Promise<void> {
       module: "axis",
       requestedBy: agent,
       requestedAt: now + 6 * HOUR,
-      // Still open: the copilot run below is parked against this id, which is
-      // what makes the awaiting_approval state on that run mean something.
+      // Still open: a mid-term endorsement is parked against this id awaiting a
+      // human decision — real regardless of which caller filed it.
       decision: "pending",
       contextJson: JSON.stringify({
         amountMinor: 31_000,
@@ -1091,12 +1091,10 @@ export async function seedAdmin(ctx: SeedContext): Promise<void> {
   ]);
 
   /* ---------------------------------------------------------------- runs */
-  // What the eight seeded agents actually did. The states span the full set on
+  // What the seven seeded agents actually did. The states span the full set on
   // purpose: a console filtered to "failed" that finds nothing teaches an
   // operator that failures do not happen, which is the wrong lesson.
   const runQuoting = id("air", now + 120);
-  const runCopilotSummary = id("air", now + 121);
-  const runCopilotEndorse = id("air", now + 122);
   const runRenewal = id("air", now + 123);
   const runCreativeRefused = id("air", now + 124);
   const runDiscovery = id("air", now + 125);
@@ -1104,7 +1102,6 @@ export async function seedAdmin(ctx: SeedContext): Promise<void> {
   const runReconFailed = id("air", now + 127);
   const runQa = id("air", now + 128);
   const runQuotingStopped = id("air", now + 129);
-  const runCopilotRunning = id("air", now + 130);
   const runCreativeCancelled = id("air", now + 131);
 
   await db.insert(schema.aiRuns).values([
@@ -1135,52 +1132,6 @@ export async function seedAdmin(ctx: SeedContext): Promise<void> {
       latencyMs: 2_310,
       startedAt: now + 20_000,
       endedAt: now + 22_310
-    },
-    {
-      id: runCopilotSummary,
-      tenantId,
-      agentKey: "copilot",
-      module: "axis",
-      purpose: "case.summarise",
-      subjectRef: caseRef,
-      actorRef: `user:${agent}`,
-      autonomyLevel: "act_with_approval",
-      trigger: "user",
-      state: "succeeded",
-      inputHash: await digest("run.copilot.summary.input"),
-      outputRef: `r2:t/${tenantId}/ai/runs/case-summary.json`,
-      confidence: 84,
-      evidenceJson: JSON.stringify([{ kind: "case", ref: caseRef }]),
-      tokensIn: 3_402,
-      tokensOut: 612,
-      costMicro: 2_940,
-      latencyMs: 3_140,
-      startedAt: now + HOUR,
-      endedAt: now + HOUR + 3_140
-    },
-    {
-      id: runCopilotEndorse,
-      tenantId,
-      agentKey: "copilot",
-      module: "axis",
-      purpose: "policy.endorse_draft",
-      subjectRef: policyRef,
-      actorRef: `user:${agent}`,
-      autonomyLevel: "act_with_approval",
-      trigger: "user",
-      // Parked, not finished: the agent drafted the endorsement and stopped at
-      // the approval gate rather than writing it (CLAUDE.md rule 4).
-      state: "awaiting_approval",
-      inputHash: await digest("run.copilot.endorse.input"),
-      confidence: 71,
-      evidenceJson: JSON.stringify([{ kind: "policy", ref: policyRef }]),
-      approvalId: endorseApprovalId,
-      tokensIn: 2_880,
-      tokensOut: 504,
-      costMicro: 2_460,
-      latencyMs: 2_780,
-      startedAt: now + 6 * HOUR,
-      endedAt: now + 6 * HOUR + 2_780
     },
     {
       id: runRenewal,
@@ -1334,22 +1285,6 @@ export async function seedAdmin(ctx: SeedContext): Promise<void> {
       endedAt: now - 26 * HOUR + 640
     },
     {
-      id: runCopilotRunning,
-      tenantId,
-      agentKey: "copilot",
-      module: "axis",
-      purpose: "case.next_action",
-      subjectRef: caseRef,
-      actorRef: `user:${lead}`,
-      autonomyLevel: "act_with_approval",
-      trigger: "user",
-      // In flight as the seed clock reads: no end, no cost yet. The console
-      // should have something live in it the moment the demo opens.
-      state: "running",
-      inputHash: await digest("run.copilot.next.input"),
-      startedAt: now - 4_000
-    },
-    {
       id: runCreativeCancelled,
       tenantId,
       agentKey: "creative",
@@ -1417,61 +1352,6 @@ export async function seedAdmin(ctx: SeedContext): Promise<void> {
       resultHash: await digest("tool.quoting.3.result"),
       durationMs: 96,
       ts: now + 21_000
-    },
-    {
-      id: id("tlc", now + 143),
-      tenantId,
-      runId: runCopilotSummary,
-      seq: 1,
-      tool: "axis.cases.read",
-      argsHash: await digest("tool.copilot.1"),
-      argsRedactedJson: JSON.stringify({ caseId }),
-      outcome: "ok",
-      resultHash: await digest("tool.copilot.1.result"),
-      durationMs: 51,
-      ts: now + HOUR + 200
-    },
-    {
-      id: id("tlc", now + 144),
-      tenantId,
-      runId: runCopilotSummary,
-      seq: 2,
-      tool: "core.customers.read",
-      argsHash: await digest("tool.copilot.2"),
-      argsRedactedJson: JSON.stringify({ customerId, fields: ["name", "locale"] }),
-      outcome: "ok",
-      resultHash: await digest("tool.copilot.2.result"),
-      durationMs: 38,
-      ts: now + HOUR + 420
-    },
-    {
-      id: id("tlc", now + 145),
-      tenantId,
-      runId: runCopilotEndorse,
-      seq: 1,
-      tool: "axis.quotes.compare",
-      argsHash: await digest("tool.endorse.1"),
-      argsRedactedJson: JSON.stringify({ policyId, change: "add_named_driver" }),
-      outcome: "ok",
-      resultHash: await digest("tool.endorse.1.result"),
-      durationMs: 74,
-      ts: now + 6 * HOUR + 300
-    },
-    {
-      id: id("tlc", now + 146),
-      tenantId,
-      runId: runCopilotEndorse,
-      seq: 2,
-      tool: "axis.tasks.write",
-      argsHash: await digest("tool.endorse.2"),
-      argsRedactedJson: JSON.stringify({ policyId, premiumDeltaMinor: 31_000 }),
-      // The write that changes the contract. It is held, not executed, and the
-      // approval it is waiting on is named right here.
-      consequential: true,
-      approvalId: endorseApprovalId,
-      outcome: "awaiting_approval",
-      durationMs: 12,
-      ts: now + 6 * HOUR + 2_700
     },
     {
       id: id("tlc", now + 147),
@@ -1576,34 +1456,6 @@ export async function seedAdmin(ctx: SeedContext): Promise<void> {
       // the agent's next call rather than expiring on the spot.
       outcome: "shown",
       shownAt: now + 30_000
-    },
-    {
-      id: id("sug", now + 162),
-      tenantId,
-      runId: runCopilotSummary,
-      surface: "draft",
-      module: "axis",
-      subjectRef: caseRef,
-      userId: agent,
-      contentRef: `r2:t/${tenantId}/ai/suggestions/case-note.json`,
-      outcome: "edited",
-      // Edited, with the distance recorded: a draft that is always rewritten
-      // wholesale is worse than no draft, and this number is how that shows up.
-      editDistance: 142,
-      shownAt: now + HOUR + 4_000,
-      resolvedAt: now + HOUR + 96_000
-    },
-    {
-      id: id("sug", now + 163),
-      tenantId,
-      runId: runCopilotSummary,
-      surface: "ghost_text",
-      module: "axis",
-      subjectRef: caseRef,
-      userId: agent,
-      outcome: "dismissed",
-      shownAt: now + HOUR + 5_000,
-      resolvedAt: now + HOUR + 7_400
     },
     {
       id: id("sug", now + 164),
@@ -2058,16 +1910,6 @@ export async function seedAdmin(ctx: SeedContext): Promise<void> {
       detail: "Briefing draft used a rounded figure not present in the rollup.",
       subjectRef: `north-briefings:2026-01-04`,
       ts: now - 3 * DAY + 9_000
-    },
-    {
-      id: id("gre", now + 215),
-      tenantId,
-      runId: runCopilotSummary,
-      rule: "regulated_claim",
-      severity: "warn",
-      detail: "Internal case note recommended a cover level; flagged, not blocked, as it stays internal.",
-      subjectRef: caseRef,
-      ts: now + HOUR + 3_000
     }
   ]);
 
@@ -2098,26 +1940,6 @@ export async function seedAdmin(ctx: SeedContext): Promise<void> {
       subjectRef: quoteRef,
       outcome: "ok",
       ts: now + 22_310
-    },
-    {
-      id: id("aia", now + 221),
-      tenantId,
-      module: "axis",
-      purpose: "case.summarise",
-      model: bigModel,
-      provider: "workers-ai",
-      tier: "standard",
-      inputHash: await digest("run.copilot.summary.input"),
-      outputHash: await digest("aia.copilot.output"),
-      tokensIn: 3_402,
-      tokensOut: 612,
-      costMicro: 2_940,
-      latencyMs: 3_140,
-      toolCallsJson: JSON.stringify(["axis.cases.read", "core.customers.read"]),
-      actorRef: `user:${agent}`,
-      subjectRef: caseRef,
-      outcome: "ok",
-      ts: now + HOUR + 3_140
     },
     {
       id: id("aia", now + 222),

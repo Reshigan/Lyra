@@ -288,8 +288,9 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
           ...(intent === "approve" && form.get("aiAuditId")
             ? { aiAuditId: String(form.get("aiAuditId")) }
             : {}),
-          // `ts` is notNull with no default — the row will not insert without it.
-          ts: Date.now(),
+          // `ts` is a serverColumn (apps/api/src/resources.ts) — the CRUD
+          // schema excludes it entirely and `fixed` fills it from ctx.now;
+          // sending it here trips the `.strict()` schema as an unknown key.
           deliveryStatus: "queued"
         }
       });

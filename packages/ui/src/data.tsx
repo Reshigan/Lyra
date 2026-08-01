@@ -207,6 +207,10 @@ export interface PaginationProps {
   pageSizes?: number[];
   onPageSizeChange?: (size: number) => void;
   label?: string;
+  /** Row-count select label. Caller passes its own i18n string; English default for untranslated call sites. */
+  rowsLabel?: string;
+  previousLabel?: string;
+  nextLabel?: string;
   className?: string;
 }
 
@@ -220,6 +224,9 @@ export function Pagination({
   pageSizes = [25, 50, 100],
   onPageSizeChange,
   label = "Pagination",
+  rowsLabel = "Rows",
+  previousLabel = "Previous",
+  nextLabel = "Next",
   className
 }: PaginationProps) {
   return (
@@ -235,7 +242,7 @@ export function Pagination({
         ) : null}
         {onPageSizeChange && pageSize !== undefined ? (
           <label className="flex items-center gap-2 font-ui text-12 text-subtle">
-            <span>Rows</span>
+            <span>{rowsLabel}</span>
             <select
               value={pageSize}
               onChange={(e) => onPageSizeChange(Number(e.currentTarget.value))}
@@ -258,18 +265,18 @@ export function Pagination({
           size="sm"
           disabled={!hasPrevious}
           {...(onPrevious ? { onClick: onPrevious } : {})}
-          aria-label="Previous page"
+          aria-label={previousLabel}
         >
           <span aria-hidden="true">‹</span>
-          <span>Previous</span>
+          <span>{previousLabel}</span>
         </Button>
         <Button
           size="sm"
           disabled={!hasNext}
           {...(onNext ? { onClick: onNext } : {})}
-          aria-label="Next page"
+          aria-label={nextLabel}
         >
-          <span>Next</span>
+          <span>{nextLabel}</span>
           <span aria-hidden="true">›</span>
         </Button>
       </div>

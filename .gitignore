@@ -12,3 +12,8 @@ coverage
 .DS_Store
 playwright-report
 test-results
+.dev.vars
+.stryker-tmp
+packages/core/packages
+e2e.db
+reports/

@@ -119,6 +119,7 @@ export const PERMISSIONS = [
   "signal:creatives:publish",
   "signal:experiments:read", "signal:experiments:create", "signal:experiments:decide",
   "signal:budget_moves:read", "signal:budget_moves:approve", "signal:budget_moves:reverse",
+  "signal:autopilot:pause",
   "signal:aeo:read", "signal:aeo:write",
   "signal:attribution:read",
   "signal:spend:read",
@@ -322,7 +323,10 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     ...readsOf("orbit"), "orbit:ai:invoke", "ai:suggestions:read",
     "orbit:conversations:reply", "orbit:conversations:close",
     "orbit:messages:send", "orbit:handover:write",
-    "core:customers:read", "core:consents:read", "core:search:read", "core:files:read",
+    // docs/06 J-C2: the agent's whole job is reading the customer's message
+    // and the AI's drafted reply to it — both are `content`, PII-masked
+    // without this grant (packages/core/src/pii.ts).
+    "core:customers:read", "core:pii:view", "core:consents:read", "core:search:read", "core:files:read",
     "axis:policies:read", "axis:cases:read", "axis:cases:create"
   ],
   "orbit.lead": [
@@ -344,7 +348,7 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     "axis:policies:read", "axis:quotes:create", "axis:quotes:compare",
     "analytics:reports:read", "analytics:reports:run",
     "dist:ai:invoke", "dist:offerings:read", "dist:quote_requests:create",
-    "dist:offers:read", "dist:offers:surface"
+    "dist:offers:read"
   ],
   "orbit.partners": [
     ...readsOf("orbit"), "orbit:ai:invoke", "ai:suggestions:read",
@@ -382,7 +386,7 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     "signal:audiences:create", "signal:audiences:estimate",
     "signal:creatives:generate", "signal:creatives:publish",
     "signal:experiments:create", "signal:experiments:decide",
-    "signal:budget_moves:approve", "signal:budget_moves:reverse", "signal:aeo:write",
+    "signal:budget_moves:approve", "signal:budget_moves:reverse", "signal:autopilot:pause", "signal:aeo:write",
     "core:consents:read", "core:search:read", "core:approvals:read", "core:approvals:decide",
     "core:files:read", "core:files:create",
     "ledger:txns:read", "analytics:reports:read", "analytics:reports:run",

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { badRequest, require_, withIdempotency, type Ctx } from "@lyra/core";
 import { EXPORT_FORMATS, isExportFormat } from "../engines/export/render.js";
 import {
+  PAID_VIA,
   approveSettlement,
   disputeSettlement,
   getSettlement,
@@ -32,6 +33,13 @@ const RunBody = z.object({
 });
 
 const ReasonBody = z.object({ reason: z.string().min(3).max(500) });
+
+// Proof money actually left the building: no PSP connector exists (docs/25
+// §7), so a human-confirmed bank/PSP reference is the v1 payout control.
+const PayBody = z.object({
+  externalRef: z.string().min(1).max(200),
+  paidVia: z.enum(PAID_VIA)
+});
 
 /** Draft (or redraft) a period. Arithmetic only — nothing posts here. */
 settlementRoutes.post("/runs", async (c) => {
@@ -78,8 +86,13 @@ settlementRoutes.post("/settlements/:id/pay", async (c) => {
   const ctx = ctxOf(c);
   require_(ctx.actor, "ledger:payouts:approve", { tenantId: ctx.tenantId, module: "ledger" });
   const settlementId = c.req.param("id");
-  const row = await withIdempotency(ctx, c.req.header("idempotency-key"), "settlement.pay", { settlementId }, () =>
-    paySettlement(ctx, settlementId)
+  const input = await body(c, PayBody);
+  const row = await withIdempotency(
+    ctx,
+    c.req.header("idempotency-key"),
+    "settlement.pay",
+    { settlementId, ...input },
+    () => paySettlement(ctx, settlementId, input)
   );
   return c.json(row);
 });
@@ -105,7 +118,7 @@ settlementRoutes.get("/settlements/:id/statement", async (c) => {
   const format = c.req.query("format") ?? "pdf";
   if (!isExportFormat(format)) throw badRequest(`format must be one of ${EXPORT_FORMATS.join(", ")}`);
 
-  const result = await settlementStatement(ctx, c.req.param("id"), format, c.env.FILES);
+  const result = await settlementStatement(ctx, c.req.param("id"), format, c.env.FILES, c.env.BROWSER);
   return new Response(result.rendered.bytes, {
     headers: {
       "content-type": result.rendered.contentType,

@@ -1,8 +1,11 @@
 import { Hono } from "hono";
 import { PolicyJson, EntitlementsJson, schema } from "@lyra/db";
-import { notFound, pruneIdempotency } from "@lyra/core";
-import { drainOutbox } from "./dispatch.js";
+import { notFound, pruneIdempotency, type Envelope } from "@lyra/core";
+import { drainOutbox, deliverQueued } from "./dispatch.js";
 import { sweepRenewals } from "./engines/renewals.js";
+import { backupTenant } from "./engines/backup.js";
+import { nudgeApiKeyRotation } from "./engines/api-key-rotation.js";
+import { runBudgetAutopilot } from "./engines/signal-autopilot.js";
 import { expireDelegations } from "./engines/staff.js";
 import { authRoutes, ctxFor, db, pruneSessions } from "./auth.js";
 import { mountAll } from "./crud.js";
@@ -15,7 +18,12 @@ import { axisRoutes } from "./routes/axis.js";
 import { distRoutes } from "./routes/dist.js";
 import { ledgerRoutes } from "./routes/ledger.js";
 import { aiRoutes } from "./routes/ai.js";
+import { orbitRoutes } from "./routes/orbit.js";
+import { signalRoutes } from "./routes/signal.js";
+import { scoutRoutes } from "./routes/scout.js";
+import { northRoutes } from "./routes/north.js";
 import { ssoRoutes } from "./routes/sso.js";
+import { realtimeRoutes } from "./routes/realtime.js";
 import { analyticsRoutes, runDueSchedules } from "./routes/analytics.js";
 import { complianceRoutes } from "./routes/compliance.js";
 import { onboardingRoutes } from "./routes/onboarding.js";
@@ -41,19 +49,26 @@ app.get("/openapi.json", (c) => c.json(openapi()));
 app.route("/v1/auth/sso", ssoRoutes);
 app.route("/v1/auth", authRoutes);
 app.route("/v1/me", meRoutes);
+app.route("/v1/realtime", realtimeRoutes);
 
 // Hand-written routes mount BEFORE generated CRUD. Hono returns handlers in
 // registration order, so whatever registers first wins a path both can serve —
 // and where both can serve one, the hand-written engine is the one that must
 // run. Generated CRUD would otherwise swallow `POST /v1/ai/runs` (the agent
 // invocation), `POST /v1/analytics/reports` (which derives the required
-// permission from the dataset instead of trusting the body) and
-// `GET /v1/dist/commission-entries/statement` (read as an id).
+// permission from the dataset instead of trusting the body),
+// `GET /v1/dist/commission-entries/statement` (read as an id) and
+// `POST /v1/north/boardpacks` (which would otherwise accept a client-supplied
+// sectionsJson/pdfFileId with no assembly or render behind it).
 app.route("/v1/core", coreRoutes);
 app.route("/v1/axis", axisRoutes);
 app.route("/v1/dist", distRoutes);
 app.route("/v1/ledger", ledgerRoutes);
 app.route("/v1/ai", aiRoutes);
+app.route("/v1/orbit", orbitRoutes);
+app.route("/v1/signal", signalRoutes);
+app.route("/v1/scout", scoutRoutes);
+app.route("/v1/north", northRoutes);
 app.route("/v1/analytics", analyticsRoutes);
 app.route("/v1/compliance", complianceRoutes);
 // Three cross-module processes, mounted outside `/v1/<module>` because none of
@@ -76,11 +91,45 @@ export default {
   fetch: app.fetch,
 
   /**
+   * Consumer side of the `lyra-events` Queue (docs/10 §2). Each message is one
+   * outbox event, published by `drainOutbox`; delivery here is the same
+   * `deliverQueued` the inline (no-queue) path uses, just off the cron tick so a
+   * slow webhook endpoint no longer holds up the next tenant's drain.
+   */
+  async queue(batch: { messages: { body: Envelope; ack(): void; retry(): void }[] }, env: Env) {
+    for (const message of batch.messages) {
+      try {
+        const event = message.body;
+        const ctx = await ctxFor(
+          env,
+          {
+            tenantId: event.tenant_id,
+            locale: "en",
+            actor: { kind: "system", id: "queue", tenantId: event.tenant_id, grants: [] },
+            policy: PolicyJson.parse({}),
+            entitlements: EntitlementsJson.parse({})
+          },
+          Date.now()
+        );
+        await deliverQueued(ctx, event);
+        message.ack();
+      } catch {
+        message.retry();
+      }
+    }
+  },
+
+  /**
    * Outbox drain and session sweep. Both are idempotent, so a missed tick costs
    * latency and nothing else.
    */
   async scheduled(_event: unknown, env: Env, ctxExec: { waitUntil(p: Promise<unknown>): void }) {
     const now = Date.now();
+    // Cron fires every 5-15min (wrangler.jsonc); the nightly jobs below only need
+    // one of those ticks a day, so they gate on a fixed UTC hour instead of their
+    // own scheduler.
+    const nowDate = new Date(now);
+    const isBackupWindow = nowDate.getUTCHours() === 2 && nowDate.getUTCMinutes() < 15;
     ctxExec.waitUntil(
       (async () => {
         await pruneSessions(env, now);
@@ -97,12 +146,16 @@ export default {
             },
             now
           );
-          await drainOutbox(ctx);
-          await sweepRenewals(ctx);
-          await runDueSchedules(ctx, env.FILES);
+          await drainOutbox(ctx, env.EVENTS);
+          await sweepRenewals(ctx, env.WF);
+          await runBudgetAutopilot(ctx);
+          await runDueSchedules(ctx, env.FILES, env.BROWSER);
           // A delegation that has run out must stop showing as active, or every
           // admin screen lies about who currently holds the authority to approve.
           await expireDelegations(ctx);
+          // docs/10 §6: nightly D1 -> R2 backup, one write per tenant per day.
+          if (isBackupWindow) await backupTenant(ctx, env.EXPORTS);
+          if (isBackupWindow) await nudgeApiKeyRotation(ctx);
         }
       })()
     );
@@ -115,3 +168,9 @@ async function activeTenants(env: Env): Promise<string[]> {
 }
 
 export { app };
+// wrangler resolves a `durable_objects` binding's `class_name` against an
+// export of this Worker's main module — docs/16 H3 / docs/10 §2.
+export { AgentRoom } from "./engines/agent-room.js";
+export { RateCounter } from "./engines/rate-counter.js";
+export { UserChannel } from "./engines/user-channel.js";
+export { RenewalWorkflow } from "./engines/renewal-workflow.js";

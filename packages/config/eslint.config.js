@@ -4,7 +4,16 @@ import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["**/dist/**", "**/build/**", "**/.wrangler/**", "**/migrations/**", "**/.react-router/**"] },
+  {
+    ignores: [
+      "**/dist/**",
+      "**/build/**",
+      "**/.wrangler/**",
+      "**/migrations/**",
+      "**/.react-router/**",
+      "**/.stryker-tmp/**"
+    ]
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -29,5 +38,10 @@ export default tseslint.config(
     // use, so a stray `window` in one still gets caught.
     files: ["scripts/**/*.mjs", "**/*.config.mjs"],
     languageOptions: { globals: { process: "readonly", console: "readonly" } }
+  },
+  {
+    // Detox/Jest CommonJS config files: no bundler, loaded straight by Node.
+    files: ["**/.detoxrc.js", "**/jest.config.js"],
+    languageOptions: { sourceType: "commonjs", globals: { module: "writable", require: "readonly" } }
   }
 );
