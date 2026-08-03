@@ -99,7 +99,7 @@ export default function Record() {
   const tab = tabOf(spec, loaded.resource);
   if (!tab) return null;
 
-  const label = labelsFor(spec, locale);
+  const label = labelsFor(spec, locale, shell?.domainPack);
   const row = loaded.row;
   const busy = navigation.state !== "idle";
   const editable = tab.editable ?? tab.fields ?? [];

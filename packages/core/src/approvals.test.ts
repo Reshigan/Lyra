@@ -82,13 +82,13 @@ describe("APPROVAL_POLICIES", () => {
       "axis.reinstate": { key: "axis.reinstate", module: "axis", decide: "axis:policies:update", dualControl: "never" },
       "dist.rate_change": { key: "dist.rate_change", module: "core", decide: "dist:rates:approve", dualControl: "always", neverAutoApprove: true },
       "dist.commission_adjust": { key: "dist.commission_adjust", module: "core", decide: "dist:commissions:adjust", dualControl: "above_threshold", defaultThresholdMinor: 1_000_00 },
-      "dist.commission_accrue": { key: "dist.commission_accrue", module: "core", decide: "dist:commissions:adjust", dualControl: "above_threshold", defaultThresholdMinor: 1_000_00 },
+      "dist.commission_accrue": { key: "dist.commission_accrue", module: "core", decide: "dist:commissions:adjust", dualControl: "above_threshold", defaultThresholdMinor: 1_000_00, singleUse: false },
       "dist.offering_publish": { key: "dist.offering_publish", module: "core", decide: "dist:offerings:publish", dualControl: "never" },
       "dist.settlement_run": { key: "dist.settlement_run", module: "core", decide: "dist:commissions:settle", dualControl: "always", neverAutoApprove: true },
       "dist.partner_activate": { key: "dist.partner_activate", module: "core", decide: "orbit:partners:certify", dualControl: "never" },
       "dist.rshare_adjust": { key: "dist.rshare_adjust", module: "core", decide: "dist:commissions:adjust", dualControl: "above_threshold", defaultThresholdMinor: 1_000_00 },
       "dist.agreement_sign": { key: "dist.agreement_sign", module: "core", decide: "dist:agreements:sign", dualControl: "always", neverAutoApprove: true },
-      "core.onboarding_waive": { key: "core.onboarding_waive", module: "core", decide: "core:onboarding:waive", dualControl: "always", neverAutoApprove: true },
+      "core.onboarding_waive": { key: "core.onboarding_waive", module: "core", decide: "core:onboarding:waive", dualControl: "always", neverAutoApprove: true, singleUse: false },
       "core.delegation_grant": { key: "core.delegation_grant", module: "core", decide: "core:delegations:write", dualControl: "never" },
       "signal.budget_move": { key: "signal.budget_move", module: "signal", decide: "signal:budget_moves:approve", dualControl: "never" },
       "signal.campaign_launch": { key: "signal.campaign_launch", module: "signal", decide: "signal:campaigns:launch", dualControl: "never" },
@@ -96,6 +96,7 @@ describe("APPROVAL_POLICIES", () => {
       "signal.budget_commit": { key: "signal.budget_commit", module: "signal", decide: "signal:campaigns:launch", dualControl: "above_threshold", defaultThresholdMinor: 50_000_00 },
       "signal.boost": { key: "signal.boost", module: "signal", decide: "signal:campaigns:update", dualControl: "never" },
       "signal.creator_brief": { key: "signal.creator_brief", module: "signal", decide: "signal:creatives:approve", dualControl: "never" },
+      "scout.whitespace_promote": { key: "scout.whitespace_promote", module: "scout", decide: "scout:whitespaces:promote", dualControl: "never" },
       "core.impersonate": { key: "core.impersonate", module: "core", decide: "core:impersonate:use", dualControl: "always", neverAutoApprove: true },
       "core.mandate_register": { key: "core.mandate_register", module: "core", decide: "core:api_keys:create", dualControl: "always", neverAutoApprove: true },
       "core.unmasked_export": { key: "core.unmasked_export", module: "core", decide: "analytics:exports:unmasked", dualControl: "always", neverAutoApprove: true },
@@ -126,12 +127,14 @@ describe("gate: dual control threshold", () => {
     expect(JSON.parse(atRow.rows[0]!.context_json as string).dualControl).toBe(true);
   });
 
-  it("treats a missing amount as zero against the threshold", async () => {
+  it("fails closed: a missing amount on an above_threshold policy requires dual control", async () => {
+    // An amount the caller could not state may be any amount; treating it as
+    // zero would let it slip under the threshold with a single sign-off.
     const analyst = makeCtx(actor("finance.analyst", "u_ops"));
     await expect(gate(analyst, { policyKey: "ledger.refund", subjectRef: "txn:noamt" })).rejects.toThrow();
     const row = await client.execute("SELECT context_json FROM core_approvals WHERE subject_ref = 'txn:noamt'");
     const ctxJson = JSON.parse(row.rows[0]!.context_json as string);
-    expect(ctxJson.dualControl).toBe(false);
+    expect(ctxJson.dualControl).toBe(true);
     expect(ctxJson.amountMinor).toBeNull();
   });
 
@@ -181,6 +184,56 @@ describe("gate: lifecycle", () => {
     const justInside = makeCtx(actor("finance.analyst", "u_ops"), 1_700_000_000_000 + APPROVAL_TTL_MS);
     const row = await gate(justInside, { policyKey: "ledger.payout", subjectRef: "txn:ttl" });
     expect(row?.decision).toBe("approved");
+  });
+
+  it("does not reuse an approval for a larger amount than was approved", async () => {
+    const initiator = makeCtx(actor("finance.analyst", "u_ops"), 1_700_000_000_000);
+    const finance = makeCtx(actor("finance.controller", "u_fin"), 1_700_000_000_000);
+    let id = "";
+    try {
+      await gate(initiator, { policyKey: "ledger.payout", subjectRef: "txn:grow", amountMinor: 1000 });
+    } catch (err) {
+      id = await approvalId(err);
+    }
+    await decide(finance, id, "approved", "ok");
+
+    const later = makeCtx(actor("finance.analyst", "u_ops"), 1_700_000_000_000 + 1000);
+    let newId = "";
+    try {
+      await gate(later, { policyKey: "ledger.payout", subjectRef: "txn:grow", amountMinor: 2000 });
+      throw new Error("expected gate to throw");
+    } catch (err) {
+      newId = await approvalId(err);
+    }
+    expect(newId).not.toBe(id);
+  });
+
+  it("consumes an approval on pass-through: one approval authorises exactly one execution", async () => {
+    const initiator = makeCtx(actor("finance.analyst", "u_ops"), 1_700_000_000_000);
+    const finance = makeCtx(actor("finance.controller", "u_fin"), 1_700_000_000_000);
+    let id = "";
+    try {
+      await gate(initiator, { policyKey: "ledger.payout", subjectRef: "txn:once", amountMinor: 1000 });
+    } catch (err) {
+      id = await approvalId(err);
+    }
+    await decide(finance, id, "approved", "ok");
+
+    const retry = makeCtx(actor("finance.analyst", "u_ops"), 1_700_000_000_000 + 1000);
+    const row = await gate(retry, { policyKey: "ledger.payout", subjectRef: "txn:once", amountMinor: 1000 });
+    expect(row?.decision).toBe("approved");
+
+    const spent = await client.execute({ sql: "SELECT decision FROM core_approvals WHERE id = ?", args: [id] });
+    expect(spent.rows[0]!.decision).toBe("consumed");
+
+    let secondId = "";
+    try {
+      await gate(retry, { policyKey: "ledger.payout", subjectRef: "txn:once", amountMinor: 1000 });
+      throw new Error("expected gate to throw");
+    } catch (err) {
+      secondId = await approvalId(err);
+    }
+    expect(secondId).not.toBe(id);
   });
 
   it("asks again once an approved decision has gone stale", async () => {
@@ -288,12 +341,33 @@ describe("decide", () => {
     });
   });
 
+  it("treats malformed context_json as dual-control instead of crashing or failing open", async () => {
+    // The requester holds the deciding permission, so only the dual-control
+    // check stands between them and self-approval once the context is corrupt.
+    const requester = makeCtx(actor("finance.controller", "u_fin"));
+    let id = "";
+    try {
+      await gate(requester, { policyKey: "ledger.payout", subjectRef: "txn:corrupt" });
+    } catch (err) {
+      id = await approvalId(err);
+    }
+    await client.execute({ sql: "UPDATE core_approvals SET context_json = 'not json' WHERE id = ?", args: [id] });
+
+    await expect(decide(requester, id, "approved", "ok")).rejects.toMatchObject({
+      status: 400,
+      detail: "dual control: the approver must differ from the initiator"
+    });
+    const other = makeCtx(actor("finance.controller", "u_fin2"));
+    const decided = await decide(other, id, "approved", "ok");
+    expect(decided.decision).toBe("approved");
+  });
+
   it("lets a delegate decide, and records which delegation authorised it", async () => {
     const now = 1_700_000_000_000;
     await client.execute({
       sql: `INSERT INTO core_roles (id, tenant_id, key, name, permissions_json, system, created_at)
-            VALUES ('role_fc', 't_1', 'finance.controller', 'Finance controller', '[]', 1, ?)`,
-      args: [now]
+            VALUES ('role_fc', 't_1', 'finance.controller', 'Finance controller', ?, 1, ?)`,
+      args: [JSON.stringify(permissionsForRole("finance.controller")), now]
     });
     await client.execute({
       sql: `INSERT INTO core_user_roles (id, tenant_id, user_id, role_id, created_at)
@@ -330,7 +404,9 @@ describe("grantsFor", () => {
     expect(grants).toEqual([{ roleKey: "custom.role", permissions: ["ledger:payouts:approve"] }]);
   });
 
-  it("falls back to the compiled role bundle when permissions_json is empty or unparseable", async () => {
+  it("grants nothing for an explicitly emptied permissions bundle", async () => {
+    // '[]' is a stored decision to strip the role; silently restoring the
+    // compiled bundle would be privilege escalation.
     await client.execute({
       sql: `INSERT INTO core_roles (id, tenant_id, key, name, permissions_json, system, created_at)
             VALUES ('role_empty', 't_1', 'finance.analyst', 'Analyst', '[]', 1, ?)`,
@@ -341,6 +417,20 @@ describe("grantsFor", () => {
       args: [now]
     });
     const grants = await grantsFor(makeCtx(actor("tenant.admin")).db, "t_1", "u_e");
+    expect(grants).toEqual([{ roleKey: "finance.analyst", permissions: [] }]);
+  });
+
+  it("falls back to the compiled role bundle only when permissions_json is unparseable", async () => {
+    await client.execute({
+      sql: `INSERT INTO core_roles (id, tenant_id, key, name, permissions_json, system, created_at)
+            VALUES ('role_bad', 't_1', 'finance.analyst', 'Analyst', 'not json', 1, ?)`,
+      args: [now]
+    });
+    await client.execute({
+      sql: `INSERT INTO core_user_roles (id, tenant_id, user_id, role_id, created_at) VALUES ('ur_b', 't_1', 'u_b', 'role_bad', ?)`,
+      args: [now]
+    });
+    const grants = await grantsFor(makeCtx(actor("tenant.admin")).db, "t_1", "u_b");
     expect(grants).toEqual([{ roleKey: "finance.analyst", permissions: permissionsForRole("finance.analyst") }]);
   });
 
@@ -366,7 +456,7 @@ describe("delegations", () => {
   async function seedDelegator(roleKey: string, permissionsOverride?: string[]): Promise<void> {
     await client.execute({
       sql: `INSERT INTO core_roles (id, tenant_id, key, name, permissions_json, system, created_at) VALUES ('role_d', 't_1', ?, 'D', ?, 1, ?)`,
-      args: [roleKey, permissionsOverride ? JSON.stringify(permissionsOverride) : "[]", now]
+      args: [roleKey, JSON.stringify(permissionsOverride ?? permissionsForRole(roleKey)), now]
     });
     await client.execute({
       sql: `INSERT INTO core_user_roles (id, tenant_id, user_id, role_id, created_at) VALUES ('ur_d', 't_1', 'u_boss', 'role_d', ?)`,
@@ -408,13 +498,16 @@ describe("delegations", () => {
     expect(await resolveDelegates(ctx, { policyKey: "ledger.payout" })).toEqual([]);
   });
 
-  it("re-reads the delegator's live grants: a role swap changes the outcome immediately", async () => {
+  it("re-reads the delegator's live grants: stripping their bundle changes the outcome immediately", async () => {
     await seedDelegator("finance.controller"); // holds ledger:payouts:approve
     await insertDelegation();
     const ctx = makeCtx(actor("tenant.admin"), now);
     expect(await resolveDelegates(ctx, { policyKey: "ledger.payout" })).toEqual(["u_junior"]);
 
-    await client.execute("UPDATE core_roles SET key = 'finance.analyst' WHERE id = 'role_d'");
+    await client.execute({
+      sql: "UPDATE core_roles SET permissions_json = ? WHERE id = 'role_d'",
+      args: [JSON.stringify(permissionsForRole("finance.analyst"))]
+    });
     expect(await resolveDelegates(ctx, { policyKey: "ledger.payout" })).toEqual([]);
   });
 
@@ -424,6 +517,14 @@ describe("delegations", () => {
     const ctx = makeCtx(actor("tenant.admin"), now);
     expect(await resolveDelegates(ctx, { policyKey: "ledger.payout", amountMinor: 1000 })).toEqual(["u_junior"]);
     expect(await resolveDelegates(ctx, { policyKey: "ledger.payout", amountMinor: 1001 })).toEqual([]);
+  });
+
+  it("fails closed: a ceilinged delegation does not cover a request with no stated amount", async () => {
+    // No amount may be any amount; only an uncapped delegation covers it.
+    await seedDelegator("finance.controller");
+    await insertDelegation({ maxAmountMinor: 1000 });
+    const ctx = makeCtx(actor("tenant.admin"), now);
+    expect(await resolveDelegates(ctx, { policyKey: "ledger.payout" })).toEqual([]);
   });
 
   it("excludes a delegation outside its scope, includes one inside it, excludes an unparseable scope", async () => {

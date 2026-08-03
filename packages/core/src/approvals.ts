@@ -24,6 +24,15 @@ export interface ApprovalPolicy {
    * regulatory floor." These ignore `policy.autoApprove` entirely.
    */
   neverAutoApprove?: true;
+  /**
+   * Default true: a pass-through spends the approval, so a second attempt
+   * asks again (one approval authorises exactly one execution). Set false
+   * only when the action it gates already has its own DB-level uniqueness
+   * guard downstream (a unique index) — there, the approval just needs to
+   * exist and stay valid for the whole race window; the index, not gate(),
+   * is what tells the single winner from the losers.
+   */
+  singleUse?: boolean;
 }
 
 function policy(p: ApprovalPolicy): ApprovalPolicy {
@@ -61,7 +70,17 @@ export const APPROVAL_POLICIES: Record<string, ApprovalPolicy> = Object.fromEntr
     // An accrual is a financial position, not a note: it books a receivable from
     // the underwriter and a payable to the channel (CLAUDE.md §4, §12), so it is
     // gated on the same terms as the reversal that undoes it.
-    policy({ key: "dist.commission_accrue", module: "core", decide: "dist:commissions:adjust", dualControl: "above_threshold", defaultThresholdMinor: 1_000_00 }),
+    policy({
+      key: "dist.commission_accrue",
+      module: "core",
+      decide: "dist:commissions:adjust",
+      dualControl: "above_threshold",
+      defaultThresholdMinor: 1_000_00,
+      // dist_commission_entries_accrual_uq already guards one accrual per
+      // (policy, kind); gate() consuming the approval on the first racer
+      // would just spend it out from under the other concurrent submits.
+      singleUse: false
+    }),
     policy({ key: "dist.offering_publish", module: "core", decide: "dist:offerings:publish", dualControl: "never" }),
     policy({ key: "dist.settlement_run", module: "core", decide: "dist:commissions:settle", dualControl: "always", neverAutoApprove: true }),
     policy({ key: "dist.partner_activate", module: "core", decide: "orbit:partners:certify", dualControl: "never" }),
@@ -73,7 +92,17 @@ export const APPROVAL_POLICIES: Record<string, ApprovalPolicy> = Object.fromEntr
     // Waiving a required onboarding step lets something go live unproven. It is
     // never auto-approvable — an allowlist that could skip diligence is the same
     // hole the checklist exists to close.
-    policy({ key: "core.onboarding_waive", module: "core", decide: "core:onboarding:waive", dualControl: "always", neverAutoApprove: true }),
+    // assertOpen() refuses to waive a step that isn't still pending, so the
+    // approval doesn't need to be spent to stop a second waive — it just needs
+    // to still say "approved" for the audit trail waivedApprovalId points at.
+    policy({
+      key: "core.onboarding_waive",
+      module: "core",
+      decide: "core:onboarding:waive",
+      dualControl: "always",
+      neverAutoApprove: true,
+      singleUse: false
+    }),
     // A delegation moves the authority to approve to somebody else for a window.
     // Consequential by definition (docs/06 §1), so it is itself approved.
     policy({ key: "core.delegation_grant", module: "core", decide: "core:delegations:write", dualControl: "never" }),
@@ -84,6 +113,9 @@ export const APPROVAL_POLICIES: Record<string, ApprovalPolicy> = Object.fromEntr
     policy({ key: "signal.budget_commit", module: "signal", decide: "signal:campaigns:launch", dualControl: "above_threshold", defaultThresholdMinor: 50_000_00 }),
     policy({ key: "signal.boost", module: "signal", decide: "signal:campaigns:update", dualControl: "never" }),
     policy({ key: "signal.creator_brief", module: "signal", decide: "signal:creatives:approve", dualControl: "never" }),
+    // docs/modules/scout.md §4: "whitespace approvals (promote/park)" — a
+    // product-strategy decision, same shape as dist.offering_publish.
+    policy({ key: "scout.whitespace_promote", module: "scout", decide: "scout:whitespaces:promote", dualControl: "never" }),
     // governance
     policy({ key: "core.impersonate", module: "core", decide: "core:impersonate:use", dualControl: "always", neverAutoApprove: true }),
     // A mandate is delegated spending authority handed to an agent, so it is
@@ -130,8 +162,9 @@ export interface GateInput {
 function needsDualControl(p: ApprovalPolicy, amountMinor: number | undefined): boolean {
   if (p.dualControl === "always") return true;
   if (p.dualControl === "never") return false;
-  const threshold = p.defaultThresholdMinor ?? 0;
-  return (amountMinor ?? 0) >= threshold;
+  // Fail closed: an amount the caller could not state may be any amount.
+  if (amountMinor == null) return true;
+  return amountMinor >= (p.defaultThresholdMinor ?? 0);
 }
 
 /**
@@ -167,9 +200,24 @@ export async function gate(ctx: Ctx, input: GateInput): Promise<ApprovalRow | nu
     .limit(1);
 
   const row = existing[0] as ApprovalRow | undefined;
-  if (row?.decision === "approved" && row.decidedAt != null) {
-    if (ctx.now - row.decidedAt <= APPROVAL_TTL_MS) return row;
-    // Stale: fall through and ask again.
+  if (row?.decision === "approved" && row.decidedAt != null && ctx.now - row.decidedAt <= APPROVAL_TTL_MS) {
+    // An approval covers at most the amount it was approved for, and it is
+    // single-use: the pass-through spends it, so the next attempt asks again.
+    const approvedFor = safeJson<{ amountMinor?: number | null }>(row.contextJson)?.amountMinor ?? 0;
+    if ((input.amountMinor ?? 0) <= approvedFor) {
+      if (p.singleUse === false) return row;
+      await ctx.db
+        .update(schema.approvals)
+        .set({ decision: "consumed" })
+        .where(and(eq(schema.approvals.tenantId, ctx.tenantId), eq(schema.approvals.id, row.id)));
+      await audit(ctx, {
+        action: "core.approval.consumed",
+        subjectRef: input.subjectRef,
+        after: { approvalId: row.id, policyKey: p.key, amountMinor: input.amountMinor ?? null }
+      });
+      return row;
+    }
+    // Approved for less than is now at stake: fall through and ask again.
   }
   if (row?.decision === "pending") throw approvalRequired(p.key, row.id);
   if (row?.decision === "rejected" && ctx.now - (row.decidedAt ?? 0) <= APPROVAL_TTL_MS) {
@@ -226,8 +274,10 @@ export async function decide(
   if (!p) throw internal(`unknown approval policy ${row.policyKey}`);
 
   const subject = { tenantId: ctx.tenantId, module: p.module };
+  // A corrupt context fails closed to dual control rather than crashing —
+  // or, worse, quietly waiving the second pair of eyes.
   const context = row.contextJson
-    ? (JSON.parse(row.contextJson) as { dualControl?: boolean; amountMinor?: number | null })
+    ? (safeJson<{ dualControl?: boolean; amountMinor?: number | null }>(row.contextJson) ?? { dualControl: true })
     : {};
 
   // Lacking the deciding permission is a refusal, not a request for another
@@ -317,8 +367,10 @@ export async function grantsFor(db: CoreDb, tenantId: string, userId: string): P
     .where(and(eq(schema.userRoles.tenantId, tenantId), eq(schema.userRoles.userId, userId)));
 
   return rows.map((row) => {
-    const stored = safeJson<string[]>(row.permissionsJson) ?? [];
-    const permissions = stored.length ? stored : [...permissionsForRole(row.key)];
+    // A stored '[]' is a decision to strip the role and must stay empty;
+    // only an unreadable bundle falls back to the compiled table.
+    const stored = safeJson<string[]>(row.permissionsJson);
+    const permissions = Array.isArray(stored) ? stored : [...permissionsForRole(row.key)];
     const scope = row.scopeJson ? (ScopeJson.parse(safeJson(row.scopeJson)) as Scope) : undefined;
     return { roleKey: row.key, permissions, ...(scope ? { scope } : {}) };
   });
@@ -376,7 +428,9 @@ async function activeDelegations(
 
   for (const row of rows) {
     if (!inScope(row.scopeJson, input.policyKey, module)) continue;
-    if (row.maxAmountMinor != null && (input.amountMinor ?? 0) > row.maxAmountMinor) continue;
+    // Fail closed: a ceilinged delegation never covers an unstated amount.
+    if (row.maxAmountMinor != null && (input.amountMinor == null || input.amountMinor > row.maxAmountMinor))
+      continue;
 
     let held = holds.get(row.fromUserId);
     if (held === undefined) {

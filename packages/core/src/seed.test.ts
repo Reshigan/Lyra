@@ -46,6 +46,12 @@ describe("password", () => {
 });
 
 describe("seed", () => {
+  it("refuses to seed a production environment with the built-in demo password", async () => {
+    await expect(seed(db, { environment: "production" })).rejects.toThrow(/production/);
+    const tenants = await db.select().from(schema.tenants);
+    expect(tenants).toHaveLength(0);
+  });
+
   it("provisions GONXT once, with logins, panel and a reconcilable sale", async () => {
     const r = await seed(db, { password: "gonxt-test-password" });
     expect(r.tenantId).toMatch(/^tn_/);

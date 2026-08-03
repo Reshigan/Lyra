@@ -14,13 +14,12 @@ import { useShellData } from "./workspace";
 import { useLoaderData } from "react-router";
 
 // docs/10 §6 / docs/17 ADM-025: "cost explorer per tenant (AI, storage, egress)
-// with unit-cost drift alerting". Only the AI + media half exists today —
+// with unit-cost drift alerting". AI + media come from
 // GET /v1/analytics/unit-economics (analytics_unit_economics, rolled nightly
-// from ai_runs + ledger 5100/5200). Storage/egress has no data source anywhere
-// in the codebase (no byte-accounting table, no Cloudflare billing-API read);
-// fabricating a number for it would be worse than omitting it, so this screen
-// reports what is actually metered and docs/25 §6 carries the gap as a flagged
-// follow-up rather than an invented figure.
+// from ai_runs + ledger 5100/5200). Storage and egress come from
+// GET /v1/analytics/usage — storage is derived from core_files.size_bytes at
+// read time, egress from analytics_egress_days, incremented at the R2
+// download seams (see apps/api/src/engines/egress.ts).
 
 /* --------------------------------------------------------------- constants */
 
@@ -48,9 +47,10 @@ const LABELS: Record<string, Record<string, string>> = {
     "table.denied": "You do not have permission to read analytics reports, so this screen is hidden.",
     "drift.title": "Unit cost is drifting",
     "drift.reason": `One or more units now cost ${DRIFT_THRESHOLD_PCT}% or more above their ${DRIFT_BASELINE_DAYS}-day baseline:`,
-    "gap.title": "Storage and egress are not metered",
-    "gap.reason":
-      "This report covers AI and media cost only. No per-tenant storage or egress byte tracking exists yet — see docs/25 §6."
+    "usage.title": "Storage and egress",
+    "usage.window": "Storage is what this tenant holds right now; egress is bytes downloaded over the last 30 days.",
+    "usage.storage": "Stored",
+    "usage.egress": "Egress, last 30 days"
   },
   ar: {
     title: "مستكشف التكلفة",
@@ -66,8 +66,10 @@ const LABELS: Record<string, Record<string, string>> = {
     "table.denied": "لا تملك صلاحية الاطلاع على تقارير التحليلات، لذا هذه الشاشة مخفية.",
     "drift.title": "تكلفة الوحدة في ارتفاع",
     "drift.reason": `وحدة واحدة أو أكثر تكلف الآن ${DRIFT_THRESHOLD_PCT}% أو أكثر فوق خط الأساس لـ ${DRIFT_BASELINE_DAYS} أيام:`,
-    "gap.title": "التخزين والنقل الخارج غير مُقاسَين",
-    "gap.reason": "يغطي هذا التقرير تكلفة الذكاء الاصطناعي والوسائط فقط. لا يوجد بعد تتبع لبايتات التخزين أو النقل الخارج لكل مستأجر — راجع docs/25 §6."
+    "usage.title": "التخزين والنقل الخارج",
+    "usage.window": "التخزين هو ما يحتفظ به هذا المستأجر الآن؛ والنقل الخارج هو البايتات المُنزَّلة خلال آخر 30 يومًا.",
+    "usage.storage": "المُخزَّن",
+    "usage.egress": "النقل الخارج، آخر 30 يومًا"
   }
 };
 
@@ -103,6 +105,11 @@ export interface Drift {
   latestMinor: number;
   baselineMinor: number;
   deltaPct: number;
+}
+
+export interface Usage {
+  storageBytes: number;
+  egressDays: Array<{ day: string; bytes: number }>;
 }
 
 /* ------------------------------------------------------------------ helpers */
@@ -149,6 +156,24 @@ export function driftingUnits(rows: readonly UnitEconRow[], thresholdPct = DRIFT
   return drifts.sort((a, b) => b.deltaPct - a.deltaPct);
 }
 
+/** 30-day egress total — the API already returns at most 30 daily rows, newest first. */
+export function egressTotal(usage: Usage | null): number {
+  return usage?.egressDays.reduce((sum, d) => sum + d.bytes, 0) ?? 0;
+}
+
+/** "1.4 MB" — locale-aware, one decimal above bytes. */
+export function formatBytes(bytes: number, locale: string): string {
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  const nf = new Intl.NumberFormat(locale, { maximumFractionDigits: unit === 0 ? 0 : 1 });
+  return `${nf.format(value)} ${units[unit]}`;
+}
+
 async function readable<T>(call: Promise<T>): Promise<T | null> {
   try {
     return await call;
@@ -162,8 +187,11 @@ async function readable<T>(call: Promise<T>): Promise<T | null> {
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = context.get(cloudflare).env;
-  const rows = await readable(api<{ data: UnitEconRow[] }>("/v1/analytics/unit-economics", { env, request }));
-  return { rows: rows?.data ?? null };
+  const [rows, usage] = await Promise.all([
+    readable(api<{ data: UnitEconRow[] }>("/v1/analytics/unit-economics", { env, request })),
+    readable(api<{ data: Usage }>("/v1/analytics/usage", { env, request }))
+  ]);
+  return { rows: rows?.data ?? null, usage: usage?.data ?? null };
 }
 
 /* --------------------------------------------------------------- the screen */
@@ -229,7 +257,20 @@ export default function CostExplorer() {
         />
       ) : null}
 
-      <GuardrailNotice tone="info" title={L("gap.title")} reason={L("gap.reason")} />
+      {loaded.usage ? (
+        <Card title={L("usage.title")} description={L("usage.window")}>
+          <dl className="flex flex-wrap gap-x-10 gap-y-3">
+            <div className="flex flex-col gap-0.5">
+              <dt className="font-ui text-12 text-subtle">{L("usage.storage")}</dt>
+              <dd className="font-display text-18 text-text">{formatBytes(loaded.usage.storageBytes, locale)}</dd>
+            </div>
+            <div className="flex flex-col gap-0.5">
+              <dt className="font-ui text-12 text-subtle">{L("usage.egress")}</dt>
+              <dd className="font-display text-18 text-text">{formatBytes(egressTotal(loaded.usage), locale)}</dd>
+            </div>
+          </dl>
+        </Card>
+      ) : null}
 
       <Card title={L("table.title")} description={L("table.window")}>
         {loaded.rows === null ? (

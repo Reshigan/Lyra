@@ -34,10 +34,26 @@ export function subtitleOf(row: Row): string | undefined {
   return undefined;
 }
 
+/** "tenant_id" → "Tenant Id": a raw machine string is never a label. Locale-
+ *  free on purpose — mobile has no column catalogue to translate from, and
+ *  title-casing leaves non-Latin text alone. */
+export function humanize(key: string): string {
+  return key
+    .replace(/[_-]+/g, " ")
+    .trim()
+    .split(" ")
+    .map((word) => (word ? word[0]!.toUpperCase() + word.slice(1) : word))
+    .join(" ");
+}
+
 /** Every field of a record, as display pairs. Objects and arrays are shown as
  *  JSON rather than as "[object Object]": raw is honest, blank is not. */
-export function fieldsOf(row: Row): { key: string; value: string }[] {
-  return Object.entries(row).map(([key, value]) => ({ key, value: display(value) }));
+export function fieldsOf(row: Row): { key: string; label: string; value: string }[] {
+  return Object.entries(row).map(([key, value]) => ({
+    key,
+    label: humanize(key),
+    value: display(value)
+  }));
 }
 
 function display(value: unknown): string {

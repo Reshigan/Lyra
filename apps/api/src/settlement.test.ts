@@ -112,7 +112,9 @@ async function entry(
   await c.db.insert(schema.distCommissionEntries).values({
     id: entryId,
     tenantId: c.tenantId,
-    policyId: "pol_1",
+    // One policy per entry: dist_commission_entries_accrual_uq allows a single
+    // accrual per (policy, kind).
+    policyId: `pol_${entryId}`,
     providerId: "prv_1",
     channelId: CHANNEL,
     kind: "new_business",
@@ -281,6 +283,34 @@ describe("re-running a period", () => {
     const again = await run(ctx);
     expect(again.settlement.state).toBe("approved");
     expect(again.settlement.netMinor).toBe(30_000);
+  });
+
+  it("refuses to approve a draft whose entries changed since the run", async () => {
+    await partner(ctx, 0);
+    await entry(ctx, 30_000, NOW - 2 * DAY);
+    const { settlement } = await run(ctx);
+
+    // Booked between draft and approve: the draft's posted total would not
+    // cover it, yet the old code stamped it payable anyway.
+    await entry(ctx, 5_000, NOW - DAY);
+
+    await rejects(approveSettlement(ctx, settlement.id), /re-run/);
+
+    // Nothing posted, nothing stamped while the numbers disagreed.
+    expect(await ctx.db.select().from(schema.ledgerJournalLines)).toHaveLength(0);
+    const entries = await ctx.db.select().from(schema.distCommissionEntries);
+    expect(entries.every((e) => e.channelSettlementId === null && e.state === "accrued")).toBe(true);
+
+    // Re-draft picks the new entry up, and approve then pays the right total.
+    const again = await run(ctx);
+    expect(again.settlement.netMinor).toBe(35_000);
+    await rejects(approveSettlement(ctx, again.settlement.id), /dist\.settlement_run/);
+    await signOff("dist.settlement_run", again.settlement.id);
+    const after = await approveSettlement(ctx, again.settlement.id);
+    expect(after.netMinor).toBe(35_000);
+
+    const stamped = await ctx.db.select().from(schema.distCommissionEntries);
+    expect(stamped.every((e) => e.channelSettlementId === settlement.id && e.state === "payable")).toBe(true);
   });
 
   it("a repeated payout posts once and pays once", async () => {

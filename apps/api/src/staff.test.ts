@@ -4,7 +4,7 @@ import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
 import { and, eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
-import { EntitlementsJson, PolicyJson, schema } from "@lyra/db";
+import { EntitlementsJson, PolicyJson, ScopeJson, schema } from "@lyra/db";
 import { decide, gate, permissionsForRole, type AppError, type Ctx } from "@lyra/core";
 import {
   changeRoles,
@@ -174,6 +174,21 @@ describe("joiner", () => {
     expect(JSON.parse(rows[0]!.labelJson) as { key: string }).toEqual({ key: "onboarding.staff.contract_signed" });
   });
 
+  it("persists a team scope under the canonical teamIds key that ScopeJson can read", async () => {
+    // Regression: the invite wrote {teams:[...]} while ScopeJson parses teamIds,
+    // so login stripped the overlay and the grant was silently tenant-wide.
+    await ctx.db.insert(schema.teams).values({ id: "tm_1", tenantId: T, name: "Motor desk", createdAt: ctx.now });
+    const { user } = await inviteStaff(ctx, {
+      email: "scoped@x.test",
+      name: "Scoped",
+      roleKeys: ["axis.agent"],
+      teamIds: ["tm_1"]
+    });
+    const [grant] = await ctx.db.select().from(schema.userRoles).where(eq(schema.userRoles.userId, user.id));
+    const scope = ScopeJson.parse(JSON.parse(grant!.scopeJson!));
+    expect(scope.teamIds).toEqual(["tm_1"]);
+  });
+
   it("refuses a second account on the same email", async () => {
     await inviteStaff(ctx, { email: "dup@x.test", name: "One", roleKeys: ["axis.agent"] });
     expect(await detailOf(() => inviteStaff(ctx, { email: "dup@x.test", name: "Two", roleKeys: ["axis.agent"] }))).toBe(
@@ -186,6 +201,16 @@ describe("joiner", () => {
       "unknown role: not.a.role"
     );
     const users = await ctx.db.select().from(schema.users).where(eq(schema.users.email, "n@x.test"));
+    expect(users).toHaveLength(0);
+  });
+
+  it("refuses to invite past the tenant's seat limit", async () => {
+    // Only u_admin exists (seeded in beforeEach), so a 1-seat entitlement is already full.
+    ctx.entitlements = EntitlementsJson.parse({ seats: 1 });
+    expect(
+      await detailOf(() => inviteStaff(ctx, { email: "over@x.test", name: "Over", roleKeys: ["axis.agent"] }))
+    ).toBe("seat limit reached (1 seats)");
+    const users = await ctx.db.select().from(schema.users).where(eq(schema.users.email, "over@x.test"));
     expect(users).toHaveLength(0);
   });
 });

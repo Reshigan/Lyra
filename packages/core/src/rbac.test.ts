@@ -7,6 +7,7 @@ import {
   expand,
   isValidGrantString,
   permissionsForRole,
+  requiresMfa,
   type Actor
 } from "./rbac.js";
 
@@ -32,7 +33,7 @@ describe("can", () => {
   });
 
   it("fails closed when a team-scoped grant meets an unscoped subject", () => {
-    const scoped = actor("axis.lead", { teams: ["tm_a"] });
+    const scoped = actor("axis.lead", { teamIds: ["tm_a"] });
     expect(can(scoped, "axis:cases:approve", { tenantId: "t_1", teamId: "tm_a" })).toBe(true);
     expect(can(scoped, "axis:cases:approve", { tenantId: "t_1", teamId: "tm_b" })).toBe(false);
     expect(can(scoped, "axis:cases:approve", { tenantId: "t_1" })).toBe(false);
@@ -44,7 +45,7 @@ describe("can", () => {
       id: "u_1",
       tenantId: "t_1",
       grants: [
-        { roleKey: "axis.lead", permissions: permissionsForRole("axis.lead"), scope: { teams: ["tm_a"] } },
+        { roleKey: "axis.lead", permissions: permissionsForRole("axis.lead"), scope: { teamIds: ["tm_a"] } },
         { roleKey: "north.board", permissions: permissionsForRole("north.board") }
       ]
     };
@@ -56,6 +57,20 @@ describe("can", () => {
   it("masks PII behind core:pii:view regardless of role", () => {
     expect(can(actor("axis.agent"), "core:pii:view")).toBe(false);
     expect(can(actor("axis.lead"), "core:pii:view")).toBe(true);
+  });
+});
+
+describe("requiresMfa", () => {
+  it("requires MFA when ANY internal role is held, even alongside external ones", async () => {
+    // .every() let one external role exempt an admin from MFA.
+    expect(requiresMfa(["partner.developer", "tenant.admin"])).toBe(true);
+    expect(requiresMfa(["customer", "finance.controller"])).toBe(true);
+  });
+
+  it("exempts only purely external accounts, and fails closed on no roles at all", async () => {
+    expect(requiresMfa(["partner.developer"])).toBe(false);
+    expect(requiresMfa(["provider.viewer", "customer"])).toBe(false);
+    expect(requiresMfa([])).toBe(true);
   });
 });
 

@@ -1,9 +1,11 @@
 import { id } from "@lyra/db";
 import { schema } from "@lyra/db";
-import { checkKAnonymity, CUSTOMER_PII, DEFAULT_K_FLOOR } from "@lyra/core";
+import { badRequest, can, checkKAnonymity, CUSTOMER_PII, DEFAULT_K_FLOOR } from "@lyra/core";
 import { register, type Resource } from "./crud.js";
 import { gatewayFor } from "./mw.js";
 import { embedUpsert } from "./engines/vectorize.js";
+import { assertCanGrant, bundleOf } from "./engines/staff.js";
+import { must } from "./rows.js";
 import {
   dashboardVisible,
   exportVisible,
@@ -86,6 +88,14 @@ export const CORE = register(
     read: "core:roles:read",
     create: "core:roles:assign",
     remove: "core:roles:assign"
+  }, {
+    // core:roles:assign lets an actor assign roles, not grant authority they
+    // don't hold themselves — same boundary inviteStaff/changeRoles enforce.
+    beforeWrite: async (ctx, values) => {
+      const role = await must(ctx, schema.roles, values.roleId as string, "role");
+      assertCanGrant(ctx, bundleOf(role), role.key);
+      return values;
+    }
   }),
   r("teams", schema.teams, "tm", "core", rw("core:teams"), { searchable: ["name"] }),
   r("customers", schema.customers, "cu", "core", rcud("core:customers"), {
@@ -141,7 +151,11 @@ export const CORE = register(
   // tenant sets or rotates it) and never readable back.
   r("webhooks", schema.webhooks, "whk", "core", rw("core:webhooks"), { secretColumns: ["secret"] }),
   r("webhook-deliveries", schema.webhookDeliveries, "whd", "core", ro("core:webhooks:read")),
-  r("notifications", schema.notifications, "ntf", "core", ro("core:notifications:read")),
+  r("notifications", schema.notifications, "ntf", "core", ro("core:notifications:read"), {
+    // The inbox in routes/me.ts filters to the addressee; the generic list must
+    // not be the back door that shows every user's notifications tenant-wide.
+    rowVisible: (ctx, row) => row.userId === ctx.actor.id
+  }),
   r("audit-log", schema.auditLog, "aud", "core", ro("core:audit:read"), { immutable: true }),
   r("event-dlq", schema.eventDlq, "dlq", "core", ro("admin:dlq:read")),
   // Read-only here on purpose. A checklist step is generated from a template and
@@ -179,26 +193,28 @@ export const DIST = register(
     update: "dist:quote_requests:create"
   }),
   r("quote-responses", schema.distQuoteResponses, "qs", "dist", ro("dist:quote_requests:read")),
-  r("commission-entries", schema.distCommissionEntries, "ce", "dist", {
-    read: "dist:commissions:read",
-    update: "dist:commissions:adjust"
-  }, {
-    // `netCommissionMinor` is the column; the old `netMinor` (a settlements
-    // column) named nothing here, so the approval carried no amount at all.
-    approval: { update: "dist.commission_adjust", amountField: "netCommissionMinor" }
-  }),
+  // `state`, `channelSettlementId` and `txnId` are settlement-engine-owned:
+  // resetting them via a generic PATCH would unstick an already-paid entry
+  // and let it sweep into a second settlement run (double payment). The one
+  // legitimate adjustment path is POST /commission-entries/:id/clawback
+  // (routes/dist.ts), which reverses with a new row rather than editing the
+  // original in place and is itself gated on `dist.commission_adjust` — a
+  // generic `update` here would be a second, unguarded door onto the same
+  // gate (same bug class as ADR-0023, settlements and partner-agreements).
+  r("commission-entries", schema.distCommissionEntries, "ce", "dist", ro("dist:commissions:read")),
   r("next-best-offers", schema.distNextBestOffers, "nb", "dist", {
     read: "dist:offers:read",
     update: "dist:offers:override"
   }),
   // A version of the terms, superseded rather than edited — the same discipline
   // as `commission-rates`, and for the same reason: a commission dispute is
-  // settled by reading the version that was active on the sale date. Signature
-  // and state transitions go through routes/onboarding.ts.
-  r("partner-agreements", schema.distPartnerAgreements, "pag", "dist", {
-    read: "dist:agreements:read",
-    create: "dist:agreements:write"
-  }, { immutable: true, actorColumns: ["createdBy"] })
+  // settled by reading the version that was active on the sale date. Draft,
+  // send-for-signature and sign all go through routes/onboarding.ts, whose
+  // `signAgreement` enforces the dual-control `dist.agreement_sign` approval —
+  // a generic create here would let `dist:agreements:write` alone insert a row
+  // already `state: "active"`, skipping that gate entirely (same bug class as
+  // ADR-0023 and the settlements CRUD door: docs/decisions/).
+  r("partner-agreements", schema.distPartnerAgreements, "pag", "dist", ro("dist:agreements:read"))
 );
 
 /* -------------------------------------------------------------------- axis */
@@ -241,6 +257,14 @@ export const AXIS = register(
 
 /* ------------------------------------------------------------------- orbit */
 
+/** Legal renewal lifecycle (renewal-campaign.ts's resolved()). accepted/lost are terminal. */
+const RENEWAL_TRANSITIONS: Record<string, string[]> = {
+  scheduled: ["offered", "accepted", "lost"],
+  offered: ["accepted", "lost"],
+  accepted: [],
+  lost: []
+};
+
 export const ORBIT = register(
   r("conversations", schema.orbitConversations, "cnv", "orbit", {
     read: "orbit:conversations:read",
@@ -264,13 +288,31 @@ export const ORBIT = register(
   r("renewals", schema.orbitRenewals, "rnw", "orbit", {
     read: "orbit:renewals:read",
     update: "orbit:renewals:update"
+  }, {
+    // `accepted`/`lost` are terminal per renewal-campaign.ts's own `resolved()`
+    // check — without this, a generic PATCH could reopen a closed renewal
+    // (state back to "scheduled") after RenewalWorkflow has already finished,
+    // leaving a "scheduled" row nothing will ever advance again.
+    beforeWrite: (_ctx, values, existing) => {
+      const from = existing!.state as string;
+      const to = values.state;
+      if (typeof to === "string" && to !== from && !(RENEWAL_TRANSITIONS[from] ?? []).includes(to)) {
+        throw badRequest(`a renewal cannot move ${from} -> ${to}`);
+      }
+      return values;
+    }
   }),
   r("journeys", schema.orbitJourneys, "jrn", "orbit", rw("orbit:journeys"), { actorColumns: ["createdBy"] }),
   r("journey-runs", schema.orbitJourneyRuns, "jrr", "orbit", ro("orbit:journeys:read")),
+  // No generic `update`: stage/status/sandboxFlag/goLiveAt are advancePartner()'s
+  // (blockingSteps() + dist.partner_activate on "live") — a raw PATCH would let
+  // an actor self-activate straight to live, or reverse a suspend/terminate,
+  // skipping both. Same door as ADR-0023, settlements, partner-agreements,
+  // commission-entries, periods. Profile-field edits need a dedicated route
+  // when a test demands one.
   r("partners", schema.orbitPartners, "ptn", "orbit", {
     read: "orbit:partners:read",
-    create: "orbit:partners:create",
-    update: "orbit:partners:update"
+    create: "orbit:partners:create"
   }, { searchable: ["name"], approval: { create: "dist.partner_activate" } }),
   r("partner-txns", schema.orbitPartnerTxns, "ptx", "orbit", ro("orbit:partners:read")),
   r("handover-notes", schema.orbitHandoverNotes, "hnd", "orbit", rw("orbit:handover")),
@@ -281,6 +323,24 @@ export const ORBIT = register(
 );
 
 /* ------------------------------------------------------------------ signal */
+
+/**
+ * Legal campaign lifecycle (schema/signal.ts's `state` comment:
+ * draft|review|scheduled|live|paused|ended). `ended` is terminal — without
+ * this, a generic PATCH could resurrect an ended campaign straight back to
+ * `live` (spend resuming with no launch approval re-checked) or jump `live`
+ * back to `draft`/`review` as if it had never gone out. `draft -> live`
+ * direct is intentionally legal (J-M1: a simple campaign skips the formal
+ * review/scheduled steps and launches in one PATCH).
+ */
+const CAMPAIGN_TRANSITIONS: Record<string, string[]> = {
+  draft: ["review", "scheduled", "live", "ended"],
+  review: ["draft", "scheduled", "live", "ended"],
+  scheduled: ["review", "live", "ended"],
+  live: ["paused", "ended"],
+  paused: ["live", "ended"],
+  ended: []
+};
 
 export const SIGNAL = register(
   r("audiences", schema.signalAudiences, "aud", "signal", {
@@ -297,7 +357,18 @@ export const SIGNAL = register(
     // No amountField: a campaign's budget lives in `budgetJson` (per channel,
     // per period), not in a scalar column, and `amountField` reads one column.
     // The launch approval shows the campaign, not a number.
-    approval: { update: "signal.campaign_launch" }
+    approval: { update: "signal.campaign_launch" },
+    // `existing` is null on create (a new campaign has no prior state to
+    // transition from) — the table only constrains the update path.
+    beforeWrite: (_ctx, values, existing) => {
+      if (!existing) return values;
+      const from = existing.state as string;
+      const to = values.state;
+      if (typeof to === "string" && to !== from && !(CAMPAIGN_TRANSITIONS[from] ?? []).includes(to)) {
+        throw badRequest(`a campaign cannot move ${from} -> ${to}`);
+      }
+      return values;
+    }
   }),
   r("creatives", schema.signalCreatives, "crv", "signal", {
     read: "signal:creatives:read",
@@ -348,10 +419,17 @@ export const SCOUT = register(
     }
   ),
   r("clusters", schema.scoutClusters, "clu", "scout", ro("scout:clusters:read")),
-  r("whitespaces", schema.scoutWhitespaces, "wsp", "scout", {
-    read: "scout:whitespaces:read",
-    update: "scout:whitespaces:promote"
-  }),
+  r(
+    "whitespaces",
+    schema.scoutWhitespaces,
+    "wsp",
+    "scout",
+    {
+      read: "scout:whitespaces:read",
+      update: "scout:whitespaces:promote"
+    },
+    { approval: { update: "scout.whitespace_promote" } }
+  ),
   r("panel-bench", schema.scoutPanelBench, "pnb", "scout", ro("scout:panel_bench:read"), {
     // docs/modules/scout.md §2.5 — a bench row is one provider x line x
     // period cut; below the k-anonymity floor it names the one counterparty
@@ -368,6 +446,20 @@ export const SCOUT = register(
     read: "scout:data_products:read",
     create: "scout:data_products:create",
     update: "scout:data_products:publish"
+  }, {
+    // ROLE-028: provider.viewer only has scout:data_products:read, so without
+    // this it sees every draft/suspended product tenant-wide, not just what's
+    // published. Publishers (scout:data_products:publish) still see drafts,
+    // they're the ones authoring them. This does NOT scope a provider.viewer
+    // down to only the products *their* org subscribed to — there is no
+    // actor-to-provider identity in the RBAC model to check that against
+    // (Scope has teamIds/productLines/modules, no providerIds); that gap needs
+    // an ADR, not a rowVisible predicate. See ADR-0025 (proposed, unresolved).
+    rowVisible: ((ctx, row) =>
+      row.status === "published" ||
+      can(ctx.actor, "scout:data_products:publish", { tenantId: ctx.tenantId, module: "scout" })) as NonNullable<
+      Resource["rowVisible"]
+    >
   })
 );
 
@@ -376,9 +468,14 @@ export const SCOUT = register(
 export const NORTH = register(
   r("metrics", schema.northMetrics, "mtr", "north", rw("north:metrics")),
   r("snapshots", schema.northSnapshots, "snp", "north", ro("north:snapshots:read"), { immutable: true }),
+  // No generic create: docs/modules/north.md §2.2's hallucination control (every
+  // claim machine-verified against the metric layer) only runs inside
+  // engines/narrator.ts's generateBriefing(), called from POST
+  // /v1/north/briefings/generate (routes/north.ts). A generic create here would
+  // let anyone holding north:briefings:generate POST an arbitrary narrativeRef
+  // straight to "review" with no verification behind it.
   r("briefings", schema.northBriefings, "brf", "north", {
     read: "north:briefings:read",
-    create: "north:briefings:generate",
     update: "north:briefings:approve"
   }),
   r("anomalies", schema.northAnomalies, "ano", "north", {
@@ -399,11 +496,22 @@ export const NORTH = register(
 
 /* ------------------------------------------------------------------ ledger */
 
+/** Legal invoice lifecycle (docs/19). Anything else is a 400, not a shortcut. */
+const INVOICE_TRANSITIONS: Record<string, string[]> = {
+  draft: ["issued", "void"],
+  issued: ["paid", "overdue", "void", "credited"],
+  overdue: ["paid", "void", "credited"],
+  paid: ["credited"],
+  void: [],
+  credited: []
+};
+
 export const LEDGER = register(
-  r("txns", schema.ledgerTxns, "txn", "ledger", {
-    read: "ledger:txns:read",
-    create: "ledger:txns:create"
-  }),
+  // Read-only on purpose (CLAUDE.md §12). A transaction is opened by
+  // POST /v1/ledger/txn/:type in routes/ledger.ts — state machine, idempotency
+  // key, balanced journal. A generated create was a second mint for money rows
+  // with client-supplied `state` and `grossMinor` and none of that.
+  r("txns", schema.ledgerTxns, "txn", "ledger", ro("ledger:txns:read")),
   r("txn-transitions", schema.ledgerTxnTransitions, "txt", "ledger", ro("ledger:txns:read"), {
     immutable: true
   }),
@@ -417,10 +525,12 @@ export const LEDGER = register(
     immutable: true
   }),
   r("account-balances", schema.ledgerAccountBalances, "bal", "ledger", ro("ledger:accounts:read")),
-  r("periods", schema.ledgerPeriods, "per", "ledger", {
-    read: "ledger:periods:read",
-    update: "ledger:periods:close"
-  }, { approval: { update: "ledger.period_close" } }),
+  // `state` (plus `checklistJson`/`closedBy`/`closedAt`) is close-sequencing-owned:
+  // a raw PATCH could jump straight to hard_closed from open, skipping the
+  // soft-close-first rule and closeChecks() (trial balance / pending-external /
+  // client-money-breach invariants) that POST /periods/:code/close enforces.
+  // Same door as ADR-0023, settlements, partner-agreements, commission-entries.
+  r("periods", schema.ledgerPeriods, "per", "ledger", ro("ledger:periods:read")),
   r("recon-runs", schema.ledgerReconRuns, "rcr", "ledger", {
     read: "ledger:recon:read",
     create: "ledger:recon:run"
@@ -428,7 +538,7 @@ export const LEDGER = register(
   r("recon-matches", schema.ledgerReconMatches, "rcm", "ledger", {
     read: "ledger:recon:read",
     update: "ledger:recon:confirm"
-  }),
+  }, { signedMoneyColumns: ["deltaMinor"] }),
   r("client-money-checks", schema.ledgerClientMoneyChecks, "cmc", "ledger", ro("ledger:client_money:read"), {
     immutable: true
   }),
@@ -437,13 +547,30 @@ export const LEDGER = register(
     read: "ledger:invoices:read",
     create: "ledger:invoices:create",
     update: "ledger:invoices:approve"
+  }, {
+    // An invoice is born a draft and walks its lifecycle; `ledger:invoices:approve`
+    // may move it, not teleport it (a draft "paid" with no issue step would be a
+    // money record nothing ever posted).
+    beforeWrite: (_ctx, values, existing) => {
+      if (!existing) {
+        const { state: _s, ...rest } = values; // the server owns the initial state
+        return rest;
+      }
+      const from = existing.state as string;
+      const to = values.state;
+      if (typeof to === "string" && to !== from && !(INVOICE_TRANSITIONS[from] ?? []).includes(to)) {
+        throw badRequest(`an invoice cannot move ${from} -> ${to}`);
+      }
+      return values;
+    }
   }),
   r("revenue-schedules", schema.ledgerRevenueSchedules, "rev", "ledger", ro("ledger:journals:read")),
   r("usage-meters", schema.ledgerUsageMeters, "usg", "ledger", ro("admin:billing:read")),
-  r("payments", schema.ledgerPayments, "pay", "ledger", {
-    read: "ledger:payments:read",
-    create: "ledger:payments:create"
-  }),
+  // Read-only for the same reason: a payment is captured by its transaction
+  // type with the idempotency key the PSP callback replays against (the web
+  // ledger module says exactly this and renders no create form). The generated
+  // create accepted a client-settable `state` with no gate at all.
+  r("payments", schema.ledgerPayments, "pay", "ledger", ro("ledger:payments:read")),
   r("payment-plans", schema.ledgerPaymentPlans, "ppl", "ledger", {
     read: "ledger:payments:read",
     create: "ledger:payments:create",
@@ -451,11 +578,13 @@ export const LEDGER = register(
   }),
   r("fx-rates", schema.ledgerFxRates, "fx", "ledger", rw("ledger:accounts"), { immutable: true }),
   r("tax-rules", schema.ledgerTaxRules, "tax", "ledger", rw("ledger:accounts")),
-  r("settlements", schema.ledgerSettlements, "stl", "ledger", {
-    read: "dist:commissions:read",
-    create: "dist:commissions:settle",
-    update: "dist:commissions:settle"
-  }, { approval: { create: "dist.settlement_run", amountField: "netMinor" } })
+  // Read-only for the same reason as payments above: routes/settlement.ts is
+  // the sole doorway (run/approve/pay/dispute/reopen, each its own approval).
+  // The generic update accepted a client-settable `state`/`netMinor` gated on
+  // nothing but the flat dist:commissions:settle permission — no dual control,
+  // no ledger.partner_settlement pay-approval — so a well-aimed PATCH could
+  // force a settlement straight to "paid".
+  r("settlements", schema.ledgerSettlements, "stl", "ledger", ro("dist:commissions:read"))
 );
 
 /* ---------------------------------------------------------------------- ai */

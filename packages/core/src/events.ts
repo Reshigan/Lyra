@@ -1,4 +1,4 @@
-import { and, eq, isNull, lt, sql } from "drizzle-orm";
+import { and, eq, gte, isNull, lt, sql } from "drizzle-orm";
 import { id as newId, schema } from "@lyra/db";
 import { z } from "zod";
 import { actorRef, type Ctx, type CoreDb } from "./context.js";
@@ -74,12 +74,47 @@ export async function emit(ctx: Ctx, input: EmitInput): Promise<Envelope> {
   return envelope;
 }
 
-/** Oldest-first batch of unpublished events, for the queue drainer (cron or DO). */
-export async function pendingOutbox(db: CoreDb, limit = 100): Promise<Envelope[]> {
+export const MAX_ATTEMPTS = 5;
+
+/**
+ * Oldest-first batch of unpublished events, for the queue drainer (cron or DO).
+ *
+ * Rows that failed to publish MAX_ATTEMPTS times are dead-lettered first —
+ * oldest-first with a batch limit means a head of poison rows would otherwise
+ * starve every newer event forever. Same pattern as the inbox: dead visibly in
+ * core_event_dlq for admin replay (docs/09), never silently dropped.
+ */
+export async function pendingOutbox(db: CoreDb, limit = 100, now = Date.now()): Promise<Envelope[]> {
+  const poison = await db
+    .select()
+    .from(schema.eventOutbox)
+    .where(and(isNull(schema.eventOutbox.publishedAt), gte(schema.eventOutbox.attempts, MAX_ATTEMPTS)));
+  for (const row of poison) {
+    await db.insert(schema.eventDlq).values({
+      id: newId("dlq", now),
+      tenantId: row.tenantId,
+      type: row.type,
+      consumer: "outbox.publish",
+      envelopeJson: row.envelopeJson,
+      error: (row.lastError ?? "publish failed").slice(0, 500),
+      attempts: row.attempts,
+      replayedAt: null,
+      createdAt: now
+    });
+    // Stamp publishedAt so the row leaves the pending set exactly once; the DLQ
+    // row is the durable record of what actually happened to it.
+    await db
+      .update(schema.eventOutbox)
+      .set({ publishedAt: now })
+      .where(eq(schema.eventOutbox.id, row.id));
+  }
+
   const rows = await db
     .select({ envelopeJson: schema.eventOutbox.envelopeJson })
     .from(schema.eventOutbox)
-    .where(isNull(schema.eventOutbox.publishedAt))
+    // The attempts guard is belt-and-braces against a dead-letter write failing
+    // above; published_at IS NULL still matches core_event_outbox_drain_idx.
+    .where(and(isNull(schema.eventOutbox.publishedAt), lt(schema.eventOutbox.attempts, MAX_ATTEMPTS)))
     .orderBy(schema.eventOutbox.createdAt)
     .limit(limit);
   return rows.map((r: { envelopeJson: string }) => Envelope.parse(JSON.parse(r.envelopeJson)));
@@ -100,8 +135,6 @@ export async function markPublishFailed(db: CoreDb, eventId: string, error: stri
     .set({ attempts: sql`${schema.eventOutbox.attempts} + 1`, lastError: error.slice(0, 500) })
     .where(eq(schema.eventOutbox.id, eventId));
 }
-
-export const MAX_ATTEMPTS = 5;
 
 export type ConsumeResult = "processed" | "duplicate" | "retry" | "dead";
 

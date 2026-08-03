@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The keystore is a native module; the contract this test cares about is that
 // the token round-trips through it under one key and that a keystore that
@@ -22,13 +22,32 @@ vi.mock("expo-secure-store", () => ({
   })
 }));
 
-const { clearToken, readToken, saveToken } = await import("./token");
-const { entriesFor, labelKeyFor, navKeyFor, resourceFor, resourceForNavKey, routeFor } =
+const {
+  clearPendingRecoveryCodes,
+  clearToken,
+  readPendingRecoveryCodes,
+  readToken,
+  savePendingRecoveryCodes,
+  saveToken
+} = await import("./token");
+const { entriesFor, labelKeyFor, navKeyFor, navTitle, resourceFor, resourceForNavKey, routeFor } =
   await import("./nav");
-const { subtitleOf, titleOf, fieldsOf } = await import("./rows");
-const { CATALOGUES, en, dirFor, resolveLocale, translator } = await import("./i18n");
+const { humanize, subtitleOf, titleOf, fieldsOf } = await import("./rows");
+const { CATALOGUES, en, dirFor, joinList, resolveLocale, translator } = await import("./i18n");
 const { fontFamilyFor, themeFor, productName } = await import("./theme");
-const { ApiError, mfaStepOf, stepAfterClearing, stepAfterLogin } = await import("./api");
+const {
+  ApiError,
+  NetworkError,
+  REQUEST_TIMEOUT_MS,
+  endsSession,
+  listRows,
+  mfaStepOf,
+  request,
+  setOnSessionEnd,
+  stepAfterClearing,
+  stepAfterLogin,
+  verifyThenLoad
+} = await import("./api");
 
 describe("token store", () => {
   beforeEach(() => {
@@ -67,6 +86,115 @@ describe("token store", () => {
   it("does not throw when clearing a keystore that refuses", async () => {
     failing.del = true;
     await expect(clearToken()).resolves.toBeUndefined();
+  });
+});
+
+describe("pending recovery codes", () => {
+  beforeEach(() => {
+    store.clear();
+    failing.get = failing.set = failing.del = false;
+  });
+
+  it("round-trips codes until the user confirms saving them", async () => {
+    await expect(readPendingRecoveryCodes()).resolves.toBeNull();
+    await savePendingRecoveryCodes(["AAAA-BBBB", "CCCC-DDDD"]);
+    await expect(readPendingRecoveryCodes()).resolves.toEqual(["AAAA-BBBB", "CCCC-DDDD"]);
+    await clearPendingRecoveryCodes();
+    await expect(readPendingRecoveryCodes()).resolves.toBeNull();
+  });
+
+  it("keeps the codes out of the session token's key", async () => {
+    await savePendingRecoveryCodes(["AAAA-BBBB"]);
+    expect([...store.keys()]).toEqual(["lyra.mfa.pendingRecoveryCodes"]);
+  });
+
+  it("reads garbage or an unreadable keystore as no pending codes", async () => {
+    store.set("lyra.mfa.pendingRecoveryCodes", "not json");
+    await expect(readPendingRecoveryCodes()).resolves.toBeNull();
+    store.set("lyra.mfa.pendingRecoveryCodes", JSON.stringify({ nope: true }));
+    await expect(readPendingRecoveryCodes()).resolves.toBeNull();
+    failing.get = true;
+    await expect(readPendingRecoveryCodes()).resolves.toBeNull();
+    failing.del = true;
+    await expect(clearPendingRecoveryCodes()).resolves.toBeUndefined();
+  });
+});
+
+describe("request plumbing", () => {
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { "content-type": "application/json" }
+    });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+    setOnSessionEnd(null);
+  });
+
+  it("reads a 401 outside /v1/auth as the end of the session", () => {
+    expect(endsSession("/v1/axis/cases", 401)).toBe(true);
+    expect(endsSession("/v1/me", 401)).toBe(true);
+    expect(endsSession("/v1/auth/login", 401)).toBe(false);
+    expect(endsSession("/v1/auth/mfa/verify", 401)).toBe(false);
+    expect(endsSession("/v1/axis/cases", 403)).toBe(false);
+  });
+
+  it("tells the session when an authenticated call answers 401", async () => {
+    const ended = vi.fn();
+    setOnSessionEnd(ended);
+    vi.stubGlobal("fetch", vi.fn(async () => json({ title: "unauthorized", status: 401 }, 401)));
+    await expect(request("/v1/axis/cases", { token: "dead" })).rejects.toBeInstanceOf(ApiError);
+    expect(ended).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not read a wrong password or code as a dead session", async () => {
+    const ended = vi.fn();
+    setOnSessionEnd(ended);
+    vi.stubGlobal("fetch", vi.fn(async () => json({ title: "unauthorized", status: 401 }, 401)));
+    await expect(
+      request("/v1/auth/login", { method: "POST", body: { email: "a@b.co" } })
+    ).rejects.toBeInstanceOf(ApiError);
+    await expect(
+      request("/v1/auth/mfa/verify", { method: "POST", token: "t", body: { code: "1" } })
+    ).rejects.toBeInstanceOf(ApiError);
+    expect(ended).not.toHaveBeenCalled();
+  });
+
+  it("asks for the next page with the cursor, and the first page without one", async () => {
+    const urls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        urls.push(String(url));
+        return json({ data: [] });
+      })
+    );
+    await listRows("t", "axis/cases");
+    await listRows("t", "axis/cases", undefined, "cur/+1");
+    expect(urls[0]).toContain("limit=50");
+    expect(urls[0]).not.toContain("cursor");
+    expect(urls[1]).toContain(`cursor=${encodeURIComponent("cur/+1")}`);
+  });
+
+  it("aborts a hung request as a NetworkError instead of spinning forever", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        (_url: string, init: RequestInit) =>
+          new Promise((_resolve, reject) => {
+            init.signal?.addEventListener("abort", () =>
+              reject(new DOMException("Aborted", "AbortError"))
+            );
+          })
+      )
+    );
+    const pending = request("/v1/axis/cases", { token: "t" });
+    const failure = expect(pending).rejects.toBeInstanceOf(NetworkError);
+    await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS + 1);
+    await failure;
   });
 });
 
@@ -113,8 +241,24 @@ describe("nav mapping", () => {
       labelKey: "nav.atlas",
       href: "/atlas",
       route: undefined,
-      resource: undefined
+      resource: undefined,
+      depth: 0
     });
+  });
+
+  it("flattens nested nav instead of silently dropping the children", () => {
+    const entries = entriesFor([
+      {
+        labelKey: "nav.admin",
+        href: "/admin",
+        icon: "x",
+        children: [{ labelKey: "nav.settings", href: "/settings", icon: "x" }]
+      }
+    ]);
+    expect(entries.map((e) => [e.href, e.depth])).toEqual([
+      ["/admin", 0],
+      ["/settings", 1]
+    ]);
   });
 
   it("drops home from the workspace list but keeps everything else", () => {
@@ -141,6 +285,16 @@ describe("nav mapping", () => {
     const [entry] = entriesFor([{ labelKey: "", href: "/ledger", icon: "x" }]);
     expect(entry?.labelKey).toBe("nav.ledger");
   });
+
+  it("titles a screen from the catalogue, or humanizes an unknown segment", () => {
+    const t = translator("en");
+    expect(navTitle(t, "axis")).toBe("Operations");
+    // A garbage deep link (/m/foo) must never render the raw key "nav.foo".
+    expect(navTitle(t, "foo")).toBe("Foo");
+    expect(navTitle(t, "quote-requests")).toBe("Quote Requests");
+    // An API labelKey newer than this app's catalogue falls back the same way.
+    expect(navTitle(t, "atlas", "nav.atlas")).toBe("Atlas");
+  });
 });
 
 describe("row display", () => {
@@ -162,6 +316,15 @@ describe("row display", () => {
     const fields = fieldsOf({ id: "x", meta: { a: 1 }, gone: null });
     expect(fields.find((f) => f.key === "meta")?.value).toContain('"a": 1');
     expect(fields.find((f) => f.key === "gone")?.value).toBe("—");
+  });
+
+  it("labels a field as words, never as the raw column name", () => {
+    expect(humanize("tenant_id")).toBe("Tenant Id");
+    expect(humanize("created_at")).toBe("Created At");
+    expect(humanize("status")).toBe("Status");
+    expect(humanize("quote-requests")).toBe("Quote Requests");
+    const fields = fieldsOf({ id: "x", tenant_id: "ten_1" });
+    expect(fields.find((f) => f.key === "tenant_id")?.label).toBe("Tenant Id");
   });
 });
 
@@ -209,6 +372,31 @@ describe("sign-in step machine", () => {
     expect(mfaStepOf(problem({ detail: "enrol" }))).toBe("enrol");
   });
 
+  it("does not re-spend a one-time code when only the follow-up load failed", async () => {
+    const verify = vi.fn().mockResolvedValue({ mfaSatisfied: true });
+    const load = vi.fn().mockRejectedValueOnce(new NetworkError("offline")).mockResolvedValue(null);
+    const flow = verifyThenLoad(verify, load);
+    await expect(flow("123456")).rejects.toBeInstanceOf(NetworkError);
+    // Retrying must only retry the load: the code was consumed server-side, and
+    // re-verifying it would read back as "wrong code".
+    await flow("123456");
+    expect(verify).toHaveBeenCalledTimes(1);
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it("re-verifies after a rejected code, and on the next sign-in cycle", async () => {
+    const verify = vi
+      .fn()
+      .mockRejectedValueOnce(new ApiError({ title: "unauthorized", status: 401 }, null))
+      .mockResolvedValue({ mfaSatisfied: true });
+    const load = vi.fn().mockResolvedValue(null);
+    const flow = verifyThenLoad(verify, load);
+    await expect(flow("000000")).rejects.toBeInstanceOf(ApiError);
+    await flow("123456");
+    await flow("654321");
+    expect(verify).toHaveBeenCalledTimes(3);
+  });
+
   it("does not read an ordinary refusal as an MFA prompt", () => {
     expect(
       mfaStepOf(problem({ type: "https://lyra.app/problems/forbidden", title: "Not permitted" }))
@@ -238,6 +426,12 @@ describe("i18n and brand", () => {
 
   it("interpolates rather than dropping the variable", () => {
     expect(translator("en")("home.signedInAs", { name: "Amina" })).toBe("Signed in as Amina");
+  });
+
+  it("joins display fragments with the locale's own comma", () => {
+    expect(joinList("en", ["Windscreen", "open"])).toBe("Windscreen, open");
+    expect(joinList("ar-AE", ["أمينة", "نشط"])).toBe("أمينة، نشط");
+    expect(joinList("ar", ["واحد"])).toBe("واحد");
   });
 
   it("reads the palette and the product name from tenant brand, never a literal", () => {

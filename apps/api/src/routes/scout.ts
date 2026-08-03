@@ -36,7 +36,12 @@ scoutRoutes.post("/wording-diff", async (c) => {
 
 scoutRoutes.get("/panel-bench/negotiation-pack", async (c) => {
   const ctx = ctxOf(c);
-  require_(ctx.actor, "scout:panel_bench:read", { tenantId: ctx.tenantId, module: "scout" });
+  // Not scout:panel_bench:read — provider.viewer holds that too, and this pack
+  // bakes every provider's price index/win-rate/volume into one PDF for LYRA's
+  // own negotiation prep. Handing a provider its counterparty's numbers (or its
+  // own prep pack against itself) defeats the tool; gate on an internal-only
+  // scout permission instead (scout.pm/lead/admin, never provider.viewer).
+  require_(ctx.actor, "scout:whitespaces:promote", { tenantId: ctx.tenantId, module: "scout" });
 
   const bench = await ctx.db
     .select({

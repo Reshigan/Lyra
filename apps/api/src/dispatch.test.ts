@@ -1,0 +1,77 @@
+import { createClient, type Client } from "@libsql/client";
+import { drizzle } from "drizzle-orm/libsql";
+import { eq } from "drizzle-orm";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { beforeEach, describe, expect, it } from "vitest";
+import { PolicyJson, EntitlementsJson, schema } from "@lyra/db";
+import { emit, permissionsForRole, type Actor, type Ctx } from "@lyra/core";
+import { drainOutbox } from "./dispatch.js";
+
+// A queue.send() that throws must not abort the drain: the failing event's
+// outbox attempts have to rise (so pendingOutbox's MAX_ATTEMPTS dead-letter cap
+// can ever engage) and every event behind it must still publish.
+
+const MIGRATIONS = join(import.meta.dirname, "..", "..", "..", "packages", "db", "migrations");
+
+function statements(): string[] {
+  return readdirSync(MIGRATIONS)
+    .filter((f) => f.endsWith(".sql"))
+    .sort()
+    .flatMap((f) => readFileSync(join(MIGRATIONS, f), "utf8").split("--> statement-breakpoint"))
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+let client: Client;
+let ctx: Ctx;
+
+function actor(): Actor {
+  return {
+    kind: "system",
+    id: "scheduler",
+    tenantId: "t_1",
+    grants: [{ roleKey: "tenant.admin", permissions: permissionsForRole("tenant.admin") }]
+  };
+}
+
+beforeEach(async () => {
+  client = createClient({ url: ":memory:" });
+  for (const sql of statements()) await client.execute(sql);
+  ctx = {
+    db: drizzle(client) as unknown as Ctx["db"],
+    tenantId: "t_1",
+    actor: actor(),
+    requestId: "req_1",
+    now: 1_700_000_000_000,
+    locale: "en",
+    policy: PolicyJson.parse({}),
+    entitlements: EntitlementsJson.parse({})
+  };
+});
+
+describe("drainOutbox", () => {
+  it("marks a queue-send failure and keeps draining the events behind it", async () => {
+    const first = await emit(ctx, { module: "core", type: "core.test.poison", data: {} });
+    ctx = { ...ctx, now: ctx.now + 1 };
+    const second = await emit(ctx, { module: "core", type: "core.test.fine", data: {} });
+
+    const result = await drainOutbox(ctx, {
+      send: async (e) => {
+        if (e.id === first.id) throw new Error("queue unavailable");
+      }
+    });
+
+    expect(result.queued).toBe(1);
+    expect(result.published).toBe(1);
+    expect(result.failed).toBe(1);
+
+    const rows = await ctx.db.select().from(schema.eventOutbox).where(eq(schema.eventOutbox.id, first.id));
+    expect(rows[0]?.publishedAt).toBeNull();
+    expect(rows[0]?.attempts).toBe(1);
+    expect(rows[0]?.lastError).toContain("queue unavailable");
+
+    const ok = await ctx.db.select().from(schema.eventOutbox).where(eq(schema.eventOutbox.id, second.id));
+    expect(ok[0]?.publishedAt).toBe(ctx.now);
+  });
+});

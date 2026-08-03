@@ -179,3 +179,25 @@ describe("GET /v1/ai/runs/:id reaches the CRUD record handler", () => {
     expect(res.status).toBe(403);
   });
 });
+
+/* ------------------------------------------------------------- query params */
+
+describe("numeric query params survive garbage input", () => {
+  // `Number("abc")` is NaN; fed to `.limit()` or a `gte()` bind it turns a
+  // read endpoint into a 500. Garbage falls back to the default instead.
+  it("GET /v1/ai/audit with a garbage limit and since answers 200", async () => {
+    const res = await call("tenant.admin", "GET", "/v1/ai/audit?limit=abc&since=abc");
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.data)).toBe(true);
+  });
+
+  it("GET /v1/ai/audit/spend with garbage days answers 200", async () => {
+    const res = await call("tenant.admin", "GET", "/v1/ai/audit/spend?days=abc");
+    expect(res.status).toBe(200);
+  });
+
+  it("GET /v1/ai/suggestions/acceptance with garbage days answers 200", async () => {
+    const res = await call("tenant.admin", "GET", "/v1/ai/suggestions/acceptance?days=abc");
+    expect(res.status).toBe(200);
+  });
+});

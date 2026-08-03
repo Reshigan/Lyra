@@ -1,9 +1,10 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createClient } from "@libsql/client";
+import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/libsql";
 import { beforeAll, describe, expect, it } from "vitest";
-import type { Db } from "@lyra/db";
+import { schema, type Db } from "@lyra/db";
 import { seed, totpAt, TOTP_STEP_SEC } from "@lyra/core";
 import { app } from "./index.js";
 import type { Env } from "./env.js";
@@ -23,6 +24,7 @@ const PEOPLE: Record<string, string> = {
 
 let env: Env;
 let tokens: Record<string, string>;
+let database: Db;
 
 const exec = { waitUntil() {}, passThroughOnException() {} };
 
@@ -60,7 +62,7 @@ beforeAll(async () => {
     .map((s) => s.trim())
     .filter(Boolean);
   for (const stmt of statements) await client.execute(stmt);
-  const database = drizzle(client) as unknown as Db;
+  database = drizzle(client) as unknown as Db;
   await seed(database as never, { mfaSecret: DEMO_TOTP_SECRET });
 
   env = {
@@ -122,5 +124,36 @@ describe("GET /v1/ledger/periods/:id reaches the CRUD record handler", () => {
   it("still gates the enriched view on ledger:periods:read", async () => {
     const res = await call("orbit.agent", "GET", `/v1/ledger/period/${code}`);
     expect(res.status).toBe(403);
+  });
+});
+
+describe("the retired generic CRUD door onto periods is gone", () => {
+  const code = "2026-04";
+  let periodId: string;
+
+  beforeAll(async () => {
+    const seeded = await call("finance.controller", "GET", `/v1/ledger/period/${code}`);
+    expect(seeded.status).toBe(200);
+    periodId = seeded.body.period.id as string;
+  });
+
+  it("cannot jump a period straight to hard_closed by PATCHing state directly", async () => {
+    // Only POST /periods/:code/close runs closeChecks() and enforces
+    // soft-before-hard sequencing. A generic PATCH here would skip both.
+    const res = await call("finance.controller", "PATCH", `/v1/ledger/periods/${periodId}`, {
+      state: "hard_closed"
+    });
+    expect(res.status).toBe(404);
+
+    const [row] = await database
+      .select()
+      .from(schema.ledgerPeriods)
+      .where(eq(schema.ledgerPeriods.id, periodId));
+    expect(row?.state).toBe("open");
+  });
+
+  it("still reads through the generic resource", async () => {
+    const res = await call("finance.controller", "GET", `/v1/ledger/periods/${periodId}`);
+    expect(res.status).toBe(200);
   });
 });

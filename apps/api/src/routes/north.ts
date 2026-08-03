@@ -5,6 +5,7 @@ import { id, schema } from "@lyra/db";
 import { actorRef, audit, require_, sha256Hex, type Ctx } from "@lyra/core";
 import { body } from "../http.js";
 import { generateBriefing } from "../engines/narrator.js";
+import { runSnapshotter } from "../engines/north-snapshotter.js";
 import { assembleBoardpackSections } from "../engines/north-boardpack.js";
 import { toPdf } from "../engines/export/pdf.js";
 import { pushToActor } from "../engines/realtime.js";
@@ -99,4 +100,14 @@ northRoutes.post("/boardpacks", async (c) => {
   await pushToActor(c.env, ctx.tenantId, ctx.actor.id, "north.boardpack.generated", { id: boardpackId }, ctx.now);
 
   return c.json(row, 201);
+});
+
+// Manual trigger, same idiom as orbit.ts's /renewals/sweep and staff.ts's
+// /delegations/expire — RBAC-gated rather than environment-gated, so it also
+// serves the 30-day compressed simulation (docs/24 sim plan) to force a
+// snapshot outside index.ts's UTC 02:00-02:15 backup window.
+northRoutes.post("/snapshotter/run", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "north:snapshots:run", { tenantId: ctx.tenantId, module: "north" });
+  return c.json(await runSnapshotter(ctx));
 });

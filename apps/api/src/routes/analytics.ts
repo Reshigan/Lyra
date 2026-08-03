@@ -31,6 +31,7 @@ import {
   type RunResult
 } from "../engines/report.js";
 import { render, type BrowserBinding, type Rendered } from "../engines/export/render.js";
+import { meterEgress } from "../engines/egress.js";
 import { grantsFor } from "../auth.js";
 import { body, decodeCursor, encodeCursor, listParams, parse, MAX_PAGE } from "../http.js";
 import { must } from "../rows.js";
@@ -371,6 +372,7 @@ analyticsRoutes.get("/exports/:id/download", async (c) => {
     .where(scoped(ctx, schema.analyticsExports, eq(schema.analyticsExports.id, row.id)));
   // Every download of a PII artefact is an audit event, not a metric.
   await audit(ctx, { action: "analytics.export.download", subjectRef: row.id, after: { piiMasked: row.piiMasked } });
+  await meterEgress(ctx, file.sizeBytes ?? object.size);
 
   return new Response(object.body, {
     headers: {
@@ -464,9 +466,11 @@ analyticsRoutes.post("/schedules", async (c) => {
   const ctx = c.get("ctx");
   require_(ctx.actor, "analytics:schedules:write", { tenantId: ctx.tenantId });
   const input = await body(c, ScheduleBody);
-  if (!input.reportId && !input.dashboardId) throw badRequest("a schedule needs a reportId or a dashboardId");
-  if (input.reportId) await readableReport(ctx, input.reportId);
-  const next = nextRun(input.cron, ctx.now);
+  // deliverSchedule renders reports only — a dashboard-only schedule would be
+  // accepted here and then fail + alert its owner on every fire, forever.
+  if (!input.reportId) throw badRequest("dashboard schedules are not supported yet: a schedule needs a reportId");
+  await readableReport(ctx, input.reportId);
+  const next = nextRun(input.cron, ctx.now, input.timezone);
 
   const row = {
     id: id("sch", ctx.now),
@@ -513,7 +517,7 @@ analyticsRoutes.post("/schedules/:id/resume", async (c) => {
   const row = await must(ctx, schema.analyticsSchedules, c.req.param("id"), "schedule");
   await ctx.db
     .update(schema.analyticsSchedules)
-    .set({ status: "active", nextRunAt: nextRun(row.cron, ctx.now), updatedAt: ctx.now })
+    .set({ status: "active", nextRunAt: nextRun(row.cron, ctx.now, row.timezone), updatedAt: ctx.now })
     .where(scoped(ctx, schema.analyticsSchedules, eq(schema.analyticsSchedules.id, row.id)));
   await audit(ctx, { action: "analytics.schedule.resume", subjectRef: row.id });
   return c.body(null, 204);
@@ -689,7 +693,10 @@ analyticsRoutes.delete("/saved-views/:id", async (c) => {
 analyticsRoutes.get("/unit-economics", async (c) => {
   const ctx = c.get("ctx");
   require_(ctx.actor, "analytics:reports:read", { tenantId: ctx.tenantId });
-  const since = Number(c.req.query("since") ?? 0);
+  const rawSince = c.req.query("since");
+  const since = rawSince === undefined ? 0 : Number(rawSince);
+  // A NaN here would silently drop the filter and ship the full table.
+  if (!Number.isFinite(since) || since < 0) throw badRequest("since must be a non-negative epoch-ms number");
   const rows = await ctx.db
     .select()
     .from(schema.unitEconomics)
@@ -708,6 +715,29 @@ analyticsRoutes.get("/unit-economics", async (c) => {
     };
   });
   return c.json({ data });
+});
+
+/** Storage and egress bytes (docs/25 §6 cost guards). Storage is the live sum
+ *  of core_files; egress is the daily counter meterEgress() maintains. */
+analyticsRoutes.get("/usage", async (c) => {
+  const ctx = c.get("ctx");
+  require_(ctx.actor, "analytics:reports:read", { tenantId: ctx.tenantId });
+  const totals = await ctx.db
+    .select({ storageBytes: sql<number>`coalesce(sum(${schema.files.sizeBytes}), 0)` })
+    .from(schema.files)
+    .where(scoped(ctx, schema.files));
+  const egress = await ctx.db
+    .select()
+    .from(schema.egressDays)
+    .where(scoped(ctx, schema.egressDays))
+    .orderBy(desc(schema.egressDays.day))
+    .limit(30);
+  return c.json({
+    data: {
+      storageBytes: totals[0]?.storageBytes ?? 0,
+      egressDays: egress.map((r) => ({ day: r.day, bytes: r.bytes }))
+    }
+  });
 });
 
 /* ------------------------------------------------------------------- helpers */
@@ -952,14 +982,19 @@ async function storeExport(
 }
 
 /**
- * Next fire time for a five-field cron, evaluated in UTC by minute stepping.
+ * Next fire time for a five-field cron, evaluated in the schedule's timezone
+ * by minute stepping. Returns a UTC timestamp.
  * ponytail: a minute-by-minute scan over at most 366 days. It runs once per
  * schedule write, not per tick — swap for a field-wise solver if that changes.
  */
-export function nextRun(cron: string, from: number): number | null {
+export function nextRun(cron: string, from: number, timezone = "UTC"): number | null {
   const fields = cron.trim().split(/\s+/);
   if (fields.length !== 5) throw badRequest("cron must have five fields: minute hour dom month dow");
   const [min, hour, dom, month, dow] = fields as [string, string, string, string, string];
+  // ponytail: one offset for the whole scan, taken at `from`. Exact for the
+  // fixed-offset Gulf zones this ships to (Asia/Dubai is +04:00 year-round);
+  // a DST zone's fire that straddles a transition can be an hour off once.
+  const offset = zoneOffsetMs(timezone, from);
 
   const matches = (spec: string, value: number, max: number): boolean => {
     if (spec === "*") return true;
@@ -979,18 +1014,45 @@ export function nextRun(cron: string, from: number): number | null {
   const cursor = new Date(Math.ceil((from + 60_000) / 60_000) * 60_000);
   const limit = from + 366 * 24 * 60 * 60 * 1000;
   while (cursor.getTime() <= limit) {
+    // The cron's fields describe wall-clock time in `timezone`; shifting the
+    // instant by the zone offset makes the getUTC* reads give exactly that.
+    const local = new Date(cursor.getTime() + offset);
     if (
-      matches(min, cursor.getUTCMinutes(), 59) &&
-      matches(hour, cursor.getUTCHours(), 23) &&
-      matches(dom, cursor.getUTCDate(), 31) &&
-      matches(month, cursor.getUTCMonth() + 1, 12) &&
-      matches(dow, cursor.getUTCDay(), 6)
+      matches(min, local.getUTCMinutes(), 59) &&
+      matches(hour, local.getUTCHours(), 23) &&
+      matches(dom, local.getUTCDate(), 31) &&
+      matches(month, local.getUTCMonth() + 1, 12) &&
+      matches(dow, local.getUTCDay(), 6)
     ) {
       return cursor.getTime();
     }
     cursor.setUTCMinutes(cursor.getUTCMinutes() + 1);
   }
   return null;
+}
+
+/** Offset of `timezone` from UTC at instant `at`, via Intl — no dependency. */
+function zoneOffsetMs(timezone: string, at: number): number {
+  if (timezone === "UTC") return 0;
+  let parts: Intl.DateTimeFormatPart[];
+  try {
+    parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      hour12: false,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit"
+    }).formatToParts(new Date(at));
+  } catch {
+    throw badRequest(`unknown timezone: ${timezone}`);
+  }
+  const f: Record<string, number> = {};
+  for (const p of parts) if (p.type !== "literal") f[p.type] = Number(p.value);
+  // `hour12: false` renders midnight as "24" in some ICU builds.
+  const wall = Date.UTC(f.year!, f.month! - 1, f.day!, f.hour! % 24, f.minute!);
+  return wall - Math.floor(at / 60_000) * 60_000;
 }
 
 /* ------------------------------------------------------- scheduled delivery */
@@ -1118,7 +1180,7 @@ async function deliverSchedule(ctx: Ctx, s: Schedule, bucket: R2Bucket | undefin
 
   await ctx.db
     .update(schema.analyticsSchedules)
-    .set({ lastRunAt: ctx.now, lastState: state, nextRunAt: nextRun(s.cron, ctx.now), updatedAt: ctx.now })
+    .set({ lastRunAt: ctx.now, lastState: state, nextRunAt: nextRun(s.cron, ctx.now, s.timezone), updatedAt: ctx.now })
     .where(scoped(ctx, schema.analyticsSchedules, eq(schema.analyticsSchedules.id, s.id)));
   await audit(ctx, {
     action: "analytics.schedule.deliver",
@@ -1132,7 +1194,7 @@ async function failSchedule(ctx: Ctx, s: Schedule, err: unknown): Promise<void> 
   const error = err instanceof Error ? err.message : "failed";
   let next: number | null = null;
   try {
-    next = nextRun(s.cron, ctx.now);
+    next = nextRun(s.cron, ctx.now, s.timezone);
   } catch {
     // A schedule with an unparseable cron stops rather than spinning.
   }

@@ -50,5 +50,11 @@ describe("sign-in and first-time enrolment", () => {
     await element(by.label("I have saved them")).tap();
 
     await waitFor(element(by.label("Administration"))).toBeVisible().withTimeout(10000);
+
+    // The codes are held in the keystore, not just component state: a relaunch
+    // that still showed the recovery screen here would mean "I have saved
+    // them" never actually cleared them, and they'd sit in storage forever.
+    await device.launchApp({ newInstance: true });
+    await waitFor(element(by.label("Administration"))).toBeVisible().withTimeout(10000);
   });
 });

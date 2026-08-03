@@ -2,6 +2,7 @@ import type { MiddlewareHandler } from "hono";
 import { Gateway } from "@lyra/model-gateway";
 import { authenticate, ctxFor } from "./auth.js";
 import { problem } from "./http.js";
+import { simNow } from "./clock.js";
 import type { App, Env } from "./env.js";
 
 // Every request passes through the same four steps: clock, auth, ctx, gateway.
@@ -27,6 +28,8 @@ const PUBLIC = new Set([
   // (auth.ts §demoOnly), so being listed here costs nothing in production.
   "/v1/auth/demo/personas",
   "/v1/auth/demo/login",
+  "/v1/auth/demo/clock",
+  "/v1/auth/demo/seed",
   // J-X3: portal signup has no session to authenticate against yet — that is
   // the whole point of the route (routes/onboarding.ts §partner signup).
   "/v1/onboarding/partners/signup",
@@ -34,7 +37,7 @@ const PUBLIC = new Set([
 ]);
 
 export const withContext: MiddlewareHandler<App> = async (c, next) => {
-  const now = Date.now();
+  const now = await simNow(c.env);
   c.set("startedAt", now);
 
   // `/v1/auth/sso/*` is public by shape rather than by name: it carries a

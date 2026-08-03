@@ -368,9 +368,22 @@ describe("J-C3 one-tap renewal", () => {
 
   it("the renewal closes in one update", async () => {
     const done = ok(
-      await call("orbit.retention", "PATCH", `/v1/orbit/renewals/${renewalId}`, { state: "renewed" })
+      await call("orbit.retention", "PATCH", `/v1/orbit/renewals/${renewalId}`, { state: "accepted" })
     );
-    expect(done.state).toBe("renewed");
+    expect(done.state).toBe("accepted");
+  });
+
+  it("a closed renewal cannot be reopened by a further PATCH", async () => {
+    // accepted/lost are terminal (renewal-campaign.ts's resolved()) — a
+    // generic PATCH moving it back to "scheduled" would leave RenewalWorkflow
+    // and campaign engine both blind to it having ever closed.
+    const res = await call("orbit.retention", "PATCH", `/v1/orbit/renewals/${renewalId}`, {
+      state: "scheduled"
+    });
+    expect(res.status).toBe(400);
+
+    const [row] = await database.select().from(schema.orbitRenewals).where(eq(schema.orbitRenewals.id, renewalId));
+    expect(row!.state).toBe("accepted");
   });
 });
 
@@ -648,6 +661,7 @@ describe("J-X1 catching a handover", () => {
 
 describe("J-X2 the save desk", () => {
   let settlementApprovalId: string;
+  let settlementId: string;
 
   it("a price match above the threshold needs an approver who is not the asker", async () => {
     const caseRow = ok(
@@ -689,14 +703,51 @@ describe("J-X2 the save desk", () => {
   });
 
   it("an approval cannot be decided by the person who raised it, even holding the permission", async () => {
-    const raised = await call("finance.controller", "POST", "/v1/ledger/settlements", {
-      counterpartyKind: "partner",
-      counterpartyRef: "partner:falcon",
-      period: "2026-01",
-      grossMinor: 90_000_00,
-      netMinor: 85_000_00,
-      currency: "AED"
+    // A real commission entry on a channel the settlement seed never touches
+    // (brokerAlpha carries its own seeded partner, agreement and a standing
+    // draft settlement — callCentre has none of that, so this fixture's
+    // entry is the sole contributor to the total) — a genuine nonzero
+    // netMinor to draft against, not the client-supplied totals the retired
+    // generic CRUD used to accept.
+    const period = "2031-01";
+    const earnedAt = Date.UTC(2031, 0, 15);
+    await database.insert(schema.distCommissionEntries).values({
+      id: "ce_journey_settle",
+      tenantId: seeded.tenantId,
+      policyId: "pol_journey_settle",
+      providerId: seeded.providers.cedar as string,
+      channelId: seeded.channels.callCentre as string,
+      kind: "new_business",
+      premiumMinor: 900_000_00,
+      grossCommissionMinor: 90_000_00,
+      channelCommissionMinor: 85_000_00,
+      netCommissionMinor: 85_000_00,
+      currency: "AED",
+      earnedOn: "issue",
+      earnedAt,
+      state: "accrued",
+      createdAt: earnedAt,
+      updatedAt: earnedAt
     });
+
+    // Drafting is arithmetic only — no approval here (routes/settlement.ts).
+    const drafted = ok(
+      await call("finance.controller", "POST", "/v1/settlement/runs", {
+        counterpartyKind: "partner",
+        counterpartyRef: `channel:${seeded.channels.callCentre}`,
+        period
+      }),
+      201
+    );
+    expect(drafted.totals.netMinor).toBe(85_000_00);
+    settlementId = drafted.settlement.id;
+
+    const raised = await call(
+      "finance.controller",
+      "POST",
+      `/v1/settlement/settlements/${settlementId}/approve`,
+      {}
+    );
     expect(raised.status).toBe(403);
     expect(raised.body.policy_key).toBe("dist.settlement_run");
     settlementApprovalId = raised.body.approval_id;
@@ -758,6 +809,23 @@ describe("J-X2 the save desk", () => {
     const [row] = await database.select().from(schema.approvals).where(eq(schema.approvals.id, settlementApprovalId));
     expect(row!.delegationId).toBe("dlg_journey_settle");
   });
+
+  it("the retired generic CRUD door onto settlements is gone", async () => {
+    // routes/settlement.ts is the sole doorway (run/approve/pay/dispute/
+    // reopen). The generic create/update routes are unmounted entirely, so
+    // both verbs 404 rather than just being permission-denied.
+    const create = await call("finance.controller", "POST", "/v1/ledger/settlements", {
+      counterpartyKind: "partner",
+      counterpartyRef: `channel:${seeded.channels.callCentre}`,
+      period: "2031-01"
+    });
+    expect(create.status).toBe(404);
+
+    const patch = await call("finance.controller", "PATCH", `/v1/ledger/settlements/${settlementId}`, {
+      state: "paid"
+    });
+    expect(patch.status).toBe(404);
+  });
 });
 
 /* ------------------------------------------------------------------ J-X3 */
@@ -791,6 +859,19 @@ describe("J-X3 partner integration", () => {
       403
     );
     expect(channel).toBeTruthy();
+
+    // advancePartner() is the sole doorway past prospect: blockingSteps() plus
+    // dist.partner_activate on "live". A raw PATCH must not self-activate or
+    // reverse a suspend/terminate.
+    const patch = await call("orbit.agent", "PATCH", `/v1/orbit/partners/${partner.id}`, {
+      stage: "live",
+      status: "active",
+      sandboxFlag: false
+    });
+    expect(patch.status).toBe(404);
+
+    const [row] = await database.select().from(schema.orbitPartners).where(eq(schema.orbitPartners.id, partner.id));
+    expect(row!.stage).not.toBe("live");
   });
 
   it("a developer key can be issued but never read back", async () => {
@@ -879,6 +960,19 @@ describe("J-M1 a campaign in a day", () => {
   it("a marketer without the launch permission cannot go live", async () => {
     const denied = await call("scout.lead", "PATCH", `/v1/signal/campaigns/${campaignId}`, { state: "paused" });
     expect(denied.status).toBe(403);
+  });
+
+  it("a live campaign cannot be jumped back to draft, or an ended one resurrected, by a generic PATCH", async () => {
+    const backwards = await call("signal.lead", "PATCH", `/v1/signal/campaigns/${campaignId}`, { state: "draft" });
+    expect(backwards.status).toBe(400);
+
+    const ended = ok(
+      await call("signal.lead", "PATCH", `/v1/signal/campaigns/${campaignId}`, { state: "ended" })
+    );
+    expect(ended.state).toBe("ended");
+
+    const revived = await call("signal.lead", "PATCH", `/v1/signal/campaigns/${campaignId}`, { state: "live" });
+    expect(revived.status).toBe(400);
   });
 });
 
@@ -1055,8 +1149,10 @@ describe("J-P1 the quarterly radar", () => {
       createdAt: Date.now(),
       updatedAt: Date.now()
     } as never);
+    // scout:whitespaces:promote gates through scout.whitespace_promote (docs/modules/scout.md
+    // §4 "whitespace approvals") — self-clearable (dualControl: never), still a two-step ask.
     const promoted = ok(
-      await call("scout.lead", "PATCH", `/v1/scout/whitespaces/${whitespaceId}`, {
+      await throughApproval("scout.lead", "scout.lead", "PATCH", `/v1/scout/whitespaces/${whitespaceId}`, {
         status: "promoted",
         owner: "tariq.mansour",
         promotedAt: Date.now()
@@ -1245,7 +1341,11 @@ describe("J-A2 a new teammate", () => {
     expect(JSON.stringify(user)).not.toContain("passwordHash");
 
     const roles = ok(await call("tenant.admin", "GET", "/v1/core/roles?limit=100"));
-    const roleId = roles.data.find((r: any) => r.key === "axis.agent").id;
+    // tenant.admin holds core:roles:assign (the only role that does) but its
+    // own bundle is read-only across every operational module — it can only
+    // grant a role whose bundle is a subset of its own. north.board (pure
+    // read) qualifies; axis.agent (module writes) does not — see ADR-0023.
+    const roleId = roles.data.find((r: any) => r.key === "north.board").id;
     ok(
       await call("tenant.admin", "POST", "/v1/core/user-roles", { userId: user.id, roleId }),
       201
@@ -1258,6 +1358,25 @@ describe("J-A2 a new teammate", () => {
       name: "Shadow",
       locale: "en",
       status: "active"
+    });
+    expect(denied.status).toBe(403);
+  });
+
+  it("tenant.admin cannot grant a role whose permissions it does not itself hold", async () => {
+    const user = ok(
+      await call("tenant.admin", "POST", "/v1/core/users", {
+        email: "escalation.target@gonxt.ae",
+        name: "Escalation Target",
+        locale: "en",
+        status: "active"
+      }),
+      201
+    );
+    const roles = ok(await call("tenant.admin", "GET", "/v1/core/roles?limit=100"));
+    const roleId = roles.data.find((r: any) => r.key === "axis.agent").id;
+    const denied = await call("tenant.admin", "POST", "/v1/core/user-roles", {
+      userId: user.id,
+      roleId
     });
     expect(denied.status).toBe(403);
   });

@@ -50,6 +50,27 @@
       "when": 1785554674606,
       "tag": "0006_fast_lilith",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1785572179520,
+      "tag": "0007_spooky_slyde",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1785614344050,
+      "tag": "0008_solid_domino",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1785615015000,
+      "tag": "0009_renewals_per_term",
+      "breakpoints": true
     }
   ]
 }

@@ -34,6 +34,10 @@ function actor(): Actor {
   };
 }
 
+function actorWithRole(roleKey: string): Actor {
+  return { kind: "agent", id: "quoting", tenantId: "t_1", grants: [{ roleKey, permissions: permissionsForRole(roleKey) }] };
+}
+
 async function makeCtx(now = 1_770_000_000_000): Promise<Ctx> {
   return {
     db: drizzle(client) as unknown as Ctx["db"],
@@ -114,6 +118,38 @@ describe("start_quote", () => {
   it("is not consequential — no approval required", () => {
     const def = ORBIT_TOOL_DEFS.find((t) => t.name === "start_quote")!;
     expect(def.consequential).toBe(false);
+  });
+});
+
+// orbit:ai:invoke authorizes *running the agent*, not the specific action a
+// tool performs — so each handler must hold its own permission check, same
+// as the human-facing CRUD route for the same table. Without it, any actor
+// holding orbit:ai:invoke could reach axis_cases/axis_policies through chat
+// while deliberately lacking the axis:* grant the UI requires.
+describe("tool execution enforces its own RBAC, not just the agent-invoke gate", () => {
+  it("fetch_policy rejects an actor without axis:policies:read", async () => {
+    await seedPolicy("pol_4");
+    const noAxis = { ...ctx, actor: actorWithRole("customer") };
+    await expect(runOrbitTool(noAxis, "fetch_policy", { policyId: "pol_4" })).rejects.toMatchObject({
+      name: "ForbiddenError"
+    });
+  });
+
+  it("start_quote rejects an actor without axis:cases:create", async () => {
+    // orbit.retention holds axis:policies:read/axis:quotes:create but not
+    // axis:cases:create — start_quote must not treat those as equivalent.
+    const retention = { ...ctx, actor: actorWithRole("orbit.retention") };
+    await expect(runOrbitTool(retention, "start_quote", { customerId: "cus_1" })).rejects.toMatchObject({
+      name: "ForbiddenError"
+    });
+  });
+
+  it("create_endorsement_request rejects an actor without axis:cases:create, before any approval gate", async () => {
+    await seedPolicy("pol_5");
+    const retention = { ...ctx, actor: actorWithRole("orbit.retention") };
+    await expect(
+      runOrbitTool(retention, "create_endorsement_request", { policyId: "pol_5", changes: { term: 12 } })
+    ).rejects.toMatchObject({ name: "ForbiddenError" });
   });
 });
 

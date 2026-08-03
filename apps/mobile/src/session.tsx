@@ -9,15 +9,24 @@ import {
   login,
   logout,
   mfaStepOf,
+  setOnSessionEnd,
   startEnrolment,
   stepAfterLogin,
   verifyMfa,
+  verifyThenLoad,
   type AuthStep,
   type Enrolment,
   type Me
 } from "./api";
 import { dirFor, resolveLocale, translator, type Translate } from "./i18n";
-import { clearToken, readToken, saveToken } from "./token";
+import {
+  clearPendingRecoveryCodes,
+  clearToken,
+  readPendingRecoveryCodes,
+  readToken,
+  savePendingRecoveryCodes,
+  saveToken
+} from "./token";
 import { productName, themeFor, type Theme } from "./theme";
 
 // One bootstrap: the stored token, then /v1/me. Everything the screens draw —
@@ -59,6 +68,15 @@ interface Session {
   /** Confirms enrolment and returns the recovery codes. Does *not* open the app:
    *  the codes are shown once and the user has to acknowledge them first. */
   confirmEnrol(code: string): Promise<string[]>;
+  /**
+   * Recovery codes issued but not yet acknowledged as saved. Kept in the
+   * keystore from the moment they arrive — the server clears the factor on
+   * confirm and never shows them again, so an app kill on the recovery screen
+   * must not lose them. Non-null means "show the recovery screen".
+   */
+  pendingRecoveryCodes: string[] | null;
+  /** The user confirmed the codes are stored; forget them. */
+  recoveryCodesSaved(): Promise<void>;
   /** Re-reads /v1/me on a session whose factor is now cleared. */
   refresh(): Promise<void>;
   signOut(): Promise<void>;
@@ -78,6 +96,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [me, setMe] = useState<Me | null>(null);
   const [restoreError, setRestoreError] = useState<unknown>(null);
+  const [pendingRecoveryCodes, setPendingRecoveryCodes] = useState<string[] | null>(null);
   // Before sign-in there is no account locale, so the device's is the best
   // guess; /v1/me replaces it the moment there is a session.
   const [deviceLocale] = useState(() => resolveLocale(getLocales().map((l) => l.languageTag)));
@@ -118,11 +137,27 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // A 401 from any authenticated call means the session died server-side. One
+  // handler in the api layer, so no screen is left showing "session ended"
+  // with a Retry that re-sends a dead token.
+  useEffect(() => {
+    setOnSessionEnd(() => {
+      void clearToken();
+      setToken(null);
+      setMe(null);
+      setMfaStep(null);
+      setStatus("signedOut");
+    });
+    return () => setOnSessionEnd(null);
+  }, []);
+
   useEffect(() => {
     let live = true;
     void (async () => {
-      const stored = await readToken();
+      const [stored, pendingCodes] = await Promise.all([readToken(), readPendingRecoveryCodes()]);
       if (!live) return;
+      // Codes the user never confirmed saving resurface on relaunch.
+      setPendingRecoveryCodes(pendingCodes);
       if (!stored) {
         setStatus("signedOut");
         return;
@@ -152,6 +187,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           : { email: input.email, password: input.password }
       );
       await saveToken(result.token);
+      // The password round-trip just succeeded, so any "no connection" from a
+      // failed restore is stale — without this it shows on the TOTP screen.
+      setRestoreError(null);
       const step = stepAfterLogin(result);
       if (step !== "app") {
         setToken(result.token);
@@ -164,13 +202,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [load]
   );
 
+  // One flag per token (useMemo identity): a load() that fails after a
+  // successful verify is retried without re-spending the one-time code.
+  const verifyFlow = useMemo(
+    () =>
+      token ? verifyThenLoad((code) => verifyMfa(token, code), () => load(token)) : null,
+    [load, token]
+  );
   const verifyCode = useCallback(
     async (code: string) => {
-      if (!token) throw new Error("no session to verify");
-      await verifyMfa(token, code);
-      await load(token);
+      if (!verifyFlow) throw new Error("no session to verify");
+      await verifyFlow(code);
     },
-    [load, token]
+    [verifyFlow]
   );
 
   const enrol = useCallback(async (): Promise<Enrolment> => {
@@ -181,10 +225,21 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const confirmEnrol = useCallback(
     async (code: string): Promise<string[]> => {
       if (!token) throw new Error("no session to enrol");
-      return confirmEnrolment(token, code);
+      const codes = await confirmEnrolment(token, code);
+      // The server has already cleared the factor and will never show these
+      // again: persist before they render, so an app kill cannot lose them.
+      // Best-effort — a broken keystore must not hide the codes now.
+      await savePendingRecoveryCodes(codes).catch(() => undefined);
+      setPendingRecoveryCodes(codes);
+      return codes;
     },
     [token]
   );
+
+  const recoveryCodesSaved = useCallback(async () => {
+    await clearPendingRecoveryCodes();
+    setPendingRecoveryCodes(null);
+  }, []);
 
   const refresh = useCallback(async () => {
     if (!token) throw new Error("no session to load");
@@ -196,6 +251,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     // wipe fails; a failure here still clears the device.
     if (token) await logout(token).catch(() => undefined);
     await clearToken();
+    // Codes pending on sign-out belong to a session being abandoned; keeping
+    // them would show one account's codes to the next.
+    await clearPendingRecoveryCodes();
+    setPendingRecoveryCodes(null);
     setToken(null);
     setMe(null);
     setMfaStep(null);
@@ -230,6 +289,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       verifyCode,
       enrol,
       confirmEnrol,
+      pendingRecoveryCodes,
+      recoveryCodesSaved,
       refresh,
       signOut
     }),
@@ -244,6 +305,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       verifyCode,
       enrol,
       confirmEnrol,
+      pendingRecoveryCodes,
+      recoveryCodesSaved,
       refresh,
       signOut
     ]

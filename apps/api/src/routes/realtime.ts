@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import type { Ctx } from "@lyra/core";
+import { intParam } from "../http.js";
 import { pullForActor } from "../engines/realtime.js";
 import type { App } from "../env.js";
 
@@ -16,7 +17,7 @@ const POLL_MS = 3000;
 realtimeRoutes.get("/", async (c) => {
   const ctx = ctxOf(c);
   const env = c.env;
-  let sinceId = Number(c.req.query("since") ?? "-1");
+  let sinceId = intParam(c.req.query("since"), -1, { min: -1 });
 
   return streamSSE(c, async (stream) => {
     while (!stream.aborted) {

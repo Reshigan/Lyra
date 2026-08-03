@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { id as newId, schema } from "@lyra/db";
-import { AppError, badRequest, gate, hashObject, notFound, scoped, sha256Hex, type Ctx } from "@lyra/core";
+import { AppError, badRequest, gate, hashObject, notFound, require_, scoped, sha256Hex, type Ctx } from "@lyra/core";
 import type { Message, ToolCall, ToolDef } from "@lyra/model-gateway";
 
 // docs/15. The seam between "the model wants X" and "X actually happened":
@@ -66,6 +66,9 @@ async function fetchPolicy(ctx: Ctx, args: Record<string, unknown>): Promise<unk
   const policyId = str(args.policyId);
   const policyNo = str(args.policyNo);
   if (!policyId && !policyNo) throw badRequest("fetch_policy needs policyId or policyNo");
+  // `orbit:ai:invoke` only authorizes running the agent, not this action —
+  // same permission the human-facing GET /axis/policies route requires.
+  require_(ctx.actor, "axis:policies:read", { tenantId: ctx.tenantId, module: "axis" });
 
   const rows = await ctx.db
     .select()
@@ -86,6 +89,7 @@ async function fetchPolicy(ctx: Ctx, args: Record<string, unknown>): Promise<unk
 async function startQuote(ctx: Ctx, args: Record<string, unknown>): Promise<unknown> {
   const customerId = str(args.customerId);
   if (!customerId) throw badRequest("start_quote needs customerId");
+  require_(ctx.actor, "axis:cases:create", { tenantId: ctx.tenantId, module: "axis" });
 
   const caseId = newId("cas", ctx.now);
   // ponytail: id() is already unique per tenant, so the case reuses it as its
@@ -115,6 +119,7 @@ async function createEndorsementRequest(ctx: Ctx, args: Record<string, unknown>)
   if (!policyId) throw badRequest("create_endorsement_request needs policyId");
   const changes = args.changes && typeof args.changes === "object" ? (args.changes as Record<string, unknown>) : undefined;
   if (!changes || Object.keys(changes).length === 0) throw badRequest("create_endorsement_request needs changes");
+  require_(ctx.actor, "axis:cases:create", { tenantId: ctx.tenantId, module: "axis" });
   const reason = str(args.reason) ?? null;
   const premiumDeltaMinor = typeof args.premiumDeltaMinor === "number" ? args.premiumDeltaMinor : undefined;
 

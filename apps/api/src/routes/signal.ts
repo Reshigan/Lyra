@@ -5,6 +5,7 @@ import { schema, PolicyJson, toJson, parseJson } from "@lyra/db";
 import { z } from "zod";
 import { body } from "../http.js";
 import { generateCreatives } from "../engines/signal-creative.js";
+import { runBudgetAutopilot } from "../engines/signal-autopilot.js";
 import type { App } from "../env.js";
 
 // docs/modules/signal.md §8 clause 1: brief -> N compliant ar/en variants.
@@ -78,3 +79,12 @@ async function setAutopilotPaused(c: Context<App>, paused: boolean) {
 
 signalRoutes.post("/autopilot/pause", (c) => setAutopilotPaused(c, true));
 signalRoutes.post("/autopilot/resume", (c) => setAutopilotPaused(c, false));
+
+// Manual trigger, same idiom as orbit.ts's /renewals/sweep — RBAC-gated
+// rather than environment-gated, so it also serves the 30-day compressed
+// simulation (docs/24 sim plan) to see a budget decision's effect same-day.
+signalRoutes.post("/autopilot/run", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "signal:autopilot:run", { tenantId: ctx.tenantId, module: "signal" });
+  return c.json({ adjusted: await runBudgetAutopilot(ctx) });
+});

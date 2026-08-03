@@ -1,4 +1,6 @@
 import type { NavItem } from "./api";
+import type { Translate } from "./i18n";
+import { humanize } from "./rows";
 
 // /v1/me returns nav items as `{ labelKey, href, icon }` — a *workspace* href
 // like "/axis", not a resource path. The web shell renders a workspace screen
@@ -54,17 +56,39 @@ export interface NavEntry {
   href: string;
   route: string | undefined;
   resource: string | undefined;
+  /** Nesting level: children render indented under their parent. */
+  depth: number;
 }
 
 export function entriesFor(nav: readonly NavItem[]): NavEntry[] {
-  return nav
-    .filter((item) => item.href !== "/")
-    .map((item) => ({
-      labelKey: item.labelKey || labelKeyFor(item.href),
-      href: item.href,
-      route: routeFor(item.href),
-      resource: resourceFor(item.href)
-    }));
+  // Children are flattened in place, indented — the home screen is one flat
+  // list, and a child silently dropped is a workspace nobody can reach.
+  const entries: NavEntry[] = [];
+  const walk = (items: readonly NavItem[], depth: number) => {
+    for (const item of items) {
+      if (item.href !== "/") {
+        entries.push({
+          labelKey: item.labelKey || labelKeyFor(item.href),
+          href: item.href,
+          route: routeFor(item.href),
+          resource: resourceFor(item.href),
+          depth
+        });
+      }
+      if (item.children?.length) walk(item.children, item.href === "/" ? depth : depth + 1);
+    }
+  };
+  walk(nav, 0);
+  return entries;
+}
+
+/** The title for a nav segment: the catalogue string when the key is known,
+ *  else the segment humanized — a garbage deep link (/m/foo) or an API href
+ *  newer than this app must never render the raw key "nav.foo". */
+export function navTitle(t: Translate, navKey: string, labelKey?: string): string {
+  const key = labelKey || labelKeyFor(`/${navKey}`);
+  const label = t(key);
+  return label === key ? humanize(navKey) : label;
 }
 
 /** Reverse of `navKeyFor`, for the `[nav]` route param. */

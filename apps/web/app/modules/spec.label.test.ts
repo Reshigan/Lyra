@@ -45,6 +45,35 @@ describe("optionLabel", () => {
   });
 });
 
+describe("domain-pack vocabulary", () => {
+  const labels = { premiumMinor: "Premium", policies: "Policies", status: "Status" };
+
+  it("lets a pack rename an insurance noun ahead of the workspace catalogue", () => {
+    const label = labelsFor(spec(labels), "en", "retail-ecom");
+    expect(label("premiumMinor")).toBe("Order value");
+    expect(label("policies")).toBe("Orders");
+    // Nouns the pack has no opinion on fall through untouched.
+    expect(label("status")).toBe("Status");
+  });
+
+  it("renames qualified option keys too", () => {
+    const label = labelsFor(spec({}), "en", "retail-ecom");
+    expect(optionLabel(label, "counterpartyKind", "insurer")).toBe("Supplier");
+  });
+
+  it("keeps the default pack and unknown packs as identity", () => {
+    for (const pack of [undefined, "insurance-retail", "no-such-pack"]) {
+      const label = labelsFor(spec(labels), "en", pack);
+      expect(label("premiumMinor")).toBe("Premium");
+    }
+  });
+
+  it("prefers the pack's own locale, falling back to its English", () => {
+    const label = labelsFor(spec(labels), "ar", "retail-ecom");
+    expect(label("premiumMinor")).toBe("قيمة الطلب");
+  });
+});
+
 describe("humanise", () => {
   it("keeps an empty value as-is rather than inventing one", () => {
     expect(humanise("")).toBe("");

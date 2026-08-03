@@ -123,6 +123,81 @@ describe("assignCohort", () => {
 
 /* --------------------------------------------------------- sweepRenewals --- */
 
+describe("sweepRenewals term dedupe", () => {
+  const DAY = 86_400_000;
+
+  async function seedPolicy(): Promise<void> {
+    await ctx.db.insert(schema.providers).values({
+      id: "prov_1",
+      tenantId: ctx.tenantId,
+      name: "Test Insurer",
+      createdAt: ctx.now,
+      updatedAt: ctx.now
+    });
+    await ctx.db.insert(schema.customers).values({
+      id: "cu_1",
+      tenantId: ctx.tenantId,
+      nameJson: JSON.stringify({ first: "Amina" }),
+      createdAt: ctx.now,
+      updatedAt: ctx.now
+    });
+    await ctx.db.insert(schema.axisPolicies).values({
+      id: "pol_1",
+      tenantId: ctx.tenantId,
+      customerId: "cu_1",
+      providerId: "prov_1",
+      policyNo: "P-1",
+      startAt: ctx.now - 345 * DAY,
+      endAt: ctx.now + 20 * DAY,
+      premiumMinor: 100_00,
+      currency: "AED",
+      status: "active",
+      createdAt: ctx.now,
+      updatedAt: ctx.now
+    });
+  }
+
+  it("raises a fresh renewal this term even though last term's renewal row exists", async () => {
+    await seedPolicy();
+    // Last term's renewal, long since decided: its expiry is in the past.
+    await ctx.db.insert(schema.orbitRenewals).values({
+      id: "rnw_old",
+      tenantId: ctx.tenantId,
+      policyRef: "pol_1",
+      customerId: "cu_1",
+      expiryAt: ctx.now - 345 * DAY,
+      strategy: "human",
+      state: "accepted",
+      createdAt: ctx.now - 380 * DAY,
+      updatedAt: ctx.now - 345 * DAY
+    });
+
+    const raised = await sweepRenewals(ctx);
+    expect(raised).toBe(1);
+
+    const rows = await ctx.db.select().from(schema.orbitRenewals).where(eq(schema.orbitRenewals.policyRef, "pol_1"));
+    expect(rows.length).toBe(2);
+    expect(rows.some((r) => r.expiryAt === ctx.now + 20 * DAY)).toBe(true);
+  });
+
+  it("does not duplicate an open renewal for the current term", async () => {
+    await seedPolicy();
+    await ctx.db.insert(schema.orbitRenewals).values({
+      id: "rnw_open",
+      tenantId: ctx.tenantId,
+      policyRef: "pol_1",
+      customerId: "cu_1",
+      expiryAt: ctx.now + 20 * DAY,
+      strategy: "human",
+      state: "scheduled",
+      createdAt: ctx.now - DAY,
+      updatedAt: ctx.now - DAY
+    });
+
+    expect(await sweepRenewals(ctx)).toBe(0);
+  });
+});
+
 describe("sweepRenewals cohort wiring", () => {
   it("raises a renewal with a computed churn score and a non-literal strategy", async () => {
     await ctx.db.insert(schema.providers).values({

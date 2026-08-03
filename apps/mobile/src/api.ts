@@ -44,11 +44,39 @@ export interface RequestOptions {
   signal?: AbortSignal;
 }
 
+/** A hung connection must become a NetworkError, not a spinner that never
+ *  stops. ponytail: one flat deadline to the response headers; per-endpoint
+ *  budgets when an endpoint earns one. */
+export const REQUEST_TIMEOUT_MS = 15_000;
+
+/**
+ * True when a 401 means "this session is dead". The /v1/auth routes answer 401
+ * for a wrong password or code, which is a form error, not a sign-out.
+ */
+export function endsSession(path: string, status: number): boolean {
+  return status === 401 && !path.startsWith("/v1/auth/");
+}
+
+// Registered once by SessionProvider: a dead session must land every screen on
+// sign-in, instead of each screen offering a Retry that re-sends a dead token.
+let onSessionEnd: (() => void) | null = null;
+export function setOnSessionEnd(handler: (() => void) | null): void {
+  onSessionEnd = handler;
+}
+
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { token, method = "GET", body, signal } = options;
   const headers: Record<string, string> = { accept: "application/json" };
   if (token) headers.authorization = `Bearer ${token}`;
   if (body !== undefined) headers["content-type"] = "application/json";
+
+  // Manual timeout rather than AbortSignal.timeout/any: boring, and it works
+  // on Hermes as well as in Node. The caller's own signal is followed too.
+  const controller = new AbortController();
+  const deadline = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const follow = () => controller.abort();
+  if (signal?.aborted) follow();
+  signal?.addEventListener("abort", follow, { once: true });
 
   let response: Response;
   try {
@@ -56,14 +84,21 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
       method,
       headers,
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-      ...(signal ? { signal } : {})
+      signal: controller.signal
     });
   } catch (cause) {
     // fetch only rejects for transport failures; anything else is a status.
     throw new NetworkError(cause instanceof Error ? cause.message : "request failed");
+  } finally {
+    clearTimeout(deadline);
+    signal?.removeEventListener("abort", follow);
   }
 
-  if (!response.ok) throw await problemFrom(response, path);
+  if (!response.ok) {
+    const problem = await problemFrom(response, path);
+    if (endsSession(path, response.status)) onSessionEnd?.();
+    throw problem;
+  }
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
 }
@@ -217,6 +252,26 @@ export function mfaStepOf(error: unknown): AuthStep | null {
   return named === "enrol" ? "enrol" : "totp";
 }
 
+/**
+ * Wraps the verify→load pair so a load() that fails *after* a successful
+ * verify is retried without re-spending the one-time code — resubmitting a
+ * consumed TOTP answers 401, which would read back as "wrong code".
+ */
+export function verifyThenLoad(
+  verify: (code: string) => Promise<unknown>,
+  load: () => Promise<unknown>
+): (code: string) => Promise<void> {
+  let verified = false;
+  return async (code) => {
+    if (!verified) {
+      await verify(code);
+      verified = true;
+    }
+    await load();
+    verified = false;
+  };
+}
+
 export const fetchMe = (token: string, signal?: AbortSignal): Promise<Me> =>
   request<Me>("/v1/me", { token, ...(signal ? { signal } : {}) });
 
@@ -226,9 +281,14 @@ export const logout = (token: string): Promise<void> =>
 export const listRows = (
   token: string,
   resource: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  /** Pass `Page.cursor` back to read past the first 50 rows. */
+  cursor?: string
 ): Promise<Page<Row>> =>
-  request<Page<Row>>(`/v1/${resource}?limit=50`, { token, ...(signal ? { signal } : {}) });
+  request<Page<Row>>(
+    `/v1/${resource}?limit=50${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
+    { token, ...(signal ? { signal } : {}) }
+  );
 
 export const getRow = (
   token: string,

@@ -33,6 +33,8 @@ const HAND_WRITTEN: Op[] = [
   // Demo deployments only: both answer 404 when ENVIRONMENT is production.
   { method: "get", path: "/v1/auth/demo/personas", summary: "Seeded demo personas offered as one-click sign-in (non-production only)", tag: "auth", public: true },
   { method: "post", path: "/v1/auth/demo/login", summary: "Sign in as a seeded demo persona without a password (non-production only)", tag: "auth", requestBody: true, public: true },
+  { method: "post", path: "/v1/auth/demo/clock", summary: "Advance the simulated clock used by non-production timestamps (non-production only)", tag: "auth", requestBody: true, public: true },
+  { method: "post", path: "/v1/auth/demo/seed", summary: "Seed one demo tenant with its personas and starting data (non-production only)", tag: "auth", public: true },
   // Enterprise sign-in. Public because a browser walks these before any session exists.
   { method: "get", path: "/v1/auth/sso/discover", summary: "Which identity provider, if any, owns an email domain", tag: "auth", public: true },
   { method: "get", path: "/v1/auth/sso/{id}/start", summary: "Redirect to the provider's authorization endpoint (OIDC + PKCE)", tag: "auth", public: true },
@@ -175,6 +177,7 @@ const HAND_WRITTEN: Op[] = [
   { method: "post", path: "/v1/analytics/saved-views", summary: "Save the current filters and columns of a list", permission: "analytics:saved_views:write", tag: "analytics", requestBody: true },
   { method: "delete", path: "/v1/analytics/saved-views/{id}", summary: "Delete a saved view", permission: "analytics:saved_views:write", tag: "analytics" },
   { method: "get", path: "/v1/analytics/unit-economics", summary: "Cost, revenue and margin per unit of work", permission: "analytics:reports:read", tag: "analytics" },
+  { method: "get", path: "/v1/analytics/usage", summary: "Per-tenant storage and daily egress bytes", permission: "analytics:reports:read", tag: "analytics" },
 
   // Onboarding. The rows are readable as CRUD (`core/onboarding-steps`,
   // `dist/partner-agreements`) and moved only from here: a step's state and a
@@ -212,7 +215,7 @@ const HAND_WRITTEN: Op[] = [
   // feed the panel-bench negotiation workflow (docs §2.3, §2.5).
   { method: "post", path: "/v1/scout/whitespaces/compute", summary: "Run the whitespace sweep now against real quote demand vs. policy coverage", permission: "scout:whitespaces:promote", tag: "scout" },
   { method: "post", path: "/v1/scout/wording-diff", summary: "Word-level diff of two coverage-wording texts (PDF extraction deferred, see ADR-0016)", permission: "scout:panel_bench:read", tag: "scout", requestBody: true },
-  { method: "get", path: "/v1/scout/panel-bench/negotiation-pack", summary: "Bench + whitespace negotiation pack as a downloadable PDF", permission: "scout:panel_bench:read", tag: "scout" },
+  { method: "get", path: "/v1/scout/panel-bench/negotiation-pack", summary: "Bench + whitespace negotiation pack as a downloadable PDF", permission: "scout:whitespaces:promote", tag: "scout" },
 
   // North. The daily briefing and the board pack are both real assembly + AI
   // pipelines, gated ahead of generic CRUD so neither accepts a fabricated body.
@@ -250,7 +253,9 @@ const HAND_WRITTEN: Op[] = [
   { method: "post", path: "/v1/staff/delegations", summary: "Delegate the authority to approve for a window (itself approved)", permission: "core:delegations:write", tag: "staff", requestBody: true },
   { method: "get", path: "/v1/staff/delegations", summary: "Who currently holds whose authority", permission: "core:delegations:read", tag: "staff" },
   { method: "post", path: "/v1/staff/delegations/{id}/revoke", summary: "Revoke a delegation; handing your own authority back needs no administrator", permission: "core:delegations:write", tag: "staff", requestBody: true },
-  { method: "post", path: "/v1/staff/delegations/expire", summary: "Sweep delegations whose window has closed (also runs on the scheduled tick)", permission: "core:delegations:write", tag: "staff" }
+  { method: "post", path: "/v1/staff/delegations/expire", summary: "Sweep delegations whose window has closed (also runs on the scheduled tick)", permission: "core:delegations:write", tag: "staff" },
+  { method: "post", path: "/v1/north/snapshotter/run", summary: "Force the NORTH metric snapshot and anomaly scan now (also runs on the scheduled tick)", permission: "north:snapshots:run", tag: "north" },
+  { method: "post", path: "/v1/signal/autopilot/run", summary: "Force the SIGNAL budget autopilot pass now", permission: "signal:autopilot:run", tag: "signal" }
 ];
 
 export function openapi(): Record<string, unknown> {
@@ -474,7 +479,9 @@ function page(ref: unknown): Record<string, unknown> {
         "application/json": {
           schema: {
             type: "object",
-            properties: { data: { type: "array", items: ref }, nextCursor: { type: "string", nullable: true } }
+            // `cursor`, matching what the lister actually returns (http.ts Page):
+            // opaque, passed back as `?cursor=`, absent once the last page is read.
+            properties: { data: { type: "array", items: ref }, cursor: { type: "string" } }
           }
         }
       }

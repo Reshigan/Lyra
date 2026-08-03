@@ -40,6 +40,8 @@ const DEFAULT_PASSWORD = "Gonxt-Demo-2026!";
 export interface SeedOptions {
   now?: number;
   password?: string;
+  /** Set to "production" from the caller's real env — refuses the built-in demo password. */
+  environment?: string;
   /**
    * Enrol every staff persona on this shared TOTP secret. Only a test or a demo
    * wants this — it is one secret for many people, which is the opposite of what
@@ -110,6 +112,9 @@ const PEOPLE: ReadonlyArray<{ local: string; name: string; role: string; locale?
 ];
 
 export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResult> {
+  if (opts.environment === "production" && !opts.password) {
+    throw new Error("refusing to seed production with the built-in demo password — pass an explicit password");
+  }
   const now = opts.now ?? T0;
   const existing = await db
     .select({ id: schema.tenants.id })
@@ -223,8 +228,12 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
       tenantId,
       userId: uid,
       roleId: roleIds[person.role]!,
-      // The motor desk agent is team-scoped, so ABAC has something real to bite on.
-      scopeJson: person.role === "axis.agent" ? JSON.stringify({ teamIds: [teams.motor] }) : null,
+      // ponytail: team-scoped grants gate the WHOLE grant (rbac.ts scopeAllows),
+      // and axis.agent's bundle spans resources with no team column (documents,
+      // quotes, tasks) that could never supply a satisfying subject.teamId. Scoping
+      // this fixture role would just lock the demo agent out of everything, not
+      // exercise ABAC. Team-scoping needs its own role split when it's built for real.
+      scopeJson: null,
       createdAt: now
     });
   }

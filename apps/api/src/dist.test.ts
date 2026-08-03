@@ -254,7 +254,9 @@ describe("defects 4 and 6: the statement ignores from/to/limit and sums across c
       await database.insert(schema.distCommissionEntries).values({
         id: newId("ce", r.at),
         tenantId: seeded.tenantId,
-        policyId: "pol_statement_test",
+        // One policy per entry: dist_commission_entries_accrual_uq allows a
+        // single accrual per (policy, kind).
+        policyId: `pol_statement_test_${r.at}`,
         providerId,
         channelId,
         kind: "new_business",
@@ -310,6 +312,143 @@ describe("defects 4 and 6: the statement ignores from/to/limit and sums across c
 
 /* ------------------------------------------------ 5. no reversing one twice */
 
+/* ------------------------------------- 7. accrue races past its pre-check */
+
+describe("defect 7: accrue is check-then-insert, so concurrent submits double-accrue", () => {
+  let policyId: string;
+
+  beforeAll(async () => {
+    // A fresh policy cloned from a seeded one, so quoteCommission finds a rate.
+    const [seededPolicy] = await database
+      .select()
+      .from(schema.axisPolicies)
+      .where(eq(schema.axisPolicies.policyNo, "CDR-MOT-2501-664118"));
+    policyId = newId("pol", Date.now());
+    await database.insert(schema.axisPolicies).values({
+      ...seededPolicy!,
+      id: policyId,
+      policyNo: `RACE-${Date.now()}`
+    });
+
+    // Take the dual-control signature up front: the approval lives 24h against
+    // (subject, policy), so both racers below pass the gate — the exact window
+    // the pre-check does not cover.
+    const first = await call("finance.controller", "POST", "/v1/dist/commission-entries/accrue", {
+      policyId,
+      kind: "new_business"
+    });
+    expect(first.status).toBe(403);
+    const decided = await call("finance.approver", "POST", `/v1/me/approvals/${first.body.approval_id}/decide`, {
+      decision: "approved"
+    });
+    expect(decided.status).toBe(200);
+  });
+
+  it("posts exactly one accrual when submits race, and answers 409, not 500", async () => {
+    const results = await Promise.all(
+      Array.from({ length: 6 }, () =>
+        call("finance.controller", "POST", "/v1/dist/commission-entries/accrue", { policyId, kind: "new_business" })
+      )
+    );
+    const statuses = results.map((r) => r.status).sort();
+    expect(statuses).toEqual([201, 409, 409, 409, 409, 409]);
+
+    const rows = await database
+      .select()
+      .from(schema.distCommissionEntries)
+      .where(eq(schema.distCommissionEntries.policyId, policyId));
+    expect(rows).toHaveLength(1);
+  });
+});
+
+/* --------------------------------------- 8. taxMinor above net goes negative */
+
+describe("defect 8: accrue stores a negative net commission when taxMinor exceeds net", () => {
+  it("400s naming taxMinor instead of silently accruing a negative position", async () => {
+    const [seededPolicy] = await database
+      .select()
+      .from(schema.axisPolicies)
+      .where(eq(schema.axisPolicies.policyNo, "CDR-MOT-2501-664118"));
+    const policyId = newId("pol", Date.now());
+    await database.insert(schema.axisPolicies).values({
+      ...seededPolicy!,
+      id: policyId,
+      policyNo: `TAX-${Date.now()}`
+    });
+
+    const res = await call("finance.controller", "POST", "/v1/dist/commission-entries/accrue", {
+      policyId,
+      kind: "new_business",
+      taxMinor: 999_999_999
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.detail).toContain("taxMinor");
+
+    const rows = await database
+      .select()
+      .from(schema.distCommissionEntries)
+      .where(eq(schema.distCommissionEntries.policyId, policyId));
+    expect(rows).toHaveLength(0);
+  });
+});
+
+/* --------------------------------------------- 9. clawback is not idempotent */
+
+describe("defect 9: clawback has no idempotency wrapper, so a retried submit reverses twice", () => {
+  let entryId: string;
+  const KEY = "clawback-replay-1";
+  const REASON = "duplicate submit from a retrying client";
+
+  beforeAll(async () => {
+    entryId = newId("ce", Date.now());
+    await database.insert(schema.distCommissionEntries).values({
+      id: entryId,
+      tenantId: seeded.tenantId,
+      policyId: `pol_clawback_idem_${Date.now()}`,
+      providerId: "prv_idem_test",
+      channelId: "chn_idem_test",
+      kind: "new_business",
+      premiumMinor: 100_00,
+      grossCommissionMinor: 10_00,
+      channelCommissionMinor: 4_00,
+      netCommissionMinor: 6_00,
+      taxMinor: 0,
+      currency: "AED",
+      state: "accrued",
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    });
+  });
+
+  it("replays the stored 201 for the same idempotency key and writes one reversal", async () => {
+    const first = await throughApproval(
+      "finance.controller",
+      "finance.approver",
+      "POST",
+      `/v1/dist/commission-entries/${entryId}/clawback`,
+      { reason: REASON },
+      { "idempotency-key": KEY }
+    );
+    expect(first.status).toBe(201);
+
+    const replay = await call(
+      "finance.controller",
+      "POST",
+      `/v1/dist/commission-entries/${entryId}/clawback`,
+      { reason: REASON },
+      { "idempotency-key": KEY }
+    );
+    expect(replay.status).toBe(201);
+    expect(replay.body.id).toBe(first.body.id);
+
+    const reversals = await database
+      .select()
+      .from(schema.distCommissionEntries)
+      .where(eq(schema.distCommissionEntries.reversalOf, entryId));
+    expect(reversals).toHaveLength(1);
+  });
+});
+
 describe("defect 5: clawback reverses the same accrual twice", () => {
   let entryId: string;
 
@@ -355,5 +494,54 @@ describe("defect 5: clawback reverses the same accrual twice", () => {
       .from(schema.distCommissionEntries)
       .where(eq(schema.distCommissionEntries.reversalOf, entryId));
     expect(reversals).toHaveLength(1);
+  });
+});
+
+describe("the retired generic CRUD door onto commission-entries is gone", () => {
+  let entryId: string;
+
+  beforeAll(async () => {
+    entryId = newId("ce", Date.now());
+    await database.insert(schema.distCommissionEntries).values({
+      id: entryId,
+      tenantId: seeded.tenantId,
+      policyId: `pol_generic_crud_door_${Date.now()}`,
+      providerId: "prv_generic_crud_door",
+      channelId: "chn_generic_crud_door",
+      kind: "new_business",
+      premiumMinor: 100_00,
+      grossCommissionMinor: 10_00,
+      channelCommissionMinor: 4_00,
+      netCommissionMinor: 6_00,
+      taxMinor: 0,
+      currency: "AED",
+      state: "paid",
+      channelSettlementId: "stl_already_settled",
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    });
+  });
+
+  it("cannot unstick a paid entry back onto a settlement by PATCHing state/channelSettlementId directly", async () => {
+    // Only /commission-entries/:id/clawback may move money here. A generic
+    // PATCH resetting state or channelSettlementId would let this entry sweep
+    // into a second settlement run and get paid twice.
+    const res = await call("finance.controller", "PATCH", `/v1/dist/commission-entries/${entryId}`, {
+      state: "accrued",
+      channelSettlementId: null
+    });
+    expect(res.status).toBe(404);
+
+    const [row] = await database
+      .select()
+      .from(schema.distCommissionEntries)
+      .where(eq(schema.distCommissionEntries.id, entryId));
+    expect(row?.state).toBe("paid");
+    expect(row?.channelSettlementId).toBe("stl_already_settled");
+  });
+
+  it("still reads through the generic resource", async () => {
+    const res = await call("finance.controller", "GET", "/v1/dist/commission-entries");
+    expect(res.status).toBe(200);
   });
 });

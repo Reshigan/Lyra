@@ -227,6 +227,61 @@ describe("checkBudget percentage math", () => {
   });
 });
 
+describe("zero limits mean blocked, not unlimited", () => {
+  // A tenant zeroing an AI budget is turning AI off, not removing the ceiling.
+  it("checkBudget blocks on a tokens limit of 0", async () => {
+    const ctx = makeCtx(budgetPolicy(0, 1_000_000));
+    const check = await checkBudget(ctx, "zero-tok");
+    expect(check.ok).toBe(false);
+    expect(check.reason).toBe("tokens");
+  });
+
+  it("checkBudget blocks on a cost limit of 0", async () => {
+    const ctx = makeCtx(budgetPolicy(1_000_000, 0));
+    const check = await checkBudget(ctx, "zero-cost");
+    expect(check.ok).toBe(false);
+    expect(check.reason).toBe("cost");
+  });
+
+  it("charge against a 0 limit latches the stop", async () => {
+    const ctx = makeCtx(budgetPolicy(0, 1_000_000));
+    const result = await charge(ctx, { tokensIn: 5, tokensOut: 0, costMicro: 0 }, "zero-charge");
+    expect(result.stopped).toBe(true);
+    expect((await checkBudget(ctx, "zero-charge")).state.stoppedAt).not.toBeNull();
+  });
+
+  it("setLimits to 0 keeps an existing stop — 0 is not a raise to unlimited", async () => {
+    const ctx = makeCtx(budgetPolicy(100, 1_000_000));
+    await charge(ctx, { tokensIn: 100, tokensOut: 0, costMicro: 0 }, "*");
+    expect((await checkBudget(ctx, "*")).ok).toBe(false);
+
+    await setLimits(ctx, { tokensLimit: 0 }, "*");
+    const check = await checkBudget(ctx, "*");
+    expect(check.ok).toBe(false);
+    expect(check.state.stoppedAt).not.toBeNull();
+  });
+});
+
+describe("concurrent charges", () => {
+  it("latches stoppedAt even when every charge read the row under the limit", async () => {
+    // Two charges of 60 against a 100-token ceiling, interleaved so both read
+    // tokensUsed=0 before either writes (Promise.all on one connection issues
+    // both SELECTs before either UPDATE). The counters are relative SQL and end
+    // at 120; the latch must come from the post-increment value, not the stale read.
+    const ctx = makeCtx(budgetPolicy(100, 1_000_000));
+    await checkBudget(ctx, "race"); // seed the row so both charges hit the read→update path
+    const [a, b] = await Promise.all([
+      charge(ctx, { tokensIn: 60, tokensOut: 0, costMicro: 0 }, "race"),
+      charge(ctx, { tokensIn: 60, tokensOut: 0, costMicro: 0 }, "race")
+    ]);
+
+    const state = (await checkBudget(ctx, "race")).state;
+    expect(state.tokensUsed).toBe(120);
+    expect(state.stoppedAt).not.toBeNull();
+    expect(a.stopped || b.stopped).toBe(true);
+  });
+});
+
 describe("assertBudget", () => {
   it("throws a 429 with a retry-after computed to the next UTC midnight", async () => {
     // 2024-01-15T10:30:00.000Z by hand: 13h30m to the next UTC midnight = 48,600s.

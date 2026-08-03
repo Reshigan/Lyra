@@ -17,6 +17,35 @@ describe("contract", () => {
     expect(readFileSync(OUTPUT, "utf8")).toBe(emit(openapi()));
   });
 
+  // Spec↔SDK completeness on its own: the byte-equality test above also fails
+  // on drift, but its failure is a 3000-line diff; this one names the endpoint.
+  it("exposes an operation for every path in the openapi document", () => {
+    const doc = openapi() as { paths: Record<string, Record<string, unknown>> };
+    const missing: string[] = [];
+    for (const [path, item] of Object.entries(doc.paths)) {
+      for (const method of Object.keys(item)) {
+        const id = `${method.toUpperCase()} ${path}`;
+        if (!(id in OPERATIONS)) missing.push(id);
+      }
+    }
+    expect(missing).toEqual([]);
+  });
+
+  // The wire field is `cursor` (apps/api/src/http.ts Page — what the lister
+  // returns); the spec and SDK once said `nextCursor` and pagination silently
+  // stopped after page 1. Aligned to the API pre-go-live instead of bumping
+  // /v1: nothing external had shipped against the wrong name.
+  it("page responses paginate with `cursor`, the field the API actually returns", () => {
+    const doc = openapi() as {
+      paths: Record<
+        string,
+        { get?: { responses: Record<string, { content?: Record<string, { schema: { properties?: object } }> }> } }
+      >;
+    };
+    const schema = doc.paths["/v1/core/customers"]?.get?.responses["200"]?.content?.["application/json"]?.schema;
+    expect(Object.keys(schema?.properties ?? {})).toEqual(["data", "cursor"]);
+  });
+
   it("carries the permission the endpoint actually checks", () => {
     expect(OPERATIONS["POST /v1/core/customers"]).toEqual({
       tag: "core",
@@ -63,8 +92,11 @@ function problem(status: number, body: Record<string, unknown>, requestId = "req
 
 describe("client", () => {
   it("builds the path, query and bearer header", async () => {
+    // Mocked with the shape crud.ts really sends (`cursor`, absent on the last
+    // page) — the contract tests above pin the spec to the same shape, and the
+    // `page.cursor` access below only typechecks against the generated Page.
     const { fetch, calls } = stub(
-      new Response(JSON.stringify({ data: [], nextCursor: null }), {
+      new Response(JSON.stringify({ data: [], cursor: "c1" }), {
         status: 200,
         headers: { "content-type": "application/json" }
       })
@@ -74,6 +106,7 @@ describe("client", () => {
     const page = await client.call("GET /v1/core/customers", { query: { limit: 10, kycStatus: "verified" } });
 
     expect(page.data).toEqual([]);
+    expect(page.cursor).toBe("c1");
     expect(calls[0]?.url).toBe("https://api.example.com/v1/core/customers?limit=10&kycStatus=verified");
     expect(calls[0]?.headers.authorization).toBe("Bearer sess_1");
   });

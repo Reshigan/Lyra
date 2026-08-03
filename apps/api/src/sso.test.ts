@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { base64url, seed } from "@lyra/core";
 import { schema, type Db } from "@lyra/db";
@@ -371,5 +371,34 @@ describe("sso callback", () => {
       iss: "https://attacker.test"
     });
     expect(wrongIssuer.status).toBe(401);
+  });
+
+  it("refuses to JIT-provision past the tenant's seat limit", async () => {
+    const [count] = await database
+      .select({ n: sql<number>`count(*)` })
+      .from(schema.users)
+      .where(and(eq(schema.users.tenantId, tenantId), isNull(schema.users.deletedAt)));
+    const n = count?.n ?? 0;
+    const [before] = await database
+      .select({ entitlementsJson: schema.tenants.entitlementsJson })
+      .from(schema.tenants)
+      .where(eq(schema.tenants.id, tenantId));
+    // Full at exactly the live headcount — the next unknown claimant has nowhere to go.
+    await database
+      .update(schema.tenants)
+      .set({ entitlementsJson: JSON.stringify({ seats: n }) })
+      .where(eq(schema.tenants.id, tenantId));
+    try {
+      const res = await signIn({ sub: "idp-sub-over", email: "over.seat@gonxt.ae", name: "Over Seat" });
+      expect(res.status).toBe(403);
+      expect(await detailOf(res)).toContain("seat limit");
+      const rows = await database.select().from(schema.users).where(eq(schema.users.email, "over.seat@gonxt.ae"));
+      expect(rows).toHaveLength(0);
+    } finally {
+      await database
+        .update(schema.tenants)
+        .set({ entitlementsJson: before?.entitlementsJson ?? null })
+        .where(eq(schema.tenants.id, tenantId));
+    }
   });
 });

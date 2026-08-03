@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { sqliteTable, text, integer, index, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 // Aggregator spine. The tenant sells other underwriters' products, and may be an
@@ -31,7 +32,8 @@ export const channels = sqliteTable(
     deletedAt: integer("deleted_at")
   },
   (t) => [
-    uniqueIndex("dist_channels_key_uq").on(t.tenantId, t.key),
+    // Partial: a soft-deleted channel must not block reusing its key.
+    uniqueIndex("dist_channels_key_uq").on(t.tenantId, t.key).where(sql`deleted_at IS NULL`),
     index("dist_channels_tenant_idx").on(t.tenantId, t.kind, t.status),
     index("dist_channels_partner_idx").on(t.tenantId, t.partnerId)
   ]
@@ -73,7 +75,10 @@ export const offerings = sqliteTable(
     deletedAt: integer("deleted_at")
   },
   (t) => [
-    uniqueIndex("dist_offerings_code_uq").on(t.tenantId, t.providerId, t.code),
+    // Partial: a withdrawn (soft-deleted) offering must not block reusing its code.
+    uniqueIndex("dist_offerings_code_uq")
+      .on(t.tenantId, t.providerId, t.code)
+      .where(sql`deleted_at IS NULL`),
     index("dist_offerings_product_idx").on(t.tenantId, t.productId, t.status),
     index("dist_offerings_provider_idx").on(t.tenantId, t.providerId, t.status)
   ]
@@ -226,6 +231,12 @@ export const commissionEntries = sqliteTable(
     updatedAt: integer("updated_at").notNull()
   },
   (t) => [
+    // Backs the accrue route's check-then-insert (apps/api/src/routes/dist.ts):
+    // one accrual per (policy, kind), enforced against concurrent requests.
+    // Clawbacks are exempt — each reversed accrual adds a kind='clawback' row.
+    uniqueIndex("dist_commission_entries_accrual_uq")
+      .on(t.tenantId, t.policyId, t.kind)
+      .where(sql`kind != 'clawback'`),
     index("dist_commission_entries_idx").on(t.tenantId, t.state, t.earnedAt),
     index("dist_commission_entries_policy_idx").on(t.tenantId, t.policyId),
     index("dist_commission_entries_provider_idx").on(t.tenantId, t.providerId, t.state),

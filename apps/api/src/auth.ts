@@ -6,6 +6,7 @@ import {
   audit,
   badRequest,
   emit,
+  entitledGrants,
   forbidden,
   grantsFor,
   hashPassword,
@@ -16,6 +17,7 @@ import {
   randomToken,
   recoveryCodes,
   requiresMfa,
+  seed,
   sha256Hex,
   timingSafeEqual,
   tooManyRequests,
@@ -28,6 +30,7 @@ import {
   type Ctx
 } from "@lyra/core";
 import { body } from "./http.js";
+import { simNow } from "./clock.js";
 import type { App, Env } from "./env.js";
 
 // docs/06 §2. Sessions are opaque tokens hashed at rest; the API never holds a
@@ -79,9 +82,53 @@ export interface Authenticated {
   entitlements: EntitlementsJson;
 }
 
-async function tenantConfig(
+/**
+ * A stored blob that no longer parses is an incident, not a shrug: silently
+ * substituting defaults would reset autoApprove, AI budgets and module
+ * entitlements with no trail. The fallback itself is the closed position
+ * (defaults auto-approve nothing and entitle no modules), so the fix here is
+ * the audit row — written once per detection, not once per request.
+ *
+ * ponytail: per-isolate memo for the dedupe — an isolate restart may write one
+ * duplicate row, which verifyChain tolerates. Upgrade path: a flag column on
+ * core_tenants if operators ever need to query "still corrupt?" from SQL.
+ */
+const corruptAudited = new Set<string>();
+
+async function auditCorruptConfig(
   database: ReturnType<typeof makeDb>,
-  tenantId: string
+  tenantId: string,
+  column: "policy_json" | "entitlements_json",
+  now: number
+): Promise<void> {
+  const key = `${tenantId}:${column}`;
+  if (corruptAudited.has(key)) return;
+  corruptAudited.add(key);
+  try {
+    await audit(
+      {
+        db: database as unknown as Ctx["db"],
+        tenantId,
+        actor: { kind: "system", id: "auth", tenantId, grants: [] },
+        requestId: newId("req", now),
+        now,
+        locale: "en",
+        policy: PolicyJson.parse({}),
+        entitlements: EntitlementsJson.parse({})
+      },
+      { action: "core.tenant.config_corrupt", subjectRef: tenantId, after: { column } }
+    );
+  } catch {
+    // The trail write is best-effort per attempt but must not be lost forever:
+    // clear the memo so the next request tries again.
+    corruptAudited.delete(key);
+  }
+}
+
+export async function tenantConfig(
+  database: ReturnType<typeof makeDb>,
+  tenantId: string,
+  now: number
 ): Promise<{ policy: PolicyJson; entitlements: EntitlementsJson }> {
   const rows = await database
     .select()
@@ -91,9 +138,16 @@ async function tenantConfig(
   const t = rows[0];
   if (!t) throw unauthorized("tenant not found");
   if (t.status !== "active") throw forbidden(`tenant is ${t.status}`);
+
+  const rawPolicy = safeJson<Record<string, unknown>>(t.policyJson);
+  const rawEntitlements = safeJson<Record<string, unknown>>(t.entitlementsJson);
+  if (t.policyJson && rawPolicy === null) await auditCorruptConfig(database, tenantId, "policy_json", now);
+  if (t.entitlementsJson && rawEntitlements === null) {
+    await auditCorruptConfig(database, tenantId, "entitlements_json", now);
+  }
   return {
-    policy: PolicyJson.parse(safeJson(t.policyJson) ?? {}),
-    entitlements: EntitlementsJson.parse(safeJson(t.entitlementsJson) ?? {})
+    policy: PolicyJson.parse(rawPolicy ?? {}),
+    entitlements: EntitlementsJson.parse(rawEntitlements ?? {})
   };
 }
 
@@ -139,11 +193,18 @@ async function fromSession(
   // and a session that has since cleared its factor.
   if (!row.session.mfaSatisfied) throw mfaRequired(row.user.mfaEnrolled ? "verify" : "enrol");
 
-  const config = await tenantConfig(database, tenantId);
+  const config = await tenantConfig(database, tenantId, now);
   return {
     tenantId,
     locale: row.user.locale,
-    actor: { kind: "user", id: row.user.id, tenantId, grants },
+    // docs/21: a permission for a module the tenant has not licensed does not
+    // exist for its actors — this one filter is what makes entitlements real.
+    actor: {
+      kind: "user",
+      id: row.user.id,
+      tenantId,
+      grants: entitledGrants(grants, config.entitlements)
+    },
     ...config
   };
 }
@@ -168,7 +229,7 @@ async function fromApiKey(
   if (hash !== key.keyHash) throw unauthorized("api key not found");
 
   const scopes = safeJson<string[]>(key.scopesJson) ?? [];
-  const config = await tenantConfig(database, key.tenantId);
+  const config = await tenantConfig(database, key.tenantId, now);
   // A failed last-used stamp must not fail the call it is only observing.
   try {
     await database.update(schema.apiKeys).set({ lastUsedAt: now }).where(eq(schema.apiKeys.id, key.id));
@@ -183,7 +244,12 @@ async function fromApiKey(
       kind: "partner",
       id: key.id,
       tenantId: key.tenantId,
-      grants: [{ roleKey: `apikey.${key.mode}`, permissions: scopes }]
+      // Same entitlement subtraction as a session: a machine caller cannot
+      // reach a module its tenant has not licensed, whatever its scopes say.
+      grants: entitledGrants(
+        [{ roleKey: `apikey.${key.mode}`, permissions: scopes }],
+        config.entitlements
+      )
     },
     ...config
   };
@@ -250,7 +316,7 @@ async function hit(env: Env, key: string, windowSec: number): Promise<number | u
 export const authRoutes = new Hono<App>();
 
 authRoutes.post("/login", async (c) => {
-  const now = Date.now();
+  const now = await simNow(c.env);
   const input = await body(c, LoginBody);
   await throttle(c.env, `login:${input.email.toLowerCase()}`);
 
@@ -337,7 +403,7 @@ authRoutes.get("/demo/personas", async (c) => {
 
 authRoutes.post("/demo/login", async (c) => {
   demoOnly(c.env);
-  const now = Date.now();
+  const now = await simNow(c.env);
   const input = await body(c, z.object({ email: z.string().email() }));
   const database = db(c.env);
   const tenantId = await demoTenant(database);
@@ -364,6 +430,34 @@ authRoutes.post("/demo/login", async (c) => {
     ...issued,
     user: { id: user.id, name: user.name, email: user.email, locale: user.locale, tenantId: user.tenantId }
   });
+});
+
+/**
+ * Advances the simulated clock (docs/24 sim plan) — the 30-day compressed
+ * simulation's day-driver calls this once per virtual day. `demoOnly` keeps it
+ * out of production the same way the other demo routes are.
+ */
+authRoutes.post("/demo/clock", async (c) => {
+  demoOnly(c.env);
+  const { advanceMs } = await body(c, z.object({ advanceMs: z.number().int() }));
+  const cur = Number((await c.env.CONFIG!.get("sim:clock:offsetMs")) ?? 0);
+  const next = cur + advanceMs;
+  await c.env.CONFIG!.put("sim:clock:offsetMs", String(next));
+  return c.json({ offsetMs: next, simNow: await simNow(c.env) });
+});
+
+/**
+ * One-time bootstrap for a fresh staging deployment with no demo tenant yet
+ * (docs/24 sim plan §6 pre-flight). `seed()` itself refuses a second call
+ * once "gonxt" exists, so this route needs no extra guard — remove the route
+ * once the 30-day exercise is done, it has no place in a real deployment.
+ */
+authRoutes.post("/demo/seed", async (c) => {
+  demoOnly(c.env);
+  const result = await seed(db(c.env) as unknown as CoreDb, {
+    ...(c.env.ENVIRONMENT !== undefined ? { environment: c.env.ENVIRONMENT } : {})
+  });
+  return c.json({ tenantId: result.tenantId }, 201);
 });
 
 /**
@@ -419,7 +513,7 @@ export async function issueSession(
     tenantId: user.tenantId,
     locale: user.locale,
     actor: { kind: "user", id: user.id, tenantId: user.tenantId, grants },
-    ...(await tenantConfig(database, user.tenantId))
+    ...(await tenantConfig(database, user.tenantId, now))
   }, now, c.req.header("cf-connecting-ip"), c.req.header("user-agent"));
   await audit(ctx, { action: "core.session.login", subjectRef: sessionId });
   await emit(ctx, {
@@ -476,7 +570,7 @@ async function mfaThrottle(env: Env, sessionId: string): Promise<void> {
 }
 
 authRoutes.post("/mfa/enrol", async (c) => {
-  const now = Date.now();
+  const now = await simNow(c.env);
   const database = db(c.env);
   const row = await sessionRow(database, sessionToken(c, c.env), now);
   // Re-enrolling would silently invalidate the authenticator the account is
@@ -504,7 +598,7 @@ authRoutes.post("/mfa/enrol", async (c) => {
 });
 
 authRoutes.post("/mfa/enrol/confirm", async (c) => {
-  const now = Date.now();
+  const now = await simNow(c.env);
   const input = await body(c, CodeBody);
   const database = db(c.env);
   const row = await sessionRow(database, sessionToken(c, c.env), now);
@@ -534,7 +628,7 @@ authRoutes.post("/mfa/enrol/confirm", async (c) => {
 });
 
 authRoutes.post("/mfa/verify", async (c) => {
-  const now = Date.now();
+  const now = await simNow(c.env);
   const input = await body(c, CodeBody);
   const database = db(c.env);
   const row = await sessionRow(database, sessionToken(c, c.env), now);
@@ -582,7 +676,7 @@ authRoutes.post("/mfa/verify", async (c) => {
 });
 
 authRoutes.post("/mfa/disable", async (c) => {
-  const now = Date.now();
+  const now = await simNow(c.env);
   const input = await body(c, CodeBody);
   const database = db(c.env);
   const row = await sessionRow(database, sessionToken(c, c.env), now);
@@ -620,7 +714,7 @@ async function ctxForSession(
       tenantId,
       locale: row.user.locale,
       actor: { kind: "user", id: row.user.id, tenantId, grants },
-      ...(await tenantConfig(database, tenantId))
+      ...(await tenantConfig(database, tenantId, now))
     },
     now,
     c.req.header("cf-connecting-ip"),
@@ -629,7 +723,7 @@ async function ctxForSession(
 }
 
 authRoutes.post("/logout", async (c) => {
-  const now = Date.now();
+  const now = await simNow(c.env);
   const header = c.req.header("authorization");
   const token =
     (header?.startsWith("Bearer ") ? header.slice(7).trim() : undefined) ??

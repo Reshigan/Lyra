@@ -3,6 +3,7 @@ import { PolicyJson, EntitlementsJson, schema } from "@lyra/db";
 import { notFound, pruneIdempotency, type Envelope } from "@lyra/core";
 import { drainOutbox, deliverQueued } from "./dispatch.js";
 import { sweepRenewals } from "./engines/renewals.js";
+import { runSnapshotter } from "./engines/north-snapshotter.js";
 import { backupTenant } from "./engines/backup.js";
 import { nudgeApiKeyRotation } from "./engines/api-key-rotation.js";
 import { runBudgetAutopilot } from "./engines/signal-autopilot.js";
@@ -35,6 +36,9 @@ import type { App, Env } from "./env.js";
 // anything with real behaviour behind it is a hand-written route in routes/*.
 
 const app = new Hono<App>();
+
+/** Deliveries per message before the consumer stops retrying and drops it. */
+const MAX_QUEUE_ATTEMPTS = 3;
 
 app.onError(onError);
 app.use("*", withHeaders);
@@ -96,7 +100,7 @@ export default {
    * `deliverQueued` the inline (no-queue) path uses, just off the cron tick so a
    * slow webhook endpoint no longer holds up the next tenant's drain.
    */
-  async queue(batch: { messages: { body: Envelope; ack(): void; retry(): void }[] }, env: Env) {
+  async queue(batch: { messages: { body: Envelope; attempts: number; ack(): void; retry(): void }[] }, env: Env) {
     for (const message of batch.messages) {
       try {
         const event = message.body;
@@ -113,8 +117,20 @@ export default {
         );
         await deliverQueued(ctx, event);
         message.ack();
-      } catch {
-        message.retry();
+      } catch (err) {
+        // A message that fails every delivery is poison: past the cap it is
+        // acked and logged, or it blocks its batch slot forever. Wrangler's
+        // max_retries (default 3) also caps it in production, but silently.
+        if (message.attempts >= MAX_QUEUE_ATTEMPTS) {
+          console.error("lyra-events: dropping poison message", {
+            attempts: message.attempts,
+            eventId: (message.body as { id?: string } | null)?.id,
+            error: err instanceof Error ? err.message : String(err)
+          });
+          message.ack();
+        } else {
+          message.retry();
+        }
       }
     }
   },
@@ -135,27 +151,39 @@ export default {
         await pruneSessions(env, now);
         await pruneIdempotency(db(env) as never, now);
         for (const tenantId of await activeTenants(env)) {
-          const ctx = await ctxFor(
-            env,
-            {
+          // One tenant's bad tick must not starve every tenant after it — a
+          // persistent failure here would otherwise stop the whole fleet's
+          // outbox, renewals and schedules indefinitely.
+          try {
+            const ctx = await ctxFor(
+              env,
+              {
+                tenantId,
+                locale: "en",
+                actor: { kind: "system", id: "scheduler", tenantId, grants: [] },
+                policy: PolicyJson.parse({}),
+                entitlements: EntitlementsJson.parse({})
+              },
+              now
+            );
+            await drainOutbox(ctx, env.EVENTS);
+            await sweepRenewals(ctx, env.WF);
+            await runBudgetAutopilot(ctx);
+            await runDueSchedules(ctx, env.FILES, env.BROWSER);
+            // A delegation that has run out must stop showing as active, or every
+            // admin screen lies about who currently holds the authority to approve.
+            await expireDelegations(ctx);
+            // docs/10 §6: nightly D1 -> R2 backup, one write per tenant per day.
+            if (isBackupWindow) await backupTenant(ctx, env.EXPORTS);
+            if (isBackupWindow) await nudgeApiKeyRotation(ctx);
+            // docs/modules/north.md §3 Snapshotter: nightly, 02:00Z per seed.ts's timing model (ADR-0024).
+            if (isBackupWindow) await runSnapshotter(ctx);
+          } catch (err) {
+            console.error("scheduled tick failed for tenant", {
               tenantId,
-              locale: "en",
-              actor: { kind: "system", id: "scheduler", tenantId, grants: [] },
-              policy: PolicyJson.parse({}),
-              entitlements: EntitlementsJson.parse({})
-            },
-            now
-          );
-          await drainOutbox(ctx, env.EVENTS);
-          await sweepRenewals(ctx, env.WF);
-          await runBudgetAutopilot(ctx);
-          await runDueSchedules(ctx, env.FILES, env.BROWSER);
-          // A delegation that has run out must stop showing as active, or every
-          // admin screen lies about who currently holds the authority to approve.
-          await expireDelegations(ctx);
-          // docs/10 §6: nightly D1 -> R2 backup, one write per tenant per day.
-          if (isBackupWindow) await backupTenant(ctx, env.EXPORTS);
-          if (isBackupWindow) await nudgeApiKeyRotation(ctx);
+              error: err instanceof Error ? err.message : String(err)
+            });
+          }
         }
       })()
     );

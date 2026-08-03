@@ -172,6 +172,12 @@ export function resolveLocale(preferred: readonly (string | null | undefined)[])
   return DEFAULT_LOCALE;
 }
 
+/** Joins display fragments (a title and its status, say) with the locale's own
+ *  comma — a Latin ", " inside Arabic text is the wrong glyph. */
+export function joinList(locale: string, parts: readonly string[]): string {
+  return parts.join(baseOf(locale) === "ar" ? "، " : ", ");
+}
+
 export function translator(locale: string): Translate {
   const catalogue = CATALOGUES[baseOf(locale)] ?? CATALOGUES[DEFAULT_LOCALE]!;
   return (key, vars) => {

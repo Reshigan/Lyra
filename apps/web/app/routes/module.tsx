@@ -163,7 +163,7 @@ export default function ModuleList() {
   if (!spec) return null;
   const tab = tabOf(spec, loaded.resource);
   if (!tab) return null;
-  const label = labelsFor(spec, locale);
+  const label = labelsFor(spec, locale, shell?.domainPack);
   const held = new Set(permissions);
 
   const tabs = visibleTabs(spec, permissions);

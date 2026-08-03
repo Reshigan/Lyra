@@ -10,7 +10,7 @@ import type { Ctx } from "@lyra/core";
 import { crudRouter } from "./crud.js";
 import { onError } from "./mw.js";
 import { ANALYTICS } from "./resources.js";
-import { analyticsRoutes, runDueSchedules } from "./routes/analytics.js";
+import { analyticsRoutes, nextRun, runDueSchedules } from "./routes/analytics.js";
 import type { App, Env } from "./env.js";
 
 // ANL-010 (warehouse feed) and ANL-012 (scheduled delivery). Both are driven
@@ -295,6 +295,75 @@ describe("scheduled delivery", () => {
   });
 });
 
+/* ------------------------------------------------ schedule cron timezone */
+
+describe("nextRun timezone", () => {
+  it("evaluates the cron in the schedule's timezone: 09:00 Asia/Dubai is 05:00 UTC", () => {
+    expect(nextRun("0 9 * * *", Date.UTC(2026, 5, 15), "Asia/Dubai")).toBe(Date.UTC(2026, 5, 15, 5));
+  });
+
+  it("stays UTC when no timezone is given", () => {
+    expect(nextRun("0 9 * * *", Date.UTC(2026, 5, 15))).toBe(Date.UTC(2026, 5, 15, 9));
+  });
+
+  it("rejects a timezone Intl does not know", () => {
+    try {
+      nextRun("0 9 * * *", 0, "Mars/Olympus");
+      expect.unreachable("nextRun accepted an unknown timezone");
+    } catch (e) {
+      expect((e as { detail?: string }).detail).toMatch(/timezone/);
+    }
+  });
+});
+
+describe("schedule creation", () => {
+  const post = (payload: unknown) =>
+    router().fetch(
+      new Request("http://api.test/v1/analytics/schedules", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload)
+      }),
+      env as never
+    );
+
+  it("stores nextRunAt computed in the schedule's timezone, not bare UTC", async () => {
+    await seedSchedule({ status: "paused" }); // seeds rep_1
+    const res = await post({
+      reportId: "rep_1",
+      name: { en: "Daily" },
+      cron: "0 9 * * *",
+      timezone: "Asia/Dubai",
+      recipients: ["u_owner"]
+    });
+    expect(res.status).toBe(201);
+    const row = (await res.json()) as { nextRunAt: number };
+    // NOW is 2026-06-15T12:00Z = 16:00 in Dubai; next 09:00 Dubai is 05:00 UTC next day.
+    expect(row.nextRunAt).toBe(Date.UTC(2026, 5, 16, 5));
+  });
+
+  // deliverSchedule only renders reports; accepting a dashboard-only schedule
+  // mints one that fails and alerts its owner on every fire, forever.
+  it("rejects a dashboard-only schedule with a 400 at creation", async () => {
+    const res = await post({
+      dashboardId: "dsh_1",
+      name: { en: "Board" },
+      cron: "0 9 * * *",
+      recipients: ["u_owner"]
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
+/* --------------------------------------------------------- unit economics */
+
+describe("unit economics", () => {
+  it("rejects a non-numeric `since` instead of silently dropping the filter", async () => {
+    const res = await router().fetch(new Request("http://api.test/v1/analytics/unit-economics?since=banana"), env as never);
+    expect(res.status).toBe(400);
+  });
+});
+
 /* ------------------------------------------------- row visibility by id */
 
 // The class of bug: a list narrows to the rows you may see, the by-id handler
@@ -504,6 +573,53 @@ describe("export visibility", () => {
   it("does not reach across tenants", async () => {
     await seedExport({ id: "exp_theirs", requestedBy: "user:u_owner", tenantId: "t_other" });
     expect((await get("/v1/analytics/exports/exp_theirs/download", { actor: downloader("u_owner") })).status).toBe(404);
+  });
+});
+
+/* ------------------------------------------------- docs/25 §6 cost guards */
+
+describe("usage metering", () => {
+  it("adds each download to the day's egress and derives storage from live files", async () => {
+    await seedExport({ id: "exp_u", requestedBy: "user:u_owner" });
+    // A deleted file is not stored any more — it must not count.
+    await ctx.db.insert(schema.files).values({
+      id: "file_gone",
+      tenantId: "t_test",
+      r2Key: "gone",
+      kind: "analytics_export",
+      subjectRef: null,
+      sha256: "x",
+      sizeBytes: 1000,
+      contentType: "text/csv",
+      piiLevel: "none",
+      createdAt: NOW,
+      deletedAt: NOW
+    });
+
+    const download = () =>
+      router({ actor: downloader("u_owner") }).fetch(
+        new Request("http://api.test/v1/analytics/exports/exp_u/download"),
+        env as never
+      );
+    expect((await download()).status).toBe(200);
+    expect((await download()).status).toBe(200);
+
+    const res = await router({ actor: actor(["analytics:reports:read"]) }).fetch(
+      new Request("http://api.test/v1/analytics/usage"),
+      env as never
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: { storageBytes: number; egressDays: { day: string; bytes: number }[] } };
+    expect(body.data.storageBytes).toBe(8);
+    // Two 8-byte downloads on the same day land on one upserted counter row.
+    expect(body.data.egressDays).toEqual([{ day: "2026-06-15", bytes: 16 }]);
+  });
+
+  const downloader = (id: string): Ctx["actor"] => ({
+    kind: "user",
+    id,
+    tenantId: "t_test",
+    grants: [{ roleKey: "test", permissions: ["analytics:exports:download"] }]
   });
 });
 

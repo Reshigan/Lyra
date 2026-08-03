@@ -29,9 +29,17 @@ const ALLOWLIST = new Set([
   // packages/model-gateway/src/gateway.test.ts — "destroys secrets rather than
   // placeholding them"; the scrubber fixture must look like a real token.
   "cfat_Z7kFeYokfDSr9qwDsORFNMcH7rhl",
+  // packages/model-gateway/evals/compliance/cases.jsonl cmp-05 — the eval
+  // proves a key-shaped string in model output gets blocked.
+  "sk-ant-abcd1234efgh5678ijkl",
 ]);
 
 const SKIP = /(^|\/)(pnpm-lock\.yaml|package-lock\.json|yarn\.lock)$|\.(png|jpg|jpeg|gif|webp|ico|svg|pdf|woff2?|ttf|otf|zip|gz|wasm)$/;
+
+// Files whose whole purpose is to contain token-shaped fixtures: this gate
+// itself, and the scrubber's test (its PEM-header fixture is byte-identical
+// to a real one, so a literal allowlist cannot hold it).
+const SKIP_FILES = ["apps/api/src/security.test.ts", "packages/model-gateway/src/scrub.test.ts"];
 
 const TRACKED = execSync("git ls-files apps packages", {
   cwd: REPO_ROOT,
@@ -39,7 +47,7 @@ const TRACKED = execSync("git ls-files apps packages", {
   maxBuffer: 32 * 1024 * 1024,
 })
   .split("\n")
-  .filter((f) => f && !SKIP.test(f) && !f.endsWith("apps/api/src/security.test.ts"));
+  .filter((f) => f && !SKIP.test(f) && !SKIP_FILES.some((s) => f.endsWith(s)));
 
 describe("no committed secrets", () => {
   it("enumerates tracked source files", () => {

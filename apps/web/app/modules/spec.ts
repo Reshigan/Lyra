@@ -12,6 +12,7 @@
 // §14), so nothing here is ever an English literal in a component.
 
 import { translator } from "../i18n";
+import { vocabulary } from "./vocabulary";
 
 export type Row = Record<string, unknown>;
 
@@ -163,14 +164,18 @@ export function labeller(spec: WorkspaceSpec, locale: string) {
 }
 
 /**
- * The label function a screen actually uses: the workspace's own vocabulary
- * first, then the shared `common.*` catalogue, then the raw key. A module never
- * has to restate "Yes", "Created" or "Status" to get them translated.
+ * The label function a screen actually uses: the tenant's domain pack first
+ * (CLAUDE.md §14 — the pack may rename any noun), then the workspace's own
+ * vocabulary, then the shared `common.*` catalogue, then the raw key. A module
+ * never has to restate "Yes", "Created" or "Status" to get them translated.
  */
-export function labelsFor(spec: WorkspaceSpec, locale: string) {
+export function labelsFor(spec: WorkspaceSpec, locale: string, pack?: string) {
+  const packed = vocabulary(pack, locale);
   const own = labeller(spec, locale);
   const t = translator(locale);
   return (key: string): string => {
+    const renamed = packed(key);
+    if (renamed !== undefined) return renamed;
     const local = own(key);
     if (local !== key) return local;
     const shared = t(`common.${key}`);

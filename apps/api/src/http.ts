@@ -93,6 +93,21 @@ export function listParams(c: Context<App>): { list: ListQuery; filters: Record<
   return { list, filters };
 }
 
+/**
+ * A single query param as a clamped integer. `Number("abc")` is NaN, and NaN
+ * poisons every comparison and date arithmetic downstream — garbage input
+ * falls back to the default instead.
+ */
+export function intParam(
+  raw: string | undefined,
+  def: number,
+  { min = 0, max = Number.MAX_SAFE_INTEGER }: { min?: number; max?: number } = {}
+): number {
+  if (!raw) return def;
+  const n = Math.trunc(Number(raw));
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : def;
+}
+
 /* ------------------------------------------------------------------ misc */
 
 export function requireHeader(c: Context<App>, name: string): string {

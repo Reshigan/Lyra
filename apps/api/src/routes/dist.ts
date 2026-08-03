@@ -18,6 +18,7 @@ import {
   type Ctx
 } from "@lyra/core";
 import { body, created, listParams } from "../http.js";
+import { isUniqueViolation } from "../crud.js";
 import { one } from "../rows.js";
 import {
   assertInputs,
@@ -331,28 +332,25 @@ distRoutes.post("/commission-entries/accrue", async (c) => {
       if (!policy) throw notFound("policy");
       if (!policy.offeringId || !policy.channelId) throw badRequest("policy has no offering or channel to rate");
 
-      const existing = await ctx.db
-        .select({ id: schema.distCommissionEntries.id })
-        .from(schema.distCommissionEntries)
-        .where(
-          and(
-            eq(schema.distCommissionEntries.tenantId, ctx.tenantId),
-            eq(schema.distCommissionEntries.policyId, policy.id),
-            eq(schema.distCommissionEntries.kind, input.kind)
-          )
-        )
-        .limit(1);
-      if (existing[0]) throw conflict("commission already accrued for this policy and kind");
-
       const split = await quoteCommission(ctx, {
         offeringId: policy.offeringId,
         channelId: policy.channelId,
         premiumMinor: policy.premiumMinor
       });
 
+      // Tax comes off the net share and can never exceed it: a taxMinor above
+      // net is a caller error, and clamping it would hide that error inside a
+      // silently wrong accrual.
+      if (input.taxMinor > split.netMinor) {
+        throw badRequest(`taxMinor (${input.taxMinor}) exceeds the net commission (${split.netMinor})`);
+      }
+
       // The position is only knowable once the rate has been applied, so the
       // gate sits here: it is the commission that is approved, not the request.
       // Keyed by policy and kind, because that pair is what may exist once.
+      // singleUse: false on this policy — dist_commission_entries_accrual_uq
+      // below is the sole arbiter of "exactly one execution"; gate() just
+      // needs to stay valid across the whole race, not spend on first pass.
       await gate(ctx, {
         policyKey: "dist.commission_accrue",
         subjectRef: `${policy.id}:${input.kind}`,
@@ -381,7 +379,15 @@ distRoutes.post("/commission-entries/accrue", async (c) => {
         createdAt: ctx.now,
         updatedAt: ctx.now
       };
-      await ctx.db.insert(schema.distCommissionEntries).values(row);
+      try {
+        await ctx.db.insert(schema.distCommissionEntries).values(row);
+      } catch (e) {
+        // dist_commission_entries_accrual_uq — one accrual per (policy, kind).
+        // The index, not a pre-check, is the guard: two submits racing a
+        // check-then-insert both pass the check, but only one insert lands.
+        if (isUniqueViolation(e)) throw conflict("commission already accrued for this policy and kind");
+        throw e;
+      }
       await audit(ctx, { action: "dist.commission.accrue", subjectRef: row.id, after: row });
       await emit(ctx, {
         module: "dist",
@@ -402,50 +408,58 @@ distRoutes.post("/commission-entries/accrue", async (c) => {
 distRoutes.post("/commission-entries/:id/clawback", async (c) => {
   const ctx = ctxOf(c);
   require_(ctx.actor, "dist:commissions:adjust", { tenantId: ctx.tenantId, module: "dist" });
+  const entryId = c.req.param("id");
   const { reason } = await body(c, z.object({ reason: z.string().min(3).max(500) }));
-  const entry = await one(ctx, schema.distCommissionEntries, c.req.param("id"));
-  if (!entry) throw notFound("commission entry");
-  if (entry.reversalOf) throw conflict("cannot claw back a reversal");
-  // Before the gate: an approval lives for 24h against (subject, policy), so
-  // without this the same approval reverses the same accrual twice and credits
-  // the reversal twice (CLAUDE.md §12).
-  if (entry.state === "clawed_back") throw conflict("entry has already been clawed back");
 
-  await gate(ctx, {
-    policyKey: "dist.commission_adjust",
-    subjectRef: entry.id,
-    amountMinor: entry.grossCommissionMinor,
-    context: { reason }
-  });
+  // A reversal is money (CLAUDE.md §12), so it takes the same idempotency
+  // wrapper as every other money route: a retried submit replays the stored
+  // reversal instead of racing the state check and crediting it twice.
+  const row = await withIdempotency(ctx, c.req.header("idempotency-key"), "dist.clawback", { entryId, reason }, async () => {
+    const entry = await one(ctx, schema.distCommissionEntries, entryId);
+    if (!entry) throw notFound("commission entry");
+    if (entry.reversalOf) throw conflict("cannot claw back a reversal");
+    // Before the gate: an approval lives for 24h against (subject, policy), so
+    // without this the same approval reverses the same accrual twice and credits
+    // the reversal twice (CLAUDE.md §12).
+    if (entry.state === "clawed_back") throw conflict("entry has already been clawed back");
 
-  const row: typeof schema.distCommissionEntries.$inferInsert = {
-    ...entry,
-    id: newId("ce", ctx.now),
-    kind: "clawback",
-    premiumMinor: -entry.premiumMinor,
-    grossCommissionMinor: -entry.grossCommissionMinor,
-    channelCommissionMinor: -entry.channelCommissionMinor,
-    netCommissionMinor: -entry.netCommissionMinor,
-    taxMinor: -entry.taxMinor,
-    reversalOf: entry.id,
-    providerSettlementId: null,
-    channelSettlementId: null,
-    state: "accrued",
-    createdAt: ctx.now,
-    updatedAt: ctx.now
-  };
-  await ctx.db.insert(schema.distCommissionEntries).values(row);
-  await ctx.db
-    .update(schema.distCommissionEntries)
-    .set({ state: "clawed_back", updatedAt: ctx.now })
-    .where(and(eq(schema.distCommissionEntries.tenantId, ctx.tenantId), eq(schema.distCommissionEntries.id, entry.id)));
+    await gate(ctx, {
+      policyKey: "dist.commission_adjust",
+      subjectRef: entry.id,
+      amountMinor: entry.grossCommissionMinor,
+      context: { reason }
+    });
 
-  await audit(ctx, { action: "dist.commission.clawback", subjectRef: row.id, before: entry, after: row });
-  await emit(ctx, {
-    module: "dist",
-    type: "dist.commission.clawed_back",
-    subject: row.id,
-    data: { reversalOf: entry.id, reason }
+    const reversal: typeof schema.distCommissionEntries.$inferInsert = {
+      ...entry,
+      id: newId("ce", ctx.now),
+      kind: "clawback",
+      premiumMinor: -entry.premiumMinor,
+      grossCommissionMinor: -entry.grossCommissionMinor,
+      channelCommissionMinor: -entry.channelCommissionMinor,
+      netCommissionMinor: -entry.netCommissionMinor,
+      taxMinor: -entry.taxMinor,
+      reversalOf: entry.id,
+      providerSettlementId: null,
+      channelSettlementId: null,
+      state: "accrued",
+      createdAt: ctx.now,
+      updatedAt: ctx.now
+    };
+    await ctx.db.insert(schema.distCommissionEntries).values(reversal);
+    await ctx.db
+      .update(schema.distCommissionEntries)
+      .set({ state: "clawed_back", updatedAt: ctx.now })
+      .where(and(eq(schema.distCommissionEntries.tenantId, ctx.tenantId), eq(schema.distCommissionEntries.id, entry.id)));
+
+    await audit(ctx, { action: "dist.commission.clawback", subjectRef: reversal.id, before: entry, after: reversal });
+    await emit(ctx, {
+      module: "dist",
+      type: "dist.commission.clawed_back",
+      subject: reversal.id,
+      data: { reversalOf: entry.id, reason }
+    });
+    return reversal;
   });
   return created(c, row as { id: string });
 });

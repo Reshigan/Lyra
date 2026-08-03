@@ -76,7 +76,7 @@ export async function seedStaff(ctx: SeedContext): Promise<void> {
     tenantId,
     userId: joiner,
     roleId: await roleByKey(ctx, "axis.agent"),
-    scopeJson: JSON.stringify({ teams: [teams.motor] }),
+    scopeJson: JSON.stringify({ teamIds: [teams.motor] }),
     createdAt: now - 3 * DAY
   });
 

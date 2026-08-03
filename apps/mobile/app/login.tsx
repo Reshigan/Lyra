@@ -64,15 +64,16 @@ export default function Login() {
   const [errorKey, setErrorKey] = useState<string | null>(null);
   const [requestId, setRequestId] = useState<string | null>(null);
   const [enrolment, setEnrolment] = useState<Enrolment | null>(null);
-  // Holding the codes *is* the recovery screen: they exist for exactly as long
-  // as it is shown, and the API has no route that reads them back.
-  const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
 
   // The step the API put us on — from the login response or from the 403 on a
   // restored session, so relaunching mid-enrolment lands on the same screen.
   const step: Screen =
     session.status === "mfa" ? (session.mfaStep === "enrol" ? "enrol" : "totp") : "password";
-  const screen: Screen = recoveryCodes ? "recovery" : step;
+  // Unacknowledged codes take priority over everything, including a session
+  // that is otherwise already signedIn: the server clears the factor the
+  // moment they are issued, so a kill before "I have saved them" leaves
+  // status signedIn on relaunch with the codes still owed to the user.
+  const screen: Screen = session.pendingRecoveryCodes ? "recovery" : step;
 
   const { enrol } = session;
   useEffect(() => {
@@ -96,7 +97,7 @@ export default function Login() {
   }, [screen, enrolment, enrol]);
 
   if (session.status === "loading") return <Loading chrome={chrome} />;
-  if (session.status === "signedIn") return <Redirect href="/" />;
+  if (screen !== "recovery" && session.status === "signedIn") return <Redirect href="/" />;
 
   const fail = (error: unknown, from: Screen) => {
     setRequestId(error instanceof ApiError ? error.requestId : null);
@@ -127,10 +128,14 @@ export default function Login() {
       else if (screen === "enrol") {
         // Retry path: the key never arrived, so there is nothing to confirm yet.
         if (!enrolment) setEnrolment(await session.enrol());
-        else setRecoveryCodes(await session.confirmEnrol(code.trim()));
+        // Confirming sets session.pendingRecoveryCodes, which is what drives
+        // `screen` into "recovery" — no local copy of the codes to hold.
+        else await session.confirmEnrol(code.trim());
       } else if (screen === "recovery") {
-        // The codes have been read. The session already cleared its factor when
-        // the enrolment was confirmed, so this only re-reads /v1/me.
+        // Acknowledge first so a kill right after this line cannot leave the
+        // codes stranded in the keystore, then re-read /v1/me: the server
+        // already cleared the factor when the enrolment was confirmed.
+        await session.recoveryCodesSaved();
         await session.refresh();
       } else
         await session.signIn({
@@ -210,7 +215,7 @@ export default function Login() {
 
         {screen === "recovery" ? (
           <View style={box}>
-            {(recoveryCodes ?? []).map((recovery) => (
+            {(session.pendingRecoveryCodes ?? []).map((recovery) => (
               <Body
                 key={recovery}
                 chrome={chrome}

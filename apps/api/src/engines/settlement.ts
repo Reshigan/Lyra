@@ -415,6 +415,24 @@ export async function approveSettlement(ctx: Ctx, settlementId: string): Promise
   if (settlement.netMinor <= 0) {
     throw conflict(`settlement ${settlementId} has nothing to pay; the balance carried to the next period`);
   }
+
+  // The journal posts the draft's numbers, so the draft must still describe the
+  // entry set being stamped. Entries booked (or terms changed) since the run
+  // make the draft stale: refuse and re-draft, never pay one total while
+  // stamping another (docs/19 §5, CLAUDE.md §12).
+  const terms = await resolveTerms(ctx, channelOf(settlement.counterpartyRef));
+  const entries = await settlementEntries(ctx, settlement);
+  const totals = totalsFor(entries, settlement.period, terms.minPayoutMinor);
+  if (
+    totals.grossMinor !== settlement.grossMinor ||
+    totals.adjustmentsMinor !== settlement.adjustmentsMinor ||
+    totals.netMinor !== settlement.netMinor
+  ) {
+    throw conflict(
+      `settlement ${settlementId} is stale: entries changed since the draft; re-run the period before approving`
+    );
+  }
+
   const memo = `settlement ${settlement.period} ${settlement.counterpartyRef}`;
   const periodCodeOf = await assertPeriodAccepts(ctx, settlement, memo);
 
@@ -456,7 +474,8 @@ export async function approveSettlement(ctx: Ctx, settlementId: string): Promise
 
   // Stamping the entries is what makes the next run of this channel skip them —
   // and what makes a carried period's entries, still unstamped, sweep forward.
-  const entries = await settlementEntries(ctx, settlement);
+  // Exactly the set the posted total was computed from, not a re-query: the
+  // journal and the stamped set must describe the same money.
   for (const e of entries) {
     await ctx.db
       .update(schema.distCommissionEntries)

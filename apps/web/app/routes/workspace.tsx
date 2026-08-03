@@ -11,6 +11,7 @@ import { cloudflare } from "../context";
 import { ApiError, fetchMe } from "../api.server";
 import { Shell } from "../components/shell";
 import { translator } from "../i18n";
+import { DEFAULT_PACK } from "../modules/vocabulary";
 
 // Everything behind a session hangs off this layout. One bootstrap call feeds
 // the whole shell: actor, tenant brand, permissions and the nav the API already
@@ -44,7 +45,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     permissions: me.permissions,
     brand: me.tenant.brand,
     tenantName: me.tenant.name,
-    actorName: me.profile?.name ?? null
+    actorName: me.profile?.name ?? null,
+    // CLAUDE.md §14: the pack that renames every noun downstream of labelsFor.
+    domainPack: typeof me.policy?.domainPack === "string" ? me.policy.domainPack : DEFAULT_PACK
   };
 }
 

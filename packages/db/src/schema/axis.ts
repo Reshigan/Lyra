@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { sqliteTable, text, integer, index, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 // docs/03 §AXIS — operations. Case is the unit of work.
@@ -32,7 +33,8 @@ export const cases = sqliteTable(
     index("axis_cases_tenant_idx").on(t.tenantId, t.status, t.slaDueAt),
     index("axis_cases_owner_idx").on(t.tenantId, t.ownerRef, t.status),
     index("axis_cases_customer_idx").on(t.tenantId, t.customerId),
-    uniqueIndex("axis_cases_ref_uq").on(t.tenantId, t.ref)
+    // Partial: a soft-deleted case must not block reusing its ref.
+    uniqueIndex("axis_cases_ref_uq").on(t.tenantId, t.ref).where(sql`deleted_at IS NULL`)
   ]
 );
 

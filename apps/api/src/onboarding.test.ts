@@ -404,6 +404,30 @@ describe("the drafter cannot sign what they drafted", () => {
   });
 });
 
+describe("the retired generic CRUD door onto partner-agreements is gone", () => {
+  it("cannot mint an active agreement in one write, skipping draft/send/sign", async () => {
+    // /v1/onboarding/agreements is the sole doorway (draft/send/sign). The
+    // generic create route is unmounted entirely (no `create` perm on the
+    // resources.ts entry), so it 404s rather than just being permission-denied.
+    const res = await call("orbit.partners", "POST", "/v1/dist/partner-agreements", {
+      partnerId,
+      version: 1,
+      kind: "distribution",
+      termsJson: "{}",
+      state: "active",
+      signedAt: Date.now(),
+      signedByUserId: seeded.users["orbit.partners"],
+      signedByPartnerName: "Forged Signature"
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("still reads through the generic resource", async () => {
+    const res = await call("orbit.partners", "GET", "/v1/dist/partner-agreements");
+    expect(res.status).toBe(200);
+  });
+});
+
 /* ---------------------------------------------------------- 5. going live */
 
 describe("going live is the gate, not the last checkbox", () => {

@@ -63,7 +63,7 @@ function refName(ref: string): string {
  */
 function pageItem(s: Schema): string | null {
   const props = s.properties;
-  if (!props || !("data" in props) || !("nextCursor" in props)) return null;
+  if (!props || !("data" in props) || !("cursor" in props)) return null;
   const items = props.data?.items;
   return items?.$ref ? refName(items.$ref) : null;
 }
@@ -188,10 +188,10 @@ const PREAMBLE = `// GENERATED FILE — do not edit. Run \`pnpm generate\` (pack
 // Source of truth: apps/api/src/openapi.ts. src/sdk.test.ts fails if this file
 // and that document disagree, so a contract break cannot land silently.
 
-/** A page of rows from a list endpoint. Pass \`nextCursor\` back as \`cursor\`. */
+/** A page of rows. Pass \`cursor\` back as \`?cursor=\`; absent once the last page is read. */
 export interface Page<T> {
   data: T[];
-  nextCursor?: string | null;
+  cursor?: string;
 }
 
 /** One endpoint's shapes. \`never\` means the endpoint takes none of that kind. */

@@ -41,7 +41,7 @@ export interface EventQueue {
  * synchronous.
  */
 export async function drainOutbox(ctx: Ctx, queue?: EventQueue, limit = 100): Promise<DrainResult> {
-  const events = await pendingOutbox(ctx.db, limit);
+  const events = await pendingOutbox(ctx.db, limit, ctx.now);
   if (!events.length) return { published: 0, delivered: 0, failed: 0, queued: 0 };
 
   let delivered = 0;
@@ -50,24 +50,31 @@ export async function drainOutbox(ctx: Ctx, queue?: EventQueue, limit = 100): Pr
   const done: string[] = [];
 
   for (const event of events) {
-    // Internal consumers run in the same drain tick as external delivery, so a
-    // consent withdrawal reaches SIGNAL's suppression audience in one drain
-    // pass rather than waiting on a dedicated cron (docs/25 M4 SIGNAL row).
-    // ponytail: one `if`, not a registry — add a second internal consumer here
-    // when a second one exists, not before.
-    if (event.type === "core.consent.updated") {
-      await consume(ctx.db, event, "signal.suppression", (e) => onConsentUpdated(ctx, e), ctx.now);
-    }
+    // A single bad event must not abort the drain: mark it failed (so its
+    // attempts rise toward pendingOutbox's dead-letter cap) and keep going.
+    try {
+      // Internal consumers run in the same drain tick as external delivery, so a
+      // consent withdrawal reaches SIGNAL's suppression audience in one drain
+      // pass rather than waiting on a dedicated cron (docs/25 M4 SIGNAL row).
+      // ponytail: one `if`, not a registry — add a second internal consumer here
+      // when a second one exists, not before.
+      if (event.type === "core.consent.updated") {
+        await consume(ctx.db, event, "signal.suppression", (e) => onConsentUpdated(ctx, e), ctx.now);
+      }
 
-    if (queue) {
-      await queue.send(event);
-      queued++;
-    } else {
-      const outcome = await deliverQueued(ctx, event);
-      delivered += outcome.delivered;
-      failed += outcome.failed;
+      if (queue) {
+        await queue.send(event);
+        queued++;
+      } else {
+        const outcome = await deliverQueued(ctx, event);
+        delivered += outcome.delivered;
+        failed += outcome.failed;
+      }
+      done.push(event.id);
+    } catch (err) {
+      failed++;
+      await markPublishFailed(ctx.db, event.id, String(err));
     }
-    done.push(event.id);
   }
 
   await markPublished(ctx.db, done, ctx.now);

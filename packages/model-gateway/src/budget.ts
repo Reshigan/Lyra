@@ -27,6 +27,21 @@ export function dayKey(now: number): string {
   return new Date(now).toISOString().slice(0, 10);
 }
 
+// Limit semantics: 0 = blocked (a tenant zeroing the budget turns AI off),
+// null/undefined = unlimited. Note the schema (ai_budgets.tokens_limit NOT NULL)
+// and PolicyJson (nonnegative with a positive default) cannot express unlimited
+// today — every row carries a number — so these helpers only ever see numbers,
+// but the null branch keeps the semantic in one place if that ever changes.
+function overLimit(used: number, limit: number | null | undefined): boolean {
+  return limit != null && used >= limit;
+}
+
+function usedFraction(used: number, limit: number | null | undefined): number {
+  if (limit == null) return 0;
+  if (limit === 0) return 1;
+  return used / limit;
+}
+
 async function upsertRow(ctx: Ctx, module: string): Promise<BudgetState> {
   const day = dayKey(ctx.now);
   const where = and(
@@ -78,12 +93,12 @@ export interface BudgetCheck {
 export async function checkBudget(ctx: Ctx, module = "*"): Promise<BudgetCheck> {
   const state = await upsertRow(ctx, module);
   const pct = Math.max(
-    state.tokensLimit ? state.tokensUsed / state.tokensLimit : 0,
-    state.costMicroLimit ? state.costMicroUsed / state.costMicroLimit : 0
+    usedFraction(state.tokensUsed, state.tokensLimit),
+    usedFraction(state.costMicroUsed, state.costMicroLimit)
   );
   const usedPct = Math.min(100, Math.round(pct * 100));
-  const outOfTokens = state.tokensLimit > 0 && state.tokensUsed >= state.tokensLimit;
-  const outOfCost = state.costMicroLimit > 0 && state.costMicroUsed >= state.costMicroLimit;
+  const outOfTokens = overLimit(state.tokensUsed, state.tokensLimit);
+  const outOfCost = overLimit(state.costMicroUsed, state.costMicroLimit);
   if (state.stoppedAt || outOfTokens || outOfCost) {
     return { ok: false, state, usedPct, reason: outOfTokens ? "tokens" : "cost" };
   }
@@ -123,13 +138,9 @@ export async function charge(
   const costMicroUsed = before.costMicroUsed + usage.costMicro;
 
   const pctOf = (t: number, c: number) =>
-    Math.max(
-      before.tokensLimit ? t / before.tokensLimit : 0,
-      before.costMicroLimit ? c / before.costMicroLimit : 0
-    );
+    Math.max(usedFraction(t, before.tokensLimit), usedFraction(c, before.costMicroLimit));
   const wasPct = pctOf(before.tokensUsed, before.costMicroUsed);
   const nowPct = pctOf(tokensUsed, costMicroUsed);
-  const stopped = nowPct >= 1;
 
   await ctx.db
     .update(schema.aiBudgets)
@@ -137,7 +148,17 @@ export async function charge(
       // Relative update: another request may have charged between our read and write.
       tokensUsed: sql`${schema.aiBudgets.tokensUsed} + ${tokens}`,
       costMicroUsed: sql`${schema.aiBudgets.costMicroUsed} + ${usage.costMicro}`,
-      stoppedAt: stopped ? (before.stoppedAt ?? ctx.now) : before.stoppedAt,
+      // The latch is decided from the post-increment values inside this one
+      // statement — deciding it from `before` re-introduces the race where N
+      // concurrent charges all read under-limit, none latch, and one writes the
+      // stale null back over another's stop.
+      stoppedAt: sql`CASE
+        WHEN ${schema.aiBudgets.stoppedAt} IS NOT NULL THEN ${schema.aiBudgets.stoppedAt}
+        WHEN ${schema.aiBudgets.tokensUsed} + ${tokens} >= ${schema.aiBudgets.tokensLimit}
+          OR ${schema.aiBudgets.costMicroUsed} + ${usage.costMicro} >= ${schema.aiBudgets.costMicroLimit}
+        THEN ${ctx.now}
+        ELSE NULL
+      END`,
       updatedAt: ctx.now
     })
     .where(
@@ -148,10 +169,14 @@ export async function charge(
       )
     );
 
+  // Re-read so `stopped` reports the latch the statement actually decided,
+  // including a stop another concurrent charge pushed the row over.
+  const after = await upsertRow(ctx, module);
+
   return {
     usedPct: Math.min(100, Math.round(nowPct * 100)),
     crossedWarning: wasPct < WARN_AT && nowPct >= WARN_AT,
-    stopped
+    stopped: after.stoppedAt !== null
   };
 }
 
@@ -180,7 +205,10 @@ export async function setLimits(
     tokensLimit: limits.tokensLimit ?? row.tokensLimit,
     costMicroLimit: limits.costMicroLimit ?? row.costMicroLimit
   };
-  const clears = row.tokensUsed < next.tokensLimit && row.costMicroUsed < next.costMicroLimit;
+  // Same semantics as checkBudget: a ceiling of 0 keeps the stop (blocked), an
+  // unlimited (null) ceiling would clear it, a raise above the spend clears it.
+  const clears =
+    !overLimit(row.tokensUsed, next.tokensLimit) && !overLimit(row.costMicroUsed, next.costMicroLimit);
   await ctx.db
     .update(schema.aiBudgets)
     .set({ ...next, stoppedAt: clears ? null : row.stoppedAt, updatedAt: ctx.now })

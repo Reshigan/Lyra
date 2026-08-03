@@ -157,5 +157,6 @@ export {
   schedules as analyticsSchedules,
   savedViews,
   unitEconomics,
+  egressDays,
   journeyEvents
 } from "./schema/analytics.js";

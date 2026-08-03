@@ -527,6 +527,18 @@ each — session memory, not a fresh read — before treating any as still true.
       client-side role checks), 403s are first-class UI denial states, no
       dangling routes (`placeholder.tsx` removal confirmed clean). No open
       issues found — closing this item.
+- [ ] **ROLE-028 `provider.viewer` scoping — genuinely open, ADR not code.**
+      `apps/api/src/resources.ts`'s `data-products` `rowVisible` hides
+      unpublished products from `provider.viewer` but does not scope it down
+      to only the products *their own* provider org subscribed to (data for
+      this exists in `scout_data_products.subscribersJson`; what's missing is
+      any actor-to-provider identity link — `Scope` has no `providerIds`,
+      `core_users` has no `providerId`). Not a cross-tenant hole, but a
+      real over-exposure within a tenant. **This is a product/identity-model
+      decision, not something to guess-implement** — written up with concrete
+      options as `docs/decisions/ADR-0025-rbac-scope-provider-identity-for-role-028.md`
+      (Status: Proposed). Stays open until the module/product owner picks an
+      option.
 
 ---
 
@@ -539,12 +551,23 @@ These cannot be done by an assistant; they require the account owner directly.
       whether it was ever misused).
 - [ ] **Retire the seed password `Gonxt-Live-2026!Kx7`** — treat as burned,
       change it, and confirm no seed/fixture data still references it.
-- [ ] Confirm `.env.local` is populated from `.env.example` and never committed
+- [x] Confirm `.env.local` is populated from `.env.example` and never committed
       (already gitignored — verify no stray `.env*` got added since).
-- [ ] Confirm `CLOUDFLARE_API_TOKEN` and account IDs are GitHub Actions
+      **CLOSED 2026-08-02** — `.gitignore` has `.env` / `.env.*` /
+      `!.env.example`; `git ls-files | grep .env` returns only `.env.example`;
+      `git status --porcelain` shows no stray `.env*` in the working tree.
+      Populating `.env.local` itself is still the user's own local step (it's
+      gitignored precisely so it never enters version control) — nothing to
+      close on the repo side beyond this.
+- [x] Confirm `CLOUDFLARE_API_TOKEN` and account IDs are GitHub Actions
       secrets, not inline in any workflow file (`.github/workflows/*.yml` —
       this session's diff touched `security.yml`, re-check it didn't
       reintroduce a literal).
+      **CLOSED 2026-08-02** — `.github/workflows/security.yml` now matches
+      HEAD (`git diff`/`git diff --cached` both empty); grepped the file for
+      `CLOUDFLARE_API_TOKEN`/account-id/secret patterns — only reference is
+      `secrets.GITHUB_TOKEN` via the standard `${{ secrets.* }}` interpolation,
+      no literal token or account ID anywhere in the file.
 - [x] Prompt-scrubber CI check for secrets-in-prompts is present and green
       (CLAUDE.md / docs/12). **CLOSED** — `packages/model-gateway/src/scrub.ts`
       redacts CF/Anthropic/OpenAI/AWS tokens, bearer tokens, private keys, and
@@ -615,18 +638,19 @@ These cannot be done by an assistant; they require the account owner directly.
       (`const productName = brand?.name ?? tenantName;`) plus a `brandStyle()`
       mapping tenant palette/font onto CSS custom properties. No hardcoded
       "LYRA" reaches a user-facing surface.
-- [ ] Domain-pack vocabulary — no hard-coded industry nouns ("policy",
+- [x] Domain-pack vocabulary — no hard-coded industry nouns ("policy",
       "premium", "insurer") in UI strings or system prompts; confirm they come
       from the active domain pack (docs/21).
-      **GAP, NOT CLOSED** — `domainPack` exists only as a stored config field
-      (`packages/db/src/json.ts:47`, default `"insurance-retail"`, seeded in
-      `packages/core/src/seed.ts:152`) with no code path that reads it to
-      substitute vocabulary. Industry nouns are still hard-coded directly in
-      UI strings/system prompts (e.g. report/settlement/orbit-tools/
-      signal-creative/scout-whitespace label generation). Implementing a real
-      substitution mechanism is a structural change — CLAUDE.md's "novelty
-      needs an ADR" guardrail applies; not attempted here. Leaving unchecked
-      rather than false-closing it.
+      **CLOSED for web UI (2026-08-01), ADR-0022** — `labelsFor()` now resolves
+      pack vocabulary (apps/web/app/modules/vocabulary.ts) ahead of every
+      workspace label table; `ShellData.domainPack` comes from
+      `me.policy.domainPack`; `retail-ecom` ships as the proving pack (en+ar),
+      tested in apps/web/app/modules/spec.label.test.ts. Insurance stays the
+      identity default, so nothing shipped changes for existing tenants.
+      Deferred with tracked follow-ups in ADR-0022: bespoke route labellers
+      (quote-compare, commission screens, ledger.shared), mobile catalogue,
+      and prompt-side vocabulary — all gated on the first non-insurance
+      tenant, none blocks an insurance-vertical go-live.
 
 ---
 
@@ -683,9 +707,24 @@ These cannot be done by an assistant; they require the account owner directly.
         "AI Gateway: Edit" permission so this can be automated next pass.
 - [ ] DNS + zone cutover for `lyra.vantax.co.za` production, per docs/10 §1/§4
       environment promotion path — staging validated *before* promoting.
+      **Code side confirmed 2026-08-02:** `apps/web/wrangler.jsonc` and
+      `apps/api/wrangler.jsonc` both declare the production `custom_domain`
+      routes (`lyra.vantax.co.za`, `api.lyra.vantax.co.za`) and their staging
+      counterparts correctly — nothing left to fix in config. Actual zone
+      activation + DNS record cutover in the Cloudflare dashboard is the
+      remaining step and is inherently account-owner-only.
 - [ ] `pnpm deploy:prod` run from CI only, never locally (CLAUDE.md command
       list), with `CLOUDFLARE_API_TOKEN` sourced from the rotated secret (§4
       above must be done first).
+      **Code side confirmed 2026-08-02:** `.github/workflows/deploy.yml`'s
+      `production` job is already correctly gated —
+      `if: github.event_name == 'workflow_dispatch'` (never fires on a plain
+      push) and `environment: production`, whose required-reviewers/wait-timer
+      protection rule lives in repo settings (a GitHub-account action, not
+      code). Nothing in the repo grants a local shell the ability to deploy to
+      the production Worker — the only remaining gap is that this session's
+      `CLOUDFLARE_API_TOKEN` is the one flagged for rotation in §4, so the
+      item stays open until that rotation happens, not for any code reason.
 - [~] Ops dashboards / alerting wired per docs/10 §6 before declaring live —
       a go-live with no observability is not actually live.
       - **Done:** Analytics Engine `TELEMETRY` dataset wired (item 8, this
@@ -711,22 +750,33 @@ These cannot be done by an assistant; they require the account owner directly.
       - **Done:** per-tenant AI budget hard-stop + 80% admin alert
         (`packages/model-gateway/src/budget.ts`, ADR-0021, item 10); unit-cost
         drift alerting (Cost Explorer, above, item 15).
-      - **Open gap (infrastructure, not credentials):** docs/17 ADM-025 asks
-        for "cost explorer per tenant (AI, storage, egress)". Only AI + media
-        cost is metered today (`analytics_unit_economics`, rolled from
-        `ai_runs` + ledger). **No per-tenant storage or egress byte
-        accounting exists anywhere in the codebase** — no byte-count table,
-        no Cloudflare billing-API read. The Cost Explorer page states this
-        in-UI rather than fabricating figures. Closing it means either a
-        byte-accounting write path on R2 puts/gets or a Cloudflare
-        billing/GraphQL read — both are new build, neither attempted here.
+      - **Done (2026-08-01):** per-tenant storage + egress byte metering.
+        Storage is derived at read time from `core_files.size_bytes`
+        (soft-deleted excluded); egress lands on `analytics_egress_days`,
+        incremented by `apps/api/src/engines/egress.ts` `meterEgress()` at
+        the two R2 body-serving seams (analytics export download, compliance
+        evidence download). Served by `GET /v1/analytics/usage`
+        (`analytics:reports:read`), rendered on the Cost Explorer page.
+        Migration `0007_spooky_slyde.sql` applied to staging. Covered by
+        `apps/api/src/analytics.test.ts` "usage metering". Note the counter
+        meters application downloads, not Cloudflare's wire-level billing
+        figure (cache hits, aborted transfers) — reconcile against the
+        Cloudflare dashboard if invoices ever dispute it.
       - **Blocked, needs the user:** Logpush sampling on verbose categories —
         same Logpush-not-enabled gap as above. R2 lifecycle rules (exports
         90d, logs 400d, docs/10 §7) have never been applied to the
         `lyra-exports`/`lyra-exports-staging` buckets — no `infra/cloudflare/`
-        Terraform exists to declare them and they were not set by hand via
-        `wrangler r2 bucket lifecycle` in this session; **flagging as an
-        open gap**, not assuming the docs/10 §7 retention numbers hold.
+        Terraform exists to declare them. **Confirmed 2026-08-02, same gap
+        pattern as AI Gateway/Logpush above:** `wrangler r2 bucket lifecycle
+        set` exists and would do this, but `npx wrangler whoami` shows this
+        session's `CLOUDFLARE_API_TOKEN` carries no `r2` scope at all (only
+        `workers`/`d1`/`queues`/`ai`/etc.) — a lifecycle-rule call would 403,
+        and this is exactly the kind of shared-infra mutation (risks
+        silently deleting real export/log data if the JSON is wrong) that
+        needs a deliberate go-ahead even with scope, not a blind autonomous
+        run. **User action needed:** either reissue the token with R2 edit
+        scope so this can be applied and verified next pass, or set the two
+        lifecycle rules by hand in the dashboard.
 - [x] Nightly D1→R2 tenant backup export (docs/10 §6, docs/17 DEP-007) —
       **BUILT 2026-08-01**: `apps/api/src/engines/backup.ts` `backupTenant()`,
       one JSON blob per tenant per day (`backups/<tenantId>/<day>.json` in
@@ -745,16 +795,19 @@ These cannot be done by an assistant; they require the account owner directly.
       `runbooks/slo-error-budget.md` (99.9%/99.5% objectives, 28d rolling
       window, docs/13 §6's ">50% burn freezes features" rule made concrete
       with actual budget minutes) and `runbooks/R-03-restore-drill.md`
-      (D1 Time Travel path + manual R2-export path, pass/fail criteria, empty
-      drill log — **first actual drill has not been run**, due within one
-      quarter of go-live per the runbook's own cadence).
-      **Flagged gap the restore-drill runbook documents itself:** there is no
-      `restoreTenant()` counterpart to `backupTenant()` — replaying an R2
-      export back into D1 is a fully manual, FK-order-by-hand procedure
-      today. D1 Time Travel (Cloudflare-managed, 30d PITR) is confirmed
-      default-on and needs no provisioning step; R2 versioning on the
-      `FILES` bucket (docs/10 §6) has not been confirmed enabled via the
-      dashboard/API in this session — flagging rather than assuming.
+      (D1 Time Travel path + manual R2-export path, pass/fail criteria).
+      **First drill RUN 2026-08-01, both paths PASS** — see the drill log in
+      `runbooks/R-03-restore-drill.md` (Path A: in-place Time Travel restore
+      + roll-forward on `lyra-staging`, reads verified; Path B: real
+      `backupTenant`/`restoreTenant` engine code, 125 tables / 1,144 rows,
+      counts matched, injected drift eliminated; caveat: Path B used a
+      same-day `d1 export` replica since no cron-produced object existed
+      yet — next quarterly drill consumes the cron object end to end).
+      The formerly flagged `restoreTenant()` gap is closed
+      (`apps/api/src/engines/backup.ts` + `backup.test.ts`). D1 Time Travel
+      (Cloudflare-managed, 30d PITR) is confirmed default-on; R2 versioning
+      on the `FILES` bucket (docs/10 §6) has not been confirmed enabled via
+      the dashboard/API in this session — flagging rather than assuming.
 - [ ] WAF managed rules, Turnstile on public forms, bot fight mode (docs/10
       §6) — **NOT CONFIGURED, USER/DASHBOARD ACTION**: these are
       zone-level Cloudflare dashboard settings (or Terraform, if

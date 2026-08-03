@@ -155,8 +155,8 @@ const REASONED = new Set(["fail", "waive", "suspend", "terminate"]);
 /* ------------------------------------------------------------------ labels */
 
 /** The module's own catalogue, then `common.*`, then the key — plus `{vars}`. */
-export function labelsIn(locale: string): (key: string, vars?: Record<string, string>) => string {
-  const base = labelsFor(orbit, locale);
+export function labelsIn(locale: string, pack?: string): (key: string, vars?: Record<string, string>) => string {
+  const base = labelsFor(orbit, locale, pack);
   return (key, vars) => {
     const raw = base(key);
     return vars ? raw.replace(/\{(\w+)\}/g, (match, name: string) => vars[name] ?? match) : raw;
@@ -511,7 +511,7 @@ export default function Onboarding() {
   const navigation = useNavigation();
 
   const locale = shell?.locale ?? "en";
-  const l = labelsIn(locale);
+  const l = labelsIn(locale, shell?.domainPack);
   const busy = navigation.state !== "idle";
 
   const { partner, steps, may } = loaded;

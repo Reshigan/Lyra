@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { PolicyJson, EntitlementsJson } from "@lyra/db";
 import { audit, chainFor, verifyChain } from "./audit.js";
-import { consume, emit, pendingOutbox, type Envelope } from "./events.js";
+import { consume, emit, markPublishFailed, MAX_ATTEMPTS, pendingOutbox, type Envelope } from "./events.js";
 import { assertChannel, assertPurpose, recordConsent } from "./consent.js";
 import { decide, gate } from "./approvals.js";
 import { withIdempotency } from "./idempotency.js";
@@ -101,6 +101,30 @@ describe("events", () => {
     expect(await consume(ctx.db, envelope, "orbit", handler, ctx.now)).toBe("duplicate");
     expect(await consume(ctx.db, envelope, "ledger", handler, ctx.now)).toBe("processed");
     expect(runs).toBe(2);
+  });
+
+  it("skips outbox rows past MAX_ATTEMPTS and dead-letters them, so the drain keeps moving", async () => {
+    // A poison row that keeps failing to publish must not sit at the head of the
+    // oldest-first batch forever, starving every newer event behind it.
+    const poison = await emit(ctx, { module: "core", type: "core.poison", data: {} });
+    for (let i = 0; i < MAX_ATTEMPTS; i++) await markPublishFailed(ctx.db, poison.id, "boom");
+    const fresh = await emit({ ...ctx, now: ctx.now + 1_000 }, { module: "core", type: "core.fresh", data: {} });
+
+    // limit 1: the old code returns only the (older) poison row, forever.
+    const batch = await pendingOutbox(ctx.db, 1, ctx.now + 2_000);
+    expect(batch.map((e) => e.id)).toEqual([fresh.id]);
+
+    // Dead visibly, not silently dropped: one DLQ row, mirroring the inbox pattern.
+    const dlq = await client.execute("SELECT consumer, attempts, error FROM core_event_dlq");
+    expect(dlq.rows).toHaveLength(1);
+    expect(dlq.rows[0]!["consumer"]).toBe("outbox.publish");
+    expect(dlq.rows[0]!["attempts"]).toBe(MAX_ATTEMPTS);
+    expect(dlq.rows[0]!["error"]).toBe("boom");
+
+    // A second drain does not re-dead-letter the same row.
+    expect((await pendingOutbox(ctx.db, 10, ctx.now + 3_000)).map((e) => e.id)).toEqual([fresh.id]);
+    const again = await client.execute("SELECT id FROM core_event_dlq");
+    expect(again.rows).toHaveLength(1);
   });
 
   it("dead-letters after MAX_ATTEMPTS", async () => {

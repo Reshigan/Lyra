@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { sqliteTable, text, integer, index, uniqueIndex, primaryKey } from "drizzle-orm/sqlite-core";
 
 // docs/03 §Core. Conventions: ULID text PK · tenant_id on every table ·
@@ -44,8 +45,10 @@ export const users = sqliteTable(
     deletedAt: integer("deleted_at")
   },
   (t) => [
-    index("core_users_tenant_idx").on(t.tenantId, t.email),
-    uniqueIndex("core_users_tenant_email_uq").on(t.tenantId, t.email)
+    // Partial: a soft-deleted user must not block re-inviting the same email.
+    uniqueIndex("core_users_tenant_email_uq")
+      .on(t.tenantId, t.email)
+      .where(sql`deleted_at IS NULL`)
   ]
 );
 
@@ -306,7 +309,14 @@ export const eventOutbox = sqliteTable(
     lastError: text("last_error"),
     createdAt: integer("created_at").notNull()
   },
-  (t) => [index("core_event_outbox_pending_idx").on(t.tenantId, t.publishedAt, t.createdAt)]
+  (t) => [
+    index("core_event_outbox_pending_idx").on(t.tenantId, t.publishedAt, t.createdAt),
+    // The drain (packages/core/src/events.ts) scans all tenants: published_at IS
+    // NULL ORDER BY created_at. The tenant-leading index above cannot serve it.
+    index("core_event_outbox_drain_idx")
+      .on(t.createdAt)
+      .where(sql`published_at IS NULL`)
+  ]
 );
 
 /** Dead-letter queue with replay from the admin console (docs/09). */
@@ -387,7 +397,7 @@ export const identityProviders = sqliteTable(
   },
   (t) => [
     index("core_identity_providers_tenant_idx").on(t.tenantId, t.enabled),
-    uniqueIndex("core_identity_providers_domain_uq").on(t.emailDomain)
+    uniqueIndex("core_identity_providers_domain_uq").on(t.tenantId, t.emailDomain)
   ]
 );
 

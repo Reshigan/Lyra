@@ -6,8 +6,8 @@
 export type Permission = string;
 
 export interface Scope {
-  /** core_teams ids the grant is limited to. Empty/absent = tenant-wide. */
-  teams?: readonly string[];
+  /** core_teams ids the grant is limited to. Empty/absent = tenant-wide. Canonical key: matches ScopeJson. */
+  teamIds?: readonly string[];
   /** product lines the grant is limited to (motor, health, ...). */
   productLines?: readonly string[];
   /** modules the grant is limited to. */
@@ -119,7 +119,7 @@ export const PERMISSIONS = [
   "signal:creatives:publish",
   "signal:experiments:read", "signal:experiments:create", "signal:experiments:decide",
   "signal:budget_moves:read", "signal:budget_moves:approve", "signal:budget_moves:reverse",
-  "signal:autopilot:pause",
+  "signal:autopilot:pause", "signal:autopilot:run",
   "signal:aeo:read", "signal:aeo:write",
   "signal:attribution:read",
   "signal:spend:read",
@@ -134,7 +134,7 @@ export const PERMISSIONS = [
 
   // NORTH — executive
   "north:metrics:read", "north:metrics:write",
-  "north:snapshots:read",
+  "north:snapshots:read", "north:snapshots:run",
   "north:briefings:read", "north:briefings:generate", "north:briefings:approve",
   "north:anomalies:read", "north:anomalies:assign",
   "north:scenarios:read", "north:scenarios:run",
@@ -386,7 +386,7 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     "signal:audiences:create", "signal:audiences:estimate",
     "signal:creatives:generate", "signal:creatives:publish",
     "signal:experiments:create", "signal:experiments:decide",
-    "signal:budget_moves:approve", "signal:budget_moves:reverse", "signal:autopilot:pause", "signal:aeo:write",
+    "signal:budget_moves:approve", "signal:budget_moves:reverse", "signal:autopilot:pause", "signal:autopilot:run", "signal:aeo:write",
     "core:consents:read", "core:search:read", "core:approvals:read", "core:approvals:decide",
     "core:files:read", "core:files:create",
     "ledger:txns:read", "analytics:reports:read", "analytics:reports:run",
@@ -422,7 +422,7 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
   "north.exec": [
     ...readsOf("north"), "north:ai:invoke", "ai:suggestions:read",
     "north:anomalies:assign", "north:scenarios:run",
-    "north:decisions:write", "north:boardpacks:generate",
+    "north:decisions:write", "north:boardpacks:generate", "north:snapshots:run",
     "axis:metrics:read", "signal:attribution:read", "signal:spend:read",
     "orbit:renewals:read", "scout:clusters:read", "ledger:txns:read",
     "dist:commissions:read", "dist:channels:read",
@@ -499,7 +499,9 @@ export type RoleKey = keyof typeof ROLES;
 const EXTERNAL_ROLE_PREFIXES = ["partner.", "provider.", "customer"];
 
 export function requiresMfa(roleKeys: readonly string[]): boolean {
-  return roleKeys.every((key) => !EXTERNAL_ROLE_PREFIXES.some((p) => key.startsWith(p)));
+  // Any internal role means MFA; only a purely external account is exempt.
+  // No roles at all fails closed to staff (see doc comment above).
+  return roleKeys.length === 0 || roleKeys.some((key) => !EXTERNAL_ROLE_PREFIXES.some((p) => key.startsWith(p)));
 }
 
 /** Roles provisioned into every new tenant (platform.* live outside tenants). */
@@ -521,9 +523,9 @@ function matches(granted: string, wanted: string): boolean {
 function scopeAllows(scope: Scope | undefined, subject: Subject | undefined): boolean {
   if (!scope) return true;
   if (scope.modules?.length && subject?.module && !scope.modules.includes(subject.module)) return false;
-  if (scope.teams?.length) {
+  if (scope.teamIds?.length) {
     // A team-scoped grant cannot act on a subject with no team — fail closed.
-    if (!subject?.teamId || !scope.teams.includes(subject.teamId)) return false;
+    if (!subject?.teamId || !scope.teamIds.includes(subject.teamId)) return false;
   }
   if (scope.productLines?.length) {
     if (!subject?.productLine || !scope.productLines.includes(subject.productLine)) return false;

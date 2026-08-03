@@ -170,6 +170,21 @@ export const unitEconomics = sqliteTable(
   (t) => [uniqueIndex("analytics_unit_econ_uq").on(t.tenantId, t.day, t.module, t.unit)]
 );
 
+/** Per-tenant egress bytes per day (docs/25 §6 cost guards). Incremented at
+ *  the R2 download seams; storage needs no counter — it is derived from
+ *  core_files.size_bytes at read time. */
+export const egressDays = sqliteTable(
+  "analytics_egress_days",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    day: text("day").notNull(),
+    bytes: integer("bytes").notNull().default(0),
+    updatedAt: integer("updated_at").notNull()
+  },
+  (t) => [uniqueIndex("analytics_egress_days_uq").on(t.tenantId, t.day)]
+);
+
 /** Product telemetry for journeys (J-IDs) — completion, drop-off, time-to-value. */
 export const journeyEvents = sqliteTable(
   "analytics_journey_events",

@@ -4,7 +4,7 @@ import { z } from "zod";
 import { id as newId, schema } from "@lyra/db";
 import { actorRef, audit, badRequest, gate, notFound, require_, type Ctx } from "@lyra/core";
 import { checkBudget, setLimits, type Message } from "@lyra/model-gateway";
-import { body } from "../http.js";
+import { body, intParam } from "../http.js";
 import { executeOrbitToolCalls, orbitToolsFor } from "../engines/orbit-tools.js";
 import { embedQuery } from "../engines/vectorize.js";
 import { must } from "../rows.js";
@@ -291,7 +291,7 @@ aiRoutes.post("/suggestions/:id/outcome", async (c) => {
 aiRoutes.get("/suggestions/acceptance", async (c) => {
   const ctx = ctxOf(c);
   require_(ctx.actor, "ai:runs:read", { tenantId: ctx.tenantId, module: "ai" });
-  const sinceDays = Number(c.req.query("days") ?? 30);
+  const sinceDays = intParam(c.req.query("days"), 30, { max: 3650 });
   const rows = await ctx.db
     .select({
       surface: schema.aiSuggestions.surface,
@@ -424,7 +424,7 @@ aiRoutes.get("/audit", async (c) => {
   const ctx = ctxOf(c);
   require_(ctx.actor, "ai:audit:read", { tenantId: ctx.tenantId, module: "ai" });
   const module = c.req.query("module");
-  const since = c.req.query("since") ? Number(c.req.query("since")) : ctx.now - 7 * 86_400_000;
+  const since = intParam(c.req.query("since"), ctx.now - 7 * 86_400_000);
   const rows = await ctx.db
     .select()
     .from(schema.aiAuditLog)
@@ -436,7 +436,7 @@ aiRoutes.get("/audit", async (c) => {
       )
     )
     .orderBy(desc(schema.aiAuditLog.ts))
-    .limit(Math.min(Number(c.req.query("limit") ?? 100), 500));
+    .limit(intParam(c.req.query("limit"), 100, { min: 1, max: 500 }));
   return c.json({ data: rows });
 });
 
@@ -444,7 +444,7 @@ aiRoutes.get("/audit", async (c) => {
 aiRoutes.get("/audit/spend", async (c) => {
   const ctx = ctxOf(c);
   require_(ctx.actor, "ai:budgets:read", { tenantId: ctx.tenantId, module: "ai" });
-  const since = ctx.now - Number(c.req.query("days") ?? 30) * 86_400_000;
+  const since = ctx.now - intParam(c.req.query("days"), 30, { max: 3650 }) * 86_400_000;
   const rows = await ctx.db
     .select({
       module: schema.aiAuditLog.module,

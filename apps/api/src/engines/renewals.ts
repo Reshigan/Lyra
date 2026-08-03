@@ -110,6 +110,10 @@ export async function sweepRenewals(ctx: Ctx, wf?: Workflow<RenewalWorkflowParam
         .where(
           and(
             eq(schema.orbitRenewals.tenantId, ctx.tenantId),
+            // Dedupe per term, not per policy: last term's (now expired) renewal
+            // must not suppress this term's forever. Only a renewal for a
+            // still-future expiry counts as "already raised".
+            gte(schema.orbitRenewals.expiryAt, ctx.now),
             inArray(
               schema.orbitRenewals.policyRef,
               due.map((p) => p.id)

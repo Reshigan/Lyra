@@ -1,8 +1,17 @@
 import { Hono } from "hono";
 import { and, eq, isNull } from "drizzle-orm";
-import { id as newId, schema } from "@lyra/db";
-import { badRequest, base64urlDecode, forbidden, notFound, randomToken, unauthorized } from "@lyra/core";
-import { db, issueSession } from "../auth.js";
+import { id as newId, schema, PolicyJson } from "@lyra/db";
+import {
+  assertSeatAvailable,
+  badRequest,
+  base64urlDecode,
+  forbidden,
+  notFound,
+  randomToken,
+  unauthorized,
+  type Ctx
+} from "@lyra/core";
+import { db, issueSession, tenantConfig } from "../auth.js";
 import type { App, Env } from "../env.js";
 
 // docs/06 §2 — enterprise sign-in. OIDC authorization code + PKCE, id_token
@@ -410,6 +419,21 @@ async function linkOrCreate(
     updatedAt: now,
     deletedAt: null
   } satisfies typeof schema.users.$inferSelect;
+
+  // No session exists yet at JIT time, so there is no Ctx to borrow — build
+  // the minimal one assertSeatAvailable/scoped() need straight from the
+  // provider's tenant, same as auditCorruptConfig does for the audit() call.
+  const { entitlements } = await tenantConfig(database, provider.tenantId, now);
+  await assertSeatAvailable({
+    db: database as unknown as Ctx["db"],
+    tenantId: provider.tenantId,
+    actor: { kind: "system", id: "sso", tenantId: provider.tenantId, grants: [] },
+    requestId: newId("req", now),
+    now,
+    locale: "en",
+    policy: PolicyJson.parse({}),
+    entitlements
+  });
 
   await database.insert(schema.users).values(user);
   await database.insert(schema.userRoles).values({

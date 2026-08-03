@@ -15,6 +15,7 @@ import {
   type Ctx
 } from "@lyra/core";
 import type { ReportTable } from "@lyra/ledger";
+import { meterEgress } from "../engines/egress.js";
 import { render } from "../engines/export/render.js";
 import { utf8, zip } from "../engines/export/zip.js";
 import { body } from "../http.js";
@@ -355,6 +356,7 @@ complianceRoutes.get("/evidence-bundles/:id/download", async (c) => {
     subjectRef: `evidence_bundle:${bundle.id}`,
     after: { bundleHash: bundle.bundleHash }
   });
+  await meterEgress(ctx, file?.sizeBytes ?? object.size);
   return new Response(object.body, {
     headers: {
       "content-type": "application/zip",

@@ -37,6 +37,9 @@ type Pages = {
       "id": string;
     };
   };
+  "/admin/cost-explorer": {
+    params: {};
+  };
   "/ledger/reports/:report": {
     params: {
       "report": string;
@@ -134,7 +137,7 @@ type Pages = {
 type RouteFiles = {
   "root.tsx": {
     id: "root";
-    page: "/" | "/login" | "/logout" | "/settings" | "/approvals" | "/admin/ai/console" | "/admin/ai/budget" | "/admin/ai/runs/:id" | "/ledger/reports/:report" | "/ledger/transactions" | "/ledger/transactions/:id" | "/ledger/period-close" | "/ledger/statement" | "/ledger/recon" | "/analytics/report/:id" | "/analytics/dashboard/:id" | "/distribution/quote-requests/:id/compare" | "/orbit/conversations/:id/thread" | "/distribution/commission-entries/statement" | "/distribution/commission-entries/:id/clawback" | "/distribution/next-best-offers/suggest" | "/compliance/run/:kind" | "/ledger/settlement" | "/ledger/settlements/:id" | "/admin/staff" | "/admin/staff/:id" | "/:module" | "/:module/:resource" | "/:module/:resource/:id";
+    page: "/" | "/login" | "/logout" | "/settings" | "/approvals" | "/admin/ai/console" | "/admin/ai/budget" | "/admin/ai/runs/:id" | "/admin/cost-explorer" | "/ledger/reports/:report" | "/ledger/transactions" | "/ledger/transactions/:id" | "/ledger/period-close" | "/ledger/statement" | "/ledger/recon" | "/analytics/report/:id" | "/analytics/dashboard/:id" | "/distribution/quote-requests/:id/compare" | "/orbit/conversations/:id/thread" | "/distribution/commission-entries/statement" | "/distribution/commission-entries/:id/clawback" | "/distribution/next-best-offers/suggest" | "/compliance/run/:kind" | "/ledger/settlement" | "/ledger/settlements/:id" | "/admin/staff" | "/admin/staff/:id" | "/:module" | "/:module/:resource" | "/:module/:resource/:id";
   };
   "routes/login.tsx": {
     id: "routes/login";
@@ -146,7 +149,7 @@ type RouteFiles = {
   };
   "routes/workspace.tsx": {
     id: "routes/workspace";
-    page: "/" | "/settings" | "/approvals" | "/admin/ai/console" | "/admin/ai/budget" | "/admin/ai/runs/:id" | "/ledger/reports/:report" | "/ledger/transactions" | "/ledger/transactions/:id" | "/ledger/period-close" | "/ledger/statement" | "/ledger/recon" | "/analytics/report/:id" | "/analytics/dashboard/:id" | "/distribution/quote-requests/:id/compare" | "/orbit/conversations/:id/thread" | "/distribution/commission-entries/statement" | "/distribution/commission-entries/:id/clawback" | "/distribution/next-best-offers/suggest" | "/compliance/run/:kind" | "/ledger/settlement" | "/ledger/settlements/:id" | "/admin/staff" | "/admin/staff/:id" | "/:module" | "/:module/:resource" | "/:module/:resource/:id";
+    page: "/" | "/settings" | "/approvals" | "/admin/ai/console" | "/admin/ai/budget" | "/admin/ai/runs/:id" | "/admin/cost-explorer" | "/ledger/reports/:report" | "/ledger/transactions" | "/ledger/transactions/:id" | "/ledger/period-close" | "/ledger/statement" | "/ledger/recon" | "/analytics/report/:id" | "/analytics/dashboard/:id" | "/distribution/quote-requests/:id/compare" | "/orbit/conversations/:id/thread" | "/distribution/commission-entries/statement" | "/distribution/commission-entries/:id/clawback" | "/distribution/next-best-offers/suggest" | "/compliance/run/:kind" | "/ledger/settlement" | "/ledger/settlements/:id" | "/admin/staff" | "/admin/staff/:id" | "/:module" | "/:module/:resource" | "/:module/:resource/:id";
   };
   "routes/home.tsx": {
     id: "routes/home";
@@ -171,6 +174,10 @@ type RouteFiles = {
   "routes/ai-run.tsx": {
     id: "routes/ai-run";
     page: "/admin/ai/runs/:id";
+  };
+  "routes/cost-explorer.tsx": {
+    id: "routes/cost-explorer";
+    page: "/admin/cost-explorer";
   };
   "routes/ledger-reports.tsx": {
     id: "routes/ledger-reports";
@@ -268,6 +275,7 @@ type RouteModules = {
   "routes/ai-console": typeof import("./app/routes/ai-console.tsx");
   "routes/ai-budget": typeof import("./app/routes/ai-budget.tsx");
   "routes/ai-run": typeof import("./app/routes/ai-run.tsx");
+  "routes/cost-explorer": typeof import("./app/routes/cost-explorer.tsx");
   "routes/ledger-reports": typeof import("./app/routes/ledger-reports.tsx");
   "routes/ledger-open-txn": typeof import("./app/routes/ledger-open-txn.tsx");
   "routes/ledger-transaction": typeof import("./app/routes/ledger-transaction.tsx");

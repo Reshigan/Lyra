@@ -100,6 +100,14 @@ export interface Resource {
    * value isn't always `actorRef(ctx)`; e.g. a message's `ts`.
    */
   serverColumns?: readonly string[];
+  /**
+   * `*Minor` columns that legitimately go negative (adjustments, recon
+   * deltas). Every other column ending in `Minor` refuses negatives at the
+   * shape — otherwise a negative amount slides under an approval threshold
+   * (docs/19). Approval threshold checks compare absolute values, so a signed
+   * column cannot duck dual control either.
+   */
+  signedMoneyColumns?: readonly string[];
   /** Values forced onto every write, after validation. */
   fixed?: (ctx: Ctx, action: "create" | "update") => Record<string, unknown>;
   /**
@@ -130,7 +138,12 @@ function isJsonColumn(key: string): boolean {
  * A zod shape derived from the physical columns. Deriving beats maintaining a
  * parallel hand-written schema per table: the two cannot drift.
  */
-function shapeOf(cols: Columns, mode: "create" | "update", owned: ReadonlySet<string>): z.ZodTypeAny {
+function shapeOf(
+  cols: Columns,
+  mode: "create" | "update",
+  owned: ReadonlySet<string>,
+  signed: ReadonlySet<string>
+): z.ZodTypeAny {
   const shape: Record<string, z.ZodTypeAny> = {};
   for (const [key, col] of Object.entries(cols)) {
     if (owned.has(key)) continue;
@@ -140,7 +153,12 @@ function shapeOf(cols: Columns, mode: "create" | "update", owned: ReadonlySet<st
       // the zod types in @lyra/db/json where one exists.
       leaf = z.union([z.record(z.string(), z.unknown()), z.array(z.unknown()), z.string()]);
     } else if (col.dataType === "number") {
-      leaf = z.number();
+      // Every numeric column in the schema is a SQLite INTEGER; a bare
+      // z.number() accepted fractional minor units, and negatives that slide
+      // under approval amount thresholds. Money columns (`*Minor`) refuse
+      // negatives unless the resource declares them signed.
+      const int = col.columnType === "SQLiteReal" ? z.number() : z.number().int();
+      leaf = key.endsWith("Minor") && !signed.has(key) ? int.min(0) : int;
     } else if (col.dataType === "boolean") {
       leaf = z.boolean();
     } else {
@@ -219,7 +237,7 @@ function filterSql(cols: Columns, filters: Record<string, string>): SQL[] {
  * read first — matching only the top-level string drops duplicates into the 500
  * bucket instead of answering 409.
  */
-function isUniqueViolation(e: unknown): boolean {
+export function isUniqueViolation(e: unknown): boolean {
   for (let cur: unknown = e, depth = 0; cur != null && depth < 5; depth++) {
     const message = (cur as { message?: unknown }).message;
     if (String(message ?? cur).includes("UNIQUE")) return true;
@@ -237,8 +255,10 @@ export function crudRouter(r: Resource): Hono<App> {
   // Same category as id/tenantId: the platform owns the value, so `.strict()`
   // turns a client that sends one into a 400 rather than a silent lie.
   const owned = new Set([...SYSTEM, ...actorColumns, ...(r.serverColumns ?? [])]);
-  const createShape = shapeOf(cols, "create", owned);
-  const updateShape = shapeOf(cols, "update", owned);
+  const signed = new Set(r.signedMoneyColumns ?? []);
+  for (const key of signed) if (!cols[key]) throw new Error(`${r.path}: no column ${key}`);
+  const createShape = shapeOf(cols, "create", owned, signed);
+  const updateShape = shapeOf(cols, "update", owned, signed);
   const idCol = cols.id;
   const sortDefault = cols.createdAt ?? cols.id;
   if (!idCol) throw new Error(`${r.path}: table has no id column`);
@@ -388,8 +408,10 @@ export function crudRouter(r: Resource): Hono<App> {
             // and the approved one could never be spent.
             subjectRef: `${r.path}:new:${await sha256Hex(JSON.stringify(input))}`,
             policyKey: r.approval.create,
+            // Absolute value: a signed adjustment of -2 000 00 is as
+            // consequential as +2 000 00 and must not duck the threshold.
             ...(r.approval.amountField && typeof values[r.approval.amountField] === "number"
-              ? { amountMinor: values[r.approval.amountField] as number }
+              ? { amountMinor: Math.abs(values[r.approval.amountField] as number) }
               : {})
           });
         }
@@ -411,10 +433,15 @@ export function crudRouter(r: Resource): Hono<App> {
           throw e;
         }
 
+        // Re-read rather than echo `row`: a NOT NULL column with a SQL-level
+        // default (e.g. an invoice's `state`) is often absent from `row` — either
+        // the client never sent it or `beforeWrite` stripped it — so the insert
+        // applies the schema default but the in-memory object never learns it.
+        const persisted = await load(ctx, rowId);
         await audit(ctx, { action: `${auditName}.create`, subjectRef: rowId, after: strip(values) });
         await emit(ctx, { module: r.module, type: `${auditName}.created`, subject: rowId, data: { id: rowId } });
-        await r.afterWrite?.(ctx, row, "create");
-        return created(c, { ...view(ctx, row), id: rowId });
+        await r.afterWrite?.(ctx, persisted, "create");
+        return created(c, { ...view(ctx, persisted), id: rowId });
       });
     });
   }
@@ -442,7 +469,7 @@ export function crudRouter(r: Resource): Hono<App> {
           policyKey: r.approval.update,
           subjectRef: `${r.path}:${rowId}`,
           ...(r.approval.amountField && typeof values[r.approval.amountField] === "number"
-            ? { amountMinor: values[r.approval.amountField] as number }
+            ? { amountMinor: Math.abs(values[r.approval.amountField] as number) }
             : {})
         });
       }

@@ -75,7 +75,9 @@ export const renewals = sqliteTable(
   },
   (t) => [
     index("orbit_renewals_tenant_idx").on(t.tenantId, t.state, t.expiryAt),
-    uniqueIndex("orbit_renewals_policy_uq").on(t.tenantId, t.policyRef)
+    // Unique per term (policy + expiry), not per policy: a policy renews every
+    // term and each term gets its own renewal row.
+    uniqueIndex("orbit_renewals_policy_term_uq").on(t.tenantId, t.policyRef, t.expiryAt)
   ]
 );
 

@@ -3,6 +3,7 @@ import { id as newId, schema } from "@lyra/db";
 import {
   APPROVAL_POLICIES,
   actorRef,
+  assertSeatAvailable,
   audit,
   badRequest,
   can,
@@ -69,7 +70,7 @@ async function generateSteps(
  * concrete permission under it and checking the wildcard string would let an
  * actor with one `core:users:read` pass a role that carries thirty writes.
  */
-function assertCanGrant(ctx: Ctx, permissions: readonly string[], roleKey: string): void {
+export function assertCanGrant(ctx: Ctx, permissions: readonly string[], roleKey: string): void {
   for (const permission of expand(permissions)) {
     if (!can(ctx.actor, permission, { tenantId: ctx.tenantId })) {
       throw forbidden(`${permission} (via role ${roleKey})`);
@@ -77,7 +78,7 @@ function assertCanGrant(ctx: Ctx, permissions: readonly string[], roleKey: strin
   }
 }
 
-interface RoleRow {
+export interface RoleRow {
   id: string;
   key: string;
   permissionsJson: string;
@@ -98,7 +99,7 @@ async function rolesByKey(ctx: Ctx, keys: readonly string[]): Promise<RoleRow[]>
 }
 
 /** The bundle a role actually confers: the stored one wins, as it does at login. */
-function bundleOf(role: RoleRow): readonly string[] {
+export function bundleOf(role: RoleRow): readonly string[] {
   try {
     const stored = JSON.parse(role.permissionsJson) as string[];
     if (Array.isArray(stored) && stored.length) return stored;
@@ -165,6 +166,7 @@ export async function inviteStaff(
     .where(and(eq(schema.users.tenantId, ctx.tenantId), eq(schema.users.email, email)))
     .limit(1);
   if (clash) throw conflict("a user with that email already exists");
+  await assertSeatAvailable(ctx);
 
   const user: typeof schema.users.$inferInsert = {
     id: newId("usr", ctx.now),
@@ -179,7 +181,7 @@ export async function inviteStaff(
   };
   await ctx.db.insert(schema.users).values(user);
 
-  const scopeJson = input.teamIds?.length ? JSON.stringify({ teams: input.teamIds }) : null;
+  const scopeJson = input.teamIds?.length ? JSON.stringify({ teamIds: input.teamIds }) : null;
   await ctx.db.insert(schema.userRoles).values(
     roles.map((role, i) => ({
       id: newId("url", ctx.now + i),

@@ -6,6 +6,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { schema } from "@lyra/db";
 import { seed } from "../seed.js";
+import { grantsFor } from "../approvals.js";
+import { can, type Actor } from "../rbac.js";
 import { DAY, HOUR } from "./context.js";
 import type { CoreDb } from "../context.js";
 
@@ -72,8 +74,21 @@ describe("seedStaff — joiner", () => {
     const [role] = await db.select().from(schema.userRoles).where(eq(schema.userRoles.userId, joiner!.id));
     expect(role!.tenantId).toBe(tenantId);
     expect(role!.roleId).toBe(axisAgentRole!.id);
-    expect(JSON.parse(role!.scopeJson!)).toEqual({ teams: [motorTeam!.id] });
+    expect(JSON.parse(role!.scopeJson!)).toEqual({ teamIds: [motorTeam!.id] });
     expect(role!.createdAt).toBe(now - 3 * DAY);
+  });
+
+  it("has a team scope that actually restricts: seeded key, ScopeJson and scopeAllows agree", async () => {
+    // Regression: the seed wrote {teams:[...]}, ScopeJson parses teamIds, so the
+    // "scope" survived as {} and the grant was silently tenant-wide.
+    const [joiner] = await db.select().from(schema.users).where(eq(schema.users.email, "layla.nasser@vantax.co.za"));
+    const [motorTeam] = await db.select().from(schema.teams).where(eq(schema.teams.name, "Motor desk"));
+    const grants = await grantsFor(db, tenantId, joiner!.id);
+    const scopedActor: Actor = { kind: "user", id: joiner!.id, tenantId, grants };
+
+    expect(can(scopedActor, "axis:cases:read", { tenantId, teamId: motorTeam!.id })).toBe(true);
+    expect(can(scopedActor, "axis:cases:read", { tenantId, teamId: "tm_other" })).toBe(false);
+    expect(can(scopedActor, "axis:cases:read", { tenantId })).toBe(false);
   });
 
   it("has all seven onboarding steps exactly as templated, split across three states", async () => {
