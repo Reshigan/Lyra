@@ -78,6 +78,10 @@ test(`sim day ${SIM_DAY}: twice-weekly growth check-in`, async ({ page }) => {
   await loginAsSignalLead(page);
   await page.goto("/signal");
   await expect(page.getByRole("alert")).toHaveCount(0);
+  // Keep signal_spend inside the autopilot's trailing 7-day CAC window
+  // (apps/api/src/engines/signal-autopilot.ts) as the virtual clock advances
+  // — without this the window empties out and every decision is "no_action".
+  await runAs(PERSONAS.signalLead.email, "/v1/signal/demo/spend-tick");
   await runAs(PERSONAS.signalLead.email, "/v1/signal/autopilot/run");
 
   await loginAsScoutLead(page);

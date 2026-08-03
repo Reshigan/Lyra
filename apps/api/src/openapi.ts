@@ -256,7 +256,9 @@ const HAND_WRITTEN: Op[] = [
   { method: "post", path: "/v1/staff/delegations/{id}/revoke", summary: "Revoke a delegation; handing your own authority back needs no administrator", permission: "core:delegations:write", tag: "staff", requestBody: true },
   { method: "post", path: "/v1/staff/delegations/expire", summary: "Sweep delegations whose window has closed (also runs on the scheduled tick)", permission: "core:delegations:write", tag: "staff" },
   { method: "post", path: "/v1/north/snapshotter/run", summary: "Force the NORTH metric snapshot and anomaly scan now (also runs on the scheduled tick)", permission: "north:snapshots:run", tag: "north" },
-  { method: "post", path: "/v1/signal/autopilot/run", summary: "Force the SIGNAL budget autopilot pass now", permission: "signal:autopilot:run", tag: "signal" }
+  { method: "post", path: "/v1/signal/autopilot/run", summary: "Force the SIGNAL budget autopilot pass now", permission: "signal:autopilot:run", tag: "signal" },
+  // Demo deployments only: answers 404 when ENVIRONMENT is production.
+  { method: "post", path: "/v1/signal/demo/spend-tick", summary: "Insert a spend row per channel per live campaign, keyed off the simulated clock (non-production only)", permission: "signal:autopilot:run", tag: "signal" }
 ];
 
 export function openapi(): Record<string, unknown> {

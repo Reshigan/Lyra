@@ -254,6 +254,26 @@ async function proposeForCampaign(ctx: Ctx, campaign: EligibleCampaign): Promise
   };
 }
 
+/** Outcome-shaped audit payload for EVAL_ACTION — mirrors commitMove's `after` richness so a decision can be judged from the audit log alone, not just named. */
+function evalAuditPayload(outcome: ProposalOutcome): Record<string, unknown> {
+  switch (outcome.decision) {
+    case "act":
+    case "act_with_approval":
+      return {
+        decision: outcome.decision,
+        fromChannel: outcome.fromChannel,
+        toChannel: outcome.toChannel,
+        amountMinor: outcome.amountMinor,
+        boundMinor: outcome.boundMinor,
+        cacMinor: Object.fromEntries(outcome.cac.map((c) => [c.channel, c.cacMinor]))
+      };
+    case "anomaly_rejected":
+      return { decision: outcome.decision, zScore: outcome.anomaly.zScore, mean: outcome.anomaly.mean, stdev: outcome.anomaly.stdev };
+    case "no_action":
+      return { decision: outcome.decision };
+  }
+}
+
 async function commitMove(
   ctx: Ctx,
   campaign: EligibleCampaign,
@@ -370,7 +390,7 @@ export async function runBudgetAutopilot(ctx: Ctx): Promise<number> {
     if (alreadyEvaluated.has(subjectRef)) continue;
 
     const outcome = await proposeForCampaign(ctx, campaign);
-    await audit(ctx, { action: EVAL_ACTION, subjectRef, after: { decision: outcome.decision } });
+    await audit(ctx, { action: EVAL_ACTION, subjectRef, after: evalAuditPayload(outcome) });
 
     if (outcome.decision === "act" || outcome.decision === "act_with_approval") {
       await commitMove(ctx, campaign, outcome);

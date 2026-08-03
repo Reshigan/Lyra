@@ -46,6 +46,8 @@ export interface ModelRequest {
   locale?: string;
   /** What the answer is about — an id the audit trail can join on. */
   subjectRef?: string;
+  /** The customer's classified intent this turn, so a reply that talks past it is detectable. */
+  intent?: string;
   /** Ask the provider for a JSON object matching this schema. */
   responseSchema?: Record<string, unknown>;
   /** Skip the PII scrubber. Only for prompts built from already-public text. */

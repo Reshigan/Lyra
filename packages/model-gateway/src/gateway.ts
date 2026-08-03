@@ -133,7 +133,8 @@ export class Gateway {
     const postHits = checkOutput({
       text: result.text,
       issued: new Set(scrubbed.map.keys()),
-      customerFacing: this.opts.customerFacing?.has(req.purpose) ?? false
+      customerFacing: this.opts.customerFacing?.has(req.purpose) ?? false,
+      ...(req.intent !== undefined ? { intent: req.intent } : {})
     });
     for (const h of postHits) flags.add(h.rule);
     const refused = blocked(postHits);

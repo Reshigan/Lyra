@@ -34,12 +34,25 @@ const JAILBREAK = [
 /** Placeholders the model invented rather than echoed — a sign it is hallucinating PII. */
 const PLACEHOLDER = /\[\[[A-Z_]+_\d+\]\]/g;
 
+/** Classified intent slugs (e.g. "claim.first_notice") a renewal/upsell push is a mismatch against. */
+const NON_RENEWAL_INTENT = /^(?:claim|complaint|cancel)\b/i;
+
+/** Signs the reply pushed renewal/upsell content regardless of what was asked. */
+const RENEWAL_PUSH = [
+  /\brenew(?:al|als|s|ing)?\b/i,
+  /\bupgrade (?:your|to)\b/i,
+  /\b(?:home|motor|life) (?:offer|bundle)\b/i,
+  /\bcross-?sell\b/i
+];
+
 export interface PostCheckInput {
   text: string;
   /** Placeholders we actually issued, so an invented one is detectable. */
   issued: ReadonlySet<string>;
   /** Purposes where an unsourced regulated claim is a block, not a warning. */
   customerFacing?: boolean;
+  /** The customer's classified intent this turn (e.g. "claim.first_notice"), so a reply that talks past it is detectable. */
+  intent?: string;
 }
 
 export function checkOutput(input: PostCheckInput): GuardrailHit[] {
@@ -67,6 +80,13 @@ export function checkOutput(input: PostCheckInput): GuardrailHit[] {
   // The model repeating a secret back means one reached it despite the scrubber.
   if (/\b(?:sk-ant-|cfat_|AKIA)[A-Za-z0-9_-]{8,}/.test(input.text)) {
     hits.push({ rule: "secret_in_output", severity: "block" });
+  }
+
+  // A claim/complaint/cancel intent answered with a renewal/upsell push is a
+  // topic mismatch, not a text-only pattern — the seed narrative
+  // (packages/core/src/seed/orbit.ts) is the canonical example this catches.
+  if (input.intent && NON_RENEWAL_INTENT.test(input.intent) && RENEWAL_PUSH.some((re) => re.test(input.text))) {
+    hits.push({ rule: "intent_mismatch", severity: "warn", detail: input.intent });
   }
 
   return hits;

@@ -1,11 +1,12 @@
 import { Hono, type Context } from "hono";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { require_, audit, emit, type Ctx } from "@lyra/core";
-import { schema, PolicyJson, toJson, parseJson } from "@lyra/db";
+import { schema, PolicyJson, toJson, parseJson, id as newId } from "@lyra/db";
 import { z } from "zod";
 import { body } from "../http.js";
 import { generateCreatives } from "../engines/signal-creative.js";
 import { runBudgetAutopilot } from "../engines/signal-autopilot.js";
+import { demoOnly } from "../auth.js";
 import type { App } from "../env.js";
 
 // docs/modules/signal.md §8 clause 1: brief -> N compliant ar/en variants.
@@ -87,4 +88,88 @@ signalRoutes.post("/autopilot/run", async (c) => {
   const ctx = ctxOf(c);
   require_(ctx.actor, "signal:autopilot:run", { tenantId: ctx.tenantId, module: "signal" });
   return c.json({ adjusted: await runBudgetAutopilot(ctx) });
+});
+
+const DAY_MS = 86_400_000;
+
+/**
+ * Demo-only, temporary (same idiom as auth.ts's demoOnly() routes — remove
+ * once the 30-day sim exercise is done). No production spend-ingestion API
+ * exists yet (a real one is its own feature); the sim's day-driver needs
+ * *some* way to keep signal_spend inside signal-autopilot.ts's trailing
+ * 7-day CAC window as the virtual clock advances, or every campaign's window
+ * goes empty and the autopilot can only ever decide "no_action". This ticks
+ * one new spend row per existing channel per live campaign, each virtual
+ * day, so the autopilot actually gets exercised with real decision variety.
+ */
+async function tickDemoSpend(ctx: Ctx): Promise<{ inserted: number }> {
+  const campaigns = await ctx.db
+    .select({ id: schema.signalCampaigns.id })
+    .from(schema.signalCampaigns)
+    .where(
+      and(
+        eq(schema.signalCampaigns.tenantId, ctx.tenantId),
+        eq(schema.signalCampaigns.state, "live"),
+        inArray(schema.signalCampaigns.autonomyLevel, ["act", "act_with_approval"]),
+        isNull(schema.signalCampaigns.deletedAt)
+      )
+    );
+
+  const dayIndex = Math.floor(ctx.now / DAY_MS);
+  const today = new Date(ctx.now).toISOString().slice(0, 10);
+  let inserted = 0;
+
+  for (const campaign of campaigns) {
+    const history = await ctx.db
+      .select({
+        channel: schema.signalSpend.channel,
+        amountMinor: schema.signalSpend.amountMinor,
+        conversions: schema.signalSpend.conversions,
+        currency: schema.signalSpend.currency
+      })
+      .from(schema.signalSpend)
+      .where(and(eq(schema.signalSpend.tenantId, ctx.tenantId), eq(schema.signalSpend.campaignId, campaign.id)));
+    if (!history.length) continue;
+
+    const byChannel = new Map<string, { amountMinor: number; conversions: number; currency: string; n: number }>();
+    for (const row of history) {
+      const e = byChannel.get(row.channel) ?? { amountMinor: 0, conversions: 0, currency: row.currency, n: 0 };
+      e.amountMinor += row.amountMinor;
+      e.conversions += row.conversions;
+      e.n++;
+      byChannel.set(row.channel, e);
+    }
+
+    let channelIndex = 0;
+    for (const [channel, e] of byChannel) {
+      // ponytail: deterministic wobble keyed off virtual day + channel order —
+      // not a real efficiency model, just enough CAC swing across channels
+      // that the autopilot's act/anomaly paths get exercised on some ticks
+      // instead of the gap always landing under MIN_GAP_BPS.
+      const wobble = (dayIndex + channelIndex) % 3 === 0 ? 0.7 : 1.15;
+      const conversions = Math.max(1, Math.round((e.conversions / e.n) * wobble));
+      await ctx.db.insert(schema.signalSpend).values({
+        id: newId("spd", ctx.now + channelIndex),
+        tenantId: ctx.tenantId,
+        campaignId: campaign.id,
+        channel,
+        day: today,
+        amountMinor: Math.round(e.amountMinor / e.n),
+        currency: e.currency,
+        conversions,
+        source: "manual",
+        ts: ctx.now
+      });
+      inserted++;
+      channelIndex++;
+    }
+  }
+  return { inserted };
+}
+
+signalRoutes.post("/demo/spend-tick", async (c) => {
+  demoOnly(c.env);
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "signal:autopilot:run", { tenantId: ctx.tenantId, module: "signal" });
+  return c.json(await tickDemoSpend(ctx));
 });

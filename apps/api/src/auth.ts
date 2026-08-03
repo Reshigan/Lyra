@@ -363,7 +363,7 @@ authRoutes.post("/login", async (c) => {
  * `production` answers 404, as if the routes had never been mounted, and the
  * only accounts it will ever name are the seeded demo personas.
  */
-function demoOnly(env: Env): void {
+export function demoOnly(env: Env): void {
   if ((env.ENVIRONMENT ?? "production") === "production") throw notFound("route");
 }
 
