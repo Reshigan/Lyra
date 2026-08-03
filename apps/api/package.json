@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.13.7",
-    "@libsql/client": "^0.14.0",
+    "@libsql/client": "^0.17.4",
     "@lyra/core": "workspace:*",
     "@lyra/db": "workspace:*",
     "@lyra/ledger": "workspace:*",
