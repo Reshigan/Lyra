@@ -113,7 +113,7 @@ jobs:
           echo "image=$base" >> "$GITHUB_OUTPUT"
       # ignore-unfixed: an unpatched distro CVE has no action available, and a
       # permanently red gate is a gate someone turns off.
-      - uses: aquasecurity/trivy-action@0.28.0
+      - uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ steps.base.outputs.image }}
           severity: HIGH,CRITICAL
