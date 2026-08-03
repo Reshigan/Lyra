@@ -30,6 +30,7 @@ const PUBLIC = new Set([
   "/v1/auth/demo/login",
   "/v1/auth/demo/clock",
   "/v1/auth/demo/seed",
+  "/v1/auth/demo/resync-roles",
   // J-X3: portal signup has no session to authenticate against yet — that is
   // the whole point of the route (routes/onboarding.ts §partner signup).
   "/v1/onboarding/partners/signup",

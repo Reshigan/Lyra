@@ -17,6 +17,7 @@ import {
   randomToken,
   recoveryCodes,
   requiresMfa,
+  resyncSystemRolePermissions,
   seed,
   sha256Hex,
   timingSafeEqual,
@@ -458,6 +459,23 @@ authRoutes.post("/demo/seed", async (c) => {
     ...(c.env.ENVIRONMENT !== undefined ? { environment: c.env.ENVIRONMENT } : {})
   });
   return c.json({ tenantId: result.tenantId }, 201);
+});
+
+/**
+ * One-time maintenance for a staging tenant seeded before a `system` role
+ * gained a new permission in rbac.ts (docs/24 sim plan day-2 finding: the
+ * demo tenant's signal.lead was seeded before signal:autopilot:run existed).
+ * `resyncSystemRolePermissions` never touches a deliberately narrowed bundle
+ * (approvals.ts's grantsFor trusts whatever is stored); this just refreshes
+ * every system role's snapshot to match the current compiled table. Remove
+ * this route once the 30-day exercise is done, same as /demo/seed.
+ */
+authRoutes.post("/demo/resync-roles", async (c) => {
+  demoOnly(c.env);
+  const database = db(c.env);
+  const tenantId = await demoTenant(database);
+  const updated = await resyncSystemRolePermissions(database as unknown as CoreDb, tenantId);
+  return c.json({ tenantId, updated });
 });
 
 /**

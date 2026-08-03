@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import {
   BrandJson,
   CHART_OF_ACCOUNTS,
@@ -1965,3 +1965,29 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
 
 /** Referenced by the provisioning path when a new tenant is created from the template. */
 export const SEED_TENANT_SLUG = "gonxt";
+
+/**
+ * `core_roles.permissions_json` is a one-time snapshot of ROLES[key] written
+ * at seed time (see the role-provisioning loop above); it never resyncs, so a
+ * permission added to an existing role in rbac.ts after a tenant was seeded
+ * never reaches that tenant. This overwrites every `system` role's stored
+ * bundle with the current compiled one for one tenant — a manual, explicit
+ * maintenance action (not run automatically), since a stored bundle can also
+ * be a deliberate narrowing (approvals.ts's grantsFor trusts it either way)
+ * that this must not silently undo.
+ */
+export async function resyncSystemRolePermissions(db: CoreDb, tenantId: string): Promise<string[]> {
+  const rows = await db
+    .select({ id: schema.roles.id, key: schema.roles.key })
+    .from(schema.roles)
+    .where(and(eq(schema.roles.tenantId, tenantId), eq(schema.roles.system, true)));
+  const updated: string[] = [];
+  for (const row of rows) {
+    await db
+      .update(schema.roles)
+      .set({ permissionsJson: JSON.stringify(ROLES[row.key] ?? []) })
+      .where(eq(schema.roles.id, row.id));
+    updated.push(row.key);
+  }
+  return updated;
+}
