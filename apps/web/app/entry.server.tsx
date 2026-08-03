@@ -35,6 +35,11 @@ export default async function handleRequest(
   responseHeaders.set("strict-transport-security", "max-age=63072000; includeSubDomains; preload");
   responseHeaders.set("x-frame-options", "DENY");
   responseHeaders.set("x-content-type-options", "nosniff");
-  responseHeaders.set("referrer-policy", "no-referrer");
+  // "no-referrer" forces a same-origin POST's Origin header to the literal
+  // string "null" (Fetch spec §4.7), which react-router's CSRF guard
+  // (throwIfPotentialCSRFAttack) doesn't special-case — it treats "null" as a
+  // foreign origin and 400s the request. strict-origin-when-cross-origin
+  // keeps the same cross-origin/downgrade privacy guarantees without that.
+  responseHeaders.set("referrer-policy", "strict-origin-when-cross-origin");
   return new Response(body, { status, headers: responseHeaders });
 }
