@@ -265,7 +265,50 @@ const HAND_WRITTEN: Op[] = [
   { method: "post", path: "/v1/north/snapshotter/run", summary: "Force the NORTH metric snapshot and anomaly scan now (also runs on the scheduled tick)", permission: "north:snapshots:run", tag: "north" },
   { method: "post", path: "/v1/signal/autopilot/run", summary: "Force the SIGNAL budget autopilot pass now", permission: "signal:autopilot:run", tag: "signal" },
   // Demo deployments only: answers 404 when ENVIRONMENT is production.
-  { method: "post", path: "/v1/signal/demo/spend-tick", summary: "Insert a spend row per channel per live campaign, keyed off the simulated clock (non-production only)", permission: "signal:autopilot:run", tag: "signal" }
+  { method: "post", path: "/v1/signal/demo/spend-tick", summary: "Insert a spend row per channel per live campaign, keyed off the simulated clock (non-production only)", permission: "signal:autopilot:run", tag: "signal" },
+
+  // docs/25 admin_security. Read-only truth about the platform MFA floor and
+  // who currently sits outside it (routes/core.ts).
+  { method: "get", path: "/v1/core/security-posture", summary: "MFA enrolment and session posture for the tenant's people, against the estate-wide floor", permission: "core:settings:read", tag: "core" },
+  // Reuses the real delivery path with a hand-built envelope, same signature
+  // scheme production events use (routes/core.ts developer console tester).
+  { method: "post", path: "/v1/core/webhooks/{id}/test", summary: "Send a signed test delivery to a webhook, without a queued event behind it", permission: "core:webhooks:read", tag: "core" },
+
+  // NORTH explorer and data health (routes/north.ts). Explorer reads a fixed
+  // set of columns off north_snapshots only, never a client SQL string.
+  { method: "post", path: "/v1/north/explore", summary: "Query north_snapshots by metric keys, grain and period", permission: "north:snapshots:read", tag: "north", requestBody: true },
+  { method: "get", path: "/v1/north/data-health", summary: "Staleness per metric, computed live from the snapshot table", permission: "north:metrics:read", tag: "north" },
+
+  // AXIS copilot and developer sandbox (routes/axis.ts).
+  { method: "post", path: "/v1/axis/cases/{id}/copilot", summary: "Answer a question about a case, grounded only in its own documents, events and tasks", permission: "axis:cases:read", tag: "axis", requestBody: true },
+  { method: "post", path: "/v1/axis/dev/extract-sample", summary: "Developer console: run field extraction against pasted text, no document row created", permission: "dev:sandbox:use", tag: "axis", requestBody: true },
+  { method: "get", path: "/v1/axis/documents/{id}/file", summary: "Stream a document's underlying file", permission: "axis:documents:read", tag: "axis" },
+
+  // Platform console (routes/platform.ts, ADR-0028/ADR-0029). Cross-tenant,
+  // gated on admin:* / core:impersonate:use rather than a tenant permission —
+  // there is no tenant to scope most of these against.
+  { method: "get", path: "/v1/platform/flags", summary: "Every feature flag and its rollout", permission: "admin:flags:read", tag: "platform" },
+  { method: "post", path: "/v1/platform/flags", summary: "Create a feature flag, disabled by default", permission: "admin:flags:write", tag: "platform", requestBody: true },
+  // Flipping `enabled` is dual-control (core.flag_toggle); a rollout-percent
+  // nudge on its own is not.
+  { method: "patch", path: "/v1/platform/flags/{id}", summary: "Update a flag's rollout or enable it (enabling gates on the core.flag_toggle approval)", permission: "admin:flags:write", tag: "platform", requestBody: true },
+  { method: "get", path: "/v1/platform/ops/overview", summary: "Outbox backlog, DLQ depth and pending approvals, per tenant", permission: "admin:diagnostics:read", tag: "platform" },
+  { method: "get", path: "/v1/platform/slo", summary: "Every SLO definition with its actual and burn percent over its window", permission: "admin:diagnostics:read", tag: "platform" },
+  { method: "get", path: "/v1/platform/impersonation", summary: "The caller's own live impersonation sessions", permission: "core:impersonate:use", tag: "platform" },
+  { method: "post", path: "/v1/platform/impersonation/start", summary: "Start impersonating a user (dual control; never auto-approved)", permission: "core:impersonate:use", tag: "platform", requestBody: true },
+  { method: "post", path: "/v1/platform/impersonation/{id}/end", summary: "End one of the caller's own impersonation sessions", permission: "core:impersonate:use", tag: "platform" },
+  { method: "get", path: "/v1/platform/incidents", summary: "Outage incidents across every tenant, newest first", permission: "admin:diagnostics:read", tag: "platform" },
+  { method: "get", path: "/v1/platform/deployments", summary: "Deployment history, newest first", permission: "admin:diagnostics:read", tag: "platform" },
+
+  // The public comparison site (routes/portal.ts). No session exists yet, so
+  // both are public by shape (mw.ts `/v1/portal/*`).
+  { method: "get", path: "/v1/portal/{tenantSlug}/site", summary: "A tenant's public storefront: brand and active products", tag: "portal", public: true },
+  { method: "post", path: "/v1/portal/{tenantSlug}/leads", summary: "Submit a quote lead from the public storefront; rate-limited per email", tag: "portal", requestBody: true, public: true },
+
+  // Cross-resource search (routes/search.ts, docs/24 Phase 2 item 10). Fans out
+  // over every registered resource's searchable columns, filtered again by the
+  // searcher's own read permission on each hit.
+  { method: "get", path: "/v1/search", summary: "Search across every resource the caller may read", permission: "core:search:read", tag: "search" }
 ];
 
 export function openapi(): Record<string, unknown> {
@@ -377,7 +420,10 @@ export function openapi(): Record<string, unknown> {
       // is its own tag rather than filed under whichever module it touches most.
       { name: "onboarding" },
       { name: "settlement" },
-      { name: "staff" }
+      { name: "staff" },
+      { name: "platform" },
+      { name: "portal" },
+      { name: "search" }
     ],
     paths,
     components: {
