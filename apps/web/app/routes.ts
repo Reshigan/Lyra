@@ -63,6 +63,7 @@ export default [
     route("admin/products/:id/detail", "routes/product-detail.tsx"),
     route("axis/policies/:id/detail", "routes/policy-detail.tsx"),
     route("axis/claims/:id/detail", "routes/claim-detail.tsx"),
+    route("axis/cases/:id/evidence-bundles/:bundleId/download", "routes/case-evidence-download.tsx"),
     route("axis/cases/:id/detail", "routes/case-detail.tsx"),
     route("distribution/channels/:id/detail", "routes/channel-detail.tsx"),
 
