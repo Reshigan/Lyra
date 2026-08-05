@@ -180,7 +180,7 @@ describe("POST /v1/ledger/recon/runs/:id/evidence-bundle", () => {
       lines: [{ ref: "stmt-1", amountMinor: 10000, currency: "AED" }]
     });
     expect(created.status).toBe(201);
-    runId = created.body.id as string;
+    runId = created.body.runId as string;
   });
 
   it("bundles the run, hashes each file and the archive, and records the file on the run", async () => {
@@ -226,6 +226,6 @@ describe("POST /v1/ledger/recon/runs/:id/evidence-bundle", () => {
       currency: "AED",
       lines: [{ ref: "stmt-2", amountMinor: 500, currency: "AED" }]
     });
-    expect((await call("finance.controller", "GET", `/v1/ledger/recon/runs/${bare.body.id}/evidence-bundle/download`)).status).toBe(404);
+    expect((await call("finance.controller", "GET", `/v1/ledger/recon/runs/${bare.body.runId}/evidence-bundle/download`)).status).toBe(404);
   });
 });
