@@ -24,28 +24,37 @@ searchRoutes.get("/", async (c) => {
   if (!q || !q.trim()) throw badRequest("q is required");
   const term = `%${q.replace(/[%_]/g, "")}%`;
 
-  const results: { resource: string; module: string; row: Record<string, unknown> }[] = [];
-  for (const r of REGISTRY) {
-    if (!r.searchable?.length) continue;
-    if (!can(ctx.actor, r.perms.read, { tenantId: ctx.tenantId, module: r.module })) continue;
+  // Permission + column checks are synchronous and run first, so a query is
+  // never even issued for a resource the caller can't read (see file header:
+  // this is what keeps the route from being a permission-bypass side
+  // channel). Only the queries themselves - the round trips - run in
+  // parallel.
+  const queries = REGISTRY.flatMap((r) => {
+    if (!r.searchable?.length) return [];
+    if (!can(ctx.actor, r.perms.read, { tenantId: ctx.tenantId, module: r.module })) return [];
 
     const cols = getTableColumns(r.table) as Record<string, SQLiteColumn>;
     const clauses = r.searchable.map((k) => cols[k]).filter((col): col is SQLiteColumn => Boolean(col)).map((col) => like(col, term));
-    if (!clauses.length) continue;
+    if (!clauses.length) return [];
 
-    const rows = await ctx.db
-      .select()
-      .from(r.table as never)
-      .where(scoped(ctx, r.table as never, or(...clauses) as SQL))
-      .limit(10);
+    return [{ resource: r.path, module: r.module, secret: new Set(r.secretColumns ?? []), clauses, table: r.table }];
+  });
 
-    const secret = new Set(r.secretColumns ?? []);
-    for (const row of rows) {
-      const out = { ...(row as Record<string, unknown>) };
-      for (const key of secret) delete out[key];
-      results.push({ resource: r.path, module: r.module, row: out });
-    }
-  }
+  const perResource = await Promise.all(
+    queries.map(async (q) => {
+      const rows = await ctx.db
+        .select()
+        .from(q.table as never)
+        .where(scoped(ctx, q.table as never, or(...q.clauses) as SQL))
+        .limit(10);
 
-  return c.json({ results });
+      return rows.map((row) => {
+        const out = { ...(row as Record<string, unknown>) };
+        for (const key of q.secret) delete out[key];
+        return { resource: q.resource, module: q.module, row: out };
+      });
+    })
+  );
+
+  return c.json({ results: perResource.flat() });
 });
