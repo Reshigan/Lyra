@@ -13,9 +13,34 @@ export const north: WorkspaceSpec = {
       snapshots: "Snapshots",
       briefings: "Briefings",
       anomalies: "Anomalies",
+      alerts: "Alerts & thresholds",
       scenarios: "Scenarios",
       boardpacks: "Board packs",
       decisions: "Decisions",
+
+      "link.brief": "The Brief",
+      "link.metric": "Open the trend",
+      "thresholdValue.hint": "In the metric's own units — minor units for money, basis points for a ratio.",
+      "link.explorer": "Explorer",
+      "link.whatif": "What-if",
+      "link.board": "Board pack",
+      "link.health": "Data health",
+      "link.semantic": "Semantic model",
+      "link.usage": "Adoption & cost",
+      "link.dashboards": "Dashboards",
+      "link.reports": "Reports & delivery",
+
+      operator: "Fires when",
+      thresholdValue: "Threshold",
+      windowGrain: "Measured over",
+      notifyChannelRef: "Notify",
+      enabled: "Live",
+      gt: "Above",
+      gte: "At or above",
+      lt: "Below",
+      lte: "At or below",
+      eq: "Exactly",
+      driverAnalysisJson: "Reading",
 
       key: "Key",
       nameJson: "Name",
@@ -102,9 +127,34 @@ export const north: WorkspaceSpec = {
       snapshots: "اللقطات",
       briefings: "الإحاطات",
       anomalies: "الانحرافات",
+      alerts: "التنبيهات والحدود",
       scenarios: "السيناريوهات",
       boardpacks: "حزم مجلس الإدارة",
       decisions: "القرارات",
+
+      "link.brief": "الموجز",
+      "link.metric": "فتح المنحنى",
+      "thresholdValue.hint": "بوحدات المؤشر نفسه — الوحدات الصغرى للمبالغ، ونقاط الأساس للنسب.",
+      "link.explorer": "المستكشف",
+      "link.whatif": "ماذا لو",
+      "link.board": "حزمة مجلس الإدارة",
+      "link.health": "سلامة البيانات",
+      "link.semantic": "النموذج الدلالي",
+      "link.usage": "الاستخدام والتكلفة",
+      "link.dashboards": "لوحات المعلومات",
+      "link.reports": "التقارير والتسليم",
+
+      operator: "يُفعَّل عندما",
+      thresholdValue: "الحد",
+      windowGrain: "يُقاس على",
+      notifyChannelRef: "إشعار إلى",
+      enabled: "مُفعَّل",
+      gt: "أعلى من",
+      gte: "يساوي أو أعلى من",
+      lt: "أقل من",
+      lte: "يساوي أو أقل من",
+      eq: "يساوي تمامًا",
+      driverAnalysisJson: "القراءة",
 
       key: "المفتاح",
       nameJson: "الاسم",
@@ -202,8 +252,13 @@ export const north: WorkspaceSpec = {
         { name: "unit", options: ["count", "money", "percent", "ratio", "duration_ms"] },
         { name: "sensitivity", options: ["public", "internal", "restricted"] }
       ],
+      // The catalogue exists to settle disagreements between two screens, so the
+      // definition and its owner are columns, not fields you must open a record
+      // to read (docs/25 north_metrics).
+      recordLink: { href: "/north/metric/{id}", labelKey: "link.metric" },
       columns: [
         { name: "key", type: "text", sortable: true },
+        { name: "definitionSqlRef", type: "text" },
         { name: "unit", type: "text" },
         { name: "grain", type: "text" },
         { name: "direction", type: "text" },
@@ -310,6 +365,9 @@ export const north: WorkspaceSpec = {
         { name: "magnitude", type: "number" },
         { name: "expected", type: "number" },
         { name: "actual", type: "number" },
+        // Detection's own reading of why it moved — the column the mockup calls
+        // "NORTH's reading", and the reason a triager can act without opening it.
+        { name: "driverAnalysisJson", type: "json" },
         { name: "state", type: "text", badge: true },
         { name: "detectedAt", type: "datetime", sortable: true }
       ],
@@ -321,6 +379,48 @@ export const north: WorkspaceSpec = {
         },
         { name: "linkedActionRef", type: "text" },
         { name: "explainedBy", type: "text" }
+      ]
+    },
+    {
+      // The standing thresholds behind the anomalies tab: a rule is one row of
+      // metric + operator + threshold, so it is a tab and not a builder.
+      key: "alerts",
+      api: "/v1/north/alert_rules",
+      read: "north:alerts:read",
+      create: "north:alerts:write",
+      update: "north:alerts:write",
+      remove: "north:alerts:write",
+      sort: "metricKey",
+      order: "asc",
+      filters: [
+        { name: "windowGrain", options: ["day", "week", "month"] },
+        { name: "operator", options: ["gt", "gte", "lt", "lte", "eq"] }
+      ],
+      columns: [
+        { name: "metricKey", type: "text", sortable: true },
+        { name: "operator", type: "text" },
+        { name: "thresholdValue", type: "number" },
+        { name: "windowGrain", type: "text" },
+        { name: "notifyChannelRef", type: "text" },
+        { name: "enabled", type: "boolean" },
+        { name: "updatedAt", type: "datetime", sortable: true }
+      ],
+      fields: [
+        { name: "metricKey", type: "text", required: true },
+        { name: "operator", type: "select", options: ["gt", "gte", "lt", "lte", "eq"], required: true },
+        // Money metrics are stored in minor units (packages/db/src/schema/north.ts),
+        // so the threshold is typed in the same units the snapshot carries.
+        { name: "thresholdValue", type: "number", required: true, hintKey: "thresholdValue.hint" },
+        { name: "windowGrain", type: "select", options: ["day", "week", "month"] },
+        { name: "notifyChannelRef", type: "text" },
+        { name: "enabled", type: "boolean" }
+      ],
+      editable: [
+        { name: "operator", type: "select", options: ["gt", "gte", "lt", "lte", "eq"] },
+        { name: "thresholdValue", type: "number", hintKey: "thresholdValue.hint" },
+        { name: "windowGrain", type: "select", options: ["day", "week", "month"] },
+        { name: "notifyChannelRef", type: "text" },
+        { name: "enabled", type: "boolean" }
       ]
     },
     {
@@ -411,5 +511,19 @@ export const north: WorkspaceSpec = {
         { name: "outcomeReviewJson", type: "json" }
       ]
     }
+  ],
+  // The screens NORTH is actually opened for. Reporting and dashboards live in
+  // the analytics workspace and are linked, not rebuilt — one dashboard renderer
+  // for the whole product (apps/web/app/routes/analytics-dashboard.tsx).
+  links: [
+    { href: "/north/brief", labelKey: "link.brief", permission: "north:briefings:read" },
+    { href: "/north/explorer", labelKey: "link.explorer", permission: "north:snapshots:read" },
+    { href: "/north/whatif", labelKey: "link.whatif", permission: "north:scenarios:read" },
+    { href: "/north/board", labelKey: "link.board", permission: "north:boardpacks:read" },
+    { href: "/north/health", labelKey: "link.health", permission: "north:metrics:read" },
+    { href: "/north/semantic", labelKey: "link.semantic", permission: "north:metrics:read" },
+    { href: "/north/usage", labelKey: "link.usage", permission: "north:metrics:read" },
+    { href: "/analytics/dashboards", labelKey: "link.dashboards", permission: "analytics:dashboards:read" },
+    { href: "/analytics/reports", labelKey: "link.reports", permission: "analytics:reports:read" }
   ]
 };

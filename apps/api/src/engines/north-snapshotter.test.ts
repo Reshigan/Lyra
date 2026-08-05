@@ -184,6 +184,82 @@ describe("runSnapshotter: unregistered metric", () => {
   });
 });
 
+describe("runSnapshotter: alert rules", () => {
+  it("emits an event when a fresh snapshot breaches an enabled rule's threshold", async () => {
+    await seedMetric("policies_issued", "day");
+    await seedProviderAndCustomer();
+    await ctx.db.insert(schema.axisPolicies).values({
+      id: "pol_1",
+      tenantId: ctx.tenantId,
+      customerId: "cu_1",
+      providerId: "prov_1",
+      policyNo: "P-1",
+      startAt: YESTERDAY_MID,
+      endAt: YESTERDAY_MID + 365 * DAY,
+      premiumMinor: 10_000,
+      currency: "AED",
+      status: "active",
+      createdAt: YESTERDAY_MID,
+      updatedAt: YESTERDAY_MID
+    });
+    await ctx.db.insert(schema.northAlertRules).values({
+      id: "nar_1",
+      tenantId: ctx.tenantId,
+      metricKey: "policies_issued",
+      operator: "gte",
+      thresholdValue: 1,
+      windowGrain: "day",
+      notifyChannelRef: null,
+      enabled: true,
+      createdAt: ctx.now,
+      updatedAt: ctx.now
+    });
+
+    const result = await runSnapshotter(ctx);
+    expect(result.alertsTriggered).toBe(1);
+
+    const events = await ctx.db.select().from(schema.eventOutbox).where(eq(schema.eventOutbox.tenantId, ctx.tenantId));
+    const fired = events.filter((e) => e.type === "north.alert.triggered");
+    expect(fired.length).toBe(1);
+    const data = JSON.parse(fired[0]!.envelopeJson).data;
+    expect(data).toMatchObject({ ruleId: "nar_1", metricKey: "policies_issued", value: 1, thresholdValue: 1, operator: "gte" });
+  });
+
+  it("does not fire a disabled rule", async () => {
+    await seedMetric("policies_issued", "day");
+    await seedProviderAndCustomer();
+    await ctx.db.insert(schema.axisPolicies).values({
+      id: "pol_1",
+      tenantId: ctx.tenantId,
+      customerId: "cu_1",
+      providerId: "prov_1",
+      policyNo: "P-1",
+      startAt: YESTERDAY_MID,
+      endAt: YESTERDAY_MID + 365 * DAY,
+      premiumMinor: 10_000,
+      currency: "AED",
+      status: "active",
+      createdAt: YESTERDAY_MID,
+      updatedAt: YESTERDAY_MID
+    });
+    await ctx.db.insert(schema.northAlertRules).values({
+      id: "nar_1",
+      tenantId: ctx.tenantId,
+      metricKey: "policies_issued",
+      operator: "gte",
+      thresholdValue: 1,
+      windowGrain: "day",
+      notifyChannelRef: null,
+      enabled: false,
+      createdAt: ctx.now,
+      updatedAt: ctx.now
+    });
+
+    const result = await runSnapshotter(ctx);
+    expect(result.alertsTriggered).toBe(0);
+  });
+});
+
 describe("runSnapshotter: anomaly detection", () => {
   it("flags a new anomaly when a metric swings hard between two runs", async () => {
     await seedMetric("gwp", "month");

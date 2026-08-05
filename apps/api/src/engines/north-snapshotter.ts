@@ -1,6 +1,6 @@
 import { and, eq, gte, isNotNull, lt, sql } from "drizzle-orm";
 import { id as newId, schema } from "@lyra/db";
-import type { Ctx } from "@lyra/core";
+import { emit, type Ctx } from "@lyra/core";
 
 // docs/modules/north.md §2.2/§3 — Snapshotter (nightly) + Anomaly Hunter
 // (post-snapshot). ADR-0024: a typed compute function per metric, not a
@@ -211,20 +211,43 @@ function anomalyThresholdBp(unit: string): number {
   return unit === "percent" || unit === "ratio" ? 500 : 1_500;
 }
 
+function breaches(operator: string, value: number, threshold: number): boolean {
+  switch (operator) {
+    case "gt":
+      return value > threshold;
+    case "gte":
+      return value >= threshold;
+    case "lt":
+      return value < threshold;
+    case "lte":
+      return value <= threshold;
+    case "eq":
+      return value === threshold;
+    default:
+      return false; // unknown operator: don't guess
+  }
+}
+
 /**
  * Write today's snapshots for every registered metric, then flag anomalies
  * against the immediately preceding period of the same grain. Idempotent:
  * upserts by the `(tenant, metric, grain, period, dims_hash)` unique index,
  * so a missed or repeated nightly tick costs nothing.
  */
-export async function runSnapshotter(ctx: Ctx): Promise<{ written: number; anomalies: number }> {
+export async function runSnapshotter(ctx: Ctx): Promise<{ written: number; anomalies: number; alertsTriggered: number }> {
   const metrics = await ctx.db
     .select()
     .from(schema.northMetrics)
     .where(eq(schema.northMetrics.tenantId, ctx.tenantId));
 
+  const rules = await ctx.db
+    .select()
+    .from(schema.northAlertRules)
+    .where(and(eq(schema.northAlertRules.tenantId, ctx.tenantId), eq(schema.northAlertRules.enabled, true)));
+
   let written = 0;
   let anomalies = 0;
+  let alertsTriggered = 0;
 
   for (const metric of metrics) {
     const compute = REGISTRY[metric.key];
@@ -267,6 +290,18 @@ export async function runSnapshotter(ctx: Ctx): Promise<{ written: number; anoma
       }
       written++;
 
+      for (const rule of rules) {
+        if (rule.metricKey !== metric.key || rule.windowGrain !== p.grain) continue;
+        if (!breaches(rule.operator, value, rule.thresholdValue)) continue;
+        await emit(ctx, {
+          module: "north",
+          type: "north.alert.triggered",
+          subject: rule.id,
+          data: { ruleId: rule.id, metricKey: metric.key, value, thresholdValue: rule.thresholdValue, operator: rule.operator, grain: p.grain, period: p.period }
+        });
+        alertsTriggered++;
+      }
+
       const prevValue = existing?.value;
       if (prevValue !== undefined && prevValue !== 0) {
         const magnitudeBp = Math.round(((value - prevValue) / Math.abs(prevValue)) * 10_000);
@@ -301,5 +336,5 @@ export async function runSnapshotter(ctx: Ctx): Promise<{ written: number; anoma
     }
   }
 
-  return { written, anomalies };
+  return { written, anomalies, alertsTriggered };
 }

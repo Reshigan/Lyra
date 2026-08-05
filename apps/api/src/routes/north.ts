@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
+import { and, eq, inArray, max } from "drizzle-orm";
 import type { ReportTable } from "@lyra/ledger";
 import { id, schema } from "@lyra/db";
 import { actorRef, audit, require_, sha256Hex, type Ctx } from "@lyra/core";
@@ -110,4 +111,60 @@ northRoutes.post("/snapshotter/run", async (c) => {
   const ctx = ctxOf(c);
   require_(ctx.actor, "north:snapshots:run", { tenantId: ctx.tenantId, module: "north" });
   return c.json(await runSnapshotter(ctx));
+});
+
+const ExploreBody = z.object({
+  metricKeys: z.array(z.string().min(1)).min(1).max(20),
+  grain: z.enum(["day", "week", "month"]),
+  period: z.string().min(1)
+});
+
+// Explorer: a fixed set of columns the caller can filter by, never a client
+// SQL string (docs/modules/north.md). Reads north_snapshots only — the same
+// semantic layer everything else in NORTH reads.
+northRoutes.post("/explore", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "north:snapshots:read", { tenantId: ctx.tenantId, module: "north" });
+  const input = await body(c, ExploreBody);
+  const rows = await ctx.db
+    .select()
+    .from(schema.northSnapshots)
+    .where(
+      and(
+        eq(schema.northSnapshots.tenantId, ctx.tenantId),
+        inArray(schema.northSnapshots.metricKey, input.metricKeys),
+        eq(schema.northSnapshots.grain, input.grain),
+        eq(schema.northSnapshots.period, input.period)
+      )
+    );
+  return c.json({ rows }, 201);
+});
+
+// Data health: staleness per metric, computed live from the snapshot table —
+// no separate freshness table to fall out of sync with it.
+northRoutes.get("/data-health", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "north:metrics:read", { tenantId: ctx.tenantId, module: "north" });
+
+  const [metrics, lastByKey] = await Promise.all([
+    ctx.db.select().from(schema.northMetrics).where(eq(schema.northMetrics.tenantId, ctx.tenantId)),
+    ctx.db
+      .select({ metricKey: schema.northSnapshots.metricKey, lastTs: max(schema.northSnapshots.ts) })
+      .from(schema.northSnapshots)
+      .where(eq(schema.northSnapshots.tenantId, ctx.tenantId))
+      .groupBy(schema.northSnapshots.metricKey)
+  ]);
+  const lastTsByKey = new Map(lastByKey.map((r) => [r.metricKey, r.lastTs as number | null]));
+
+  return c.json({
+    metrics: metrics.map((m) => {
+      const lastSnapshotAt = lastTsByKey.get(m.key) ?? null;
+      return {
+        metricKey: m.key,
+        grain: m.grain,
+        lastSnapshotAt,
+        staleness: lastSnapshotAt === null ? null : ctx.now - lastSnapshotAt
+      };
+    })
+  });
 });
