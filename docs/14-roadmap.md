@@ -34,6 +34,7 @@ with 3 connector types + mock providers, Production Board, Case Room,
 Verify/Exceptions queues, approvals engine, SOP builder, process events,
 recon workspace, AXIS admin+dev consoles, module KPIs.
 **Accept:** AXIS §8 checklist; J-O1/J-O2/J-O3 e2e; extraction eval ≥ 0.95.
+Verified 2026-08-05: `pnpm eval` → axis fieldAccuracy = 0.956 (PASS).
 
 ## M3 — ORBIT v1
 AgentRoom DO + web widget + WhatsApp connector; agent console + supervisor
