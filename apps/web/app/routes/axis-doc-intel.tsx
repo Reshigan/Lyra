@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import {
   Form,
   Link,
@@ -115,6 +116,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "done.extract": "Read. Check the fields before confirming.",
     "empty.title": "Nothing waiting",
     "empty.body": "Every document has been read and confirmed.",
+    "nav.label": "Documents",
     approvalTitle: "Waiting on an approval",
     approvalBody:
       "This is gated by {policy}. The request is recorded and takes effect once someone with the authority approves it.",
@@ -174,6 +176,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "done.extract": "قُرئ. راجع الحقول قبل التأكيد.",
     "empty.title": "لا شيء بالانتظار",
     "empty.body": "كل المستندات قُرئت وأُكّدت.",
+    "nav.label": "المستندات",
     approvalTitle: "بانتظار موافقة",
     approvalBody: "هذا الإجراء يمر بسياسة {policy}. سُجّل الطلب ويسري بعد موافقة صاحب الصلاحية.",
     approvalLink: "فتح الموافقات",
@@ -441,6 +444,24 @@ export default function AxisDocIntel() {
 
   const counted = (status: string) => loaded.docs.filter((doc) => doc.status === status).length;
 
+  const [index, setIndex] = useState(0);
+  const selected = loaded.docs[Math.min(index, Math.max(loaded.docs.length - 1, 0))];
+  const model = selected ? fieldsOf(selected) : {};
+  const names = Object.keys(model);
+  const confidence = selected ? confidenceOf(selected) : null;
+  const boxes = selected ? bboxOf(selected) : {};
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      const tag = (event.target as HTMLElement | null)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (event.key === "j") setIndex((i) => Math.min(i + 1, loaded.docs.length - 1));
+      else if (event.key === "k") setIndex((i) => Math.max(i - 1, 0));
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [loaded.docs.length]);
+
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-1">
@@ -480,31 +501,63 @@ export default function AxisDocIntel() {
 
       {loaded.docs.length === 0 ? <EmptyState title={l("empty.title")} body={l("empty.body")} /> : null}
 
-      {loaded.docs.map((doc) => {
-        const model = fieldsOf(doc);
-        const names = Object.keys(model);
-        const confidence = confidenceOf(doc);
+      {selected ? (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[220px_1fr_1fr]">
+          <ul className="flex flex-col gap-1 lg:max-h-[70vh] lg:overflow-y-auto" aria-label={l("nav.label")}>
+            {loaded.docs.map((doc, i) => (
+              <li key={doc.id}>
+                <button
+                  type="button"
+                  onClick={() => setIndex(i)}
+                  aria-current={i === index ? "true" : undefined}
+                  className={`flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-start font-ui text-12 ${
+                    i === index ? "bg-surface-2 text-accent" : "text-muted"
+                  }`}
+                >
+                  <span className="truncate">{doc.docType}</span>
+                  <Badge tone={statusTone(doc.status)} size="sm">
+                    {l(`status.${doc.status}`)}
+                  </Badge>
+                </button>
+              </li>
+            ))}
+          </ul>
 
-        return (
+          <div className="relative overflow-hidden rounded border border-border bg-surface-2 lg:max-h-[70vh]">
+            <img
+              src={`/axis/documents/${selected.id}/file`}
+              alt={selected.docType}
+              className="block w-full object-contain"
+            />
+            {Object.entries(boxes).map(([name, [x, y, w, h]]) => (
+              <span
+                key={name}
+                title={name}
+                className="pointer-events-none absolute border-2 border-accent"
+                style={{ left: `${x}%`, top: `${y}%`, width: `${w}%`, height: `${h}%` }}
+              />
+            ))}
+          </div>
+
           <Card
-            key={doc.id}
+            key={selected.id}
             title={
               <span className="flex flex-wrap items-center gap-2">
                 <Link
-                  to={`/axis/documents/${doc.id}`}
+                  to={`/axis/documents/${selected.id}`}
                   className="font-mono text-13 text-accent underline underline-offset-2"
                 >
-                  {doc.docType}
+                  {selected.docType}
                 </Link>
-                <Badge tone={statusTone(doc.status)} size="sm">
-                  {l(`status.${doc.status}`)}
+                <Badge tone={statusTone(selected.status)} size="sm">
+                  {l(`status.${selected.status}`)}
                 </Badge>
-                {doc.extractionModel ? (
+                {selected.extractionModel ? (
                   <AgentBadge
-                    agent={doc.extractionModel}
+                    agent={selected.extractionModel}
                     why={
                       <span className="font-ui text-12 text-muted">
-                        {l("why", { model: doc.extractionModel })}
+                        {l("why", { model: selected.extractionModel })}
                       </span>
                     }
                   />
@@ -517,21 +570,21 @@ export default function AxisDocIntel() {
                 source={
                   <span className="flex flex-col gap-1 font-ui text-12 text-muted">
                     <span>
-                      {l("evidence.file")}: <span className="font-mono">{doc.fileId}</span>
+                      {l("evidence.file")}: <span className="font-mono">{selected.fileId}</span>
                     </span>
                     <span>
-                      {l("evidence.type")}: {doc.docType}
+                      {l("evidence.type")}: {selected.docType}
                     </span>
                     <span>
-                      {l("evidence.read")}: <DateTime value={doc.createdAt} locale={locale} />
+                      {l("evidence.read")}: <DateTime value={selected.createdAt} locale={locale} />
                     </span>
-                    {doc.verifiedBy ? (
+                    {selected.verifiedBy ? (
                       <span>
-                        {l("evidence.verified")}: {doc.verifiedBy}
-                        {doc.verifiedAt ? (
+                        {l("evidence.verified")}: {selected.verifiedBy}
+                        {selected.verifiedAt ? (
                           <>
                             {" · "}
-                            <DateTime value={doc.verifiedAt} locale={locale} />
+                            <DateTime value={selected.verifiedAt} locale={locale} />
                           </>
                         ) : null}
                       </span>
@@ -539,7 +592,7 @@ export default function AxisDocIntel() {
                   </span>
                 }
               >
-                {doc.fileId}
+                {selected.fileId}
               </EvidenceLink>
             }
           >
@@ -548,7 +601,7 @@ export default function AxisDocIntel() {
                 <ConfidenceMeter value={confidence} label={l("confidence.label")} floor={REVIEW_FLOOR} />
               ) : null}
 
-              {needsReview(doc) ? (
+              {needsReview(selected) ? (
                 <GuardrailNotice tone="warning" title={l("review.title")} reason={l("review.reason")} />
               ) : null}
 
@@ -557,8 +610,8 @@ export default function AxisDocIntel() {
               ) : held.has(PERM.correct) ? (
                 <Form method="post" className="flex flex-col gap-3">
                   <input type="hidden" name="intent" value="correct" />
-                  <input type="hidden" name="docId" value={doc.id} />
-                  <input type="hidden" name="extractionJson" value={doc.extractionJson ?? ""} />
+                  <input type="hidden" name="docId" value={selected.id} />
+                  <input type="hidden" name="extractionJson" value={selected.extractionJson ?? ""} />
                   <p className="font-ui text-12 text-subtle">{l("correct.intro")}</p>
                   <ul className="flex flex-col gap-3">
                     {names.map((name) => (
@@ -589,10 +642,10 @@ export default function AxisDocIntel() {
                 </ul>
               )}
 
-              {held.has(PERM.correct) && doc.status !== "verified" ? (
+              {held.has(PERM.correct) && selected.status !== "verified" ? (
                 <Form method="post" className="flex flex-wrap items-center gap-3">
                   <input type="hidden" name="intent" value="verify" />
-                  <input type="hidden" name="docId" value={doc.id} />
+                  <input type="hidden" name="docId" value={selected.id} />
                   <Button type="submit" variant="primary" loading={busy}>
                     {l("verify.submit")}
                   </Button>
@@ -600,10 +653,10 @@ export default function AxisDocIntel() {
                 </Form>
               ) : null}
 
-              {held.has(PERM.extract) && doc.status === "received" ? (
+              {held.has(PERM.extract) && selected.status === "received" ? (
                 <Form method="post" className="flex flex-col gap-3 border-t border-border pt-4">
                   <input type="hidden" name="intent" value="extract" />
-                  <input type="hidden" name="docId" value={doc.id} />
+                  <input type="hidden" name="docId" value={selected.id} />
                   <p className="font-ui text-13 font-medium text-text">{l("extract.title")}</p>
                   <p className="font-ui text-12 text-subtle">{l("extract.intro")}</p>
                   <Field label={l("extract.rawText")}>
@@ -628,8 +681,8 @@ export default function AxisDocIntel() {
               ) : null}
             </div>
           </Card>
-        );
-      })}
+        </div>
+      ) : null}
     </div>
   );
 }
