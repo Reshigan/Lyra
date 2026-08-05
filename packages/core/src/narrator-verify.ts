@@ -93,3 +93,19 @@ export function verifyNumericClaims(text: string, snapshot: BriefingSnapshot): V
   const mismatches = extractNumbers(text).filter((n) => !nearAny(n, pool));
   return { ok: mismatches.length === 0, mismatches };
 }
+
+export interface GroundednessResult {
+  ok: boolean;
+  mismatches: number[];
+}
+
+/**
+ * Same inspectability gate as verifyNumericClaims, generalized to plain
+ * context lines instead of a BriefingSnapshot: the AXIS case copilot has
+ * no snapshot, only the case/document/task facts assembled into prose.
+ */
+export function verifyGroundedness(text: string, contextLines: string[]): GroundednessResult {
+  const pool = extractNumbers(contextLines.join("\n"));
+  const mismatches = extractNumbers(text).filter((n) => !nearAny(n, pool));
+  return { ok: mismatches.length === 0, mismatches };
+}
