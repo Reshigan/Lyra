@@ -26,6 +26,7 @@ import {
 import { ApiError, api, fetchMe, type Problem } from "../api.server";
 import { cloudflare } from "../context";
 import { translator } from "../i18n";
+import { humanise } from "../modules/spec";
 import {
   Entry,
   Facts,
@@ -835,9 +836,13 @@ export default function Customer360() {
         <Card title={l("activityTitle")}>
           <Timeline
             label={l("activityCaption")}
+            locale={locale}
             events={loaded.activity.map((row) => ({
               id: row.id,
-              title: row.action,
+              // ponytail: audit actions are an open set of `module.resource.verb`
+              // codes — humanise beats a label table nobody maintains; add
+              // `action.*` keys per-code if a translated verb ever matters.
+              title: humanise(row.action.replaceAll(".", " ")),
               at: row.ts,
               actor: row.actorRef
             }))}
@@ -912,7 +917,11 @@ function Panel({
       padded={false}
       actions={
         href && open ? (
-          <Link to={href} className="font-ui text-12 text-accent underline-offset-2 hover:underline">
+          <Link
+            to={href}
+            aria-label={`${open} · ${title}`}
+            className="font-ui text-12 text-accent underline-offset-2 hover:underline"
+          >
             {open}
           </Link>
         ) : undefined
@@ -948,7 +957,7 @@ function OfferCard({
         <span className="font-mono text-11 text-subtle">{offer.offeringId}</span>
       </div>
       <div className="flex items-center gap-4">
-        <ConfidenceMeter value={offer.score / 100} label={l("colScore")} />
+        <ConfidenceMeter value={offer.score / 100} label={l("colScore")} className="w-32" />
         <Stat
           label={l("colValue")}
           value={
