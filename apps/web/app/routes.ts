@@ -49,6 +49,7 @@ export default [
     route("axis/doc-intelligence", "routes/axis-doc-intel.tsx"),
     route("axis/documents/:id/file", "routes/axis-document-file.tsx"),
     route("axis/analytics", "routes/axis-analytics.tsx"),
+    route("axis/admin", "routes/axis-admin.tsx"),
     route("axis/dev", "routes/axis-dev.tsx"),
 
     route("signal/cockpit", "routes/signal-cockpit.tsx"),

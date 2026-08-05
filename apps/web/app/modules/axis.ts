@@ -3,6 +3,11 @@ import type { WorkspaceSpec } from "./spec";
 // AXIS — operations. The case is the unit of work (docs/03 §AXIS): everything
 // else on this workspace either feeds a case (documents, tasks, quotes) or is
 // what a case produced (policies, claims, escrow).
+//
+// The tabs are the lists. The screens that are not lists — the exception queue,
+// the production board, the quote desk, document intelligence, the operations
+// dashboard — are bespoke routes reached through `links`, and reconciliation and
+// the rulepacks are cross-links to the workspaces that already own them.
 
 export const axis: WorkspaceSpec = {
   path: "/axis",
@@ -18,6 +23,7 @@ export const axis: WorkspaceSpec = {
       sops: "Procedures",
       "process-events": "Process events",
       "case-approvals": "Case approvals",
+      "ops-policies": "Operating policies",
 
       ref: "Reference",
       kind: "Kind",
@@ -93,7 +99,98 @@ export const axis: WorkspaceSpec = {
       checklistJson: "Checklist",
       stepsJson: "Steps",
       nameJson: "Name",
-      teamId: "Team"
+      teamId: "Team",
+      rawText: "Document text",
+      locale: "Language",
+
+      // Enum values. Without these every badge and every option on this
+      // workspace rendered a humanised English string in both locales.
+      "status.intake": "Intake",
+      "status.quoting": "Quoting",
+      "status.awaiting_docs": "Awaiting documents",
+      "status.review": "In review",
+      "status.approval": "Awaiting approval",
+      "status.issued": "Issued",
+      "status.failed": "Failed",
+      "status.cancelled": "Cancelled",
+      "status.received": "Received",
+      "status.extracting": "Extracting",
+      "status.extracted": "Extracted",
+      "status.verified": "Verified",
+      "status.rejected": "Rejected",
+      "status.active": "Active",
+      "status.lapsed": "Lapsed",
+      "status.renewed": "Renewed",
+      "status.reported": "Reported",
+      "status.assessing": "Assessing",
+      "status.approved": "Approved",
+      "status.settled": "Settled",
+      "status.withdrawn": "Withdrawn",
+      "status.open": "Open",
+      "status.reconciling": "Reconciling",
+      "status.matched": "Matched",
+      "status.variance": "Variance",
+      "status.closed": "Closed",
+      "status.draft": "Draft",
+      "status.retired": "Retired",
+      "priority.low": "Low",
+      "priority.normal": "Normal",
+      "priority.high": "High",
+      "priority.urgent": "Urgent",
+      "kind.quote": "Quote",
+      "kind.bind": "Bind",
+      "kind.endorse": "Endorsement",
+      "kind.renewal_ops": "Renewal",
+      "kind.group_medical": "Group scheme",
+      "kind.kyc": "Identity check",
+      "kind.claim": "Claim",
+      "source.web": "Web",
+      "source.orbit": "Conversation",
+      "source.partner": "Partner",
+      "source.import": "Import",
+      "source.api": "API",
+      "source.agent": "Agent",
+      "source.manual": "Entered by hand",
+      "source.portal": "Provider portal",
+      "source.ai_extract": "Extracted by model",
+      "state.open": "Open",
+      "state.in_progress": "In progress",
+      "state.blocked": "Blocked",
+      "state.done": "Done",
+      "state.cancelled": "Cancelled",
+      "docType.eid": "Identity card",
+      "docType.mulkiya": "Vehicle registration",
+      "docType.census": "Member schedule",
+      "docType.medical": "Medical report",
+      "docType.tradelicense": "Trade licence",
+      "docType.other": "Other",
+      "decision.pending": "Pending",
+      "decision.approved": "Approved",
+      "decision.rejected": "Rejected",
+      "outcome.ok": "Completed",
+      "outcome.timeout": "Timed out",
+      "outcome.error": "Errored",
+      "outcome.skipped": "Skipped",
+      "locale.en": "English",
+      "locale.ar": "Arabic",
+
+      // Record actions the API owns (apps/api/src/routes/axis.ts).
+      "documents.verify": "Verify",
+      "documents.verify.confirm":
+        "Verification is stamped with your name and cannot be undone. Verify this document?",
+      "documents.extract": "Read with the model",
+
+      // Bespoke screens this workspace links out to.
+      "link.exceptions": "Exception queue",
+      "link.board": "Production board",
+      "link.quoteDesk": "Quote desk",
+      "link.groupBids": "Group bids",
+      "link.docIntel": "Document intelligence",
+      "link.analytics": "Operations analytics",
+      "link.recon": "Reconciliation",
+      "link.rulepacks": "Automation rules",
+      "link.ruleApplications": "Rule applications",
+      "link.admin": "AXIS admin"
     },
     ar: {
       cases: "الحالات",
@@ -106,6 +203,7 @@ export const axis: WorkspaceSpec = {
       sops: "الإجراءات",
       "process-events": "أحداث العملية",
       "case-approvals": "موافقات الحالة",
+      "ops-policies": "سياسات التشغيل",
 
       ref: "المرجع",
       kind: "النوع",
@@ -181,9 +279,127 @@ export const axis: WorkspaceSpec = {
       checklistJson: "قائمة التحقق",
       stepsJson: "الخطوات",
       nameJson: "الاسم",
-      teamId: "الفريق"
+      teamId: "الفريق",
+      rawText: "نص المستند",
+      locale: "اللغة",
+
+      "status.intake": "استلام",
+      "status.quoting": "تسعير",
+      "status.awaiting_docs": "بانتظار المستندات",
+      "status.review": "قيد المراجعة",
+      "status.approval": "بانتظار الموافقة",
+      "status.issued": "صادرة",
+      "status.failed": "فاشلة",
+      "status.cancelled": "ملغاة",
+      "status.received": "مستلم",
+      "status.extracting": "جارٍ الاستخراج",
+      "status.extracted": "مستخرج",
+      "status.verified": "مُتحقق منه",
+      "status.rejected": "مرفوض",
+      "status.active": "سارية",
+      "status.lapsed": "منتهية",
+      "status.renewed": "مُجددة",
+      "status.reported": "مُبلّغ عنها",
+      "status.assessing": "قيد التقييم",
+      "status.approved": "معتمدة",
+      "status.settled": "مسددة",
+      "status.withdrawn": "مسحوبة",
+      "status.open": "مفتوحة",
+      "status.reconciling": "قيد التسوية",
+      "status.matched": "مطابقة",
+      "status.variance": "فرق",
+      "status.closed": "مغلقة",
+      "status.draft": "مسودة",
+      "status.retired": "موقوفة",
+      "priority.low": "منخفضة",
+      "priority.normal": "عادية",
+      "priority.high": "عالية",
+      "priority.urgent": "عاجلة",
+      "kind.quote": "عرض سعر",
+      "kind.bind": "إصدار",
+      "kind.endorse": "تعديل",
+      "kind.renewal_ops": "تجديد",
+      "kind.group_medical": "برنامج جماعي",
+      "kind.kyc": "التحقق من الهوية",
+      "kind.claim": "مطالبة",
+      "source.web": "الويب",
+      "source.orbit": "محادثة",
+      "source.partner": "شريك",
+      "source.import": "استيراد",
+      "source.api": "واجهة برمجية",
+      "source.agent": "وكيل",
+      "source.manual": "إدخال يدوي",
+      "source.portal": "بوابة المزود",
+      "source.ai_extract": "استخراج بالنموذج",
+      "state.open": "مفتوحة",
+      "state.in_progress": "قيد التنفيذ",
+      "state.blocked": "متعطلة",
+      "state.done": "منجزة",
+      "state.cancelled": "ملغاة",
+      "docType.eid": "بطاقة الهوية",
+      "docType.mulkiya": "ملكية المركبة",
+      "docType.census": "كشف الأعضاء",
+      "docType.medical": "تقرير طبي",
+      "docType.tradelicense": "الرخصة التجارية",
+      "docType.other": "أخرى",
+      "decision.pending": "معلّق",
+      "decision.approved": "معتمد",
+      "decision.rejected": "مرفوض",
+      "outcome.ok": "مكتملة",
+      "outcome.timeout": "انتهت المهلة",
+      "outcome.error": "خطأ",
+      "outcome.skipped": "متجاوزة",
+      "locale.en": "الإنجليزية",
+      "locale.ar": "العربية",
+
+      "documents.verify": "التحقق",
+      "documents.verify.confirm":
+        "يُسجَّل التحقق باسمك ولا يمكن الرجوع عنه. هل تريد التحقق من هذا المستند؟",
+      "documents.extract": "القراءة بالنموذج",
+
+      "link.exceptions": "طابور الاستثناءات",
+      "link.board": "لوحة الإنتاج",
+      "link.quoteDesk": "مكتب عروض الأسعار",
+      "link.groupBids": "العطاءات الجماعية",
+      "link.docIntel": "ذكاء المستندات",
+      "link.analytics": "تحليلات التشغيل",
+      "link.recon": "التسوية",
+      "link.rulepacks": "قواعد الأتمتة",
+      "link.ruleApplications": "تطبيقات القواعد",
+      "link.admin": "إدارة AXIS"
     }
   },
+  // Nothing here is a duplicate of a tab: reconciliation lives in the ledger and
+  // the rulepacks in administration/compliance, so AXIS links to them rather
+  // than growing a second copy of either.
+  links: [
+    { href: "/axis/exceptions", labelKey: "link.exceptions", permission: "axis:cases:read" },
+    { href: "/axis/board", labelKey: "link.board", permission: "axis:cases:read" },
+    { href: "/axis/quote-desk", labelKey: "link.quoteDesk", permission: "axis:quotes:read" },
+    // The same desk, scoped to the group/scheme cases — a "bid" in this platform
+    // is the set of provider quotes against one group_medical case.
+    {
+      href: "/axis/quote-desk?kind=group_medical",
+      labelKey: "link.groupBids",
+      permission: "axis:quotes:read"
+    },
+    // Not /axis/documents — that path is the documents tab, and a static route
+    // would outrank and hide it.
+    {
+      href: "/axis/doc-intelligence",
+      labelKey: "link.docIntel",
+      permission: "axis:documents:read"
+    },
+    { href: "/axis/analytics", labelKey: "link.analytics", permission: "axis:metrics:read" },
+    { href: "/ledger/recon", labelKey: "link.recon", permission: "ledger:recon:read" },
+    { href: "/admin/rulepacks", labelKey: "link.rulepacks", permission: "compliance:rulepacks:read" },
+    {
+      href: "/compliance/rulepack-applications",
+      labelKey: "link.ruleApplications",
+      permission: "compliance:rulepacks:read"
+    },
+    { href: "/axis/admin", labelKey: "link.admin", permission: "axis:sops:read" }
+  ],
   tabs: [
     {
       key: "cases",
@@ -209,11 +425,19 @@ export const axis: WorkspaceSpec = {
             "cancelled"
           ]
         },
-        { name: "priority", options: ["low", "normal", "high", "urgent"] }
+        { name: "priority", options: ["low", "normal", "high", "urgent"] },
+        // A group scheme is worked nothing like a renewal; without this the only
+        // way to see one kind of work was to read every row.
+        {
+          name: "kind",
+          options: ["quote", "bind", "endorse", "renewal_ops", "group_medical", "kyc", "claim"]
+        }
       ],
       columns: [
         { name: "ref", type: "text", sortable: true },
-        { name: "kind", type: "text" },
+        // Badge, because only a badge column resolves its value label
+        // (components/fields.tsx) — plain text would show the raw enum.
+        { name: "kind", type: "text", badge: true },
         { name: "status", type: "text", badge: true },
         { name: "priority", type: "text", badge: true },
         { name: "ownerRef", type: "text" },
@@ -315,7 +539,7 @@ export const axis: WorkspaceSpec = {
       ],
       columns: [
         { name: "caseId", type: "text" },
-        { name: "docType", type: "text" },
+        { name: "docType", type: "text", badge: true },
         { name: "status", type: "text", badge: true },
         { name: "extractionConfidence", type: "number" },
         { name: "extractionModel", type: "text" },
@@ -338,9 +562,34 @@ export const axis: WorkspaceSpec = {
       ],
       editable: [
         {
+          // `verified` is deliberately absent: POST /documents/:id/verify stamps
+          // verifiedBy/verifiedAt from the session, and a PATCH would let the
+          // caller name its own verifier (apps/api/src/routes/axis.ts).
           name: "status",
           type: "select",
-          options: ["received", "extracting", "extracted", "verified", "rejected"]
+          options: ["received", "extracting", "extracted", "rejected"]
+        }
+      ],
+      actions: [
+        {
+          intent: "verify",
+          method: "POST",
+          path: "/{id}/verify",
+          labelKey: "documents.verify",
+          permission: "axis:documents:verify",
+          confirm: true
+        },
+        {
+          // The extractor needs the page text; it does not do OCR itself.
+          intent: "extract",
+          method: "POST",
+          path: "/{id}/extract",
+          labelKey: "documents.extract",
+          permission: "axis:documents:extract",
+          fields: [
+            { name: "rawText", type: "textarea", required: true },
+            { name: "locale", type: "select", options: ["en", "ar"] }
+          ]
         }
       ]
     },
@@ -532,8 +781,32 @@ export const axis: WorkspaceSpec = {
         { name: "step", type: "text" },
         { name: "actorRef", type: "text" },
         { name: "durationMs", type: "number" },
-        { name: "outcome", type: "text" },
+        { name: "outcome", type: "text", badge: true },
         { name: "ts", type: "datetime", sortable: true }
+      ]
+    },
+    {
+      key: "ops-policies",
+      api: "/v1/axis/ops-policies",
+      read: "axis:ops_policies:read",
+      create: "axis:ops_policies:write",
+      update: "axis:ops_policies:write",
+      remove: "axis:ops_policies:write",
+      filters: [{ name: "status", options: ["active", "disabled"] }],
+      columns: [
+        { name: "key", type: "text", sortable: true },
+        { name: "kind", type: "text", badge: true },
+        { name: "status", type: "text", badge: true },
+        { name: "updatedAt", type: "datetime", sortable: true }
+      ],
+      fields: [
+        { name: "key", type: "text", required: true },
+        { name: "kind", type: "select", options: ["sla", "routing", "queue"], required: true },
+        { name: "valueJson", type: "json", required: true }
+      ],
+      editable: [
+        { name: "status", type: "select", options: ["active", "disabled"] },
+        { name: "valueJson", type: "json" }
       ]
     }
   ]

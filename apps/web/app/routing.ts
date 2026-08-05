@@ -70,6 +70,7 @@ export const HIDDEN_ROUTES: Record<string, string> = {
   "/axis/doc-intelligence": "extraction review over documents, linked from the AXIS workspace tools list",
   "/axis/documents/:id/file": "streams one document's source file, opened from the verify-queue viewer",
   "/axis/analytics": "operations analytics and exports, linked from the AXIS workspace tools list",
+  "/axis/admin": "SOP publish, connector health and operating policy, linked from the AXIS workspace tools list",
   "/signal/cockpit": "the growth read across the SIGNAL ledgers, linked from the signal workspace tools list",
   "/signal/studio":
     "creates a campaign and drafts its content, linked from the signal workspace tools list and from the cockpit when nothing is running",

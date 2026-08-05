@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { eq, desc } from "drizzle-orm";
+import { and, eq, desc, not } from "drizzle-orm";
 import { z } from "zod";
 import { schema } from "@lyra/db";
 import { actorRef, audit, badRequest, conflict, emit, notFound, require_, scoped, verifyGroundedness, type Ctx } from "@lyra/core";
@@ -251,4 +251,36 @@ axisRoutes.get("/documents/:id/file", async (c) => {
       "cache-control": "no-store"
     }
   });
+});
+
+// docs/03 §AXIS admin. The one axis verb generated CRUD cannot express for
+// SOPs: publish. Setting `status` to "active" through the generic PATCH does
+// nothing about the version it replaces, so two versions of the same
+// procedure could sit "active" at once — whichever the caller last touched.
+// This makes the swap atomic, and "rollback" is just publishing an older
+// version again — no separate endpoint.
+axisRoutes.post("/sops/:id/publish", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:sops:write", { tenantId: ctx.tenantId, module: "axis" });
+  const rowId = c.req.param("id");
+  const before = await must(ctx, schema.axisSops, rowId, "sops");
+  if (before.status === "active") throw conflict(`sop is already ${before.status}`);
+  await ctx.db
+    .update(schema.axisSops)
+    .set({ status: "retired" })
+    .where(
+      scoped(
+        ctx,
+        schema.axisSops,
+        and(eq(schema.axisSops.key, before.key), eq(schema.axisSops.status, "active"), not(eq(schema.axisSops.id, rowId)))
+      )
+    );
+  const stamp = { status: "active" as const };
+  await ctx.db
+    .update(schema.axisSops)
+    .set(stamp)
+    .where(scoped(ctx, schema.axisSops, eq(schema.axisSops.id, rowId)));
+  const after = { ...before, ...stamp };
+  await audit(ctx, { action: "axis.sops.publish", subjectRef: rowId, before, after });
+  return c.json(after);
 });

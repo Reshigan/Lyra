@@ -206,6 +206,23 @@ export const processEvents = sqliteTable(
   (t) => [index("axis_process_events_idx").on(t.tenantId, t.caseId, t.ts)]
 );
 
+/** Tenant-configurable SLA, routing and queue policy (docs/03 §AXIS admin). */
+export const opsPolicies = sqliteTable(
+  "axis_ops_policies",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    key: text("key").notNull(),
+    kind: text("kind").notNull(), // sla|routing|queue
+    valueJson: text("value_json").notNull(),
+    status: text("status").notNull().default("active"), // active|disabled
+    updatedBy: text("updated_by").notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull()
+  },
+  (t) => [uniqueIndex("axis_ops_policies_key_uq").on(t.tenantId, t.key)]
+);
+
 /** Claims: the other consequential AXIS flow (guidance is regulated — docs/12). */
 export const claims = sqliteTable(
   "axis_claims",

@@ -56,6 +56,7 @@ export {
   escrowBatches as axisEscrowBatches,
   sops as axisSops,
   processEvents as axisProcessEvents,
+  opsPolicies as axisOpsPolicies,
   claims as axisClaims
 } from "./schema/axis.js";
 

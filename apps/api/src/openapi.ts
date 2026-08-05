@@ -81,6 +81,11 @@ const HAND_WRITTEN: Op[] = [
   // text into named fields via the model gateway (packages/model-gateway/src/extract.ts).
   { method: "post", path: "/v1/axis/documents/{id}/extract", summary: "Structure a document's raw text into named fields via the model gateway", permission: "axis:documents:extract", tag: "axis", requestBody: true },
 
+  // Atomic swap: the target SOP goes active and whatever else held that title
+  // + kind is retired in the same transaction, so there is never a moment with
+  // two active versions of the same procedure (routes/axis.ts).
+  { method: "post", path: "/v1/axis/sops/{id}/publish", summary: "Publish an SOP version, retiring whichever version of the same SOP was active", permission: "axis:sops:write", tag: "axis" },
+
   { method: "post", path: "/v1/dist/quote-requests/shop", summary: "Shop one risk to every eligible offering and collect provider quotes", permission: "dist:quote_requests:create", tag: "dist", requestBody: true },
   { method: "get", path: "/v1/dist/quote-requests/{id}/comparison", summary: "Ranked comparison across the responses received", permission: "dist:quote_requests:read", tag: "dist" },
   { method: "post", path: "/v1/dist/quote-requests/{id}/share", summary: "Share the comparison with the customer over their consented channel", permission: "dist:quote_requests:share", tag: "dist", requestBody: true },

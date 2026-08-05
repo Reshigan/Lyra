@@ -99,6 +99,7 @@ export const PERMISSIONS = [
   "axis:sops:read", "axis:sops:write",
   "axis:claims:read", "axis:claims:create", "axis:claims:update", "axis:claims:approve",
   "axis:metrics:read",
+  "axis:ops_policies:read", "axis:ops_policies:write",
 
   // ORBIT — customer experience
   "orbit:conversations:read", "orbit:conversations:reply", "orbit:conversations:assign",
@@ -311,7 +312,7 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
   ],
   "axis.admin": [
     "axis:*:*", "ai:suggestions:read", "core:customers:*", "core:products:*", "core:providers:*",
-    "core:pii:view", "core:approvals:read", "core:approvals:decide", "core:files:*",
+    "core:pii:view", "core:approvals:read", "core:approvals:decide", "core:files:*", "core:webhooks:read",
     "ledger:txns:read", "ledger:recon:read", "ledger:recon:run",
     "analytics:*:read", "analytics:reports:run", "analytics:exports:create", "analytics:exports:download",
     "dist:channels:*", "dist:offerings:*", "dist:quote_requests:*", "dist:offers:*",

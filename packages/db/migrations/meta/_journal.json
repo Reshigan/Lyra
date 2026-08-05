@@ -71,6 +71,41 @@
       "when": 1785615015000,
       "tag": "0009_renewals_per_term",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1785788852358,
+      "tag": "0010_majestic_firebird",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1785790023787,
+      "tag": "0011_violet_hawkeye",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1785791920449,
+      "tag": "0012_happy_luke_cage",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1785793377675,
+      "tag": "0013_quiet_skullbuster",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1785894216416,
+      "tag": "0014_daily_aqueduct",
+      "breakpoints": true
     }
   ]
 }

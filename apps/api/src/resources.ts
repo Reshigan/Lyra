@@ -247,6 +247,9 @@ export const AXIS = register(
     approval: { update: "axis.escrow_release", amountField: "receivedMinor" }
   }),
   r("sops", schema.axisSops, "sop", "axis", rw("axis:sops"), { actorColumns: ["createdBy"] }),
+  r("ops-policies", schema.axisOpsPolicies, "opl", "axis", rw("axis:ops_policies"), {
+    actorColumns: ["updatedBy"]
+  }),
   r("process-events", schema.axisProcessEvents, "pev", "axis", ro("axis:metrics:read"), { immutable: true }),
   r("claims", schema.axisClaims, "clm", "axis", {
     read: "axis:claims:read",
