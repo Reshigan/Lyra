@@ -9,11 +9,11 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function loaderArgs(): LoaderFunctionArgs {
+function loaderArgs(bundleId = "evb_1"): LoaderFunctionArgs {
   return {
-    request: new Request("https://web.test/axis/cases/cas_1/evidence-bundles/evb_1/download"),
+    request: new Request(`https://web.test/axis/cases/cas_1/evidence-bundles/${bundleId}/download`),
     context: { get: () => ({ env, ctx: null }) },
-    params: { id: "cas_1", bundleId: "evb_1" }
+    params: { id: "cas_1", bundleId }
   } as unknown as LoaderFunctionArgs;
 }
 
@@ -36,5 +36,17 @@ describe("case evidence download loader", () => {
     expect(requestedUrl).toBe("https://api.test/v1/compliance/evidence-bundles/evb_1/download");
     expect(response.headers.get("content-type")).toBe("application/zip");
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes);
+  });
+
+  it("encodes the bundle id rather than splicing it raw into the upstream path", async () => {
+    let requestedUrl = "";
+    vi.stubGlobal("fetch", (input: URL | string) => {
+      requestedUrl = String(input);
+      return Promise.resolve(new Response(null, { status: 200 }));
+    });
+
+    await loader(loaderArgs("evb/1 a"));
+
+    expect(requestedUrl).toBe("https://api.test/v1/compliance/evidence-bundles/evb%2F1%20a/download");
   });
 });

@@ -9,11 +9,11 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function args(): LoaderFunctionArgs {
+function args(id = "doc_1"): LoaderFunctionArgs {
   return {
-    request: new Request("https://web.test/axis/documents/doc_1/file"),
+    request: new Request(`https://web.test/axis/documents/${id}/file`),
     context: { get: () => ({ env, ctx: null }) },
-    params: { id: "doc_1" }
+    params: { id }
   } as unknown as LoaderFunctionArgs;
 }
 
@@ -30,5 +30,17 @@ describe("loader", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("image/png");
     expect(new Uint8Array(await res.arrayBuffer())).toEqual(bytes);
+  });
+
+  it("encodes the document id rather than splicing it raw into the upstream path", async () => {
+    let requestedUrl = "";
+    vi.stubGlobal("fetch", (input: URL | string) => {
+      requestedUrl = String(input);
+      return Promise.resolve(new Response(null, { status: 200 }));
+    });
+
+    await loader(args("doc/1 a"));
+
+    expect(requestedUrl).toBe("https://api.test/v1/axis/documents/doc%2F1%20a/file");
   });
 });

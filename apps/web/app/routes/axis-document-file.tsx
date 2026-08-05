@@ -4,7 +4,8 @@ import { cloudflare } from "../context";
 
 export async function loader({ request, params, context }: LoaderFunctionArgs): Promise<Response> {
   const env = context.get(cloudflare).env;
-  const upstream = await apiFetch(`/v1/axis/documents/${params.id}/file`, { env, request });
+  const id = params.id as string;
+  const upstream = await apiFetch(`/v1/axis/documents/${encodeURIComponent(id)}/file`, { env, request });
   return new Response(upstream.body, {
     status: upstream.status,
     headers: {

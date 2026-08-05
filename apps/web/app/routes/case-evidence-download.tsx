@@ -10,7 +10,7 @@ import { cloudflare } from "../context";
 export async function loader({ request, params, context }: LoaderFunctionArgs): Promise<Response> {
   const env = context.get(cloudflare).env;
   const bundleId = params.bundleId as string;
-  const upstream = await apiFetch(`/v1/compliance/evidence-bundles/${bundleId}/download`, { env, request });
+  const upstream = await apiFetch(`/v1/compliance/evidence-bundles/${encodeURIComponent(bundleId)}/download`, { env, request });
   return new Response(upstream.body, {
     status: upstream.status,
     headers: {
