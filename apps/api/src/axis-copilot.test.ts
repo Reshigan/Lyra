@@ -5,7 +5,7 @@ import { drizzle } from "drizzle-orm/libsql";
 import { eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import { seed, totpAt, TOTP_STEP_SEC } from "@lyra/core";
-import { id as newId, schema, type Db } from "@lyra/db";
+import { schema, type Db } from "@lyra/db";
 import { app } from "./index.js";
 import type { Env } from "./env.js";
 
