@@ -1,8 +1,8 @@
 import { Hono } from "hono";
-import { eq } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { z } from "zod";
 import { schema } from "@lyra/db";
-import { actorRef, audit, badRequest, conflict, emit, require_, scoped, type Ctx } from "@lyra/core";
+import { actorRef, audit, badRequest, conflict, emit, require_, scoped, verifyGroundedness, type Ctx } from "@lyra/core";
 import { EXTRACTION_FIELDS, extractionSchema, parseExtraction } from "@lyra/model-gateway";
 import { body } from "../http.js";
 import { must } from "../rows.js";
@@ -129,6 +129,63 @@ axisRoutes.post("/documents/:id/extract", async (c) => {
     metadata: { tenantId: ctx.tenantId, docType: before.docType }
   });
   return c.json(after);
+});
+
+const CopilotBody = z.object({
+  question: z.string().min(1).max(2000),
+  locale: z.enum(["en", "ar"]).default("en")
+});
+
+axisRoutes.post("/cases/:id/copilot", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:cases:read", { tenantId: ctx.tenantId, module: "axis" });
+  const rowId = c.req.param("id");
+  const kase = await must(ctx, schema.axisCases, rowId, "cases");
+  const input = await body(c, CopilotBody);
+
+  const [documents, events, tasks] = await Promise.all([
+    ctx.db.select().from(schema.axisDocuments).where(scoped(ctx, schema.axisDocuments, eq(schema.axisDocuments.caseId, rowId))),
+    ctx.db.select().from(schema.axisProcessEvents).where(scoped(ctx, schema.axisProcessEvents, eq(schema.axisProcessEvents.caseId, rowId))).orderBy(desc(schema.axisProcessEvents.ts)).limit(10),
+    ctx.db.select().from(schema.axisTasks).where(scoped(ctx, schema.axisTasks, eq(schema.axisTasks.caseId, rowId)))
+  ]);
+
+  const contextLines: string[] = [
+    `Case ${kase.ref}: kind ${kase.kind}, status ${kase.status}, priority ${kase.priority}, opened ${new Date(kase.createdAt).toISOString()}` +
+      (kase.slaDueAt ? `, SLA due ${new Date(kase.slaDueAt).toISOString()}` : "") +
+      (kase.valueMinor !== null ? `, value ${kase.valueMinor / 100} ${kase.currency ?? ""}`.trimEnd() : "") +
+      ".",
+    ...documents.map((d) => `Document ${d.docType}: status ${d.status}.`),
+    ...events.map((e) => `Event ${e.step}: ${e.outcome ?? "in progress"} at ${new Date(e.ts).toISOString()}.`),
+    ...tasks.map((t) => `Task ${t.titleKey}: state ${t.state}.`)
+  ];
+
+  const result = await c.get("gateway").complete(ctx, {
+    module: "axis",
+    purpose: "axis.case.copilot",
+    tier: "standard",
+    subjectRef: rowId,
+    locale: input.locale,
+    messages: [
+      {
+        role: "system",
+        content:
+          "Answer the question about this case using only the context lines below. " +
+          "Do not state a number that is not in the context. Locale: " + input.locale + ".\n\n" +
+          contextLines.join("\n")
+      },
+      { role: "user", content: input.question }
+    ]
+  });
+
+  const groundedness = verifyGroundedness(result.text, contextLines);
+  const confidence = groundedness.ok ? 0.95 : Math.max(0.2, 0.95 - groundedness.mismatches.length * 0.15);
+
+  return c.json({
+    answer: result.text,
+    confidence,
+    mismatches: groundedness.mismatches,
+    auditId: result.auditId
+  });
 });
 
 const SampleExtractBody = z.object({
