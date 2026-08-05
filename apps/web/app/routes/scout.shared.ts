@@ -288,7 +288,7 @@ export interface Elasticity {
 export function elasticities(rows: readonly PanelRow[]): Elasticity[] {
   const groups = new Map<string, PanelRow[]>();
   for (const row of rows) {
-    const key = `${row.providerId} ${row.line}`;
+    const key = `${row.providerId}\0${row.line}`;
     groups.set(key, [...(groups.get(key) ?? []), row]);
   }
   const out: Elasticity[] = [];
