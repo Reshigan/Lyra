@@ -30,6 +30,11 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
 
+      # Typecheck does not catch a server-only module reaching the client
+      # bundle — only the bundler does, and until this step existed the first
+      # report was a failed production deploy.
+      - run: pnpm --filter @lyra/web build
+
   eval:
     runs-on: ubuntu-latest
     steps:

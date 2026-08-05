@@ -1,12 +1,16 @@
-import { ApiError } from "../api.server";
+import { ApiError } from "../api-error";
 import { translator } from "../i18n";
-import type { Problem } from "../api.server";
+import type { Problem } from "../api-error";
 
 // Six ORBIT screens share the same eight lines of plumbing: a bilingual label
 // table, a read that survives a withheld permission, and a page envelope from
 // the generic CRUD lister. One home for them beats six copies.
 // ponytail: no JSX here, so the shell's English scan does not apply — keep it
 // that way; label *tables* live in the route that renders them.
+//
+// `ApiError` comes from ../api-error, never ../api.server: this module is not a
+// route, so the client bundle takes it whole and a `.server` import here is a
+// build error ("Server-only module referenced by client").
 
 /** Permissions the ORBIT screens gate on. Mirrors apps/api/src/resources.ts. */
 export const ORBIT = {

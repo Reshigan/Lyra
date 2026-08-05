@@ -1,5 +1,7 @@
 import { Money } from "@lyra/ui";
-import { ApiError } from "../api.server";
+// ../api-error, never ../api.server: this module is not a route, so the client
+// bundle takes it whole and a `.server` import here is a build error.
+import { ApiError } from "../api-error";
 import { translator } from "../i18n";
 
 // The half-dozen things every bespoke NORTH screen needs and none of them owns:
