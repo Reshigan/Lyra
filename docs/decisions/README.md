@@ -56,6 +56,23 @@ and do not pick.
 | [0011](ADR-0011-nav-rail-text-labels.md) | The navigation rail carries text labels | accepted |
 | [0012](ADR-0012-autopilot-bound-check-is-amount-only.md) | SIGNAL autopilot's bound check is amount-vs-bound only | accepted |
 | [0013](ADR-0013-delete-exempt-records-use-state-transitions.md) | Six resources are delete-exempt by design; a `status`/`state` column is the only way out | accepted |
+| [0014](ADR-0014-orbit-journey-builder-scope.md) | ORB-050 visual journey builder is out of scope for this go-live; ORB-051's frequency-cap floor is fixed instead | accepted |
+| [0015](ADR-0015-signal-creative-generation-scope.md) | SIGNAL creative-variant generation wired to a route; Meta/Google publish deferred | accepted |
+| [0016](ADR-0016-scout-wording-differ-scope.md) | SCOUT wording differ takes plain text; PDF extraction deferred | accepted |
+| [0017](ADR-0017-north-chart-annotations-scope.md) | NORTH briefing/boardpack routes wired; Metric Explorer chart annotations deferred | accepted |
+| [0018](ADR-0018-seam-hx-contract-tests.md) | SEAM-Hx: seam interfaces + `@seam:Hx` contract tests | accepted |
+| [0019](ADR-0019-detox-onprem-live-execution-scope.md) | Mobile Detox and on-prem docker-compose: live execution deferred to a human operator | accepted |
+| [0020](ADR-0020-signal-autopilot-holdout-duration-scope.md) | SIGNAL budget-autopilot 14-day holdout run: live-duration claim deferred to staging sign-off | accepted |
+| [0021](ADR-0021-budget-counter-do-deferred.md) | BudgetCounter DO stays a reserved seam; D1-row budget enforcement is the real thing for go-live | accepted |
+| [0022](ADR-0022-domain-pack-vocabulary-web-labels.md) | Domain-pack vocabulary substitutes at web label resolution | accepted |
+| [0023](ADR-0023-role-granting-requires-holding-the-bundle.md) | Role-granting requires holding the bundle you grant | accepted, one follow-up unresolved |
+| [0024](ADR-0024-north-metric-snapshotter-compute-registry.md) | NORTH Snapshotter computes metrics via a typed registry, not by executing `definition_sql_ref` | accepted, two formulas unresolved |
+| [0025](ADR-0025-rbac-scope-provider-identity-for-role-028.md) | Scoping `provider.viewer` (ROLE-028) to its own provider org | **proposed — question for the product owner** |
+| [0026](ADR-0026-visual-system-replacement.md) | Replace "Deep Field" palette/type with the mockup visual system | accepted, implemented |
+| [0027](ADR-0027-impersonation-session-swap.md) | Impersonation is a time-boxed session swap, not a new authority | accepted |
+| [0028](ADR-0028-feature-flags-global-table.md) | Feature flags are the first platform-global table | accepted |
+| [0029](ADR-0029-platform-staff-cross-tenant-pattern.md) | Platform staff cross-tenant reads reuse the scheduler's per-tenant loop | accepted |
+| [0030](ADR-0030-public-portal-surface.md) | A public, unauthenticated comparison-site surface | accepted |
 
 ## Spec edits these ADRs imply
 
