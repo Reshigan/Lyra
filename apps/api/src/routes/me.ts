@@ -56,7 +56,7 @@ meRoutes.get("/", async (c) => {
   }
 
   return c.json({
-    actor: { kind: ctx.actor.kind, id: ctx.actor.id },
+    actor: { kind: ctx.actor.kind, id: ctx.actor.id, impersonating: ctx.actor.impersonating ?? false },
     profile,
     tenant: {
       id: tenant.id,
@@ -74,9 +74,20 @@ meRoutes.get("/", async (c) => {
     policy: ctx.policy,
     // The nav is derived from permissions, not stored: a role change takes
     // effect on the next request rather than the next deploy.
-    nav: navFor(ctx)
+    nav: navFor(ctx),
+    // A tenant admin's per-key i18n customisations, layered over the static
+    // CATALOGUES by apps/web/app/i18n.ts's translator() at render time.
+    overrides: await localeOverridesFor(ctx)
   });
 });
+
+async function localeOverridesFor(ctx: Ctx): Promise<Record<string, string>> {
+  const rows = await ctx.db
+    .select({ key: schema.localeOverrides.key, value: schema.localeOverrides.value })
+    .from(schema.localeOverrides)
+    .where(and(eq(schema.localeOverrides.tenantId, ctx.tenantId), eq(schema.localeOverrides.locale, ctx.locale)));
+  return Object.fromEntries(rows.map((r) => [r.key, r.value]));
+}
 
 const ProfileBody = z.object({
   name: z.string().min(1).max(120).optional(),
@@ -294,34 +305,88 @@ export interface NavItem {
   labelKey: string;
   href: string;
   icon: string;
+  /** A section label (e.g. "Modules"), not a link — `href`/`icon` are unused. */
+  heading?: boolean;
   children?: NavItem[];
 }
+
+type NavSpec = NavItem & { permission?: string; children?: NavSpec[] };
 
 /**
  * Nav items always carry a text label — `labelKey` is required and `icon` is
  * decoration beside it, never instead of it. An icon-only rail costs every user
  * a hover to read and a screen-reader user the label entirely.
+ *
+ * Grouped so the rail reads as sections rather than one flat list. A heading
+ * with no visible children (every child permission-filtered out) is dropped
+ * by `filterNav` rather than left as a lonely label.
  */
-const NAV: (NavItem & { permission?: string })[] = [
+const NAV: NavSpec[] = [
   // Home is ungated: every signed-in actor has somewhere to land, and a nav
   // whose first item is missing reads as a broken app rather than a scoped one.
   { labelKey: "nav.home", href: "/", icon: "home" },
-  { labelKey: "nav.axis", href: "/axis", icon: "shield", permission: "axis:cases:read" },
-  { labelKey: "nav.orbit", href: "/orbit", icon: "orbit", permission: "orbit:conversations:read" },
-  { labelKey: "nav.signal", href: "/signal", icon: "megaphone", permission: "signal:campaigns:read" },
-  { labelKey: "nav.scout", href: "/scout", icon: "radar", permission: "scout:signals:read" },
-  { labelKey: "nav.north", href: "/north", icon: "compass", permission: "north:metrics:read" },
-  { labelKey: "nav.distribution", href: "/distribution", icon: "network", permission: "dist:quote_requests:read" },
-  { labelKey: "nav.ledger", href: "/ledger", icon: "ledger", permission: "ledger:txns:read" },
-  { labelKey: "nav.analytics", href: "/analytics", icon: "chart", permission: "analytics:reports:read" },
-  { labelKey: "nav.compliance", href: "/compliance", icon: "scale", permission: "compliance:dsar:read" },
-  { labelKey: "nav.admin", href: "/admin", icon: "settings", permission: "core:users:read" }
+  {
+    labelKey: "nav.group.modules",
+    href: "",
+    icon: "",
+    heading: true,
+    children: [
+      { labelKey: "nav.axis", href: "/axis", icon: "shield", permission: "axis:cases:read" },
+      { labelKey: "nav.orbit", href: "/orbit", icon: "orbit", permission: "orbit:conversations:read" },
+      { labelKey: "nav.signal", href: "/signal", icon: "megaphone", permission: "signal:campaigns:read" },
+      { labelKey: "nav.scout", href: "/scout", icon: "radar", permission: "scout:signals:read" },
+      { labelKey: "nav.north", href: "/north", icon: "compass", permission: "north:metrics:read" }
+    ]
+  },
+  {
+    labelKey: "nav.group.records",
+    href: "",
+    icon: "",
+    heading: true,
+    children: [
+      {
+        labelKey: "nav.distribution",
+        href: "/distribution",
+        icon: "network",
+        permission: "dist:quote_requests:read"
+      },
+      { labelKey: "nav.ledger", href: "/ledger", icon: "ledger", permission: "ledger:txns:read" },
+      { labelKey: "nav.analytics", href: "/analytics", icon: "chart", permission: "analytics:reports:read" },
+      { labelKey: "nav.compliance", href: "/compliance", icon: "scale", permission: "compliance:dsar:read" }
+    ]
+  },
+  {
+    labelKey: "nav.group.platform",
+    href: "",
+    icon: "",
+    heading: true,
+    children: [
+      { labelKey: "nav.admin", href: "/admin", icon: "settings", permission: "core:users:read" },
+      // Platform staff (ADR-0029): every platform.* role holds this permission
+      // (directly or via platform.admin's wildcard) and no tenant role does, so
+      // it is a clean, already-existing gate for a cross-tenant workspace. The
+      // route itself lands in a later phase; `isRouted()` keeps this hidden
+      // from the rendered rail until then (apps/web/app/routing.ts).
+      { labelKey: "nav.platform", href: "/platform", icon: "gauge", permission: "admin:diagnostics:read" }
+    ]
+  }
 ];
 
+/** Permission-filters items and children, stripping `permission` and dropping
+ * any heading whose children all got filtered out. */
+function filterNav(items: NavSpec[], ctx: Ctx): NavItem[] {
+  const out: NavItem[] = [];
+  for (const { permission, children, ...item } of items) {
+    if (permission && !can(ctx.actor, permission, { tenantId: ctx.tenantId })) continue;
+    const filteredChildren = children ? filterNav(children, ctx) : undefined;
+    if (item.heading && (!filteredChildren || filteredChildren.length === 0)) continue;
+    out.push(filteredChildren ? { ...item, children: filteredChildren } : item);
+  }
+  return out;
+}
+
 function navFor(ctx: Ctx): NavItem[] {
-  return NAV.filter(
-    (item) => !item.permission || can(ctx.actor, item.permission, { tenantId: ctx.tenantId })
-  ).map(({ permission: _p, ...item }) => item);
+  return filterNav(NAV, ctx);
 }
 
 function safe(raw: string | null): unknown {

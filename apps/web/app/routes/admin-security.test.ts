@@ -1,0 +1,67 @@
+import { describe, expect, it } from "vitest";
+import { LABELS, coverage, labelsIn, providerTone } from "./admin-security";
+
+// The security posture screen is read-only by design (MFA is a platform floor,
+// not tenant policy), so there is no action reducer to test. What can go wrong
+// is the arithmetic — a tenant with nobody required reading as 0% covered — and
+// the risk signal on a provider that signs people in without a second factor.
+
+describe("coverage", () => {
+  it("reads full when the floor applies to nobody", () => {
+    // A tenant of partners and customers only. Zero of zero is covered, not a
+    // division by zero and not a 0% alarm.
+    expect(coverage({ required: 0, enrolled: 0 })).toBe(100);
+  });
+
+  it("reads full when everyone required has enrolled", () => {
+    expect(coverage({ required: 7, enrolled: 7 })).toBe(100);
+  });
+
+  it("rounds a partial coverage to a whole percent", () => {
+    expect(coverage({ required: 3, enrolled: 1 })).toBe(33);
+    expect(coverage({ required: 8, enrolled: 7 })).toBe(88);
+  });
+
+  it("reads empty when nobody required has enrolled", () => {
+    expect(coverage({ required: 4, enrolled: 0 })).toBe(0);
+  });
+});
+
+describe("providerTone", () => {
+  it("warns only on a provider that is live and cannot assert a second factor", () => {
+    expect(providerTone({ enabled: true, mfaAsserted: false })).toBe("warning");
+  });
+
+  it("stays quiet on a live provider that does assert one", () => {
+    expect(providerTone({ enabled: true, mfaAsserted: true })).toBe("success");
+  });
+
+  it("does not warn about a disabled provider — it cannot sign anyone in", () => {
+    expect(providerTone({ enabled: false, mfaAsserted: false })).toBe("neutral");
+    expect(providerTone({ enabled: false, mfaAsserted: true })).toBe("neutral");
+  });
+});
+
+describe("labelsIn", () => {
+  it("has the same keys in both locales", () => {
+    expect(Object.keys(LABELS.ar!).sort()).toEqual(Object.keys(LABELS.en!).sort());
+  });
+
+  it("never leaves an Arabic value empty or copied from the English", () => {
+    for (const [key, english] of Object.entries(LABELS.en!)) {
+      const arabic = LABELS.ar![key];
+      expect(arabic, key).toBeTruthy();
+      expect(arabic, key).not.toBe(english);
+    }
+  });
+
+  it("interpolates the unit into a measurement", () => {
+    expect(labelsIn("en")("hours", { n: "12" })).toBe("12 hours");
+    expect(labelsIn("en")("attempts", { n: "8" })).toBe("8 attempts");
+    expect(labelsIn("ar")("hours", { n: "12" })).toContain("12");
+  });
+
+  it("falls back to the English table for an unknown locale", () => {
+    expect(labelsIn("fr")("title")).toBe(LABELS.en!.title);
+  });
+});

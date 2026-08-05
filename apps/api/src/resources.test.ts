@@ -616,3 +616,81 @@ describe("north briefings are not generically creatable", () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe("core/roles: a role editor cannot define authority they do not hold", () => {
+  // The hole this reproduces: `user-roles` guards *assigning* a role, but
+  // `roles` guarded nothing, so `core:roles:update` alone was `*:*:*` — write
+  // the wildcard into a role row, then assign it through the guarded path,
+  // which by then passes because the actor legitimately holds it. The guard has
+  // to sit on the definition too, and it has to cover the whole resulting set.
+  const resource = () => {
+    const r = BY_MODULE.core?.find((x) => x.path === "roles");
+    if (!r) throw new Error("no core/roles resource");
+    return r;
+  };
+
+  // Exactly the permissions the permission-matrix screen gates on: enough to
+  // edit a role, nothing else.
+  const editor = (): Partial<Ctx> => ({
+    actor: {
+      kind: "user",
+      id: "u_editor",
+      tenantId: "t_test",
+      grants: [{ roleKey: "editor", permissions: ["core:roles:read", "core:roles:update"] }]
+    }
+  });
+
+  // Only the client-writable columns: shapeOf() is strict, and id/tenantId/
+  // createdAt are server-owned, so sending them is a 400 before the guard runs.
+  const body = (key: string, permissionsJson: string) => ({
+    key,
+    name: `role ${key}`,
+    permissionsJson,
+    system: false
+  });
+
+  const seed = (id: string, key: string, permissionsJson: string) =>
+    ctx.db.insert(schema.roles).values({ id, tenantId: "t_test", key, name: `role ${key}`, permissionsJson, system: false, createdAt: NOW });
+
+  it("refuses to create a role carrying permissions the editor lacks", async () => {
+    const res = await send(router(resource(), editor()), "POST", "/", body("escalated", JSON.stringify(["*:*:*"])));
+    expect(res.status).toBe(403);
+  });
+
+  it("refuses to widen an existing role beyond what the editor holds", async () => {
+    await seed("rl_widen", "widen_me", JSON.stringify(["core:roles:read"]));
+    const res = await send(router(resource(), editor()), "PATCH", "/rl_widen", {
+      permissionsJson: JSON.stringify(["ledger:payments:refund"])
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("refuses an empty permission list on a built-in key, which resolves to that key's bundle", async () => {
+    // bundleOf falls back to the compiled table when the stored array is empty,
+    // so `[]` on `tenant.admin` is not "a role with no authority" — it is
+    // core:*:* — and must not slip past by looking harmless.
+    const res = await send(
+      router(resource(), editor()),
+      "POST",
+      "/",
+      body("tenant.admin", JSON.stringify([]))
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("allows a role whose permissions the editor already holds", async () => {
+    const res = await send(
+      router(resource(), editor()),
+      "POST",
+      "/",
+      body("reader_only", JSON.stringify(["core:roles:read"]))
+    );
+    expect(res.status).toBe(201);
+  });
+
+  it("leaves an edit that does not touch permissions alone", async () => {
+    await seed("rl_rename", "rename_me", JSON.stringify(["*:*:*"]));
+    const res = await send(router(resource(), editor()), "PATCH", "/rl_rename", { name: "renamed" });
+    expect(res.status).toBe(200);
+  });
+});

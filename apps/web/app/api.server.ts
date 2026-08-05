@@ -117,6 +117,8 @@ export interface NavItem {
   labelKey: string;
   href: string;
   icon: string;
+  /** A section label, not a link — `href`/`icon` are unused. */
+  heading?: boolean;
   children?: NavItem[];
 }
 
@@ -147,6 +149,7 @@ export interface Me {
   entitlements: Record<string, unknown>;
   policy: Record<string, unknown>;
   nav: NavItem[];
+  overrides: Record<string, string>;
 }
 
 /**

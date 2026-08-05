@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { PolicyJson, EntitlementsJson, schema } from "@lyra/db";
+import { PolicyJson, EntitlementsJson } from "@lyra/db";
 import { notFound, pruneIdempotency, type Envelope } from "@lyra/core";
 import { drainOutbox, deliverQueued } from "./dispatch.js";
 import { sweepRenewals } from "./engines/renewals.js";
@@ -8,7 +8,7 @@ import { backupTenant } from "./engines/backup.js";
 import { nudgeApiKeyRotation } from "./engines/api-key-rotation.js";
 import { runBudgetAutopilot } from "./engines/signal-autopilot.js";
 import { expireDelegations } from "./engines/staff.js";
-import { authRoutes, ctxFor, db, pruneSessions } from "./auth.js";
+import { activeTenants, authRoutes, ctxFor, db, pruneSessions } from "./auth.js";
 import { mountAll } from "./crud.js";
 import { BY_MODULE } from "./resources.js";
 import { onError, withContext, withCors, withHeaders } from "./mw.js";
@@ -28,8 +28,11 @@ import { realtimeRoutes } from "./routes/realtime.js";
 import { analyticsRoutes, runDueSchedules } from "./routes/analytics.js";
 import { complianceRoutes } from "./routes/compliance.js";
 import { onboardingRoutes } from "./routes/onboarding.js";
+import { portalRoutes } from "./routes/portal.js";
+import { platformRoutes } from "./routes/platform.js";
 import { settlementRoutes } from "./routes/settlement.js";
 import { staffRoutes } from "./routes/staff.js";
+import { searchRoutes } from "./routes/search.js";
 import type { App, Env } from "./env.js";
 
 // docs/04. One worker, one router. `/v1/<module>/<resource>` is generated CRUD;
@@ -80,8 +83,11 @@ app.route("/v1/compliance", complianceRoutes);
 // dist agreements, settlement turns dist commissions into ledger postings, and
 // staff moves core users, roles and delegations at once.
 app.route("/v1/onboarding", onboardingRoutes);
+app.route("/v1/portal", portalRoutes);
 app.route("/v1/settlement", settlementRoutes);
 app.route("/v1/staff", staffRoutes);
+app.route("/v1/platform", platformRoutes);
+app.route("/v1/search", searchRoutes);
 
 for (const [module, resources] of Object.entries(BY_MODULE)) {
   mountAll(app.basePath(`/v1/${module}`) as unknown as Hono<App>, resources);
@@ -189,11 +195,6 @@ export default {
     );
   }
 };
-
-async function activeTenants(env: Env): Promise<string[]> {
-  const rows = await db(env).select({ id: schema.tenants.id }).from(schema.tenants);
-  return rows.map((t) => t.id);
-}
 
 export { app };
 // wrangler resolves a `durable_objects` binding's `class_name` against an

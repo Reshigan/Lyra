@@ -190,7 +190,8 @@ export const axis: WorkspaceSpec = {
       "link.recon": "Reconciliation",
       "link.rulepacks": "Automation rules",
       "link.ruleApplications": "Rule applications",
-      "link.admin": "AXIS admin"
+      "link.admin": "AXIS admin",
+      "link.processMap": "Process map"
     },
     ar: {
       cases: "الحالات",
@@ -366,7 +367,8 @@ export const axis: WorkspaceSpec = {
       "link.recon": "التسوية",
       "link.rulepacks": "قواعد الأتمتة",
       "link.ruleApplications": "تطبيقات القواعد",
-      "link.admin": "إدارة AXIS"
+      "link.admin": "إدارة AXIS",
+      "link.processMap": "خريطة العملية"
     }
   },
   // Nothing here is a duplicate of a tab: reconciliation lives in the ledger and
@@ -391,6 +393,7 @@ export const axis: WorkspaceSpec = {
       permission: "axis:documents:read"
     },
     { href: "/axis/analytics", labelKey: "link.analytics", permission: "axis:metrics:read" },
+    { href: "/axis/process-map", labelKey: "link.processMap", permission: "axis:metrics:read" },
     { href: "/ledger/recon", labelKey: "link.recon", permission: "ledger:recon:read" },
     { href: "/admin/rulepacks", labelKey: "link.rulepacks", permission: "compliance:rulepacks:read" },
     {

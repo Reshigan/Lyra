@@ -21,6 +21,11 @@ import type { Env } from "./env.js";
 // request but enforced nowhere, and a corrupt tenant policy/entitlements blob
 // silently reset to defaults with no audit trail. These are the regressions.
 
+/** Nav is grouped (heading items wrap the real destinations in `children`). */
+function navHrefs(nav: { href: string; children?: { href: string }[] }[]): string[] {
+  return nav.flatMap((n) => [n.href, ...(n.children ?? []).map((c) => c.href)]);
+}
+
 const MIGRATIONS = join(import.meta.dirname, "..", "..", "..", "packages", "db", "migrations");
 const PASSWORD = "Gonxt-Demo-2026!";
 const DEMO_TOTP_SECRET = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
@@ -98,7 +103,7 @@ describe("module gating (docs/21 entitlements)", () => {
     expect(list.status).toBe(200);
     const me = await call("GET", "/v1/me");
     expect(me.status).toBe(200);
-    expect(me.body.nav.map((n: { href: string }) => n.href)).toContain("/signal");
+    expect(navHrefs(me.body.nav)).toContain("/signal");
     expect(me.body.permissions.some((p: string) => p.startsWith("signal:"))).toBe(true);
   });
 
@@ -113,7 +118,7 @@ describe("module gating (docs/21 entitlements)", () => {
       expect(list.status).toBe(403);
       const me = await call("GET", "/v1/me");
       expect(me.status).toBe(200);
-      expect(me.body.nav.map((n: { href: string }) => n.href)).not.toContain("/signal");
+      expect(navHrefs(me.body.nav)).not.toContain("/signal");
       expect(me.body.permissions.some((p: string) => p.startsWith("signal:"))).toBe(false);
       // Entitled modules are untouched.
       expect((await call("GET", "/v1/axis/cases")).status).toBe(200);

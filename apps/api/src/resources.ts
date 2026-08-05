@@ -83,6 +83,21 @@ export const CORE = register(
     create: "core:roles:update",
     update: "core:roles:update",
     remove: "core:roles:update"
+  }, {
+    // Editing the role IS the grant: core:roles:assign is guarded below, but a
+    // role whose permissionsJson can be widened freely turns core:roles:update
+    // into `*:*:*`. Same boundary, one step earlier — and it applies to the
+    // whole resulting set, so a role carrying authority the editor lacks is
+    // read-only to them rather than a way to launder it.
+    beforeWrite: (ctx, values, existing) => {
+      if (values.permissionsJson === undefined) return values;
+      const key = String(values.key ?? (existing as { key?: string } | undefined)?.key ?? "");
+      // bundleOf, not JSON.parse: an empty list falls back to the compiled table
+      // for that key, so `permissionsJson: "[]"` cannot smuggle a built-in role
+      // past the check by looking like a role with no authority at all.
+      assertCanGrant(ctx, bundleOf({ id: "", key, permissionsJson: String(values.permissionsJson) }), key);
+      return values;
+    }
   }),
   r("user-roles", schema.userRoles, "ur", "core", {
     read: "core:roles:read",
@@ -168,7 +183,15 @@ export const CORE = register(
   // Same reason: a delegation moves the authority to approve, so it is created
   // and revoked through routes/staff.ts where the delegate's permissions are
   // checked against the delegator's. CRUD only reads.
-  r("delegations", schema.delegations, "dlg", "core", ro("core:delegations:read"))
+  r("delegations", schema.delegations, "dlg", "core", ro("core:delegations:read")),
+  r("message-templates", schema.messageTemplates, "tpl", "core", rw("core:templates"), {
+    searchable: ["key", "channel"]
+  }),
+  // i18n.ts's translator() merges these over the static CATALOGUES at request
+  // time; CRUD here is only how a tenant admin edits the override rows.
+  r("locale-overrides", schema.localeOverrides, "loc", "core", rw("core:locale_overrides"), {
+    searchable: ["locale", "key"]
+  })
 );
 
 /* -------------------------------------------------------------------- dist */
@@ -494,7 +517,8 @@ export const NORTH = register(
     read: "north:boardpacks:read",
     create: "north:boardpacks:generate"
   }),
-  r("decisions", schema.northDecisions, "dec", "north", rw("north:decisions"))
+  r("decisions", schema.northDecisions, "dec", "north", rw("north:decisions")),
+  r("alert_rules", schema.northAlertRules, "nar", "north", rw("north:alerts"))
 );
 
 /* ------------------------------------------------------------------ ledger */

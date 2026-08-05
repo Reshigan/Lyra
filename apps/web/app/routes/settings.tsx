@@ -91,7 +91,8 @@ const CAN = {
   tenantWrite: "core:tenants:update",
   usersRead: "core:users:read",
   dsarRead: "compliance:dsar:read",
-  dsarCreate: "compliance:dsar:create"
+  dsarCreate: "compliance:dsar:create",
+  pii: "core:pii:view"
 } as const;
 
 /** BrandJson.font — the approved set, and the only values --font-display and
@@ -178,6 +179,14 @@ const LABELS: Record<string, Record<string, string>> = {
     "mfa.cancel": "Leave it on",
     "mfa.disabled": "Two-step sign-in is now off.",
     "mfa.enabled": "Two-step sign-in is now on.",
+
+    "perms.title": "What this account may do",
+    "perms.intro":
+      "The permissions you hold, spelled exactly as the platform checks them. An administrator changes them, not you.",
+    "perms.none": "This account holds no permissions of its own.",
+    "perms.pii":
+      "You can see personal data unmasked. Every unmasking is written to the audit log with the record, the time and your name.",
+    "perms.masked": "Personal data is shown to you masked.",
 
     "sessions.title": "Where you are signed in",
     "sessions.caption": "Sessions for this account",
@@ -338,6 +347,14 @@ const LABELS: Record<string, Record<string, string>> = {
     "mfa.cancel": "إبقاؤه مُفعّلًا",
     "mfa.disabled": "أصبح تسجيل الدخول بخطوتين متوقفًا.",
     "mfa.enabled": "أصبح تسجيل الدخول بخطوتين مُفعّلًا.",
+
+    "perms.title": "ما يسمح به هذا الحساب",
+    "perms.intro":
+      "الصلاحيات التي تملكها، مكتوبة كما تتحقق منها المنصة تمامًا. يغيّرها المسؤول وليس أنت.",
+    "perms.none": "لا يملك هذا الحساب أي صلاحيات خاصة به.",
+    "perms.pii":
+      "يمكنك رؤية البيانات الشخصية بدون تمويه. كل عملية إظهار تُسجَّل في سجل التدقيق مع السجل والوقت واسمك.",
+    "perms.masked": "تُعرض لك البيانات الشخصية مموّهة.",
 
     "sessions.title": "أين سجّلت الدخول",
     "sessions.caption": "جلسات هذا الحساب",
@@ -531,8 +548,12 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       keysRevoke: held.has(CAN.keysRevoke),
       brand: held.has(CAN.tenantWrite),
       dsarRead: held.has(CAN.dsarRead),
-      dsarCreate: held.has(CAN.dsarCreate)
+      dsarCreate: held.has(CAN.dsarCreate),
+      pii: held.has(CAN.pii)
     },
+    /** What this session may do, as the API spells it. Read-only here: a person
+     *  never edits their own grants (that is /admin/permissions). */
+    permissions: me.permissions,
     sessions: sessions.value?.data ?? [],
     sessionsReadable: sessions.value !== null,
     notifications: (inbox.value?.notifications ?? []).map((n) => ({
@@ -984,6 +1005,9 @@ export default function Settings() {
         failure={failure}
       />
 
+      {/* ------------------------------------------------------ permissions */}
+      <PermissionsPanel permissions={loaded.permissions} pii={loaded.can.pii} label={label} />
+
       {/* --------------------------------------------------------- sessions */}
       <Panel id="settings-sessions" title={label("sessions.title")}>
         {failure("revoke-session")}
@@ -1313,6 +1337,75 @@ function MfaPanel({
 }
 
 /**
+ * `core:api_keys:read` reads as "core / api keys / read" — the module is the
+ * first segment, and grouping by it is the difference between a wall of strings
+ * and a list a person can scan. Insertion order is preserved, which is the order
+ * /v1/me emitted, so the grouping never reshuffles between renders.
+ */
+export function byModule(permissions: readonly string[]): Map<string, string[]> {
+  const groups = new Map<string, string[]>();
+  for (const permission of permissions) {
+    const module = permission.split(":")[0] ?? "";
+    groups.set(module, [...(groups.get(module) ?? []), permission]);
+  }
+  return groups;
+}
+
+/**
+ * What this account may do, in the platform's own words. Read-only by design:
+ * grants are changed at /admin/permissions by someone who holds
+ * `core:roles:write`, never by the holder. The point of showing them is that a
+ * refusal elsewhere in the product stops being a mystery.
+ */
+function PermissionsPanel({
+  permissions,
+  pii,
+  label
+}: {
+  permissions: readonly string[];
+  pii: boolean;
+  label: (key: string) => string;
+}) {
+  const groups = byModule(permissions);
+
+  return (
+    <Panel id="settings-perms" title={label("perms.title")} lead={label("perms.intro")}>
+      {permissions.length === 0 ? (
+        <p className="font-ui text-13 text-subtle">{label("perms.none")}</p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {/* Native disclosure, same as the key scope picker: an administrator
+              holds hundreds of these, and a wall of chips is not a screen. */}
+          {[...groups].map(([module, held]) => (
+            <details key={module} className="rounded-md border border-border p-2">
+              <summary className="cursor-pointer font-ui text-13 text-text">
+                {`${module} (${held.length})`}
+              </summary>
+              <ul className="mt-2 flex flex-wrap gap-1.5">
+                {held.map((permission) => (
+                  <li
+                    key={permission}
+                    className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-11 text-muted"
+                  >
+                    {permission}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ))}
+        </div>
+      )}
+
+      {/* Whether personal data arrives masked is the one permission whose effect
+          a person sees on every screen, so it is said in words as well. */}
+      <p className="max-w-prose font-ui text-12 text-subtle">
+        {label(pii ? "perms.pii" : "perms.masked")}
+      </p>
+    </Panel>
+  );
+}
+
+/**
  * Minting a key. The plaintext comes back in the action's result, is rendered
  * once, and has nowhere else to live — no loader re-reads it, no cookie carries
  * it, and the API stores only its SHA-256 (apps/api/src/routes/core.ts).
@@ -1336,15 +1429,9 @@ function NewKeyForm({
   failure: (intent: string) => React.ReactNode;
 }) {
   const minted = result?.intent === "create-key" ? result.keySecret : undefined;
-  // `core:api_keys:read` reads as "core / api keys / read" — the module is the
-  // only grouping the permission string offers, and it is the one an operator
-  // thinks in. ponytail: prefix grouping, not a curated taxonomy; if the list
-  // needs friendlier names they belong in the permission catalogue, not here.
-  const groups = new Map<string, string[]>();
-  for (const permission of grantable) {
-    const module = permission.split(":")[0] ?? "";
-    groups.set(module, [...(groups.get(module) ?? []), permission]);
-  }
+  // ponytail: prefix grouping, not a curated taxonomy; if the list needs
+  // friendlier names they belong in the permission catalogue, not here.
+  const groups = byModule(grantable);
 
   return (
     <div className="flex flex-col gap-3 border-t border-border pt-4">

@@ -1,0 +1,394 @@
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { createClient } from "@libsql/client";
+import { drizzle } from "drizzle-orm/libsql";
+import { eq } from "drizzle-orm";
+import { beforeAll, describe, expect, it } from "vitest";
+import { id, schema, type Db } from "@lyra/db";
+import { hashPassword, ROLES, seed, totpAt, TOTP_STEP_SEC } from "@lyra/core";
+import { app } from "../index.js";
+import type { Env } from "../env.js";
+
+// ADR-0028 (feature flags: platform-global table, dual-control toggle) and
+// ADR-0029 (platform staff pattern). No seed data creates a platform-role user,
+// so this file seeds one manually — mirroring what seed.ts does for tenant roles.
+
+const MIGRATIONS = join(import.meta.dirname, "..", "..", "..", "..", "packages", "db", "migrations");
+const DEMO_TOTP_SECRET = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
+const STAFF_PASSWORD = "Gonxt-Staff-2026!";
+
+let env: Env;
+let database: Db;
+let tenantId: string;
+let engineerToken: string;
+let adminToken: string;
+let supportToken: string;
+
+const exec = { waitUntil() {}, passThroughOnException() {} };
+
+async function call<T = any>(
+  method: string,
+  path: string,
+  payload?: unknown,
+  token?: string
+): Promise<{ status: number; body: T }> {
+  const res = await app.fetch(
+    new Request(`http://api.test${path}`, {
+      method,
+      headers: {
+        "content-type": "application/json",
+        ...(token ? { authorization: `Bearer ${token}` } : {})
+      },
+      ...(payload !== undefined ? { body: JSON.stringify(payload) } : {})
+    }),
+    env as never,
+    exec as never
+  );
+  const text = res.headers.get("content-type")?.includes("json") ? await res.text() : "";
+  return { status: res.status, body: text ? (JSON.parse(text) as T) : (null as T) };
+}
+
+async function loginPlatformUser(email: string): Promise<string> {
+  const login = await call("POST", "/v1/auth/login", { email, password: STAFF_PASSWORD, tenantSlug: "gonxt" });
+  expect(login.status).toBe(200);
+  const token = login.body.token as string;
+  if (login.body.mfaRequired) {
+    // mfa/verify flips `mfaSatisfied` on the same session row and returns no
+    // new token — the login token is what's used from here on (auth.ts:693).
+    const verify = await call(
+      "POST",
+      "/v1/auth/mfa/verify",
+      { code: await totpAt(DEMO_TOTP_SECRET, Math.floor(Date.now() / 1000 / TOTP_STEP_SEC)) },
+      token
+    );
+    expect(verify.status).toBe(200);
+  }
+  return token;
+}
+
+beforeAll(async () => {
+  const client = createClient({ url: ":memory:" });
+  const statements = readdirSync(MIGRATIONS)
+    .filter((f) => f.endsWith(".sql"))
+    .sort()
+    .flatMap((f) => readFileSync(join(MIGRATIONS, f), "utf8").split("--> statement-breakpoint"))
+    .map((s) => s.trim())
+    .filter(Boolean);
+  for (const stmt of statements) await client.execute(stmt);
+  database = drizzle(client) as unknown as Db;
+  const seedResult = await seed(database as never, { mfaSecret: DEMO_TOTP_SECRET });
+  tenantId = (seedResult as { tenantId: string }).tenantId;
+
+  env = { DB_CLIENT: database, ENVIRONMENT: "development", APP_ORIGIN: "http://localhost:5173" } as unknown as Env;
+
+  const now = Date.now();
+  const passwordHash = await hashPassword(STAFF_PASSWORD);
+
+  for (const [i, roleKey] of (["platform.engineer", "platform.admin", "platform.support"] as const).entries()) {
+    const roleId = id("rl", now + i * 10);
+    await database.insert(schema.roles).values({
+      id: roleId,
+      tenantId,
+      key: roleKey,
+      name: roleKey,
+      permissionsJson: JSON.stringify(ROLES[roleKey] ?? []),
+      system: true,
+      createdAt: now
+    });
+    const userId = id("us", now + i * 10 + 1);
+    await database.insert(schema.users).values({
+      id: userId,
+      tenantId,
+      email: `${roleKey}@gonxt.ae`,
+      name: roleKey,
+      locale: "en",
+      status: "active",
+      authProvider: "password",
+      passwordHash,
+      mfaEnrolled: true,
+      mfaSecret: DEMO_TOTP_SECRET,
+      createdAt: now,
+      updatedAt: now
+    });
+    await database.insert(schema.userRoles).values({
+      id: id("ur", now + i * 10 + 2),
+      tenantId,
+      userId,
+      roleId,
+      scopeJson: null,
+      createdAt: now
+    });
+  }
+
+  engineerToken = await loginPlatformUser("platform.engineer@gonxt.ae");
+  adminToken = await loginPlatformUser("platform.admin@gonxt.ae");
+  supportToken = await loginPlatformUser("platform.support@gonxt.ae");
+}, 120_000);
+
+describe("feature flags (ADR-0028)", () => {
+  it("platform.engineer can list and create flags", async () => {
+    const list = await call("GET", "/v1/platform/flags", undefined, engineerToken);
+    expect(list.status).toBe(200);
+    expect(Array.isArray(list.body.flags)).toBe(true);
+
+    const created = await call(
+      "POST",
+      "/v1/platform/flags",
+      { key: "signal.zeely_campaigns", description: "AI campaign builder", rolloutPercent: 0 },
+      engineerToken
+    );
+    expect(created.status).toBe(201);
+    expect(created.body.key).toBe("signal.zeely_campaigns");
+    expect(created.body.enabled).toBe(false);
+  });
+
+  it("rejects an unknown key on the body (spoof guard)", async () => {
+    const res = await call(
+      "POST",
+      "/v1/platform/flags",
+      { key: "x.y", description: "d", extra: "nope" },
+      engineerToken
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("a non-platform actor gets 403", async () => {
+    const tenantLogin = await call("POST", "/v1/auth/login", {
+      email: "amina.saleh@gonxt.ae",
+      password: "Gonxt-Demo-2026!",
+      tenantSlug: "gonxt"
+    });
+    expect(tenantLogin.status).toBe(200);
+    const res = await call("GET", "/v1/platform/flags", undefined, tenantLogin.body.token as string);
+    expect(res.status).toBe(403);
+  });
+
+  it("toggling a flag requires dual-control approval (never auto-approved)", async () => {
+    const created = await call(
+      "POST",
+      "/v1/platform/flags",
+      { key: "core.new_toggle_test", description: "d", rolloutPercent: 0 },
+      engineerToken
+    );
+    expect(created.status).toBe(201);
+    const flagId = created.body.id as string;
+
+    const first = await call(
+      "PATCH",
+      `/v1/platform/flags/${flagId}`,
+      { enabled: true },
+      engineerToken
+    );
+    expect(first.status).toBe(403);
+    expect(first.body.type).toContain("approval_required");
+
+    // A second platform actor decides the approval, then the same toggle succeeds.
+    const approvals = await call("GET", "/v1/core/approvals", undefined, adminToken);
+    expect(approvals.status).toBe(200);
+    const approval = (approvals.body.data as { id: string; subjectRef: string; decision: string }[]).find(
+      (a) => a.subjectRef === flagId && a.decision === "pending"
+    );
+    expect(approval).toBeTruthy();
+    const decide = await call(
+      "POST",
+      `/v1/me/approvals/${approval!.id}/decide`,
+      { decision: "approved" },
+      adminToken
+    );
+    expect(decide.status).toBe(200);
+
+    const second = await call("PATCH", `/v1/platform/flags/${flagId}`, { enabled: true }, engineerToken);
+    expect(second.status).toBe(200);
+    expect(second.body.enabled).toBe(true);
+  });
+});
+
+describe("ops overview (ADR-0029)", () => {
+  it("aggregates per-tenant diagnostics via the cross-tenant loop", async () => {
+    const res = await call("GET", "/v1/platform/ops/overview", undefined, adminToken);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.tenants)).toBe(true);
+    const tenant = (res.body.tenants as { tenantId: string; outboxPending: number; dlqDepth: number; pendingApprovals: number }[]).find(
+      (t) => t.tenantId === tenantId
+    );
+    expect(tenant).toBeTruthy();
+    expect(typeof tenant!.outboxPending).toBe("number");
+    expect(typeof tenant!.dlqDepth).toBe("number");
+    expect(typeof tenant!.pendingApprovals).toBe("number");
+  });
+
+  it("a non-platform actor gets 403", async () => {
+    const res = await call("GET", "/v1/platform/ops/overview", undefined, undefined);
+    expect(res.status).toBe(401);
+  });
+});
+
+describe("deployments (ADR-0029)", () => {
+  it("lists deployments newest first", async () => {
+    const now = Date.now();
+    await database.insert(schema.deployments).values({
+      id: id("dep", now),
+      environment: "staging",
+      workerName: "lyra-api",
+      version: "abc123",
+      status: "success",
+      deployedBy: "ci",
+      deployedAt: now
+    });
+    const res = await call("GET", "/v1/platform/deployments", undefined, adminToken);
+    expect(res.status).toBe(200);
+    expect((res.body.deployments as { workerName: string }[]).some((d) => d.workerName === "lyra-api")).toBe(true);
+  });
+});
+
+describe("SLO & error budget (ADR-0029)", () => {
+  it("computes actualPercent for a defined SLO", async () => {
+    const now = Date.now();
+    await database.insert(schema.sloDefinitions).values({
+      id: id("slo", now),
+      key: "events.delivery",
+      description: "Event outbox delivery",
+      module: "events",
+      targetPercent: 99,
+      windowDays: 30,
+      createdAt: now,
+      updatedAt: now
+    });
+    const res = await call("GET", "/v1/platform/slo", undefined, adminToken);
+    expect(res.status).toBe(200);
+    const slo = (res.body.slos as { key: string; actualPercent: number }[]).find((s) => s.key === "events.delivery");
+    expect(slo).toBeTruthy();
+    expect(typeof slo!.actualPercent).toBe("number");
+  });
+});
+
+describe("incidents rollup (ADR-0029)", () => {
+  it("surfaces outage-kind incidents across the tenant loop", async () => {
+    const now = Date.now();
+    await database.insert(schema.incidents).values({
+      id: id("inc", now),
+      tenantId,
+      kind: "outage",
+      severity: "high",
+      title: "Workers AI latency spike",
+      summary: "p99 above threshold for 10 minutes",
+      affectedJson: JSON.stringify([]),
+      agentsPaused: false,
+      state: "open",
+      openedBy: "platform.admin",
+      createdAt: now,
+      updatedAt: now
+    });
+    const res = await call("GET", "/v1/platform/incidents", undefined, adminToken);
+    expect(res.status).toBe(200);
+    expect((res.body.incidents as { title: string }[]).some((i) => i.title === "Workers AI latency spike")).toBe(true);
+  });
+});
+
+describe("impersonation (ADR-0027)", () => {
+  it("requires dual-control approval by a different platform actor, then time-boxes the session", async () => {
+    const target = (
+      await database.select().from(schema.users).where(eq(schema.users.email, "amina.saleh@gonxt.ae")).limit(1)
+    )[0];
+    expect(target).toBeTruthy();
+
+    // platform.engineer lacks core:impersonate:use entirely.
+    const engineerAttempt = await call(
+      "POST",
+      "/v1/platform/impersonation/start",
+      { targetUserId: target!.id, reason: "support ticket #4821" },
+      engineerToken
+    );
+    expect(engineerAttempt.status).toBe(403);
+
+    // platform.support holds the permission but the action is neverAutoApprove.
+    const first = await call(
+      "POST",
+      "/v1/platform/impersonation/start",
+      { targetUserId: target!.id, reason: "support ticket #4821" },
+      supportToken
+    );
+    expect(first.status).toBe(403);
+    expect(first.body.type).toContain("approval_required");
+
+    const approvals = await call("GET", "/v1/core/approvals", undefined, adminToken);
+    expect(approvals.status).toBe(200);
+    const approval = (approvals.body.data as { id: string; subjectRef: string; decision: string }[]).find(
+      (a) => a.subjectRef === target!.id && a.decision === "pending"
+    );
+    expect(approval).toBeTruthy();
+
+    // The same actor who requested the impersonation cannot decide it themselves.
+    const selfDecide = await call(
+      "POST",
+      `/v1/me/approvals/${approval!.id}/decide`,
+      { decision: "approved" },
+      supportToken
+    );
+    expect(selfDecide.status).toBe(400);
+
+    const decide = await call(
+      "POST",
+      `/v1/me/approvals/${approval!.id}/decide`,
+      { decision: "approved" },
+      adminToken
+    );
+    expect(decide.status).toBe(200);
+
+    const started = await call(
+      "POST",
+      "/v1/platform/impersonation/start",
+      { targetUserId: target!.id, reason: "support ticket #4821" },
+      supportToken
+    );
+    expect(started.status).toBe(201);
+    const sessionId = started.body.id as string;
+
+    const meDuring = await call("GET", "/v1/me", undefined, supportToken);
+    expect(meDuring.status).toBe(200);
+    expect(meDuring.body.actor.impersonating).toBe(true);
+
+    // The screen that ends a session has to be able to find it again after a
+    // reload, so the caller's own live sessions are readable.
+    const mine = await call("GET", "/v1/platform/impersonation", undefined, supportToken);
+    expect(mine.status).toBe(200);
+    expect((mine.body.sessions as { id: string }[]).map((s) => s.id)).toContain(sessionId);
+
+    const ended = await call("POST", `/v1/platform/impersonation/${sessionId}/end`, undefined, supportToken);
+    expect(ended.status).toBe(200);
+    expect(ended.body.endedAt).not.toBeNull();
+
+    const meAfter = await call("GET", "/v1/me", undefined, supportToken);
+    expect(meAfter.status).toBe(200);
+    expect(meAfter.body.actor.impersonating).toBe(false);
+  });
+
+  it("rejects an expired-but-unended session (time-box security regression)", async () => {
+    const support = (
+      await database.select().from(schema.users).where(eq(schema.users.email, "platform.support@gonxt.ae")).limit(1)
+    )[0];
+    const target = (
+      await database.select().from(schema.users).where(eq(schema.users.email, "amina.saleh@gonxt.ae")).limit(1)
+    )[0];
+    const now = Date.now();
+    await database.insert(schema.impersonationSessions).values({
+      id: id("ims", now),
+      tenantId,
+      platformUserId: support!.id,
+      targetUserId: target!.id,
+      approvalId: id("apr", now),
+      reason: "expired session regression",
+      // Must out-rank the previous test's (ended) session by startedAt desc —
+      // latestImpersonation() picks the single latest row regardless of endedAt.
+      // The whole suite runs in well under a second, so "startedAt" has to be
+      // `now` itself (not now-minus-something) to beat the prior test's row.
+      startedAt: now,
+      expiresAt: now - 1,
+      endedAt: null
+    });
+
+    const res = await call("GET", "/v1/me", undefined, supportToken);
+    expect(res.status).toBe(401);
+    expect(res.body.detail).toContain("impersonation session expired");
+  });
+});

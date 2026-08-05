@@ -202,7 +202,8 @@ describe("bootstrap", () => {
   it("the nav narrows to what the role may actually open", async () => {
     const agent = ok(await call("axis.agent", "GET", "/v1/me"));
     const finance = ok(await call("finance.controller", "GET", "/v1/me"));
-    const hrefs = (m: any) => m.nav.map((n: any) => n.href);
+    // Nav is grouped (heading items wrap the real destinations in `children`).
+    const hrefs = (m: any) => m.nav.flatMap((n: any) => [n.href, ...(n.children ?? []).map((c: any) => c.href)]);
     expect(hrefs(agent)).toContain("/axis");
     // The agent has no tenant administration, the controller has no case queue.
     expect(hrefs(agent)).not.toContain("/admin");
@@ -213,6 +214,20 @@ describe("bootstrap", () => {
   it("an unauthenticated call to a module route is refused", async () => {
     const res = await call(null, "GET", "/v1/axis/cases");
     expect(res.status).toBe(401);
+  });
+
+  it("GET /v1/me carries the tenant's locale overrides for the caller's locale", async () => {
+    await ok(
+      await call("tenant.admin", "POST", "/v1/core/locale-overrides", {
+        locale: "en",
+        key: "nav.home",
+        value: "Dashboard",
+        updatedBy: seeded.users["tenant.admin"] as string
+      }),
+      201
+    );
+    const me = ok(await call("tenant.admin", "GET", "/v1/me"));
+    expect(me.overrides["nav.home"]).toBe("Dashboard");
   });
 });
 
@@ -1297,6 +1312,119 @@ describe("J-E3 the what-if", () => {
       201
     );
     expect(Array.isArray(run.rows)).toBe(true);
+  });
+});
+
+/* ------------------------------------------------------------------ J-E4 */
+
+describe("J-E4 alert rules, explorer and data health", () => {
+  it("an analyst sets an alert rule, an exec cannot be blocked from reading it", async () => {
+    const rule = ok(
+      await call("north.analyst", "POST", "/v1/north/alert_rules", {
+        metricKey: "gwp",
+        operator: "lt",
+        thresholdValue: 100_000,
+        windowGrain: "month"
+      }),
+      201
+    );
+    expect(rule.enabled).toBe(true);
+
+    const seen = ok(await call("north.exec", "GET", `/v1/north/alert_rules/${rule.id}`));
+    expect(seen.metricKey).toBe("gwp");
+  });
+
+  it("a marketer cannot write an alert rule", async () => {
+    const denied = await call("scout.lead", "POST", "/v1/north/alert_rules", {
+      metricKey: "gwp",
+      operator: "lt",
+      thresholdValue: 1,
+      windowGrain: "day"
+    });
+    expect(denied.status).toBe(403);
+  });
+
+  it("the explorer answers a metric query from stored snapshots, never a client SQL string", async () => {
+    const result = ok(
+      await call("north.exec", "POST", "/v1/north/explore", {
+        metricKeys: ["gwp", "policies_issued"],
+        grain: "month",
+        period: "2026-01"
+      }),
+      201
+    );
+    expect(Array.isArray(result.rows)).toBe(true);
+  });
+
+  it("data health reports staleness per metric", async () => {
+    const health = ok(await call("north.exec", "GET", "/v1/north/data-health"));
+    expect(Array.isArray(health.metrics)).toBe(true);
+    expect(health.metrics.length).toBeGreaterThan(0);
+    expect(health.metrics[0]).toHaveProperty("metricKey");
+    expect(health.metrics[0]).toHaveProperty("staleness");
+  });
+});
+
+/* ------------------------------------------------------------------ J-E5 */
+
+describe("J-E5 cross-entity search", () => {
+  it("finds a customer by name for someone who can read customers", async () => {
+    const result = ok(await call("orbit.agent", "GET", "/v1/search?q=Haddad"));
+    expect(Array.isArray(result.results)).toBe(true);
+    expect(result.results.some((hit: { resource: string }) => hit.resource === "customers")).toBe(true);
+  });
+
+  it("never returns a hit the searcher cannot read, even with core:search:read", async () => {
+    // signal.lead holds core:search:read but not core:customers:read.
+    const result = ok(await call("signal.lead", "GET", "/v1/search?q=Haddad"));
+    expect(result.results.some((hit: { resource: string }) => hit.resource === "customers")).toBe(false);
+  });
+
+  it("refuses someone with no core:search:read at all", async () => {
+    const denied = await call("scout.lead", "GET", "/v1/search?q=Haddad");
+    expect(denied.status).toBe(403);
+  });
+});
+
+/* ------------------------------------------------------------------ J-E6 */
+
+describe("J-E6 message templates and locale overrides", () => {
+  it("lets a tenant admin write and read back a message template", async () => {
+    const created = ok<{ id: string }>(
+      await call("tenant.admin", "POST", "/v1/core/message-templates", {
+        key: "dist.renewal_reminder",
+        channel: "email",
+        subjectJson: JSON.stringify({ en: "Time to renew" }),
+        bodyJson: JSON.stringify({ en: "Hi {{name}}, your policy renews soon." }),
+        variablesJson: JSON.stringify(["name"])
+      }),
+      201
+    );
+    const fetched = ok<{ key: string }>(await call("tenant.admin", "GET", `/v1/core/message-templates/${created.id}`));
+    expect(fetched.key).toBe("dist.renewal_reminder");
+  });
+
+  it("lets a tenant admin write and read back a locale override", async () => {
+    const created = ok<{ id: string }>(
+      await call("tenant.admin", "POST", "/v1/core/locale-overrides", {
+        locale: "ar",
+        key: "nav.today",
+        value: "اليوم",
+        updatedBy: seeded.users["tenant.admin"] as string
+      }),
+      201
+    );
+    const fetched = ok<{ value: string }>(await call("tenant.admin", "GET", `/v1/core/locale-overrides/${created.id}`));
+    expect(fetched.value).toBe("اليوم");
+  });
+
+  it("refuses a role with no core:templates:write to create a template", async () => {
+    const denied = await call("orbit.agent", "POST", "/v1/core/message-templates", {
+      key: "orbit.spoof",
+      channel: "email",
+      bodyJson: JSON.stringify({ en: "x" })
+    });
+    expect(denied.status).toBe(403);
   });
 });
 

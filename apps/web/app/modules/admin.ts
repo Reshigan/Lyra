@@ -48,6 +48,8 @@ export const admin: WorkspaceSpec = {
       costExplorer: "Cost explorer",
       staff: "Staff",
       runDetail: "Open this run",
+      "message-templates": "Message templates",
+      "locale-overrides": "Localisation",
 
       name: "Name",
       slug: "Slug",
@@ -300,7 +302,20 @@ export const admin: WorkspaceSpec = {
       guardrailFlagsJson: "Guardrail flags",
       thresholdScore: "Threshold",
       detailJson: "Detail",
-      gitSha: "Commit"
+      gitSha: "Commit",
+      subjectJson: "Subject",
+      bodyJson: "Body",
+      channel: "Channel",
+      value: "Value",
+      updatedBy: "Updated by",
+      sms: "SMS",
+      push: "Push",
+      permissionMatrix: "Roles and permissions",
+      developer: "Developer portal",
+      security: "Security & access",
+      brandTheme: "Brand and theme",
+      billingPlan: "Plan and invoices",
+      dataRequests: "Data subject requests"
     },
     ar: {
       tenants: "المنشآت",
@@ -341,6 +356,8 @@ export const admin: WorkspaceSpec = {
       costExplorer: "مستكشف التكلفة",
       staff: "الموظفون",
       runDetail: "فتح هذا التشغيل",
+      "message-templates": "قوالب الرسائل",
+      "locale-overrides": "التعريب",
 
       name: "الاسم",
       slug: "المعرف المختصر",
@@ -593,7 +610,20 @@ export const admin: WorkspaceSpec = {
       guardrailFlagsJson: "مؤشرات الحواجز",
       thresholdScore: "درجة العتبة",
       detailJson: "التفاصيل",
-      gitSha: "بصمة الإصدار"
+      gitSha: "بصمة الإصدار",
+      subjectJson: "الموضوع",
+      bodyJson: "النص",
+      channel: "القناة",
+      value: "القيمة",
+      updatedBy: "حدّثه",
+      sms: "رسالة نصية",
+      push: "إشعار فوري",
+      permissionMatrix: "الأدوار والصلاحيات",
+      developer: "بوابة المطوّرين",
+      security: "الأمان والوصول",
+      brandTheme: "الهوية والمظهر",
+      billingPlan: "الخطة والفواتير",
+      dataRequests: "طلبات أصحاب البيانات"
     }
   },
   tabs: [
@@ -1216,6 +1246,65 @@ export const admin: WorkspaceSpec = {
         { name: "createdAt", type: "datetime", sortable: true }
       ]
     },
+    {
+      key: "message-templates",
+      api: "/v1/core/message-templates",
+      read: "core:templates:read",
+      create: "core:templates:write",
+      update: "core:templates:write",
+      remove: "core:templates:write",
+      search: true,
+      filters: [{ name: "channel", options: ["email", "sms", "whatsapp", "push"] }],
+      columns: [
+        { name: "key", type: "text", sortable: true },
+        { name: "channel", type: "text", badge: true },
+        { name: "bodyJson", type: "json" },
+        { name: "updatedAt", type: "datetime", sortable: true }
+      ],
+      fields: [
+        { name: "key", type: "text", required: true },
+        { name: "channel", type: "select", required: true, options: ["email", "sms", "whatsapp", "push"] },
+        { name: "subjectJson", type: "json" },
+        { name: "bodyJson", type: "json", required: true },
+        { name: "variablesJson", type: "json" }
+      ],
+      editable: [
+        { name: "subjectJson", type: "json" },
+        { name: "bodyJson", type: "json" },
+        { name: "variablesJson", type: "json" }
+      ]
+    },
+    {
+      key: "locale-overrides",
+      api: "/v1/core/locale-overrides",
+      read: "core:locale_overrides:read",
+      create: "core:locale_overrides:write",
+      update: "core:locale_overrides:write",
+      remove: "core:locale_overrides:write",
+      search: true,
+      sort: "updatedAt",
+      filters: [{ name: "locale", options: ["en", "ar"] }],
+      // i18n.ts's translator() merges these over the static catalogue at
+      // request time (apps/web/app/routes/workspace.tsx) — a relabel here
+      // takes effect on the caller's next request, no deploy required.
+      columns: [
+        { name: "locale", type: "text" },
+        { name: "key", type: "text", sortable: true },
+        { name: "value", type: "text" },
+        { name: "updatedBy", type: "text" },
+        { name: "updatedAt", type: "datetime", sortable: true }
+      ],
+      fields: [
+        { name: "locale", type: "select", required: true, options: ["en", "ar"] },
+        { name: "key", type: "text", required: true },
+        { name: "value", type: "text", required: true },
+        { name: "updatedBy", type: "text", required: true }
+      ],
+      editable: [
+        { name: "value", type: "text" },
+        { name: "updatedBy", type: "text" }
+      ]
+    },
 
     /* ------------------------------------------------------------------- ai */
     {
@@ -1547,6 +1636,15 @@ export const admin: WorkspaceSpec = {
     { href: "/admin/ai/console", labelKey: "aiConsole", permission: "ai:runs:read" },
     { href: "/admin/ai/budget", labelKey: "aiBudget", permission: "ai:budgets:read" },
     { href: "/admin/cost-explorer", labelKey: "costExplorer", permission: "analytics:reports:read" },
-    { href: "/admin/staff", labelKey: "staff", permission: "core:users:read" }
+    { href: "/admin/staff", labelKey: "staff", permission: "core:users:read" },
+    { href: "/admin/permissions", labelKey: "permissionMatrix", permission: "core:roles:read" },
+    { href: "/admin/developer", labelKey: "developer", permission: "core:api_keys:read" },
+    { href: "/admin/security", labelKey: "security", permission: "core:settings:read" },
+    // Brand, billing and DSARs live in surfaces another workspace already owns
+    // (settings owns the one validated brand editor; the ledger owns money).
+    // Linking beats a second implementation of either.
+    { href: "/settings", labelKey: "brandTheme", permission: "core:tenants:update" },
+    { href: "/ledger/invoices", labelKey: "billingPlan", permission: "ledger:invoices:read" },
+    { href: "/compliance/dsar-requests", labelKey: "dataRequests", permission: "compliance:dsar:read" }
   ]
 };

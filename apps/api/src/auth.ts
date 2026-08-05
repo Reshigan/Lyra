@@ -1,5 +1,5 @@
 import { Hono, type Context } from "hono";
-import { and, eq, isNull, lt } from "drizzle-orm";
+import { and, desc, eq, isNull, lt } from "drizzle-orm";
 import { z } from "zod";
 import { id as newId, makeDb, schema, EntitlementsJson, PolicyJson } from "@lyra/db";
 import {
@@ -173,6 +173,31 @@ async function sessionRow(database: ReturnType<typeof makeDb>, token: string, no
   return row;
 }
 
+/**
+ * ADR-0027: an impersonation session is a time-boxed swap of which tenant a
+ * platform staff member's Ctx resolves to — never a new authority. Grants
+ * stay the platform user's own (computed against their home tenant, in
+ * `fromSession`); only `tenantId` and `Actor.impersonating` change here.
+ * Reads the single latest row so a lapsed-but-not-`/end`ed session can be
+ * told apart from one that was properly ended or never started — only the
+ * former 401s (no renewal endpoint; friction is intentional).
+ */
+async function latestImpersonation(database: ReturnType<typeof makeDb>, platformUserId: string) {
+  const rows = await database
+    .select()
+    .from(schema.impersonationSessions)
+    .where(eq(schema.impersonationSessions.platformUserId, platformUserId))
+    .orderBy(desc(schema.impersonationSessions.startedAt))
+    .limit(1);
+  return rows[0];
+}
+
+/** Every tenant id, unfiltered by status — the seam ADR-0029's per-tenant loop iterates. */
+export async function activeTenants(env: Env): Promise<string[]> {
+  const rows = await db(env).select({ id: schema.tenants.id }).from(schema.tenants);
+  return rows.map((t) => t.id);
+}
+
 /** Session cookie or `Authorization: Bearer <session token>`. */
 async function fromSession(
   database: ReturnType<typeof makeDb>,
@@ -194,17 +219,25 @@ async function fromSession(
   // and a session that has since cleared its factor.
   if (!row.session.mfaSatisfied) throw mfaRequired(row.user.mfaEnrolled ? "verify" : "enrol");
 
-  const config = await tenantConfig(database, tenantId, now);
+  const latest = await latestImpersonation(database, row.user.id);
+  if (latest && latest.endedAt === null && latest.expiresAt <= now) {
+    throw unauthorized("impersonation session expired");
+  }
+  const impersonation = latest && latest.endedAt === null && latest.expiresAt > now ? latest : undefined;
+  const effectiveTenantId = impersonation?.tenantId ?? tenantId;
+
+  const config = await tenantConfig(database, effectiveTenantId, now);
   return {
-    tenantId,
+    tenantId: effectiveTenantId,
     locale: row.user.locale,
     // docs/21: a permission for a module the tenant has not licensed does not
     // exist for its actors — this one filter is what makes entitlements real.
     actor: {
       kind: "user",
       id: row.user.id,
-      tenantId,
-      grants: entitledGrants(grants, config.entitlements)
+      tenantId: effectiveTenantId,
+      grants: entitledGrants(grants, config.entitlements),
+      ...(impersonation ? { impersonating: true as const } : {})
     },
     ...config
   };
@@ -285,8 +318,8 @@ export function readCookie(header: string | null, name: string): string | undefi
  * when neither is bound, the counter is skipped rather than faked, and the app
  * still refuses on a bad password (or whatever check sits behind the caller).
  */
-const LOGIN_MAX = 8;
-const LOGIN_WINDOW_SEC = 300;
+export const LOGIN_MAX = 8;
+export const LOGIN_WINDOW_SEC = 300;
 
 export async function throttle(
   env: Env,
@@ -579,7 +612,7 @@ function sessionToken(c: { req: { header(name: string): string | undefined } }, 
  * Keyed by session rather than by user: a stolen cookie gets its own budget and
  * cannot be used to lock the real owner out.
  */
-const MFA_MAX = 6;
+export const MFA_MAX = 6;
 
 async function mfaThrottle(env: Env, sessionId: string): Promise<void> {
   const n = await hit(env, `mfa:${sessionId}`, LOGIN_WINDOW_SEC);

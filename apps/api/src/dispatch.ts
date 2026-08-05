@@ -121,7 +121,7 @@ interface Hook {
   secret: string;
 }
 
-async function deliver(
+export async function deliver(
   ctx: Ctx,
   hook: Hook,
   event: Envelope,

@@ -294,14 +294,17 @@ describe("openapi", () => {
   });
 
   it("leaves no documented endpoint unauthenticated", () => {
-    // J-X3 adds exactly one deliberate exception outside /v1/auth: signup has
-    // no session to authenticate against yet, which is the entire point of the
-    // route (routes/onboarding.ts, mw.ts PUBLIC set). Every other unauthenticated
-    // path here would be a real bug.
+    // J-X3 adds one deliberate exception outside /v1/auth: signup has no
+    // session to authenticate against yet, which is the entire point of the
+    // route (routes/onboarding.ts, mw.ts PUBLIC set). ADR-0030 adds a second:
+    // the public comparison site has no session by design either
+    // (routes/portal.ts). Every other unauthenticated path here would be a
+    // real bug.
     const open = Object.entries(spec.paths)
       .filter(
         ([p]) =>
           !p.startsWith("/v1/auth") &&
+          !p.startsWith("/v1/portal") &&
           p !== "/health" &&
           p !== "/openapi.json" &&
           p !== "/v1/onboarding/partners/signup"
