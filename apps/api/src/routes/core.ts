@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, eq, gt, isNull } from "drizzle-orm";
+import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { id as newId, schema } from "@lyra/db";
 import {
@@ -369,5 +369,76 @@ coreRoutes.get("/security-posture", async (c) => {
     // an empty one would read as "configured to allow everything". Say what is
     // true instead: the control is not offered.
     network: { ipAllowlist: "unsupported" }
+  });
+});
+
+/* ------------------------------------------------------------- position */
+
+// The 360 screen's Position card needs real sums, not the first CRUD page
+// added up client-side. SQL SUM grouped by currency; a permission the actor
+// lacks nulls that field on every line — null reads "may not see", 0 would
+// read "nothing there". axis_policies/axis_claims carry no deletedAt, so
+// there is no soft-delete branch to mirror; the customer row itself is
+// soft-delete-checked by `must`.
+coreRoutes.get("/customers/:id/position", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "core:customers:read", { tenantId: ctx.tenantId, module: "core" });
+  const id = c.req.param("id");
+  const customer = await must(ctx, schema.customers, id, "customers");
+
+  const mayPolicies = can(ctx.actor, "axis:policies:read", { tenantId: ctx.tenantId });
+  const mayClaims = can(ctx.actor, "axis:claims:read", { tenantId: ctx.tenantId });
+
+  const policyAgg = mayPolicies
+    ? await ctx.db
+        .select({
+          currency: schema.axisPolicies.currency,
+          premiumMinor: sql<number>`coalesce(sum(${schema.axisPolicies.premiumMinor}), 0)`,
+          commissionMinor: sql<number>`coalesce(sum(${schema.axisPolicies.commissionMinor}), 0)`
+        })
+        .from(schema.axisPolicies)
+        .where(and(eq(schema.axisPolicies.tenantId, ctx.tenantId), eq(schema.axisPolicies.customerId, id)))
+        .groupBy(schema.axisPolicies.currency)
+    : [];
+  const claimAgg = mayClaims
+    ? await ctx.db
+        .select({
+          currency: schema.axisClaims.currency,
+          settledMinor: sql<number>`coalesce(sum(${schema.axisClaims.settledMinor}), 0)`
+        })
+        .from(schema.axisClaims)
+        .where(and(eq(schema.axisClaims.tenantId, ctx.tenantId), eq(schema.axisClaims.customerId, id)))
+        .groupBy(schema.axisClaims.currency)
+    : [];
+
+  interface Line {
+    currency: string;
+    premiumMinor: number | null;
+    commissionMinor: number | null;
+    settledMinor: number | null;
+  }
+  const byCurrency = new Map<string, Line>();
+  const line = (currency: string): Line => {
+    const found = byCurrency.get(currency) ?? {
+      currency,
+      premiumMinor: mayPolicies ? 0 : null,
+      commissionMinor: mayPolicies ? 0 : null,
+      settledMinor: mayClaims ? 0 : null
+    };
+    byCurrency.set(currency, found);
+    return found;
+  };
+  for (const row of policyAgg) {
+    const entry = line(row.currency);
+    entry.premiumMinor = Number(row.premiumMinor);
+    entry.commissionMinor = Number(row.commissionMinor);
+  }
+  for (const row of claimAgg) line(row.currency).settledMinor = Number(row.settledMinor);
+
+  const positions = [...byCurrency.values()].sort((a, b) => (b.premiumMinor ?? 0) - (a.premiumMinor ?? 0));
+  return c.json({
+    positions,
+    ltvMinor: customer.ltvCached ?? 0,
+    currency: positions[0]?.currency ?? "AED"
   });
 });
