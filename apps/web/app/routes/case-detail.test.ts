@@ -142,7 +142,9 @@ describe("action: copilot", () => {
     expect(calls[0]?.url).toBe("https://api.test/v1/axis/cases/cas_1/copilot");
     expect(calls[0]?.method).toBe("POST");
     expect(JSON.parse(calls[0]!.body!)).toEqual({ question: "What is this case worth?", locale: "en" });
-    expect(calls[0]?.idempotencyKey).toBe("key-1");
+    // Suffixed with the intent: the same page-load key must not collide across
+    // this form and the case's move/verify/export forms (regression: IMPORTANT 4/5).
+    expect(calls[0]?.idempotencyKey).toBe("key-1:copilot");
     expect(result.done).toBe("answered");
     expect(result.answer).toBe("It is worth 5000 AED.");
     expect(result.mismatches).toEqual([]);

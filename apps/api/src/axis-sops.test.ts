@@ -36,14 +36,21 @@ interface Res<T = any> {
   body: T;
 }
 
-async function call<T = any>(who: string | null, method: string, path: string, payload?: unknown): Promise<Res<T>> {
+async function call<T = any>(
+  who: string | null,
+  method: string,
+  path: string,
+  payload?: unknown,
+  headers: Record<string, string> = {}
+): Promise<Res<T>> {
   const token = who ? tokens[who] : undefined;
   const res = await app.fetch(
     new Request(`http://api.test${path}`, {
       method,
       headers: {
         "content-type": "application/json",
-        ...(token ? { authorization: `Bearer ${token}` } : {})
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+        ...headers
       },
       ...(payload !== undefined ? { body: JSON.stringify(payload) } : {})
     }),
@@ -177,5 +184,20 @@ describe("POST /v1/axis/sops/:id/publish", () => {
     const entry = rows.find((a) => a.subjectRef === sopId && a.action === "axis.sops.publish");
     expect(entry).toBeDefined();
     expect(entry?.actorRef).toMatch(/^user:/);
+  });
+
+  it("replays the same 200 for a repeated idempotency key instead of 409ing on its own result (regression: IMPORTANT 4/5)", async () => {
+    const sopId = await draftSop("dispatch", 1);
+    const key = `idem-publish-${sopId}`;
+    const first = await call("lead", "POST", `/v1/axis/sops/${sopId}/publish`, undefined, { "idempotency-key": key });
+    expect(first.status).toBe(200);
+
+    const replay = await call("lead", "POST", `/v1/axis/sops/${sopId}/publish`, undefined, { "idempotency-key": key });
+    expect(replay.status).toBe(200);
+    expect(replay.body.status).toBe("active");
+
+    // A genuine second publish without a key still 409s.
+    const again = await publish("lead", sopId);
+    expect(again.status).toBe(409);
   });
 });

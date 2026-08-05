@@ -29,12 +29,14 @@ let tokens: Record<string, string>;
 
 interface Res<T = any> { status: number; body: T; }
 
-async function call<T = any>(who: string | null, method: string, path: string, payload?: unknown): Promise<Res<T>> {
+async function call<T = any>(
+  who: string | null, method: string, path: string, payload?: unknown, headers: Record<string, string> = {}
+): Promise<Res<T>> {
   const token = who ? tokens[who] : undefined;
   const res = await app.fetch(
     new Request(`http://api.test${path}`, {
       method,
-      headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) },
+      headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}), ...headers },
       ...(payload !== undefined ? { body: JSON.stringify(payload) } : {})
     }),
     env as never, exec as never
@@ -130,5 +132,42 @@ describe("POST /axis/cases/:id/copilot", () => {
     const caseId = await openCase();
     const res = await call("outsider", "POST", `/v1/axis/cases/${caseId}/copilot`, { question: "What is this case worth?" });
     expect(res.status).toBe(403);
+  });
+
+  it("replays the cached answer for a repeated idempotency key instead of asking the model twice (regression: IMPORTANT 4/5)", async () => {
+    const caseId = await openCase();
+    let calls = 0;
+    const counting: Env = {
+      ...env,
+      AI: { run: async () => { calls++; return { response: FIXED_ANSWER }; } }
+    } as unknown as Env;
+    const key = `idem-copilot-${caseId}`;
+    const payload = { question: "What is this case worth?" };
+    const req = (): Request =>
+      new Request(`http://api.test/v1/axis/cases/${caseId}/copilot`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${tokens.lead}`, "idempotency-key": key },
+        body: JSON.stringify(payload)
+      });
+    const first = await app.fetch(req(), counting as never, exec as never);
+    expect(first.status).toBe(200);
+    const firstBody = (await first.json()) as { answer: string; auditId: string };
+    expect(calls).toBe(1);
+
+    const replay = await app.fetch(req(), counting as never, exec as never);
+    expect(replay.status).toBe(200);
+    const replayBody = (await replay.json()) as { answer: string; auditId: string };
+    expect(calls).toBe(1);
+    expect(replayBody.answer).toBe(firstBody.answer);
+    expect(replayBody.auditId).toBe(firstBody.auditId);
+  });
+
+  it("rejects a repeated idempotency key sent with a different question (regression: IMPORTANT 4/5)", async () => {
+    const caseId = await openCase();
+    const key = `idem-copilot-conflict-${caseId}`;
+    const first = await call("lead", "POST", `/v1/axis/cases/${caseId}/copilot`, { question: "What is this case worth?" }, { "idempotency-key": key });
+    expect(first.status).toBe(200);
+    const conflict = await call("lead", "POST", `/v1/axis/cases/${caseId}/copilot`, { question: "A completely different question?" }, { "idempotency-key": key });
+    expect(conflict.status).toBe(409);
   });
 });

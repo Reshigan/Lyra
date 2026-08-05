@@ -12,6 +12,7 @@ import {
   require_,
   scoped,
   sha256Hex,
+  withIdempotency,
   type Ctx
 } from "@lyra/core";
 import type { ReportTable } from "@lyra/ledger";
@@ -208,126 +209,129 @@ complianceRoutes.post("/evidence-bundles/export", async (c) => {
   const to = input.to ?? ctx.now;
   if (from > to) throw badRequest("from must not be after to");
 
-  const subject = input.subjectRef;
-  const auditRows = await ctx.db
-    .select()
-    .from(schema.auditLog)
-    .where(
-      scoped(
-        ctx,
-        schema.auditLog,
-        gte(schema.auditLog.ts, from),
-        lte(schema.auditLog.ts, to),
-        subject ? eq(schema.auditLog.subjectRef, subject) : undefined
+  const result = await withIdempotency(ctx, c.req.header("idempotency-key"), `POST ${c.req.path}`, input, async () => {
+    const subject = input.subjectRef;
+    const auditRows = await ctx.db
+      .select()
+      .from(schema.auditLog)
+      .where(
+        scoped(
+          ctx,
+          schema.auditLog,
+          gte(schema.auditLog.ts, from),
+          lte(schema.auditLog.ts, to),
+          subject ? eq(schema.auditLog.subjectRef, subject) : undefined
+        )
       )
-    )
-    .orderBy(schema.auditLog.ts)
-    .limit(BUNDLE_MAX_ROWS);
+      .orderBy(schema.auditLog.ts)
+      .limit(BUNDLE_MAX_ROWS);
 
-  const aiRows = await ctx.db
-    .select()
-    .from(schema.aiAuditLog)
-    .where(
-      scoped(
-        ctx,
-        schema.aiAuditLog,
-        gte(schema.aiAuditLog.ts, from),
-        lte(schema.aiAuditLog.ts, to),
-        subject ? eq(schema.aiAuditLog.subjectRef, subject) : undefined
+    const aiRows = await ctx.db
+      .select()
+      .from(schema.aiAuditLog)
+      .where(
+        scoped(
+          ctx,
+          schema.aiAuditLog,
+          gte(schema.aiAuditLog.ts, from),
+          lte(schema.aiAuditLog.ts, to),
+          subject ? eq(schema.aiAuditLog.subjectRef, subject) : undefined
+        )
       )
-    )
-    .orderBy(schema.aiAuditLog.ts)
-    .limit(BUNDLE_MAX_ROWS);
+      .orderBy(schema.aiAuditLog.ts)
+      .limit(BUNDLE_MAX_ROWS);
 
-  const scope = { subjectRef: subject ?? null, from, to, purpose: input.purpose };
-  const jsonl = (rows: readonly unknown[]): string => rows.map((r) => JSON.stringify(r)).join("\n");
+    const scope = { subjectRef: subject ?? null, from, to, purpose: input.purpose };
+    const jsonl = (rows: readonly unknown[]): string => rows.map((r) => JSON.stringify(r)).join("\n");
 
-  const summary: ReportTable = {
-    title: "Evidence bundle",
-    columns: [
-      { key: "item", label: "Item", kind: "text" },
-      { key: "value", label: "Value", kind: "text" }
-    ],
-    rows: [
-      { item: "Purpose", value: input.purpose },
-      { item: "Subject", value: subject ?? "all subjects in window" },
-      { item: "Window from", value: new Date(from).toISOString() },
-      { item: "Window to", value: new Date(to).toISOString() },
-      { item: "Audit entries", value: String(auditRows.length) },
-      { item: "AI actions", value: String(aiRows.length) },
-      { item: "Requested by", value: actorRef(ctx) }
-    ],
-    generatedAt: ctx.now
-  };
+    const summary: ReportTable = {
+      title: "Evidence bundle",
+      columns: [
+        { key: "item", label: "Item", kind: "text" },
+        { key: "value", label: "Value", kind: "text" }
+      ],
+      rows: [
+        { item: "Purpose", value: input.purpose },
+        { item: "Subject", value: subject ?? "all subjects in window" },
+        { item: "Window from", value: new Date(from).toISOString() },
+        { item: "Window to", value: new Date(to).toISOString() },
+        { item: "Audit entries", value: String(auditRows.length) },
+        { item: "AI actions", value: String(aiRows.length) },
+        { item: "Requested by", value: actorRef(ctx) }
+      ],
+      generatedAt: ctx.now
+    };
 
-  const contents = [
-    { path: "audit.jsonl", data: utf8(jsonl(auditRows)) },
-    { path: "ai-audit.jsonl", data: utf8(jsonl(aiRows)) },
-    { path: "summary.pdf", data: (await render("pdf", summary, {}, c.env.BROWSER)).bytes }
-  ];
-  const manifest = {
-    version: 1,
-    tenantId: ctx.tenantId,
-    generatedAt: ctx.now,
-    requestedBy: actorRef(ctx),
-    scope,
-    files: await Promise.all(
-      contents.map(async (f) => ({ path: f.path, sizeBytes: f.data.length, sha256: await sha256Hex(f.data) }))
-    ),
-    truncated: auditRows.length === BUNDLE_MAX_ROWS || aiRows.length === BUNDLE_MAX_ROWS
-  };
-  // The manifest travels inside the archive, so the bundle hash covers it too:
-  // one hash to quote, and the entries verify themselves against the manifest.
-  // zip() writes fixed timestamps, so the same scope hashes the same twice.
-  const archive = zip([...contents, { path: "manifest.json", data: utf8(JSON.stringify(manifest, null, 2)) }]);
-  const bundleHash = await sha256Hex(archive);
-
-  const bundleId = id("evb", ctx.now);
-  const bucket = c.env.FILES;
-  const fileId = bucket ? id("file", ctx.now) : null;
-  if (bucket && fileId) {
-    const r2Key = `evidence/${ctx.tenantId}/${bundleId}.zip`;
-    await bucket.put(r2Key, archive, { httpMetadata: { contentType: "application/zip" } });
-    await ctx.db.insert(schema.files).values({
-      id: fileId,
+    const contents = [
+      { path: "audit.jsonl", data: utf8(jsonl(auditRows)) },
+      { path: "ai-audit.jsonl", data: utf8(jsonl(aiRows)) },
+      { path: "summary.pdf", data: (await render("pdf", summary, {}, c.env.BROWSER)).bytes }
+    ];
+    const manifest = {
+      version: 1,
       tenantId: ctx.tenantId,
-      r2Key,
-      kind: "evidence_bundle",
-      subjectRef: bundleId,
-      sha256: bundleHash,
-      sizeBytes: archive.length,
-      contentType: "application/zip",
-      // The bundle is raw audit rows: high, always, whoever asked for it.
-      piiLevel: "high",
-      createdAt: ctx.now,
-      deletedAt: null
-    });
-  }
+      generatedAt: ctx.now,
+      requestedBy: actorRef(ctx),
+      scope,
+      files: await Promise.all(
+        contents.map(async (f) => ({ path: f.path, sizeBytes: f.data.length, sha256: await sha256Hex(f.data) }))
+      ),
+      truncated: auditRows.length === BUNDLE_MAX_ROWS || aiRows.length === BUNDLE_MAX_ROWS
+    };
+    // The manifest travels inside the archive, so the bundle hash covers it too:
+    // one hash to quote, and the entries verify themselves against the manifest.
+    // zip() writes fixed timestamps, so the same scope hashes the same twice.
+    const archive = zip([...contents, { path: "manifest.json", data: utf8(JSON.stringify(manifest, null, 2)) }]);
+    const bundleHash = await sha256Hex(archive);
 
-  const row = {
-    id: bundleId,
-    tenantId: ctx.tenantId,
-    purpose: input.purpose,
-    scopeJson: JSON.stringify(scope),
-    manifestJson: JSON.stringify(manifest),
-    bundleHash,
-    fileId,
-    requestedBy: actorRef(ctx),
-    approvedBy: null,
-    state: bucket ? "ready" : "failed",
-    // Recorded because a bundle is built *for* someone. Delivery itself is not
-    // an API action here — see ADR-0002.
-    deliveredTo: input.deliveredTo ?? null,
-    createdAt: ctx.now,
-    updatedAt: ctx.now
-  };
-  await ctx.db.insert(schema.evidenceBundles).values(row);
-  await audit(ctx, {
-    action: "compliance.evidence.export",
-    subjectRef: `evidence_bundle:${bundleId}`,
-    after: { ...row, manifestJson: undefined, manifest }
+    const bundleId = id("evb", ctx.now);
+    const bucket = c.env.FILES;
+    const fileId = bucket ? id("file", ctx.now) : null;
+    if (bucket && fileId) {
+      const r2Key = `evidence/${ctx.tenantId}/${bundleId}.zip`;
+      await bucket.put(r2Key, archive, { httpMetadata: { contentType: "application/zip" } });
+      await ctx.db.insert(schema.files).values({
+        id: fileId,
+        tenantId: ctx.tenantId,
+        r2Key,
+        kind: "evidence_bundle",
+        subjectRef: bundleId,
+        sha256: bundleHash,
+        sizeBytes: archive.length,
+        contentType: "application/zip",
+        // The bundle is raw audit rows: high, always, whoever asked for it.
+        piiLevel: "high",
+        createdAt: ctx.now,
+        deletedAt: null
+      });
+    }
+
+    const row = {
+      id: bundleId,
+      tenantId: ctx.tenantId,
+      purpose: input.purpose,
+      scopeJson: JSON.stringify(scope),
+      manifestJson: JSON.stringify(manifest),
+      bundleHash,
+      fileId,
+      requestedBy: actorRef(ctx),
+      approvedBy: null,
+      state: bucket ? "ready" : "failed",
+      // Recorded because a bundle is built *for* someone. Delivery itself is not
+      // an API action here — see ADR-0002.
+      deliveredTo: input.deliveredTo ?? null,
+      createdAt: ctx.now,
+      updatedAt: ctx.now
+    };
+    await ctx.db.insert(schema.evidenceBundles).values(row);
+    await audit(ctx, {
+      action: "compliance.evidence.export",
+      subjectRef: `evidence_bundle:${bundleId}`,
+      after: { ...row, manifestJson: undefined, manifest }
+    });
+    return { ...row, manifest };
   });
-  return c.json({ ...row, manifest }, 201);
+  return c.json(result, 201);
 });
 
 complianceRoutes.get("/evidence-bundles/:id/download", async (c) => {

@@ -325,7 +325,12 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
     confidence: null as number | null,
     mismatches: null as number[] | null
   };
-  const headers = key ? { headers: { "idempotency-key": key } } : {};
+  // The loader mints one key per page load, but the hidden field carrying it
+  // is shared by four forms (move/verify/export/copilot). Suffixing with the
+  // intent keeps a same-page retry of one action idempotent without letting a
+  // second, different action on the same load collide with it under the
+  // same key.
+  const headers = key ? { headers: { "idempotency-key": `${key}:${intent}` } } : {};
 
   try {
     if (intent === "move") {

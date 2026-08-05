@@ -42,14 +42,21 @@ interface Res<T = any> {
   body: T;
 }
 
-async function raw(email: string | null, method: string, path: string, payload?: unknown): Promise<Response> {
+async function raw(
+  email: string | null,
+  method: string,
+  path: string,
+  payload?: unknown,
+  headers: Record<string, string> = {}
+): Promise<Response> {
   const token = email ? tokens[email] : undefined;
   return app.fetch(
     new Request(`http://api.test${path}`, {
       method,
       headers: {
         "content-type": "application/json",
-        ...(token ? { authorization: `Bearer ${token}` } : {})
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+        ...headers
       },
       ...(payload !== undefined ? { body: JSON.stringify(payload) } : {})
     }),
@@ -58,8 +65,14 @@ async function raw(email: string | null, method: string, path: string, payload?:
   );
 }
 
-async function call<T = any>(email: string | null, method: string, path: string, payload?: unknown): Promise<Res<T>> {
-  const res = await raw(email, method, path, payload);
+async function call<T = any>(
+  email: string | null,
+  method: string,
+  path: string,
+  payload?: unknown,
+  headers: Record<string, string> = {}
+): Promise<Res<T>> {
+  const res = await raw(email, method, path, payload, headers);
   const text = res.headers.get("content-type")?.includes("json") ? await res.text() : "";
   return { status: res.status, body: text ? (JSON.parse(text) as T) : (null as T) };
 }
@@ -333,6 +346,33 @@ describe("POST /v1/compliance/evidence-bundles/export", () => {
     expect((await call(AGENT, "POST", "/v1/compliance/evidence-bundles/export", { purpose: "audit" })).status).toBe(403);
     expect((await call(AGENT, "GET", `/v1/compliance/evidence-bundles/${bundle.id}/download`)).status).toBe(403);
     expect((await call(null, "POST", "/v1/compliance/evidence-bundles/export", { purpose: "audit" })).status).toBe(401);
+  });
+
+  it("replays the same bundle for a repeated idempotency key instead of building a second one (regression: IMPORTANT 4/5)", async () => {
+    const key = `idem-export-${Date.now()}`;
+    const payload = { purpose: "regulator", deliveredTo: "Insurance Authority" };
+    const first = await call(OFFICER, "POST", "/v1/compliance/evidence-bundles/export", payload, { "idempotency-key": key });
+    expect(first.status).toBe(201);
+
+    const replay = await call(OFFICER, "POST", "/v1/compliance/evidence-bundles/export", payload, { "idempotency-key": key });
+    expect(replay.status).toBe(201);
+    expect(replay.body.id).toBe(first.body.id);
+    expect(replay.body.bundleHash).toBe(first.body.bundleHash);
+
+    const rows = await database
+      .select()
+      .from(schema.evidenceBundles)
+      .where(eq(schema.evidenceBundles.bundleHash, first.body.bundleHash));
+    expect(rows.length).toBe(1);
+
+    const conflict = await call(
+      OFFICER,
+      "POST",
+      "/v1/compliance/evidence-bundles/export",
+      { ...payload, purpose: "dispute" },
+      { "idempotency-key": key }
+    );
+    expect(conflict.status).toBe(409);
   });
 
   it("cannot download another tenant's bundle", async () => {

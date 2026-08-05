@@ -41,7 +41,8 @@ async function call<T = any>(
   who: string | null,
   method: string,
   path: string,
-  payload?: unknown
+  payload?: unknown,
+  headers: Record<string, string> = {}
 ): Promise<Res<T>> {
   const token = who ? tokens[who] : undefined;
   const res = await app.fetch(
@@ -49,7 +50,8 @@ async function call<T = any>(
       method,
       headers: {
         "content-type": "application/json",
-        ...(token ? { authorization: `Bearer ${token}` } : {})
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+        ...headers
       },
       ...(payload !== undefined ? { body: JSON.stringify(payload) } : {})
     }),
@@ -253,6 +255,20 @@ describe("POST /v1/axis/documents/:id/verify", () => {
     expect(entry?.beforeHash).toBeTruthy();
     expect(entry?.afterHash).toBeTruthy();
     expect(entry?.actorRef).toMatch(/^user:/);
+  });
+
+  it("replays the same 200 for a repeated idempotency key instead of 409ing on its own result (regression: IMPORTANT 4/5)", async () => {
+    const docId = await upload();
+    const key = `idem-verify-${docId}`;
+    const first = await call("lead", "POST", `/v1/axis/documents/${docId}/verify`, undefined, { "idempotency-key": key });
+    expect(first.status).toBe(200);
+
+    const replay = await call("lead", "POST", `/v1/axis/documents/${docId}/verify`, undefined, { "idempotency-key": key });
+    expect(replay.status).toBe(200);
+    expect(replay.body.verifiedAt).toBe(first.body.verifiedAt);
+
+    // A genuine second attempt without a key, or with a fresh one, still 409s.
+    expect((await verify("lead", docId)).status).toBe(409);
   });
 });
 

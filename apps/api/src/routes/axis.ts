@@ -2,7 +2,19 @@ import { Hono } from "hono";
 import { and, eq, desc, not } from "drizzle-orm";
 import { z } from "zod";
 import { schema } from "@lyra/db";
-import { actorRef, audit, badRequest, conflict, emit, notFound, require_, scoped, verifyGroundedness, type Ctx } from "@lyra/core";
+import {
+  actorRef,
+  audit,
+  badRequest,
+  conflict,
+  emit,
+  notFound,
+  require_,
+  scoped,
+  verifyGroundedness,
+  withIdempotency,
+  type Ctx
+} from "@lyra/core";
 import { EXTRACTION_FIELDS, extractionSchema, parseExtraction } from "@lyra/model-gateway";
 import { body } from "../http.js";
 import { must } from "../rows.js";
@@ -26,20 +38,26 @@ axisRoutes.post("/documents/:id/verify", async (c) => {
   // 404, not 403, for another tenant's document: `must` goes through the same
   // tenant scope every read does, so a row the caller may not see does not exist.
   const before = await must(ctx, schema.axisDocuments, rowId, "documents");
-  if (before.status === "verified") throw conflict(`document is already ${before.status}`);
 
   // ponytail: no body at all. Nothing here is the caller's to choose, so there
   // is no schema to validate — the only input is the id in the path.
-  const stamp = { verifiedBy: actorRef(ctx), verifiedAt: ctx.now, status: "verified" as const };
-  await ctx.db
-    .update(schema.axisDocuments)
-    .set(stamp)
-    .where(scoped(ctx, schema.axisDocuments, eq(schema.axisDocuments.id, rowId)));
+  const after = await withIdempotency(ctx, c.req.header("idempotency-key"), `POST ${c.req.path}`, {}, async () => {
+    // Inside the wrap, not before it: a retry with the same idempotency key
+    // must replay the cached success, not trip over the state its own first
+    // attempt already produced.
+    if (before.status === "verified") throw conflict(`document is already ${before.status}`);
+    const stamp = { verifiedBy: actorRef(ctx), verifiedAt: ctx.now, status: "verified" as const };
+    await ctx.db
+      .update(schema.axisDocuments)
+      .set(stamp)
+      .where(scoped(ctx, schema.axisDocuments, eq(schema.axisDocuments.id, rowId)));
 
-  const after = { ...before, ...stamp };
-  // Bare id, as the generated create/update/delete on this same row use — the
-  // verification has to line up with them in one subject's audit trail.
-  await audit(ctx, { action: "axis.documents.verify", subjectRef: rowId, before, after });
+    const after = { ...before, ...stamp };
+    // Bare id, as the generated create/update/delete on this same row use — the
+    // verification has to line up with them in one subject's audit trail.
+    await audit(ctx, { action: "axis.documents.verify", subjectRef: rowId, before, after });
+    return after;
+  });
   return c.json(after);
 });
 
@@ -144,49 +162,52 @@ axisRoutes.post("/cases/:id/copilot", async (c) => {
   const kase = await must(ctx, schema.axisCases, rowId, "cases");
   const input = await body(c, CopilotBody);
 
-  const [documents, events, tasks] = await Promise.all([
-    ctx.db.select().from(schema.axisDocuments).where(scoped(ctx, schema.axisDocuments, eq(schema.axisDocuments.caseId, rowId))),
-    ctx.db.select().from(schema.axisProcessEvents).where(scoped(ctx, schema.axisProcessEvents, eq(schema.axisProcessEvents.caseId, rowId))).orderBy(desc(schema.axisProcessEvents.ts)).limit(10),
-    ctx.db.select().from(schema.axisTasks).where(scoped(ctx, schema.axisTasks, eq(schema.axisTasks.caseId, rowId)))
-  ]);
+  const reply = await withIdempotency(ctx, c.req.header("idempotency-key"), `POST ${c.req.path}`, input, async () => {
+    const [documents, events, tasks] = await Promise.all([
+      ctx.db.select().from(schema.axisDocuments).where(scoped(ctx, schema.axisDocuments, eq(schema.axisDocuments.caseId, rowId))),
+      ctx.db.select().from(schema.axisProcessEvents).where(scoped(ctx, schema.axisProcessEvents, eq(schema.axisProcessEvents.caseId, rowId))).orderBy(desc(schema.axisProcessEvents.ts)).limit(10),
+      ctx.db.select().from(schema.axisTasks).where(scoped(ctx, schema.axisTasks, eq(schema.axisTasks.caseId, rowId)))
+    ]);
 
-  const contextLines: string[] = [
-    `Case ${kase.ref}: kind ${kase.kind}, status ${kase.status}, priority ${kase.priority}, opened ${new Date(kase.createdAt).toISOString()}` +
-      (kase.slaDueAt ? `, SLA due ${new Date(kase.slaDueAt).toISOString()}` : "") +
-      (kase.valueMinor !== null ? `, value ${kase.valueMinor / 100} ${kase.currency ?? ""}`.trimEnd() : "") +
-      ".",
-    ...documents.map((d) => `Document ${d.docType}: status ${d.status}.`),
-    ...events.map((e) => `Event ${e.step}: ${e.outcome ?? "in progress"} at ${new Date(e.ts).toISOString()}.`),
-    ...tasks.map((t) => `Task ${t.titleKey}: state ${t.state}.`)
-  ];
+    const contextLines: string[] = [
+      `Case ${kase.ref}: kind ${kase.kind}, status ${kase.status}, priority ${kase.priority}, opened ${new Date(kase.createdAt).toISOString()}` +
+        (kase.slaDueAt ? `, SLA due ${new Date(kase.slaDueAt).toISOString()}` : "") +
+        (kase.valueMinor !== null ? `, value ${kase.valueMinor / 100} ${kase.currency ?? ""}`.trimEnd() : "") +
+        ".",
+      ...documents.map((d) => `Document ${d.docType}: status ${d.status}.`),
+      ...events.map((e) => `Event ${e.step}: ${e.outcome ?? "in progress"} at ${new Date(e.ts).toISOString()}.`),
+      ...tasks.map((t) => `Task ${t.titleKey}: state ${t.state}.`)
+    ];
 
-  const result = await c.get("gateway").complete(ctx, {
-    module: "axis",
-    purpose: "axis.case.copilot",
-    tier: "standard",
-    subjectRef: rowId,
-    locale: input.locale,
-    messages: [
-      {
-        role: "system",
-        content:
-          "Answer the question about this case using only the context lines below. " +
-          "Do not state a number that is not in the context. Locale: " + input.locale + ".\n\n" +
-          contextLines.join("\n")
-      },
-      { role: "user", content: input.question }
-    ]
+    const result = await c.get("gateway").complete(ctx, {
+      module: "axis",
+      purpose: "axis.case.copilot",
+      tier: "standard",
+      subjectRef: rowId,
+      locale: input.locale,
+      messages: [
+        {
+          role: "system",
+          content:
+            "Answer the question about this case using only the context lines below. " +
+            "Do not state a number that is not in the context. Locale: " + input.locale + ".\n\n" +
+            contextLines.join("\n")
+        },
+        { role: "user", content: input.question }
+      ]
+    });
+
+    const groundedness = verifyGroundedness(result.text, contextLines);
+    const confidence = groundedness.ok ? 0.95 : Math.max(0.2, 0.95 - groundedness.mismatches.length * 0.15);
+
+    return {
+      answer: result.text,
+      confidence,
+      mismatches: groundedness.mismatches,
+      auditId: result.auditId
+    };
   });
-
-  const groundedness = verifyGroundedness(result.text, contextLines);
-  const confidence = groundedness.ok ? 0.95 : Math.max(0.2, 0.95 - groundedness.mismatches.length * 0.15);
-
-  return c.json({
-    answer: result.text,
-    confidence,
-    mismatches: groundedness.mismatches,
-    auditId: result.auditId
-  });
+  return c.json(reply);
 });
 
 const SampleExtractBody = z.object({
@@ -264,23 +285,29 @@ axisRoutes.post("/sops/:id/publish", async (c) => {
   require_(ctx.actor, "axis:sops:write", { tenantId: ctx.tenantId, module: "axis" });
   const rowId = c.req.param("id");
   const before = await must(ctx, schema.axisSops, rowId, "sops");
-  if (before.status === "active") throw conflict(`sop is already ${before.status}`);
-  await ctx.db
-    .update(schema.axisSops)
-    .set({ status: "retired" })
-    .where(
-      scoped(
-        ctx,
-        schema.axisSops,
-        and(eq(schema.axisSops.key, before.key), eq(schema.axisSops.status, "active"), not(eq(schema.axisSops.id, rowId)))
-      )
-    );
-  const stamp = { status: "active" as const };
-  await ctx.db
-    .update(schema.axisSops)
-    .set(stamp)
-    .where(scoped(ctx, schema.axisSops, eq(schema.axisSops.id, rowId)));
-  const after = { ...before, ...stamp };
-  await audit(ctx, { action: "axis.sops.publish", subjectRef: rowId, before, after });
+  const after = await withIdempotency(ctx, c.req.header("idempotency-key"), `POST ${c.req.path}`, {}, async () => {
+    // Inside the wrap, not before it: a retry with the same idempotency key
+    // must replay the cached success, not trip over the state its own first
+    // attempt already produced.
+    if (before.status === "active") throw conflict(`sop is already ${before.status}`);
+    await ctx.db
+      .update(schema.axisSops)
+      .set({ status: "retired" })
+      .where(
+        scoped(
+          ctx,
+          schema.axisSops,
+          and(eq(schema.axisSops.key, before.key), eq(schema.axisSops.status, "active"), not(eq(schema.axisSops.id, rowId)))
+        )
+      );
+    const stamp = { status: "active" as const };
+    await ctx.db
+      .update(schema.axisSops)
+      .set(stamp)
+      .where(scoped(ctx, schema.axisSops, eq(schema.axisSops.id, rowId)));
+    const after = { ...before, ...stamp };
+    await audit(ctx, { action: "axis.sops.publish", subjectRef: rowId, before, after });
+    return after;
+  });
   return c.json(after);
 });

@@ -111,11 +111,17 @@ function router(r: Resource, over: Partial<Ctx> = {}): Hono<App> {
   return app;
 }
 
-const send = async (app: Hono<App>, method: string, path: string, payload?: unknown) => {
+const send = async (
+  app: Hono<App>,
+  method: string,
+  path: string,
+  payload?: unknown,
+  headers: Record<string, string> = {}
+) => {
   const res = await app.fetch(
     new Request(`http://api.test${path}`, {
       method,
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...headers },
       ...(payload !== undefined ? { body: JSON.stringify(payload) } : {})
     })
   );
@@ -583,6 +589,53 @@ describe("scout whitespace promotion goes through the approval engine, not a bar
     const res = await send(router(resource()), "PATCH", "/wsp_gate", { status: "validated" });
     expect(res.status).toBe(200);
     expect(res.body.status).toBe("validated");
+  });
+});
+
+describe("generic CRUD PATCH honours idempotency-key (regression: IMPORTANT 4/5)", () => {
+  // The PATCH/PUT handler is shared by every REGISTRY resource, so this is
+  // platform-wide: a client retrying a dropped response must get back the
+  // row it already produced, not a second write or a spurious 409.
+  const resource = () => {
+    const r = BY_MODULE.axis?.find((x) => x.path === "cases");
+    if (!r) throw new Error("no axis/cases resource");
+    return r;
+  };
+
+  beforeAll(async () => {
+    await ctx.db.insert(schema.axisCases).values({
+      id: "cas_idem",
+      tenantId: "t_test",
+      ref: "CAS-IDEM",
+      kind: "claim",
+      status: "review",
+      priority: "normal",
+      source: "web",
+      createdAt: NOW,
+      updatedAt: NOW
+    });
+  });
+
+  it("replays the same 200 instead of double-applying the update", async () => {
+    const key = "idem-case-patch";
+    const first = await send(router(resource()), "PATCH", "/cas_idem", { priority: "high" }, { "idempotency-key": key });
+    expect(first.status).toBe(200);
+    expect(first.body.priority).toBe("high");
+
+    const replay = await send(router(resource()), "PATCH", "/cas_idem", { priority: "high" }, { "idempotency-key": key });
+    expect(replay.status).toBe(200);
+    expect(replay.body.updatedAt).toBe(first.body.updatedAt);
+
+    const rows = await ctx.db.select().from(schema.axisCases).where(eq(schema.axisCases.id, "cas_idem"));
+    expect(rows[0]?.priority).toBe("high");
+  });
+
+  it("409s a repeated key sent with a different body", async () => {
+    const key = "idem-case-patch-conflict";
+    const first = await send(router(resource()), "PATCH", "/cas_idem", { priority: "low" }, { "idempotency-key": key });
+    expect(first.status).toBe(200);
+    const conflict = await send(router(resource()), "PATCH", "/cas_idem", { priority: "urgent" }, { "idempotency-key": key });
+    expect(conflict.status).toBe(409);
   });
 });
 

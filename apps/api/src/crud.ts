@@ -459,44 +459,48 @@ export function crudRouter(r: Resource): Hono<App> {
       const raw = await c.req.json().catch(() => {
         throw badRequest("request body is not valid JSON");
       });
-      let values = parse(updateShape, raw) as Record<string, unknown>;
-      values = { ...values, ...(r.fixed?.(ctx, "update") ?? {}) };
-      if (r.beforeWrite) values = await r.beforeWrite(ctx, values, before, c.env);
-      if (!Object.keys(values).length) throw badRequest("no fields to update");
+      const input = parse(updateShape, raw) as Record<string, unknown>;
 
-      if (r.approval?.update) {
-        await gate(ctx, {
-          policyKey: r.approval.update,
-          subjectRef: `${r.path}:${rowId}`,
-          ...(r.approval.amountField && typeof values[r.approval.amountField] === "number"
-            ? { amountMinor: Math.abs(values[r.approval.amountField] as number) }
-            : {})
+      const after = await withIdempotency(ctx, c.req.header("idempotency-key"), `PATCH ${c.req.path}`, input, async () => {
+        let values = { ...input, ...(r.fixed?.(ctx, "update") ?? {}) };
+        if (r.beforeWrite) values = await r.beforeWrite(ctx, values, before, c.env);
+        if (!Object.keys(values).length) throw badRequest("no fields to update");
+
+        if (r.approval?.update) {
+          await gate(ctx, {
+            policyKey: r.approval.update,
+            subjectRef: `${r.path}:${rowId}`,
+            ...(r.approval.amountField && typeof values[r.approval.amountField] === "number"
+              ? { amountMinor: Math.abs(values[r.approval.amountField] as number) }
+              : {})
+          });
+        }
+
+        try {
+          await ctx.db
+            .update(r.table)
+            .set({ ...serialize(cols, values), ...(cols.updatedAt ? { updatedAt: ctx.now } : {}) } as never)
+            .where(scoped(ctx, r.table as never, eq(idCol, rowId)));
+        } catch (e) {
+          // Editing a row onto a key another row already holds is the same 409 as
+          // creating that duplicate outright.
+          if (isUniqueViolation(e)) throw conflict(`${r.path} already exists`);
+          throw e;
+        }
+
+        const after = await load(ctx, rowId);
+        await audit(ctx, {
+          action: `${auditName}.update`,
+          subjectRef: rowId,
+          // An audit row is readable with `core:audit:read`; a before-image
+          // carrying a password hash would put the credential back on a read path.
+          before: strip(hydrate(before)),
+          after: strip(hydrate(after))
         });
-      }
-
-      try {
-        await ctx.db
-          .update(r.table)
-          .set({ ...serialize(cols, values), ...(cols.updatedAt ? { updatedAt: ctx.now } : {}) } as never)
-          .where(scoped(ctx, r.table as never, eq(idCol, rowId)));
-      } catch (e) {
-        // Editing a row onto a key another row already holds is the same 409 as
-        // creating that duplicate outright.
-        if (isUniqueViolation(e)) throw conflict(`${r.path} already exists`);
-        throw e;
-      }
-
-      const after = await load(ctx, rowId);
-      await audit(ctx, {
-        action: `${auditName}.update`,
-        subjectRef: rowId,
-        // An audit row is readable with `core:audit:read`; a before-image
-        // carrying a password hash would put the credential back on a read path.
-        before: strip(hydrate(before)),
-        after: strip(hydrate(after))
+        await emit(ctx, { module: r.module, type: `${auditName}.updated`, subject: rowId, data: { id: rowId } });
+        await r.afterWrite?.(ctx, after, "update");
+        return after;
       });
-      await emit(ctx, { module: r.module, type: `${auditName}.updated`, subject: rowId, data: { id: rowId } });
-      await r.afterWrite?.(ctx, after, "update");
       return c.json(view(ctx, after));
     };
     app.patch("/:id", patch as never);
