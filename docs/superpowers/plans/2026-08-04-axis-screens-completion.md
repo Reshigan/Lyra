@@ -3565,7 +3565,7 @@ export function flowFrom(events: readonly FlowEvent[]): Flow {
 
   const rank = new Map<string, number>();
   const total = new Map<string, number>();
-  const linkKey = (from: string, to: string) => `${from} ${to}`;
+  const linkKey = (from: string, to: string) => `${from}\0${to}`;
   const linkCount = new Map<string, number>();
   const linkDuration = new Map<string, number>();
 
@@ -3589,7 +3589,7 @@ export function flowFrom(events: readonly FlowEvent[]): Flow {
     .sort((a, b) => a.rank - b.rank);
 
   const links = [...linkCount.entries()].map(([key, count]) => {
-    const [from, to] = key.split(" ") as [string, string];
+    const [from, to] = key.split("\0") as [string, string];
     return { from, to, count, avgMs: (linkDuration.get(key) ?? 0) / count };
   });
 
