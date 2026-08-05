@@ -246,6 +246,7 @@ export const claims = sqliteTable(
   },
   (t) => [
     index("axis_claims_tenant_idx").on(t.tenantId, t.status, t.reportedAt),
+    index("axis_claims_customer_idx").on(t.tenantId, t.customerId),
     uniqueIndex("axis_claims_no_uq").on(t.tenantId, t.claimNo)
   ]
 );

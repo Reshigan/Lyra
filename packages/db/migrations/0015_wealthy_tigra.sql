@@ -1,0 +1,1 @@
+CREATE INDEX `axis_claims_customer_idx` ON `axis_claims` (`tenant_id`,`customer_id`);
