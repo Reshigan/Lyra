@@ -66,6 +66,9 @@ const HAND_WRITTEN: Op[] = [
   // server owns. Each returns its plaintext once and never again.
   { method: "post", path: "/v1/core/api-keys", summary: "Mint an API key; the plaintext is returned once and never again", permission: "core:api_keys:create", tag: "core", requestBody: true },
   { method: "post", path: "/v1/core/webhooks", summary: "Register a webhook; the signing secret is generated server-side and returned once", permission: "core:webhooks:write", tag: "core", requestBody: true },
+  // Read-only by design: the MFA floor and the session TTL are the platform's,
+  // not tenant policy, so this reports what is enforced and who is outside it.
+  { method: "get", path: "/v1/core/security-posture", summary: "What is enforced on sign-in for this tenant and who is outside it", permission: "core:settings:read", tag: "core" },
 
   // Not the generated delete either: the key has `revokedAt`, not `deletedAt`,
   // so generic CRUD delete would hard-delete it. This sets `revokedAt` instead.
@@ -126,6 +129,8 @@ const HAND_WRITTEN: Op[] = [
   { method: "post", path: "/v1/ledger/recon/runs", summary: "Match an imported statement against the ledger", permission: "ledger:recon:run", tag: "ledger", requestBody: true },
   { method: "get", path: "/v1/ledger/recon/runs/{id}", summary: "One reconciliation run with its matches and exceptions", permission: "ledger:recon:read", tag: "ledger" },
   { method: "post", path: "/v1/ledger/recon/matches/{id}/decide", summary: "Confirm or reject a proposed match", permission: "ledger:recon:confirm", tag: "ledger", requestBody: true },
+  { method: "post", path: "/v1/ledger/recon/runs/{id}/evidence-bundle", summary: "Assemble a reconciliation run's evidence as a signed, hash-manifested bundle", permission: "ledger:recon:export", tag: "ledger" },
+  { method: "get", path: "/v1/ledger/recon/runs/{id}/evidence-bundle/download", summary: "Download an assembled recon evidence bundle", permission: "ledger:recon:export", tag: "ledger" },
 
   // Invoking an agent is authorised per module, so the scope below is the core
   // module's; an AXIS agent needs axis:ai:invoke, and so on for each module.
@@ -198,6 +203,9 @@ const HAND_WRITTEN: Op[] = [
   // J-X3: the one onboarding route with no session — a developer signs up,
   // gets a prospect-stage partner and a sandbox-scoped key back, same day.
   { method: "post", path: "/v1/onboarding/partners/signup", summary: "Self-service partner signup: creates a prospect-stage partner and mints a sandbox API key", tag: "onboarding", requestBody: true, public: true },
+  // ADR-0030: public comparison site, no session — same reasoning as partner signup above.
+  { method: "get", path: "/v1/portal/{tenantSlug}/site", summary: "Public tenant branding and active product catalogue for the comparison site", tag: "portal", public: true },
+  { method: "post", path: "/v1/portal/{tenantSlug}/leads", summary: "Public lead capture: creates a customer and an open quote request from an anonymous visitor", tag: "portal", requestBody: true, public: true },
   { method: "post", path: "/v1/onboarding/partners/{id}/advance", summary: "Advance a partner one stage, refused while a step gating it is open", permission: "orbit:partners:update", tag: "onboarding" },
   { method: "post", path: "/v1/onboarding/partners/{id}/suspend", summary: "Stop trading with a partner without unwinding their diligence", permission: "orbit:partners:update", tag: "onboarding", requestBody: true },
   { method: "post", path: "/v1/onboarding/partners/{id}/resume", summary: "Resume trading with a suspended partner", permission: "orbit:partners:update", tag: "onboarding" },
@@ -260,10 +268,34 @@ const HAND_WRITTEN: Op[] = [
   { method: "get", path: "/v1/staff/delegations", summary: "Who currently holds whose authority", permission: "core:delegations:read", tag: "staff" },
   { method: "post", path: "/v1/staff/delegations/{id}/revoke", summary: "Revoke a delegation; handing your own authority back needs no administrator", permission: "core:delegations:write", tag: "staff", requestBody: true },
   { method: "post", path: "/v1/staff/delegations/expire", summary: "Sweep delegations whose window has closed (also runs on the scheduled tick)", permission: "core:delegations:write", tag: "staff" },
+
+  // ADR-0028. The one platform-global resource: gates a capability for
+  // tenants that have not signed up yet, so it lives outside every module.
+  { method: "get", path: "/v1/platform/flags", summary: "List every feature flag and its rollout state", permission: "admin:flags:read", tag: "platform" },
+  { method: "post", path: "/v1/platform/flags", summary: "Create a flag, disabled by default", permission: "admin:flags:write", tag: "platform", requestBody: true },
+  { method: "patch", path: "/v1/platform/flags/{id}", summary: "Change rollout or targeting; enabling it requires dual-control approval", permission: "admin:flags:write", tag: "platform", requestBody: true },
+  // ADR-0029. Platform-staff cross-tenant reads: a per-tenant loop, never a
+  // raw cross-tenant query — see scopedToTenant() in routes/platform.ts.
+  { method: "get", path: "/v1/platform/ops/overview", summary: "Per-tenant outbox/DLQ depth, pending approvals and last NORTH snapshot", permission: "admin:diagnostics:read", tag: "platform" },
+  { method: "get", path: "/v1/platform/slo", summary: "Error-budget burn per SLO definition, computed live across every tenant", permission: "admin:diagnostics:read", tag: "platform" },
+  { method: "get", path: "/v1/platform/incidents", summary: "Outage-kind incidents rolled up across every tenant", permission: "admin:diagnostics:read", tag: "platform" },
+  { method: "get", path: "/v1/platform/deployments", summary: "Deploy history per Worker and environment", permission: "admin:diagnostics:read", tag: "platform" },
+  // ADR-0027. Impersonation is a time-boxed session swap, not a new authority:
+  // dual-control approval to start, self-service to end, expiresAt enforced
+  // on every request in auth.ts.
+  { method: "get", path: "/v1/platform/impersonation", summary: "Your own live impersonation sessions, so one can be ended", permission: "core:impersonate:use", tag: "platform" },
+  { method: "post", path: "/v1/platform/impersonation/start", summary: "Start a time-boxed impersonation session; requires a second platform actor's approval", permission: "core:impersonate:use", tag: "platform", requestBody: true },
+  { method: "post", path: "/v1/platform/impersonation/{id}/end", summary: "End your own impersonation session early", permission: "core:impersonate:use", tag: "platform" },
   { method: "post", path: "/v1/north/snapshotter/run", summary: "Force the NORTH metric snapshot and anomaly scan now (also runs on the scheduled tick)", permission: "north:snapshots:run", tag: "north" },
+  { method: "post", path: "/v1/north/explore", summary: "Query stored metric snapshots by key/grain/period — a fixed filter set, never a client SQL string", permission: "north:snapshots:read", tag: "north", requestBody: true },
+  { method: "get", path: "/v1/north/data-health", summary: "Staleness per metric, computed live from the latest snapshot timestamp", permission: "north:metrics:read", tag: "north" },
   { method: "post", path: "/v1/signal/autopilot/run", summary: "Force the SIGNAL budget autopilot pass now", permission: "signal:autopilot:run", tag: "signal" },
   // Demo deployments only: answers 404 when ENVIRONMENT is production.
-  { method: "post", path: "/v1/signal/demo/spend-tick", summary: "Insert a spend row per channel per live campaign, keyed off the simulated clock (non-production only)", permission: "signal:autopilot:run", tag: "signal" }
+  { method: "post", path: "/v1/signal/demo/spend-tick", summary: "Insert a spend row per channel per live campaign, keyed off the simulated clock (non-production only)", permission: "signal:autopilot:run", tag: "signal" },
+  // No new table: fans out over every registered Resource's own searchable
+  // columns, filtering each hit by the caller's own read permission on that
+  // resource so this can never become a permission-bypass side channel.
+  { method: "get", path: "/v1/search", summary: "Search matching rows across every module the caller can read", permission: "core:search:read", tag: "search" }
 ];
 
 export function openapi(): Record<string, unknown> {

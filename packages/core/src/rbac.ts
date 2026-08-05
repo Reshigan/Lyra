@@ -147,7 +147,7 @@ export const PERMISSIONS = [
   "ledger:journals:read", "ledger:journals:post",
   "ledger:accounts:read", "ledger:accounts:write",
   "ledger:periods:read", "ledger:periods:close",
-  "ledger:recon:read", "ledger:recon:run", "ledger:recon:confirm",
+  "ledger:recon:read", "ledger:recon:run", "ledger:recon:confirm", "ledger:recon:export",
   "ledger:invoices:read", "ledger:invoices:create", "ledger:invoices:approve",
   "ledger:payments:read", "ledger:payments:create", "ledger:payments:refund",
   "ledger:payouts:approve",
@@ -453,7 +453,7 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
 
   /* finance — money movement is separated from operations by design (docs/19 §7) */
   "finance.analyst": [
-    ...readsOf("ledger"), "ledger:ai:invoke", "ledger:recon:run", "ledger:invoices:create",
+    ...readsOf("ledger"), "ledger:ai:invoke", "ledger:recon:run", "ledger:recon:export", "ledger:invoices:create",
     "analytics:reports:read", "analytics:reports:run", "analytics:exports:create", "analytics:exports:download",
     "dist:commissions:read", "dist:rates:read", "dist:channels:read"
   ],

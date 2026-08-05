@@ -417,6 +417,18 @@ export interface AxisEscrowBatches {
   updatedAt?: number;
 }
 
+export interface AxisOpsPolicies {
+  id?: string;
+  tenantId?: string;
+  key: string;
+  kind: string;
+  valueJson: string;
+  status?: string;
+  updatedBy?: string;
+  createdAt?: number;
+  updatedAt?: number;
+}
+
 export interface AxisPolicies {
   id?: string;
   tenantId?: string;
@@ -806,6 +818,17 @@ export interface CoreLenses {
   updatedAt?: number;
 }
 
+export interface CoreLocaleOverrides {
+  id?: string;
+  tenantId?: string;
+  locale: string;
+  key: string;
+  value: string;
+  updatedBy: string;
+  createdAt?: number;
+  updatedAt?: number;
+}
+
 export interface CoreMandates {
   id?: string;
   tenantId?: string;
@@ -831,6 +854,19 @@ export interface CoreMemories {
   purposesJson?: string;
   expiry?: number;
   createdAt?: number;
+}
+
+export interface CoreMessageTemplates {
+  id?: string;
+  tenantId?: string;
+  key: string;
+  channel: string;
+  subjectJson?: string;
+  bodyJson: string;
+  variablesJson?: string;
+  createdAt?: number;
+  updatedAt?: number;
+  deletedAt?: number;
 }
 
 export interface CoreNotifications {
@@ -1514,6 +1550,19 @@ export interface LedgerUsageMeters {
   updatedAt?: number;
 }
 
+export interface NorthAlert_rules {
+  id?: string;
+  tenantId?: string;
+  metricKey: string;
+  operator: string;
+  thresholdValue: number;
+  windowGrain?: string;
+  notifyChannelRef?: string;
+  enabled?: boolean;
+  createdAt?: number;
+  updatedAt?: number;
+}
+
 export interface NorthAnomalies {
   id?: string;
   tenantId?: string;
@@ -2108,6 +2157,11 @@ export interface Operations {
   "GET /v1/axis/escrow-batches": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<AxisEscrowBatches>>;
   "GET /v1/axis/escrow-batches/{id}": Op<{ id: string }, never, never, AxisEscrowBatches>;
   "PATCH /v1/axis/escrow-batches/{id}": Op<{ id: string }, never, AxisEscrowBatches, AxisEscrowBatches>;
+  "GET /v1/axis/ops-policies": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<AxisOpsPolicies>>;
+  "POST /v1/axis/ops-policies": Op<never, never, AxisOpsPolicies, AxisOpsPolicies>;
+  "GET /v1/axis/ops-policies/{id}": Op<{ id: string }, never, never, AxisOpsPolicies>;
+  "PATCH /v1/axis/ops-policies/{id}": Op<{ id: string }, never, AxisOpsPolicies, AxisOpsPolicies>;
+  "DELETE /v1/axis/ops-policies/{id}": Op<{ id: string }, never, never, void>;
   "GET /v1/axis/policies": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<AxisPolicies>>;
   "POST /v1/axis/policies": Op<never, never, AxisPolicies, AxisPolicies>;
   "GET /v1/axis/policies/{id}": Op<{ id: string }, never, never, AxisPolicies>;
@@ -2123,6 +2177,7 @@ export interface Operations {
   "GET /v1/axis/sops/{id}": Op<{ id: string }, never, never, AxisSops>;
   "PATCH /v1/axis/sops/{id}": Op<{ id: string }, never, AxisSops, AxisSops>;
   "DELETE /v1/axis/sops/{id}": Op<{ id: string }, never, never, void>;
+  "POST /v1/axis/sops/{id}/publish": Op<{ id: string }, never, never, Record<string, unknown>>;
   "GET /v1/axis/tasks": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<AxisTasks>>;
   "POST /v1/axis/tasks": Op<never, never, AxisTasks, AxisTasks>;
   "GET /v1/axis/tasks/{id}": Op<{ id: string }, never, never, AxisTasks>;
@@ -2202,6 +2257,11 @@ export interface Operations {
   "GET /v1/core/lenses/{id}": Op<{ id: string }, never, never, CoreLenses>;
   "PATCH /v1/core/lenses/{id}": Op<{ id: string }, never, CoreLenses, CoreLenses>;
   "DELETE /v1/core/lenses/{id}": Op<{ id: string }, never, never, void>;
+  "GET /v1/core/locale-overrides": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<CoreLocaleOverrides>>;
+  "POST /v1/core/locale-overrides": Op<never, never, CoreLocaleOverrides, CoreLocaleOverrides>;
+  "GET /v1/core/locale-overrides/{id}": Op<{ id: string }, never, never, CoreLocaleOverrides>;
+  "PATCH /v1/core/locale-overrides/{id}": Op<{ id: string }, never, CoreLocaleOverrides, CoreLocaleOverrides>;
+  "DELETE /v1/core/locale-overrides/{id}": Op<{ id: string }, never, never, void>;
   "GET /v1/core/mandates": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<CoreMandates>>;
   "POST /v1/core/mandates": Op<never, never, CoreMandates, CoreMandates>;
   "GET /v1/core/mandates/{id}": Op<{ id: string }, never, never, CoreMandates>;
@@ -2212,6 +2272,12 @@ export interface Operations {
   "GET /v1/core/memories/{id}": Op<{ id: string }, never, never, CoreMemories>;
   "PATCH /v1/core/memories/{id}": Op<{ id: string }, never, CoreMemories, CoreMemories>;
   "DELETE /v1/core/memories/{id}": Op<{ id: string }, never, never, void>;
+  "GET /v1/core/message-templates": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<CoreMessageTemplates>>;
+  "POST /v1/core/message-templates": Op<never, never, CoreMessageTemplates, CoreMessageTemplates>;
+  "GET /v1/core/message-templates/{id}": Op<{ id: string }, never, never, CoreMessageTemplates>;
+  "PATCH /v1/core/message-templates/{id}": Op<{ id: string }, never, CoreMessageTemplates, CoreMessageTemplates>;
+  "DELETE /v1/core/message-templates/{id}": Op<{ id: string }, never, never, void>;
+  "POST /v1/core/message-templates/{id}/restore": Op<{ id: string }, never, never, CoreMessageTemplates>;
   "GET /v1/core/notifications": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<CoreNotifications>>;
   "GET /v1/core/notifications/{id}": Op<{ id: string }, never, never, CoreNotifications>;
   "GET /v1/core/onboarding-steps": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<CoreOnboardingSteps>>;
@@ -2235,6 +2301,7 @@ export interface Operations {
   "POST /v1/core/rulepacks": Op<never, never, CoreRulepacks, CoreRulepacks>;
   "GET /v1/core/rulepacks/{id}": Op<{ id: string }, never, never, CoreRulepacks>;
   "PATCH /v1/core/rulepacks/{id}": Op<{ id: string }, never, CoreRulepacks, CoreRulepacks>;
+  "GET /v1/core/security-posture": Op<never, never, never, Record<string, unknown>>;
   "GET /v1/core/teams": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<CoreTeams>>;
   "POST /v1/core/teams": Op<never, never, CoreTeams, CoreTeams>;
   "GET /v1/core/teams/{id}": Op<{ id: string }, never, never, CoreTeams>;
@@ -2342,6 +2409,8 @@ export interface Operations {
   "POST /v1/ledger/recon/matches/{id}/decide": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/ledger/recon/runs": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/ledger/recon/runs/{id}": Op<{ id: string }, never, never, Record<string, unknown>>;
+  "POST /v1/ledger/recon/runs/{id}/evidence-bundle": Op<{ id: string }, never, never, Record<string, unknown>>;
+  "GET /v1/ledger/recon/runs/{id}/evidence-bundle/download": Op<{ id: string }, never, never, Record<string, unknown>>;
   "GET /v1/ledger/reports/aged": Op<never, never, never, Record<string, unknown>>;
   "GET /v1/ledger/reports/balance-sheet": Op<never, never, never, Record<string, unknown>>;
   "GET /v1/ledger/reports/chart-of-accounts": Op<never, never, never, Record<string, unknown>>;
@@ -2388,6 +2457,11 @@ export interface Operations {
   "POST /v1/me/password": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/me/sessions": Op<never, never, never, Record<string, unknown>>;
   "DELETE /v1/me/sessions/{id}": Op<{ id: string }, never, never, Record<string, unknown>>;
+  "GET /v1/north/alert_rules": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<NorthAlert_rules>>;
+  "POST /v1/north/alert_rules": Op<never, never, NorthAlert_rules, NorthAlert_rules>;
+  "GET /v1/north/alert_rules/{id}": Op<{ id: string }, never, never, NorthAlert_rules>;
+  "PATCH /v1/north/alert_rules/{id}": Op<{ id: string }, never, NorthAlert_rules, NorthAlert_rules>;
+  "DELETE /v1/north/alert_rules/{id}": Op<{ id: string }, never, never, void>;
   "GET /v1/north/anomalies": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<NorthAnomalies>>;
   "GET /v1/north/anomalies/{id}": Op<{ id: string }, never, never, NorthAnomalies>;
   "PATCH /v1/north/anomalies/{id}": Op<{ id: string }, never, NorthAnomalies, NorthAnomalies>;
@@ -2398,11 +2472,13 @@ export interface Operations {
   "POST /v1/north/briefings/generate": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/north/briefings/{id}": Op<{ id: string }, never, never, NorthBriefings>;
   "PATCH /v1/north/briefings/{id}": Op<{ id: string }, never, NorthBriefings, NorthBriefings>;
+  "GET /v1/north/data-health": Op<never, never, never, Record<string, unknown>>;
   "GET /v1/north/decisions": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<NorthDecisions>>;
   "POST /v1/north/decisions": Op<never, never, NorthDecisions, NorthDecisions>;
   "GET /v1/north/decisions/{id}": Op<{ id: string }, never, never, NorthDecisions>;
   "PATCH /v1/north/decisions/{id}": Op<{ id: string }, never, NorthDecisions, NorthDecisions>;
   "DELETE /v1/north/decisions/{id}": Op<{ id: string }, never, never, void>;
+  "POST /v1/north/explore": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/north/metrics": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<NorthMetrics>>;
   "POST /v1/north/metrics": Op<never, never, NorthMetrics, NorthMetrics>;
   "GET /v1/north/metrics/{id}": Op<{ id: string }, never, never, NorthMetrics>;
@@ -2460,6 +2536,18 @@ export interface Operations {
   "POST /v1/orbit/renewals/sweep": Op<never, never, never, Record<string, unknown>>;
   "GET /v1/orbit/renewals/{id}": Op<{ id: string }, never, never, OrbitRenewals>;
   "PATCH /v1/orbit/renewals/{id}": Op<{ id: string }, never, OrbitRenewals, OrbitRenewals>;
+  "GET /v1/platform/deployments": Op<never, never, never, Record<string, unknown>>;
+  "GET /v1/platform/flags": Op<never, never, never, Record<string, unknown>>;
+  "POST /v1/platform/flags": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
+  "PATCH /v1/platform/flags/{id}": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
+  "GET /v1/platform/impersonation": Op<never, never, never, Record<string, unknown>>;
+  "POST /v1/platform/impersonation/start": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
+  "POST /v1/platform/impersonation/{id}/end": Op<{ id: string }, never, never, Record<string, unknown>>;
+  "GET /v1/platform/incidents": Op<never, never, never, Record<string, unknown>>;
+  "GET /v1/platform/ops/overview": Op<never, never, never, Record<string, unknown>>;
+  "GET /v1/platform/slo": Op<never, never, never, Record<string, unknown>>;
+  "POST /v1/portal/{tenantSlug}/leads": Op<{ tenantSlug: string }, never, Record<string, unknown>, Record<string, unknown>>;
+  "GET /v1/portal/{tenantSlug}/site": Op<{ tenantSlug: string }, never, never, Record<string, unknown>>;
   "GET /v1/realtime": Op<never, never, never, Record<string, unknown>>;
   "GET /v1/scout/clusters": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<ScoutClusters>>;
   "GET /v1/scout/clusters/{id}": Op<{ id: string }, never, never, ScoutClusters>;
@@ -2482,6 +2570,7 @@ export interface Operations {
   "GET /v1/scout/whitespaces/{id}": Op<{ id: string }, never, never, ScoutWhitespaces>;
   "PATCH /v1/scout/whitespaces/{id}": Op<{ id: string }, never, ScoutWhitespaces, ScoutWhitespaces>;
   "POST /v1/scout/wording-diff": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
+  "GET /v1/search": Op<never, never, never, Record<string, unknown>>;
   "POST /v1/settlement/runs": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/settlement/settlements/{id}": Op<{ id: string }, never, never, Record<string, unknown>>;
   "POST /v1/settlement/settlements/{id}/approve": Op<{ id: string }, never, never, Record<string, unknown>>;
@@ -2516,6 +2605,7 @@ export interface Operations {
   "POST /v1/signal/creatives/generate": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/signal/creatives/{id}": Op<{ id: string }, never, never, SignalCreatives>;
   "PATCH /v1/signal/creatives/{id}": Op<{ id: string }, never, SignalCreatives, SignalCreatives>;
+  "POST /v1/signal/demo/spend-tick": Op<never, never, never, Record<string, unknown>>;
   "GET /v1/signal/signal-experiments": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<SignalSignalExperiments>>;
   "POST /v1/signal/signal-experiments": Op<never, never, SignalSignalExperiments, SignalSignalExperiments>;
   "GET /v1/signal/signal-experiments/{id}": Op<{ id: string }, never, never, SignalSignalExperiments>;
@@ -2659,6 +2749,11 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "GET /v1/axis/escrow-batches": { tag: "axis", summary: "List escrow-batches", permission: "axis:escrow:read", public: false },
   "GET /v1/axis/escrow-batches/{id}": { tag: "axis", summary: "Fetch one escrow batche", permission: "axis:escrow:read", public: false },
   "PATCH /v1/axis/escrow-batches/{id}": { tag: "axis", summary: "Update a escrow batche", permission: "axis:escrow:reconcile", public: false },
+  "GET /v1/axis/ops-policies": { tag: "axis", summary: "List ops-policies", permission: "axis:ops_policies:read", public: false },
+  "POST /v1/axis/ops-policies": { tag: "axis", summary: "Create a ops policy", permission: "axis:ops_policies:write", public: false },
+  "GET /v1/axis/ops-policies/{id}": { tag: "axis", summary: "Fetch one ops policy", permission: "axis:ops_policies:read", public: false },
+  "PATCH /v1/axis/ops-policies/{id}": { tag: "axis", summary: "Update a ops policy", permission: "axis:ops_policies:write", public: false },
+  "DELETE /v1/axis/ops-policies/{id}": { tag: "axis", summary: "Soft-delete a ops policy", permission: "axis:ops_policies:write", public: false },
   "GET /v1/axis/policies": { tag: "axis", summary: "List policies", permission: "axis:policies:read", public: false },
   "POST /v1/axis/policies": { tag: "axis", summary: "Create a policy", permission: "axis:policies:create", public: false },
   "GET /v1/axis/policies/{id}": { tag: "axis", summary: "Fetch one policy", permission: "axis:policies:read", public: false },
@@ -2674,6 +2769,7 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "GET /v1/axis/sops/{id}": { tag: "axis", summary: "Fetch one sop", permission: "axis:sops:read", public: false },
   "PATCH /v1/axis/sops/{id}": { tag: "axis", summary: "Update a sop", permission: "axis:sops:write", public: false },
   "DELETE /v1/axis/sops/{id}": { tag: "axis", summary: "Soft-delete a sop", permission: "axis:sops:write", public: false },
+  "POST /v1/axis/sops/{id}/publish": { tag: "axis", summary: "Publish an SOP version, retiring whichever version of the same SOP was active", permission: "axis:sops:write", public: false },
   "GET /v1/axis/tasks": { tag: "axis", summary: "List tasks", permission: "axis:tasks:read", public: false },
   "POST /v1/axis/tasks": { tag: "axis", summary: "Create a task", permission: "axis:tasks:write", public: false },
   "GET /v1/axis/tasks/{id}": { tag: "axis", summary: "Fetch one task", permission: "axis:tasks:read", public: false },
@@ -2753,6 +2849,11 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "GET /v1/core/lenses/{id}": { tag: "core", summary: "Fetch one lens", permission: "core:settings:read", public: false },
   "PATCH /v1/core/lenses/{id}": { tag: "core", summary: "Update a lens", permission: "core:settings:update", public: false },
   "DELETE /v1/core/lenses/{id}": { tag: "core", summary: "Soft-delete a lens", permission: "core:settings:update", public: false },
+  "GET /v1/core/locale-overrides": { tag: "core", summary: "List locale-overrides", permission: "core:locale_overrides:read", public: false },
+  "POST /v1/core/locale-overrides": { tag: "core", summary: "Create a locale override", permission: "core:locale_overrides:write", public: false },
+  "GET /v1/core/locale-overrides/{id}": { tag: "core", summary: "Fetch one locale override", permission: "core:locale_overrides:read", public: false },
+  "PATCH /v1/core/locale-overrides/{id}": { tag: "core", summary: "Update a locale override", permission: "core:locale_overrides:write", public: false },
+  "DELETE /v1/core/locale-overrides/{id}": { tag: "core", summary: "Soft-delete a locale override", permission: "core:locale_overrides:write", public: false },
   "GET /v1/core/mandates": { tag: "core", summary: "List mandates", permission: "core:settings:read", public: false },
   "POST /v1/core/mandates": { tag: "core", summary: "Create a mandate", permission: "core:settings:update", public: false },
   "GET /v1/core/mandates/{id}": { tag: "core", summary: "Fetch one mandate", permission: "core:settings:read", public: false },
@@ -2763,6 +2864,12 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "GET /v1/core/memories/{id}": { tag: "core", summary: "Fetch one memory", permission: "core:settings:read", public: false },
   "PATCH /v1/core/memories/{id}": { tag: "core", summary: "Update a memory", permission: "core:settings:update", public: false },
   "DELETE /v1/core/memories/{id}": { tag: "core", summary: "Soft-delete a memory", permission: "core:settings:update", public: false },
+  "GET /v1/core/message-templates": { tag: "core", summary: "List message-templates", permission: "core:templates:read", public: false },
+  "POST /v1/core/message-templates": { tag: "core", summary: "Create a message template", permission: "core:templates:write", public: false },
+  "GET /v1/core/message-templates/{id}": { tag: "core", summary: "Fetch one message template", permission: "core:templates:read", public: false },
+  "PATCH /v1/core/message-templates/{id}": { tag: "core", summary: "Update a message template", permission: "core:templates:write", public: false },
+  "DELETE /v1/core/message-templates/{id}": { tag: "core", summary: "Soft-delete a message template", permission: "core:templates:write", public: false },
+  "POST /v1/core/message-templates/{id}/restore": { tag: "core", summary: "Restore a soft-deleted message template", permission: "core:templates:write", public: false },
   "GET /v1/core/notifications": { tag: "core", summary: "List notifications", permission: "core:notifications:read", public: false },
   "GET /v1/core/notifications/{id}": { tag: "core", summary: "Fetch one notification", permission: "core:notifications:read", public: false },
   "GET /v1/core/onboarding-steps": { tag: "core", summary: "List onboarding-steps", permission: "core:onboarding:read", public: false },
@@ -2786,6 +2893,7 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "POST /v1/core/rulepacks": { tag: "core", summary: "Create a rulepack", permission: "compliance:rulepacks:apply", public: false },
   "GET /v1/core/rulepacks/{id}": { tag: "core", summary: "Fetch one rulepack", permission: "compliance:rulepacks:read", public: false },
   "PATCH /v1/core/rulepacks/{id}": { tag: "core", summary: "Update a rulepack", permission: "compliance:rulepacks:apply", public: false },
+  "GET /v1/core/security-posture": { tag: "core", summary: "What is enforced on sign-in for this tenant and who is outside it", permission: "core:settings:read", public: false },
   "GET /v1/core/teams": { tag: "core", summary: "List teams", permission: "core:teams:read", public: false },
   "POST /v1/core/teams": { tag: "core", summary: "Create a team", permission: "core:teams:write", public: false },
   "GET /v1/core/teams/{id}": { tag: "core", summary: "Fetch one team", permission: "core:teams:read", public: false },
@@ -2893,6 +3001,8 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "POST /v1/ledger/recon/matches/{id}/decide": { tag: "ledger", summary: "Confirm or reject a proposed match", permission: "ledger:recon:confirm", public: false },
   "POST /v1/ledger/recon/runs": { tag: "ledger", summary: "Match an imported statement against the ledger", permission: "ledger:recon:run", public: false },
   "GET /v1/ledger/recon/runs/{id}": { tag: "ledger", summary: "One reconciliation run with its matches and exceptions", permission: "ledger:recon:read", public: false },
+  "POST /v1/ledger/recon/runs/{id}/evidence-bundle": { tag: "ledger", summary: "Assemble a reconciliation run's evidence as a signed, hash-manifested bundle", permission: "ledger:recon:export", public: false },
+  "GET /v1/ledger/recon/runs/{id}/evidence-bundle/download": { tag: "ledger", summary: "Download an assembled recon evidence bundle", permission: "ledger:recon:export", public: false },
   "GET /v1/ledger/reports/aged": { tag: "ledger", summary: "Aged receivables or payables by counterparty", permission: "ledger:journals:read", public: false },
   "GET /v1/ledger/reports/balance-sheet": { tag: "ledger", summary: "Balance sheet as at a moment", permission: "ledger:journals:read", public: false },
   "GET /v1/ledger/reports/chart-of-accounts": { tag: "ledger", summary: "The chart of accounts with current balances", permission: "ledger:journals:read", public: false },
@@ -2939,6 +3049,11 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "POST /v1/me/password": { tag: "me", summary: "Change the caller's password; other sessions are revoked", permission: null, public: false },
   "GET /v1/me/sessions": { tag: "me", summary: "The caller's active sessions, newest first", permission: null, public: false },
   "DELETE /v1/me/sessions/{id}": { tag: "me", summary: "Revoke one of the caller's sessions", permission: null, public: false },
+  "GET /v1/north/alert_rules": { tag: "north", summary: "List alert_rules", permission: "north:alerts:read", public: false },
+  "POST /v1/north/alert_rules": { tag: "north", summary: "Create a alert_rule", permission: "north:alerts:write", public: false },
+  "GET /v1/north/alert_rules/{id}": { tag: "north", summary: "Fetch one alert_rule", permission: "north:alerts:read", public: false },
+  "PATCH /v1/north/alert_rules/{id}": { tag: "north", summary: "Update a alert_rule", permission: "north:alerts:write", public: false },
+  "DELETE /v1/north/alert_rules/{id}": { tag: "north", summary: "Soft-delete a alert_rule", permission: "north:alerts:write", public: false },
   "GET /v1/north/anomalies": { tag: "north", summary: "List anomalies", permission: "north:anomalies:read", public: false },
   "GET /v1/north/anomalies/{id}": { tag: "north", summary: "Fetch one anomaly", permission: "north:anomalies:read", public: false },
   "PATCH /v1/north/anomalies/{id}": { tag: "north", summary: "Update a anomaly", permission: "north:anomalies:assign", public: false },
@@ -2949,11 +3064,13 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "POST /v1/north/briefings/generate": { tag: "north", summary: "Generate an executive briefing from live metric snapshots, numeric claims verified against the input", permission: "north:briefings:generate", public: false },
   "GET /v1/north/briefings/{id}": { tag: "north", summary: "Fetch one briefing", permission: "north:briefings:read", public: false },
   "PATCH /v1/north/briefings/{id}": { tag: "north", summary: "Update a briefing", permission: "north:briefings:approve", public: false },
+  "GET /v1/north/data-health": { tag: "north", summary: "Staleness per metric, computed live from the latest snapshot timestamp", permission: "north:metrics:read", public: false },
   "GET /v1/north/decisions": { tag: "north", summary: "List decisions", permission: "north:decisions:read", public: false },
   "POST /v1/north/decisions": { tag: "north", summary: "Create a decision", permission: "north:decisions:write", public: false },
   "GET /v1/north/decisions/{id}": { tag: "north", summary: "Fetch one decision", permission: "north:decisions:read", public: false },
   "PATCH /v1/north/decisions/{id}": { tag: "north", summary: "Update a decision", permission: "north:decisions:write", public: false },
   "DELETE /v1/north/decisions/{id}": { tag: "north", summary: "Soft-delete a decision", permission: "north:decisions:write", public: false },
+  "POST /v1/north/explore": { tag: "north", summary: "Query stored metric snapshots by key/grain/period — a fixed filter set, never a client SQL string", permission: "north:snapshots:read", public: false },
   "GET /v1/north/metrics": { tag: "north", summary: "List metrics", permission: "north:metrics:read", public: false },
   "POST /v1/north/metrics": { tag: "north", summary: "Create a metric", permission: "north:metrics:write", public: false },
   "GET /v1/north/metrics/{id}": { tag: "north", summary: "Fetch one metric", permission: "north:metrics:read", public: false },
@@ -3011,6 +3128,18 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "POST /v1/orbit/renewals/sweep": { tag: "orbit", summary: "Force the renewal sweep now (also runs on the scheduled tick)", permission: "orbit:renewals:update", public: false },
   "GET /v1/orbit/renewals/{id}": { tag: "orbit", summary: "Fetch one renewal", permission: "orbit:renewals:read", public: false },
   "PATCH /v1/orbit/renewals/{id}": { tag: "orbit", summary: "Update a renewal", permission: "orbit:renewals:update", public: false },
+  "GET /v1/platform/deployments": { tag: "platform", summary: "Deploy history per Worker and environment", permission: "admin:diagnostics:read", public: false },
+  "GET /v1/platform/flags": { tag: "platform", summary: "List every feature flag and its rollout state", permission: "admin:flags:read", public: false },
+  "POST /v1/platform/flags": { tag: "platform", summary: "Create a flag, disabled by default", permission: "admin:flags:write", public: false },
+  "PATCH /v1/platform/flags/{id}": { tag: "platform", summary: "Change rollout or targeting; enabling it requires dual-control approval", permission: "admin:flags:write", public: false },
+  "GET /v1/platform/impersonation": { tag: "platform", summary: "Your own live impersonation sessions, so one can be ended", permission: "core:impersonate:use", public: false },
+  "POST /v1/platform/impersonation/start": { tag: "platform", summary: "Start a time-boxed impersonation session; requires a second platform actor's approval", permission: "core:impersonate:use", public: false },
+  "POST /v1/platform/impersonation/{id}/end": { tag: "platform", summary: "End your own impersonation session early", permission: "core:impersonate:use", public: false },
+  "GET /v1/platform/incidents": { tag: "platform", summary: "Outage-kind incidents rolled up across every tenant", permission: "admin:diagnostics:read", public: false },
+  "GET /v1/platform/ops/overview": { tag: "platform", summary: "Per-tenant outbox/DLQ depth, pending approvals and last NORTH snapshot", permission: "admin:diagnostics:read", public: false },
+  "GET /v1/platform/slo": { tag: "platform", summary: "Error-budget burn per SLO definition, computed live across every tenant", permission: "admin:diagnostics:read", public: false },
+  "POST /v1/portal/{tenantSlug}/leads": { tag: "portal", summary: "Public lead capture: creates a customer and an open quote request from an anonymous visitor", permission: null, public: true },
+  "GET /v1/portal/{tenantSlug}/site": { tag: "portal", summary: "Public tenant branding and active product catalogue for the comparison site", permission: null, public: true },
   "GET /v1/realtime": { tag: "realtime", summary: "Server-Sent Events stream of the caller's own live updates", permission: null, public: false },
   "GET /v1/scout/clusters": { tag: "scout", summary: "List clusters", permission: "scout:clusters:read", public: false },
   "GET /v1/scout/clusters/{id}": { tag: "scout", summary: "Fetch one cluster", permission: "scout:clusters:read", public: false },
@@ -3033,6 +3162,7 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "GET /v1/scout/whitespaces/{id}": { tag: "scout", summary: "Fetch one whitespace", permission: "scout:whitespaces:read", public: false },
   "PATCH /v1/scout/whitespaces/{id}": { tag: "scout", summary: "Update a whitespace", permission: "scout:whitespaces:promote", public: false },
   "POST /v1/scout/wording-diff": { tag: "scout", summary: "Word-level diff of two coverage-wording texts (PDF extraction deferred, see ADR-0016)", permission: "scout:panel_bench:read", public: false },
+  "GET /v1/search": { tag: "search", summary: "Search matching rows across every module the caller can read", permission: "core:search:read", public: false },
   "POST /v1/settlement/runs": { tag: "settlement", summary: "Draft a counterparty's commission settlement for a period (arithmetic only, nothing posts)", permission: "dist:commissions:settle", public: false },
   "GET /v1/settlement/settlements/{id}": { tag: "settlement", summary: "One settlement with its totals and state", permission: "dist:commissions:read", public: false },
   "POST /v1/settlement/settlements/{id}/approve": { tag: "settlement", summary: "Approve the number and accrue it (dual control; the runner may not self-approve)", permission: "dist:commissions:settle", public: false },
@@ -3067,6 +3197,7 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "POST /v1/signal/creatives/generate": { tag: "signal", summary: "Generate ad-copy variants from a brief, compliance-checked and audited per locale", permission: "signal:creatives:generate", public: false },
   "GET /v1/signal/creatives/{id}": { tag: "signal", summary: "Fetch one creative", permission: "signal:creatives:read", public: false },
   "PATCH /v1/signal/creatives/{id}": { tag: "signal", summary: "Update a creative", permission: "signal:creatives:approve", public: false },
+  "POST /v1/signal/demo/spend-tick": { tag: "signal", summary: "Insert a spend row per channel per live campaign, keyed off the simulated clock (non-production only)", permission: "signal:autopilot:run", public: false },
   "GET /v1/signal/signal-experiments": { tag: "signal", summary: "List signal-experiments", permission: "signal:experiments:read", public: false },
   "POST /v1/signal/signal-experiments": { tag: "signal", summary: "Create a signal experiment", permission: "signal:experiments:create", public: false },
   "GET /v1/signal/signal-experiments/{id}": { tag: "signal", summary: "Fetch one signal experiment", permission: "signal:experiments:read", public: false },

@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { actorRef, audit, badRequest, notFound, require_, withIdempotency, type Ctx } from "@lyra/core";
+import { eq } from "drizzle-orm";
+import { actorRef, audit, badRequest, notFound, require_, scoped, sha256Hex, withIdempotency, type Ctx } from "@lyra/core";
+import { id, schema } from "@lyra/db";
 import {
   RECIPES,
   TXN_STATES,
@@ -36,6 +38,9 @@ import {
 } from "@lyra/ledger";
 import type { Gateway } from "@lyra/model-gateway";
 import { EXPORT_FORMATS, isExportFormat, render } from "../engines/export/render.js";
+import { meterEgress } from "../engines/egress.js";
+import { utf8, zip } from "../engines/export/zip.js";
+import { must } from "../rows.js";
 import { body } from "../http.js";
 import type { App } from "../env.js";
 
@@ -665,4 +670,133 @@ ledgerRoutes.post("/recon/matches/:id/decide", async (c) => {
   );
   await decideMatch(ctx, c.req.param("id"), input.decision, input.reasonCode);
   return c.body(null, 204);
+});
+
+ledgerRoutes.post("/recon/runs/:id/evidence-bundle", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "ledger:recon:export", { tenantId: ctx.tenantId, module: "ledger" });
+  const run = await must(ctx, schema.ledgerReconRuns, c.req.param("id"), "recon run");
+
+  const matches = await ctx.db
+    .select()
+    .from(schema.ledgerReconMatches)
+    .where(scoped(ctx, schema.ledgerReconMatches, eq(schema.ledgerReconMatches.runId, run.id)))
+    .orderBy(schema.ledgerReconMatches.createdAt);
+
+  const scope = { runId: run.id, process: run.process, period: run.period, purpose: "audit" as const };
+  const jsonl = (rows: readonly unknown[]): string => rows.map((r) => JSON.stringify(r)).join("\n");
+
+  const summary: ReportTable = {
+    title: "Reconciliation evidence bundle",
+    columns: [
+      { key: "item", label: "Item", kind: "text" },
+      { key: "value", label: "Value", kind: "text" }
+    ],
+    rows: [
+      { item: "Run", value: run.id },
+      { item: "Process", value: run.process },
+      { item: "Period", value: run.period },
+      { item: "Counterparty", value: run.counterpartyRef ?? "—" },
+      { item: "Matched", value: String(run.matchedCount) },
+      { item: "Variance count", value: String(run.varianceCount) },
+      { item: "Variance", value: `${run.varianceMinor} ${run.currency}` },
+      { item: "State", value: run.state },
+      { item: "Requested by", value: actorRef(ctx) }
+    ],
+    generatedAt: ctx.now
+  };
+
+  const contents = [
+    { path: "run.json", data: utf8(JSON.stringify(run, null, 2)) },
+    { path: "matches.jsonl", data: utf8(jsonl(matches)) },
+    { path: "summary.pdf", data: (await render("pdf", summary, {}, c.env.BROWSER)).bytes }
+  ];
+  const manifest = {
+    version: 1,
+    tenantId: ctx.tenantId,
+    generatedAt: ctx.now,
+    requestedBy: actorRef(ctx),
+    scope,
+    files: await Promise.all(
+      contents.map(async (f) => ({ path: f.path, sizeBytes: f.data.length, sha256: await sha256Hex(f.data) }))
+    )
+  };
+  // manifest travels inside the archive, so the bundle hash covers it too —
+  // one hash to quote, entries verify against the manifest. Same idiom as
+  // compliance.ts's evidence-bundles/export.
+  const archive = zip([...contents, { path: "manifest.json", data: utf8(JSON.stringify(manifest, null, 2)) }]);
+  const bundleHash = await sha256Hex(archive);
+
+  const bundleId = id("evb", ctx.now);
+  const bucket = c.env.FILES;
+  const fileId = bucket ? id("file", ctx.now) : null;
+  if (bucket && fileId) {
+    const r2Key = `evidence/${ctx.tenantId}/${bundleId}.zip`;
+    await bucket.put(r2Key, archive, { httpMetadata: { contentType: "application/zip" } });
+    await ctx.db.insert(schema.files).values({
+      id: fileId,
+      tenantId: ctx.tenantId,
+      r2Key,
+      kind: "evidence_bundle",
+      subjectRef: bundleId,
+      sha256: bundleHash,
+      sizeBytes: archive.length,
+      contentType: "application/zip",
+      piiLevel: "high",
+      createdAt: ctx.now,
+      deletedAt: null
+    });
+    await ctx.db
+      .update(schema.ledgerReconRuns)
+      .set({ evidenceBundleFileId: fileId, updatedAt: ctx.now })
+      .where(scoped(ctx, schema.ledgerReconRuns, eq(schema.ledgerReconRuns.id, run.id)));
+  }
+
+  const row = {
+    id: bundleId,
+    tenantId: ctx.tenantId,
+    purpose: "audit" as const,
+    scopeJson: JSON.stringify(scope),
+    manifestJson: JSON.stringify(manifest),
+    bundleHash,
+    fileId,
+    requestedBy: actorRef(ctx),
+    approvedBy: null,
+    state: bucket ? "ready" : "failed",
+    deliveredTo: null,
+    createdAt: ctx.now,
+    updatedAt: ctx.now
+  };
+  await ctx.db.insert(schema.evidenceBundles).values(row);
+  await audit(ctx, {
+    action: "ledger.recon.evidence.export",
+    subjectRef: `evidence_bundle:${bundleId}`,
+    after: { ...row, manifestJson: undefined, manifest, runId: run.id }
+  });
+  return c.json({ ...row, manifest }, 201);
+});
+
+ledgerRoutes.get("/recon/runs/:id/evidence-bundle/download", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "ledger:recon:export", { tenantId: ctx.tenantId, module: "ledger" });
+  const run = await must(ctx, schema.ledgerReconRuns, c.req.param("id"), "recon run");
+  if (!run.evidenceBundleFileId) throw notFound("evidence bundle");
+
+  const file = await must(ctx, schema.files, run.evidenceBundleFileId, "evidence bundle file");
+  const object = await c.env.FILES?.get(file.r2Key);
+  if (!object) throw notFound("evidence bundle file");
+
+  await audit(ctx, {
+    action: "ledger.recon.evidence.download",
+    subjectRef: `evidence_bundle:${file.subjectRef ?? run.id}`,
+    after: { runId: run.id, fileId: file.id }
+  });
+  await meterEgress(ctx, file.sizeBytes ?? object.size);
+  return new Response(object.body, {
+    headers: {
+      "content-type": "application/zip",
+      "content-disposition": `attachment; filename="evidence-${run.id}.zip"`,
+      "cache-control": "no-store"
+    }
+  });
 });

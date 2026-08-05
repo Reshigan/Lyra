@@ -68,7 +68,18 @@ beforeAll(async () => {
   env = {
     DB_CLIENT: database,
     ENVIRONMENT: "development",
-    APP_ORIGIN: "http://localhost:5173"
+    APP_ORIGIN: "http://localhost:5173",
+    // ponytail: a Map is the whole of R2 a bundle needs — put then get.
+    FILES: (() => {
+      const objects = new Map<string, Uint8Array>();
+      return {
+        put: async (key: string, bytes: Uint8Array) => void objects.set(key, bytes),
+        get: async (key: string) => {
+          const bytes = objects.get(key);
+          return bytes ? { body: new Response(bytes).body } : null;
+        }
+      };
+    })()
   } as unknown as Env;
 
   tokens = {};
@@ -155,5 +166,66 @@ describe("the retired generic CRUD door onto periods is gone", () => {
   it("still reads through the generic resource", async () => {
     const res = await call("finance.controller", "GET", `/v1/ledger/periods/${periodId}`);
     expect(res.status).toBe(200);
+  });
+});
+
+describe("POST /v1/ledger/recon/runs/:id/evidence-bundle", () => {
+  let runId: string;
+
+  beforeAll(async () => {
+    const created = await call("finance.controller", "POST", "/v1/ledger/recon/runs", {
+      process: "psp",
+      period: "2026-03",
+      currency: "AED",
+      lines: [{ ref: "stmt-1", amountMinor: 10000, currency: "AED" }]
+    });
+    expect(created.status).toBe(201);
+    runId = created.body.id as string;
+  });
+
+  it("bundles the run, hashes each file and the archive, and records the file on the run", async () => {
+    const res = await call("finance.controller", "POST", `/v1/ledger/recon/runs/${runId}/evidence-bundle`);
+    expect(res.status).toBe(201);
+    expect(res.body.state).toBe("ready");
+    expect(res.body.purpose).toBe("audit");
+    expect(res.body.bundleHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(res.body.manifest.files).toHaveLength(3);
+
+    const [run] = await database
+      .select()
+      .from(schema.ledgerReconRuns)
+      .where(eq(schema.ledgerReconRuns.id, runId));
+    expect(run?.evidenceBundleFileId).toBe(res.body.fileId);
+  });
+
+  it("downloads an archive whose bytes hash to the stored bundle hash", async () => {
+    const built = await call("finance.controller", "POST", `/v1/ledger/recon/runs/${runId}/evidence-bundle`);
+    const res = await call<ArrayBuffer>("finance.controller", "GET", `/v1/ledger/recon/runs/${runId}/evidence-bundle/download`);
+    expect(res.status).toBe(200);
+
+    const raw = await app.fetch(
+      new Request(`http://api.test/v1/ledger/recon/runs/${runId}/evidence-bundle/download`, {
+        headers: { authorization: `Bearer ${tokens["finance.controller"]}` }
+      }),
+      env as never,
+      exec as never
+    );
+    const bytes = new Uint8Array(await raw.arrayBuffer());
+    const digest = await crypto.subtle.digest("SHA-256", bytes);
+    const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+    expect(hex).toBe(built.body.bundleHash);
+  });
+
+  it("is 403 without ledger:recon:export, 404 for a run with no bundle yet", async () => {
+    expect((await call("orbit.agent", "POST", `/v1/ledger/recon/runs/${runId}/evidence-bundle`)).status).toBe(403);
+    expect((await call("orbit.agent", "GET", `/v1/ledger/recon/runs/${runId}/evidence-bundle/download`)).status).toBe(403);
+
+    const bare = await call("finance.controller", "POST", "/v1/ledger/recon/runs", {
+      process: "psp",
+      period: "2026-04",
+      currency: "AED",
+      lines: [{ ref: "stmt-2", amountMinor: 500, currency: "AED" }]
+    });
+    expect((await call("finance.controller", "GET", `/v1/ledger/recon/runs/${bare.body.id}/evidence-bundle/download`)).status).toBe(404);
   });
 });
