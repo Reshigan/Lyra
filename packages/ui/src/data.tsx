@@ -450,11 +450,12 @@ export interface TimelineEvent {
 export interface TimelineProps {
   events: TimelineEvent[];
   label: string;
+  locale?: string;
   timeZone?: string;
   className?: string;
 }
 
-export function Timeline({ events, label, timeZone, className }: TimelineProps) {
+export function Timeline({ events, label, locale, timeZone, className }: TimelineProps) {
   return (
     <ol aria-label={label} className={cn("flex flex-col border-s border-border ps-5", className)}>
       {events.map((e) => (
@@ -473,7 +474,7 @@ export function Timeline({ events, label, timeZone, className }: TimelineProps) 
             ) : null}
           </div>
           <div className="mt-0.5 font-ui text-12 text-subtle">
-            <DateTime value={e.at} precision="minute" {...(timeZone ? { timeZone } : {})} />
+            <DateTime value={e.at} precision="minute" {...(locale ? { locale } : {})} {...(timeZone ? { timeZone } : {})} />
             {e.actor ? <span> · {e.actor}</span> : null}
           </div>
           {e.detail ? <div className="mt-1 font-ui text-13 text-muted">{e.detail}</div> : null}
