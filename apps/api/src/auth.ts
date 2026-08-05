@@ -180,8 +180,9 @@ async function sessionRow(database: ReturnType<typeof makeDb>, token: string, no
  * stay the platform user's own (computed against their home tenant, in
  * `fromSession`); only `tenantId` and `Actor.impersonating` change here.
  * Reads the single latest row so a lapsed-but-not-`/end`ed session can be
- * told apart from one that was properly ended or never started — only the
- * former 401s (no renewal endpoint; friction is intentional).
+ * told apart from one that was properly ended or never started — the caller
+ * degrades a lapsed session gracefully (falls back to the platform user's
+ * own tenant) rather than hard-401ing.
  */
 async function latestImpersonation(database: ReturnType<typeof makeDb>, platformUserId: string) {
   const rows = await database
