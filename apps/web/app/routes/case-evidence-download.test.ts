@@ -35,6 +35,10 @@ describe("case evidence download loader", () => {
 
     expect(requestedUrl).toBe("https://api.test/v1/compliance/evidence-bundles/evb_1/download");
     expect(response.headers.get("content-type")).toBe("application/zip");
+    // application/zip is outside the render-safe allowlist, so disposition is
+    // forced to attachment — but the upstream filename must survive that, or
+    // the browser falls back to guessing a name for the download.
+    expect(response.headers.get("content-disposition")).toBe('attachment; filename=bundle.zip');
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes);
   });
 

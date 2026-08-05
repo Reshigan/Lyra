@@ -176,9 +176,14 @@ const RENDER_SAFE_CONTENT_TYPE = /^image\//;
 export function fileProxyHeaders(upstream: Response, fallbackContentType: string): Headers {
   const contentType = upstream.headers.get("content-type") ?? fallbackContentType;
   const renderSafe = RENDER_SAFE_CONTENT_TYPE.test(contentType) || contentType === "application/pdf";
+  const upstreamDisposition = upstream.headers.get("content-disposition");
+  // Forcing attachment (below) still shouldn't cost the browser the filename
+  // upstream chose — only the render-safety decision is ours to override.
+  const filename = upstreamDisposition?.match(/filename\*?=[^;]+/i)?.[0];
+  const forcedDisposition = filename ? `attachment; ${filename}` : "attachment";
   return new Headers({
     "content-type": contentType,
-    "content-disposition": renderSafe ? (upstream.headers.get("content-disposition") ?? "inline") : "attachment",
+    "content-disposition": renderSafe ? (upstreamDisposition ?? "inline") : forcedDisposition,
     "cache-control": "no-store",
     "x-content-type-options": "nosniff",
     "content-security-policy": "default-src 'none'; sandbox",
