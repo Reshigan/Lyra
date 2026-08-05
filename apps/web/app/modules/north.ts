@@ -255,7 +255,9 @@ export const north: WorkspaceSpec = {
       // The catalogue exists to settle disagreements between two screens, so the
       // definition and its owner are columns, not fields you must open a record
       // to read (docs/25 north_metrics).
-      recordLink: { href: "/north/metric/{id}", labelKey: "link.metric" },
+      // ponytail: no bespoke metric screen exists; the generic record route
+      // (/north/metrics/{id}) already shows definition and owner, so the row
+      // opens there rather than at a 404.
       columns: [
         { name: "key", type: "text", sortable: true },
         { name: "definitionSqlRef", type: "text" },
@@ -517,12 +519,10 @@ export const north: WorkspaceSpec = {
   // for the whole product (apps/web/app/routes/analytics-dashboard.tsx).
   links: [
     { href: "/north/brief", labelKey: "link.brief", permission: "north:briefings:read" },
-    { href: "/north/explorer", labelKey: "link.explorer", permission: "north:snapshots:read" },
-    { href: "/north/whatif", labelKey: "link.whatif", permission: "north:scenarios:read" },
-    { href: "/north/board", labelKey: "link.board", permission: "north:boardpacks:read" },
-    { href: "/north/health", labelKey: "link.health", permission: "north:metrics:read" },
-    { href: "/north/semantic", labelKey: "link.semantic", permission: "north:metrics:read" },
-    { href: "/north/usage", labelKey: "link.usage", permission: "north:metrics:read" },
+    // ponytail: explorer / whatif / board / health / semantic / usage were
+    // linked before their screens existed and shipped 404s into the nav. The
+    // tabs below already list snapshots, scenarios and board packs; re-add a
+    // link the day its bespoke screen lands (spec.routes.test.ts enforces it).
     { href: "/analytics/dashboards", labelKey: "link.dashboards", permission: "analytics:dashboards:read" },
     { href: "/analytics/reports", labelKey: "link.reports", permission: "analytics:reports:read" }
   ]

@@ -42,6 +42,21 @@ export default [
     route("admin/staff/:id", "routes/staff-member.tsx"),
     route("platform", "routes/platform.tsx"),
     route("search", "routes/search.ts"),
+    route("search/results", "routes/search-results.tsx"),
+    // The checklist is the same screen for every subject; the pair of segments
+    // is what it is about (partners|channels|staff, then the subject's id).
+    route("onboarding/:kind/:ref", "routes/onboarding.tsx"),
+
+    route("orbit/console", "routes/orbit-console.tsx"),
+    route("orbit/save", "routes/orbit-save.tsx"),
+    route("orbit/pipeline", "routes/orbit-pipeline.tsx"),
+    route("orbit/quality", "routes/orbit-quality.tsx"),
+    route("orbit/analytics", "routes/orbit-analytics.tsx"),
+
+    route("north/brief", "routes/north-brief.tsx"),
+
+    route("scout/radar", "routes/scout-radar.tsx"),
+    route("scout/panel", "routes/scout-panel.tsx"),
 
     route("axis/exceptions", "routes/axis-exceptions.tsx"),
     route("axis/board", "routes/axis-board.tsx"),
@@ -69,6 +84,7 @@ export default [
     route("axis/cases/:id/evidence-bundles/:bundleId/download", "routes/case-evidence-download.tsx"),
     route("axis/cases/:id/detail", "routes/case-detail.tsx"),
     route("distribution/channels/:id/detail", "routes/channel-detail.tsx"),
+    route("orbit/journeys/:id/builder", "routes/orbit-journey.tsx"),
 
     route(":module", "routes/module.tsx"),
     route(":module/:resource", "routes/module.tsx", { id: "module-resource" }),

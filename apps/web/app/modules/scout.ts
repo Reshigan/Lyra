@@ -70,7 +70,9 @@ export const scout: WorkspaceSpec = {
       concluded: "Concluded",
       abandoned: "Abandoned",
       api: "API",
-      report: "Report"
+      report: "Report",
+      "link.radar": "Opportunity radar",
+      "link.panel": "Panel benchmarks"
     },
     ar: {
       signals: "الإشارات",
@@ -134,9 +136,15 @@ export const scout: WorkspaceSpec = {
       concluded: "منتهية",
       abandoned: "متروكة",
       api: "واجهة برمجية",
-      report: "تقرير"
+      report: "تقرير",
+      "link.radar": "رادار الفرص",
+      "link.panel": "مقارنة المزودين"
     }
   },
+  links: [
+    { href: "/scout/radar", labelKey: "link.radar", permission: "scout:clusters:read" },
+    { href: "/scout/panel", labelKey: "link.panel", permission: "scout:panel_bench:read" }
+  ],
   tabs: [
     {
       key: "signals",
