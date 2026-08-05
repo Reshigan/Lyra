@@ -2,11 +2,12 @@ import { Hono } from "hono";
 import { eq, desc } from "drizzle-orm";
 import { z } from "zod";
 import { schema } from "@lyra/db";
-import { actorRef, audit, badRequest, conflict, emit, require_, scoped, verifyGroundedness, type Ctx } from "@lyra/core";
+import { actorRef, audit, badRequest, conflict, emit, notFound, require_, scoped, verifyGroundedness, type Ctx } from "@lyra/core";
 import { EXTRACTION_FIELDS, extractionSchema, parseExtraction } from "@lyra/model-gateway";
 import { body } from "../http.js";
 import { must } from "../rows.js";
 import { embedUpsert } from "../engines/vectorize.js";
+import { meterEgress } from "../engines/egress.js";
 import type { App } from "../env.js";
 
 // docs/07 §3. The one axis verb generated CRUD cannot express: verifying a
@@ -227,4 +228,27 @@ axisRoutes.post("/dev/extract-sample", async (c) => {
 
   const { values, confidence } = parseExtraction(result.text, fields);
   return c.json({ values, confidence, model: result.model });
+});
+
+axisRoutes.get("/documents/:id/file", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:documents:read", { tenantId: ctx.tenantId, module: "axis" });
+  const doc = await must(ctx, schema.axisDocuments, c.req.param("id"), "document");
+  const file = await must(ctx, schema.files, doc.fileId, "document file");
+  const object = await c.env.FILES?.get(file.r2Key);
+  if (!object) throw notFound("document file");
+
+  await audit(ctx, {
+    action: "axis.documents.file.read",
+    subjectRef: `axis_document:${doc.id}`,
+    after: { fileId: file.id }
+  });
+  await meterEgress(ctx, file.sizeBytes ?? object.size);
+  return new Response(object.body, {
+    headers: {
+      "content-type": file.contentType ?? "application/octet-stream",
+      "content-disposition": "inline",
+      "cache-control": "no-store"
+    }
+  });
 });

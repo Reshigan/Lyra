@@ -74,7 +74,20 @@ beforeAll(async () => {
   env = {
     DB_CLIENT: database,
     ENVIRONMENT: "development",
-    APP_ORIGIN: "http://localhost:5173"
+    APP_ORIGIN: "http://localhost:5173",
+    // ponytail: a Map is the whole of R2 a bundle needs — put then get.
+    FILES: (() => {
+      const store = new Map<string, Uint8Array>();
+      return {
+        put: async (key: string, bytes: Uint8Array) => {
+          store.set(key, bytes);
+        },
+        get: async (key: string) => {
+          const bytes = store.get(key);
+          return bytes ? { body: new Response(bytes).body, size: bytes.byteLength } : null;
+        }
+      };
+    })()
   } as unknown as Env;
 
   tokens = {};
@@ -133,6 +146,41 @@ async function upload(): Promise<string> {
   });
   expect(res.status).toBe(201);
   return res.body.id as string;
+}
+
+/** A fresh document whose fileId points at a real core_files row and R2 object. */
+async function uploadWithFile(): Promise<{ docId: string; r2Key: string; bytes: Uint8Array }> {
+  const docId = await upload();
+  const rows = await database.select().from(schema.axisDocuments).where(eq(schema.axisDocuments.id, docId));
+  const tenantId = rows[0]!.tenantId;
+  const now = Date.now();
+  const fileId = newId("fil", now);
+  const r2Key = `axis/documents/${fileId}.bin`;
+  const bytes = new TextEncoder().encode("stub file bytes");
+  await env.FILES!.put(r2Key, bytes);
+  await database.insert(schema.files).values({
+    id: fileId,
+    tenantId,
+    r2Key,
+    kind: "axis_document",
+    subjectRef: docId,
+    sha256: "0".repeat(64),
+    sizeBytes: bytes.byteLength,
+    contentType: "image/png",
+    piiLevel: "high",
+    createdAt: now
+  });
+  await database.update(schema.axisDocuments).set({ fileId }).where(eq(schema.axisDocuments.id, docId));
+  return { docId, r2Key, bytes };
+}
+
+/** call()'s JSON-only decoding can't see a streamed file — this returns the raw Response. */
+async function raw(who: string, path: string): Promise<Response> {
+  return app.fetch(
+    new Request(`http://api.test${path}`, { headers: { authorization: `Bearer ${tokens[who]}` } }),
+    env as never,
+    exec as never
+  );
 }
 
 const verify = (who: string, docId: string, payload?: unknown) =>
@@ -205,5 +253,38 @@ describe("POST /v1/axis/documents/:id/verify", () => {
     expect(entry?.beforeHash).toBeTruthy();
     expect(entry?.afterHash).toBeTruthy();
     expect(entry?.actorRef).toMatch(/^user:/);
+  });
+});
+
+describe("GET /v1/axis/documents/:id/file", () => {
+  it("streams the stored file's bytes with its content type", async () => {
+    const { docId, bytes } = await uploadWithFile();
+
+    const res = await raw("lead", `/v1/axis/documents/${docId}/file`);
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("image/png");
+    expect(res.headers.get("content-disposition")).toBe("inline");
+    expect(new Uint8Array(await res.arrayBuffer())).toEqual(bytes);
+  });
+
+  it("writes an audit entry naming the file that was read", async () => {
+    const { docId } = await uploadWithFile();
+    expect((await raw("lead", `/v1/axis/documents/${docId}/file`)).status).toBe(200);
+
+    const rows = await database.select().from(schema.auditLog);
+    const entry = rows.find((a) => a.subjectRef === `axis_document:${docId}` && a.action === "axis.documents.file.read");
+    expect(entry).toBeDefined();
+  });
+
+  it("is 404 for a document in another tenant", async () => {
+    const res = await raw("lead", `/v1/axis/documents/${foreignDocId}/file`);
+    expect(res.status).toBe(404);
+  });
+
+  it("is 404 when the document's file object is missing from storage", async () => {
+    const docId = await upload();
+    const res = await raw("lead", `/v1/axis/documents/${docId}/file`);
+    expect(res.status).toBe(404);
   });
 });
