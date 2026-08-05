@@ -1,0 +1,599 @@
+import {
+  Form,
+  Link,
+  useActionData,
+  useLoaderData,
+  useNavigation,
+  type ActionFunctionArgs,
+  type LoaderFunctionArgs
+} from "react-router";
+import {
+  Badge,
+  Button,
+  Card,
+  DatePicker,
+  DateTime,
+  EmptyState,
+  Field,
+  Input,
+  KPIWall,
+  Money,
+  Stat,
+  type BadgeTone
+} from "@lyra/ui";
+import { ApiError, api } from "../api.server";
+import { cloudflare } from "../context";
+import { Gate } from "./staff";
+import { useShellData } from "./workspace";
+
+// One case, several providers, one decision. The quotes tab lists rows; a desk
+// has to group them by the case they answer, mark the cheapest, say what expires
+// tonight, and let the winner be picked and issued without leaving the screen.
+//
+// This is also the group-bid screen. A "bid" in this schema is not its own
+// table: it is the set of `axis_quotes` against one case, and a scheme bid is
+// that set against a `group_medical` case. So the module spec links here twice —
+// once bare, once as `?kind=group_medical` — and the only difference is which
+// cases are in scope. A second route would have been the same code with a
+// different filter.
+
+/* --------------------------------------------------------------- contract */
+
+export const PERM = {
+  cases: "axis:cases:read",
+  quotes: "axis:quotes:read",
+  /** resources.ts maps the quotes update path to `:create`, not `:update`. */
+  quoteWrite: "axis:quotes:create",
+  issue: "axis:policies:create"
+} as const;
+
+/** Cases in scope: the ones out with providers, waiting on paper to come back. */
+export const OPEN_CASE_STATUSES = ["quoting", "review", "approval"] as const;
+
+/** A quote inside this window is worth chasing tonight. */
+export const EXPIRY_SOON_MS = 7 * 24 * 60 * 60 * 1000;
+
+const PAGE = 200;
+
+/* ----------------------------------------------------------------- labels */
+
+const LABELS: Record<string, Record<string, string>> = {
+  en: {
+    title: "Quote desk",
+    "title.group": "Group bids",
+    intro:
+      "Cases out with providers, grouped by the case each quote answers. The cheapest live quote is marked; picking a winner does not issue anything by itself.",
+    "intro.group":
+      "Scheme bids: the same desk narrowed to group cases, where several providers price one census and the spread is the whole negotiation.",
+    "stat.cases": "Cases on the desk",
+    "stat.quotes": "Live quotes",
+    "stat.expiring": "Expiring within a week",
+    "stat.silent": "Awaiting a first response",
+    "group.silent": "No provider has priced this yet",
+    "group.best": "Best live price",
+    "group.spread": "Spread to the next price",
+    "col.provider": "Provider",
+    "col.premium": "Premium",
+    "col.valid": "Valid until",
+    "col.source": "Came from",
+    "flag.best": "Cheapest",
+    "flag.won": "Picked",
+    "flag.expired": "Expired",
+    "flag.soon": "Expires soon",
+    "flag.declined": "Declined",
+    "pick.submit": "Pick",
+    "pick.hint": "Marks this quote as the one the case will be issued from.",
+    "decline.submit": "Decline",
+    "decline.reason": "Reason",
+    "issue.title": "Issue from the picked quote",
+    "issue.intro":
+      "Issuing creates a contract and money follows it, so it goes through the platform's binding approval before it exists.",
+    "issue.quote": "Picked quote",
+    "issue.policyNo": "Contract number",
+    "issue.customer": "Customer",
+    "issue.start": "Cover starts",
+    "issue.end": "Cover ends",
+    "issue.submit": "Issue",
+    "issue.none": "Pick a winning quote first — there is nothing to issue from yet.",
+    "done.pick": "Winner recorded.",
+    "done.decline": "Quote declined.",
+    "done.issue": "Contract issued.",
+    "empty.title": "The desk is clear",
+    "empty.body": "No case is out with a provider right now.",
+    approvalTitle: "Waiting on an approval",
+    approvalBody:
+      "This is gated by {policy}. The request is recorded and takes effect once someone with the authority approves it.",
+    approvalLink: "Open approvals",
+    "problem.bad_intent": "The form did not carry an action this screen knows.",
+    "problem.missing_quote": "No quote was named.",
+    "problem.missing_reason": "A decline has to say why — it is what the provider is told.",
+    "problem.missing_policy": "A contract needs its number, its customer and both cover dates.",
+    "problem.bad_dates": "Cover cannot end before it starts."
+  },
+  ar: {
+    title: "مكتب التسعير",
+    "title.group": "عروض المجموعات",
+    intro:
+      "الحالات المطروحة على المزوّدين، مجمّعة حسب الحالة التي يجيبها كل عرض. أرخص عرض ساري مُعلَّم؛ واختيار الفائز لا يُصدر شيئًا بحد ذاته.",
+    "intro.group":
+      "عروض البرامج الجماعية: المكتب نفسه مقصورًا على الحالات الجماعية، حيث يسعّر عدة مزوّدين كشفًا واحدًا ويكون الفارق هو جوهر التفاوض.",
+    "stat.cases": "حالات على المكتب",
+    "stat.quotes": "عروض سارية",
+    "stat.expiring": "تنتهي خلال أسبوع",
+    "stat.silent": "بانتظار أول رد",
+    "group.silent": "لم يسعّرها أي مزوّد بعد",
+    "group.best": "أفضل سعر ساري",
+    "group.spread": "الفارق عن السعر التالي",
+    "col.provider": "المزوّد",
+    "col.premium": "القسط",
+    "col.valid": "ساري حتى",
+    "col.source": "المصدر",
+    "flag.best": "الأرخص",
+    "flag.won": "مُختار",
+    "flag.expired": "منتهٍ",
+    "flag.soon": "ينتهي قريبًا",
+    "flag.declined": "مرفوض",
+    "pick.submit": "اختيار",
+    "pick.hint": "يعلّم هذا العرض بأنه العرض الذي ستُصدر منه الحالة.",
+    "decline.submit": "رفض",
+    "decline.reason": "السبب",
+    "issue.title": "الإصدار من العرض المختار",
+    "issue.intro": "الإصدار ينشئ عقدًا ويتبعه مال، لذا يمر بموافقة الارتباط في المنصة قبل أن يوجد.",
+    "issue.quote": "العرض المختار",
+    "issue.policyNo": "رقم العقد",
+    "issue.customer": "العميل",
+    "issue.start": "بداية التغطية",
+    "issue.end": "نهاية التغطية",
+    "issue.submit": "إصدار",
+    "issue.none": "اختر عرضًا فائزًا أولًا — لا يوجد ما يُصدر منه بعد.",
+    "done.pick": "سُجّل الفائز.",
+    "done.decline": "رُفض العرض.",
+    "done.issue": "صُدر العقد.",
+    "empty.title": "المكتب خالٍ",
+    "empty.body": "لا توجد حالة مطروحة على مزوّد الآن.",
+    approvalTitle: "بانتظار موافقة",
+    approvalBody: "هذا الإجراء يمر بسياسة {policy}. سُجّل الطلب ويسري بعد موافقة صاحب الصلاحية.",
+    approvalLink: "فتح الموافقات",
+    "problem.bad_intent": "لم يحمل النموذج إجراءً تعرفه هذه الشاشة.",
+    "problem.missing_quote": "لم يُحدَّد أي عرض.",
+    "problem.missing_reason": "الرفض يجب أن يذكر سببه — فهو ما يُبلَّغ به المزوّد.",
+    "problem.missing_policy": "العقد يحتاج رقمه وعميله وتاريخَي التغطية.",
+    "problem.bad_dates": "لا يمكن أن تنتهي التغطية قبل بدايتها."
+  }
+};
+
+export type Label = (key: string, vars?: Record<string, string>) => string;
+
+export function labelsIn(locale: string): Label {
+  return (key, vars) => {
+    const raw = LABELS[locale]?.[key] ?? LABELS["en"]?.[key] ?? key;
+    return vars ? raw.replace(/\{(\w+)\}/g, (whole, name: string) => vars[name] ?? whole) : raw;
+  };
+}
+
+/* ----------------------------------------------------------------- shapes */
+
+export interface DeskCase {
+  id: string;
+  ref: string;
+  kind: string;
+  status: string;
+  customerId: string | null;
+  currency: string | null;
+  slaDueAt: number | null;
+}
+
+export interface DeskQuote {
+  id: string;
+  caseId: string;
+  providerId: string;
+  premiumMinor: number;
+  currency: string;
+  validUntil: number | null;
+  winFlag: boolean;
+  declineReason: string | null;
+  source: string;
+  createdAt: number;
+}
+
+export type Expiry = "expired" | "soon" | "live";
+
+export interface Bid extends DeskQuote {
+  expiry: Expiry;
+  /** Cheapest of the quotes still worth accepting on this case. */
+  best: boolean;
+}
+
+export interface BidGroup {
+  case: DeskCase;
+  bids: Bid[];
+  /** Cheapest live premium, or null while nobody has priced it. */
+  bestMinor: number | null;
+  /** Gap from the cheapest live quote to the next one — the negotiating room. */
+  spreadMinor: number | null;
+  expiringSoon: number;
+}
+
+/* ---------------------------------------------------------------- helpers */
+
+/** A quote with no `validUntil` is open-ended, not expired. */
+export function expiryOf(quote: { validUntil: number | null }, now: number, soonMs = EXPIRY_SOON_MS): Expiry {
+  if (quote.validUntil === null) return "live";
+  if (quote.validUntil < now) return "expired";
+  return quote.validUntil - now <= soonMs ? "soon" : "live";
+}
+
+/** Declined and expired quotes cannot be picked, so they cannot be the best price. */
+const acceptable = (bid: Bid): boolean => bid.expiry !== "expired" && bid.declineReason === null;
+
+/**
+ * Group the flat quote list under the case each quote answers, cheapest first,
+ * and work out the best price and the spread behind it. Cases with no quote yet
+ * stay in the result — "nobody has answered" is the desk's most urgent row.
+ */
+export function deskGroups(cases: DeskCase[], quotes: DeskQuote[], now: number): BidGroup[] {
+  return cases.map((kase) => {
+    const bids: Bid[] = quotes
+      .filter((quote) => quote.caseId === kase.id)
+      .map((quote) => ({ ...quote, expiry: expiryOf(quote, now), best: false }))
+      .sort((a, b) => a.premiumMinor - b.premiumMinor || a.createdAt - b.createdAt);
+
+    const live = bids.filter(acceptable);
+    if (live[0]) live[0].best = true;
+
+    return {
+      case: kase,
+      bids,
+      bestMinor: live[0]?.premiumMinor ?? null,
+      spreadMinor: live[1] ? live[1].premiumMinor - live[0]!.premiumMinor : null,
+      expiringSoon: bids.filter((bid) => bid.expiry === "soon").length
+    };
+  });
+}
+
+/** Cases nobody has answered first, then the ones with something expiring. */
+export function byPressure(a: BidGroup, b: BidGroup): number {
+  const silent = Number(b.bids.length === 0) - Number(a.bids.length === 0);
+  if (silent !== 0) return silent;
+  const soon = b.expiringSoon - a.expiringSoon;
+  return soon !== 0 ? soon : a.case.ref.localeCompare(b.case.ref);
+}
+
+export function flagsOf(bid: Bid): { key: string; tone: BadgeTone }[] {
+  const flags: { key: string; tone: BadgeTone }[] = [];
+  if (bid.winFlag) flags.push({ key: "flag.won", tone: "accent" });
+  if (bid.best) flags.push({ key: "flag.best", tone: "success" });
+  if (bid.expiry === "expired") flags.push({ key: "flag.expired", tone: "danger" });
+  if (bid.expiry === "soon") flags.push({ key: "flag.soon", tone: "warning" });
+  if (bid.declineReason !== null) flags.push({ key: "flag.declined", tone: "neutral" });
+  return flags;
+}
+
+async function safe<T>(call: Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await call;
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 403 || error.status === 404)) return fallback;
+    throw error;
+  }
+}
+
+/* ----------------------------------------------------------------- loader */
+
+export async function loader({ request, context }: LoaderFunctionArgs) {
+  const env = context.get(cloudflare).env;
+  const opts = { env, request };
+  // `?kind=group_medical` is what makes this the group-bid screen. Anything else
+  // the caller puts there is still a case kind, so it is passed through as one.
+  const kind = new URL(request.url).searchParams.get("kind");
+
+  const cases = await safe(
+    api<{ data: DeskCase[] }>(
+      `/v1/axis/cases?status=${OPEN_CASE_STATUSES.join(",")}${kind ? `&kind=${encodeURIComponent(kind)}` : ""}&sort=slaDueAt&order=asc&limit=${PAGE}`,
+      opts
+    ),
+    { data: [] as DeskCase[] }
+  );
+
+  // One call for every quote on those cases: the CRUD filter reads a comma as
+  // "either", so the desk does not fan out one request per case.
+  const ids = cases.data.map((row) => row.id);
+  const quotes = ids.length
+    ? await safe(
+        api<{ data: DeskQuote[] }>(
+          `/v1/axis/quotes?caseId=${ids.map(encodeURIComponent).join(",")}&sort=validUntil&order=asc&limit=${PAGE}`,
+          opts
+        ),
+        { data: [] as DeskQuote[] }
+      )
+    : { data: [] as DeskQuote[] };
+
+  return { now: Date.now(), kind, cases: cases.data, quotes: quotes.data };
+}
+
+/* ----------------------------------------------------------------- action */
+
+export interface Refusal {
+  title: string;
+  status: number;
+  code?: string;
+  detail?: string;
+}
+
+export interface ActionResult {
+  problem: Refusal | null;
+  done: string | null;
+}
+
+const refuse = (code: string, status = 400): ActionResult => ({
+  problem: { title: code, status, code },
+  done: null
+});
+
+/** A date input gives "2026-08-04"; the schema wants epoch millis. */
+export function epochOf(value: string): number | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const ms = Date.parse(`${value}T00:00:00Z`);
+  return Number.isNaN(ms) ? null : ms;
+}
+
+/**
+ * The contract a picked quote turns into. Pure so the validation can be tested
+ * without a request: every branch here is a refusal the operator has to read.
+ */
+export function policyFrom(
+  form: FormData
+): { body: Record<string, unknown> } | { code: string } {
+  const policyNo = String(form.get("policyNo") ?? "").trim();
+  const customerId = String(form.get("customerId") ?? "").trim();
+  const startAt = epochOf(String(form.get("startAt") ?? ""));
+  const endAt = epochOf(String(form.get("endAt") ?? ""));
+  const providerId = String(form.get("providerId") ?? "").trim();
+  const caseId = String(form.get("caseId") ?? "").trim();
+  const currency = String(form.get("currency") ?? "").trim();
+  // `Number(null)` is 0, so a dropped premium field would issue a free contract.
+  // The raw string has to be there before it is allowed to be a number.
+  const raw = String(form.get("premiumMinor") ?? "").trim();
+  const premiumMinor = Number(raw);
+
+  if (!policyNo || !customerId || startAt === null || endAt === null) return { code: "missing_policy" };
+  if (!providerId || !currency || !raw || !Number.isFinite(premiumMinor)) return { code: "missing_quote" };
+  if (endAt < startAt) return { code: "bad_dates" };
+
+  return {
+    body: { caseId, customerId, providerId, policyNo, startAt, endAt, premiumMinor, currency }
+  };
+}
+
+export async function action({ request, context }: ActionFunctionArgs): Promise<ActionResult> {
+  const env = context.get(cloudflare).env;
+  const form = await request.formData();
+  const intent = String(form.get("intent") ?? "");
+  const headers = { "idempotency-key": crypto.randomUUID() };
+
+  try {
+    if (intent === "pick" || intent === "decline") {
+      const id = String(form.get("quoteId") ?? "").trim();
+      if (!id) return refuse("missing_quote");
+
+      // Declining says why: `declineReason` is what the provider is told, and a
+      // blank one turns a negotiation into an unexplained rejection.
+      const reason = String(form.get("reason") ?? "").trim();
+      if (intent === "decline" && !reason) return refuse("missing_reason");
+
+      await api(`/v1/axis/quotes/${encodeURIComponent(id)}`, {
+        env,
+        request,
+        method: "PATCH",
+        headers,
+        body:
+          intent === "pick"
+            ? { winFlag: true, declineReason: null }
+            : { winFlag: false, declineReason: reason }
+      });
+      return { problem: null, done: intent };
+    }
+
+    if (intent === "issue") {
+      const built = policyFrom(form);
+      if ("code" in built) return refuse(built.code);
+
+      // Consequential and financial: `resources.ts` puts the `axis.bind` policy
+      // on this create with `premiumMinor` as the amount, so an over-threshold
+      // contract comes back 403 `approval_required` and the Gate below says so.
+      await api("/v1/axis/policies", { env, request, method: "POST", headers, body: built.body });
+      return { problem: null, done: "issue" };
+    }
+  } catch (error) {
+    if (error instanceof ApiError) return { problem: error.problem, done: null };
+    throw error;
+  }
+
+  return refuse("bad_intent");
+}
+
+/** Codes this screen can phrase; anything else keeps the API's own wording. */
+export function phrase(problem: Refusal, l: Label): Refusal {
+  const key = `problem.${problem.code ?? ""}`;
+  const text = l(key);
+  return text === key ? problem : { ...problem, title: text };
+}
+
+/* -------------------------------------------------------------- the screen */
+
+export default function AxisQuoteDesk() {
+  const loaded = useLoaderData<typeof loader>();
+  const result = useActionData<typeof action>();
+  const shell = useShellData();
+  const navigation = useNavigation();
+
+  const locale = shell?.locale ?? "en";
+  const l = labelsIn(locale);
+  const held = new Set(shell?.permissions ?? []);
+  const busy = navigation.state !== "idle";
+  const now = loaded.now;
+  const group = loaded.kind === "group_medical";
+
+  const groups = deskGroups(loaded.cases, loaded.quotes, now).sort(byPressure);
+  const live = loaded.quotes.filter((quote) => expiryOf(quote, now) !== "expired");
+  const expiring = loaded.quotes.filter((quote) => expiryOf(quote, now) === "soon");
+  const silent = groups.filter((entry) => entry.bids.length === 0);
+  const picked = loaded.quotes.filter((quote) => quote.winFlag);
+
+  return (
+    <div className="flex flex-col gap-6">
+      <header className="flex flex-col gap-1">
+        <h1 className="font-display text-22 text-text">{l(group ? "title.group" : "title")}</h1>
+        <p className="max-w-prose font-ui text-13 text-subtle">{l(group ? "intro.group" : "intro")}</p>
+      </header>
+
+      {result?.problem ? <Gate problem={phrase(result.problem, l)} l={l} /> : null}
+      {result?.done ? (
+        <p role="status" className="font-ui text-13 text-success">
+          {l(`done.${result.done}`)}
+        </p>
+      ) : null}
+
+      <KPIWall>
+        <Stat label={l("stat.cases")} value={groups.length} />
+        <Stat label={l("stat.quotes")} value={live.length} />
+        <Stat label={l("stat.expiring")} value={expiring.length} />
+        <Stat label={l("stat.silent")} value={silent.length} />
+      </KPIWall>
+
+      {groups.length === 0 ? <EmptyState title={l("empty.title")} body={l("empty.body")} /> : null}
+
+      {groups.map((entry) => (
+        <Card
+          key={entry.case.id}
+          title={
+            <Link
+              to={`/axis/cases/${entry.case.id}`}
+              className="font-mono text-13 text-accent underline underline-offset-2"
+            >
+              {entry.case.ref}
+            </Link>
+          }
+          description={
+            entry.bids.length === 0 ? (
+              l("group.silent")
+            ) : (
+              <span className="flex flex-wrap gap-4 font-ui text-12 text-subtle">
+                <span>
+                  {l("group.best")}{" "}
+                  {entry.bestMinor !== null ? (
+                    <Money
+                      amountMinor={entry.bestMinor}
+                      currency={entry.bids[0]!.currency}
+                      locale={locale}
+                    />
+                  ) : (
+                    "—"
+                  )}
+                </span>
+                {entry.spreadMinor !== null ? (
+                  <span>
+                    {l("group.spread")}{" "}
+                    <Money
+                      amountMinor={entry.spreadMinor}
+                      currency={entry.bids[0]!.currency}
+                      locale={locale}
+                    />
+                  </span>
+                ) : null}
+              </span>
+            )
+          }
+        >
+          {entry.bids.length ? (
+            <ul className="flex flex-col divide-y divide-border">
+              {entry.bids.map((bid) => (
+                <li key={bid.id} className="flex flex-wrap items-center gap-3 py-2">
+                  <span className="font-ui text-12 text-text">{bid.providerId}</span>
+                  <span className="font-mono text-13 tabular-nums text-text">
+                    <Money amountMinor={bid.premiumMinor} currency={bid.currency} locale={locale} />
+                  </span>
+                  {bid.validUntil !== null ? (
+                    <DateTime value={bid.validUntil} locale={locale} precision="day" className="font-ui text-12 text-subtle" />
+                  ) : null}
+                  {flagsOf(bid).map((flag) => (
+                    <Badge key={flag.key} tone={flag.tone} size="sm">
+                      {l(flag.key)}
+                    </Badge>
+                  ))}
+
+                  {held.has(PERM.quoteWrite) && bid.expiry !== "expired" ? (
+                    <span className="ms-auto flex flex-wrap items-end gap-2">
+                      {bid.winFlag ? null : (
+                        <Form method="post">
+                          <input type="hidden" name="intent" value="pick" />
+                          <input type="hidden" name="quoteId" value={bid.id} />
+                          <Button type="submit" size="sm" variant="secondary" loading={busy}>
+                            {l("pick.submit")}
+                          </Button>
+                        </Form>
+                      )}
+                      <Form method="post" className="flex items-end gap-2">
+                        <input type="hidden" name="intent" value="decline" />
+                        <input type="hidden" name="quoteId" value={bid.id} />
+                        <Field label={l("decline.reason")} labelHidden className="w-48">
+                          <Input name="reason" size="sm" />
+                        </Field>
+                        <Button type="submit" size="sm" variant="ghost" loading={busy}>
+                          {l("decline.submit")}
+                        </Button>
+                      </Form>
+                    </span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </Card>
+      ))}
+
+      {held.has(PERM.issue) ? (
+        <Card title={l("issue.title")} description={l("issue.intro")}>
+          {picked.length === 0 ? (
+            <p className="font-ui text-13 text-subtle">{l("issue.none")}</p>
+          ) : (
+            picked.map((quote) => {
+              const kase = loaded.cases.find((row) => row.id === quote.caseId);
+              return (
+                <Form key={quote.id} method="post" className="flex flex-wrap items-end gap-4 py-2">
+                  <input type="hidden" name="intent" value="issue" />
+                  <input type="hidden" name="caseId" value={quote.caseId} />
+                  <input type="hidden" name="providerId" value={quote.providerId} />
+                  <input type="hidden" name="premiumMinor" value={quote.premiumMinor} />
+                  <input type="hidden" name="currency" value={quote.currency} />
+                  <span className="flex flex-col gap-1">
+                    <span className="font-ui text-13 font-medium text-muted">{l("issue.quote")}</span>
+                    <span className="font-mono text-13 text-text">
+                      {kase?.ref ?? quote.caseId} · {quote.providerId} ·{" "}
+                      <Money amountMinor={quote.premiumMinor} currency={quote.currency} locale={locale} />
+                    </span>
+                  </span>
+                  <Field label={l("issue.policyNo")} className="w-40">
+                    <Input name="policyNo" required />
+                  </Field>
+                  <Field label={l("issue.customer")} className="w-48">
+                    <Input name="customerId" defaultValue={kase?.customerId ?? ""} required />
+                  </Field>
+                  <Field label={l("issue.start")} className="w-40">
+                    <DatePicker name="startAt" required />
+                  </Field>
+                  <Field label={l("issue.end")} className="w-40">
+                    <DatePicker name="endAt" required />
+                  </Field>
+                  <Button type="submit" variant="primary" loading={busy}>
+                    {l("issue.submit")}
+                  </Button>
+                </Form>
+              );
+            })
+          )}
+        </Card>
+      ) : null}
+    </div>
+  );
+}
