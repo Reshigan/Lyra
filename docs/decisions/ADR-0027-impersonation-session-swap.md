@@ -40,9 +40,13 @@ Impersonation is a **session swap, not a new code path through `can()`**.
   carried in. `Actor.impersonating = true` is the only difference, and it
   changes nothing `can()` evaluates — it only changes what audit rows record.
 - `ctxFor()` (`apps/api/src/auth.ts`) checks `expiresAt` on every request for
-  a session-swapped actor; past it, the request 401s and the caller must
-  start a new (re-approved) session. No renewal endpoint — the friction is
-  intentional.
+  a session-swapped actor; past it, the session row is closed (`endedAt` set)
+  and the request falls back to the platform user's own home-tenant `Ctx`,
+  same as if no impersonation session existed. The platform user is never
+  locked out of their own session by a lapsed swap — they simply need to
+  start a new (re-approved) session to keep impersonating. No renewal
+  endpoint — the friction of re-approval is intentional, but it applies only
+  to regaining the swap, not to the platform user's own access.
 - `POST /v1/platform/impersonation/:id/end` closes the session early. Every
   action taken during the session is audited normally (existing audit path),
   tagged `impersonating: true` and carrying the session id, so the platform

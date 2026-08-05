@@ -5,6 +5,7 @@ import { id as newId, makeDb, schema, EntitlementsJson, PolicyJson } from "@lyra
 import {
   audit,
   badRequest,
+  can,
   emit,
   entitledGrants,
   forbidden,
@@ -219,9 +220,23 @@ async function fromSession(
   // and a session that has since cleared its factor.
   if (!row.session.mfaSatisfied) throw mfaRequired(row.user.mfaEnrolled ? "verify" : "enrol");
 
-  const latest = await latestImpersonation(database, row.user.id);
+  // Every tenant user hits this path on every request; only platform staff
+  // holding core:impersonate:use can ever have a session row, so skip the
+  // lookup entirely for everyone else instead of paying a query per request.
+  let latest = can({ kind: "user", id: row.user.id, tenantId, grants }, "core:impersonate:use")
+    ? await latestImpersonation(database, row.user.id)
+    : undefined;
   if (latest && latest.endedAt === null && latest.expiresAt <= now) {
-    throw unauthorized("impersonation session expired");
+    // ADR-0027: "a session that is never explicitly ended still stops
+    // mattering at 30 minutes" — a lapsed swap must not become a permanent
+    // lockout for every future request from this platform user. Close the
+    // row lazily and fall back to the actor's home tenant instead of
+    // throwing; the operator can simply start a new impersonation session.
+    await database
+      .update(schema.impersonationSessions)
+      .set({ endedAt: now })
+      .where(eq(schema.impersonationSessions.id, latest.id));
+    latest = undefined;
   }
   const impersonation = latest && latest.endedAt === null && latest.expiresAt > now ? latest : undefined;
   const effectiveTenantId = impersonation?.tenantId ?? tenantId;

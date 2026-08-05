@@ -363,7 +363,7 @@ describe("impersonation (ADR-0027)", () => {
     expect(meAfter.body.actor.impersonating).toBe(false);
   });
 
-  it("rejects an expired-but-unended session (time-box security regression)", async () => {
+  it("recovers from an expired-but-unended session instead of locking the operator out forever (regression: impersonation-lockout)", async () => {
     const support = (
       await database.select().from(schema.users).where(eq(schema.users.email, "platform.support@gonxt.ae")).limit(1)
     )[0];
@@ -371,8 +371,9 @@ describe("impersonation (ADR-0027)", () => {
       await database.select().from(schema.users).where(eq(schema.users.email, "amina.saleh@gonxt.ae")).limit(1)
     )[0];
     const now = Date.now();
+    const sessionId = id("ims", now);
     await database.insert(schema.impersonationSessions).values({
-      id: id("ims", now),
+      id: sessionId,
       tenantId,
       platformUserId: support!.id,
       targetUserId: target!.id,
@@ -387,8 +388,22 @@ describe("impersonation (ADR-0027)", () => {
       endedAt: null
     });
 
+    // A session that lapsed without an explicit /end must not 401 every
+    // subsequent request from that platform user forever (ADR-0027: "a
+    // session that is never explicitly ended still stops mattering at 30
+    // minutes") — it falls back to their home tenant instead.
     const res = await call("GET", "/v1/me", undefined, supportToken);
-    expect(res.status).toBe(401);
-    expect(res.body.detail).toContain("impersonation session expired");
+    expect(res.status).toBe(200);
+    expect(res.body.actor.impersonating).toBe(false);
+
+    // The lapsed row is lazily closed so it stops shadowing future requests.
+    const row = (
+      await database
+        .select()
+        .from(schema.impersonationSessions)
+        .where(eq(schema.impersonationSessions.id, sessionId))
+        .limit(1)
+    )[0];
+    expect(row?.endedAt).not.toBeNull();
   });
 });
