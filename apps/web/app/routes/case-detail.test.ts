@@ -127,6 +127,34 @@ describe("action: verify", () => {
   });
 });
 
+describe("action: copilot", () => {
+  it("asks the case copilot and returns its answer", async () => {
+    const calls = stubFetch(
+      new Response(JSON.stringify({ answer: "It is worth 5000 AED.", confidence: 0.95, mismatches: [], auditId: "aud_1" }), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      })
+    );
+
+    const result = await action(args(form({ intent: "copilot", question: "What is this case worth?", locale: "en" })));
+
+    expect(calls[0]?.url).toBe("https://api.test/v1/axis/cases/cas_1/copilot");
+    expect(calls[0]?.method).toBe("POST");
+    expect(JSON.parse(calls[0]!.body!)).toEqual({ question: "What is this case worth?", locale: "en" });
+    expect(result.done).toBe("answered");
+    expect(result.answer).toBe("It is worth 5000 AED.");
+  });
+
+  it("refuses an empty question without calling anything", async () => {
+    const calls = stubFetch(ok());
+
+    const result = await action(args(form({ intent: "copilot", question: "  ", locale: "en" })));
+
+    expect(result.error).toBe("questionRequired");
+    expect(calls).toHaveLength(0);
+  });
+});
+
 describe("action: anything else", () => {
   it("rejects an intent it does not implement", async () => {
     const calls = stubFetch(ok());

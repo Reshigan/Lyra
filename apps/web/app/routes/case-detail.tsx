@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Form,
   Link,
@@ -7,7 +8,7 @@ import {
   type ActionFunctionArgs,
   type LoaderFunctionArgs
 } from "react-router";
-import { Badge, Button, Card, DateTime, EmptyState, Money, Select, Stat, Table, type Column } from "@lyra/ui";
+import { AgentBadge, Badge, Button, Card, ConfidenceMeter, DateTime, Drawer, EmptyState, GhostText, Money, Select, Stat, Table, type Column } from "@lyra/ui";
 import { ApiError, api, fetchMe, type Problem } from "../api.server";
 import { cloudflare } from "../context";
 import { translator } from "../i18n";
@@ -89,7 +90,8 @@ export const PERM = {
   events: "axis:metrics:read",
   tasks: "axis:tasks:read",
   export: "compliance:evidence:export",
-  download: "compliance:evidence:read"
+  download: "compliance:evidence:read",
+  copilot: "axis:cases:read"
 } as const;
 
 /** The case state machine as apps/db declares it (axis_cases.status). */
@@ -130,6 +132,10 @@ export const LABELS: Record<string, Record<string, string>> = {
     exportSubmit: "Build the bundle",
     exported: "The bundle is ready.",
     download: "Download",
+    copilotTitle: "Ask the case copilot",
+    copilotPlaceholder: "Ask a question about this case…",
+    copilotSubmit: "Ask",
+    copilotEmpty: "Ask a question and the answer will appear here, grounded in this case's own facts.",
     moveTitle: "Move it on",
     moveIntro: "Set where the work item stands. The state machine is the record; nothing else moves it.",
     moveTo: "Move to",
@@ -196,6 +202,10 @@ export const LABELS: Record<string, Record<string, string>> = {
     exportSubmit: "إنشاء الحزمة",
     exported: "الحزمة جاهزة.",
     download: "تنزيل",
+    copilotTitle: "اسأل مساعد الحالة",
+    copilotPlaceholder: "اطرح سؤالاً حول هذه الحالة…",
+    copilotSubmit: "اسأل",
+    copilotEmpty: "اطرح سؤالاً وستظهر الإجابة هنا، مستندة إلى وقائع هذه الحالة.",
     moveTitle: "تحريك البند",
     moveIntro: "حدّد موقف بند العمل. آلة الحالات هي السجل، ولا شيء آخر يحرّكه.",
     moveTo: "الانتقال إلى",
@@ -255,7 +265,8 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
     read: held.has(PERM.read),
     update: held.has(PERM.update),
     verify: held.has(PERM.verify),
-    export: held.has(PERM.export)
+    export: held.has(PERM.export),
+    copilot: held.has(PERM.copilot)
   };
 
   const empty = {
@@ -305,7 +316,9 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
     done: null as string | null,
     problem: null as Problem | null,
     error: null as string | null,
-    bundleId: null as string | null
+    bundleId: null as string | null,
+    answer: null as string | null,
+    confidence: null as number | null
   };
   const headers = key ? { headers: { "idempotency-key": key } } : {};
 
@@ -332,6 +345,16 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
       });
       return { ...nothing, done: "exported", bundleId: bundle.id };
     }
+    if (intent === "copilot") {
+      const question = String(form.get("question") ?? "").trim();
+      if (!question) return { ...nothing, error: "questionRequired" };
+      const locale = String(form.get("locale") ?? "en");
+      const result = await api<{ answer: string; confidence: number; mismatches: number[]; auditId: string }>(
+        `/v1/axis/cases/${id}/copilot`,
+        { env, request, method: "POST", body: { question, locale } }
+      );
+      return { ...nothing, done: "answered", answer: result.answer, confidence: result.confidence };
+    }
     return { ...nothing, problem: { title: "unknown intent", status: 400 } };
   } catch (error) {
     if (error instanceof ApiError) return { ...nothing, problem: error.problem };
@@ -350,6 +373,7 @@ export default function CaseDetail() {
   const t = translator(locale, shell?.overrides);
   const l = labelsIn(locale, shell?.domainPack);
   const busy = navigation.state !== "idle";
+  const [copilotOpen, setCopilotOpen] = useState(false);
 
   if (!loaded.workItem) {
     return (
@@ -436,6 +460,7 @@ export default function CaseDetail() {
   ];
 
   return (
+    <>
     <div className="flex flex-col gap-6">
       <Header title={workItem.ref} intro={l("intro")} />
 
@@ -608,6 +633,37 @@ export default function CaseDetail() {
           </Form>
         </Card>
       ) : null}
+
+      {loaded.may.copilot ? (
+        // ponytail: AgentBadge has no `label` prop (only agent/why/size/className),
+        // so the trigger's own text carries l("copilotTitle") and the badge just
+        // supplies the single ✦ AI marker (docs/15 §4).
+        <Button variant="secondary" onClick={() => setCopilotOpen(true)}>
+          {l("copilotTitle")} <AgentBadge size="sm" />
+        </Button>
+      ) : null}
     </div>
+      {loaded.may.copilot ? (
+        <Drawer open={copilotOpen} onOpenChange={setCopilotOpen} title={l("copilotTitle")}>
+          <Form method="post" replace>
+            <input type="hidden" name="intent" value="copilot" />
+            <input type="hidden" name="idempotencyKey" value={loaded.idempotencyKey} />
+            <input type="hidden" name="locale" value={locale} />
+            <textarea name="question" placeholder={l("copilotPlaceholder")} rows={3} required />
+            <Button type="submit" disabled={busy}>
+              {l("copilotSubmit")}
+            </Button>
+          </Form>
+          {result?.done === "answered" && result.answer ? (
+            <>
+              <GhostText text={result.answer} onAccept={() => {}} onDiscard={() => {}} />
+              <ConfidenceMeter value={result.confidence ?? 0} />
+            </>
+          ) : (
+            <p>{l("copilotEmpty")}</p>
+          )}
+        </Drawer>
+      ) : null}
+    </>
   );
 }
