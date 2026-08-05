@@ -7,6 +7,19 @@ import type { WorkspaceSpec } from "./spec";
 
 export const signal: WorkspaceSpec = {
   path: "/signal",
+  // The bespoke screens: a read across the ledgers (cockpit, growth, audience
+  // value, answer engines) or a write the tabs cannot express (the studio makes
+  // a campaign and its content, budget sets the bounds the autopilot works in).
+  // Permissions are the ones each screen's own loader checks first, so a link
+  // that renders is a screen that opens.
+  links: [
+    { href: "/signal/cockpit", labelKey: "link.cockpit", permission: "signal:spend:read" },
+    { href: "/signal/studio", labelKey: "link.studio", permission: "signal:campaigns:read" },
+    { href: "/signal/audience-value", labelKey: "link.audience-value", permission: "signal:audiences:read" },
+    { href: "/signal/answer-engines", labelKey: "link.answer-engines", permission: "signal:aeo:read" },
+    { href: "/signal/budget", labelKey: "link.budget", permission: "signal:budget_moves:read" },
+    { href: "/signal/analytics", labelKey: "link.analytics", permission: "signal:spend:read" }
+  ],
   labels: {
     en: {
       audiences: "Audiences",
@@ -108,7 +121,14 @@ export const signal: WorkspaceSpec = {
       lead: "Lead",
       bind: "Bind",
       api: "API",
-      import: "Import"
+      import: "Import",
+
+      "link.cockpit": "Growth cockpit",
+      "link.studio": "Campaign studio",
+      "link.audience-value": "Audiences and value",
+      "link.answer-engines": "Answer engines",
+      "link.budget": "Budget and bounds",
+      "link.analytics": "Growth analytics"
     },
     ar: {
       audiences: "الجماهير",
@@ -210,7 +230,14 @@ export const signal: WorkspaceSpec = {
       lead: "عميل محتمل",
       bind: "إصدار",
       api: "واجهة برمجية",
-      import: "استيراد"
+      import: "استيراد",
+
+      "link.cockpit": "قمرة النمو",
+      "link.studio": "استوديو الحملات",
+      "link.audience-value": "الجماهير والقيمة",
+      "link.answer-engines": "محرّكات الإجابات",
+      "link.budget": "الميزانية والحدود",
+      "link.analytics": "تحليلات النمو"
     }
   },
   tabs: [
