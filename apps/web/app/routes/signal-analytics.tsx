@@ -137,6 +137,7 @@ export async function action({ request, context }: ActionFunctionArgs): Promise<
     return { problem: { title: "format_required", status: 400, code: "format_required" }, exported: null };
 
   const days = windowDays(String(form.get("days") ?? ""));
+  const now = Date.now();
   try {
     const exported = await api<ExportRow>("/v1/analytics/exports", {
       env,
@@ -151,8 +152,10 @@ export async function action({ request, context }: ActionFunctionArgs): Promise<
           metrics: ["spend", "impressions", "clicks", "conversions"],
           dimensions: ["channel", "campaignId"],
           grain: "day",
-          from: Date.now() - days * 86_400_000,
-          to: Date.now()
+          // One clock reading for both ends: two calls straddling a millisecond
+          // boundary export a window a millisecond wider than the one asked for.
+          from: now - days * 86_400_000,
+          to: now
         },
         totals: true
       }
