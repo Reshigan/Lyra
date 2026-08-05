@@ -14,7 +14,8 @@ import { useShellData } from "./workspace";
 // events for process mining").
 
 const PERM = { read: "axis:metrics:read" } as const;
-const WINDOW = 2000;
+// 200 is the backend's MAX_PAGE (apps/api/src/http.ts) — a request above it 400s.
+const WINDOW = 200;
 
 export interface EventRow {
   id: string;

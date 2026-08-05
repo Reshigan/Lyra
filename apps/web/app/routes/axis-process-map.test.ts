@@ -1,10 +1,56 @@
-import { describe, expect, it } from "vitest";
-import { flowFrom, layoutFlow, type FlowEvent } from "./axis-process-map";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { LoaderFunctionArgs } from "react-router";
+import type { Env } from "../env";
+import { flowFrom, layoutFlow, loader, type FlowEvent } from "./axis-process-map";
 
 // The map is process mining across every case, not one case's timeline
 // (case-detail.tsx already tables that) — these tests pin the two arithmetic
 // steps that turn raw axis_process_events rows into a flow diagram: tallying
 // step-to-step transitions across cases, then laying the tally out.
+
+const env = { ENVIRONMENT: "test", API_ORIGIN: "https://api.test", SESSION_COOKIE: "s" } as Env;
+
+/** Replies keyed by the tail of the URL, because the loader hits /v1/me plus the events feed. */
+function stubFetchByUrl(replies: Array<[string, Response]>) {
+  const calls: Array<{ url: string; method: string }> = [];
+  vi.stubGlobal("fetch", (input: URL | string, init: RequestInit = {}) => {
+    const url = String(input);
+    calls.push({ url, method: init.method ?? "GET" });
+    const match = replies.find(([suffix]) => url.endsWith(suffix));
+    return Promise.resolve(match ? match[1].clone() : new Response(JSON.stringify({ data: [] }), { status: 200 }));
+  });
+  return calls;
+}
+
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+}
+
+function loaderArgs(): LoaderFunctionArgs {
+  return {
+    request: new Request("https://web.test/axis/process-map"),
+    context: { get: () => ({ env, ctx: null }) },
+    params: {}
+  } as unknown as LoaderFunctionArgs;
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe("loader", () => {
+  it("asks the process-events feed for no more than the backend's page limit", async () => {
+    const calls = stubFetchByUrl([
+      ["/v1/me", json({ actor: {}, permissions: ["axis:metrics:read"], roles: [], nav: [] })]
+    ]);
+
+    await loader(loaderArgs());
+
+    const events = calls.find((c) => c.url.includes("/v1/axis/process-events"));
+    expect(events?.url).toContain("limit=200");
+    expect(events?.url).not.toContain("limit=2000");
+  });
+});
 
 describe("flowFrom", () => {
   it("ranks steps by first appearance and tallies transitions across cases", () => {
