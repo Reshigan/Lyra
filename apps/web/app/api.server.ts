@@ -1,4 +1,6 @@
 import { data } from "react-router";
+import { ApiError } from "./api-error";
+import type { Problem } from "./api-error";
 import type { Env } from "./env";
 
 // The only way this app talks to apps/api. Server-side by design: every call
@@ -7,48 +9,10 @@ import type { Env } from "./env";
 // bundle. A browser-side call would import this file into the client — the
 // `.server` suffix makes that a build error instead of a leak.
 
-/** RFC 9457. apps/api renders every failure in this shape (docs/04 §1). */
-export interface Problem {
-  type?: string;
-  title: string;
-  status: number;
-  detail?: string;
-  instance?: string;
-  /** Field-level validation errors, keyed by dotted path. */
-  errors?: Record<string, string>;
-}
-
-export class ApiError extends Error {
-  constructor(
-    readonly problem: Problem,
-    /** `x-request-id` from the response. The one thing support needs. */
-    readonly requestId: string | null
-  ) {
-    super(problem.detail ?? problem.title);
-    this.name = "ApiError";
-  }
-
-  get status(): number {
-    return this.problem.status;
-  }
-
-  static async from(response: Response, path: string): Promise<ApiError> {
-    const requestId = response.headers.get("x-request-id");
-    let problem: Problem = { title: response.statusText || "error", status: response.status };
-    try {
-      const body: unknown = await response.json();
-      // Trust the shape only far enough to read it; a proxy error page is HTML
-      // with a JSON content type often enough to matter.
-      if (body && typeof body === "object" && "status" in body) {
-        problem = { ...(body as Problem), status: Number((body as Problem).status) || response.status };
-      }
-    } catch {
-      /* keep the status-derived problem */
-    }
-    problem.instance ??= path;
-    return new ApiError(problem, requestId);
-  }
-}
+// Moved to ./api-error so client-bundled kits can `instanceof` it; re-exported
+// here so the 70-odd loader/action importers keep one import site.
+export { ApiError };
+export type { Problem };
 
 /**
  * For a loader that has nothing to render when the API says no: `await

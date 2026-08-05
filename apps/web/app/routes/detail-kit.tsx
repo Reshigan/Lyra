@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { ApiError } from "../api.server";
+import { ApiError } from "../api-error";
 import { optionLabel } from "../modules/spec";
 import { vocabulary } from "../modules/vocabulary";
 
