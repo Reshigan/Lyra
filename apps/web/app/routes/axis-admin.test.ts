@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ActionFunctionArgs } from "react-router";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import type { Env } from "../env";
-import { LABELS, action, connectorHealth, connectorTone, labelsIn } from "./axis-admin";
+import { LABELS, action, connectorHealth, connectorTone, labelsIn, loader } from "./axis-admin";
 
 const env = { ENVIRONMENT: "test", API_ORIGIN: "https://api.test", SESSION_COOKIE: "s" } as Env;
 
@@ -18,12 +18,36 @@ function stubFetch(reply: Response) {
   return calls;
 }
 
+/** Replies keyed by the tail of the URL, because the loader hits /v1/me plus three resources. */
+function stubFetchByUrl(replies: Array<[string, Response]>) {
+  const calls: Array<{ url: string; method: string }> = [];
+  vi.stubGlobal("fetch", (input: URL | string, init: RequestInit = {}) => {
+    const url = String(input);
+    calls.push({ url, method: init.method ?? "GET" });
+    const match = replies.find(([suffix]) => url.endsWith(suffix));
+    return Promise.resolve(match ? match[1].clone() : new Response(JSON.stringify({ data: [] }), { status: 200 }));
+  });
+  return calls;
+}
+
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+}
+
 function args(form: FormData): ActionFunctionArgs {
   return {
     request: new Request("https://web.test/axis/admin", { method: "POST", body: form }),
     context: { get: () => ({ env, ctx: null }) },
     params: {}
   } as unknown as ActionFunctionArgs;
+}
+
+function loaderArgs(): LoaderFunctionArgs {
+  return {
+    request: new Request("https://web.test/axis/admin"),
+    context: { get: () => ({ env, ctx: null }) },
+    params: {}
+  } as unknown as LoaderFunctionArgs;
 }
 
 function form(fields: Record<string, string>): FormData {
@@ -77,6 +101,20 @@ describe("connectorTone", () => {
     expect(connectorTone({ dead: 1, failed: 0 })).toBe("danger");
     expect(connectorTone({ dead: 0, failed: 1 })).toBe("warning");
     expect(connectorTone({ dead: 0, failed: 0 })).toBe("success");
+  });
+});
+
+describe("loader", () => {
+  it("asks the deliveries feed for no more than the backend's page limit", async () => {
+    const calls = stubFetchByUrl([
+      ["/v1/me", json({ actor: {}, permissions: ["axis:sops:read", "core:webhooks:read"], roles: [], nav: [] })]
+    ]);
+
+    await loader(loaderArgs());
+
+    const deliveries = calls.find((c) => c.url.includes("/v1/core/webhook-deliveries"));
+    expect(deliveries?.url).toContain("limit=200");
+    expect(deliveries?.url).not.toContain("limit=500");
   });
 });
 

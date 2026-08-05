@@ -185,7 +185,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       : { data: [] },
     may.hooksRead
       ? safe(
-          () => api<{ data: DeliveryRow[] }>("/v1/core/webhook-deliveries?limit=500&sort=createdAt&order=desc", { env, request }),
+          // 200 is the backend's MAX_PAGE (apps/api/src/http.ts) — this is a health
+          // snapshot, not an export, so the cap is plenty for per-webhook counts.
+          () => api<{ data: DeliveryRow[] }>("/v1/core/webhook-deliveries?limit=200&sort=createdAt&order=desc", { env, request }),
           { data: [] }
         )
       : { data: [] }
