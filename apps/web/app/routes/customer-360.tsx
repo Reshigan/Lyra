@@ -13,11 +13,14 @@ import {
   Badge,
   Button,
   Card,
+  ConfidenceMeter,
   DateTime,
   EmptyState,
   Money,
+  Sparkline,
   Stat,
   Table,
+  Timeline,
   type Column
 } from "@lyra/ui";
 import { ApiError, api, fetchMe, type Problem } from "../api.server";
@@ -474,6 +477,18 @@ export default function Customer360() {
   const t = translator(locale, shell?.overrides);
   const l = labelsIn(locale, shell?.domainPack);
   const busy = navigation.state !== "idle";
+  const chipList = (values: string[], tone?: "danger") =>
+    values.length === 0 ? (
+      <span>—</span>
+    ) : (
+      <span className="flex flex-wrap gap-1">
+        {values.map((value) => (
+          <Badge key={value} size="sm" {...(tone ? { tone } : {})}>
+            {value}
+          </Badge>
+        ))}
+      </span>
+    );
 
   if (!loaded.may.read || !loaded.customer) {
     return (
@@ -550,6 +565,42 @@ export default function Customer360() {
     }
   ];
 
+  const caseColumns: Array<Column<CaseSummaryRow>> = [
+    {
+      key: "ref",
+      header: l("colRef"),
+      render: (row) => (
+        <Link to={`/axis/cases/${row.id}/detail`} className="font-mono text-12 text-accent hover:underline">
+          {row.ref}
+        </Link>
+      )
+    },
+    { key: "status", header: l("colStatus"), render: (row) => <Badge size="sm">{tag(l, "status", row.status)}</Badge> },
+    { key: "kind", header: l("colKind"), render: (row) => <span className="font-ui text-12">{tag(l, "kind", row.kind)}</span> },
+    {
+      key: "productLine",
+      header: l("colProductLine"),
+      render: (row) => <span className="font-ui text-12">{row.productLine ?? "—"}</span>
+    },
+    { key: "priority", header: l("colPriority"), render: (row) => <Badge size="sm">{tag(l, "priority", row.priority)}</Badge> },
+    {
+      key: "slaDueAt",
+      header: l("colSla"),
+      render: (row) => (row.slaDueAt ? <DateTime value={row.slaDueAt} locale={locale} precision="day" /> : <span>—</span>)
+    },
+    {
+      key: "valueMinor",
+      header: l("colCaseValue"),
+      numeric: true,
+      render: (row) =>
+        row.valueMinor != null ? (
+          <Money amountMinor={row.valueMinor} currency={row.currency ?? "AED"} locale={locale} />
+        ) : (
+          <span>—</span>
+        )
+    }
+  ];
+
   const conversationColumns: Array<Column<ConversationRow>> = [
     {
       key: "channel",
@@ -601,7 +652,7 @@ export default function Customer360() {
     {
       key: "purposesJson",
       header: l("colPurposes"),
-      render: (row) => <span className="font-mono text-11">{JSON.stringify(row.purposesJson ?? [])}</span>
+      render: (row) => chipList(chips(row.purposesJson))
     },
     { key: "version", header: l("colVersion"), numeric: true, render: (row) => <span className="tabular-nums">{row.version}</span> },
     { key: "ts", header: l("colGranted"), render: (row) => <DateTime value={row.ts} locale={locale} precision="day" /> },
@@ -622,6 +673,11 @@ export default function Customer360() {
     },
     { key: "createdAt", header: l("colFiled"), render: (row) => <DateTime value={row.createdAt} locale={locale} precision="day" /> }
   ];
+
+  const csatPoints = [...loaded.conversations]
+    .filter((row) => typeof row.csat === "number")
+    .sort((a, b) => (a.lastMessageAt ?? 0) - (b.lastMessageAt ?? 0))
+    .map((row) => row.csat as number);
 
   return (
     <div className="flex flex-col gap-6">
@@ -644,12 +700,8 @@ export default function Customer360() {
           <Entry term={l("type")}>{tag(l, "type", customer.type)}</Entry>
           <Entry term={l("kyc")}>{tag(l, "kycStatus", customer.kycStatus)}</Entry>
           <Entry term={l("locale")}>{customer.locale ?? "—"}</Entry>
-          <Entry term={l("tags")}>
-            <span className="font-mono text-11">{JSON.stringify(customer.tagsJson ?? [])}</span>
-          </Entry>
-          <Entry term={l("riskFlags")}>
-            <span className="font-mono text-11">{JSON.stringify(customer.riskFlagsJson ?? [])}</span>
-          </Entry>
+          <Entry term={l("tags")}>{chipList(chips(customer.tagsJson))}</Entry>
+          <Entry term={l("riskFlags")}>{chipList(chips(customer.riskFlagsJson), "danger")}</Entry>
           <Entry term={l("since")}>
             <DateTime value={customer.createdAt} locale={locale} precision="day" />
           </Entry>
@@ -657,16 +709,69 @@ export default function Customer360() {
       </Card>
 
       <Card title={l("positionTitle")}>
-        <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
-          <Stat label={l("premiumWritten")} value={<Money amountMinor={premium} currency={currency} locale={locale} />} />
-          <Stat label={l("commissionEarned")} value={<Money amountMinor={commission} currency={currency} locale={locale} />} />
-          <Stat label={l("claimsSettled")} value={<Money amountMinor={settled} currency={currency} locale={locale} />} />
-          <Stat
-            label={l("lifetimeValue")}
-            value={<Money amountMinor={customer.ltvCached ?? 0} currency={currency} locale={locale} />}
-          />
-        </div>
-        <p className="mt-3 font-ui text-11 text-subtle">{l("positionHint")}</p>
+        {loaded.position && loaded.position.positions.length > 0 ? (
+          <>
+            <div className="flex flex-col gap-4">
+              {loaded.position.positions.map((line) => (
+                <div key={line.currency} className="grid grid-cols-2 gap-6 md:grid-cols-3">
+                  <Stat
+                    label={l("premiumWritten")}
+                    value={
+                      line.premiumMinor === null ? (
+                        <span>—</span>
+                      ) : (
+                        <Money amountMinor={line.premiumMinor} currency={line.currency} locale={locale} />
+                      )
+                    }
+                  />
+                  <Stat
+                    label={l("commissionEarned")}
+                    value={
+                      line.commissionMinor === null ? (
+                        <span>—</span>
+                      ) : (
+                        <Money amountMinor={line.commissionMinor} currency={line.currency} locale={locale} />
+                      )
+                    }
+                  />
+                  <Stat
+                    label={l("claimsSettled")}
+                    value={
+                      line.settledMinor === null ? (
+                        <span>—</span>
+                      ) : (
+                        <Money amountMinor={line.settledMinor} currency={line.currency} locale={locale} />
+                      )
+                    }
+                  />
+                </div>
+              ))}
+              <Stat
+                label={l("lifetimeValue")}
+                value={
+                  <Money amountMinor={loaded.position.ltvMinor} currency={loaded.position.currency} locale={locale} />
+                }
+              />
+            </div>
+            <p className="mt-3 font-ui text-11 text-subtle">{l("positionHintLedger")}</p>
+          </>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
+              <Stat label={l("premiumWritten")} value={<Money amountMinor={premium} currency={currency} locale={locale} />} />
+              <Stat
+                label={l("commissionEarned")}
+                value={<Money amountMinor={commission} currency={currency} locale={locale} />}
+              />
+              <Stat label={l("claimsSettled")} value={<Money amountMinor={settled} currency={currency} locale={locale} />} />
+              <Stat
+                label={l("lifetimeValue")}
+                value={<Money amountMinor={customer.ltvCached ?? 0} currency={currency} locale={locale} />}
+              />
+            </div>
+            <p className="mt-3 font-ui text-11 text-subtle">{l("positionHint")}</p>
+          </>
+        )}
       </Card>
 
       {loaded.offers.length > 0 ? (
@@ -695,7 +800,7 @@ export default function Customer360() {
         </Card>
       ) : null}
 
-      <Panel title={l("policies")}>
+      <Panel title={l("policies")} href="/axis/policies" open={l("open")}>
         <Table
           caption={l("policiesCaption")}
           columns={policyColumns}
@@ -705,7 +810,7 @@ export default function Customer360() {
         />
       </Panel>
 
-      <Panel title={l("claims")}>
+      <Panel title={l("claims")} href="/axis/claims" open={l("open")}>
         <Table
           caption={l("claimsCaption")}
           columns={claimColumns}
@@ -715,7 +820,36 @@ export default function Customer360() {
         />
       </Panel>
 
-      <Panel title={l("conversationsTitle")}>
+      <Panel title={l("casesTitle")} href="/axis/cases" open={l("open")}>
+        <Table
+          caption={l("casesCaption")}
+          columns={caseColumns}
+          rows={loaded.cases}
+          rowKey={(row) => row.id}
+          empty={<EmptyState title={l("none")} />}
+        />
+      </Panel>
+
+      {loaded.activity.length > 0 ? (
+        <Card title={l("activityTitle")}>
+          <Timeline
+            label={l("activityCaption")}
+            events={loaded.activity.map((row) => ({
+              id: row.id,
+              title: row.action,
+              at: row.ts,
+              actor: row.actorRef
+            }))}
+          />
+        </Card>
+      ) : null}
+
+      <Panel title={l("conversationsTitle")} href="/orbit/conversations" open={l("open")}>
+        {csatPoints.length >= 2 ? (
+          <div className="p-4">
+            <Sparkline values={csatPoints} label={l("colCsat")} />
+          </div>
+        ) : null}
         <Table
           caption={l("conversationsCaption")}
           columns={conversationColumns}
@@ -725,7 +859,7 @@ export default function Customer360() {
         />
       </Panel>
 
-      <Panel title={l("quotesTitle")}>
+      <Panel title={l("quotesTitle")} href="/distribution/quote-requests" open={l("open")}>
         <Table
           caption={l("quotesCaption")}
           columns={quoteColumns}
@@ -758,9 +892,31 @@ export default function Customer360() {
   );
 }
 
-function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+function Panel({
+  title,
+  href,
+  open,
+  children
+}: {
+  title: string;
+  /** List route for "see all"; rendered in the Card's actions slot. */
+  href?: string;
+  /** The shared `open` label — Panel sits outside the component, so it is passed in. */
+  open?: string;
+  children: React.ReactNode;
+}) {
   return (
-    <Card title={title} padded={false}>
+    <Card
+      title={title}
+      padded={false}
+      actions={
+        href && open ? (
+          <Link to={href} className="font-ui text-12 text-accent underline-offset-2 hover:underline">
+            {open}
+          </Link>
+        ) : undefined
+      }
+    >
       {children}
     </Card>
   );
@@ -791,7 +947,7 @@ function OfferCard({
         <span className="font-mono text-11 text-subtle">{offer.offeringId}</span>
       </div>
       <div className="flex items-center gap-4">
-        <Stat label={l("colScore")} value={<span className="tabular-nums">{offer.score}</span>} />
+        <ConfidenceMeter value={offer.score / 100} label={l("colScore")} />
         <Stat
           label={l("colValue")}
           value={
