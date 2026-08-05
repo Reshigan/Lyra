@@ -99,7 +99,8 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: pnpm --filter @lyra/web deploy
+        # `run` keyword required: bare `pnpm deploy` is pnpm's builtin, not our script.
+        run: pnpm --filter @lyra/web run deploy
 
 # Secrets are handed to wrangler through `env:` on the step that needs them and
 # are never expanded into a shell command. Do not add `set -x`, `echo`, or
