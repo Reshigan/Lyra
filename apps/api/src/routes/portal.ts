@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { id as newId, schema, BrandJson, EntitlementsJson, PolicyJson } from "@lyra/db";
-import { audit, emit, notFound, sha256Hex } from "@lyra/core";
+import { audit, emit, notFound, recordConsent, sha256Hex } from "@lyra/core";
 import { body } from "../http.js";
 import { ctxFor, db as rawDb, throttle } from "../auth.js";
 import type { App } from "../env.js";
@@ -181,6 +181,15 @@ portalRoutes.post("/:tenantSlug/leads", async (c) => {
     email,
     ...(input.phone ? { phone: input.phone } : {})
   });
+  // input.consent is required true by LeadBody's z.literal(true) - this is what
+  // makes that checkbox mean something rather than being validated and discarded.
+  const consent = await recordConsent(ctx, {
+    customerId,
+    purposes: { dataSharing: true },
+    channels: { email: true, ...(input.phone ? { sms: true } : {}) },
+    source: "portal",
+    evidenceRef: `quote-request-lead:${tenant.slug}`
+  });
 
   const quoteRequestRow = {
     id: newId("qrq", now),
@@ -190,7 +199,7 @@ portalRoutes.post("/:tenantSlug/leads", async (c) => {
     channelId,
     productId: input.productId,
     inputsJson: JSON.stringify({ name: input.name, email, phone: input.phone ?? null, message: input.message ?? null }),
-    consentId: null as string | null,
+    consentId: consent.id as string | null,
     fanoutCount: 0,
     respondedCount: 0,
     bestOfferingId: null as string | null,

@@ -134,6 +134,14 @@ describe("POST /v1/portal/:tenantSlug/leads", () => {
     const [customer] = await database.select().from(schema.customers).where(eq(schema.customers.id, qr!.customerId!));
     expect(JSON.parse(customer!.emailsJson!)).toContain("jamie.visitor@example.com");
 
+    // consent: true was validated but, until this fix, never landed anywhere
+    // (regression: IMPORTANT 7).
+    expect(qr!.consentId).toBeTruthy();
+    const [consent] = await database.select().from(schema.consents).where(eq(schema.consents.id, qr!.consentId!));
+    expect(consent!.customerId).toBe(qr!.customerId);
+    expect(consent!.source).toBe("portal");
+    expect(JSON.parse(consent!.purposesJson).dataSharing).toBe(true);
+
     const auditRows = await database.select().from(schema.auditLog);
     expect(auditRows.some((a) => a.action === "dist.quote_requests.create" && a.subjectRef === `quote-requests:${qr!.id}`)).toBe(
       true
