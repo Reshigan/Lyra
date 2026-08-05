@@ -215,7 +215,7 @@ coreRoutes.post("/webhooks/:id/test", async (c) => {
     module: "core",
     type: "core.webhooks.test",
     actor: actorRef(ctx),
-    data: { message: "This is a test event from the LYRA developer console." },
+    data: { message: "This is a test event from the developer console." },
     v: 1
   };
   const result = await deliver(ctx, hook, envelope, 1);
