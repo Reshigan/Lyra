@@ -161,6 +161,31 @@ export function fetchMe(env: Env, request: Request): Promise<Me> {
   return api<Me>("/v1/me", { env, request });
 }
 
+/**
+ * Security headers for a byte-proxy loader that streams an uploaded/generated
+ * file straight through. `withHeaders` (apps/api/src/mw.ts) sets these for
+ * every Hono response, but a route loader builds its own raw `Response` and
+ * has to set them itself — dropping them combined with an inline
+ * content-disposition on an attacker-controlled content-type is a
+ * same-origin stored-XSS vector. Content-disposition defaults to attachment
+ * and is only relaxed for the small set of types a browser renders safely,
+ * regardless of what upstream (or an attacker-labelled upload) claims.
+ */
+const RENDER_SAFE_CONTENT_TYPE = /^image\//;
+
+export function fileProxyHeaders(upstream: Response, fallbackContentType: string): Headers {
+  const contentType = upstream.headers.get("content-type") ?? fallbackContentType;
+  const renderSafe = RENDER_SAFE_CONTENT_TYPE.test(contentType) || contentType === "application/pdf";
+  return new Headers({
+    "content-type": contentType,
+    "content-disposition": renderSafe ? (upstream.headers.get("content-disposition") ?? "inline") : "attachment",
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    "content-security-policy": "default-src 'none'; sandbox",
+    "x-frame-options": "DENY"
+  });
+}
+
 /** Copy the API's Set-Cookie headers onto our own response, verbatim. */
 export function relayCookies(from: Response, to: Headers): Headers {
   const cookies: string[] =

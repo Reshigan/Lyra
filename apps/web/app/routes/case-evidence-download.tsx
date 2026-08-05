@@ -1,5 +1,5 @@
 import type { LoaderFunctionArgs } from "react-router";
-import { apiFetch } from "../api.server";
+import { apiFetch, fileProxyHeaders } from "../api.server";
 import { cloudflare } from "../context";
 
 // A pure byte proxy: the browser can't read the session cookie (httpOnly), so
@@ -13,9 +13,6 @@ export async function loader({ request, params, context }: LoaderFunctionArgs): 
   const upstream = await apiFetch(`/v1/compliance/evidence-bundles/${encodeURIComponent(bundleId)}/download`, { env, request });
   return new Response(upstream.body, {
     status: upstream.status,
-    headers: {
-      "content-type": upstream.headers.get("content-type") ?? "application/zip",
-      "content-disposition": upstream.headers.get("content-disposition") ?? "attachment"
-    }
+    headers: fileProxyHeaders(upstream, "application/zip")
   });
 }

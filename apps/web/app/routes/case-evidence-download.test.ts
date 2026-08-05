@@ -49,4 +49,40 @@ describe("case evidence download loader", () => {
 
     expect(requestedUrl).toBe("https://api.test/v1/compliance/evidence-bundles/evb%2F1%20a/download");
   });
+
+  // Regression: a raw `Response` here drops the security headers withHeaders
+  // (apps/api/src/mw.ts) normally sets, and this loader was also missing
+  // cache-control: no-store outright (present on the sibling axis-document-file loader).
+  it("sets the security headers apps/api's withHeaders would have set", async () => {
+    vi.stubGlobal(
+      "fetch",
+      async () =>
+        new Response(null, {
+          status: 200,
+          headers: { "content-type": "application/zip", "content-disposition": "attachment; filename=bundle.zip" }
+        })
+    );
+
+    const res = await loader(loaderArgs());
+
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(res.headers.get("content-security-policy")).toBe("default-src 'none'; sandbox");
+    expect(res.headers.get("x-frame-options")).toBe("DENY");
+    expect(res.headers.get("cache-control")).toBe("no-store");
+  });
+
+  it("forces attachment for a content-type outside the render-safe allowlist, even if upstream said inline", async () => {
+    vi.stubGlobal(
+      "fetch",
+      async () =>
+        new Response(null, {
+          status: 200,
+          headers: { "content-type": "text/html", "content-disposition": "inline" }
+        })
+    );
+
+    const res = await loader(loaderArgs());
+
+    expect(res.headers.get("content-disposition")).toBe("attachment");
+  });
 });
