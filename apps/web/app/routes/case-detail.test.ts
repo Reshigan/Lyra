@@ -14,12 +14,13 @@ afterEach(() => {
 });
 
 function stubFetch(reply: Response) {
-  const calls: Array<{ url: string; method: string; body: string | null }> = [];
+  const calls: Array<{ url: string; method: string; body: string | null; idempotencyKey: string | null }> = [];
   vi.stubGlobal("fetch", (input: URL | string, init: RequestInit = {}) => {
     calls.push({
       url: String(input),
       method: init.method ?? "GET",
-      body: typeof init.body === "string" ? init.body : null
+      body: typeof init.body === "string" ? init.body : null,
+      idempotencyKey: init.headers instanceof Headers ? init.headers.get("idempotency-key") : null
     });
     return Promise.resolve(reply.clone());
   });
@@ -141,6 +142,7 @@ describe("action: copilot", () => {
     expect(calls[0]?.url).toBe("https://api.test/v1/axis/cases/cas_1/copilot");
     expect(calls[0]?.method).toBe("POST");
     expect(JSON.parse(calls[0]!.body!)).toEqual({ question: "What is this case worth?", locale: "en" });
+    expect(calls[0]?.idempotencyKey).toBe("key-1");
     expect(result.done).toBe("answered");
     expect(result.answer).toBe("It is worth 5000 AED.");
     expect(result.mismatches).toEqual([]);

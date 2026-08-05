@@ -356,7 +356,7 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
       const locale = String(form.get("locale") ?? "en");
       const result = await api<{ answer: string; confidence: number; mismatches: number[]; auditId: string }>(
         `/v1/axis/cases/${id}/copilot`,
-        { env, request, method: "POST", body: { question, locale } }
+        { env, request, method: "POST", ...headers, body: { question, locale } }
       );
       return { ...nothing, done: "answered", answer: result.answer, confidence: result.confidence, mismatches: result.mismatches };
     }
@@ -651,7 +651,7 @@ export default function CaseDetail() {
             <input type="hidden" name="intent" value="copilot" />
             <input type="hidden" name="idempotencyKey" value={loaded.idempotencyKey} />
             <input type="hidden" name="locale" value={locale} />
-            <textarea name="question" placeholder={l("copilotPlaceholder")} rows={3} required />
+            <textarea name="question" placeholder={l("copilotPlaceholder")} aria-label={l("copilotPlaceholder")} rows={3} required />
             <Button type="submit" disabled={busy}>
               {l("copilotSubmit")}
             </Button>
