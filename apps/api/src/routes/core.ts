@@ -12,6 +12,7 @@ import {
   isKnownPermission,
   require_,
   requiresMfa,
+  scoped,
   sha256Hex,
   type Ctx,
   type Envelope
@@ -397,7 +398,7 @@ coreRoutes.get("/customers/:id/position", async (c) => {
           commissionMinor: sql<number>`coalesce(sum(${schema.axisPolicies.commissionMinor}), 0)`
         })
         .from(schema.axisPolicies)
-        .where(and(eq(schema.axisPolicies.tenantId, ctx.tenantId), eq(schema.axisPolicies.customerId, id)))
+        .where(scoped(ctx, schema.axisPolicies, eq(schema.axisPolicies.customerId, id)))
         .groupBy(schema.axisPolicies.currency)
     : [];
   const claimAgg = mayClaims
@@ -407,7 +408,7 @@ coreRoutes.get("/customers/:id/position", async (c) => {
           settledMinor: sql<number>`coalesce(sum(${schema.axisClaims.settledMinor}), 0)`
         })
         .from(schema.axisClaims)
-        .where(and(eq(schema.axisClaims.tenantId, ctx.tenantId), eq(schema.axisClaims.customerId, id)))
+        .where(scoped(ctx, schema.axisClaims, eq(schema.axisClaims.customerId, id)))
         .groupBy(schema.axisClaims.currency)
     : [];
 
@@ -434,6 +435,11 @@ coreRoutes.get("/customers/:id/position", async (c) => {
     entry.commissionMinor = Number(row.commissionMinor);
   }
   for (const row of claimAgg) line(row.currency).settledMinor = Number(row.settledMinor);
+
+  // Neither axis permission held: byCurrency is empty and `positions: []` would
+  // make the UI fall back to client-side sums, rendering 0 for withheld money.
+  // Emit one line so every field is explicitly null (withheld), not absent.
+  if (byCurrency.size === 0) line("AED");
 
   const positions = [...byCurrency.values()].sort((a, b) => (b.premiumMinor ?? 0) - (a.premiumMinor ?? 0));
   return c.json({

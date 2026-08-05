@@ -4,7 +4,7 @@ import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
 import { and, eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
-import { seed, totpAt, TOTP_STEP_SEC } from "@lyra/core";
+import { hashPassword, seed, totpAt, TOTP_STEP_SEC } from "@lyra/core";
 import { schema, type Db } from "@lyra/db";
 import { app } from "./index.js";
 import type { Env } from "./env.js";
@@ -82,9 +82,53 @@ beforeAll(async () => {
     .set({ policyJson: JSON.stringify({ ...tenantPolicy, autoApprove: [...tenantPolicy.autoApprove, "axis.bind"] }) })
     .where(eq(schema.tenants.id, seeded.tenantId));
 
+  // No seeded persona holds core:customers:read without also holding
+  // axis:policies:read or axis:claims:read (tenant.compliance is the closest
+  // and still carries axis:policies:read), so the "both axes withheld" case
+  // needs its own fixture role — a bare read-only viewer, mirroring how
+  // packages/core/src/seed.ts provisions a role + user + user_role.
+  const viewerRoleId = `rol_${seeded.tenantId}_viewer`;
+  const viewerUserId = `us_${seeded.tenantId}_viewer`;
+  await database.insert(schema.roles).values({
+    id: viewerRoleId,
+    tenantId: seeded.tenantId,
+    key: "core.viewer",
+    name: "core.viewer",
+    permissionsJson: JSON.stringify(["core:customers:read"]),
+    system: false,
+    createdAt: Date.now()
+  });
+  await database.insert(schema.users).values({
+    id: viewerUserId,
+    tenantId: seeded.tenantId,
+    email: "petra.viewer@gonxt.ae",
+    name: "Petra Viewer",
+    locale: "en",
+    status: "active",
+    authProvider: "password",
+    passwordHash: await hashPassword(PASSWORD),
+    // Not an external role prefix (partner./provider./customer), so
+    // requiresMfa() treats it as staff and login below must clear MFA too.
+    mfaEnrolled: true,
+    mfaSecret: DEMO_TOTP_SECRET,
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  });
+  await database.insert(schema.userRoles).values({
+    id: `url_${seeded.tenantId}_viewer`,
+    tenantId: seeded.tenantId,
+    userId: viewerUserId,
+    roleId: viewerRoleId,
+    scopeJson: null,
+    createdAt: Date.now()
+  });
+
   tokens = {};
-  for (const [who, local] of Object.entries(PEOPLE)) {
-    const login = await call(null, "POST", "/v1/auth/login", { email: `${local}@gonxt.ae`, password: PASSWORD, tenantSlug: "gonxt" });
+  for (const [who, email] of [
+    ...Object.entries(PEOPLE).map(([who, local]) => [who, `${local}@gonxt.ae`] as const),
+    ["viewer", "petra.viewer@gonxt.ae"] as const
+  ]) {
+    const login = await call(null, "POST", "/v1/auth/login", { email, password: PASSWORD, tenantSlug: "gonxt" });
     expect(login.status).toBe(200);
     const token = login.body.token as string;
     const verified = await app.fetch(
@@ -173,6 +217,18 @@ describe("GET /v1/core/customers/:id/position", () => {
     expect(res.body.positions).toEqual([
       { currency: "AED", premiumMinor: 70_000, commissionMinor: 3_500, settledMinor: null }
     ]);
+  });
+
+  it("emits one null-filled line, never an empty array, when both axis reads are withheld", async () => {
+    const customerId = await newCustomer("withheld");
+    await newPolicy(customerId, "POS-WH-1", "AED", 50_000, 2_500);
+
+    // core.viewer: core:customers:read only, no axis:policies:read or axis:claims:read.
+    const res = await call<Position>("viewer", "GET", `/v1/core/customers/${customerId}/position`);
+    expect(res.status).toBe(200);
+    expect(res.body.positions).toEqual([{ currency: "AED", premiumMinor: null, commissionMinor: null, settledMinor: null }]);
+    expect(res.body.ltvMinor).toBe(0);
+    expect(res.body.currency).toBe("AED");
   });
 
   it("404s an id that does not exist in the tenant", async () => {

@@ -81,6 +81,10 @@ describe("chips", () => {
     expect(chips(null)).toEqual([]);
     expect(chips(undefined)).toEqual([]);
   });
+
+  it("dedupes repeated values so chipList never collides on the React key", () => {
+    expect(chips(["vip", "vip"])).toEqual(["vip"]);
+  });
 });
 
 describe("action", () => {

@@ -164,9 +164,10 @@ export interface PositionResponse {
   currency: string;
 }
 
-/** JSON columns arrive as unknown; only an array of strings earns chips. */
+/** JSON columns arrive as unknown; only an array of strings earns chips. Deduped: chipList keys on the value, and a repeat collides. */
 export function chips(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter((v): v is string => typeof v === "string"))];
 }
 
 export const PERM = {
