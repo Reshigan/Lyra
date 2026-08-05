@@ -1,0 +1,279 @@
+import { useLoaderData, type LoaderFunctionArgs } from "react-router";
+import { EmptyState } from "@lyra/ui";
+import { api, fetchMe } from "../api.server";
+import { cloudflare } from "../context";
+import { translator } from "../i18n";
+import { Header, labelsFrom, rowsOf, safe, tag, type Page } from "./detail-kit";
+import { useShellData } from "./workspace";
+
+// Tenant-wide process mining, not one case's timeline — case-detail.tsx
+// already tables a single case's steps. This reads axis_process_events across
+// every case in a capped recent window and turns the step-to-step transitions
+// into a flow diagram: where work actually goes, and where it pools
+// (packages/db/src/schema/axis.ts's comment on the table: "Normalized step
+// events for process mining").
+
+const PERM = { read: "axis:metrics:read" } as const;
+const WINDOW = 2000;
+
+export interface EventRow {
+  id: string;
+  caseId: string;
+  step: string;
+  ts: number;
+  durationMs?: number | null;
+}
+
+/* ------------------------------------------------------------------- flow */
+
+export interface FlowEvent {
+  caseId: string;
+  step: string;
+  ts: number;
+  durationMs?: number | null;
+}
+
+export interface FlowNode {
+  step: string;
+  rank: number;
+  total: number;
+}
+
+export interface FlowLink {
+  from: string;
+  to: string;
+  count: number;
+  avgMs: number;
+}
+
+export interface Flow {
+  nodes: FlowNode[];
+  links: FlowLink[];
+}
+
+/** One row per case, chronological, tallied into step-to-step transitions. */
+export function flowFrom(events: readonly FlowEvent[]): Flow {
+  const byCase = new Map<string, FlowEvent[]>();
+  for (const event of events) {
+    const bucket = byCase.get(event.caseId);
+    if (bucket) bucket.push(event);
+    else byCase.set(event.caseId, [event]);
+  }
+
+  const total = new Map<string, number>();
+  const linkKey = (from: string, to: string) => JSON.stringify([from, to]);
+  const linkCount = new Map<string, number>();
+  const linkDuration = new Map<string, number>();
+  const allSteps = new Set<string>();
+  const predecessors = new Map<string, Set<string>>(); // step -> set of predecessors
+
+  for (const caseEvents of byCase.values()) {
+    const sequence = [...caseEvents].sort((a, b) => a.ts - b.ts);
+    let previous: FlowEvent | null = null;
+    for (const event of sequence) {
+      allSteps.add(event.step);
+      total.set(event.step, (total.get(event.step) ?? 0) + 1);
+      if (previous) {
+        const key = linkKey(previous.step, event.step);
+        linkCount.set(key, (linkCount.get(key) ?? 0) + 1);
+        linkDuration.set(key, (linkDuration.get(key) ?? 0) + (event.durationMs ?? 0));
+
+        // Track predecessors for rank calculation
+        if (!predecessors.has(event.step)) predecessors.set(event.step, new Set());
+        predecessors.get(event.step)!.add(previous.step);
+      }
+      previous = event;
+    }
+  }
+
+  // Calculate ranks based on longest path from any source
+  const rank = new Map<string, number>();
+  const visited = new Set<string>();
+
+  function calculateRank(step: string): number {
+    if (rank.has(step)) return rank.get(step)!;
+
+    if (visited.has(step)) return 0; // cycle detection
+    visited.add(step);
+
+    const preds = predecessors.get(step);
+    if (!preds || preds.size === 0) {
+      rank.set(step, 0);
+      return 0;
+    }
+
+    let maxPredecessorRank = -1;
+    for (const pred of preds) {
+      maxPredecessorRank = Math.max(maxPredecessorRank, calculateRank(pred));
+    }
+
+    const r = maxPredecessorRank + 1;
+    rank.set(step, r);
+    return r;
+  }
+
+  // Calculate ranks for all steps
+  for (const step of allSteps) {
+    calculateRank(step);
+  }
+
+  const nodes = [...rank.entries()]
+    .map(([step, r]) => ({ step, rank: r, total: total.get(step) ?? 0 }))
+    .sort((a, b) => a.rank - b.rank);
+
+  const links = [...linkCount.entries()].map(([key, count]) => {
+    const [from, to] = JSON.parse(key) as [string, string];
+    return { from, to, count, avgMs: (linkDuration.get(key) ?? 0) / count };
+  });
+
+  return { nodes, links };
+}
+
+export interface LaidOutNode extends FlowNode {
+  x: number;
+  y: number;
+  height: number;
+}
+
+export interface LaidOutLink extends FlowLink {
+  path: string;
+  width: number;
+}
+
+export interface Layout {
+  nodes: LaidOutNode[];
+  links: LaidOutLink[];
+}
+
+const NODE_WIDTH = 16;
+const NODE_GAP = 12;
+
+/** ponytail: hand-rolled bezier ribbons — the same call Sparkline makes for a line chart, no chart library. */
+export function layoutFlow(flow: Flow, width: number, height: number): Layout {
+  const maxRank = flow.nodes.reduce((max, node) => Math.max(max, node.rank), 0);
+  const columnWidth = maxRank > 0 ? (width - NODE_WIDTH) / maxRank : 0;
+  const grandTotal = flow.nodes.reduce((sum, node) => sum + node.total, 0) || 1;
+
+  const byColumn = new Map<number, FlowNode[]>();
+  for (const node of flow.nodes) {
+    const bucket = byColumn.get(node.rank);
+    if (bucket) bucket.push(node);
+    else byColumn.set(node.rank, [node]);
+  }
+
+  const positioned = new Map<string, LaidOutNode>();
+  for (const column of byColumn.values()) {
+    let y = 0;
+    for (const node of column) {
+      const nodeHeight = Math.max(4, (node.total / grandTotal) * height - NODE_GAP);
+      positioned.set(node.step, { ...node, x: node.rank * columnWidth, y, height: nodeHeight });
+      y += nodeHeight + NODE_GAP;
+    }
+  }
+
+  const outOffset = new Map<string, number>();
+  const inOffset = new Map<string, number>();
+  const maxCount = flow.links.reduce((max, link) => Math.max(max, link.count), 0) || 1;
+
+  const links = flow.links.map((link) => {
+    const source = positioned.get(link.from);
+    const target = positioned.get(link.to);
+    if (!source || !target) return { ...link, path: "", width: 0 };
+
+    const linkWidth = Math.max(1, (link.count / maxCount) * 24);
+    const sourceY = source.y + (outOffset.get(link.from) ?? 0) + linkWidth / 2;
+    const targetY = target.y + (inOffset.get(link.to) ?? 0) + linkWidth / 2;
+    outOffset.set(link.from, (outOffset.get(link.from) ?? 0) + linkWidth);
+    inOffset.set(link.to, (inOffset.get(link.to) ?? 0) + linkWidth);
+
+    const x1 = source.x + NODE_WIDTH;
+    const x2 = target.x;
+    const midX = (x1 + x2) / 2;
+    return {
+      ...link,
+      path: `M ${x1} ${sourceY} C ${midX} ${sourceY}, ${midX} ${targetY}, ${x2} ${targetY}`,
+      width: linkWidth
+    };
+  });
+
+  return { nodes: [...positioned.values()], links };
+}
+
+/* ----------------------------------------------------------------- labels */
+
+const LABELS: Record<string, Record<string, string>> = {
+  en: {
+    title: "Process map",
+    intro: `Where work actually flows across the last ${WINDOW} recorded steps, and where it pools.`
+  },
+  ar: {
+    title: "خريطة العملية",
+    intro: `مسار سير العمل الفعلي عبر آخر ${WINDOW} خطوة مسجّلة، ومواضع تراكمه.`
+  }
+};
+
+const labelsIn = labelsFrom(LABELS);
+
+/* ----------------------------------------------------------------- loader */
+
+export async function loader({ request, context }: LoaderFunctionArgs) {
+  const env = context.get(cloudflare).env;
+  const me = await fetchMe(env, request);
+  const may = me.permissions.includes(PERM.read);
+  const page = may
+    ? await safe(
+        () => api<Page<EventRow>>(`/v1/axis/process-events?sort=ts&order=asc&limit=${WINDOW}`, { env, request }),
+        null
+      )
+    : null;
+  return { may, flow: flowFrom(rowsOf(page)) };
+}
+
+/* --------------------------------------------------------------- component */
+
+const WIDTH = 880;
+const HEIGHT = 420;
+
+export default function AxisProcessMap() {
+  const loaded = useLoaderData<typeof loader>();
+  const shell = useShellData();
+  const locale = shell?.locale ?? "en";
+  const t = translator(locale);
+  const l = labelsIn(locale, shell?.domainPack);
+  const laid = layoutFlow(loaded.flow, WIDTH, HEIGHT);
+
+  return (
+    <div className="flex flex-col gap-6">
+      <Header title={l("title")} intro={l("intro")} />
+
+      {!loaded.may ? (
+        <EmptyState title={l("deniedTitle")} body={t("error.forbidden")} />
+      ) : laid.nodes.length === 0 ? (
+        <EmptyState title={l("none")} />
+      ) : (
+        <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} role="img" aria-label={l("title")} className="h-[420px] w-full">
+          {laid.links.map((link, i) => (
+            <path key={i} d={link.path} fill="none" stroke="var(--accent)" strokeOpacity={0.35} strokeWidth={link.width}>
+              <title>
+                {`${tag(l, "step", link.from)} → ${tag(l, "step", link.to)}: ${link.count} (avg ${Math.round(link.avgMs)}ms)`}
+              </title>
+            </path>
+          ))}
+          {laid.nodes.map((node) => (
+            <g key={node.step}>
+              <rect x={node.x} y={node.y} width={NODE_WIDTH} height={node.height} fill="var(--accent)" />
+              <text
+                x={node.x + NODE_WIDTH + 6}
+                y={node.y + node.height / 2}
+                dominantBaseline="middle"
+                className="fill-text font-ui text-11"
+              >
+                {`${tag(l, "step", node.step)} (${node.total})`}
+              </text>
+            </g>
+          ))}
+        </svg>
+      )}
+    </div>
+  );
+}

@@ -51,6 +51,7 @@ export default [
     route("axis/analytics", "routes/axis-analytics.tsx"),
     route("axis/admin", "routes/axis-admin.tsx"),
     route("axis/dev", "routes/axis-dev.tsx"),
+    route("axis/process-map", "routes/axis-process-map.tsx"),
 
     route("signal/cockpit", "routes/signal-cockpit.tsx"),
     route("signal/studio", "routes/signal-studio.tsx"),
