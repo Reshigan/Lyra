@@ -136,6 +136,8 @@ export const LABELS: Record<string, Record<string, string>> = {
     copilotPlaceholder: "Ask a question about this case…",
     copilotSubmit: "Ask",
     copilotEmpty: "Ask a question and the answer will appear here, grounded in this case's own facts.",
+    copilotWhyGrounded: "Checked against this case's own recorded facts. No unsupported claims found.",
+    copilotWhyFlagged: "Checked against this case's own recorded facts. {count} possible unsupported claims flagged for review.",
     moveTitle: "Move it on",
     moveIntro: "Set where the work item stands. The state machine is the record; nothing else moves it.",
     moveTo: "Move to",
@@ -206,6 +208,8 @@ export const LABELS: Record<string, Record<string, string>> = {
     copilotPlaceholder: "اطرح سؤالاً حول هذه الحالة…",
     copilotSubmit: "اسأل",
     copilotEmpty: "اطرح سؤالاً وستظهر الإجابة هنا، مستندة إلى وقائع هذه الحالة.",
+    copilotWhyGrounded: "تم التحقق منها مقابل وقائع هذه الحالة المسجّلة. لا توجد ادعاءات غير مدعومة.",
+    copilotWhyFlagged: "تم التحقق منها مقابل وقائع هذه الحالة المسجّلة. تم رصد {count} ادعاء محتمل غير مدعوم يستحق المراجعة.",
     moveTitle: "تحريك البند",
     moveIntro: "حدّد موقف بند العمل. آلة الحالات هي السجل، ولا شيء آخر يحرّكه.",
     moveTo: "الانتقال إلى",
@@ -318,7 +322,8 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
     error: null as string | null,
     bundleId: null as string | null,
     answer: null as string | null,
-    confidence: null as number | null
+    confidence: null as number | null,
+    mismatches: null as number[] | null
   };
   const headers = key ? { headers: { "idempotency-key": key } } : {};
 
@@ -353,7 +358,7 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
         `/v1/axis/cases/${id}/copilot`,
         { env, request, method: "POST", body: { question, locale } }
       );
-      return { ...nothing, done: "answered", answer: result.answer, confidence: result.confidence };
+      return { ...nothing, done: "answered", answer: result.answer, confidence: result.confidence, mismatches: result.mismatches };
     }
     return { ...nothing, problem: { title: "unknown intent", status: 400 } };
   } catch (error) {
@@ -635,11 +640,8 @@ export default function CaseDetail() {
       ) : null}
 
       {loaded.may.copilot ? (
-        // ponytail: AgentBadge has no `label` prop (only agent/why/size/className),
-        // so the trigger's own text carries l("copilotTitle") and the badge just
-        // supplies the single ✦ AI marker (docs/15 §4).
         <Button variant="secondary" onClick={() => setCopilotOpen(true)}>
-          {l("copilotTitle")} <AgentBadge size="sm" />
+          {l("copilotTitle")}
         </Button>
       ) : null}
     </div>
@@ -656,7 +658,17 @@ export default function CaseDetail() {
           </Form>
           {result?.done === "answered" && result.answer ? (
             <>
-              <GhostText text={result.answer} onAccept={() => {}} onDiscard={() => {}} />
+              <div className="flex flex-wrap items-center gap-2">
+                <AgentBadge
+                  size="sm"
+                  why={
+                    result.mismatches && result.mismatches.length > 0
+                      ? l("copilotWhyFlagged", { count: String(result.mismatches.length) })
+                      : l("copilotWhyGrounded")
+                  }
+                />
+                <GhostText text={result.answer} onAccept={() => {}} onDiscard={() => {}} />
+              </div>
               <ConfidenceMeter value={result.confidence ?? 0} />
             </>
           ) : (
