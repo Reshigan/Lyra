@@ -50,11 +50,16 @@ interface Res<T = any> {
   body: T;
 }
 
-async function call<T = any>(method: string, path: string, payload?: unknown): Promise<Res<T>> {
+async function call<T = any>(
+  method: string,
+  path: string,
+  payload?: unknown,
+  headers: Record<string, string> = {}
+): Promise<Res<T>> {
   const res = await app.fetch(
     new Request(`http://api.test${path}`, {
       method,
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...headers },
       ...(payload !== undefined ? { body: JSON.stringify(payload) } : {})
     }),
     env as never,
@@ -166,6 +171,35 @@ describe("POST /v1/portal/:tenantSlug/leads", () => {
     for (let i = 0; i < 3; i++) await call("POST", "/v1/portal/gonxt/leads", payload);
     const res = await call("POST", "/v1/portal/gonxt/leads", payload);
     expect(res.status).toBe(429);
+  });
+
+  it("throttles repeated submissions from the same IP even across different emails (regression: IMPORTANT 6)", async () => {
+    const productId = await firstActiveProductId();
+    const ip = "203.0.113.9";
+    for (let i = 0; i < 10; i++) {
+      await call(
+        "POST",
+        "/v1/portal/gonxt/leads",
+        { productId, name: "Rotating Email", email: `rotating-${i}@example.com`, consent: true },
+        { "cf-connecting-ip": ip }
+      );
+    }
+    const res = await call(
+      "POST",
+      "/v1/portal/gonxt/leads",
+      { productId, name: "Rotating Email", email: "rotating-final@example.com", consent: true },
+      { "cf-connecting-ip": ip }
+    );
+    expect(res.status).toBe(429);
+
+    // A different IP is unaffected.
+    const other = await call(
+      "POST",
+      "/v1/portal/gonxt/leads",
+      { productId, name: "Elsewhere", email: "elsewhere@example.com", consent: true },
+      { "cf-connecting-ip": "203.0.113.10" }
+    );
+    expect(other.status).toBe(201);
   });
 
   it("rejects a submission without consent or with malformed input", async () => {

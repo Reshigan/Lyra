@@ -20,6 +20,10 @@ const DIRECT_WEB_CHANNEL_KEY = "direct-web";
 const DEFAULT_CURRENCY = "AED";
 const LEAD_MAX = 3;
 const LEAD_WINDOW_SEC = 24 * 60 * 60;
+// An email-keyed throttle alone is free to bypass by rotating the address;
+// this second, coarser throttle keys on the connecting IP so the same
+// visitor can't just cycle emails.
+const LEAD_IP_MAX = 10;
 
 async function activeTenant(database: ReturnType<typeof rawDb>, slug: string) {
   const rows = await database.select().from(schema.tenants).where(eq(schema.tenants.slug, slug)).limit(1);
@@ -138,6 +142,8 @@ portalRoutes.post("/:tenantSlug/leads", async (c) => {
   const input = await body(c, LeadBody);
   const email = input.email.toLowerCase();
   await throttle(c.env, `portal-lead:${email}`, LEAD_MAX, LEAD_WINDOW_SEC);
+  const ip = c.req.header("cf-connecting-ip");
+  if (ip) await throttle(c.env, `portal-lead-ip:${ip}`, LEAD_IP_MAX, LEAD_WINDOW_SEC);
 
   const database = rawDb(c.env);
   const tenant = await activeTenant(database, c.req.param("tenantSlug"));
