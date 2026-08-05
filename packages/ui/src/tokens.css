@@ -494,9 +494,43 @@
   --ease-out: var(--ease-out);
   --animate-twinkle: twinkle 2.6s var(--ease-out) infinite;
   --animate-orbit-spin: orbit-spin 1.1s linear infinite;
+  --animate-rise: rise 420ms var(--ease-out) both;
+  --animate-draw: draw 900ms var(--ease-out) both;
+  --animate-drift: drift 60s linear infinite;
 }
 
 /* Motion — docs/01 §5. Reduced motion honoured. */
+
+/* The house entrance: content arrives from just below, never from off-screen.
+   `both` so a staggered delay holds the element invisible until its turn. */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* An SVG stroke drawing itself. The element sets its own dash length. */
+@keyframes draw {
+  from {
+    stroke-dashoffset: var(--draw-length, 100);
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* Deep-field parallax: the star layer crawls, it does not fly. */
+@keyframes drift {
+  to {
+    background-position: 600px 300px, -400px 200px;
+  }
+}
+
 @keyframes twinkle {
   0%,
   100% {

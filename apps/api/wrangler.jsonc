@@ -10,7 +10,12 @@
   "workers_dev": true,
   "observability": { "enabled": true },
   "vars": {
-    "ENVIRONMENT": "production",
+    // "demo", not "production": this deployment is the showcase and carries
+    // seeded demo data only. It opens the one-click persona doors on /login
+    // (apps/api/src/auth.ts demoOnly) along with the demo clock and reseed
+    // routes. Flip back to "production" the day a real tenant lands here —
+    // password sign-in is unaffected either way.
+    "ENVIRONMENT": "demo",
     "APP_ORIGIN": "https://lyra.vantax.co.za",
     "SESSION_COOKIE": "lyra_session"
   },

@@ -276,6 +276,60 @@ function safeNext(raw: string | null): string {
   return raw;
 }
 
+/**
+ * The pre-session mark. Abstract on purpose: there is no tenant yet, so there is
+ * no logo to read and no name that may be written (see the note at the top of
+ * this file). A body orbited by a satellite draws itself in, then the satellite
+ * keeps its orbit — geometry, not a wordmark, so it holds under any brand.
+ *
+ * Not ✦: that glyph means "AI artifact" (docs/15 §4) and must not mean two
+ * things.
+ *
+ * ponytail: inline SVG, no asset pipeline and no logo file to keep in sync.
+ * Swap in the tenant logo the day this page learns which tenant it is.
+ */
+function Mark() {
+  // Each stroke sets its own path length: the ring is 2πr ≈ 138, the tilted
+  // orbit ≈ 201 by Ramanujan. A dash shorter than the path draws a dotted line
+  // instead of a solid one, so these are rounded up, never down.
+  const ring = { "--draw-length": "140", strokeDasharray: 140 } as React.CSSProperties;
+  const orbit = { "--draw-length": "205", strokeDasharray: 205 } as React.CSSProperties;
+  return (
+    <svg viewBox="0 0 96 96" className="mx-auto size-20" aria-hidden="true" fill="none">
+      <circle
+        cx="48"
+        cy="48"
+        r="22"
+        stroke="var(--accent)"
+        strokeWidth="1.5"
+        style={{ ...ring, animation: "var(--animate-draw)" }}
+      />
+      <ellipse
+        cx="48"
+        cy="48"
+        rx="44"
+        ry="17"
+        stroke="var(--text-subtle)"
+        strokeWidth="1"
+        transform="rotate(-24 48 48)"
+        style={{ ...orbit, animation: "var(--animate-draw)", animationDelay: "220ms" }}
+      />
+      {/* The satellite rides the inner ring — same radius, so the path is the
+          stroke. `orbit-spin` is the shared rotate-360 keyframe, slowed from a
+          spinner's tempo to one revolution every 14s. */}
+      <g
+        style={{
+          animation: "orbit-spin 14s linear infinite",
+          transformOrigin: "48px 48px",
+          transformBox: "view-box"
+        }}
+      >
+        <circle cx="70" cy="48" r="3.5" fill="var(--accent)" />
+      </g>
+    </svg>
+  );
+}
+
 export default function Login() {
   const { locale, next, personas } = useLoaderData<typeof loader>();
   const result = useActionData<ActionData>();
@@ -300,7 +354,10 @@ export default function Login() {
   }[step];
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center p-6">
+    <main className="lyra-field lyra-stagger mx-auto flex min-h-screen max-w-md flex-col justify-center p-6">
+      <div className="mb-6">
+        <Mark />
+      </div>
       <Card>
         <h1 className="font-display text-22">{t(title)}</h1>
         <p className="mt-1 text-13 text-muted">{t(intro)}</p>

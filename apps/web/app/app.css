@@ -21,3 +21,90 @@
     outline-offset: 2px;
   }
 }
+
+/* ---- Deep field ---------------------------------------------------------
+   Two utilities, applied by the shell and the sign-in page, so every screen
+   gets the same arrival without each one animating itself.
+
+   `.lyra-field` is the backdrop: a slow parallax star layer over a pair of
+   accent glows. Painted in ::before so the element keeps its own background
+   and nothing has to be positioned on top of it.
+
+   `.lyra-enter` is the arrival: the region rises once per navigation (the
+   shell keys it on the pathname, which remounts the node and replays it).
+   Children marked `.lyra-stagger > *` follow in sequence.
+
+   ponytail: CSS only, no animation library and no per-screen choreography.
+   Add view transitions when a screen needs an element to fly *between*
+   routes rather than simply arrive. */
+@layer components {
+  .lyra-field {
+    position: relative;
+    isolation: isolate;
+  }
+
+  .lyra-field::before,
+  .lyra-field::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+  }
+
+  /* The stars: two tiled layers, drifting at different rates for parallax. The
+     `drift` keyframe moves exactly two background layers, so this element must
+     carry exactly two. */
+  .lyra-field::before {
+    background-image:
+      radial-gradient(1px 1px at 20% 30%, var(--text-muted) 50%, transparent 50%),
+      radial-gradient(1px 1px at 70% 60%, var(--text-muted) 50%, transparent 50%);
+    background-size:
+      220px 180px,
+      340px 260px;
+    opacity: 0.35;
+    animation: var(--animate-drift);
+  }
+
+  /* The glows sit still: a light source that crawls reads as a bug. */
+  .lyra-field::after {
+    background-image:
+      radial-gradient(
+        60rem 40rem at 12% -8%,
+        color-mix(in oklab, var(--accent) 14%, transparent),
+        transparent 70%
+      ),
+      radial-gradient(
+        50rem 36rem at 96% 104%,
+        color-mix(in oklab, var(--module-orbit) 12%, transparent),
+        transparent 70%
+      );
+  }
+
+  .lyra-enter {
+    animation: var(--animate-rise);
+  }
+
+  /* Six is the whole effect: past that a page reads as slow, not cinematic. */
+  .lyra-stagger > * {
+    animation: var(--animate-rise);
+  }
+  .lyra-stagger > *:nth-child(1) {
+    animation-delay: 40ms;
+  }
+  .lyra-stagger > *:nth-child(2) {
+    animation-delay: 80ms;
+  }
+  .lyra-stagger > *:nth-child(3) {
+    animation-delay: 120ms;
+  }
+  .lyra-stagger > *:nth-child(4) {
+    animation-delay: 160ms;
+  }
+  .lyra-stagger > *:nth-child(5) {
+    animation-delay: 200ms;
+  }
+  .lyra-stagger > *:nth-child(n + 6) {
+    animation-delay: 240ms;
+  }
+}

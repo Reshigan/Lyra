@@ -1,4 +1,4 @@
-import { Form, NavLink } from "react-router";
+import { Form, NavLink, useLocation } from "react-router";
 import type { Brand, NavItem } from "../api.server";
 import type { Translate } from "../i18n";
 import { isRouted } from "../routing";
@@ -109,9 +109,12 @@ export function Shell({ t, nav, brand, tenantName, actorName, children }: ShellP
   }
   const items = groups.flatMap((g) => g.items);
   const logo = brand?.logo?.dark ?? brand?.logo?.light ?? brand?.logo?.mark;
+  // The arrival is keyed on the path: React throws the old main away on every
+  // navigation, so the entrance plays again instead of only on first paint.
+  const { pathname } = useLocation();
 
   return (
-    <div className="min-h-screen bg-bg text-text" style={brandStyle(brand)}>
+    <div className="lyra-field min-h-screen bg-bg text-text" style={brandStyle(brand)}>
       <a
         href="#workspace"
         className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:m-2 focus:rounded-md focus:bg-surface-2 focus:px-3 focus:py-2 focus:text-13"
@@ -194,9 +197,10 @@ export function Shell({ t, nav, brand, tenantName, actorName, children }: ShellP
         </nav>
 
         <main
+          key={pathname}
           id="workspace"
           tabIndex={-1}
-          className="mx-auto min-w-0 w-full max-w-[100rem] flex-1 p-4 sm:p-6"
+          className="lyra-stagger mx-auto min-w-0 w-full max-w-[100rem] flex-1 p-4 sm:p-6"
         >
           {children}
         </main>
