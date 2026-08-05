@@ -9,6 +9,7 @@ import { index, layout, route, type RouteConfig } from "@react-router/dev/routes
 export default [
   route("login", "routes/login.tsx"),
   route("logout", "routes/logout.tsx"),
+  route("portal/:tenantSlug", "routes/portal.$tenantSlug.tsx"),
   layout("routes/workspace.tsx", [
     index("routes/home.tsx"),
 
@@ -34,8 +35,36 @@ export default [
     route("compliance/run/:kind", "routes/compliance-run.tsx"),
     route("ledger/settlement", "routes/settlement.tsx"),
     route("ledger/settlements/:id", "routes/settlement-detail.tsx"),
+    route("admin/permissions", "routes/admin-roles.tsx"),
+    route("admin/developer", "routes/admin-developer.tsx"),
+    route("admin/security", "routes/admin-security.tsx"),
     route("admin/staff", "routes/staff.tsx"),
     route("admin/staff/:id", "routes/staff-member.tsx"),
+    route("platform", "routes/platform.tsx"),
+    route("search", "routes/search.ts"),
+
+    route("axis/exceptions", "routes/axis-exceptions.tsx"),
+    route("axis/board", "routes/axis-board.tsx"),
+    route("axis/quote-desk", "routes/axis-quote-desk.tsx"),
+    route("axis/doc-intelligence", "routes/axis-doc-intel.tsx"),
+    route("axis/analytics", "routes/axis-analytics.tsx"),
+    route("axis/dev", "routes/axis-dev.tsx"),
+
+    route("signal/cockpit", "routes/signal-cockpit.tsx"),
+    route("signal/studio", "routes/signal-studio.tsx"),
+    route("signal/audience-value", "routes/signal-audience-value.tsx"),
+    route("signal/answer-engines", "routes/signal-answer-engines.tsx"),
+    route("signal/budget", "routes/signal-budget.tsx"),
+    route("signal/analytics", "routes/signal-analytics.tsx"),
+
+    // Record screens: a static last segment, so each still ranks above the
+    // generic `:module/:resource/:id`.
+    route("admin/customers/:id/360", "routes/customer-360.tsx"),
+    route("admin/products/:id/detail", "routes/product-detail.tsx"),
+    route("axis/policies/:id/detail", "routes/policy-detail.tsx"),
+    route("axis/claims/:id/detail", "routes/claim-detail.tsx"),
+    route("axis/cases/:id/detail", "routes/case-detail.tsx"),
+    route("distribution/channels/:id/detail", "routes/channel-detail.tsx"),
 
     route(":module", "routes/module.tsx"),
     route(":module/:resource", "routes/module.tsx", { id: "module-resource" }),

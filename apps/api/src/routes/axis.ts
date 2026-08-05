@@ -130,3 +130,44 @@ axisRoutes.post("/documents/:id/extract", async (c) => {
   });
   return c.json(after);
 });
+
+const SampleExtractBody = z.object({
+  docType: z.enum(["eid", "mulkiya"]),
+  rawText: z.string().min(1).max(20_000),
+  locale: z.enum(["en", "ar"]).default("en")
+});
+
+/**
+ * docs/20 developer console. Same field-extraction call as
+ * `/documents/:id/extract`, minus the document row, audit trail and
+ * embedding — a scratch space to check a prompt/schema before wiring a real
+ * upload. `docType`'s zod enum already limits input to the two keys
+ * `EXTRACTION_FIELDS` defines, so there's no missing-schema case to guard.
+ */
+axisRoutes.post("/dev/extract-sample", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "dev:sandbox:use", { tenantId: ctx.tenantId, module: "dev" });
+  const input = await body(c, SampleExtractBody);
+  // `docType`'s zod enum limits input to the two keys EXTRACTION_FIELDS defines.
+  const fields = EXTRACTION_FIELDS[input.docType]!;
+
+  const result = await c.get("gateway").complete(ctx, {
+    module: "axis",
+    purpose: "axis.dev.extract_sample",
+    tier: "standard",
+    locale: input.locale,
+    responseSchema: extractionSchema(fields),
+    messages: [
+      {
+        role: "system",
+        content:
+          `Extract these fields from the ${input.docType} document text below and reply with ` +
+          `JSON only, matching the schema: ${fields.join(", ")}. Locale: ${input.locale}.`
+      },
+      { role: "user", content: input.rawText }
+    ]
+  });
+
+  const { values, confidence } = parseExtraction(result.text, fields);
+  return c.json({ values, confidence, model: result.model });
+});

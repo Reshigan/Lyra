@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
 import { eq } from "drizzle-orm";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { seed, sha256Hex, totpAt, TOTP_STEP_SEC } from "@lyra/core";
 import { id as newId, schema, type Db } from "@lyra/db";
 import { app } from "./index.js";
@@ -104,7 +104,7 @@ async function foreignTenantKey(): Promise<string> {
     prefix: token.slice(0, 17),
     keyHash: await sha256Hex(token),
     mode: "test",
-    scopesJson: JSON.stringify(["core:api_keys:read", "core:api_keys:revoke", "core:webhooks:write"]),
+    scopesJson: JSON.stringify(["core:api_keys:read", "core:api_keys:revoke", "core:webhooks:read", "core:webhooks:write"]),
     createdBy: "system:test",
     createdAt: now
   });
@@ -379,6 +379,51 @@ describe("POST /v1/core/webhooks/:id/rotate", () => {
   it("404s rotating another tenant's webhook", async () => {
     const created = await register("admin", { url: "https://hooks.example.com/rotate-foreign", eventTypesJson: [] });
     const res = await call(otherKey, "POST", `/v1/core/webhooks/${created.body.id}/rotate`);
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("POST /v1/core/webhooks/:id/test", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("delivers a signed test event and reports the response status", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 200 })));
+    const created = await register("admin", { url: "https://hooks.example.com/test-ok", eventTypesJson: [] });
+    const res = await call(tokens.admin!, "POST", `/v1/core/webhooks/${created.body.id}/test`);
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.status).toBe(200);
+  });
+
+  it("reports a failed delivery without throwing", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 500 })));
+    const created = await register("admin", { url: "https://hooks.example.com/test-fail", eventTypesJson: [] });
+    const res = await call(tokens.admin!, "POST", `/v1/core/webhooks/${created.body.id}/test`);
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(false);
+    expect(res.body.status).toBe(500);
+  });
+
+  it("writes an audit entry", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 200 })));
+    const created = await register("admin", { url: "https://hooks.example.com/test-audit", eventTypesJson: [] });
+    await call(tokens.admin!, "POST", `/v1/core/webhooks/${created.body.id}/test`);
+    const rows = await database.select().from(schema.auditLog);
+    const entry = rows.find((a) => a.action === "core.webhooks.test" && a.subjectRef === `webhooks:${created.body.id}`);
+    expect(entry).toBeDefined();
+  });
+
+  it("is 403 for a session without core:webhooks:read", async () => {
+    const created = await register("admin", { url: "https://hooks.example.com/test-403", eventTypesJson: [] });
+    const res = await call(tokens.agent!, "POST", `/v1/core/webhooks/${created.body.id}/test`);
+    expect(res.status).toBe(403);
+  });
+
+  it("404s testing another tenant's webhook", async () => {
+    const created = await register("admin", { url: "https://hooks.example.com/test-foreign", eventTypesJson: [] });
+    const res = await call(otherKey, "POST", `/v1/core/webhooks/${created.body.id}/test`);
     expect(res.status).toBe(404);
   });
 });

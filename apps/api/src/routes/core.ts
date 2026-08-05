@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, eq } from "drizzle-orm";
+import { and, eq, gt, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { id as newId, schema } from "@lyra/db";
 import {
@@ -11,9 +11,13 @@ import {
   forbidden,
   isKnownPermission,
   require_,
+  requiresMfa,
   sha256Hex,
-  type Ctx
+  type Ctx,
+  type Envelope
 } from "@lyra/core";
+import { LOGIN_MAX, LOGIN_WINDOW_SEC, MFA_MAX, SESSION_TTL_MS } from "../auth.js";
+import { deliver } from "../dispatch.js";
 import { body, created } from "../http.js";
 import { must } from "../rows.js";
 import type { App } from "../env.js";
@@ -192,4 +196,178 @@ coreRoutes.post("/webhooks/:id/rotate", async (c) => {
   await audit(ctx, { action: "core.webhooks.rotate", subjectRef: `webhooks:${rowId}` });
   const { secret: _before, ...safe } = before;
   return c.json({ ...safe, secret });
+});
+
+// docs/20 developer console "webhook tester". Reuses the real delivery path
+// (dispatch.ts `deliver`) with a hand-built envelope rather than a queued
+// event, so the receiver gets the exact signature scheme production events
+// use, without waiting on the outbox or leaving a fake row behind for it.
+coreRoutes.post("/webhooks/:id/test", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "core:webhooks:read", { tenantId: ctx.tenantId, module: "core" });
+  const rowId = c.req.param("id");
+  const hook = await must(ctx, schema.webhooks, rowId, "webhooks");
+
+  const envelope: Envelope = {
+    id: newId("ev", ctx.now),
+    ts: ctx.now,
+    tenant_id: ctx.tenantId,
+    module: "core",
+    type: "core.webhooks.test",
+    actor: actorRef(ctx),
+    data: { message: "This is a test event from the LYRA developer console." },
+    v: 1
+  };
+  const result = await deliver(ctx, hook, envelope, 1);
+  await audit(ctx, { action: "core.webhooks.test", subjectRef: `webhooks:${rowId}`, after: result });
+  return c.json(result);
+});
+
+/**
+ * docs/25 admin_security ("SSO, sessions, network and rate limits"). Read-only
+ * on purpose: MFA is a platform floor — packages/core rbac.ts `requiresMfa`,
+ * "the rule is the platform's and no tenant policy switch turns it off" — and
+ * session lifetime and the login throttle are estate-wide constants. So there
+ * is no tenant policy row to edit here, and inventing one would only offer a
+ * way to weaken the floor. What a tenant admin needs instead is the truth
+ * about what is enforced and who is currently outside it; the remedies already
+ * exist elsewhere (enrol via the MFA flow, revoke via staff suspend/offboard).
+ */
+coreRoutes.get("/security-posture", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "core:settings:read", { tenantId: ctx.tenantId, module: "core" });
+  // Naming an individual as unprotected is user data, not a policy fact, so the
+  // list rides on the permission that would show those people anyway. Without
+  // it the counts still render — the screen degrades, it does not 403.
+  const mayNameUsers = can(ctx.actor, "core:users:read", { tenantId: ctx.tenantId });
+
+  const memberships = await ctx.db
+    .select({
+      userId: schema.users.id,
+      email: schema.users.email,
+      name: schema.users.name,
+      status: schema.users.status,
+      authProvider: schema.users.authProvider,
+      mfaEnrolled: schema.users.mfaEnrolled,
+      roleKey: schema.roles.key
+    })
+    .from(schema.users)
+    .leftJoin(
+      schema.userRoles,
+      and(eq(schema.userRoles.userId, schema.users.id), eq(schema.userRoles.tenantId, ctx.tenantId))
+    )
+    .leftJoin(schema.roles, eq(schema.roles.id, schema.userRoles.roleId))
+    .where(and(eq(schema.users.tenantId, ctx.tenantId), isNull(schema.users.deletedAt)));
+
+  // One row per membership arrives; fold to one entry per person carrying every
+  // role key, because `requiresMfa` decides on the whole set (any internal role
+  // means the floor applies) and not role by role.
+  const people = new Map<
+    string,
+    { email: string; name: string; status: string; authProvider: string; mfaEnrolled: boolean; roleKeys: string[] }
+  >();
+  for (const row of memberships) {
+    const entry = people.get(row.userId) ?? {
+      email: row.email,
+      name: row.name,
+      status: row.status,
+      authProvider: row.authProvider,
+      mfaEnrolled: row.mfaEnrolled,
+      roleKeys: []
+    };
+    if (row.roleKey) entry.roleKeys.push(row.roleKey);
+    people.set(row.userId, entry);
+  }
+
+  let required = 0;
+  let enrolled = 0;
+  let exempt = 0;
+  const gaps: Array<{ userId: string; email: string; name: string; roleKeys: string[]; authProvider: string }> = [];
+  for (const [userId, person] of people) {
+    // A suspended account cannot sign in, so counting it as a gap would make the
+    // number impossible to ever clear.
+    if (person.status === "suspended") continue;
+    if (!requiresMfa(person.roleKeys)) {
+      exempt += 1;
+      continue;
+    }
+    required += 1;
+    if (person.mfaEnrolled) {
+      enrolled += 1;
+      continue;
+    }
+    if (mayNameUsers) {
+      gaps.push({
+        userId,
+        email: person.email,
+        name: person.name,
+        roleKeys: person.roleKeys,
+        authProvider: person.authProvider
+      });
+    }
+  }
+
+  const live = await ctx.db
+    .select({ userId: schema.sessions.userId, createdAt: schema.sessions.createdAt, mfaSatisfied: schema.sessions.mfaSatisfied })
+    .from(schema.sessions)
+    .where(
+      and(
+        eq(schema.sessions.tenantId, ctx.tenantId),
+        isNull(schema.sessions.revokedAt),
+        gt(schema.sessions.expiresAt, ctx.now)
+      )
+    );
+
+  const providers = await ctx.db
+    .select({
+      id: schema.identityProviders.id,
+      name: schema.identityProviders.name,
+      kind: schema.identityProviders.kind,
+      emailDomain: schema.identityProviders.emailDomain,
+      enabled: schema.identityProviders.enabled,
+      mfaAsserted: schema.identityProviders.mfaAsserted,
+      defaultRoleKey: schema.identityProviders.defaultRoleKey
+    })
+    .from(schema.identityProviders)
+    .where(eq(schema.identityProviders.tenantId, ctx.tenantId));
+
+  return c.json({
+    mfa: {
+      // The floor, restated where the admin is looking at it.
+      policy: "internal-roles-always",
+      tenantConfigurable: false,
+      required,
+      enrolled,
+      exempt,
+      gaps,
+      gapsWithheld: !mayNameUsers && required > enrolled
+    },
+    sessions: {
+      ttlHours: SESSION_TTL_MS / 3_600_000,
+      tenantConfigurable: false,
+      live: live.length,
+      users: new Set(live.map((s) => s.userId)).size,
+      // A live session that never satisfied MFA is a pre-verification stub, not
+      // an authenticated seat — worth showing separately rather than hiding.
+      unverified: live.filter((s) => !s.mfaSatisfied).length,
+      oldestStartedAt: live.reduce<number | null>((min, s) => (min === null || s.createdAt < min ? s.createdAt : min), null)
+    },
+    limits: {
+      // Fixed-window counters in auth.ts, not tenant policy.
+      loginMax: LOGIN_MAX,
+      loginWindowSec: LOGIN_WINDOW_SEC,
+      mfaMax: MFA_MAX,
+      tenantConfigurable: false
+    },
+    sso: {
+      providers,
+      // PLAT-013 rides on the provider too: an enabled IdP that cannot assert a
+      // second factor covers a domain the floor then cannot reach.
+      gaps: providers.filter((p) => p.enabled && !p.mfaAsserted)
+    },
+    // No IP allowlist exists anywhere in the platform, and a screen that showed
+    // an empty one would read as "configured to allow everything". Say what is
+    // true instead: the control is not offered.
+    network: { ipAllowlist: "unsupported" }
+  });
 });
