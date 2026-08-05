@@ -47,6 +47,7 @@ function contrastRatio(fg: string, bg: string): number {
 const AA_BODY = 4.5;
 
 const pairs: [string, string, string][] = [
+  ["text", "on bg", "bg"],
   ["text-subtle", "on bg", "bg"],
   ["accent-contrast", "on accent", "accent"],
   ["success-contrast", "on success", "success"],
