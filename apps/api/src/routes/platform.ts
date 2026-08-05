@@ -4,7 +4,7 @@ import { z } from "zod";
 import { id, schema } from "@lyra/db";
 import { actorRef, audit, can, conflict, forbidden, gate, notFound, require_, type Ctx } from "@lyra/core";
 import { body, created } from "../http.js";
-import { activeTenants } from "../auth.js";
+import { allTenants } from "../auth.js";
 import type { App } from "../env.js";
 
 // ADR-0028: the one global (non-tenant-scoped) table in the schema — a flag
@@ -106,9 +106,9 @@ platformRoutes.get("/ops/overview", async (c) => {
   const tenants: { tenantId: string; outboxPending: number; dlqDepth: number; pendingApprovals: number }[] = [];
   let lastSnapshotAt: number | null = null;
 
-  for (const tenantId of await activeTenants(c.env)) {
+  for (const tenantId of await allTenants(c.env)) {
     const tctx = scopedToTenant(ctx, tenantId);
-    if (!can(tctx.actor, "admin:diagnostics:read")) continue;
+    if (!can(tctx.actor, "admin:diagnostics:read", { tenantId, module: "admin" })) continue;
 
     const outbox = await tctx.db
       .select({ id: schema.eventOutbox.id })
@@ -171,7 +171,7 @@ platformRoutes.get("/slo", async (c) => {
   const ctx = ctxOf(c);
   require_(ctx.actor, "admin:diagnostics:read");
   const definitions = await ctx.db.select().from(schema.sloDefinitions);
-  const tenantIds = await activeTenants(c.env);
+  const tenantIds = await allTenants(c.env);
 
   const slos = [];
   for (const def of definitions) {
@@ -180,7 +180,7 @@ platformRoutes.get("/slo", async (c) => {
     let total = 0;
     for (const tenantId of tenantIds) {
       const tctx = scopedToTenant(ctx, tenantId);
-      if (!can(tctx.actor, "admin:diagnostics:read")) continue;
+      if (!can(tctx.actor, "admin:diagnostics:read", { tenantId, module: "admin" })) continue;
       const counts = await sloCounts(tctx, def.module, windowStart);
       success += counts.success;
       total += counts.total;
@@ -283,9 +283,9 @@ platformRoutes.get("/incidents", async (c) => {
   const ctx = ctxOf(c);
   require_(ctx.actor, "admin:diagnostics:read");
   const rows = [];
-  for (const tenantId of await activeTenants(c.env)) {
+  for (const tenantId of await allTenants(c.env)) {
     const tctx = scopedToTenant(ctx, tenantId);
-    if (!can(tctx.actor, "admin:diagnostics:read")) continue;
+    if (!can(tctx.actor, "admin:diagnostics:read", { tenantId, module: "admin" })) continue;
     const found = await tctx.db
       .select()
       .from(schema.incidents)

@@ -3,10 +3,14 @@ import { join } from "node:path";
 import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
 import { eq } from "drizzle-orm";
+import { Hono } from "hono";
 import { beforeAll, describe, expect, it } from "vitest";
-import { id, schema, type Db } from "@lyra/db";
-import { hashPassword, ROLES, seed, totpAt, TOTP_STEP_SEC } from "@lyra/core";
+import { EntitlementsJson, id, PolicyJson, schema, type Db } from "@lyra/db";
+import { hashPassword, notFound, ROLES, seed, totpAt, TOTP_STEP_SEC, type Ctx } from "@lyra/core";
 import { app } from "../index.js";
+import { onError } from "../mw.js";
+import { platformRoutes } from "./platform.js";
+import type { App } from "../env.js";
 import type { Env } from "../env.js";
 
 // ADR-0028 (feature flags: platform-global table, dual-control toggle) and
@@ -282,6 +286,59 @@ describe("incidents rollup (ADR-0029)", () => {
     const res = await call("GET", "/v1/platform/incidents", undefined, adminToken);
     expect(res.status).toBe(200);
     expect((res.body.incidents as { title: string }[]).some((i) => i.title === "Workers AI latency spike")).toBe(true);
+  });
+
+  // The per-tenant loop's can() check used to pass no subject at all, so a
+  // grant scoped to a specific module (e.g. "only diagnostics for north")
+  // was never actually enforced inside the loop - scopeAllows() only
+  // restricts on subject.module, and with no subject it's a no-op. Bypassing
+  // the full login flow to build one such actor directly (regression: MINOR
+  // platform.ts can() subject).
+  it("does not let a module-scoped grant read incidents outside its module", async () => {
+    const platformApp = new Hono<App>();
+    platformApp.onError(onError);
+    platformApp.notFound((c) => onError(notFound(c.req.path), c));
+
+    function ctxWithScope(modules: string[]): Ctx {
+      return {
+        db: database as unknown as Ctx["db"],
+        tenantId,
+        actor: {
+          kind: "user",
+          id: "u_scoped",
+          tenantId,
+          grants: [{ roleKey: "scoped", permissions: ["admin:diagnostics:read"], scope: { modules } }]
+        },
+        requestId: "req_test",
+        now: Date.now(),
+        locale: "en",
+        policy: PolicyJson.parse({}),
+        entitlements: EntitlementsJson.parse({})
+      };
+    }
+
+    platformApp.use("*", async (c, next) => {
+      c.set("ctx", ctxWithScope(c.req.header("x-test-modules")?.split(",") ?? []));
+      await next();
+    });
+    platformApp.route("/", platformRoutes);
+
+    const outOfScope = await platformApp.fetch(
+      new Request("http://api.test/incidents", { headers: { "x-test-modules": "north" } }),
+      env as never,
+      exec as never
+    );
+    expect(outOfScope.status).toBe(200);
+    expect(((await outOfScope.json()) as { incidents: unknown[] }).incidents).toEqual([]);
+
+    const inScope = await platformApp.fetch(
+      new Request("http://api.test/incidents", { headers: { "x-test-modules": "admin" } }),
+      env as never,
+      exec as never
+    );
+    expect(inScope.status).toBe(200);
+    const body = (await inScope.json()) as { incidents: { title: string }[] };
+    expect(body.incidents.some((i) => i.title === "Workers AI latency spike")).toBe(true);
   });
 });
 

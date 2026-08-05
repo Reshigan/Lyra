@@ -8,7 +8,7 @@ import { backupTenant } from "./engines/backup.js";
 import { nudgeApiKeyRotation } from "./engines/api-key-rotation.js";
 import { runBudgetAutopilot } from "./engines/signal-autopilot.js";
 import { expireDelegations } from "./engines/staff.js";
-import { activeTenants, authRoutes, ctxFor, db, pruneSessions } from "./auth.js";
+import { allTenants, authRoutes, ctxFor, db, pruneSessions } from "./auth.js";
 import { mountAll } from "./crud.js";
 import { BY_MODULE } from "./resources.js";
 import { onError, withContext, withCors, withHeaders } from "./mw.js";
@@ -156,7 +156,7 @@ export default {
       (async () => {
         await pruneSessions(env, now);
         await pruneIdempotency(db(env) as never, now);
-        for (const tenantId of await activeTenants(env)) {
+        for (const tenantId of await allTenants(env)) {
           // One tenant's bad tick must not starve every tenant after it — a
           // persistent failure here would otherwise stop the whole fleet's
           // outbox, renewals and schedules indefinitely.

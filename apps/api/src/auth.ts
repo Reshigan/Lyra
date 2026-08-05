@@ -194,7 +194,11 @@ async function latestImpersonation(database: ReturnType<typeof makeDb>, platform
 }
 
 /** Every tenant id, unfiltered by status — the seam ADR-0029's per-tenant loop iterates. */
-export async function activeTenants(env: Env): Promise<string[]> {
+// No status filter: platform ops (diagnostics, incidents, SLOs) deliberately
+// sweeps every tenant, suspended ones included, so staff can still see a
+// suspended tenant's outstanding problems. Named for what it does, not what
+// its old name implied.
+export async function allTenants(env: Env): Promise<string[]> {
   const rows = await db(env).select({ id: schema.tenants.id }).from(schema.tenants);
   return rows.map((t) => t.id);
 }
