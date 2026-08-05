@@ -1351,7 +1351,7 @@ describe("J-E4 alert rules, explorer and data health", () => {
         grain: "month",
         period: "2026-01"
       }),
-      201
+      200
     );
     expect(Array.isArray(result.rows)).toBe(true);
   });

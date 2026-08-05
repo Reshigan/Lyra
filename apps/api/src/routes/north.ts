@@ -137,7 +137,7 @@ northRoutes.post("/explore", async (c) => {
         eq(schema.northSnapshots.period, input.period)
       )
     );
-  return c.json({ rows }, 201);
+  return c.json({ rows });
 });
 
 // Data health: staleness per metric, computed live from the snapshot table —
