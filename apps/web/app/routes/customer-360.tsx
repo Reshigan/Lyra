@@ -129,10 +129,49 @@ export interface QuoteRequestRow {
   createdAt: number;
 }
 
+export interface CaseSummaryRow {
+  id: string;
+  ref: string;
+  kind: string;
+  productLine?: string | null;
+  status: string;
+  priority: string;
+  slaDueAt?: number | null;
+  valueMinor?: number | null;
+  currency?: string | null;
+}
+
+export interface AuditRow {
+  id: string;
+  action: string;
+  actorRef: string;
+  ts: number;
+}
+
+export interface PositionLine {
+  currency: string;
+  premiumMinor: number | null;
+  commissionMinor: number | null;
+  settledMinor: number | null;
+}
+
+export interface PositionResponse {
+  positions: PositionLine[];
+  ltvMinor: number;
+  currency: string;
+}
+
+/** JSON columns arrive as unknown; only an array of strings earns chips. */
+export function chips(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
+}
+
 export const PERM = {
   read: "core:customers:read",
   policies: "axis:policies:read",
   claims: "axis:claims:read",
+  cases: "axis:cases:read",
+  audit: "core:audit:read",
   conversations: "orbit:conversations:read",
   consents: "core:consents:read",
   files: "core:files:read",
@@ -195,6 +234,17 @@ export const LABELS: Record<string, Record<string, string>> = {
     colFiled: "Filed",
     colScore: "Propensity",
     colValue: "Expected value",
+    casesTitle: "Cases",
+    casesCaption: "Work in flight for this customer: quoting, underwriting, renewals.",
+    activityTitle: "Activity",
+    activityCaption: "Who touched this record, newest first.",
+    colRef: "Reference",
+    colKind: "Kind",
+    colProductLine: "Product line",
+    colPriority: "Priority",
+    colSla: "SLA due",
+    colCaseValue: "Value",
+    positionHintLedger: "Summed on the server from every agreement and claim on record.",
     surface: "Show to customer",
     dismiss: "Dismiss",
     surfaced: "Offer shown to the customer.",
@@ -251,6 +301,17 @@ export const LABELS: Record<string, Record<string, string>> = {
     colFiled: "تاريخ الإيداع",
     colScore: "احتمال الشراء",
     colValue: "القيمة المتوقعة",
+    casesTitle: "الحالات",
+    casesCaption: "الأعمال الجارية لهذا العميل: التسعير، الاكتتاب، التجديدات.",
+    activityTitle: "النشاط",
+    activityCaption: "من تعامل مع هذا السجل، الأحدث أولًا.",
+    colRef: "المرجع",
+    colKind: "الصنف",
+    colProductLine: "خط المنتج",
+    colPriority: "الأولوية",
+    colSla: "موعد اتفاقية الخدمة",
+    colCaseValue: "القيمة",
+    positionHintLedger: "محسوب على الخادم من كل الوثائق والمطالبات المسجّلة.",
     surface: "إظهار للعميل",
     dismiss: "استبعاد",
     surfaced: "تم إظهار العرض للعميل.",
@@ -279,6 +340,9 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
     customer: null as Customer | null,
     policies: [] as PolicyRow[],
     claims: [] as ClaimRow[],
+    cases: [] as CaseSummaryRow[],
+    activity: [] as AuditRow[],
+    position: null as PositionResponse | null,
     conversations: [] as ConversationRow[],
     quotes: [] as QuoteRequestRow[],
     consents: [] as ConsentRow[],
@@ -291,7 +355,7 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   if (!may.read) return { ...empty, may: { ...may, read: false } };
 
   const scope = `?customerId=${encodeURIComponent(id)}&limit=50`;
-  const [customer, policies, claims, conversations, quotes, consents, documents, offers] =
+  const [customer, policies, claims, cases, activity, position, conversations, quotes, consents, documents, offers] =
     await Promise.all([
       safe(() => api<Customer>(`/v1/core/customers/${id}`, options), null),
       held.has(PERM.policies)
@@ -300,6 +364,22 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
       held.has(PERM.claims)
         ? safe(() => api<Page<ClaimRow>>(`/v1/axis/claims${scope}`, options), null)
         : null,
+      held.has(PERM.cases)
+        ? safe(() => api<Page<CaseSummaryRow>>(`/v1/axis/cases${scope}`, options), null)
+        : null,
+      // Generated CRUD audits with the row's own id as subjectRef (crud.ts),
+      // and core_audit_log has no createdAt — order on ts explicitly.
+      held.has(PERM.audit)
+        ? safe(
+            () =>
+              api<Page<AuditRow>>(
+                `/v1/core/audit-log?subjectRef=${encodeURIComponent(id)}&limit=20&sort=ts&order=desc`,
+                options
+              ),
+            null
+          )
+        : null,
+      safe(() => api<PositionResponse>(`/v1/core/customers/${id}/position`, options), null),
       held.has(PERM.conversations)
         ? safe(() => api<Page<ConversationRow>>(`/v1/orbit/conversations${scope}`, options), null)
         : null,
@@ -330,6 +410,9 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
     customer,
     policies: rowsOf(policies),
     claims: rowsOf(claims),
+    cases: rowsOf(cases),
+    activity: rowsOf(activity),
+    position,
     conversations: rowsOf(conversations),
     quotes: rowsOf(quotes),
     consents: rowsOf(consents),

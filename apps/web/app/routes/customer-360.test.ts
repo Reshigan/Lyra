@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ActionFunctionArgs } from "react-router";
 import type { Env } from "../env";
-import { LABELS, PERM, action, labelsIn } from "./customer-360";
+import { LABELS, PERM, action, chips, labelsIn } from "./customer-360";
 
 // The 360 view is read-mostly; its one write puts a priced offer in front of a
 // customer, which is consequential (docs/15 §4). So: the offer id is required
@@ -64,6 +64,22 @@ describe("panel permissions", () => {
     const values = Object.values(PERM);
     expect(new Set(values).size).toBe(values.length);
     expect(values.every((value) => /^[a-z_]+:[a-z_]+:[a-z_]+$/.test(value))).toBe(true);
+  });
+
+  it("covers the cases panel and the activity timeline", () => {
+    expect(PERM.cases).toBe("axis:cases:read");
+    expect(PERM.audit).toBe("core:audit:read");
+  });
+});
+
+describe("chips", () => {
+  it("passes string arrays through and answers everything else with empty", () => {
+    expect(chips(["vip", "fleet"])).toEqual(["vip", "fleet"]);
+    expect(chips(["ok", 7, null])).toEqual(["ok"]);
+    expect(chips({ not: "an array" })).toEqual([]);
+    expect(chips("vip")).toEqual([]);
+    expect(chips(null)).toEqual([]);
+    expect(chips(undefined)).toEqual([]);
   });
 });
 
