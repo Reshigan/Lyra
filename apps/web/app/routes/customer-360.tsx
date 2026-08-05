@@ -1,0 +1,742 @@
+import {
+  Form,
+  Link,
+  useActionData,
+  useLoaderData,
+  useNavigation,
+  type ActionFunctionArgs,
+  type LoaderFunctionArgs
+} from "react-router";
+import {
+  AGENT_MARK,
+  AgentBadge,
+  Badge,
+  Button,
+  Card,
+  DateTime,
+  EmptyState,
+  Money,
+  Stat,
+  Table,
+  type Column
+} from "@lyra/ui";
+import { ApiError, api, fetchMe, type Problem } from "../api.server";
+import { cloudflare } from "../context";
+import { translator } from "../i18n";
+import {
+  Entry,
+  Facts,
+  Header,
+  labelsFrom,
+  nameOf,
+  rowsOf,
+  safe,
+  sumBy,
+  tag,
+  type Label,
+  type Page
+} from "./detail-kit";
+import { Gate } from "./staff";
+import { useShellData } from "./workspace";
+
+// One customer, everything the platform holds on them: what they bought, what
+// they claimed, who they talked to, what they consented to, what they are worth
+// and what to offer next. Every panel is its own scoped read — an actor holding
+// only core:customers:read still gets a usable screen, just a shorter one.
+
+/* --------------------------------------------------------------- contract */
+
+export interface Customer {
+  id: string;
+  type: string;
+  nameJson?: unknown;
+  emailsJson?: unknown;
+  phonesJson?: unknown;
+  kycStatus: string;
+  tagsJson?: unknown;
+  riskFlagsJson?: unknown;
+  ltvCached?: number | null;
+  locale?: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface PolicyRow {
+  id: string;
+  policyNo: string;
+  status: string;
+  premiumMinor: number;
+  commissionMinor: number;
+  currency: string;
+  startAt: number;
+  endAt: number;
+}
+
+export interface ClaimRow {
+  id: string;
+  claimNo: string;
+  status: string;
+  amountMinor?: number | null;
+  settledMinor?: number | null;
+  currency: string;
+  reportedAt: number;
+}
+
+export interface ConversationRow {
+  id: string;
+  channel: string;
+  state: string;
+  intent?: string | null;
+  csat?: number | null;
+  lastMessageAt?: number | null;
+}
+
+export interface ConsentRow {
+  id: string;
+  source: string;
+  purposesJson?: unknown;
+  version: number;
+  ts: number;
+  expiry?: number | null;
+}
+
+export interface FileRow {
+  id: string;
+  kind: string;
+  contentType?: string | null;
+  piiLevel: string;
+  createdAt: number;
+}
+
+export interface OfferRow {
+  id: string;
+  kind: string;
+  offeringId: string;
+  score: number;
+  expectedValueMinor?: number | null;
+  currency?: string | null;
+  reasonKey: string;
+  state: string;
+  model?: string | null;
+}
+
+export interface QuoteRequestRow {
+  id: string;
+  productId: string;
+  state: string;
+  bestPremiumMinor?: number | null;
+  currency: string;
+  createdAt: number;
+}
+
+export const PERM = {
+  read: "core:customers:read",
+  policies: "axis:policies:read",
+  claims: "axis:claims:read",
+  conversations: "orbit:conversations:read",
+  consents: "core:consents:read",
+  files: "core:files:read",
+  offers: "dist:offers:read",
+  surface: "dist:offers:surface",
+  decide: "dist:offers:override",
+  quotes: "dist:quote_requests:read"
+} as const;
+
+/* ---------------------------------------------------------------- labels */
+
+export const LABELS: Record<string, Record<string, string>> = {
+  en: {
+    title: "Customer",
+    intro: "Everything on file: cover held, claims made, conversations, consent and what to offer next.",
+    back: "Back to customers",
+    profileTitle: "Profile",
+    type: "Type",
+    kyc: "Identity check",
+    locale: "Language",
+    tags: "Tags",
+    riskFlags: "Risk flags",
+    since: "Customer since",
+    positionTitle: "Position",
+    positionHint: "Derived from the cover and claims on this screen, not from a ledger balance.",
+    premiumWritten: "Premium written",
+    commissionEarned: "Commission earned",
+    claimsSettled: "Claims settled",
+    lifetimeValue: "Lifetime value",
+    policiesCaption: "Every agreement issued to this customer.",
+    claimsCaption: "Every claim reported against their cover.",
+    conversationsTitle: "Conversations",
+    conversationsCaption: "Every thread with this customer.",
+    quotesTitle: "Shopping",
+    quotesCaption: "Comparative quote requests raised for this customer.",
+    consentsTitle: "Consent",
+    consentsCaption: "The permissions on file, newest first.",
+    documentsTitle: "Documents",
+    documentsCaption: "Files filed against this customer.",
+    offersTitle: "Next best offer",
+    offersCaption: "Ranked suggestions, with the signals behind each one.",
+    offerWhy: "Why this",
+    colCommission: "Commission",
+    colTerm: "Term",
+    colAmount: "Claimed",
+    colSettled: "Settled",
+    colReported: "Reported",
+    colChannel: "Channel",
+    colIntent: "Intent",
+    colCsat: "Satisfaction",
+    colLastMessage: "Last message",
+    colProduct: "Product",
+    colRaised: "Raised",
+    colSource: "Source",
+    colPurposes: "Purposes",
+    colVersion: "Version",
+    colGranted: "Granted",
+    colExpiry: "Expires",
+    colFormat: "Format",
+    colFiled: "Filed",
+    colScore: "Propensity",
+    colValue: "Expected value",
+    surface: "Show to customer",
+    dismiss: "Dismiss",
+    surfaced: "Offer shown to the customer.",
+    dismissed: "Offer dismissed.",
+    offerRequired: "Pick an offer first."
+  },
+  ar: {
+    title: "العميل",
+    intro: "كل ما هو مسجّل: التغطية القائمة، المطالبات، المحادثات، الموافقات، وما يُعرض تاليًا.",
+    back: "العودة إلى العملاء",
+    profileTitle: "الملف",
+    type: "النوع",
+    kyc: "التحقق من الهوية",
+    locale: "اللغة",
+    tags: "الوسوم",
+    riskFlags: "مؤشرات الخطر",
+    since: "عميل منذ",
+    positionTitle: "الوضع المالي",
+    positionHint: "مستخرج من التغطية والمطالبات في هذه الشاشة، وليس من رصيد دفتري.",
+    premiumWritten: "الأقساط المكتتبة",
+    commissionEarned: "العمولة المحققة",
+    claimsSettled: "المطالبات المسددة",
+    lifetimeValue: "القيمة الإجمالية",
+    policiesCaption: "كل وثيقة صادرة لهذا العميل.",
+    claimsCaption: "كل مطالبة مسجّلة على تغطيته.",
+    conversationsTitle: "المحادثات",
+    conversationsCaption: "كل محادثة مع هذا العميل.",
+    quotesTitle: "طلبات الأسعار",
+    quotesCaption: "طلبات المقارنة المفتوحة لهذا العميل.",
+    consentsTitle: "الموافقات",
+    consentsCaption: "الأذونات المسجّلة، الأحدث أولًا.",
+    documentsTitle: "المستندات",
+    documentsCaption: "الملفات المرفقة بهذا العميل.",
+    offersTitle: "العرض الأنسب",
+    offersCaption: "اقتراحات مرتبة، مع الإشارات التي بُنيت عليها.",
+    offerWhy: "سبب الاقتراح",
+    colCommission: "العمولة",
+    colTerm: "المدة",
+    colAmount: "المطلوب",
+    colSettled: "المسدد",
+    colReported: "تاريخ الإبلاغ",
+    colChannel: "القناة",
+    colIntent: "الغرض",
+    colCsat: "الرضا",
+    colLastMessage: "آخر رسالة",
+    colProduct: "المنتج",
+    colRaised: "تاريخ الطلب",
+    colSource: "المصدر",
+    colPurposes: "الأغراض",
+    colVersion: "الإصدار",
+    colGranted: "تاريخ المنح",
+    colExpiry: "تاريخ الانتهاء",
+    colFormat: "الصيغة",
+    colFiled: "تاريخ الإيداع",
+    colScore: "احتمال الشراء",
+    colValue: "القيمة المتوقعة",
+    surface: "إظهار للعميل",
+    dismiss: "استبعاد",
+    surfaced: "تم إظهار العرض للعميل.",
+    dismissed: "تم استبعاد العرض.",
+    offerRequired: "اختر عرضًا أولًا."
+  }
+};
+
+export const labelsIn = labelsFrom(LABELS);
+
+/* ------------------------------------------------------------------ loader */
+
+export async function loader({ request, params, context }: LoaderFunctionArgs) {
+  const env = context.get(cloudflare).env;
+  const id = params.id as string;
+  const me = await fetchMe(env, request);
+  const held = new Set(me.permissions);
+  const options = { env, request };
+  const may = {
+    read: held.has(PERM.read),
+    surface: held.has(PERM.surface),
+    decide: held.has(PERM.decide)
+  };
+
+  const empty = {
+    customer: null as Customer | null,
+    policies: [] as PolicyRow[],
+    claims: [] as ClaimRow[],
+    conversations: [] as ConversationRow[],
+    quotes: [] as QuoteRequestRow[],
+    consents: [] as ConsentRow[],
+    documents: [] as FileRow[],
+    offers: [] as OfferRow[],
+    may,
+    idempotencyKey: crypto.randomUUID()
+  };
+
+  if (!may.read) return { ...empty, may: { ...may, read: false } };
+
+  const scope = `?customerId=${encodeURIComponent(id)}&limit=50`;
+  const [customer, policies, claims, conversations, quotes, consents, documents, offers] =
+    await Promise.all([
+      safe(() => api<Customer>(`/v1/core/customers/${id}`, options), null),
+      held.has(PERM.policies)
+        ? safe(() => api<Page<PolicyRow>>(`/v1/axis/policies${scope}`, options), null)
+        : null,
+      held.has(PERM.claims)
+        ? safe(() => api<Page<ClaimRow>>(`/v1/axis/claims${scope}`, options), null)
+        : null,
+      held.has(PERM.conversations)
+        ? safe(() => api<Page<ConversationRow>>(`/v1/orbit/conversations${scope}`, options), null)
+        : null,
+      held.has(PERM.quotes)
+        ? safe(() => api<Page<QuoteRequestRow>>(`/v1/dist/quote-requests${scope}`, options), null)
+        : null,
+      held.has(PERM.consents)
+        ? safe(() => api<Page<ConsentRow>>(`/v1/core/consents${scope}`, options), null)
+        : null,
+      // Files hang off a subject reference rather than a column (core_files).
+      held.has(PERM.files)
+        ? safe(
+            () =>
+              api<Page<FileRow>>(
+                `/v1/core/files?subjectRef=${encodeURIComponent(`customer:${id}`)}&limit=50`,
+                options
+              ),
+            null
+          )
+        : null,
+      held.has(PERM.offers)
+        ? safe(() => api<Page<OfferRow>>(`/v1/dist/next-best-offers${scope}`, options), null)
+        : null
+    ]);
+
+  return {
+    ...empty,
+    customer,
+    policies: rowsOf(policies),
+    claims: rowsOf(claims),
+    conversations: rowsOf(conversations),
+    quotes: rowsOf(quotes),
+    consents: rowsOf(consents),
+    documents: rowsOf(documents),
+    offers: rowsOf(offers)
+  };
+}
+
+/* ------------------------------------------------------------------ action */
+
+export async function action({ request, context }: ActionFunctionArgs) {
+  const env = context.get(cloudflare).env;
+  const form = await request.formData();
+  const intent = String(form.get("intent") ?? "");
+  const nothing = { done: null as string | null, problem: null as Problem | null, error: null as string | null };
+
+  if (intent !== "surface" && intent !== "dismiss") {
+    return { ...nothing, problem: { title: "unknown intent", status: 400 } };
+  }
+
+  const offerId = String(form.get("offerId") ?? "").trim();
+  if (!offerId) return { ...nothing, error: "offerRequired" };
+
+  const key = String(form.get("idempotencyKey") ?? "");
+  const headers = key ? { "idempotency-key": key } : undefined;
+  try {
+    if (intent === "surface") {
+      // Consequential: this puts a priced offer in front of a customer (docs/15).
+      await api<void>(`/v1/dist/next-best-offers/${offerId}/surface`, {
+        env,
+        request,
+        method: "POST",
+        ...(headers ? { headers } : {})
+      });
+      return { ...nothing, done: "surfaced" };
+    }
+    await api<void>(`/v1/dist/next-best-offers/${offerId}/decide`, {
+      env,
+      request,
+      method: "POST",
+      body: { decision: "dismissed" },
+      ...(headers ? { headers } : {})
+    });
+    return { ...nothing, done: "dismissed" };
+  } catch (error) {
+    if (error instanceof ApiError) return { ...nothing, problem: error.problem };
+    throw error;
+  }
+}
+
+/* --------------------------------------------------------------- component */
+
+export default function Customer360() {
+  const loaded = useLoaderData<typeof loader>();
+  const result = useActionData<typeof action>();
+  const navigation = useNavigation();
+  const shell = useShellData();
+  const locale = shell?.locale ?? "en";
+  const t = translator(locale, shell?.overrides);
+  const l = labelsIn(locale, shell?.domainPack);
+  const busy = navigation.state !== "idle";
+
+  if (!loaded.may.read || !loaded.customer) {
+    return (
+      <div className="flex flex-col gap-6">
+        <Header title={l("title")} intro={l("intro")} />
+        <EmptyState title={l("deniedTitle")} body={t("error.forbidden")} />
+      </div>
+    );
+  }
+
+  const customer = loaded.customer;
+  const currency = loaded.policies[0]?.currency ?? loaded.claims[0]?.currency ?? "AED";
+  const premium = sumBy(loaded.policies, (row) => row.premiumMinor);
+  const commission = sumBy(loaded.policies, (row) => row.commissionMinor);
+  const settled = sumBy(loaded.claims, (row) => row.settledMinor);
+
+  const policyColumns: Array<Column<PolicyRow>> = [
+    {
+      key: "policyNo",
+      header: l("policyNo"),
+      render: (row) => (
+        <Link to={`/axis/policies/${row.id}/detail`} className="font-mono text-12 text-accent hover:underline">
+          {row.policyNo}
+        </Link>
+      )
+    },
+    { key: "status", header: l("colStatus"), render: (row) => <Badge size="sm">{tag(l, "status", row.status)}</Badge> },
+    {
+      key: "premiumMinor",
+      header: l("premiumMinor"),
+      numeric: true,
+      render: (row) => <Money amountMinor={row.premiumMinor} currency={row.currency} locale={locale} />
+    },
+    {
+      key: "commissionMinor",
+      header: l("colCommission"),
+      numeric: true,
+      render: (row) => <Money amountMinor={row.commissionMinor} currency={row.currency} locale={locale} />
+    },
+    {
+      key: "endAt",
+      header: l("colTerm"),
+      render: (row) => <DateTime value={row.endAt} locale={locale} precision="day" />
+    }
+  ];
+
+  const claimColumns: Array<Column<ClaimRow>> = [
+    {
+      key: "claimNo",
+      header: l("claimNo"),
+      render: (row) => (
+        <Link to={`/axis/claims/${row.id}/detail`} className="font-mono text-12 text-accent hover:underline">
+          {row.claimNo}
+        </Link>
+      )
+    },
+    { key: "status", header: l("colStatus"), render: (row) => <Badge size="sm">{tag(l, "status", row.status)}</Badge> },
+    {
+      key: "amountMinor",
+      header: l("colAmount"),
+      numeric: true,
+      render: (row) => <Money amountMinor={row.amountMinor ?? 0} currency={row.currency} locale={locale} />
+    },
+    {
+      key: "settledMinor",
+      header: l("colSettled"),
+      numeric: true,
+      render: (row) => <Money amountMinor={row.settledMinor ?? 0} currency={row.currency} locale={locale} />
+    },
+    {
+      key: "reportedAt",
+      header: l("colReported"),
+      render: (row) => <DateTime value={row.reportedAt} locale={locale} precision="day" />
+    }
+  ];
+
+  const conversationColumns: Array<Column<ConversationRow>> = [
+    {
+      key: "channel",
+      header: l("colChannel"),
+      render: (row) => (
+        <Link to={`/orbit/conversations/${row.id}/thread`} className="font-ui text-12 text-accent hover:underline">
+          {tag(l, "channel", row.channel)}
+        </Link>
+      )
+    },
+    { key: "state", header: l("colStatus"), render: (row) => <Badge size="sm">{tag(l, "state", row.state)}</Badge> },
+    { key: "intent", header: l("colIntent"), render: (row) => <span className="font-ui text-12">{row.intent ?? "—"}</span> },
+    { key: "csat", header: l("colCsat"), numeric: true, render: (row) => <span className="tabular-nums">{row.csat ?? "—"}</span> },
+    {
+      key: "lastMessageAt",
+      header: l("colLastMessage"),
+      render: (row) =>
+        row.lastMessageAt ? <DateTime value={row.lastMessageAt} locale={locale} precision="minute" /> : <span>—</span>
+    }
+  ];
+
+  const quoteColumns: Array<Column<QuoteRequestRow>> = [
+    { key: "productId", header: l("colProduct"), render: (row) => <span className="font-mono text-12">{row.productId}</span> },
+    { key: "state", header: l("colStatus"), render: (row) => <Badge size="sm">{tag(l, "state", row.state)}</Badge> },
+    {
+      key: "bestPremiumMinor",
+      header: l("bestPremiumMinor"),
+      numeric: true,
+      render: (row) => <Money amountMinor={row.bestPremiumMinor ?? 0} currency={row.currency} locale={locale} />
+    },
+    {
+      key: "createdAt",
+      header: l("colRaised"),
+      render: (row) => <DateTime value={row.createdAt} locale={locale} precision="day" />
+    },
+    {
+      key: "open",
+      header: l("open"),
+      render: (row) => (
+        <Link to={`/distribution/quote-requests/${row.id}/compare`} className="font-ui text-12 text-accent hover:underline">
+          {l("open")}
+        </Link>
+      )
+    }
+  ];
+
+  const consentColumns: Array<Column<ConsentRow>> = [
+    { key: "source", header: l("colSource"), render: (row) => <Badge size="sm">{tag(l, "source", row.source)}</Badge> },
+    {
+      key: "purposesJson",
+      header: l("colPurposes"),
+      render: (row) => <span className="font-mono text-11">{JSON.stringify(row.purposesJson ?? [])}</span>
+    },
+    { key: "version", header: l("colVersion"), numeric: true, render: (row) => <span className="tabular-nums">{row.version}</span> },
+    { key: "ts", header: l("colGranted"), render: (row) => <DateTime value={row.ts} locale={locale} precision="day" /> },
+    {
+      key: "expiry",
+      header: l("colExpiry"),
+      render: (row) => (row.expiry ? <DateTime value={row.expiry} locale={locale} precision="day" /> : <span>—</span>)
+    }
+  ];
+
+  const fileColumns: Array<Column<FileRow>> = [
+    { key: "kind", header: l("colKind"), render: (row) => <span className="font-ui text-12">{tag(l, "kind", row.kind)}</span> },
+    { key: "contentType", header: l("colFormat"), render: (row) => <span className="font-mono text-11">{row.contentType ?? "—"}</span> },
+    {
+      key: "piiLevel",
+      header: l("colSensitivity"),
+      render: (row) => <Badge size="sm">{tag(l, "piiLevel", row.piiLevel)}</Badge>
+    },
+    { key: "createdAt", header: l("colFiled"), render: (row) => <DateTime value={row.createdAt} locale={locale} precision="day" /> }
+  ];
+
+  return (
+    <div className="flex flex-col gap-6">
+      <Header title={l("title")} intro={l("intro")} />
+
+      <Link to="/admin/customers" className="font-ui text-12 text-accent underline-offset-2 hover:underline">
+        {l("back")}
+      </Link>
+
+      <Card
+        title={l("profileTitle")}
+        actions={
+          <Badge size="sm" dot>
+            {tag(l, "kycStatus", customer.kycStatus)}
+          </Badge>
+        }
+      >
+        <p className="mb-3 font-display text-18 text-text">{nameOf(customer.nameJson, locale, customer.id)}</p>
+        <Facts>
+          <Entry term={l("type")}>{tag(l, "type", customer.type)}</Entry>
+          <Entry term={l("kyc")}>{tag(l, "kycStatus", customer.kycStatus)}</Entry>
+          <Entry term={l("locale")}>{customer.locale ?? "—"}</Entry>
+          <Entry term={l("tags")}>
+            <span className="font-mono text-11">{JSON.stringify(customer.tagsJson ?? [])}</span>
+          </Entry>
+          <Entry term={l("riskFlags")}>
+            <span className="font-mono text-11">{JSON.stringify(customer.riskFlagsJson ?? [])}</span>
+          </Entry>
+          <Entry term={l("since")}>
+            <DateTime value={customer.createdAt} locale={locale} precision="day" />
+          </Entry>
+        </Facts>
+      </Card>
+
+      <Card title={l("positionTitle")}>
+        <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
+          <Stat label={l("premiumWritten")} value={<Money amountMinor={premium} currency={currency} locale={locale} />} />
+          <Stat label={l("commissionEarned")} value={<Money amountMinor={commission} currency={currency} locale={locale} />} />
+          <Stat label={l("claimsSettled")} value={<Money amountMinor={settled} currency={currency} locale={locale} />} />
+          <Stat
+            label={l("lifetimeValue")}
+            value={<Money amountMinor={customer.ltvCached ?? 0} currency={currency} locale={locale} />}
+          />
+        </div>
+        <p className="mt-3 font-ui text-11 text-subtle">{l("positionHint")}</p>
+      </Card>
+
+      {loaded.offers.length > 0 ? (
+        <Card title={l("offersTitle")} actions={<AgentBadge size="sm" why={l("offersCaption")} />}>
+          <p className="mb-3 font-ui text-12 text-subtle">{l("offersCaption")}</p>
+          <ul className="flex flex-col gap-3">
+            {loaded.offers.map((offer) => (
+              <OfferCard
+                key={offer.id}
+                offer={offer}
+                locale={locale}
+                l={l}
+                may={loaded.may}
+                idempotencyKey={loaded.idempotencyKey}
+                busy={busy}
+              />
+            ))}
+          </ul>
+          {result?.error ? (
+            <p role="alert" className="mt-3 font-ui text-13 text-danger">
+              {l(result.error)}
+            </p>
+          ) : null}
+          {result?.done ? <p className="mt-3 font-ui text-13 text-success">{l(result.done)}</p> : null}
+          {result?.problem ? <Gate problem={result.problem} l={l} /> : null}
+        </Card>
+      ) : null}
+
+      <Panel title={l("policies")}>
+        <Table
+          caption={l("policiesCaption")}
+          columns={policyColumns}
+          rows={loaded.policies}
+          rowKey={(row) => row.id}
+          empty={<EmptyState title={l("none")} />}
+        />
+      </Panel>
+
+      <Panel title={l("claims")}>
+        <Table
+          caption={l("claimsCaption")}
+          columns={claimColumns}
+          rows={loaded.claims}
+          rowKey={(row) => row.id}
+          empty={<EmptyState title={l("none")} />}
+        />
+      </Panel>
+
+      <Panel title={l("conversationsTitle")}>
+        <Table
+          caption={l("conversationsCaption")}
+          columns={conversationColumns}
+          rows={loaded.conversations}
+          rowKey={(row) => row.id}
+          empty={<EmptyState title={l("none")} />}
+        />
+      </Panel>
+
+      <Panel title={l("quotesTitle")}>
+        <Table
+          caption={l("quotesCaption")}
+          columns={quoteColumns}
+          rows={loaded.quotes}
+          rowKey={(row) => row.id}
+          empty={<EmptyState title={l("none")} />}
+        />
+      </Panel>
+
+      <Panel title={l("consentsTitle")}>
+        <Table
+          caption={l("consentsCaption")}
+          columns={consentColumns}
+          rows={loaded.consents}
+          rowKey={(row) => row.id}
+          empty={<EmptyState title={l("none")} />}
+        />
+      </Panel>
+
+      <Panel title={l("documentsTitle")}>
+        <Table
+          caption={l("documentsCaption")}
+          columns={fileColumns}
+          rows={loaded.documents}
+          rowKey={(row) => row.id}
+          empty={<EmptyState title={l("none")} />}
+        />
+      </Panel>
+    </div>
+  );
+}
+
+function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <Card title={title} padded={false}>
+      {children}
+    </Card>
+  );
+}
+
+function OfferCard({
+  offer,
+  locale,
+  l,
+  may,
+  idempotencyKey,
+  busy
+}: {
+  offer: OfferRow;
+  locale: string;
+  l: Label;
+  may: { surface: boolean; decide: boolean };
+  idempotencyKey: string;
+  busy: boolean;
+}) {
+  return (
+    <li className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-line p-3">
+      <div className="flex flex-col gap-1">
+        <span className="font-ui text-13 text-text">
+          {tag(l, "kind", offer.kind)} {AGENT_MARK}
+        </span>
+        <span className="font-ui text-12 text-muted">{tag(l, "reason", offer.reasonKey)}</span>
+        <span className="font-mono text-11 text-subtle">{offer.offeringId}</span>
+      </div>
+      <div className="flex items-center gap-4">
+        <Stat label={l("colScore")} value={<span className="tabular-nums">{offer.score}</span>} />
+        <Stat
+          label={l("colValue")}
+          value={
+            <Money amountMinor={offer.expectedValueMinor ?? 0} currency={offer.currency ?? "AED"} locale={locale} />
+          }
+        />
+        <Badge size="sm">{tag(l, "state", offer.state)}</Badge>
+        {may.surface && offer.state === "proposed" ? (
+          <Form method="post">
+            <input type="hidden" name="intent" value="surface" />
+            <input type="hidden" name="offerId" value={offer.id} />
+            <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
+            <Button type="submit" size="sm" variant="secondary" loading={busy}>
+              {l("surface")}
+            </Button>
+          </Form>
+        ) : null}
+        {may.decide ? (
+          <Form method="post">
+            <input type="hidden" name="intent" value="dismiss" />
+            <input type="hidden" name="offerId" value={offer.id} />
+            <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
+            <Button type="submit" size="sm" variant="ghost" loading={busy}>
+              {l("dismiss")}
+            </Button>
+          </Form>
+        ) : null}
+      </div>
+    </li>
+  );
+}

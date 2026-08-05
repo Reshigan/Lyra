@@ -158,7 +158,7 @@ export default function ModuleList() {
 
   const locale = shell?.locale ?? "en";
   const permissions = shell?.permissions ?? [];
-  const t = translator(locale);
+  const t = translator(locale, shell?.overrides);
   const spec = workspaceFor(loaded.modulePath);
   if (!spec) return null;
   const tab = tabOf(spec, loaded.resource);

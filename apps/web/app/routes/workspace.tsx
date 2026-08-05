@@ -47,7 +47,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     tenantName: me.tenant.name,
     actorName: me.profile?.name ?? null,
     // CLAUDE.md §14: the pack that renames every noun downstream of labelsFor.
-    domainPack: typeof me.policy?.domainPack === "string" ? me.policy.domainPack : DEFAULT_PACK
+    domainPack: typeof me.policy?.domainPack === "string" ? me.policy.domainPack : DEFAULT_PACK,
+    // A tenant admin's i18n key relabels (core_locale_overrides), merged by
+    // translator() over the static catalogue — see apps/web/app/i18n.ts.
+    overrides: me.overrides ?? {}
   };
 }
 
@@ -65,7 +68,7 @@ export const meta: MetaFunction<typeof loader> = ({ loaderData: loaded }) => [
 
 export default function Workspace() {
   const shell = useLoaderData<typeof loader>();
-  const t = translator(shell.locale);
+  const t = translator(shell.locale, shell.overrides);
 
   return (
     <Shell

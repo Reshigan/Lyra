@@ -1,0 +1,396 @@
+import type { ReactNode } from "react";
+import { ApiError } from "../api.server";
+import { optionLabel } from "../modules/spec";
+import { vocabulary } from "../modules/vocabulary";
+
+// The six composite record screens (customer 360, policy, claim, case, product,
+// channel) are the same shape: one primary read plus a fan-out of scoped panel
+// reads, each of which the actor may not hold. This is the part they share —
+// the panel-degradation rule, the list envelope, the definition-list pair every
+// summary block is built from, and the vocabulary those six screens have in
+// common (statuses, the money and identity nouns a domain pack renames, and the
+// chrome around a denied panel). A route's own table only carries its own copy.
+
+/** The list envelope apps/api/src/crud.ts returns (`{ data, cursor? }`). */
+export interface Page<T> {
+  data: T[];
+  cursor?: string;
+}
+
+export type Label = (key: string, vars?: Record<string, string>) => string;
+
+/**
+ * Vocabulary every one of the six screens needs. Enum values are keyed the way
+ * `optionLabel` resolves them (`<column>.<value>`, falling back to the bare
+ * value), and the industry nouns are keyed the way `modules/vocabulary.ts`
+ * keys them — `premiumMinor`, `claimNo`, `insurer` — so a tenant on a different
+ * domain pack gets its own word without these routes knowing the word exists.
+ */
+export const SHARED: Record<string, Record<string, string>> = {
+  en: {
+    deniedTitle: "You can't open this record",
+    back: "Back",
+    open: "Open",
+    none: "Nothing on file here.",
+    approvalTitle: "Waiting on an approval",
+    approvalBody: "This needs sign-off under {policy} before it can go through.",
+    approvalLink: "Open the approval queue",
+
+    // Industry nouns — a domain pack renames these (docs/21 §3).
+    policies: "Cover",
+    policyNo: "Policy number",
+    policyId: "Policy",
+    premiumMinor: "Premium",
+    minPremiumMinor: "Minimum premium",
+    bestPremiumMinor: "Best price",
+    coverageJson: "Cover",
+    claims: "Claims",
+    claimNo: "Claim number",
+    insurer: "Underwriter",
+    renewal: "Renewal",
+
+    // Shared column headings.
+    colRef: "Reference",
+    colStatus: "Status",
+    colKind: "Kind",
+    colAmount: "Amount",
+    colCreated: "Created",
+    colUpdated: "Updated",
+    colCurrency: "Currency",
+    colDocument: "Document",
+    colSensitivity: "Sensitivity",
+    colWhen: "When",
+    colWho: "Who",
+    colOutcome: "Outcome",
+
+    // core_customers
+    "type.person": "Individual",
+    "type.business": "Business",
+    "kycStatus.none": "Not started",
+    "kycStatus.pending": "In progress",
+    "kycStatus.verified": "Verified",
+    "kycStatus.failed": "Failed",
+
+    // axis_policies
+    "status.active": "Active",
+    "status.lapsed": "Lapsed",
+    "status.cancelled": "Cancelled",
+    "status.renewed": "Renewed",
+    "status.paused": "Paused",
+    "status.draft": "Draft",
+    "status.withdrawn": "Withdrawn",
+    "status.terminated": "Terminated",
+
+    // axis_claims
+    "status.reported": "Reported",
+    "status.assessing": "Assessing",
+    "status.approved": "Approved",
+    "status.rejected": "Rejected",
+    "status.settled": "Settled",
+
+    // axis_cases
+    "status.intake": "Intake",
+    "status.quoting": "Quoting",
+    "status.awaiting_docs": "Awaiting documents",
+    "status.review": "Review",
+    "status.approval": "Approval",
+    "status.issued": "Issued",
+    "status.failed": "Failed",
+
+    // axis_documents
+    "status.received": "Received",
+    "status.extracting": "Reading",
+    "status.extracted": "Read",
+    "status.verified": "Verified",
+
+    "docType.eid": "Identity card",
+    "docType.mulkiya": "Vehicle registration",
+    "docType.census": "Member list",
+    "docType.medical": "Medical report",
+    "docType.tradelicense": "Trade licence",
+    "docType.other": "Other",
+
+    "piiLevel.none": "None",
+    "piiLevel.low": "Low",
+    "piiLevel.high": "High",
+
+    "priority.low": "Low",
+    "priority.normal": "Normal",
+    "priority.high": "High",
+    "priority.urgent": "Urgent",
+
+    "decision.pending": "Pending",
+    "decision.approved": "Approved",
+    "decision.rejected": "Rejected",
+
+    // orbit_conversations
+    "state.bot": "Automated",
+    "state.human": "With a person",
+    "state.closed": "Closed",
+
+    // dist_quote_requests
+    "state.open": "Open",
+    "state.fanned_out": "Out to market",
+    "state.complete": "Priced",
+    "state.expired": "Expired",
+    "state.converted": "Bought",
+    "state.abandoned": "Abandoned",
+
+    // dist_commission_entries
+    "kind.new_business": "New sale",
+    "kind.endorsement": "Endorsement",
+    "kind.clawback": "Clawback",
+    "kind.adjustment": "Adjustment",
+    "state.accrued": "Earned",
+    "state.invoiced": "Invoiced",
+    "state.received": "Received",
+    "state.payable": "Payable",
+    "state.clawed_back": "Clawed back",
+    "state.written_off": "Written off",
+
+    // ledger_settlements
+    "state.draft": "Draft",
+    "state.approved": "Approved",
+    "state.paid": "Paid",
+    "state.disputed": "Disputed",
+
+    // dist_next_best_offers
+    "state.proposed": "Proposed",
+    "state.surfaced": "Shown",
+    "state.accepted": "Accepted",
+    "state.dismissed": "Dismissed",
+    "state.suppressed": "Held back"
+  },
+  ar: {
+    deniedTitle: "لا يمكنك فتح هذا السجل",
+    back: "رجوع",
+    open: "فتح",
+    none: "لا يوجد شيء مسجّل هنا.",
+    approvalTitle: "بانتظار موافقة",
+    approvalBody: "يحتاج هذا إلى اعتماد بموجب {policy} قبل أن يمضي.",
+    approvalLink: "افتح قائمة الموافقات",
+
+    policies: "التغطية",
+    policyNo: "رقم الوثيقة",
+    policyId: "الوثيقة",
+    premiumMinor: "القسط",
+    minPremiumMinor: "الحد الأدنى للقسط",
+    bestPremiumMinor: "أفضل سعر",
+    coverageJson: "التغطية",
+    claims: "المطالبات",
+    claimNo: "رقم المطالبة",
+    insurer: "شركة التأمين",
+    renewal: "التجديد",
+
+    colRef: "المرجع",
+    colStatus: "الحالة",
+    colKind: "النوع",
+    colAmount: "المبلغ",
+    colCreated: "تاريخ الإنشاء",
+    colUpdated: "آخر تحديث",
+    colCurrency: "العملة",
+    colDocument: "المستند",
+    colSensitivity: "درجة الحساسية",
+    colWhen: "التاريخ",
+    colWho: "المنفّذ",
+    colOutcome: "النتيجة",
+
+    "type.person": "فرد",
+    "type.business": "منشأة",
+    "kycStatus.none": "لم يبدأ",
+    "kycStatus.pending": "قيد التنفيذ",
+    "kycStatus.verified": "تم التحقق",
+    "kycStatus.failed": "فشل",
+
+    "status.active": "سارية",
+    "status.lapsed": "منقضية",
+    "status.cancelled": "ملغاة",
+    "status.renewed": "مجدّدة",
+    "status.paused": "موقوفة مؤقتًا",
+    "status.draft": "مسودة",
+    "status.withdrawn": "مسحوبة",
+    "status.terminated": "منتهية",
+
+    "status.reported": "مُبلّغ عنها",
+    "status.assessing": "قيد التقييم",
+    "status.approved": "معتمدة",
+    "status.rejected": "مرفوضة",
+    "status.settled": "مسددة",
+
+    "status.intake": "الاستلام",
+    "status.quoting": "التسعير",
+    "status.awaiting_docs": "بانتظار المستندات",
+    "status.review": "المراجعة",
+    "status.approval": "الاعتماد",
+    "status.issued": "صادرة",
+    "status.failed": "فشل",
+
+    "status.received": "مستلم",
+    "status.extracting": "قيد القراءة",
+    "status.extracted": "تم القراءة",
+    "status.verified": "موثّق",
+
+    "docType.eid": "بطاقة الهوية",
+    "docType.mulkiya": "ملكية المركبة",
+    "docType.census": "قائمة الأعضاء",
+    "docType.medical": "تقرير طبي",
+    "docType.tradelicense": "الرخصة التجارية",
+    "docType.other": "أخرى",
+
+    "piiLevel.none": "لا شيء",
+    "piiLevel.low": "منخفضة",
+    "piiLevel.high": "عالية",
+
+    "priority.low": "منخفضة",
+    "priority.normal": "عادية",
+    "priority.high": "مرتفعة",
+    "priority.urgent": "عاجلة",
+
+    "decision.pending": "معلّقة",
+    "decision.approved": "معتمدة",
+    "decision.rejected": "مرفوضة",
+
+    "state.bot": "آلية",
+    "state.human": "مع موظف",
+    "state.closed": "مغلقة",
+
+    "state.open": "مفتوح",
+    "state.fanned_out": "معروض على السوق",
+    "state.complete": "تم التسعير",
+    "state.expired": "منتهي",
+    "state.converted": "تم الشراء",
+    "state.abandoned": "متروك",
+
+    "kind.new_business": "بيع جديد",
+    "kind.endorsement": "تعديل",
+    "kind.clawback": "استرداد",
+    "kind.adjustment": "تسوية",
+    "state.accrued": "مستحقة",
+    "state.invoiced": "مفوترة",
+    "state.received": "محصّلة",
+    "state.payable": "واجبة الدفع",
+    "state.clawed_back": "مستردة",
+    "state.written_off": "مشطوبة",
+
+    "state.draft": "مسودة",
+    "state.approved": "معتمدة",
+    "state.paid": "مدفوعة",
+    "state.disputed": "متنازع عليها",
+
+    "state.proposed": "مقترح",
+    "state.surfaced": "معروض",
+    "state.accepted": "مقبول",
+    "state.dismissed": "مستبعد",
+    "state.suppressed": "محجوب"
+  }
+};
+
+/**
+ * `labelsIn` for a route's in-file bilingual table, with `{var}` interpolation.
+ * Resolution is pack → route table → shared table → the key itself, so a tenant
+ * selling something other than insurance renames the nouns (CLAUDE.md §14)
+ * without any of these screens carrying an industry word of its own.
+ */
+export function labelsFrom(labels: Record<string, Record<string, string>>) {
+  return (locale: string, pack?: string): Label => {
+    const packed = vocabulary(pack, locale);
+    const own = labels[locale] ?? labels.en ?? {};
+    const ownEn = labels.en ?? {};
+    const shared = SHARED[locale] ?? SHARED.en!;
+    return (key, vars) => {
+      const raw = packed(key) ?? own[key] ?? ownEn[key] ?? shared[key] ?? SHARED.en![key] ?? key;
+      return vars ? raw.replace(/\{(\w+)\}/g, (match, name: string) => vars[name] ?? match) : raw;
+    };
+  };
+}
+
+/** One enum value as a label: `status.settled`, then `settled`, then humanised. */
+export function tag(l: Label, column: string, value: string | null | undefined): string {
+  return value ? optionLabel((key) => l(key), column, value) : "—";
+}
+
+/**
+ * A withheld panel is an absent panel. A composite screen reads from half a
+ * dozen resources and an actor rarely holds all of them, so a 403 (or a 404 for
+ * a reference that no longer resolves) degrades that one panel and leaves the
+ * rest of the screen standing. Anything else is a real fault and still throws.
+ */
+export async function safe<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await fn();
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 403 || error.status === 404)) return fallback;
+    throw error;
+  }
+}
+
+export function rowsOf<T>(page: Page<T> | null | undefined): T[] {
+  return page?.data ?? [];
+}
+
+export function sumBy<T>(rows: readonly T[], pick: (row: T) => number | null | undefined): number {
+  return rows.reduce((total, row) => total + (pick(row) ?? 0), 0);
+}
+
+/**
+ * A `*Json` name column, as the API hydrates it: `{en, ar}` for a product or a
+ * channel, a `{first,last}`-ish object for a person, or a plain string. Falls
+ * back to the id rather than rendering an object.
+ */
+export function nameOf(value: unknown, locale: string, fallback: string): string {
+  if (typeof value === "string" && value.trim() !== "") return value;
+  if (value && typeof value === "object") {
+    const bag = value as Record<string, unknown>;
+    const localised = bag[locale] ?? bag.en;
+    if (typeof localised === "string" && localised.trim() !== "") return localised;
+    const words = Object.values(bag).filter((part): part is string => typeof part === "string");
+    if (words.length > 0) return words.join(" ").trim();
+  }
+  return fallback;
+}
+
+/** Rates are ppm across the platform (1 000 000 = 100%). */
+export function percentOf(ppm: number | null | undefined, locale: string): string {
+  return new Intl.NumberFormat(locale, { style: "percent", maximumFractionDigits: 2 }).format(
+    (ppm ?? 0) / 1_000_000
+  );
+}
+
+/** The `{policy}` a 403 `approval_required` names, for callers that need the key. */
+export function policyKeyOf(problem: unknown): string | null {
+  const extras = problem as { status?: number; code?: string; policy_key?: string } | null;
+  if (!extras || extras.status !== 403 || extras.code !== "approval_required") return null;
+  return extras.policy_key ?? "";
+}
+
+/** The flat list of `{term, value}` pairs every summary block on these screens is. */
+export function Facts({ children }: { children: ReactNode }) {
+  return <dl className="flex flex-wrap gap-x-8 gap-y-4">{children}</dl>;
+}
+
+export function Entry({ term, children }: { term: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <dt className="font-ui text-11 uppercase tracking-wider text-subtle">{term}</dt>
+      <dd className="font-ui text-13 text-text">{children}</dd>
+    </div>
+  );
+}
+
+export function Header({ title, intro }: { title: string; intro: string }) {
+  return (
+    <header className="flex flex-col gap-1">
+      <h1 className="font-display text-24 text-text">{title}</h1>
+      <p className="max-w-prose font-ui text-13 text-muted">{intro}</p>
+    </header>
+  );
+}
+
+/** A JSON column shown as-is: cover terms, rating inputs, an FNOL statement. */
+export function Payload({ value }: { value: unknown }) {
+  return (
+    <pre className="overflow-x-auto rounded-md bg-surface-2 p-3 font-mono text-11 text-muted">
+      {JSON.stringify(value ?? {}, null, 2)}
+    </pre>
+  );
+}
