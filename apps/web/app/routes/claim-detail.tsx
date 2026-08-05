@@ -286,11 +286,15 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
   try {
     // Every update to a claim is gated by `axis.claim_settlement`; a 403 with
     // `approval_required` is the normal answer here, not an error to hide.
+    // `assess` and `settle` both PATCH this same route from the one
+    // loader-minted key, so the key is suffixed with the intent — otherwise a
+    // same-page assess-then-settle reuses the key with a different body and
+    // 409s (see case-detail.tsx's identical suffixing for the same reason).
     await api<Claim>(`/v1/axis/claims/${id}`, {
       env,
       request,
       method: "PATCH",
-      ...(key ? { headers: { "idempotency-key": key } } : {}),
+      ...(key ? { headers: { "idempotency-key": `${key}:${intent}` } } : {}),
       body
     });
     return { ...nothing, done: intent === "settle" ? "settleDone" : "assessed" };

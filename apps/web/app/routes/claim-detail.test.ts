@@ -14,12 +14,13 @@ afterEach(() => {
 });
 
 function stubFetch(reply: Response) {
-  const calls: Array<{ url: string; method: string; body: string | null }> = [];
+  const calls: Array<{ url: string; method: string; body: string | null; idempotencyKey: string | null }> = [];
   vi.stubGlobal("fetch", (input: URL | string, init: RequestInit = {}) => {
     calls.push({
       url: String(input),
       method: init.method ?? "GET",
-      body: typeof init.body === "string" ? init.body : null
+      body: typeof init.body === "string" ? init.body : null,
+      idempotencyKey: new Headers(init.headers).get("idempotency-key")
     });
     return Promise.resolve(reply.clone());
   });
@@ -143,6 +144,25 @@ describe("action: settle", () => {
 
     expect(result.problem?.status).toBe(403);
     expect(result.done).toBeNull();
+  });
+});
+
+describe("action: idempotency key", () => {
+  it("suffixes the loader-minted key with the intent so assess and settle don't collide", async () => {
+    // Both intents PATCH the same /v1/axis/claims/:id route and share the one
+    // idempotency key the loader mints per page load. Without a per-intent
+    // suffix, an assess followed by a settle in the same page load reuses the
+    // key with a different body and 409s ("idempotency key reused with a
+    // different body").
+    const calls = stubFetch(ok());
+
+    await action(args(form({ intent: "assess", status: "approved" })));
+    await action(args(form({ intent: "settle", settledMinor: "480000" })));
+
+    expect(calls).toHaveLength(2);
+    expect(calls[0]?.idempotencyKey).toBe("key-1:assess");
+    expect(calls[1]?.idempotencyKey).toBe("key-1:settle");
+    expect(calls[0]?.idempotencyKey).not.toBe(calls[1]?.idempotencyKey);
   });
 });
 
