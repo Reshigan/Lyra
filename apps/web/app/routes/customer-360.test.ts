@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ActionFunctionArgs } from "react-router";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import type { Env } from "../env";
-import { LABELS, PERM, action, chips, labelsIn } from "./customer-360";
+import { LABELS, PERM, action, chips, labelsIn, loader } from "./customer-360";
 
 // The 360 view is read-mostly; its one write puts a priced offer in front of a
 // customer, which is consequential (docs/15 §4). So: the offer id is required
@@ -147,5 +147,47 @@ describe("action", () => {
 
     expect(result.problem?.status).toBe(400);
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe("loader", () => {
+  it("pins every request URL, because safe() re-throws a 400 from a renamed param", async () => {
+    const urls: string[] = [];
+    vi.stubGlobal("fetch", (input: URL | string) => {
+      const url = String(input);
+      urls.push(url);
+      const body = url.endsWith("/v1/me")
+        ? { permissions: Object.values(PERM) }
+        : url.includes("/position")
+          ? { positions: [], ltvMinor: 0, currency: "AED" }
+          : url.includes("/v1/core/customers/")
+            ? { id: "cus_1" }
+            : { rows: [] };
+      return Promise.resolve(
+        new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } })
+      );
+    });
+
+    await loader({
+      request: new Request("https://web.test/admin/customers/cus_1/360"),
+      context: { get: () => ({ env, ctx: null }) },
+      params: { id: "cus_1" }
+    } as unknown as LoaderFunctionArgs);
+
+    const expected = [
+      "https://api.test/v1/core/customers/cus_1",
+      "https://api.test/v1/axis/policies?customerId=cus_1&limit=50",
+      "https://api.test/v1/axis/claims?customerId=cus_1&limit=50",
+      "https://api.test/v1/axis/cases?customerId=cus_1&limit=50",
+      "https://api.test/v1/core/audit-log?subjectRef=cus_1&limit=20&sort=ts&order=desc",
+      "https://api.test/v1/core/customers/cus_1/position",
+      "https://api.test/v1/orbit/conversations?customerId=cus_1&limit=50",
+      "https://api.test/v1/dist/quote-requests?customerId=cus_1&limit=50",
+      "https://api.test/v1/core/consents?customerId=cus_1&limit=50",
+      "https://api.test/v1/core/files?subjectRef=customer%3Acus_1&limit=50",
+      "https://api.test/v1/dist/next-best-offers?customerId=cus_1&limit=50"
+    ];
+    for (const url of expected) expect(urls, url).toContain(url);
+    expect(urls).toHaveLength(expected.length + 1); // + /v1/me — nothing extra, nothing doubled
   });
 });
