@@ -11,6 +11,12 @@ export const orbit: WorkspaceSpec = {
     en: {
       conversations: "Conversations",
       thread: "Open thread",
+      builder: "Open builder",
+      "link.console": "Live console",
+      "link.save": "Save desk",
+      "link.pipeline": "Renewal pipeline",
+      "link.quality": "Conversation quality",
+      "link.analytics": "Customer analytics",
       messages: "Messages",
       renewals: "Renewals",
       journeys: "Journeys",
@@ -81,6 +87,12 @@ export const orbit: WorkspaceSpec = {
       disputedBy: "Disputed by",
       breakdownJson: "Breakdown",
       flagsJson: "Flags",
+      stage: "Onboarding stage",
+      country: "Country",
+      riskRating: "Risk rating",
+      legalName: "Legal name",
+      goLiveAt: "Went live",
+      suspendedAt: "Suspended",
 
       whatsapp: "WhatsApp",
       web: "Web",
@@ -120,11 +132,31 @@ export const orbit: WorkspaceSpec = {
       quote: "Quote",
       bind: "Bind",
       refund: "Refund",
-      ai: "AI"
+      ai: "AI",
+      // The partner ladder, as STAGES spells it in apps/api/src/engines/onboarding.ts.
+      prospect: "Prospect",
+      applied: "Applied",
+      screening: "Screening",
+      diligence: "Diligence",
+      agreement: "Agreement",
+      integration: "Integration",
+      sandbox: "Sandbox",
+      live: "Live",
+      suspended: "Suspended",
+      terminated: "Terminated",
+      "riskRating.low": "Low",
+      "riskRating.medium": "Medium",
+      "riskRating.high": "High"
     },
     ar: {
       conversations: "المحادثات",
       thread: "فتح المحادثة",
+      builder: "فتح المحرّر",
+      "link.console": "لوحة المحادثات الحية",
+      "link.save": "مكتب الاستبقاء",
+      "link.pipeline": "خط التجديدات",
+      "link.quality": "جودة المحادثات",
+      "link.analytics": "تحليلات العملاء",
       messages: "الرسائل",
       renewals: "التجديدات",
       journeys: "الرحلات",
@@ -195,6 +227,12 @@ export const orbit: WorkspaceSpec = {
       disputedBy: "اعترض عليها",
       breakdownJson: "تفصيل الدرجة",
       flagsJson: "التنبيهات",
+      stage: "مرحلة التهيئة",
+      country: "الدولة",
+      riskRating: "تصنيف المخاطر",
+      legalName: "الاسم القانوني",
+      goLiveAt: "تاريخ التشغيل",
+      suspendedAt: "تاريخ الإيقاف",
 
       whatsapp: "واتساب",
       web: "الويب",
@@ -234,7 +272,20 @@ export const orbit: WorkspaceSpec = {
       quote: "عرض سعر",
       bind: "إصدار",
       refund: "استرداد",
-      ai: "ذكاء اصطناعي"
+      ai: "ذكاء اصطناعي",
+      prospect: "مرشح",
+      applied: "تقدّم بطلب",
+      screening: "الفحص",
+      diligence: "التحقق النافي للجهالة",
+      agreement: "الاتفاقية",
+      integration: "التكامل",
+      sandbox: "بيئة الاختبار",
+      live: "تشغيل فعلي",
+      suspended: "موقوف",
+      terminated: "منتهٍ",
+      "riskRating.low": "منخفض",
+      "riskRating.medium": "متوسط",
+      "riskRating.high": "مرتفع"
     }
   },
   tabs: [
@@ -357,6 +408,8 @@ export const orbit: WorkspaceSpec = {
       key: "journeys",
       api: "/v1/orbit/journeys",
       read: "orbit:journeys:read",
+      // The graph is a form-per-step editor, not a JSON textarea.
+      recordLink: { href: "/orbit/journeys/{id}/builder", labelKey: "builder" },
       create: "orbit:journeys:write",
       update: "orbit:journeys:write",
       remove: "orbit:journeys:write",
@@ -401,14 +454,39 @@ export const orbit: WorkspaceSpec = {
       api: "/v1/orbit/partners",
       read: "orbit:partners:read",
       create: "orbit:partners:create",
-      update: "orbit:partners:update",
+      // No `update`/`editable`: the API registers no generic PATCH here, because
+      // stage/status/sandboxFlag/goLiveAt belong to advancePartner() and its
+      // `dist.partner_activate` approval (resources.ts §partners). An edit form
+      // would only ever come back 405.
       search: true,
-      filters: [{ name: "kind", options: ["telco", "auto", "superapp", "bank"] }],
+      filters: [
+        { name: "kind", options: ["telco", "auto", "superapp", "bank"] },
+        {
+          name: "stage",
+          options: [
+            "prospect",
+            "applied",
+            "screening",
+            "diligence",
+            "agreement",
+            "integration",
+            "sandbox",
+            "live"
+          ]
+        },
+        { name: "riskRating", options: ["low", "medium", "high"] }
+      ],
       columns: [
         { name: "name", type: "text" },
         { name: "kind", type: "text" },
+        { name: "stage", type: "text", badge: true },
         { name: "status", type: "text", badge: true },
+        { name: "riskRating", type: "text", badge: true },
+        { name: "ownerRef", type: "text" },
+        { name: "country", type: "text" },
         { name: "sandboxFlag", type: "boolean" },
+        { name: "goLiveAt", type: "datetime" },
+        { name: "suspendedAt", type: "datetime" },
         { name: "createdAt", type: "datetime", sortable: true }
       ],
       // Creating a partner goes through the `dist.partner_activate` approval.
@@ -420,12 +498,6 @@ export const orbit: WorkspaceSpec = {
           required: true,
           options: ["telco", "auto", "superapp", "bank"]
         },
-        { name: "sandboxFlag", type: "boolean" },
-        { name: "revshareJson", type: "json" },
-        { name: "contactJson", type: "json" }
-      ],
-      editable: [
-        { name: "status", type: "text" },
         { name: "sandboxFlag", type: "boolean" },
         { name: "revshareJson", type: "json" },
         { name: "contactJson", type: "json" }
@@ -503,5 +575,14 @@ export const orbit: WorkspaceSpec = {
         { name: "flagsJson", type: "json" }
       ]
     }
+  ],
+  // The bespoke ORBIT screens. Each names the permission its own loader gates on,
+  // so an actor who would only be told no is not offered the door.
+  links: [
+    { href: "/orbit/console", labelKey: "link.console", permission: "orbit:conversations:read" },
+    { href: "/orbit/save", labelKey: "link.save", permission: "orbit:renewals:read" },
+    { href: "/orbit/pipeline", labelKey: "link.pipeline", permission: "orbit:renewals:read" },
+    { href: "/orbit/quality", labelKey: "link.quality", permission: "orbit:qa:read" },
+    { href: "/orbit/analytics", labelKey: "link.analytics", permission: "orbit:conversations:read" }
   ]
 };
