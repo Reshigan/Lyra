@@ -41,17 +41,17 @@ searchRoutes.get("/", async (c) => {
   });
 
   const perResource = await Promise.all(
-    queries.map(async (q) => {
+    queries.map(async (entry) => {
       const rows = await ctx.db
         .select()
-        .from(q.table as never)
-        .where(scoped(ctx, q.table as never, or(...q.clauses) as SQL))
+        .from(entry.table as never)
+        .where(scoped(ctx, entry.table as never, or(...entry.clauses) as SQL))
         .limit(10);
 
       return rows.map((row) => {
         const out = { ...(row as Record<string, unknown>) };
-        for (const key of q.secret) delete out[key];
-        return { resource: q.resource, module: q.module, row: out };
+        for (const key of entry.secret) delete out[key];
+        return { resource: entry.resource, module: entry.module, row: out };
       });
     })
   );
