@@ -11,6 +11,7 @@ import { Badge, Button, Card, EmptyState, Stat, Table, type BadgeTone, type Colu
 import { ApiError, api, fetchMe, type Problem } from "../api.server";
 import { cloudflare } from "../context";
 import { translator } from "../i18n";
+import { tag } from "./detail-kit";
 import { Gate } from "./staff";
 import { useShellData } from "./workspace";
 
@@ -100,6 +101,9 @@ export const LABELS: Record<string, Record<string, string>> = {
     colStatus: "Status",
     colApplies: "Applies to",
     publish: "Publish",
+    "status.draft": "Draft",
+    "status.active": "Active",
+    "status.retired": "Retired",
     opsTitle: "Operating policy",
     opsIntro: "SLA, routing and queue policy for this tenant.",
     opsManage: "Open operating policy",
@@ -127,6 +131,9 @@ export const LABELS: Record<string, Record<string, string>> = {
     colStatus: "الحالة",
     colApplies: "ينطبق على",
     publish: "نشر",
+    "status.draft": "مسودة",
+    "status.active": "نشِط",
+    "status.retired": "متقاعد",
     opsTitle: "سياسة التشغيل",
     opsIntro: "سياسات الخدمة والتوجيه والطابور لهذا المستأجر.",
     opsManage: "افتح سياسة التشغيل",
@@ -197,7 +204,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     may,
     sops: sops.data,
     health: connectorHealth(hooks.data, deliveries.data),
-    problem: null as Problem | null
+    problem: null as Problem | null,
+    idempotencyKey: crypto.randomUUID()
   };
 }
 
@@ -212,11 +220,13 @@ export async function action({ request, context }: ActionFunctionArgs) {
   const sopId = String(form.get("sopId") ?? "").trim();
   if (!sopId) return { ...nothing, problem: { title: "sop required", status: 400 } };
 
+  const key = String(form.get("idempotencyKey") ?? "");
   try {
     const published = await api<{ id: string; status: string }>(`/v1/axis/sops/${encodeURIComponent(sopId)}/publish`, {
       env,
       request,
-      method: "POST"
+      method: "POST",
+      ...(key ? { headers: { "idempotency-key": key } } : {})
     });
     return { ...nothing, published: published.id };
   } catch (error) {
@@ -253,7 +263,7 @@ export default function AxisAdmin() {
       header: l("colStatus"),
       render: (row) => (
         <Badge tone={row.status === "active" ? "success" : row.status === "retired" ? "neutral" : "info"} size="sm" dot>
-          {row.status}
+          {tag(l, "status", row.status)}
         </Badge>
       )
     },
@@ -266,6 +276,7 @@ export default function AxisAdmin() {
           <Form method="post">
             <input type="hidden" name="intent" value="publish" />
             <input type="hidden" name="sopId" value={row.id} />
+            <input type="hidden" name="idempotencyKey" value={loaded.idempotencyKey} />
             <Button type="submit" variant="ghost" size="sm" loading={busy}>
               {l("publish")}
             </Button>

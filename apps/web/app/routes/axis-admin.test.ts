@@ -10,9 +10,13 @@ afterEach(() => {
 });
 
 function stubFetch(reply: Response) {
-  const calls: Array<{ url: string; method: string }> = [];
+  const calls: Array<{ url: string; method: string; idempotencyKey: string | null }> = [];
   vi.stubGlobal("fetch", (input: URL | string, init: RequestInit = {}) => {
-    calls.push({ url: String(input), method: init.method ?? "GET" });
+    calls.push({
+      url: String(input),
+      method: init.method ?? "GET",
+      idempotencyKey: init.headers instanceof Headers ? init.headers.get("idempotency-key") : null
+    });
     return Promise.resolve(reply.clone());
   });
   return calls;
@@ -52,6 +56,7 @@ function loaderArgs(): LoaderFunctionArgs {
 
 function form(fields: Record<string, string>): FormData {
   const data = new FormData();
+  data.set("idempotencyKey", "key-1");
   for (const [key, value] of Object.entries(fields)) data.set(key, value);
   return data;
 }
@@ -131,6 +136,7 @@ describe("publish", () => {
 
     expect(calls[0]?.url).toBe("https://api.test/v1/axis/sops/sop_1/publish");
     expect(calls[0]?.method).toBe("POST");
+    expect(calls[0]?.idempotencyKey).toBe("key-1");
     expect(result.published).toBe("sop_1");
   });
 
