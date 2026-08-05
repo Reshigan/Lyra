@@ -2238,6 +2238,7 @@ export interface Operations {
   "GET /v1/core/customers/{id}": Op<{ id: string }, never, never, CoreCustomers>;
   "PATCH /v1/core/customers/{id}": Op<{ id: string }, never, CoreCustomers, CoreCustomers>;
   "DELETE /v1/core/customers/{id}": Op<{ id: string }, never, never, void>;
+  "GET /v1/core/customers/{id}/position": Op<{ id: string }, never, never, Record<string, unknown>>;
   "POST /v1/core/customers/{id}/restore": Op<{ id: string }, never, never, CoreCustomers>;
   "GET /v1/core/delegations": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<CoreDelegations>>;
   "GET /v1/core/delegations/{id}": Op<{ id: string }, never, never, CoreDelegations>;
@@ -2834,6 +2835,7 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "GET /v1/core/customers/{id}": { tag: "core", summary: "Fetch one customer", permission: "core:customers:read", public: false },
   "PATCH /v1/core/customers/{id}": { tag: "core", summary: "Update a customer", permission: "core:customers:update", public: false },
   "DELETE /v1/core/customers/{id}": { tag: "core", summary: "Soft-delete a customer", permission: "core:customers:delete", public: false },
+  "GET /v1/core/customers/{id}/position": { tag: "core", summary: "Financial position: premium, commission and settled claims summed per currency", permission: "core:customers:read", public: false },
   "POST /v1/core/customers/{id}/restore": { tag: "core", summary: "Restore a soft-deleted customer", permission: "core:customers:delete", public: false },
   "GET /v1/core/delegations": { tag: "core", summary: "List delegations", permission: "core:delegations:read", public: false },
   "GET /v1/core/delegations/{id}": { tag: "core", summary: "Fetch one delegation", permission: "core:delegations:read", public: false },

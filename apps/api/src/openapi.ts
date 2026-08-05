@@ -73,6 +73,9 @@ const HAND_WRITTEN: Op[] = [
 
   { method: "post", path: "/v1/core/webhooks/{id}/rotate", summary: "Rotate a webhook's signing secret to a fresh, server-generated one", permission: "core:webhooks:write", tag: "core" },
 
+  // SQL aggregate for the 360 screen's Position card — never a paged read.
+  { method: "get", path: "/v1/core/customers/{id}/position", summary: "Financial position: premium, commission and settled claims summed per currency", permission: "core:customers:read", tag: "core" },
+
   // `verifiedBy` and `verifiedAt` are evidence that a named person looked at the
   // file at a known time, so they come from the session and the clock. No body.
   { method: "post", path: "/v1/axis/documents/{id}/verify", summary: "Mark a document verified; the verifier and the time are stamped server-side", permission: "axis:documents:verify", tag: "axis" },
