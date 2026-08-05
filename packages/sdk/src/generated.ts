@@ -2301,7 +2301,6 @@ export interface Operations {
   "POST /v1/core/rulepacks": Op<never, never, CoreRulepacks, CoreRulepacks>;
   "GET /v1/core/rulepacks/{id}": Op<{ id: string }, never, never, CoreRulepacks>;
   "PATCH /v1/core/rulepacks/{id}": Op<{ id: string }, never, CoreRulepacks, CoreRulepacks>;
-  "GET /v1/core/security-posture": Op<never, never, never, Record<string, unknown>>;
   "GET /v1/core/teams": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<CoreTeams>>;
   "POST /v1/core/teams": Op<never, never, CoreTeams, CoreTeams>;
   "GET /v1/core/teams/{id}": Op<{ id: string }, never, never, CoreTeams>;
@@ -2472,13 +2471,11 @@ export interface Operations {
   "POST /v1/north/briefings/generate": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/north/briefings/{id}": Op<{ id: string }, never, never, NorthBriefings>;
   "PATCH /v1/north/briefings/{id}": Op<{ id: string }, never, NorthBriefings, NorthBriefings>;
-  "GET /v1/north/data-health": Op<never, never, never, Record<string, unknown>>;
   "GET /v1/north/decisions": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<NorthDecisions>>;
   "POST /v1/north/decisions": Op<never, never, NorthDecisions, NorthDecisions>;
   "GET /v1/north/decisions/{id}": Op<{ id: string }, never, never, NorthDecisions>;
   "PATCH /v1/north/decisions/{id}": Op<{ id: string }, never, NorthDecisions, NorthDecisions>;
   "DELETE /v1/north/decisions/{id}": Op<{ id: string }, never, never, void>;
-  "POST /v1/north/explore": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/north/metrics": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<NorthMetrics>>;
   "POST /v1/north/metrics": Op<never, never, NorthMetrics, NorthMetrics>;
   "GET /v1/north/metrics/{id}": Op<{ id: string }, never, never, NorthMetrics>;
@@ -2536,18 +2533,6 @@ export interface Operations {
   "POST /v1/orbit/renewals/sweep": Op<never, never, never, Record<string, unknown>>;
   "GET /v1/orbit/renewals/{id}": Op<{ id: string }, never, never, OrbitRenewals>;
   "PATCH /v1/orbit/renewals/{id}": Op<{ id: string }, never, OrbitRenewals, OrbitRenewals>;
-  "GET /v1/platform/deployments": Op<never, never, never, Record<string, unknown>>;
-  "GET /v1/platform/flags": Op<never, never, never, Record<string, unknown>>;
-  "POST /v1/platform/flags": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
-  "PATCH /v1/platform/flags/{id}": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
-  "GET /v1/platform/impersonation": Op<never, never, never, Record<string, unknown>>;
-  "POST /v1/platform/impersonation/start": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
-  "POST /v1/platform/impersonation/{id}/end": Op<{ id: string }, never, never, Record<string, unknown>>;
-  "GET /v1/platform/incidents": Op<never, never, never, Record<string, unknown>>;
-  "GET /v1/platform/ops/overview": Op<never, never, never, Record<string, unknown>>;
-  "GET /v1/platform/slo": Op<never, never, never, Record<string, unknown>>;
-  "POST /v1/portal/{tenantSlug}/leads": Op<{ tenantSlug: string }, never, Record<string, unknown>, Record<string, unknown>>;
-  "GET /v1/portal/{tenantSlug}/site": Op<{ tenantSlug: string }, never, never, Record<string, unknown>>;
   "GET /v1/realtime": Op<never, never, never, Record<string, unknown>>;
   "GET /v1/scout/clusters": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<ScoutClusters>>;
   "GET /v1/scout/clusters/{id}": Op<{ id: string }, never, never, ScoutClusters>;
@@ -2570,7 +2555,6 @@ export interface Operations {
   "GET /v1/scout/whitespaces/{id}": Op<{ id: string }, never, never, ScoutWhitespaces>;
   "PATCH /v1/scout/whitespaces/{id}": Op<{ id: string }, never, ScoutWhitespaces, ScoutWhitespaces>;
   "POST /v1/scout/wording-diff": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
-  "GET /v1/search": Op<never, never, never, Record<string, unknown>>;
   "POST /v1/settlement/runs": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/settlement/settlements/{id}": Op<{ id: string }, never, never, Record<string, unknown>>;
   "POST /v1/settlement/settlements/{id}/approve": Op<{ id: string }, never, never, Record<string, unknown>>;
@@ -2893,7 +2877,6 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "POST /v1/core/rulepacks": { tag: "core", summary: "Create a rulepack", permission: "compliance:rulepacks:apply", public: false },
   "GET /v1/core/rulepacks/{id}": { tag: "core", summary: "Fetch one rulepack", permission: "compliance:rulepacks:read", public: false },
   "PATCH /v1/core/rulepacks/{id}": { tag: "core", summary: "Update a rulepack", permission: "compliance:rulepacks:apply", public: false },
-  "GET /v1/core/security-posture": { tag: "core", summary: "What is enforced on sign-in for this tenant and who is outside it", permission: "core:settings:read", public: false },
   "GET /v1/core/teams": { tag: "core", summary: "List teams", permission: "core:teams:read", public: false },
   "POST /v1/core/teams": { tag: "core", summary: "Create a team", permission: "core:teams:write", public: false },
   "GET /v1/core/teams/{id}": { tag: "core", summary: "Fetch one team", permission: "core:teams:read", public: false },
@@ -3064,13 +3047,11 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "POST /v1/north/briefings/generate": { tag: "north", summary: "Generate an executive briefing from live metric snapshots, numeric claims verified against the input", permission: "north:briefings:generate", public: false },
   "GET /v1/north/briefings/{id}": { tag: "north", summary: "Fetch one briefing", permission: "north:briefings:read", public: false },
   "PATCH /v1/north/briefings/{id}": { tag: "north", summary: "Update a briefing", permission: "north:briefings:approve", public: false },
-  "GET /v1/north/data-health": { tag: "north", summary: "Staleness per metric, computed live from the latest snapshot timestamp", permission: "north:metrics:read", public: false },
   "GET /v1/north/decisions": { tag: "north", summary: "List decisions", permission: "north:decisions:read", public: false },
   "POST /v1/north/decisions": { tag: "north", summary: "Create a decision", permission: "north:decisions:write", public: false },
   "GET /v1/north/decisions/{id}": { tag: "north", summary: "Fetch one decision", permission: "north:decisions:read", public: false },
   "PATCH /v1/north/decisions/{id}": { tag: "north", summary: "Update a decision", permission: "north:decisions:write", public: false },
   "DELETE /v1/north/decisions/{id}": { tag: "north", summary: "Soft-delete a decision", permission: "north:decisions:write", public: false },
-  "POST /v1/north/explore": { tag: "north", summary: "Query stored metric snapshots by key/grain/period — a fixed filter set, never a client SQL string", permission: "north:snapshots:read", public: false },
   "GET /v1/north/metrics": { tag: "north", summary: "List metrics", permission: "north:metrics:read", public: false },
   "POST /v1/north/metrics": { tag: "north", summary: "Create a metric", permission: "north:metrics:write", public: false },
   "GET /v1/north/metrics/{id}": { tag: "north", summary: "Fetch one metric", permission: "north:metrics:read", public: false },
@@ -3128,18 +3109,6 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "POST /v1/orbit/renewals/sweep": { tag: "orbit", summary: "Force the renewal sweep now (also runs on the scheduled tick)", permission: "orbit:renewals:update", public: false },
   "GET /v1/orbit/renewals/{id}": { tag: "orbit", summary: "Fetch one renewal", permission: "orbit:renewals:read", public: false },
   "PATCH /v1/orbit/renewals/{id}": { tag: "orbit", summary: "Update a renewal", permission: "orbit:renewals:update", public: false },
-  "GET /v1/platform/deployments": { tag: "platform", summary: "Deploy history per Worker and environment", permission: "admin:diagnostics:read", public: false },
-  "GET /v1/platform/flags": { tag: "platform", summary: "List every feature flag and its rollout state", permission: "admin:flags:read", public: false },
-  "POST /v1/platform/flags": { tag: "platform", summary: "Create a flag, disabled by default", permission: "admin:flags:write", public: false },
-  "PATCH /v1/platform/flags/{id}": { tag: "platform", summary: "Change rollout or targeting; enabling it requires dual-control approval", permission: "admin:flags:write", public: false },
-  "GET /v1/platform/impersonation": { tag: "platform", summary: "Your own live impersonation sessions, so one can be ended", permission: "core:impersonate:use", public: false },
-  "POST /v1/platform/impersonation/start": { tag: "platform", summary: "Start a time-boxed impersonation session; requires a second platform actor's approval", permission: "core:impersonate:use", public: false },
-  "POST /v1/platform/impersonation/{id}/end": { tag: "platform", summary: "End your own impersonation session early", permission: "core:impersonate:use", public: false },
-  "GET /v1/platform/incidents": { tag: "platform", summary: "Outage-kind incidents rolled up across every tenant", permission: "admin:diagnostics:read", public: false },
-  "GET /v1/platform/ops/overview": { tag: "platform", summary: "Per-tenant outbox/DLQ depth, pending approvals and last NORTH snapshot", permission: "admin:diagnostics:read", public: false },
-  "GET /v1/platform/slo": { tag: "platform", summary: "Error-budget burn per SLO definition, computed live across every tenant", permission: "admin:diagnostics:read", public: false },
-  "POST /v1/portal/{tenantSlug}/leads": { tag: "portal", summary: "Public lead capture: creates a customer and an open quote request from an anonymous visitor", permission: null, public: true },
-  "GET /v1/portal/{tenantSlug}/site": { tag: "portal", summary: "Public tenant branding and active product catalogue for the comparison site", permission: null, public: true },
   "GET /v1/realtime": { tag: "realtime", summary: "Server-Sent Events stream of the caller's own live updates", permission: null, public: false },
   "GET /v1/scout/clusters": { tag: "scout", summary: "List clusters", permission: "scout:clusters:read", public: false },
   "GET /v1/scout/clusters/{id}": { tag: "scout", summary: "Fetch one cluster", permission: "scout:clusters:read", public: false },
@@ -3162,7 +3131,6 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "GET /v1/scout/whitespaces/{id}": { tag: "scout", summary: "Fetch one whitespace", permission: "scout:whitespaces:read", public: false },
   "PATCH /v1/scout/whitespaces/{id}": { tag: "scout", summary: "Update a whitespace", permission: "scout:whitespaces:promote", public: false },
   "POST /v1/scout/wording-diff": { tag: "scout", summary: "Word-level diff of two coverage-wording texts (PDF extraction deferred, see ADR-0016)", permission: "scout:panel_bench:read", public: false },
-  "GET /v1/search": { tag: "search", summary: "Search matching rows across every module the caller can read", permission: "core:search:read", public: false },
   "POST /v1/settlement/runs": { tag: "settlement", summary: "Draft a counterparty's commission settlement for a period (arithmetic only, nothing posts)", permission: "dist:commissions:settle", public: false },
   "GET /v1/settlement/settlements/{id}": { tag: "settlement", summary: "One settlement with its totals and state", permission: "dist:commissions:read", public: false },
   "POST /v1/settlement/settlements/{id}/approve": { tag: "settlement", summary: "Approve the number and accrue it (dual control; the runner may not self-approve)", permission: "dist:commissions:settle", public: false },
