@@ -3,7 +3,9 @@
  * Source of truth: docs/01-brand.md §3–4, docs/07-ui-design-system.md §1.
  *
  * Layers:
- *   1. Palette      — raw brand values from docs/01 §3. Never re-mapped by theme.
+ *   1. Palette      — raw brand values from docs/01 §3. Never re-mapped by theme,
+ *                     except --module-* (ADR-0026: mockup ships distinct light-mode
+ *                     hues for module identity, re-set in both light-theme blocks).
  *   2. Semantic     — role tokens (bg / surface / text / border / accent).
  *                     Dark-first; the light theme re-maps THIS layer only.
  *   3. @theme       — Tailwind v4 wiring so utilities resolve to the vars above.
@@ -129,29 +131,81 @@
     U+10E60-10E7E, U+10EC2-10EC4, U+10EFC-10EFF, U+1EE00-1EEF1;
 }
 
-:root {
-  /* ---- 1. Palette — docs/01 §3 "Deep Field" ------------------------------ */
-  --ink-900: #070b14; /* Deep Field — app background (dark) */
-  --ink-800: #0c1322; /* Surface 1 */
-  --ink-700: #131c31; /* Surface 2 / cards */
-  --ink-600: #1c2842; /* Elevated / hover */
-  --star-100: #f4f7fc; /* Text on dark; light-mode bg */
-  --star-300: #aeb9cf; /* Muted text on dark */
-  --star-500: #5e6b87; /* Subtle text / captions on dark */
-  --vega-500: #ffb020; /* Primary accent — actions, focus, the "star" */
-  --vega-600: #d98e0b; /* Accent hover / on-light accent text */
-  --ion-500: #37d3b2; /* Success, positive deltas */
-  --flare-500: #ff5d5d; /* Errors, negative deltas */
-  --photon-500: #6e9bff; /* Links, info, selected states */
-  --comet-500: #ff7a45; /* SIGNAL identity */
-  --nebula-500: #c08bff; /* NORTH identity */
+/* Archivo Variable — display role (ADR-0026). Axis wght 100..900. */
+@font-face {
+  font-family: "Archivo";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/archivo-latin-wght-normal.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304,
+    U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
 
-  /* Module identity accents — nav, lockups, chart series 1 (docs/01 §3) */
-  --module-axis: #ffb020;
-  --module-orbit: #37d3b2;
-  --module-signal: #ff7a45;
-  --module-scout: #6e9bff;
-  --module-north: #c08bff;
+/* Instrument Sans Variable — UI role, the body face (ADR-0026). Axis wght 400..700. */
+@font-face {
+  font-family: "Instrument Sans";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("/fonts/instrument-sans-latin-wght-normal.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304,
+    U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* Instrument Serif — normal + italic, one static weight. Login hero + dashboard
+ * headline only (5 occurrences in the mockup). Deliberately NOT wired into
+ * --font-display/--font-ui — reached only via --font-serif, so no other
+ * surface can pick it up by accident (ADR-0026). */
+@font-face {
+  font-family: "Instrument Serif";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/instrument-serif-latin-400-normal.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304,
+    U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Instrument Serif";
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/instrument-serif-latin-400-italic.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304,
+    U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+:root {
+  /* ---- 1. Palette — docs/01 §3, mockup values (ADR-0026); names unchanged - */
+  --ink-900: #0b0e13; /* app background (dark) */
+  --ink-800: #10141d; /* Surface 1 */
+  --ink-700: #161c28; /* Surface 2 / cards */
+  --ink-600: #1c2432; /* Elevated / hover */
+  --star-100: #edf1f7; /* Text on dark; light-mode bg */
+  --star-300: #aeb6c6; /* Muted text on dark */
+  --star-500: #8a94a6; /* Subtle text on dark — 6.32:1 on --ink-900 (AA) */
+  --vega-500: #c8f163; /* Primary accent (dark) */
+  --vega-600: #dbff85; /* Accent hover (dark) */
+  --vega-700: #4a6a0f; /* Accent (light) — vega-500 fails AA as text on light */
+  --vega-800: #3b560c; /* Accent hover (light) */
+  --ion-500: #55d68c; /* Success (dark) */
+  --flare-500: #f08a80; /* Danger (dark) */
+  --photon-500: #6c9ef0; /* Info (dark) — shares value with module-scout on purpose */
+  --solar-500: #e8c266; /* Warning (dark) */
+  --comet-500: #f0764f; /* SIGNAL identity */
+  --nebula-500: #a98be8; /* NORTH identity */
+
+  /* Module identity accents — nav, lockups, chart series 1 (dark; the two
+     light-theme blocks below re-map these five, unlike the rest of this
+     layer, because the mockup ships genuinely different light-mode hues,
+     not just an AA-safe shade of the same one). */
+  --module-axis: #e8a33d;
+  --module-orbit: #3fc9b4;
+  --module-signal: #f0764f;
+  --module-scout: #6c9ef0;
+  --module-north: #a98be8;
 
   /* Categorical data-viz scale = the five module accents, in order */
   --chart-1: var(--module-axis);
@@ -163,10 +217,13 @@
   /* ---- Typography — docs/01 §4 ------------------------------------------ */
   /* Every family named below has an @font-face above; system-ui stays last in
      each stack so a failed/blocked file still renders readable text. */
-  --font-display: "Space Grotesk", "IBM Plex Sans Arabic", system-ui, sans-serif;
-  --font-ui: "Inter", "IBM Plex Sans Arabic", system-ui, sans-serif;
+  --font-display: "Archivo", "IBM Plex Sans Arabic", system-ui, sans-serif;
+  --font-ui: "Instrument Sans", "IBM Plex Sans Arabic", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
-  --font-arabic: "IBM Plex Sans Arabic", "Inter", system-ui, sans-serif;
+  --font-arabic: "IBM Plex Sans Arabic", "Instrument Sans", system-ui, sans-serif;
+  /* Login hero + dashboard headline only, not part of the tenant font
+     contract (docs/01 §6) — see the @font-face comment above. */
+  --font-serif: "Instrument Serif", Georgia, serif;
 
   /* Scale (docs/01 §4): 12, 13, 14 (body), 16, 18, 22, 28, 36, 48 */
   --text-12: 0.75rem;
@@ -196,8 +253,8 @@
   --radius-orbit: 999px; /* full-round pills */
 
   /* Elevation is lightness first; the glow is a hairline + soft drop */
-  --shadow-glow: 0 0 0 1px var(--ink-600), 0 8px 24px #0009;
-  --shadow-raised: 0 0 0 1px var(--ink-600), 0 16px 40px #000b;
+  --shadow-glow: 0 0 0 1px var(--ink-600), 0 8px 24px #000c;
+  --shadow-raised: 0 0 0 1px var(--ink-600), 0 24px 80px #000c;
 
   --duration-fast: 150ms;
   --duration-slow: 250ms;
@@ -213,25 +270,38 @@
   --surface-1: var(--ink-800);
   --surface-2: var(--ink-700);
   --surface-3: var(--ink-600);
-  --border: var(--ink-600);
-  --border-strong: #2a3a5e;
+  --border: #1b212c;
+  --border-strong: #232b38;
+  --border-strongest: #333d4e;
   --text: var(--star-100);
   --text-muted: var(--star-300);
   --text-subtle: var(--star-500);
 
   --accent: var(--vega-500);
   --accent-hover: var(--vega-600);
-  --accent-contrast: #412402; /* AA on vega-500 */
+  --accent-contrast: var(--ink-900); /* 14.93:1 on vega-500 (AA) */
+  --accent-soft: #1b2e1a;
+  --accent-line: #2e4a2a;
   --focus: var(--accent);
 
+  /* success/danger/warning/info fills are all bright pastels in this
+     palette, so ink-900 clears AA as fill text for every one of them
+     (7.36:1 on the tightest case, info's medium blue) — one universal
+     dark-on-fill choice instead of four bespoke shades. */
   --success: var(--ion-500);
-  --success-contrast: #04342c;
+  --success-contrast: var(--ink-900);
   --danger: var(--flare-500);
-  --danger-contrast: #4a0d0d;
-  --warning: var(--comet-500);
-  --warning-contrast: #4a1b0c;
+  --danger-contrast: var(--ink-900);
+  --danger-soft: #26161a;
+  --warning: var(--solar-500);
+  --warning-contrast: var(--ink-900);
+  --warning-soft: #191507;
+  --warning-line: #4a3a17;
   --info: var(--photon-500);
-  --info-contrast: #042c53;
+  --info-contrast: var(--ink-900);
+
+  --hatch: rgb(255 255 255 / 5%);
+  --heat-fg: var(--ink-900);
 
   color-scheme: dark;
 }
@@ -246,49 +316,95 @@
 /* ---- Light theme: the SAME tokens re-mapped (docs/01 §3, docs/07 §1) ----- */
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
-    --bg: var(--star-100);
+    --bg: #f5f6f2;
     --surface-1: #ffffff;
-    --surface-2: #eef2f9;
-    --surface-3: #e2e8f4;
-    --border: #d3dbe9;
-    --border-strong: #b6c1d5;
-    --text: var(--ink-900);
-    --text-muted: #47536b;
-    --text-subtle: #5d6a86; /* was #6a768c: 4.27:1 on --star-100, failed AA (4.5:1) */
-    --accent: var(--vega-600); /* vega-500 fails AA as text on light */
-    --accent-hover: #b8760a;
-    /* Ink, not white: #ffffff on vega-600 measures 2.68:1 and fails AA at every
-       size. Ink-900 measures 7.33:1 on --accent and 5.28:1 on --accent-hover. */
-    --accent-contrast: var(--ink-900);
-    --success: #0d6b57; /* was #0f7f68: 4.31:1 on the Active badge bg, failed AA (4.5:1) */
-    --danger: #c02626;
-    --warning: #b8410f;
-    --info: #2a55bf;
-    --shadow-glow: 0 0 0 1px #d3dbe9, 0 8px 24px #0f172a14;
-    --shadow-raised: 0 0 0 1px #d3dbe9, 0 16px 40px #0f172a1f;
+    --surface-2: #eef0ea;
+    --surface-3: #e4e7de;
+    --border: #e2e5dc;
+    --border-strong: #d2d7ca;
+    --border-strongest: #b4bbab;
+    --text: #14181e;
+    --text-muted: #414852;
+    --text-subtle: #616875; /* 5.17:1 on --bg (AA) */
+
+    --accent: var(--vega-700); /* vega-500 fails AA as text on light */
+    --accent-hover: var(--vega-800);
+    --accent-contrast: #ffffff; /* 6.25:1 on --accent (AA) */
+    --accent-soft: #eef5dc;
+    --accent-line: #cbdd9c;
+
+    /* white clears AA as fill text for every status color here too (5.32:1 on
+       the tightest case, warning's gold) — mirrors the dark-theme choice above. */
+    --success: #1f7a48;
+    --success-contrast: #ffffff;
+    --danger: #b23428;
+    --danger-contrast: #ffffff;
+    --danger-soft: #faedeb;
+    --warning: #8a6511;
+    --warning-contrast: #ffffff; /* 5.32:1 on --warning, the tightest margin */
+    --warning-soft: #fcf6e6;
+    --warning-line: #e4d5a6;
+    --info: #2b5cbb;
+    --info-contrast: #ffffff;
+
+    --hatch: rgb(0 0 0 / 5%);
+    --heat-fg: #ffffff;
+
+    /* Module identity accents — light-mode hues (ADR-0026 exception, see the
+       raw palette comment above). */
+    --module-axis: #a2660b;
+    --module-orbit: #0b7a6a;
+    --module-signal: #be4118;
+    --module-scout: #2b5cbb;
+    --module-north: #6440ad;
+
+    --shadow-glow: 0 0 0 1px #e2e5dc, 0 8px 24px #1a1f2a14;
+    --shadow-raised: 0 0 0 1px #e2e5dc, 0 24px 60px #1a1f2a1f;
     color-scheme: light;
   }
 }
 
 :root[data-theme="light"] {
-  --bg: var(--star-100);
+  --bg: #f5f6f2;
   --surface-1: #ffffff;
-  --surface-2: #eef2f9;
-  --surface-3: #e2e8f4;
-  --border: #d3dbe9;
-  --border-strong: #b6c1d5;
-  --text: var(--ink-900);
-  --text-muted: #47536b;
-  --text-subtle: #5d6a86; /* was #6a768c: 4.27:1 on --star-100, failed AA (4.5:1) */
-  --accent: var(--vega-600);
-  --accent-hover: #b8760a;
-  --accent-contrast: var(--ink-900); /* 7.33:1; #ffffff was 2.68:1 — see above */
-  --success: #0d6b57; /* was #0f7f68: 4.31:1 on the Active badge bg, failed AA (4.5:1) */
-  --danger: #c02626;
-  --warning: #b8410f;
-  --info: #2a55bf;
-  --shadow-glow: 0 0 0 1px #d3dbe9, 0 8px 24px #0f172a14;
-  --shadow-raised: 0 0 0 1px #d3dbe9, 0 16px 40px #0f172a1f;
+  --surface-2: #eef0ea;
+  --surface-3: #e4e7de;
+  --border: #e2e5dc;
+  --border-strong: #d2d7ca;
+  --border-strongest: #b4bbab;
+  --text: #14181e;
+  --text-muted: #414852;
+  --text-subtle: #616875; /* 5.17:1 on --bg (AA) */
+
+  --accent: var(--vega-700);
+  --accent-hover: var(--vega-800);
+  --accent-contrast: #ffffff; /* 6.25:1 on --accent (AA) */
+  --accent-soft: #eef5dc;
+  --accent-line: #cbdd9c;
+
+  --success: #1f7a48;
+  --success-contrast: #ffffff;
+  --danger: #b23428;
+  --danger-contrast: #ffffff;
+  --danger-soft: #faedeb;
+  --warning: #8a6511;
+  --warning-contrast: #ffffff; /* 5.32:1 on --warning, the tightest margin */
+  --warning-soft: #fcf6e6;
+  --warning-line: #e4d5a6;
+  --info: #2b5cbb;
+  --info-contrast: #ffffff;
+
+  --hatch: rgb(0 0 0 / 5%);
+  --heat-fg: #ffffff;
+
+  --module-axis: #a2660b;
+  --module-orbit: #0b7a6a;
+  --module-signal: #be4118;
+  --module-scout: #2b5cbb;
+  --module-north: #6440ad;
+
+  --shadow-glow: 0 0 0 1px #e2e5dc, 0 8px 24px #1a1f2a14;
+  --shadow-raised: 0 0 0 1px #e2e5dc, 0 24px 60px #1a1f2a1f;
   color-scheme: light;
 }
 
@@ -305,9 +421,12 @@
   --color-star-500: var(--star-500);
   --color-vega-500: var(--vega-500);
   --color-vega-600: var(--vega-600);
+  --color-vega-700: var(--vega-700);
+  --color-vega-800: var(--vega-800);
   --color-ion-500: var(--ion-500);
   --color-flare-500: var(--flare-500);
   --color-photon-500: var(--photon-500);
+  --color-solar-500: var(--solar-500);
   --color-comet-500: var(--comet-500);
   --color-nebula-500: var(--nebula-500);
 
@@ -323,25 +442,34 @@
   --color-surface-3: var(--surface-3);
   --color-border: var(--border);
   --color-border-strong: var(--border-strong);
+  --color-border-strongest: var(--border-strongest);
   --color-text: var(--text);
   --color-muted: var(--text-muted);
   --color-subtle: var(--text-subtle);
   --color-accent: var(--accent);
   --color-accent-hover: var(--accent-hover);
   --color-accent-contrast: var(--accent-contrast);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-line: var(--accent-line);
   --color-success: var(--success);
   --color-success-contrast: var(--success-contrast);
   --color-danger: var(--danger);
   --color-danger-contrast: var(--danger-contrast);
+  --color-danger-soft: var(--danger-soft);
   --color-warning: var(--warning);
   --color-warning-contrast: var(--warning-contrast);
+  --color-warning-soft: var(--warning-soft);
+  --color-warning-line: var(--warning-line);
   --color-info: var(--info);
   --color-info-contrast: var(--info-contrast);
+  --color-hatch: var(--hatch);
+  --color-heat-fg: var(--heat-fg);
 
   --font-display: var(--font-display);
   --font-ui: var(--font-ui);
   --font-mono: var(--font-mono);
   --font-arabic: var(--font-arabic);
+  --font-serif: var(--font-serif);
 
   --text-12: var(--text-12);
   --text-13: var(--text-13);

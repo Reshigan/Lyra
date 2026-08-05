@@ -32,7 +32,13 @@ export {
   rulepacks,
   idempotencyKeys,
   onboardingSteps,
-  delegations
+  delegations,
+  featureFlags,
+  impersonationSessions,
+  sloDefinitions,
+  deployments,
+  messageTemplates,
+  localeOverrides
 } from "./schema/core.js";
 
 export {
@@ -99,7 +105,8 @@ export {
   anomalies as northAnomalies,
   scenarios as northScenarios,
   boardpacks as northBoardpacks,
-  decisions as northDecisions
+  decisions as northDecisions,
+  alertRules as northAlertRules
 } from "./schema/north.js";
 
 export {

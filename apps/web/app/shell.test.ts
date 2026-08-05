@@ -32,8 +32,10 @@ describe("route tree", () => {
   });
 
   it("lands each role on a workspace their nav actually offers", () => {
-    const nav = [{ href: "/" }, { href: "/axis" }, { href: "/north" }, { href: "/admin" }];
+    const nav = [{ href: "/" }, { href: "/axis" }, { href: "/north" }, { href: "/admin" }, { href: "/platform" }];
     expect(landingFor(["north.exec"], nav)).toBe("/north");
+    // Platform staff are not tenant admins; their own workspace is the landing.
+    expect(landingFor(["platform.support"], nav)).toBe("/platform");
     expect(landingFor(["axis.agent"], nav)).toBe("/axis");
     expect(landingFor(["tenant.admin"], nav)).toBe("/admin");
     // A role with no workspace of its own never lands on "/" (that would loop)

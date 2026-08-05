@@ -660,3 +660,117 @@ export const delegations = sqliteTable(
     index("core_delegations_from_idx").on(t.tenantId, t.fromUserId, t.status)
   ]
 );
+
+/**
+ * ADR-0028: the one deliberate exception to "every table has tenant_id" — a
+ * flag gates a capability for tenants that haven't signed up yet, so it can't
+ * be scoped to one. `enabled: false` is a hard kill regardless of percent or
+ * allow-list; `targetTenantIdsJson` (non-empty) overrides `rolloutPercent`.
+ * Evaluated by the pure `flagEnabled()` in packages/core/src/flags.ts, never
+ * queried ad hoc.
+ */
+export const featureFlags = sqliteTable("core_feature_flags", {
+  id: text("id").primaryKey(),
+  key: text("key").notNull().unique(),
+  description: text("description").notNull(),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(false),
+  rolloutPercent: integer("rollout_percent").notNull().default(0),
+  targetTenantIdsJson: text("target_tenant_ids_json"),
+  updatedBy: text("updated_by").notNull(),
+  updatedAt: integer("updated_at").notNull()
+});
+
+/**
+ * ADR-0027: a time-boxed session swap, not a new authority. `tenantId` is the
+ * *target* tenant being entered (so this table needs no GLOBAL_TABLES
+ * exemption, unlike the two below) — a platform user's own grants never
+ * change, only which tenant their Ctx resolves to. No renewal: past
+ * `expiresAt` without an `/end` call, the session token 401s (auth.ts).
+ */
+export const impersonationSessions = sqliteTable(
+  "core_impersonation_sessions",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    platformUserId: text("platform_user_id").notNull(),
+    targetUserId: text("target_user_id").notNull(),
+    approvalId: text("approval_id").notNull(),
+    reason: text("reason").notNull(),
+    startedAt: integer("started_at").notNull(),
+    expiresAt: integer("expires_at").notNull(),
+    endedAt: integer("ended_at")
+  },
+  (t) => [
+    index("core_impersonation_sessions_platform_idx").on(t.platformUserId, t.startedAt),
+    index("core_impersonation_sessions_tenant_idx").on(t.tenantId, t.startedAt)
+  ]
+);
+
+/**
+ * ADR-0029: platform-global like `core_feature_flags` above — an SLO targets
+ * a whole module across every tenant, not one tenant's slice of it. Burn is
+ * computed live on read (per-tenant-loop over each module's own tables), never
+ * stored here.
+ */
+export const sloDefinitions = sqliteTable("core_slo_definitions", {
+  id: text("id").primaryKey(),
+  key: text("key").notNull().unique(),
+  description: text("description").notNull(),
+  module: text("module").notNull(), // events|webhooks|ai
+  targetPercent: integer("target_percent").notNull(),
+  windowDays: integer("window_days").notNull().default(30),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull()
+});
+
+/**
+ * ADR-0029: platform-global — a deploy belongs to a Worker/environment, not a
+ * tenant. Written by the CI deploy step; the API route is read-only.
+ */
+export const deployments = sqliteTable(
+  "core_deployments",
+  {
+    id: text("id").primaryKey(),
+    environment: text("environment").notNull(), // staging|production
+    workerName: text("worker_name").notNull(),
+    version: text("version").notNull(),
+    status: text("status").notNull().default("success"), // success|failed
+    deployedBy: text("deployed_by").notNull(),
+    deployedAt: integer("deployed_at").notNull()
+  },
+  (t) => [index("core_deployments_env_idx").on(t.environment, t.deployedAt)]
+);
+
+/** docs/24 Phase 2 item 11: an outbound message's per-channel copy, keyed for reuse across modules (dist reminders, orbit handover, signal campaigns). */
+export const messageTemplates = sqliteTable(
+  "core_message_templates",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    key: text("key").notNull(), // e.g. "dist.renewal_reminder", "signal.campaign_intro"
+    channel: text("channel").notNull(), // email|sms|whatsapp|push
+    subjectJson: text("subject_json"), // {en, ar, ...} — absent for channels with no subject line
+    bodyJson: text("body_json").notNull(), // {en, ar, ...}
+    variablesJson: text("variables_json"), // string[] of {{placeholders}} the body references
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+    deletedAt: integer("deleted_at")
+  },
+  (t) => [uniqueIndex("core_message_templates_key_idx").on(t.tenantId, t.key, t.channel)]
+);
+
+/** docs/24 Phase 2 item 12: a per-tenant override layered over the static i18n.ts CATALOGUES at request time. */
+export const localeOverrides = sqliteTable(
+  "core_locale_overrides",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    locale: text("locale").notNull(), // en|ar
+    key: text("key").notNull(), // i18n catalogue key
+    value: text("value").notNull(),
+    updatedBy: text("updated_by").notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull()
+  },
+  (t) => [uniqueIndex("core_locale_overrides_key_idx").on(t.tenantId, t.locale, t.key)]
+);

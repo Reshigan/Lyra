@@ -70,7 +70,11 @@ export const HIDDEN_ROUTES: Record<string, string> = {
   "/axis/doc-intelligence": "extraction review over documents, linked from the AXIS workspace tools list",
   "/axis/documents/:id/file": "streams one document's source file, opened from the verify-queue viewer",
   "/axis/analytics": "operations analytics and exports, linked from the AXIS workspace tools list",
+  "/axis/process-map": "the case-state flow diagram, linked from the AXIS workspace tools list",
   "/axis/admin": "SOP publish, connector health and operating policy, linked from the AXIS workspace tools list",
+  "/axis/dev": "extraction sandbox for testing document parsing, linked from the admin developer tools sandbox card",
+  "/axis/cases/:id/evidence-bundles/:bundleId/download":
+    "streams one recon evidence bundle's file, opened from the case detail evidence list",
   "/signal/cockpit": "the growth read across the SIGNAL ledgers, linked from the signal workspace tools list",
   "/signal/studio":
     "creates a campaign and drafts its content, linked from the signal workspace tools list and from the cockpit when nothing is running",

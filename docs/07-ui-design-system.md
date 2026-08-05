@@ -10,7 +10,7 @@ density variants.
 - Tokens from docs/01 (§3–4) exported as `@lyra/ui/tokens.css`; tenant
   overrides injected as `:root[data-tenant]` variables at SSR.
 - Grid: 4px base; radii 6/10/16 ("orbit" full-round for pills); shadows are
-  subtle glows on dark (`0 0 0 1px ink-600, 0 8px 24px #0009`).
+  subtle glows on dark (`0 0 0 1px ink-600, 0 8px 24px #000c`).
 - Density: `comfortable` (default) / `compact` (ops screens auto-default).
 - Elevation language: surfaces get lighter as they rise (ink-800→600), never
   drop-shadow-only.
@@ -21,8 +21,8 @@ Core: Button, IconButton, Input, Select, Combobox, DatePicker (Hijri display
 option), Checkbox/Radio/Switch, Tag/Badge, Tooltip, Toast, Modal/Drawer,
 Tabs, Table (virtualized, sticky, column pins, saved views), Kanban,
 CommandBar (⌘K), EmptyState (constellation illustrations), Skeleton,
-Stat (Space Grotesk tabular, delta chip with ion/flare), Sparkline,
-ChartFrame (echarts theme "deepfield"), Timeline, FileDrop + DocViewer
+Stat (Archivo tabular, delta chip with ion/flare), Sparkline,
+ChartFrame (echarts theme "night-sky"), Timeline, FileDrop + DocViewer
 (pdf/image, extraction overlay boxes), ChatThread (streaming, tool-call
 chips, redaction shimmer), ApprovalStrip, AuditTrail, JourneyCanvas (nodes/
 edges editor), PersonaCard, ConsentPanel, KPIWall.

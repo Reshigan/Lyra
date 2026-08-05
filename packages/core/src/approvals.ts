@@ -118,6 +118,9 @@ export const APPROVAL_POLICIES: Record<string, ApprovalPolicy> = Object.fromEntr
     policy({ key: "scout.whitespace_promote", module: "scout", decide: "scout:whitespaces:promote", dualControl: "never" }),
     // governance
     policy({ key: "core.impersonate", module: "core", decide: "core:impersonate:use", dualControl: "always", neverAutoApprove: true }),
+    // ADR-0028: a toggle can turn a capability on for every tenant at once; no
+    // tenant policy may auto-approve it, since it isn't a tenant's to decide.
+    policy({ key: "core.flag_toggle", module: "platform", decide: "admin:flags:write", dualControl: "always", neverAutoApprove: true }),
     // A mandate is delegated spending authority handed to an agent, so it is
     // issued under the same permission as a live credential.
     policy({ key: "core.mandate_register", module: "core", decide: "core:api_keys:create", dualControl: "always", neverAutoApprove: true }),

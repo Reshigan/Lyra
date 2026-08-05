@@ -13,22 +13,22 @@ import {
 import "./app.css";
 import { DEFAULT_LOCALE, dirFor, langFor, localeFrom, translator } from "./i18n";
 
-// Only the two first-paint faces (packages/ui/FONTS.md §"Known gap: preload").
-// The mono and the four Arabic cuts are discovered when they first match an
-// element — preloading them would fetch bytes most page loads never render.
-// `crossOrigin` is mandatory even same-origin: fonts are fetched in CORS mode,
-// and a preload without it is a second, unused request.
+// Only the two first-paint faces (packages/ui/FONTS.md §Preload; ADR-0026).
+// The mono, the four Arabic cuts, and Instrument Serif are discovered when
+// they first match an element — preloading them would fetch bytes most page
+// loads never render. `crossOrigin` is mandatory even same-origin: fonts are
+// fetched in CORS mode, and a preload without it is a second, unused request.
 export const links: LinksFunction = () => [
   {
     rel: "preload",
-    href: "/fonts/inter-latin-wght-normal.woff2",
+    href: "/fonts/instrument-sans-latin-wght-normal.woff2",
     as: "font",
     type: "font/woff2",
     crossOrigin: "anonymous"
   },
   {
     rel: "preload",
-    href: "/fonts/space-grotesk-latin-wght-normal.woff2",
+    href: "/fonts/archivo-latin-wght-normal.woff2",
     as: "font",
     type: "font/woff2",
     crossOrigin: "anonymous"

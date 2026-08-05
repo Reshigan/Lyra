@@ -2,6 +2,7 @@ import { Form, NavLink } from "react-router";
 import type { Brand, NavItem } from "../api.server";
 import type { Translate } from "../i18n";
 import { isRouted } from "../routing";
+import { SearchPalette } from "./search";
 
 // The frame every workspace renders inside: brand mark and account controls on
 // top, a labelled navigation sidebar beside the work.
@@ -36,9 +37,11 @@ export type TenantBrand = Brand & { font?: string };
  * regresses RTL rendering to a font with no Arabic coverage.
  */
 const FONT_STACKS = new Map<string, string>([
+  ["archivo", '"Archivo", "IBM Plex Sans Arabic", system-ui, sans-serif'],
+  ["instrument-sans", '"Instrument Sans", "IBM Plex Sans Arabic", system-ui, sans-serif'],
   ["space-grotesk", '"Space Grotesk", "IBM Plex Sans Arabic", system-ui, sans-serif'],
   ["inter", '"Inter", "IBM Plex Sans Arabic", system-ui, sans-serif'],
-  ["ibm-plex-sans-arabic", '"IBM Plex Sans Arabic", "Inter", system-ui, sans-serif']
+  ["ibm-plex-sans-arabic", '"IBM Plex Sans Arabic", "Instrument Sans", system-ui, sans-serif']
 ]);
 
 /**
@@ -81,12 +84,30 @@ const MODULE_ACCENT: Record<string, string> = {
   "/north": "var(--module-north)"
 };
 
+/** Nav is grouped: a heading item carries no link of its own, only labelled
+ *  children. Leaves (all in real, non-routed order) drop unrouted destinations
+ *  the same way flat items always did. */
+function routedLeaves(item: NavItem): NavItem[] {
+  if (item.heading) return (item.children ?? []).flatMap(routedLeaves);
+  return isRouted(item.href) || item.href === "/" ? [item] : [];
+}
+
 export function Shell({ t, nav, brand, tenantName, actorName, children }: ShellProps) {
   const productName = brand?.name ?? tenantName;
   // The API returns every item this actor may open, including modules whose
-  // screens have not shipped yet. Linking to an unrouted path would hand them a
-  // 404, so the shell shows what it can actually open.
-  const items = nav.filter((item) => item.href === "/" || isRouted(item.href));
+  // screens have not shipped yet (and headings whose one real destination
+  // hasn't). Linking to an unrouted path would hand them a 404, so the shell
+  // shows what it can actually open — headings with nothing left are dropped.
+  const groups: { heading: NavItem | null; items: NavItem[] }[] = [];
+  for (const item of nav) {
+    if (item.heading) {
+      const items = routedLeaves(item);
+      if (items.length) groups.push({ heading: item, items });
+    } else if (item.href === "/" || isRouted(item.href)) {
+      groups.push({ heading: null, items: [item] });
+    }
+  }
+  const items = groups.flatMap((g) => g.items);
   const logo = brand?.logo?.dark ?? brand?.logo?.light ?? brand?.logo?.mark;
 
   return (
@@ -108,6 +129,7 @@ export function Shell({ t, nav, brand, tenantName, actorName, children }: ShellP
         </NavLink>
 
         <div className="ms-auto flex items-center gap-1">
+          <SearchPalette t={t} />
           {actorName ? (
             <span className="me-2 hidden font-ui text-12 text-muted sm:inline">
               {t("header.signedInAs", { name: actorName })}
@@ -139,26 +161,34 @@ export function Shell({ t, nav, brand, tenantName, actorName, children }: ShellP
         <nav
           aria-label={t("nav.primary")}
           className={[
-            // Small screens: one scrollable row under the header, labels intact.
-            "flex shrink-0 gap-1 overflow-x-auto border-b border-border bg-surface-1 p-2",
-            // From md: a real sidebar that stays put while the work scrolls.
-            "md:sticky md:top-14 md:h-[calc(100vh-3.5rem)] md:w-60 md:flex-col md:gap-0.5 md:overflow-y-auto md:border-b-0 md:border-e md:p-3"
+            // Small screens: one scrollable row under the header, labels intact,
+            // group headings dropped — there is no room for them in a strip.
+            "flex shrink-0 gap-1 overflow-x-auto border-b border-border bg-surface-1 p-2 md:hidden"
           ].join(" ")}
         >
           {items.map((item) => (
-            <div key={item.href} className="contents md:block">
-              <NavItemLink item={item} t={t} />
-              {item.children?.length ? (
-                <ul className="hidden md:mb-1 md:mt-0.5 md:flex md:flex-col md:gap-0.5 md:ps-5">
-                  {item.children
-                    .filter((child) => isRouted(child.href))
-                    .map((child) => (
-                      <li key={child.href}>
-                        <NavItemLink item={child} t={t} nested />
-                      </li>
-                    ))}
-                </ul>
+            <NavItemLink key={item.href} item={item} t={t} />
+          ))}
+        </nav>
+
+        <nav
+          aria-label={t("nav.primary")}
+          className="hidden md:sticky md:top-14 md:flex md:h-[calc(100vh-3.5rem)] md:w-60 md:shrink-0 md:flex-col md:gap-0.5 md:overflow-y-auto md:border-e md:border-border md:p-3"
+        >
+          {groups.map((group, i) => (
+            <div key={group.heading?.href ?? group.items[0]?.href ?? i} className="mb-1">
+              {group.heading ? (
+                <h2 className="mb-1 mt-3 px-3 font-ui text-11 font-medium uppercase tracking-wide text-subtle first:mt-0">
+                  {t(group.heading.labelKey)}
+                </h2>
               ) : null}
+              <ul className="flex flex-col gap-0.5">
+                {group.items.map((item) => (
+                  <li key={item.href}>
+                    <NavItemLink item={item} t={t} nested={Boolean(group.heading)} />
+                  </li>
+                ))}
+              </ul>
             </div>
           ))}
         </nav>

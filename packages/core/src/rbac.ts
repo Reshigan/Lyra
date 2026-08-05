@@ -72,6 +72,8 @@ export const PERMISSIONS = [
   "core:webhooks:read", "core:webhooks:write",
   "core:identity_providers:read", "core:identity_providers:write",
   "core:impersonate:use",
+  "core:templates:read", "core:templates:write",
+  "core:locale_overrides:read", "core:locale_overrides:write",
 
   // DIST — aggregator distribution: channels, offerings, commercials
   "dist:channels:read", "dist:channels:write", "dist:channels:suspend",
@@ -141,6 +143,7 @@ export const PERMISSIONS = [
   "north:scenarios:read", "north:scenarios:run",
   "north:boardpacks:read", "north:boardpacks:generate",
   "north:decisions:read", "north:decisions:write",
+  "north:alerts:read", "north:alerts:write",
 
   // ledger & money (docs/19)
   "ledger:txns:read", "ledger:txns:create", "ledger:txns:authorize", "ledger:txns:reverse",
@@ -195,7 +198,7 @@ export const PERMISSIONS = [
   "admin:entitlements:write",
   "admin:billing:read", "admin:billing:write",
   "admin:dlq:read", "admin:dlq:replay",
-  "admin:flags:write",
+  "admin:flags:read", "admin:flags:write",
   "admin:diagnostics:read"
 ] as const;
 
@@ -233,7 +236,7 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     "admin:diagnostics:read", "admin:dlq:read", "core:impersonate:use",
     "core:audit:read", "ai:runs:read", "ai:suggestions:read"
   ],
-  "platform.engineer": ["admin:diagnostics:read", "admin:dlq:read", "admin:dlq:replay", "admin:flags:write"],
+  "platform.engineer": ["admin:diagnostics:read", "admin:dlq:read", "admin:dlq:replay", "admin:flags:read", "admin:flags:write"],
 
   /* tenant-wide */
   "tenant.admin": [
@@ -434,7 +437,7 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
   "north.analyst": [
     ...readsOf("north"), "north:ai:invoke", "ai:suggestions:read",
     "north:metrics:write", "north:briefings:generate",
-    "north:scenarios:run",
+    "north:scenarios:run", "north:alerts:write",
     "axis:metrics:read", "signal:attribution:read", "signal:spend:read",
     "orbit:renewals:read", "scout:clusters:read", "ledger:journals:read",
     "analytics:dashboards:write", "analytics:reports:write", "analytics:reports:run",

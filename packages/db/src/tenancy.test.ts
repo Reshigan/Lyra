@@ -13,6 +13,9 @@ const MIGRATIONS = join(import.meta.dirname, "..", "migrations");
  */
 const GLOBAL_TABLES = new Set([
   "core_tenants", // the tenant row itself
+  "core_feature_flags", // ADR-0028: platform-global, gates capabilities pre-signup
+  "core_slo_definitions", // ADR-0029: an SLO targets a module across every tenant
+  "core_deployments", // ADR-0029: a deploy belongs to a Worker/environment, not a tenant
   "d1_migrations",
   "sqlite_sequence",
   "_cf_KV"

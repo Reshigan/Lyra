@@ -90,6 +90,7 @@ describe("APPROVAL_POLICIES", () => {
       "dist.agreement_sign": { key: "dist.agreement_sign", module: "core", decide: "dist:agreements:sign", dualControl: "always", neverAutoApprove: true },
       "core.onboarding_waive": { key: "core.onboarding_waive", module: "core", decide: "core:onboarding:waive", dualControl: "always", neverAutoApprove: true, singleUse: false },
       "core.delegation_grant": { key: "core.delegation_grant", module: "core", decide: "core:delegations:write", dualControl: "never" },
+      "core.flag_toggle": { key: "core.flag_toggle", module: "platform", decide: "admin:flags:write", dualControl: "always", neverAutoApprove: true },
       "signal.budget_move": { key: "signal.budget_move", module: "signal", decide: "signal:budget_moves:approve", dualControl: "never" },
       "signal.campaign_launch": { key: "signal.campaign_launch", module: "signal", decide: "signal:campaigns:launch", dualControl: "never" },
       "signal.creative_publish": { key: "signal.creative_publish", module: "signal", decide: "signal:creatives:approve", dualControl: "never" },

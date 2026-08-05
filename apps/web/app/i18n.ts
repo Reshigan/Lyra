@@ -73,12 +73,18 @@ export function localeFrom(request: Request): string {
   return DEFAULT_LOCALE;
 }
 
-export function translator(locale: string): Translate {
+/**
+ * `overrides` is a tenant admin's per-key customisation (core_locale_overrides,
+ * merged into /v1/me's response) — it wins over the static catalogue so a
+ * relabel takes effect without a deploy. Optional and omittable: every
+ * existing single-argument call site keeps working unchanged.
+ */
+export function translator(locale: string, overrides?: Record<string, string>): Translate {
   const catalogue = locale === PSEUDO_LOCALE ? PSEUDO_CATALOGUE : (CATALOGUES[locale] ?? CATALOGUES[DEFAULT_LOCALE]!);
   return (key, vars) => {
     // An unknown key renders as itself rather than as an empty box: a missing
     // string should look wrong in review, not invisible in production.
-    const template = catalogue[key as MessageKey] ?? key;
+    const template = overrides?.[key] ?? catalogue[key as MessageKey] ?? key;
     if (!vars) return template;
     return template.replace(/\{(\w+)\}/g, (whole, name: string) =>
       name in vars ? String(vars[name]) : whole

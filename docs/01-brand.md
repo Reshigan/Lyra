@@ -52,27 +52,38 @@ Tagline system:
 - Clear space: height of the `L` on all sides. Never distort, outline, rotate,
   or add drop-shadow. The parallelogram angle is fixed at 68°/112°.
 
-## 3. Color — "Deep Field" palette
+## 3. Color — "Night Sky" palette (ADR-0026)
 
 Dark-first. Light theme derives from the same tokens.
 
 | Token | Hex | Use |
 |---|---|---|
-| `ink-900` (Deep Field) | `#070B14` | App background (dark) |
-| `ink-800` | `#0C1322` | Surface 1 |
-| `ink-700` | `#131C31` | Surface 2 / cards |
-| `ink-600` | `#1C2842` | Elevated / hover |
-| `star-100` (Starlight) | `#F4F7FC` | Text on dark; light-mode bg |
-| `star-300` | `#AEB9CF` | Muted text on dark |
-| `vega-500` (Vega) | `#FFB020` | Primary accent — actions, focus, the "star" |
-| `vega-600` | `#D98E0B` | Accent hover / on-light accent text |
-| `ion-500` (Ion) | `#37D3B2` | Success, positive deltas |
-| `flare-500` | `#FF5D5D` | Errors, negative deltas |
-| `photon-500` | `#6E9BFF` | Links, info, selected states |
+| `ink-900` (Night Sky) | `#0B0E13` | App background (dark) |
+| `ink-800` | `#10141D` | Surface 1 |
+| `ink-700` | `#161C28` | Surface 2 / cards |
+| `ink-600` | `#1C2432` | Elevated / hover |
+| `star-100` (Starlight) | `#EDF1F7` | Text on dark; light-mode ink |
+| `star-300` | `#AEB6C6` | Muted text on dark |
+| `star-500` | `#8A94A6` | Subtle text on dark — 6.32:1 on ink-900 (AA) |
+| `vega-500` (Vega) | `#C8F163` | Primary accent (dark) — actions, focus, the "star" |
+| `vega-600` | `#DBFF85` | Accent hover (dark) |
+| `vega-700` | `#4A6A0F` | Accent (light) — vega-500 fails AA as text on light |
+| `vega-800` | `#3B560C` | Accent hover (light) |
+| `ion-500` (Ion) | `#55D68C` | Success, positive deltas |
+| `flare-500` | `#F08A80` | Errors, negative deltas |
+| `photon-500` | `#6C9EF0` | Links, info, selected states |
+| `solar-500` | `#E8C266` | Warning |
+| `comet-500` | `#F0764F` | SIGNAL identity |
+| `nebula-500` | `#A98BE8` | NORTH identity |
 
-Module accents (used ONLY as identity tint in nav, lockups, chart series 1):
-AXIS `#FFB020` (vega) · ORBIT `#37D3B2` (ion) · SIGNAL `#FF7A45` (comet) ·
-SCOUT `#6E9BFF` (photon) · NORTH `#C08BFF` (nebula).
+Module accents (used ONLY as identity tint in nav, lockups, chart series 1;
+light theme ships genuinely different hues, not just an AA-safe shade of the
+same one — ADR-0026 §Decision 1, the one exception to "never re-mapped by
+theme" in §6):
+AXIS `#E8A33D` (dark) / `#A2660B` (light) · ORBIT `#3FC9B4` (dark) /
+`#0B7A6A` (light) · SIGNAL `#F0764F` (comet, dark) / `#BE4118` (light) ·
+SCOUT `#6C9EF0` (photon, dark) / `#2B5CBB` (light) · NORTH `#A98BE8`
+(nebula, dark) / `#6440AD` (light).
 
 Rules: one accent per screen dominates; module accent ≤ 10% of surface area;
 data-viz uses the 5 module accents as the categorical scale (colour-blind safe
@@ -80,12 +91,22 @@ at these values on ink backgrounds); never place vega text on ion, etc.
 
 ## 4. Typography
 
-- Display / headings: **Space Grotesk** (500/700). On-theme, geometric, ownable.
-- UI / body: **Inter** (400/500/600), tabular numerals ON for all metrics.
+- Display / headings: **Archivo** (500/600/700). Geometric grotesque, ownable
+  — replaces the previous Space Grotesk display face (ADR-0026).
+- UI / body: **Instrument Sans** (400/500/600/700), tabular numerals ON for
+  all metrics. Replaces the previous Inter body face (ADR-0026).
+- Serif — Login hero + dashboard headline only (5 occurrences, not a general
+  role): **Instrument Serif**, normal + italic. Reached only via
+  `--font-serif`, never `--font-display`/`--font-ui`, so it is not part of
+  the tenant font contract (§6).
 - Mono (code, IDs, API): **IBM Plex Mono**.
-- Arabic: **IBM Plex Sans Arabic** across all roles; display fallback to it too.
+- Arabic: **IBM Plex Sans Arabic** across all roles; display and UI fallback
+  to it too.
 - Scale (rem): 12, 13, 14 (body), 16, 18, 22, 28, 36, 48. Line-height 1.5 body,
-  1.15 display. Numbers in KPIs use Space Grotesk 700 tabular.
+  1.15 display. Numbers in KPIs use Archivo 700 tabular.
+- Legacy: **Space Grotesk** and **Inter**, the predecessor display/UI faces,
+  remain vendored (packages/ui/FONTS.md) and selectable through a tenant's
+  `brand.font` override, but are no longer the default.
 
 ## 5. Iconography, illustration, motion
 

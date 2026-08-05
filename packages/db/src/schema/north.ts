@@ -120,6 +120,23 @@ export const boardpacks = sqliteTable(
   (t) => [index("north_boardpacks_tenant_idx").on(t.tenantId, t.period)]
 );
 
+export const alertRules = sqliteTable(
+  "north_alert_rules",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    metricKey: text("metric_key").notNull(),
+    operator: text("operator").notNull(), // gt|gte|lt|lte|eq
+    thresholdValue: integer("threshold_value").notNull(), // minor units for money metrics
+    windowGrain: text("window_grain").notNull().default("day"), // day|week|month
+    notifyChannelRef: text("notify_channel_ref"),
+    enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull()
+  },
+  (t) => [index("north_alert_rules_tenant_idx").on(t.tenantId, t.metricKey)]
+);
+
 export const decisions = sqliteTable(
   "north_decisions",
   {

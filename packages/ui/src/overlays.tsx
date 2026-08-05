@@ -412,8 +412,14 @@ export interface CommandBarProps {
   placeholder?: string;
   /** Accessible name for the palette. */
   label?: string;
+  /** Shown when nothing matched. */
+  emptyLabel?: string;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /** Set when `items` come from a search the caller runs itself. Local filtering
+   *  is then skipped — a server that already matched knows more than
+   *  `label.includes()` does (it reads fields the label never shows). */
+  onQueryChange?: (query: string) => void;
 }
 
 /**
@@ -424,8 +430,10 @@ export function CommandBar({
   items,
   placeholder = "Search entities, actions, docs…",
   label = "Command palette",
+  emptyLabel = "No matches.",
   open,
-  onOpenChange
+  onOpenChange,
+  onQueryChange
 }: CommandBarProps) {
   const [internalOpen, setInternalOpen] = React.useState(false);
   const isOpen = open ?? internalOpen;
@@ -450,7 +458,7 @@ export function CommandBar({
   }, [isOpen, setOpen]);
 
   const q = query.trim().toLowerCase();
-  const results = q ? items.filter((i) => i.label.toLowerCase().includes(q)) : items;
+  const results = onQueryChange || !q ? items : items.filter((i) => i.label.toLowerCase().includes(q));
 
   return (
     <RDialog.Root open={isOpen} onOpenChange={setOpen}>
@@ -468,7 +476,10 @@ export function CommandBar({
             <Input
               autoFocus
               value={query}
-              onChange={(e) => setQuery(e.currentTarget.value)}
+              onChange={(e) => {
+                setQuery(e.currentTarget.value);
+                onQueryChange?.(e.currentTarget.value);
+              }}
               placeholder={placeholder}
               aria-label={placeholder}
             />
@@ -494,7 +505,7 @@ export function CommandBar({
               </li>
             ))}
             {results.length === 0 ? (
-              <li className="px-3 py-6 text-center font-ui text-13 text-subtle">No matches.</li>
+              <li className="px-3 py-6 text-center font-ui text-13 text-subtle">{emptyLabel}</li>
             ) : null}
           </ul>
         </RDialog.Content>

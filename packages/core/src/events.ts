@@ -19,7 +19,8 @@ export const MODULES = [
   "ledger",
   "ai",
   "compliance",
-  "analytics"
+  "analytics",
+  "platform"
 ] as const;
 
 export const Envelope = z.object({
