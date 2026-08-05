@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { checkInput, checkOutput, blocked } from "../src/guardrails.js";
 import { EXTRACTION_FIELDS, normalizeField, parseExtraction } from "../src/extract.js";
-import { verifyNumericClaims, checkCompliance as checkSignalCompliance, type BriefingSnapshot } from "@lyra/core";
+import { verifyNumericClaims, verifyGroundedness, checkCompliance as checkSignalCompliance, type BriefingSnapshot } from "@lyra/core";
 
 // docs/13 §3 (Eval-driven development): the golden set + threshold is the
 // failing test for model/guardrail behaviour. One task = one directory under
@@ -200,10 +200,35 @@ async function scoreSignal(dir: string): Promise<Metric[]> {
   ];
 }
 
+interface AxisCopilotCase {
+  id: string;
+  contextLines: string[];
+  text: string;
+  expectOk: boolean;
+}
+interface AxisCopilotThresholds {
+  recallMin: number;
+  falsePositiveMax: number;
+}
+
+async function scoreAxisCopilot(dir: string): Promise<Metric[]> {
+  const cases = await loadCases<AxisCopilotCase>(dir);
+  const thresholds = await loadThresholds<AxisCopilotThresholds>(dir);
+  const violations = cases.filter((c) => !c.expectOk);
+  const clean = cases.filter((c) => c.expectOk);
+  const caught = violations.filter((c) => !verifyGroundedness(c.text, c.contextLines).ok).length;
+  const falseFlags = clean.filter((c) => !verifyGroundedness(c.text, c.contextLines).ok).length;
+  return [
+    metric("recall", violations.length ? caught / violations.length : 1, { min: thresholds.recallMin }),
+    metric("falsePositiveRate", clean.length ? falseFlags / clean.length : 0, { max: thresholds.falsePositiveMax })
+  ];
+}
+
 const SCORERS: Record<string, (dir: string) => Promise<Metric[]>> = {
   injection: scoreInjection,
   compliance: scoreCompliance,
   axis: scoreAxis,
+  "axis-copilot": scoreAxisCopilot,
   north: scoreNorth,
   signal: scoreSignal
 };
