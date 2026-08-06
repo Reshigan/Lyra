@@ -565,10 +565,12 @@ than from the vanished finding texts.
 - [x] AXIS case copilot rendered in a drawer — now an in-page ambient panel;
       last `Drawer` use in the app is gone (CLAUDE.md rule 11, docs/15 §4) —
       commit `79baea2`.
+- [x] Tenant `defaultLocale` and `currency` were read by the UI and written by
+      the seed, but editable nowhere in app — they now sit on the same
+      Settings panel as the calendar, sharing its policy read-merge-write —
+      commit `a3d0e64`.
 
-Still open from this pass: no settings form exposes tenant `defaultLocale` /
-`currency` (both are read by the UI, both are seeded, neither is editable in
-app), and ROLE-028 above.
+Still open from this pass: ROLE-028 above.
 
 ---
 
