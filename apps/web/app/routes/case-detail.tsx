@@ -1,4 +1,3 @@
-import { useState } from "react";
 import {
   Form,
   Link,
@@ -15,14 +14,15 @@ import {
   Card,
   ConfidenceMeter,
   DateTime,
-  Drawer,
   EmptyState,
+  Field,
   GhostText,
   Money,
   Ref,
   Select,
   Stat,
   Table,
+  Textarea,
   type Column
 } from "@lyra/ui";
 import { ApiError, api, fetchMe, type Problem } from "../api.server";
@@ -399,7 +399,6 @@ export default function CaseDetail() {
   const t = translator(locale, shell?.overrides);
   const l = labelsIn(locale, shell?.domainPack);
   const busy = navigation.state !== "idle";
-  const [copilotOpen, setCopilotOpen] = useState(false);
 
   if (!loaded.workItem) {
     return (
@@ -486,7 +485,6 @@ export default function CaseDetail() {
   ];
 
   return (
-    <>
     <div className="flex flex-col gap-6">
       <Header title={workItem.ref} intro={l("intro")} />
 
@@ -661,24 +659,24 @@ export default function CaseDetail() {
       ) : null}
 
       {loaded.may.copilot ? (
-        <Button variant="secondary" onClick={() => setCopilotOpen(true)}>
-          {l("copilotTitle")}
-        </Button>
-      ) : null}
-    </div>
-      {loaded.may.copilot ? (
-        <Drawer open={copilotOpen} onOpenChange={setCopilotOpen} title={l("copilotTitle")}>
-          <Form method="post" replace>
+        // Ambient, not modal (CLAUDE.md rule 11, docs/15 §4): the copilot sits
+        // in the page beside the facts it answers from, so the case stays
+        // readable while a question is asked and the answer arrives as ghost
+        // text. A drawer would have covered the evidence the answer cites.
+        <Card title={l("copilotTitle")} description={l("copilotEmpty")}>
+          <Form method="post" replace className="flex flex-col items-start gap-3">
             <input type="hidden" name="intent" value="copilot" />
             <input type="hidden" name="idempotencyKey" value={loaded.idempotencyKey} />
             <input type="hidden" name="locale" value={locale} />
-            <textarea name="question" placeholder={l("copilotPlaceholder")} aria-label={l("copilotPlaceholder")} rows={3} required />
+            <Field label={l("copilotPlaceholder")} labelHidden required className="w-full">
+              <Textarea name="question" placeholder={l("copilotPlaceholder")} rows={3} required />
+            </Field>
             <Button type="submit" disabled={busy}>
               {l("copilotSubmit")}
             </Button>
           </Form>
           {result?.done === "answered" && result.answer ? (
-            <>
+            <div className="mt-4 flex flex-col gap-3">
               <div className="flex flex-wrap items-center gap-2">
                 <AgentBadge
                   size="sm"
@@ -691,12 +689,10 @@ export default function CaseDetail() {
                 <GhostText text={result.answer} onAccept={() => {}} onDiscard={() => {}} />
               </div>
               <ConfidenceMeter value={result.confidence ?? 0} />
-            </>
-          ) : (
-            <p>{l("copilotEmpty")}</p>
-          )}
-        </Drawer>
+            </div>
+          ) : null}
+        </Card>
       ) : null}
-    </>
+    </div>
   );
 }
