@@ -81,13 +81,22 @@ jobs:
       - name: Fail on GPL/AGPL dependencies
         run: |
           pnpm licenses list --json > licenses.json
-          if grep -oE '"license": "[^"]*"' licenses.json \
-            | grep -Ev 'LGPL' \
-            | grep -E '\bA?GPL-' ; then
-            echo "::error::GPL/AGPL-licensed dependency found (matches above). Replace it or record an ADR."
-            exit 1
-          fi
-          echo "No GPL/AGPL dependencies."
+          node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            // An SPDX expression is only copyleft if EVERY alternative is:
+            // node-forge ships "(BSD-3-Clause OR GPL-2.0)" and we take the BSD
+            // side. LGPL is fine on its own — dynamic linking, and we already
+            // depend on one (@img/sharp-libvips).
+            const copyleft = (term) => /\bA?GPL-/.test(term) && !/\bLGPL-/.test(term);
+            const bad = Object.entries(JSON.parse(readFileSync("licenses.json", "utf8")))
+              .filter(([expr]) => expr.split(/\s+OR\s+/i).every(copyleft))
+              .map(([expr, pkgs]) => `${expr}: ${pkgs.map((p) => p.name).join(", ")}`);
+            if (bad.length) {
+              console.log(`::error::GPL/AGPL-licensed dependency found. Replace it or record an ADR.\n${bad.join("\n")}`);
+              process.exit(1);
+            }
+            console.log("No GPL/AGPL dependencies.");
+          '
 
   # SEC-007, second half — the OS layer of the on-prem image (ops/Dockerfile;
   # there is no infra/onprem and never will be — ADR-0010).
@@ -113,7 +122,8 @@ jobs:
           echo "image=$base" >> "$GITHUB_OUTPUT"
       # ignore-unfixed: an unpatched distro CVE has no action available, and a
       # permanently red gate is a gate someone turns off.
-      - uses: aquasecurity/trivy-action@0.28.0
+      # Tags carry a `v` prefix; the unprefixed `0.28.0` never resolved.
+      - uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ steps.base.outputs.image }}
           severity: HIGH,CRITICAL

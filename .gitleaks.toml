@@ -1,0 +1,42 @@
+# Secret scanning config for the `gitleaks` job in .github/workflows/security.yml
+# (docs/12, SEC-008). Everything gitleaks ships with stays on; this file only
+# records the places its heuristics misfire on this repo. Each allowlist is
+# scoped — to a rule, a path, or an exact literal — so a real credential in the
+# same file still fails the build.
+#
+# Real secrets live in wrangler secrets and Docker env (CLAUDE.md §10). If a
+# finding here is ever a genuine credential, rotate it first; do not widen this
+# file to make the build pass.
+
+[extend]
+useDefault = true
+
+# Prose, not credentials. `generic-api-key` fires whenever a sentence puts a
+# slashed phrase next to the word "API" ("metrics push API, brief/anomaly
+# webhooks") or "scraping, news/regulatory".
+[[allowlists]]
+targetRules = ["generic-api-key"]
+description = "Requirements and spec prose"
+paths = ['''^docs/''']
+
+# .env.example ships placeholders on purpose — that is what makes it an example.
+[[allowlists]]
+targetRules = ["generic-api-key"]
+description = "Placeholders in the env template"
+regexes = ['''REPLACE_ME[A-Z0-9_]*''']
+
+# Fixed demo values: the seed's fake tenant API keys, the scrubber's synthetic
+# AWS token and JWT (the test exists to prove they get redacted), the
+# field-crypto test key, the webhook-signature fixture, and a metric named
+# `*_key`. Matched as exact literals, not patterns.
+[[allowlists]]
+description = "Synthetic fixtures and seed demo data"
+regexes = [
+  '''qvk_live_a1b2c3d4''',
+  '''qvk_live_e5f6g7h8''',
+  '''AKIAABCDEFGHIJKLMNOP''',
+  '''eyJhbGciOiJIUzI1NiJ9\.eyJzdWIiOiIxMjM0NTY3ODkwIn0\.''',
+  '''s0me-32-byte-ish-secret-from-wrangler''',
+  '''whsec_ABC123''',
+  '''quote_latency_p95'''
+]
