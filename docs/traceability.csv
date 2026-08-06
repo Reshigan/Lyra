@@ -50,7 +50,7 @@ PLAT-066,"Guardrail pipeline: PII redaction pre-call, policy classification pre/
 PLAT-067,Prompt-injection resistance suite passes 100% against the live tool registry,M,M3,"T,E",no,,,,not_started,,
 PLAT-068,Retrieval indexes are tenant-namespaced; no cross-tenant retrieval possible,M,M1,T,no,,,,not_started,,
 PLAT-069,Numeric-verification gate: generated prose containing figures fails closed unless every figure matches a structured source,M,M6,"T,E",no,,,,not_started,,
-PLAT-070,Eval harness gates provider/model/prompt changes in CI with published thresholds,M,M1,"T,E",no,,,,not_started,,
+PLAT-070,Eval harness gates provider/model/prompt changes in CI with published thresholds,M,M1,"T,E",no,docs/13 §3.3,packages/model-gateway/evals/run.ts::eval gate,"packages/model-gateway/evals/*/thresholds.json, .github/workflows/ci.yml:48",verified,build,2026-08-05
 PLAT-071,Arabic/English parity measured per generative task; parity gap within threshold,M,M3,E,no,,,,not_started,,
 PLAT-072,Model/prompt versions recorded on every generated artifact for reproducibility,M,M1,T,no,,,packages/db/src/schema/ai.ts:50,implemented,,
 PLAT-075,Agents may only call tools from a typed registry with RBAC scope and per-tenant enablement,M,M3,T,no,,,packages/model-gateway/src/guardrails.ts:109,implemented,,
@@ -219,7 +219,7 @@ ORB-024,"`[∫AXIS]` Quote, bind, endorsement and document tools appear automati
 ORB-025,`[∫SIG]` Offer and creative tools available inside conversations,S,M4,T,yes,,,,not_started,,
 ORB-026,FNOL/claims support is guidance-only and explicitly labelled as not a claims decision,M,M3,"T,A",no,,,,not_started,,
 ORB-027,Guardrail and disclosure configuration with floors that cannot be removed,M,M3,T,no,,,packages/db/src/json.ts:124,implemented,,
-ORB-028,Conversation-quality eval thresholds met in Arabic and English before release,M,M3,E,no,,,,not_started,,
+ORB-028,Conversation-quality eval thresholds met in Arabic and English before release,M,M3,E,no,docs/13 §3.3,packages/model-gateway/src/cx-judge.test.ts::median resists one erratic run;packages/model-gateway/evals/run.ts::rubric.ar;packages/model-gateway/evals/run.ts::rubric.en;packages/model-gateway/evals/run.ts::parityGap.ar-en,"packages/model-gateway/src/cx-judge.ts, packages/model-gateway/evals/cx-quality/",verified,build,2026-08-05
 ORB-035,Churn scoring per policy with feature explainability,M,M3,T,no,,,,not_started,,
 ORB-036,"Strategy assignment per policy: automated requote, human outreach, or suppress",M,M3,T,no,,,packages/db/src/schema/orbit.ts:57,implemented,,
 ORB-037,Renewal book view by expiry cohort with risk banding and filters,M,M3,"T,D",no,,,apps/api/src/engines/renewals.ts:17,implemented,,

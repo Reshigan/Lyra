@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { checkInput, checkOutput, blocked } from "../src/guardrails.js";
 import { EXTRACTION_FIELDS, normalizeField, parseExtraction } from "../src/extract.js";
+import { aggregateCxScore, localeGap } from "../src/cx-judge.js";
 import { verifyNumericClaims, verifyGroundedness, checkCompliance as checkSignalCompliance, type BriefingSnapshot } from "@lyra/core";
 
 // docs/13 §3 (Eval-driven development): the golden set + threshold is the
@@ -119,22 +120,97 @@ interface AxisThresholds {
 // deterministic/CI-safe, docs/13 §4) — cases.jsonl bakes in canned model
 // replies (clean, code-fenced, missing/whitespace/case-noise) and this scores
 // the exact `parseExtraction` the /documents/:id/extract route runs.
+//
+// Scored per locale, never pooled: docs/13 §3.3 reads "field-F1 >= 0.95 (ar+en
+// separately)" precisely because a pooled number lets a strong English set
+// carry a failing Arabic one. Whatever locales the cases carry become metrics —
+// adding a third language adds its own gate rather than diluting the other two.
+// Splitting them exposed exactly that: the authored failure modes (an omitted
+// field, a transposed digit) sat only in the English cases, so a clean Arabic
+// set was carrying English past the bar. Keep the sets symmetric — every
+// failure mode one locale carries, the other carries too, or the parity number
+// measures the golden set rather than the extractor.
 async function scoreAxis(dir: string): Promise<Metric[]> {
   const cases = await loadCases<AxisCase>(dir);
   const thresholds = await loadThresholds<AxisThresholds>(dir);
 
-  let correct = 0;
-  let total = 0;
+  const tally = new Map<string, { correct: number; total: number }>();
   for (const c of cases) {
     const fields = EXTRACTION_FIELDS[c.docType] ?? Object.keys(c.expected);
     const { values } = parseExtraction(c.text, fields);
+    const t = tally.get(c.locale) ?? { correct: 0, total: 0 };
     for (const field of fields) {
-      total += 1;
-      if (normalizeField(values[field] ?? null) === normalizeField(c.expected[field] ?? null)) correct += 1;
+      t.total += 1;
+      if (normalizeField(values[field] ?? null) === normalizeField(c.expected[field] ?? null)) t.correct += 1;
     }
+    tally.set(c.locale, t);
   }
 
-  return [metric("fieldAccuracy", total ? correct / total : 1, { min: thresholds.fieldAccuracyMin })];
+  return [...tally.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([locale, t]) =>
+      metric(`fieldAccuracy.${locale}`, t.total ? t.correct / t.total : 1, {
+        min: thresholds.fieldAccuracyMin
+      })
+    );
+}
+
+interface CxQualityCase {
+  id: string;
+  locale: string;
+  context: string[];
+  reply: string;
+  /** One entry per judge run — `CX_JUDGE_SAMPLES` of them (docs/13 §3.4). */
+  judgeReplies: string[];
+}
+
+interface CxQualityThresholds {
+  rubricMin: number;
+  parityGapMax: number;
+  /** Fraction of samples that must produce a usable score at all. */
+  scoredMin: number;
+}
+
+// docs/13 §3.3: "CX quality rubric >= 4.2/5 (ar+en separately — parity gap
+// <= 0.2)". Scores the exact judge in packages/model-gateway/src/cx-judge.ts.
+// The judge replies are canned for the same reason the axis model replies are:
+// a gate that calls a live model is not a gate. The live weekly re-score
+// (docs/12 §4) runs the same rubric against sampled production conversations.
+async function scoreCxQuality(dir: string): Promise<Metric[]> {
+  const cases = await loadCases<CxQualityCase>(dir);
+  const thresholds = await loadThresholds<CxQualityThresholds>(dir);
+
+  const byLocale = new Map<string, number[]>();
+  let scored = 0;
+  for (const c of cases) {
+    const score = aggregateCxScore(c.judgeReplies);
+    if (score === null) continue;
+    scored += 1;
+    byLocale.set(c.locale, [...(byLocale.get(c.locale) ?? []), score]);
+  }
+
+  const mean = (xs: number[]): number => xs.reduce((a, b) => a + b, 0) / xs.length;
+  const locales = [...byLocale.entries()].sort(([a], [b]) => a.localeCompare(b));
+  const metrics = locales.map(([locale, scores]) =>
+    metric(`rubric.${locale}`, mean(scores), { min: thresholds.rubricMin })
+  );
+
+  // The gap is only meaningful between two languages; with one locale in the
+  // set there is no parity claim to make, so the metric stays off rather than
+  // reporting a flattering zero.
+  if (locales.length === 2) {
+    const [a, b] = locales as [[string, number[]], [string, number[]]];
+    metrics.push(
+      metric(`parityGap.${a[0]}-${b[0]}`, localeGap(mean(a[1]), mean(b[1])), {
+        max: thresholds.parityGapMax
+      })
+    );
+  }
+
+  // A judge that stops returning parseable scores would otherwise show up as a
+  // suspiciously good run over the handful of samples that still worked.
+  metrics.push(metric("scoredRate", cases.length ? scored / cases.length : 1, { min: thresholds.scoredMin }));
+  return metrics;
 }
 
 interface NorthCase {
@@ -229,6 +305,7 @@ const SCORERS: Record<string, (dir: string) => Promise<Metric[]>> = {
   compliance: scoreCompliance,
   axis: scoreAxis,
   "axis-copilot": scoreAxisCopilot,
+  "cx-quality": scoreCxQuality,
   north: scoreNorth,
   signal: scoreSignal
 };

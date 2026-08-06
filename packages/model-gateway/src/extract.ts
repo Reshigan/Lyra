@@ -55,7 +55,7 @@ export function extractionSchema(fields: readonly string[]): Record<string, unkn
 }
 
 /** Models sometimes wrap JSON in a code fence despite `responseSchema`; strip it before parsing. */
-function stripFence(text: string): string {
+export function stripFence(text: string): string {
   const m = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
   return (m?.[1] ?? text).trim();
 }

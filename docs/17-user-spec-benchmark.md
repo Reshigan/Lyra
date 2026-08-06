@@ -143,7 +143,7 @@ silent failure or an error.
 | PLAT-067 | Prompt-injection resistance suite passes 100% against the live tool registry | M | M3 | T,E | ☐ |
 | PLAT-068 | Retrieval indexes are tenant-namespaced; no cross-tenant retrieval possible | M | M1 | T | ☐ |
 | PLAT-069 | Numeric-verification gate: generated prose containing figures fails closed unless every figure matches a structured source | M | M6 | T,E | ☐ |
-| PLAT-070 | Eval harness gates provider/model/prompt changes in CI with published thresholds | M | M1 | T,E | ☐ |
+| PLAT-070 | Eval harness gates provider/model/prompt changes in CI with published thresholds | M | M1 | T,E | ☑ |
 | PLAT-071 | Arabic/English parity measured per generative task; parity gap within threshold | M | M3 | E | ☐ |
 | PLAT-072 | Model/prompt versions recorded on every generated artifact for reproducibility | M | M1 | T | ☐ |
 
@@ -389,7 +389,7 @@ no out-of-band tooling. Verification is a scripted role walkthrough per release.
 | ORB-025 | `[∫SIG]` Offer and creative tools available inside conversations | S | M4 | T | ☐ |
 | ORB-026 | FNOL/claims support is guidance-only and explicitly labelled as not a claims decision | M | M3 | T,A | ☐ |
 | ORB-027 | Guardrail and disclosure configuration with floors that cannot be removed | M | M3 | T | ☐ |
-| ORB-028 | Conversation-quality eval thresholds met in Arabic and English before release | M | M3 | E | ☐ |
+| ORB-028 | Conversation-quality eval thresholds met in Arabic and English before release | M | M3 | E | ☑ |
 
 ### 5.3 Renewals & retention
 | ID | Requirement | Pri | MS | Verify | Status |
