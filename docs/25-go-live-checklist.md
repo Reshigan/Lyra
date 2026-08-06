@@ -569,6 +569,14 @@ than from the vanished finding texts.
       the seed, but editable nowhere in app — they now sit on the same
       Settings panel as the calendar, sharing its policy read-merge-write —
       commit `a3d0e64`.
+- [x] The `security` workflow (SEC-007, SEC-008) had failed on every run since
+      it was added — four of its five jobs were broken, so the gate enforced
+      nothing. Fixed all four: two high advisories bumped through the existing
+      pnpm overrides, the licence check taught that `(BSD-3-Clause OR GPL-2.0)`
+      is satisfiable on the BSD side, 24 synthetic gitleaks findings allowlisted
+      by rule/path/literal in `.gitleaks.toml` (verified against gitleaks 8.30.0
+      over full history), and `trivy-action` pinned to a tag that resolves —
+      commit `e6029be`.
 
 Still open from this pass: ROLE-028 above.
 
