@@ -157,7 +157,13 @@ export function Shell({ t, nav, brand, tenantName, actorName, children }: ShellP
           )}
         </NavLink>
 
-        <SearchPalette t={t} />
+        {/* ⌘K answers both halves of the design's two overlays: what is this,
+            and where do I go. The destinations are the nav's own, so a place
+            the rail cannot open is not offered here either (ADR-0031). */}
+        <SearchPalette
+          t={t}
+          destinations={items.map((item) => ({ href: item.href, label: t(item.labelKey) }))}
+        />
 
         <div className="ms-auto flex shrink-0 items-center gap-1">
           <ThemeToggle t={t} />
@@ -187,14 +193,13 @@ export function Shell({ t, nav, brand, tenantName, actorName, children }: ShellP
             >
               {/* Initials in the tenant accent, the name beside them: the pill
                   says who is acting without a menu having to be opened. The
-                  full "signed in as" sentence stays as the pill's title. */}
+                  full "signed in as" sentence stays as the pill's title.
+                  Accent on accent-contrast, not accent on a tint of itself —
+                  the tint's ratio depends on the tenant's hue and a blue one
+                  landed at 4.24:1; --accent-contrast is AA-validated on save. */}
               <span
                 aria-hidden="true"
-                className="grid size-6 shrink-0 place-items-center rounded-orbit font-mono text-11 font-medium"
-                style={{
-                  background: "color-mix(in oklab, var(--accent) 20%, transparent)",
-                  color: "var(--accent)"
-                }}
+                className="grid size-6 shrink-0 place-items-center rounded-orbit bg-accent font-mono text-11 font-medium text-accent-contrast"
               >
                 {initialsOf(actorName)}
               </span>

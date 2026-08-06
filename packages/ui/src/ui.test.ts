@@ -13,6 +13,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { shortRef } from "./format.js";
+import { groupCommandItems } from "./overlays.js";
 import { fromSelectValue, toSelectValue } from "./primitives.js";
 import { KIT_TEXT, uiText } from "./text.js";
 
@@ -345,6 +346,34 @@ describe("shortRef hides storage keys without hiding anything else", () => {
       expect(shortRef(value)).toBe(value);
     }
   );
+});
+
+/* -------------------------------------------------------------------------- */
+
+describe("CommandBar keeps its rows in the order the caller gave them", () => {
+  const rows = [
+    { id: "a", label: "Operations", group: "Go to", onSelect: () => {} },
+    { id: "b", label: "Service", group: "Go to", onSelect: () => {} },
+    { id: "c", label: "CASE-1042", group: "Results", onSelect: () => {} }
+  ];
+
+  it("collects consecutive rows under one heading", () => {
+    expect(groupCommandItems(rows).map((g) => [g.name, g.items.map((i) => i.id)])).toEqual([
+      ["Go to", ["a", "b"]],
+      ["Results", ["c"]]
+    ]);
+  });
+
+  it("leaves ungrouped rows unlabelled rather than inventing a heading", () => {
+    const plain = [{ id: "x", label: "Sign out", onSelect: () => {} }];
+    expect(groupCommandItems(plain)).toEqual([{ name: null, items: plain }]);
+  });
+
+  it("never merges two runs of the same name into one block", () => {
+    // Order is the caller's answer to relevance; regrouping would reorder it.
+    const interleaved = [rows[0]!, rows[2]!, rows[1]!];
+    expect(groupCommandItems(interleaved).map((g) => g.name)).toEqual(["Go to", "Results", "Go to"]);
+  });
 });
 
 /* -------------------------------------------------------------------------- */

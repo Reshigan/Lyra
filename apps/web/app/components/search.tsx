@@ -8,7 +8,29 @@ import type { SearchItem } from "../routes/search";
 // API — the session cookie is deliberately unreadable by script, so the loader
 // there is what holds it.
 
-export function SearchPalette({ t }: { t: Translate }) {
+/** A place the nav can already reach, named the way the nav names it. */
+export interface Destination {
+  href: string;
+  label: string;
+}
+
+/**
+ * The destinations that match what has been typed — the design's "Where"
+ * overlay, folded into the palette instead of living as a second overlay
+ * (ADR-0031). CommandBar's own filter is off here (onQueryChange is set,
+ * because the record rows beside these are matched by the server on fields no
+ * label shows), so the workspace rows are filtered here.
+ */
+export function matchingDestinations(
+  destinations: readonly Destination[],
+  query: string
+): Destination[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return [...destinations];
+  return destinations.filter((d) => d.label.toLowerCase().includes(q));
+}
+
+export function SearchPalette({ t, destinations }: { t: Translate; destinations: readonly Destination[] }) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -65,10 +87,17 @@ export function SearchPalette({ t }: { t: Translate }) {
         onOpenChange={setOpen}
         onQueryChange={setQuery}
         items={[
+          ...matchingDestinations(destinations, query).map((destination) => ({
+            id: `where:${destination.href}`,
+            label: destination.label,
+            group: t("search.goTo"),
+            onSelect: () => navigate(destination.href)
+          })),
           ...items.map((item) => ({
             id: item.id,
             label: item.label,
             hint: item.hint,
+            group: t("search.results"),
             onSelect: () => navigate(item.href)
           })),
           // The door to the full results page. /search answers this palette with
@@ -81,6 +110,7 @@ export function SearchPalette({ t }: { t: Translate }) {
                 {
                   id: "search-all",
                   label: t("search.label"),
+                  group: t("search.results"),
                   onSelect: () => navigate(`/search/results?q=${encodeURIComponent(query.trim())}`)
                 }
               ])

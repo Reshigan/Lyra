@@ -508,3 +508,33 @@ export function Problem({ problem }: { problem: { title: string; detail?: string
     </div>
   );
 }
+
+/**
+ * A refusal, told apart: an action gated for approval (CLAUDE.md §4) is not a
+ * failure — the work is queued, waiting on a second pair of eyes — so it reads
+ * as a notice with the way onward, not as a red box with a policy key in it.
+ * Anything else stays a <Problem>.
+ */
+export function Gate({
+  problem,
+  l
+}: {
+  problem: { title: string; status: number; detail?: string };
+  l: (key: string, vars?: Record<string, string>) => string;
+}) {
+  const extras = problem as { code?: string; policy_key?: string };
+  if (problem.status === 403 && extras.code === "approval_required") {
+    return (
+      <div role="status" className="flex flex-col gap-2 rounded-md border border-warning/50 bg-warning/8 p-4">
+        <span className="font-ui text-14 font-medium text-warning">{l("approvalTitle")}</span>
+        <span className="font-ui text-13 text-muted">
+          {l("approvalBody", { policy: extras.policy_key ?? problem.detail ?? problem.title })}
+        </span>
+        <Link to="/approvals" className="font-ui text-13 text-accent underline underline-offset-2">
+          {l("approvalLink")}
+        </Link>
+      </div>
+    );
+  }
+  return <Problem problem={problem} />;
+}

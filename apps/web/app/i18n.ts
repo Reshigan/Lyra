@@ -68,13 +68,25 @@ export function langFor(locale: string): string {
 }
 
 /**
- * Resolve a request to a supported locale: explicit cookie first (the user's
- * saved choice), then Accept-Language, then English.
+ * The language this person actually chose, or nothing. The cookie is written
+ * from their profile at login and again whenever they save it (routes/settings),
+ * so it is the one thing both the document (root.tsx: lang/dir) and the shell's
+ * strings (routes/workspace) can read — without it they disagree, and an Arabic
+ * document renders full of English.
  */
-export function localeFrom(request: Request): string {
+export function chosenLocale(request: Request): string | undefined {
   const cookie = readCookie(request.headers.get("cookie"), "lyra_locale");
   if (cookie === PSEUDO_LOCALE) return PSEUDO_LOCALE;
-  if (cookie && CATALOGUES[cookie]) return cookie;
+  return cookie && CATALOGUES[cookie] ? cookie : undefined;
+}
+
+/**
+ * Resolve a request to a supported locale: explicit choice first, then
+ * Accept-Language, then English.
+ */
+export function localeFrom(request: Request): string {
+  const chosen = chosenLocale(request);
+  if (chosen) return chosen;
 
   for (const part of (request.headers.get("accept-language") ?? "").split(",")) {
     const tag = baseOf(part.split(";")[0]?.trim() ?? "");

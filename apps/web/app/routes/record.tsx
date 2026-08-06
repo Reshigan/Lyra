@@ -26,7 +26,7 @@ import {
   type WorkspaceSpec
 } from "../modules/spec";
 import { runAction } from "../record.server";
-import { Problem } from "./module";
+import { Gate } from "./module";
 import { useShellData } from "./workspace";
 
 // One record, read and edited in the same place. The form is the record: no
@@ -135,7 +135,10 @@ export default function Record() {
         ) : null}
       </header>
 
-      {problem ? <Problem problem={problem} /> : null}
+      {/* A gated action is a queued one, not a failure: <Gate> says so and
+          points at the queue. The keys live under common.* here because this
+          screen serves every module (detail-kit.tsx has its own copies). */}
+      {problem ? <Gate problem={problem} l={(key, vars) => t(`common.${key}`, vars)} /> : null}
 
       {/* What the action actually did, said once, where the button was. */}
       {completed ? (

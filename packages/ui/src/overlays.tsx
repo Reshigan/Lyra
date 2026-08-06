@@ -423,6 +423,25 @@ export interface CommandBarProps {
 }
 
 /**
+ * Rows split into the blocks the caller asked for, in the caller's order — a
+ * run of the same `group` is one block, and the same name appearing again later
+ * starts a second one. Relevance order is the caller's answer; regrouping would
+ * quietly overrule it.
+ */
+export function groupCommandItems(
+  items: readonly CommandItem[]
+): { name: string | null; items: CommandItem[] }[] {
+  const blocks: { name: string | null; items: CommandItem[] }[] = [];
+  for (const item of items) {
+    const name = item.group ?? null;
+    const last = blocks[blocks.length - 1];
+    if (last && last.name === name) last.items.push(item);
+    else blocks.push({ name, items: [item] });
+  }
+  return blocks;
+}
+
+/**
  * Global palette. Opens on ⌘K / Ctrl-K when uncontrolled. Results are a plain
  * listbox of buttons: native tab order and Enter already do the right thing.
  */
@@ -459,6 +478,7 @@ export function CommandBar({
 
   const q = query.trim().toLowerCase();
   const results = onQueryChange || !q ? items : items.filter((i) => i.label.toLowerCase().includes(q));
+  const blocks = groupCommandItems(results);
 
   return (
     <RDialog.Root open={isOpen} onOpenChange={setOpen}>
@@ -485,23 +505,43 @@ export function CommandBar({
             />
           </div>
           <ul className="max-h-96 overflow-y-auto p-2" role="listbox" aria-label={label}>
-            {results.map((item) => (
-              <li key={item.id} role="option" aria-selected={false}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    item.onSelect();
-                    setOpen(false);
-                  }}
-                  className={cn(
-                    "flex w-full items-center justify-between gap-3 rounded-sm px-3 py-2 text-start font-ui text-14 text-muted",
-                    "hover:bg-surface-3 hover:text-text",
-                    focusRing
-                  )}
-                >
-                  <span>{item.label}</span>
-                  {item.hint ? <span className="font-mono text-11 text-subtle">{item.hint}</span> : null}
-                </button>
+            {blocks.map((block, index) => (
+              <li
+                key={`${block.name ?? ""}-${index}`}
+                {...(block.name ? { role: "group", "aria-label": block.name } : { role: "presentation" })}
+              >
+                {/* An eyebrow, so "Approvals the screen" and "Approvals the
+                    record" are told apart without either row having to explain
+                    itself. */}
+                {block.name ? (
+                  <span className="block px-3 pb-1 pt-3 font-ui text-11 font-medium uppercase tracking-[0.14em] text-subtle">
+                    {block.name}
+                  </span>
+                ) : null}
+                {block.items.map((item) => (
+                  // The row is the option: a button wrapped in a separate
+                  // role="option" would be a focusable thing inside a
+                  // non-focusable one, which is how a listbox stops making
+                  // sense to a screen reader (axe: nested-interactive).
+                  <button
+                    key={item.id}
+                    type="button"
+                    role="option"
+                    aria-selected={false}
+                    onClick={() => {
+                      item.onSelect();
+                      setOpen(false);
+                    }}
+                    className={cn(
+                      "flex w-full items-center justify-between gap-3 rounded-sm px-3 py-2 text-start font-ui text-14 text-muted",
+                      "hover:bg-surface-3 hover:text-text",
+                      focusRing
+                    )}
+                  >
+                    <span>{item.label}</span>
+                    {item.hint ? <span className="font-mono text-11 text-subtle">{item.hint}</span> : null}
+                  </button>
+                ))}
               </li>
             ))}
             {results.length === 0 ? (

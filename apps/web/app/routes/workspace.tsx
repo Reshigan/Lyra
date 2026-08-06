@@ -10,7 +10,7 @@ import {
 import { cloudflare } from "../context";
 import { ApiError, fetchMe } from "../api.server";
 import { Shell } from "../components/shell";
-import { translator } from "../i18n";
+import { chosenLocale, translator } from "../i18n";
 import { DEFAULT_PACK } from "../modules/vocabulary";
 
 // Everything behind a session hangs off this layout. One bootstrap call feeds
@@ -40,7 +40,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   // screen (routes/home.tsx): what is waiting on me, how the business is doing,
   // where I go next — which beats being teleported into a list.
   return {
-    locale: me.locale,
+    // The explicit choice wins over the stored one, because <html lang>/dir come
+    // from that same cookie (root.tsx) and the two must not disagree. The pseudo
+    // locale — which no profile can hold — is the case that makes it obvious.
+    locale: chosenLocale(request) ?? me.locale,
     nav: me.nav,
     permissions: me.permissions,
     brand: me.tenant.brand,

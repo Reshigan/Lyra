@@ -73,6 +73,7 @@ and do not pick.
 | [0028](ADR-0028-feature-flags-global-table.md) | Feature flags are the first platform-global table | accepted |
 | [0029](ADR-0029-platform-staff-cross-tenant-pattern.md) | Platform staff cross-tenant reads reuse the scheduler's per-tenant loop | accepted |
 | [0030](ADR-0030-public-portal-surface.md) | A public, unauthenticated comparison-site surface | accepted |
+| [0031](ADR-0031-nav-landmark-and-where-overlay.md) | Keep the persistent nav landmark; the design's "Where" overlay becomes ⌘K's first block | accepted, implemented |
 
 ## Spec edits these ADRs imply
 

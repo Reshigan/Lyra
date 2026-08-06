@@ -73,6 +73,8 @@ export const en = {
   "search.placeholder": "Search people, records and requests",
   "search.prompt": "Type at least two letters.",
   "search.none": "Nothing found.",
+  "search.goTo": "Go to",
+  "search.results": "Results",
   "common.apply": "Apply",
   "common.clear": "Clear",
   "common.all": "All",
@@ -94,6 +96,12 @@ export const en = {
   "common.rows": "{count} shown",
   "common.of": "{count} in total",
   "common.deleteConfirm": "Delete this record? It is retained for audit and can be restored by an administrator.",
+  // A gated action (CLAUDE.md §4) refused with `approval_required`. The bespoke
+  // detail screens say this already (routes/detail-kit.tsx); the generic record
+  // screen used to render the bare policy key, which reads like a crash.
+  "common.approvalTitle": "Waiting on an approval",
+  "common.approvalBody": "This needs sign-off under {policy} before it can go through.",
+  "common.approvalLink": "Open the approval queue",
   "common.restore": "Restore",
   "common.deleted.state": "Records shown",
   "common.deleted.live": "Live records",

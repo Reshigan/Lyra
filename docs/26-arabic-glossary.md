@@ -35,6 +35,7 @@ the vocabulary per screen reads the product as translated, not written.
 | settlement | التسوية | — |
 | release / pay out | الصرف | — |
 | theme (the light or dark palette) | السمة | الموضوع (a topic)، النمط (a pattern) |
+| results (what a search returned) | النتائج | المخرجات (outputs)، الحصائل |
 
 ## Orthography
 

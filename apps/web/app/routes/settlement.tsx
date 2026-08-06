@@ -25,7 +25,7 @@ import {
 import { ApiError, api, fetchMe } from "../api.server";
 import { cloudflare } from "../context";
 import { translator } from "../i18n";
-import { Problem } from "./module";
+import { Gate } from "./module";
 import { useShellData } from "./workspace";
 
 // Running a payout period, docs/19 §5. Drafting is arithmetic: it prices the
@@ -670,34 +670,6 @@ function Header({ l }: { l: (key: string) => string }) {
  * A refusal, and the gate behind it if there is one. A policy key is a system
  * string: it is quoted inside a sentence, never handed to a person on its own.
  */
-export function Gate({
-  problem,
-  l
-}: {
-  problem: { title: string; status: number; detail?: string };
-  l: (key: string, vars?: Record<string, string>) => string;
-}) {
-  const extras = problem as { code?: string; policy_key?: string };
-  if (problem.status === 403 && extras.code === "approval_required") {
-    return (
-      <GateNotice
-        title={l("approvalTitle")}
-        body={l("approvalBody", { policy: extras.policy_key ?? problem.detail ?? problem.title })}
-        link={l("approvalLink")}
-      />
-    );
-  }
-  return <Problem problem={problem} />;
-}
-
-function GateNotice({ title, body, link }: { title: string; body: string; link: string }) {
-  return (
-    <div role="status" className="flex flex-col gap-2 rounded-md border border-warning/50 bg-warning/8 p-4">
-      <span className="font-ui text-14 font-medium text-warning">{title}</span>
-      <span className="font-ui text-13 text-muted">{body}</span>
-      <Link to="/approvals" className="font-ui text-13 text-accent underline underline-offset-2">
-        {link}
-      </Link>
-    </div>
-  );
-}
+// The notice itself now lives beside <Problem> in module.tsx, because the
+// generic record screen needs it too. Re-exported here for existing callers.
+export { Gate };

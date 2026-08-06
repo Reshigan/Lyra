@@ -70,6 +70,8 @@ export const ar: Messages = {
   "search.placeholder": "ابحث عن الأشخاص والسجلات والطلبات",
   "search.prompt": "اكتب حرفين على الأقل.",
   "search.none": "لا نتائج.",
+  "search.goTo": "انتقل إلى",
+  "search.results": "النتائج",
   "common.apply": "تطبيق",
   "common.clear": "مسح",
   "common.all": "الكل",
@@ -91,6 +93,11 @@ export const ar: Messages = {
   "common.rows": "{count} معروض",
   "common.of": "{count} إجمالًا",
   "common.deleteConfirm": "هل تريد حذف هذا السجل؟ يُحتفظ به للتدقيق ويمكن للمسؤول استعادته.",
+  // Same wording detail-kit.tsx uses, so a gated refusal reads identically on
+  // both the bespoke and the generic screens.
+  "common.approvalTitle": "بانتظار موافقة",
+  "common.approvalBody": "يحتاج هذا إلى موافقة بموجب {policy} قبل أن يمضي.",
+  "common.approvalLink": "افتح قائمة الموافقات",
   "common.restore": "استعادة",
   "common.deleted.state": "السجلات المعروضة",
   "common.deleted.live": "السجلات النشطة",
