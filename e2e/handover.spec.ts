@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { loginAsOrbitAgent } from "./fixtures.js";
+import { goto, loginAsOrbitAgent } from "./fixtures.js";
 
 // J-X1 "handover catch" (docs/06-roles-and-journeys.md:57): "AI escalates
 // mid-chat -> human console opens with summary + suggested action -> resolve
@@ -41,7 +41,7 @@ test("J-X1 the human console shows the AI's escalation summary and its QA score"
   // self-service copy, escalated to Sara, scored 52 then 61 against
   // orbit.escalation (the bar the conversation view draws is 70), disputed
   // once along the way.
-  await page.goto("/orbit/conversations");
+  await goto(page, "/orbit/conversations");
   const row = page.getByRole("row", { name: /wa:971559876543/ });
   await expect(row).toBeVisible();
   await row.getByRole("link").first().click();
@@ -68,7 +68,7 @@ test("J-X1 an agent hands a conversation to a teammate with a readable summary",
   await loginAsOrbitAgent(page);
 
   const externalRef = `e2e-jx1-${Date.now()}`;
-  await page.goto("/orbit/conversations");
+  await goto(page, "/orbit/conversations");
   await page.getByText("New — Conversations").click();
   // Channel renders as a Radix combobox (packages/ui/src/primitives.tsx
   // Select), not a native <select> — selectOption doesn't apply. Its listbox
@@ -109,7 +109,7 @@ test("J-X1 scoring the handover is the lead's job, not the agent's", async ({ pa
   // submit-then-reject flow to exercise here. Read access (the scores the
   // AI/lead already recorded) stays intact, which is the real, reachable
   // shape of "scoring is the lead's job, not the agent's" in this UI.
-  await page.goto("/orbit/qa-scores");
+  await goto(page, "/orbit/qa-scores");
   await expect(page.getByRole("row", { name: /orbit\.escalation/ })).toHaveCount(2);
   await expect(page.getByText("New — Quality scores")).toHaveCount(0);
 });

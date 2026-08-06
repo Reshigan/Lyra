@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { loginAsAxisAgent, loginAsAxisLead, loginAsFinanceController, loginAsTenantAdmin } from "./fixtures.js";
+import { goto, loginAsAxisAgent, loginAsAxisLead, loginAsFinanceController, loginAsTenantAdmin } from "./fixtures.js";
 
 // packages/ui/src/primitives.tsx's Select has no scroll-button affordance, so
 // any option outside the current viewport (a long catalogue, or one on the
@@ -38,24 +38,28 @@ async function selectByTypeahead(page: Page, label: string, optionText: string) 
 test("J-O1 axis agent filters the exceptions queue and clears a failed case", async ({ page }) => {
   await loginAsAxisAgent(page);
 
-  await page.goto("/axis/cases");
+  await goto(page, "/axis/cases");
   const ref = `J-O1-${Date.now()}`;
   await page.getByText("New — Cases").click();
   await page.getByLabel("Reference*", { exact: true }).fill(ref);
   await page.getByLabel("Kind*", { exact: true }).click();
   await page.getByRole("option", { name: "Quote", exact: true }).click();
-  await page.getByRole("button", { name: "Create", exact: true }).click();
-  // The create form is a plain <Form method="post"> — the click resolves as
-  // soon as the event fires, not once the submission completes. Navigating
-  // away immediately (below) can race and cancel that in-flight request, so
-  // wait for it to settle first.
-  await page.waitForLoadState("networkidle");
+  // The click resolves as soon as the event fires, not once the submission
+  // completes; navigating away immediately (below) cancels the in-flight
+  // request. `waitForLoadState("networkidle")` cannot cover this — a hydrated
+  // <Form> posts via fetch, no navigation happens, and the load state was
+  // already reached, so it returns instantly. Wait for the POST itself
+  // (React Router posts to "<path>.data").
+  await Promise.all([
+    page.waitForResponse((res) => res.url().endsWith("/axis/cases.data") && res.request().method() === "POST"),
+    page.getByRole("button", { name: "Create", exact: true }).click()
+  ]);
 
   // Scope by search rather than trusting the fresh row to land on the
   // unfiltered list's first (unpaginated) page — the case list sorts oldest
   // first with no filter applied here, so accumulated data can push a brand
   // new row past the page size.
-  await page.goto(`/axis/cases?q=${encodeURIComponent(ref)}`);
+  await goto(page, `/axis/cases?q=${encodeURIComponent(ref)}`);
   const row = page.getByRole("row", { name: new RegExp(ref) });
   await expect(row).toBeVisible();
   await row.getByRole("link", { name: ref }).click();
@@ -72,7 +76,7 @@ test("J-O1 axis agent filters the exceptions queue and clears a failed case", as
   await expect(page.locator("dl").getByText("Failed", { exact: true })).toBeVisible();
 
   // The exceptions queue: only failed items.
-  await page.goto(`/axis/cases?status=failed&q=${encodeURIComponent(ref)}`);
+  await goto(page, `/axis/cases?status=failed&q=${encodeURIComponent(ref)}`);
   await expect(page.getByRole("row", { name: new RegExp(ref) })).toBeVisible();
 
   // Clear it — move the status off "failed" — and the queue drops it.
@@ -81,7 +85,7 @@ test("J-O1 axis agent filters the exceptions queue and clears a failed case", as
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page.locator("dl").getByText("Quoting", { exact: true })).toBeVisible();
 
-  await page.goto(`/axis/cases?status=failed&q=${encodeURIComponent(ref)}`);
+  await goto(page, `/axis/cases?status=failed&q=${encodeURIComponent(ref)}`);
   await expect(page.getByRole("row", { name: new RegExp(ref) })).toHaveCount(0);
 });
 
@@ -96,7 +100,7 @@ test("J-O3 finance controller runs a reconciliation and decides an exception wit
 
   // Settle one transaction so the recon engine has something to match against.
   const naturalKey = `j-o3-${Date.now()}`;
-  await page.goto("/ledger/transactions");
+  await goto(page, "/ledger/transactions");
   await selectByTypeahead(page, "Transaction type*", "CM-RECEIPT");
   await page.getByLabel("Transaction key*", { exact: true }).fill(naturalKey);
   await page.getByLabel("Currency", { exact: true }).fill("AED");
@@ -111,7 +115,7 @@ test("J-O3 finance controller runs a reconciliation and decides an exception wit
 
   // Import a statement line that references it, off by an amount the
   // insurer-process tolerance absorbs — an auto-match, not an exact one.
-  await page.goto("/ledger/recon");
+  await goto(page, "/ledger/recon");
   const statementRef = `STMT-${Date.now()}`;
   const lines = JSON.stringify([
     { ref: statementRef, amountMinor: 500050, currency: "AED", ourRef: naturalKey }
@@ -149,14 +153,12 @@ test("J-O2 axis lead shops a new risk and the panel answers", async ({ page }) =
   // the one-time lookup instead.
   await loginAsTenantAdmin(page);
 
-  await page.goto("/admin/products?line=health");
-  await page.waitForLoadState("networkidle");
+  await goto(page, "/admin/products?line=health");
   await page.locator("tbody tr").first().getByRole("link").first().click();
   await page.waitForURL(/\/admin\/products\/.+/);
   const productId = page.url().split("/").pop()!;
 
-  await page.goto("/distribution/channels?q=alpha-brokers");
-  await page.waitForLoadState("networkidle");
+  await goto(page, "/distribution/channels?q=alpha-brokers");
   const channelRow = page.getByRole("row", { name: /alpha-brokers/ });
   await expect(channelRow).toBeVisible();
   await channelRow.getByRole("link", { name: "alpha-brokers" }).click();
@@ -168,7 +170,7 @@ test("J-O2 axis lead shops a new risk and the panel answers", async ({ page }) =
   // No customerId here: the reshop action re-forwards it, and a customer with
   // no matching consentId trips the docs/12 §3 consent gate on reshop. This
   // journey is about an anonymous risk shopped cold, so leave it unset.
-  await page.goto("/distribution/quote-requests");
+  await goto(page, "/distribution/quote-requests");
   await page.getByText("New — Quote requests").click();
   await page.getByLabel("Channel*", { exact: true }).fill(channelId);
   await page.getByLabel("Product*", { exact: true }).fill(productId);
@@ -176,19 +178,23 @@ test("J-O2 axis lead shops a new risk and the panel answers", async ({ page }) =
     .getByLabel("Risk details*", { exact: true })
     .fill(JSON.stringify({ age: 41, sumInsuredMinor: 10_000_000, priorClaims: false, lives: 120 }));
   await page.getByLabel("Currency*", { exact: true }).fill("AED");
-  await page.getByRole("button", { name: "Create", exact: true }).click();
-  await page.waitForLoadState("networkidle");
+  await Promise.all([
+    page.waitForResponse(
+      (res) => res.url().endsWith("/distribution/quote-requests.data") && res.request().method() === "POST"
+    ),
+    page.getByRole("button", { name: "Create", exact: true }).click()
+  ]);
 
   // quote-requests has no `q` search. The seed's one quote-request is already
   // fully answered (packages/core/src/seed.ts), so `state=open` is exactly
   // the freshly-created row.
-  await page.goto("/distribution/quote-requests?state=open");
+  await goto(page, "/distribution/quote-requests?state=open");
   const row = page.getByRole("row").filter({ hasText: "Open" }).first();
   await expect(row).toBeVisible();
   await row.getByRole("link").first().click();
   await page.waitForURL(/\/distribution\/quote-requests\/.+/);
   const quoteRequestId = page.url().split("/").pop();
-  await page.goto(`/distribution/quote-requests/${quoteRequestId}/compare`);
+  await goto(page, `/distribution/quote-requests/${quoteRequestId}/compare`);
 
   // Freshly opened: nothing has answered yet.
   await expect(page.getByText("The panel was never asked")).toBeVisible();
@@ -196,8 +202,10 @@ test("J-O2 axis lead shops a new risk and the panel answers", async ({ page }) =
     page.getByText("This request has no responses at all, not even a decline. Re-shop it to send the requirement out.")
   ).toBeVisible();
 
-  await page.getByRole("button", { name: "Re-shop the panel" }).click();
-  await page.waitForLoadState("networkidle");
+  await Promise.all([
+    page.waitForResponse((res) => res.url().endsWith("/compare.data") && res.request().method() === "POST"),
+    page.getByRole("button", { name: "Re-shop the panel" }).click()
+  ]);
 
   // A referral panel answers with referrals, not silence. This seed panel's
   // one provider declines with a reason rather than a price (apps/api/src

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { API_ORIGIN } from "./env.js";
-import { loginAsTenantAdmin } from "./fixtures.js";
+import { goto, loginAsTenantAdmin } from "./fixtures.js";
 
 // J-D1 "the first API call" (docs/06-roles-and-journeys.md:94-95): "dev portal
 // -> test key -> SDK snippet -> webhook tester green -> promote to live
@@ -58,7 +58,7 @@ test("J-D1 a tenant admin issues a test key from Settings, calls the API with it
 }) => {
   await loginAsTenantAdmin(page);
 
-  await page.goto("/settings");
+  await goto(page, "/settings");
   const keyName = `J-D1 e2e ${Date.now()}`;
   // Zero scopes ticked: "a key with no permissions can sign in and nothing
   // else" (settings.tsx "keys.scopesHint") — the point here is authentication,

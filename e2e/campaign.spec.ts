@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { loginAsComplianceOfficer, loginAsScoutLead, loginAsSignalLead } from "./fixtures.js";
+import { goto, loginAsComplianceOfficer, loginAsScoutLead, loginAsSignalLead } from "./fixtures.js";
 
 // J-M1 "campaign in a day" (docs/06-roles-and-journeys.md:66-67): "brief -> 20
 // ar/en variants -> compliance lane -> publish -> cockpit shows CAC by
@@ -46,7 +46,7 @@ test("J-M1 a growth lead authors an audience and campaign, then launches it (aut
   // is rejected with 400 — so the fresh row is located by its unique name in
   // the unfiltered (well under page-size) list, same as save-desk/scout-
   // whitespace/signal-budget do for their own non-searchable resources.
-  await page.goto("/signal/audiences");
+  await goto(page, "/signal/audiences");
   await page.getByText("New — Audiences").click();
   await page.getByLabel("Name*", { exact: true }).fill(audienceName);
   await page
@@ -66,7 +66,7 @@ test("J-M1 a growth lead authors an audience and campaign, then launches it (aut
 
   // campaigns *is* searchable (resources.ts: searchable: ["name"]), so the
   // fresh row is located with `?q=` instead of scanning an unfiltered list.
-  await page.goto("/signal/campaigns");
+  await goto(page, "/signal/campaigns");
   await page.getByText("New — Campaigns").click();
   await page.getByLabel("Name*", { exact: true }).fill(campaignName);
   // Objective is a Radix combobox (packages/ui/src/primitives.tsx Select), not
@@ -110,7 +110,7 @@ test("J-M1 a growth lead authors an audience and campaign, then launches it (aut
     page.getByRole("button", { name: "Save changes" }).click()
   ]);
 
-  await page.goto(recordUrl);
+  await goto(page, recordUrl);
   await expect(page.locator("dl").getByText("Live", { exact: true })).toBeVisible();
 
   // Still audited: only tenant.compliance holds `core:audit:read` (signal.lead
@@ -120,7 +120,7 @@ test("J-M1 a growth lead authors an audience and campaign, then launches it (aut
   // columns, never translated), so they read the same in this persona's
   // Arabic locale as they would in English.
   await loginAsComplianceOfficer(page);
-  await page.goto("/admin/audit-log");
+  await goto(page, "/admin/audit-log");
   await expect(
     page.getByRole("row", { name: new RegExp(`signal\\.campaigns\\.update.*${campaignId}`) })
   ).toBeVisible();
@@ -129,7 +129,7 @@ test("J-M1 a growth lead authors an audience and campaign, then launches it (aut
 test("J-M1 a marketer without the launch permission is refused the whole campaigns screen", async ({ page }) => {
   await loginAsScoutLead(page);
 
-  await page.goto("/signal/campaigns");
+  await goto(page, "/signal/campaigns");
   // scout.lead holds no `signal:*` permission at all, so the read itself is
   // refused (root.tsx's ErrorBoundary renders the RFC 9457 status as prose,
   // apps/web/app/i18n/en.ts "error.forbidden") before a launch is ever tried.

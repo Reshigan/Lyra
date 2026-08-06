@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { loginAsSignalLead } from "./fixtures.js";
+import { goto, loginAsSignalLead } from "./fixtures.js";
 
 // J-M3 "own the answer box" (docs/06-roles-and-journeys.md:69): "pick query
 // cluster -> AEO content unit -> ...". The acceptance test this journey
@@ -31,7 +31,7 @@ import { loginAsSignalLead } from "./fixtures.js";
 test("J-M3 an AEO page is authored against a query cluster", async ({ page }) => {
   await loginAsSignalLead(page);
 
-  await page.goto("/signal/aeo-pages");
+  await goto(page, "/signal/aeo-pages");
 
   const suffix = Date.now();
   const cluster = `car insurance dubai excess ${suffix}`;

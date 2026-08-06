@@ -1,16 +1,17 @@
 import { expect, test } from "@playwright/test";
+import { goto } from "./fixtures.js";
 import { totpAt, TOTP_STEP_SEC } from "@lyra/core";
 import { expectNoA11yViolations } from "./a11y.js";
 import { PERSONAS, SEED_PASSWORD, TENANT_SLUG } from "./env.js";
 
 test.describe("sign-in", () => {
   test("the login screen has no WCAG 2.2 AA violations", async ({ page }) => {
-    await page.goto("/login");
+    await goto(page, "/login");
     await expectNoA11yViolations(page);
   });
 
   test("demo persona one-click sign-in lands tenant.admin on the home workspace", async ({ page }) => {
-    await page.goto("/login");
+    await goto(page, "/login");
     await page.getByRole("button", { name: new RegExp(PERSONAS.tenantAdmin.name) }).click();
     await page.waitForURL(/^http:\/\/[^/]+\/$/);
     await expect(page.getByLabel("Primary").getByRole("link", { name: "Administration" })).toBeVisible();
@@ -18,7 +19,7 @@ test.describe("sign-in", () => {
   });
 
   test("password sign-in with tenant slug reaches the same workspace", async ({ page }) => {
-    await page.goto("/login");
+    await goto(page, "/login");
     await page.getByLabel(/email/i).fill(PERSONAS.tenantAdmin.email);
     await page.getByLabel(/password/i).fill(SEED_PASSWORD);
     const submit = page.getByRole("button", { name: "Continue", exact: true });

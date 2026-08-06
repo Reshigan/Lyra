@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { goto } from "./fixtures.js";
 import { expectNoA11yViolations } from "./a11y.js";
 import { PERSONAS } from "./env.js";
 
@@ -6,11 +7,11 @@ import { PERSONAS } from "./env.js";
 // tenant.admin invites someone, assigns a role bundle, and that access is
 // visible immediately — no separate activation step.
 test("J-A2 admin invites a teammate and the role bundle is visible immediately", async ({ page }) => {
-  await page.goto("/login");
+  await goto(page, "/login");
   await page.getByRole("button", { name: new RegExp(PERSONAS.tenantAdmin.name) }).click();
   await page.waitForURL(/^http:\/\/[^/]+\/$/);
 
-  await page.goto("/admin/staff");
+  await goto(page, "/admin/staff");
   await expectNoA11yViolations(page);
 
   const email = `j-a2-${Date.now()}@gonxt.ae`;

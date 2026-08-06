@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { PERSONAS } from "./env.js";
-import { loginAsFinanceController, loginAsScoutLead } from "./fixtures.js";
+import { goto, loginAsFinanceController, loginAsScoutLead } from "./fixtures.js";
 
 // J-P2 "panel negotiation" (docs/06-roles-and-journeys.md:75): "bench alert ->
 // negotiation pack -> meeting -> commission/coverage delta logged." The
@@ -70,7 +70,7 @@ test("J-P2 a commission rate change is refused for dual control, then decided by
 test("J-P2 panel benchmarks are readable by the negotiator", async ({ page }) => {
   await loginAsScoutLead(page);
 
-  await page.goto("/scout/panel-bench");
+  await goto(page, "/scout/panel-bench");
   // Seeded rows carry a plain-text "line" column (packages/core/src/seed
   // /scout.ts) — motor rows across two periods, so at least one row renders.
   await expect(page.getByRole("row", { name: /motor/ }).first()).toBeVisible();

@@ -1,6 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { test, type Page } from "@playwright/test";
-import { loginAsComplianceOfficer, loginAsTenantAdmin } from "./fixtures.js";
+import { goto, loginAsComplianceOfficer, loginAsTenantAdmin } from "./fixtures.js";
 
 // ponytail: throwaway visual-audit tour, not a journey test — asserts nothing,
 // just captures full-page screenshots for human/model review. Delete or ignore
@@ -11,7 +11,7 @@ test.skip(!process.env.POLISH_OUT, "visual tour, opt-in via POLISH_OUT");
 if (process.env.POLISH_OUT) mkdirSync(OUT, { recursive: true });
 
 async function shoot(page: Page, path: string, name: string) {
-  await page.goto(path);
+  await goto(page, path);
   await page.waitForLoadState("networkidle").catch(() => {});
   await page.waitForTimeout(600);
   await page.screenshot({ path: `${OUT}/${name}.png`, fullPage: true });

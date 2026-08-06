@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { expectNoA11yViolations } from "./a11y.js";
-import { loginAsNorthExec } from "./fixtures.js";
+import { goto, loginAsNorthExec } from "./fixtures.js";
 
 // J-E1 "The 7am read (mobile)" (docs/06-roles-and-journeys.md §Executive): a
 // north.exec opens the already-published briefing on a phone, reads it in
@@ -17,7 +17,7 @@ test("J-E1 exec reads the morning briefing on a phone and assigns an action on t
   await page.setViewportSize({ width: 390, height: 844 });
   await loginAsNorthExec(page);
 
-  await page.goto("/north/briefings");
+  await goto(page, "/north/briefings");
   // Both the "exec en" and "exec ar" variants of the same day's briefing are
   // seeded (packages/core/src/seed.ts), so the row match has to pin down the
   // English one specifically or Playwright's strict mode rejects the
@@ -29,7 +29,7 @@ test("J-E1 exec reads the morning briefing on a phone and assigns an action on t
   await expect(page.getByRole("heading", { name: "2026-01-05", level: 1 })).toBeVisible();
   await expectNoA11yViolations(page);
 
-  await page.goto("/north/anomalies");
+  await goto(page, "/north/anomalies");
   const anomalyRow = page.getByRole("row", { name: /cac_per_policy/ });
   await expect(anomalyRow).toBeVisible();
   await anomalyRow.getByRole("link", { name: "cac_per_policy" }).click();
@@ -59,7 +59,7 @@ test("J-E3 exec saves a what-if scenario and revisits it with updated assumption
   await loginAsNorthExec(page);
 
   const question = `J-E3-${Date.now()} What if renewal retention drops 5pt next quarter?`;
-  await page.goto("/north/scenarios");
+  await goto(page, "/north/scenarios");
   await page.getByText("New — Scenarios").click();
   await page.getByLabel("Question*", { exact: true }).fill(question);
   await page
@@ -108,7 +108,7 @@ test("J-E2 exec assembles a board pack for Thursday", async ({ page }) => {
   await loginAsNorthExec(page);
 
   const title = `J-E2 Board pack ${Date.now()}`;
-  await page.goto("/north/boardpacks");
+  await goto(page, "/north/boardpacks");
   await page.getByText("New — Board packs").click();
   await page.getByLabel("Title*", { exact: true }).fill(title);
   await page.getByLabel("Period*", { exact: true }).fill("2026-Q1");

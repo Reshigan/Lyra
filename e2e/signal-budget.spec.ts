@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { loginAsSignalLead } from "./fixtures.js";
+import { goto, loginAsSignalLead } from "./fixtures.js";
 
 // J-M2 "budget morning" (docs/06-roles-and-journeys.md): "approve/undo
 // autopilot moves from mobile in 2 min". The web UI has no separate
@@ -19,7 +19,7 @@ test("J-M2 signal lead reverses an autopilot budget move", async ({ page }) => {
   // budget-moves has no `searchable` columns (apps/api/src/resources.ts:300-303),
   // so `?q=` is rejected with 400 — the full, unfiltered list (well under the
   // default page size of 50) is located by row text instead.
-  await page.goto("/signal/budget-moves");
+  await goto(page, "/signal/budget-moves");
   const row = page.getByRole("row", { name: new RegExp("Bing's cost per policy") });
   await expect(row).toBeVisible();
   await row.getByRole("link").first().click();
@@ -31,18 +31,26 @@ test("J-M2 signal lead reverses an autopilot budget move", async ({ page }) => {
 
   await page.getByLabel("Reversed by", { exact: true }).fill("noor.jamal@gonxt.ae");
   await page.getByLabel("Reversed", { exact: true }).fill("2026-08-01T09:00");
-  await page.getByRole("button", { name: "Save changes" }).click();
+  // Wait for the POST itself, not just the click: under a full parallel run the
+  // action outlives an assertion's timeout, and the refusal only renders once
+  // it lands (React Router posts to "<path>.data").
+  await Promise.all([
+    page.waitForResponse((res) => res.url() === `${recordUrl}.data` && res.request().method() === "POST"),
+    page.getByRole("button", { name: "Save changes" }).click()
+  ]);
 
-  // Refused: record.tsx's shared Problem box renders the policy key as the
-  // detail (packages/core/src/errors.ts's approvalRequired(policyKey, ...)).
-  await expect(page.getByRole("alert")).toHaveText("signal.budget_move");
+  // Refused: record.tsx's shared <Gate> (routes/module.tsx) tells a queued
+  // action apart from a failed one — the notice names the policy that must
+  // sign off and links to the queue.
+  await expect(page.getByRole("status").getByText("Waiting on an approval")).toBeVisible();
+  await expect(page.getByRole("status").getByText(/signal\.budget_move/)).toBeVisible();
 
   // Single control, no self-decide gate — the same signal lead approves.
   // Seed data already carries a second, unrelated pending signal.budget_move
   // request (packages/core/src/seed/signal.ts:928-945), so every
   // "signal.budget_move" region is scoped by its subject — the move's own row
   // id, rendered as the card's description/subject link text.
-  await page.goto("/approvals");
+  await goto(page, "/approvals");
   const request = page.getByRole("region", { name: "signal.budget_move" }).filter({ hasText: moveId });
   await expect(request).toBeVisible();
   await request.getByRole("button", { name: "Approve", exact: true }).click();
@@ -52,7 +60,7 @@ test("J-M2 signal lead reverses an autopilot budget move", async ({ page }) => {
   await expect(page.getByRole("status")).toHaveText("Approved. The action may now proceed.");
 
   // Retry the same edit; it now goes through.
-  await page.goto(recordUrl);
+  await goto(page, recordUrl);
   await page.getByLabel("Reversed by", { exact: true }).fill("noor.jamal@gonxt.ae");
   await page.getByLabel("Reversed", { exact: true }).fill("2026-08-01T09:00");
   // .click() only waits for the click event, not the Form's async action/
@@ -69,6 +77,6 @@ test("J-M2 signal lead reverses an autopilot budget move", async ({ page }) => {
   // `columns` (record.tsx:153-172), so the dl can never show this value.
   // FieldInput's inputs are uncontrolled (defaultValue, fields.tsx:176) — a
   // fresh navigation is required for the loader's persisted row to reach it.
-  await page.goto(recordUrl);
+  await goto(page, recordUrl);
   await expect(page.getByLabel("Reversed by", { exact: true })).toHaveValue("noor.jamal@gonxt.ae");
 });

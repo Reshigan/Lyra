@@ -5,7 +5,7 @@ import { makeLibsqlDb } from "@lyra/db/libsql";
 import type { Ctx } from "@lyra/core";
 import { sweepRenewals } from "../apps/api/src/engines/renewals.js";
 import { LIBSQL_URL, TENANT_SLUG } from "./env.js";
-import { loginAsAxisLead, loginAsOrbitAgent, loginAsOrbitRetention } from "./fixtures.js";
+import { goto, loginAsAxisLead, loginAsOrbitAgent, loginAsOrbitRetention } from "./fixtures.js";
 
 // J-C2 "help on WhatsApp" (docs/06-roles-and-journeys.md): a customer message
 // lands, the AI drafts a reply as ghost text, the agent approves it in one
@@ -24,7 +24,7 @@ test("J-C2 an agent approves the AI's suggested reply and it queues, not sends",
   await loginAsOrbitAgent(page);
 
   const customerId = `cus-e2e-jc2-${Date.now()}`;
-  await page.goto("/orbit/conversations");
+  await goto(page, "/orbit/conversations");
   await page.getByText("New — Conversations").click();
   // Radix combobox, not a native <select> — its listbox can reposition after
   // Playwright's pre-click stability check, so retry the open+select as a unit
@@ -42,7 +42,7 @@ test("J-C2 an agent approves the AI's suggested reply and it queues, not sends",
   await page.waitForURL(/\/orbit\/conversations\/[^/]+$/);
   const conversationId = page.url().split("/").pop()!;
 
-  await page.goto("/orbit/messages");
+  await goto(page, "/orbit/messages");
   await page.getByText("New — Messages").click();
   await page.getByLabel("Conversation*", { exact: true }).fill(conversationId);
   await expect(async () => {
@@ -76,7 +76,7 @@ test("J-C2 an agent approves the AI's suggested reply and it queues, not sends",
   // can get cancelled mid-flight, silently dropping the draft message.
   await expect(page.getByRole("row", { name: new RegExp(conversationId) })).toHaveCount(2);
 
-  await page.goto(`/orbit/conversations/${conversationId}/thread`);
+  await goto(page, `/orbit/conversations/${conversationId}/thread`);
 
   const draftSection = page.getByRole("region", { name: "Suggested reply" });
   await expect(draftSection).toBeVisible();
@@ -146,7 +146,7 @@ test("J-C3 retention proposes and closes a renewal; surfacing needs axis.lead", 
   await runRenewalsSweep();
 
   await loginAsOrbitRetention(page);
-  await page.goto("/orbit/renewals");
+  await goto(page, "/orbit/renewals");
   const rows = page.locator("tbody tr");
   await expect(rows).toHaveCount(1);
   const row = rows.first();
@@ -161,7 +161,7 @@ test("J-C3 retention proposes and closes a renewal; surfacing needs axis.lead", 
   // which orbit.retention holds, so this section renders for this actor.
   // The loader reads customerId off the query string and FieldInput takes it
   // as the field's row value (dist-offers.tsx:348-350) — already filled in.
-  await page.goto(`/distribution/next-best-offers/suggest?customerId=${customerId}`);
+  await goto(page, `/distribution/next-best-offers/suggest?customerId=${customerId}`);
   await expect(page.getByLabel("Customer*", { exact: true })).toHaveValue(customerId);
   await page.getByRole("button", { name: "Propose offers", exact: true }).click();
   await page.waitForURL(new RegExp(`customerId=${customerId}`));
@@ -173,7 +173,7 @@ test("J-C3 retention proposes and closes a renewal; surfacing needs axis.lead", 
   await expect(page.getByRole("button", { name: /Surface .*to the customer/ })).toHaveCount(0);
 
   await loginAsAxisLead(page);
-  await page.goto(`/distribution/next-best-offers/suggest?customerId=${customerId}`);
+  await goto(page, `/distribution/next-best-offers/suggest?customerId=${customerId}`);
   await page.getByRole("button", { name: /Surface .*to the customer/ }).first().click();
   await expect(page.getByText("Surfaced.")).toBeVisible();
 
@@ -184,7 +184,7 @@ test("J-C3 retention proposes and closes a renewal; surfacing needs axis.lead", 
   // only passes because the column is untyped text with no runtime
   // validation. "Accepted" is the real one-tap close this UI offers.
   await loginAsOrbitRetention(page);
-  await page.goto(`/orbit/renewals/${renewalId}`);
+  await goto(page, `/orbit/renewals/${renewalId}`);
   await expect(async () => {
     await page.getByLabel("State", { exact: true }).click();
     await page.getByRole("option", { name: "Accepted", exact: true }).click({ timeout: 2000 });

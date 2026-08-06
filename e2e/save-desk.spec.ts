@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { loginAsAxisLead, loginAsFinanceController } from "./fixtures.js";
+import { goto, loginAsAxisLead, loginAsFinanceController } from "./fixtures.js";
 
 // J-X2 "the save desk" (docs/06-roles-and-journeys.md): the acceptance test
 // this journey actually has (apps/api/src/journeys.test.ts:644-758) is a pair
@@ -18,7 +18,7 @@ import { loginAsAxisLead, loginAsFinanceController } from "./fixtures.js";
 test("J-X2 an above-threshold policy is refused for dual control (axis.bind)", async ({ page }) => {
   await loginAsAxisLead(page);
 
-  await page.goto("/axis/policies");
+  await goto(page, "/axis/policies");
   const policyNo = `J-X2-${Date.now()}`;
   await page.getByText("New — Policies").click();
   await page.getByLabel("Policy number*", { exact: true }).fill(policyNo);
@@ -33,7 +33,7 @@ test("J-X2 an above-threshold policy is refused for dual control (axis.bind)", a
 
   await expect(page.getByRole("alert")).toHaveText("axis.bind");
   // Nothing was written: the refused policy number never appears.
-  await page.goto(`/axis/policies?q=${encodeURIComponent(policyNo)}`);
+  await goto(page, `/axis/policies?q=${encodeURIComponent(policyNo)}`);
   await expect(page.getByRole("row", { name: new RegExp(policyNo) })).toHaveCount(0);
 });
 
@@ -58,7 +58,7 @@ test("J-X2 approving a settlement run is always refused for dual control (dist.s
 }) => {
   await loginAsFinanceController(page);
 
-  await page.goto("/ledger/settlement");
+  await goto(page, "/ledger/settlement");
   const row = page.getByRole("row", { name: /2026-01/ }).filter({ hasText: "Draft" });
   await expect(row).toBeVisible();
   await row.getByRole("link", { name: "Open" }).click();

@@ -10,6 +10,13 @@ import { API_ORIGIN, API_PORT, FILES_DIR, LIBSQL_URL, WEB_ORIGIN } from "./e2e/e
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
+  // The web target here is `vite dev`, which compiles a route's module graph
+  // the first time any test reaches it — a first visit to a cold screen costs
+  // seconds that a built bundle would not. Playwright's 30s default budgets
+  // for the assertions, not for the compiler, so give the whole test twice
+  // that; the per-assertion timeout stays at its default, so a genuinely
+  // broken expectation still fails fast.
+  timeout: 60_000,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   workers: process.env.CI ? 2 : undefined,

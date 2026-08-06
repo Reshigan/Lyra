@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { expectNoA11yViolations } from "./a11y.js";
-import { loginAsTenantAdmin } from "./fixtures.js";
+import { goto, loginAsTenantAdmin } from "./fixtures.js";
 
 /** Horizontal spill in CSS pixels. Sub-pixel rounding makes 1 the floor. */
 async function overflowOf(page: Page): Promise<number> {
@@ -17,7 +17,7 @@ test.describe("pseudo-locale and RTL rendering", () => {
     await page.context().addCookies([
       { name: "lyra_locale", value: "pseudo", url: baseURL! }
     ]);
-    await page.goto("/login");
+    await goto(page, "/login");
 
     await expect(page.locator("html")).toHaveAttribute("dir", "ltr");
     await expect(page.locator("html")).toHaveAttribute("lang", "en-x-pseudo");
@@ -37,7 +37,7 @@ test.describe("pseudo-locale and RTL rendering", () => {
 
   test("Arabic renders right-to-left without breaking the login layout", async ({ page, baseURL }) => {
     await page.context().addCookies([{ name: "lyra_locale", value: "ar", url: baseURL! }]);
-    await page.goto("/login");
+    await goto(page, "/login");
 
     await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
     await expect(page.locator("html")).toHaveAttribute("lang", "ar");
@@ -63,7 +63,7 @@ test.describe("pseudo-locale and RTL rendering", () => {
       await page.context().addCookies([{ name: "lyra_locale", value: locale, url: baseURL! }]);
 
       for (const path of DENSE) {
-        await page.goto(path);
+        await goto(page, path);
         await expect(page.locator("html")).toHaveAttribute(
           "lang",
           locale === "pseudo" ? "en-x-pseudo" : "ar"

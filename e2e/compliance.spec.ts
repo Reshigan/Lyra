@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { loginAsComplianceOfficer } from "./fixtures.js";
+import { goto, loginAsComplianceOfficer } from "./fixtures.js";
 
 // J-CO1 "Regulator request" (docs/06-roles-and-journeys.md §Compliance): a
 // tenant.compliance officer scopes the query, exports a signed audit bundle,
@@ -13,7 +13,7 @@ import { loginAsComplianceOfficer } from "./fixtures.js";
 test("J-CO1 compliance officer scopes and exports a signed evidence bundle", async ({ page }) => {
   await loginAsComplianceOfficer(page);
 
-  await page.goto("/compliance/run/evidence");
+  await goto(page, "/compliance/run/evidence");
   await expect(page.getByRole("heading", { name: "عمليات الامتثال", level: 1 })).toBeVisible();
 
   await page.getByLabel("الموضوع", { exact: true }).fill("customer-91827");
