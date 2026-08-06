@@ -45,6 +45,9 @@ export const PolicyJson = z.object({
     })
     .default({ messagesMonths: 24, filesYears: 7, aiAuditYears: 7 }),
   domainPack: z.string().default("insurance-retail"),
+  // Gulf tenants reckon dates in Hijri, or cite both on anything contractual.
+  // A rendering preference, not a second stored value: timestamps stay epoch.
+  calendarPreference: z.enum(["gregorian", "islamic-umalqura", "dual"]).default("gregorian"),
   currency: z.string().length(3).default("AED"),
   // docs/modules/signal.md §8: "one-click global pause" for budget autopilot —
   // a tenant-wide kill switch, distinct from a single campaign's own

@@ -4,7 +4,7 @@
  */
 import * as React from "react";
 import { cn } from "./cn.js";
-import { useUiLocale } from "./text.js";
+import { useUiCalendar, useUiLocale, type CalendarPreference } from "./text.js";
 
 /** Minor-unit exponent for a currency (AED/USD → 2, JPY → 0, KWD → 3). */
 function minorUnits(currency: string, locale: string): number {
@@ -124,8 +124,8 @@ export interface DateTimeProps extends Omit<React.ComponentPropsWithRef<"time">,
   locale?: string;
   timeZone?: string;
   precision?: DateTimePrecision;
-  /** "islamic-umalqura" renders a Hijri date (docs/07 §2 DatePicker note). */
-  calendar?: "gregory" | "islamic-umalqura";
+  /** Overrides the tenant's own preference (UiCalendarProvider). */
+  calendar?: CalendarPreference;
   /** Render "3 hours ago" instead of an absolute stamp; title keeps the exact value. */
   relative?: boolean;
 }
@@ -153,6 +153,27 @@ const relativeSteps: Array<[Intl.RelativeTimeFormatUnit, number]> = [
   ["year", Number.POSITIVE_INFINITY]
 ];
 
+/**
+ * The absolute stamp, split out so the Hijri rendering is testable without a
+ * DOM: `islamic-umalqura` is the Saudi civil calendar, and an ICU upgrade that
+ * shifted a date by a day would otherwise be invisible until a customer saw it.
+ */
+export function formatDate(
+  date: Date,
+  options: {
+    locale: string;
+    precision?: DateTimePrecision | undefined;
+    calendar?: "islamic-umalqura" | undefined;
+    timeZone?: string | undefined;
+  }
+): string {
+  return new Intl.DateTimeFormat(options.locale, {
+    ...precisionOptions[options.precision ?? "minute"],
+    ...(options.timeZone ? { timeZone: options.timeZone } : {}),
+    ...(options.calendar ? { calendar: options.calendar } : {})
+  }).format(date);
+}
+
 function relativeText(date: Date, locale: string): string {
   const rtf = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
   let delta = (date.getTime() - Date.now()) / 1000;
@@ -168,25 +189,30 @@ export function DateTime({
   locale: explicitLocale,
   timeZone,
   precision = "minute",
-  calendar,
+  calendar: explicitCalendar,
   relative = false,
   className,
   ...props
 }: DateTimeProps) {
   const inherited = useUiLocale();
+  const inheritedCalendar = useUiCalendar();
   const locale = explicitLocale ?? inherited;
+  const preference = explicitCalendar ?? inheritedCalendar;
   const date = value instanceof Date ? value : new Date(value);
-  const options: Intl.DateTimeFormatOptions = {
-    ...precisionOptions[precision],
-    ...(timeZone ? { timeZone } : {}),
-    ...(calendar ? { calendar } : {})
-  };
-  const absolute = new Intl.DateTimeFormat(locale, options).format(date);
+  const format = (calendar?: "islamic-umalqura") =>
+    formatDate(date, { locale, precision, calendar, timeZone });
+
+  // "dual" reads Gregorian, with the Hijri date one hover away: Gulf contracts
+  // cite both, but a table of two calendars per cell is unreadable.
+  const absolute = preference === "islamic-umalqura" ? format("islamic-umalqura") : format();
+  const hijri = preference === "dual" ? format("islamic-umalqura") : null;
+  const title = relative ? absolute : (hijri ?? props.title);
+
   return (
     <time
       {...props}
       dateTime={date.toISOString()}
-      title={relative ? absolute : props.title}
+      title={relative && hijri ? `${absolute} · ${hijri}` : title}
       className={cn("tabular-nums", className)}
     >
       {relative ? relativeText(date, locale) : absolute}

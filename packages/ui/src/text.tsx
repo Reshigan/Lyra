@@ -118,6 +118,35 @@ export function useUiLocale(): string {
   return React.useContext(LocaleContext);
 }
 
+/**
+ * Which calendar a tenant reckons dates in. "dual" is the Gulf business
+ * convention — a contract cites the Gregorian date and the Hijri one beside it —
+ * so it is a rendering choice, not a third calendar.
+ */
+export type CalendarPreference = "gregorian" | "islamic-umalqura" | "dual";
+
+const CalendarContext = React.createContext<CalendarPreference>("gregorian");
+
+/**
+ * Tenant policy, not document chrome: the locale is known before there is a
+ * session (login renders in Arabic), the calendar is not. Mounted inside the
+ * shell so every `<DateTime>` below it inherits without 124 call sites growing
+ * a prop.
+ */
+export function UiCalendarProvider({
+  calendar,
+  children
+}: {
+  calendar: CalendarPreference;
+  children: React.ReactNode;
+}) {
+  return <CalendarContext.Provider value={calendar}>{children}</CalendarContext.Provider>;
+}
+
+export function useUiCalendar(): CalendarPreference {
+  return React.useContext(CalendarContext);
+}
+
 export function useUiText(): KitText {
   return uiText(React.useContext(LocaleContext));
 }

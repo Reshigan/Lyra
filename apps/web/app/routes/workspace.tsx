@@ -7,6 +7,7 @@ import {
   type LoaderFunctionArgs,
   type MetaFunction
 } from "react-router";
+import { UiCalendarProvider, type CalendarPreference } from "@lyra/ui";
 import { cloudflare } from "../context";
 import { ApiError, fetchMe } from "../api.server";
 import { Shell } from "../components/shell";
@@ -18,6 +19,13 @@ import { DEFAULT_PACK } from "../modules/vocabulary";
 // filtered for them.
 
 export const ROUTE_ID = "routes/workspace";
+
+const CALENDARS: readonly CalendarPreference[] = ["gregorian", "islamic-umalqura", "dual"];
+
+/** Tenant policy is loosely typed across the wire; an unknown value is Gregorian. */
+export function calendarFrom(value: unknown): CalendarPreference {
+  return CALENDARS.find((known) => known === value) ?? "gregorian";
+}
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = context.get(cloudflare).env;
@@ -51,6 +59,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     actorName: me.profile?.name ?? null,
     // CLAUDE.md §14: the pack that renames every noun downstream of labelsFor.
     domainPack: typeof me.policy?.domainPack === "string" ? me.policy.domainPack : DEFAULT_PACK,
+    calendar: calendarFrom(me.policy?.calendarPreference),
     // A tenant admin's i18n key relabels (core_locale_overrides), merged by
     // translator() over the static catalogue — see apps/web/app/i18n.ts.
     overrides: me.overrides ?? {}
@@ -74,14 +83,18 @@ export default function Workspace() {
   const t = translator(shell.locale, shell.overrides);
 
   return (
-    <Shell
-      t={t}
-      nav={shell.nav}
-      brand={shell.brand}
-      tenantName={shell.tenantName}
-      actorName={shell.actorName}
-    >
-      <Outlet />
-    </Shell>
+    // Every <DateTime> below reads the tenant's calendar off this provider —
+    // the alternative is remembering a prop at 124 call sites.
+    <UiCalendarProvider calendar={shell.calendar}>
+      <Shell
+        t={t}
+        nav={shell.nav}
+        brand={shell.brand}
+        tenantName={shell.tenantName}
+        actorName={shell.actorName}
+      >
+        <Outlet />
+      </Shell>
+    </UiCalendarProvider>
   );
 }

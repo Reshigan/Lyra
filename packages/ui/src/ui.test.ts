@@ -12,7 +12,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { shortRef } from "./format.js";
+import { formatDate, shortRef } from "./format.js";
 import { groupCommandItems } from "./overlays.js";
 import { fromSelectValue, toSelectValue } from "./primitives.js";
 import { KIT_TEXT, uiText } from "./text.js";
@@ -346,6 +346,37 @@ describe("shortRef hides storage keys without hiding anything else", () => {
       expect(shortRef(value)).toBe(value);
     }
   );
+});
+
+/* -------------------------------------------------------------------------- */
+
+describe("Hijri dates are pinned, not just requested", () => {
+  // 8 January 2026, 10:41:03 in Riyadh — 19 Rajab 1447 in the Umm al-Qura
+  // calendar. A golden per precision: an ICU upgrade that shifted the reckoning
+  // by a day would otherwise surface as a customer noticing their contract date
+  // moved.
+  const instant = new Date("2026-01-08T07:41:03Z");
+  const riyadh = { locale: "en", timeZone: "Asia/Riyadh", calendar: "islamic-umalqura" } as const;
+
+  it.each([
+    ["day", "Raj. 19, 1447 AH"],
+    ["minute", "Raj. 19, 1447 AH, 10:41 AM"],
+    ["second", "Raj. 19, 1447 AH, 10:41:03 AM"]
+  ] as const)("renders %s precision as %s", (precision, expected) => {
+    expect(formatDate(instant, { ...riyadh, precision })).toBe(expected);
+  });
+
+  it("reckons in Arabic too, since that is who asks for it", () => {
+    expect(formatDate(instant, { ...riyadh, locale: "ar", precision: "day" })).toBe(
+      "19 رجب 1447 هـ"
+    );
+  });
+
+  it("leaves the Gregorian rendering alone", () => {
+    expect(formatDate(instant, { locale: "en", timeZone: "Asia/Riyadh", precision: "day" })).toBe(
+      "Jan 08, 2026"
+    );
+  });
 });
 
 /* -------------------------------------------------------------------------- */
