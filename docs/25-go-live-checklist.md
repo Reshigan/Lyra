@@ -591,6 +591,19 @@ than from the vanished finding texts.
       Verified locally on `cc78540^`: 52 mutants, 30 seconds, score 86.54,
       exit 0; an empty diff exits 0 with nothing to mutate.
 
+- [x] **Production is live on `17ce9b9`** (2026-08-07). Every gate reported
+      green on that commit before the dispatch — `ci` (check, e2e, eval,
+      mutation), `security` (audit, gitleaks, licenses, codeql, container),
+      `deploy` (check, staging) — and `mutation` completed rather than being
+      killed for the first time since the job was added. Production went out via
+      `gh workflow run deploy.yml` (run `31131182739`, `workflow_dispatch`,
+      `production` environment). Verified after: `lyra.vantax.co.za` 200,
+      `api.lyra.vantax.co.za/health` `{"ok":true,"environment":"demo"}`.
+      A GitHub Actions major outage (2026-08-06 15:22Z onward, runner capacity
+      plus webhook throttling) failed five jobs at "Getting action download
+      info" before any repo code ran; none were code failures, and all passed on
+      re-run once GitHub recovered.
+
 Still open from this pass: ROLE-028 above.
 
 ---
