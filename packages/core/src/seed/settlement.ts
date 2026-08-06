@@ -129,7 +129,11 @@ export async function seedSettlement(ctx: SeedContext): Promise<void> {
       providerId: ctx.providers.cedar,
       offeringId: ctx.offerings.cedarMotorPlus,
       kind: "new_business",
-      premiumMinor: 524_000,
+      // The open month has to clear Alpha's AED 500 minimum payout (their
+      // agreement, seed/onboarding.ts), because the engine re-applies that floor
+      // when the settlement is approved: under it, the month pays nothing and
+      // carries forward, so a smaller draft is one no controller could sign off.
+      premiumMinor: 1_248_000,
       baseCommissionPpm: 150_000,
       channelSharePpm: 350_000,
       earnedAt: monthStart(0) + 3 * DAY
@@ -140,7 +144,7 @@ export async function seedSettlement(ctx: SeedContext): Promise<void> {
       providerId: ctx.providers.oryx,
       offeringId: ctx.offerings.oryxMotor,
       kind: "renewal",
-      premiumMinor: 196_000,
+      premiumMinor: 496_000,
       baseCommissionPpm: 130_000,
       channelSharePpm: 350_000,
       earnedAt: monthStart(0) + 8 * DAY

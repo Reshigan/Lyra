@@ -60,12 +60,12 @@ const APPROVED_CHANNEL = 46_080; // applyPpm(115_200, 400_000)
 
 // draft bucket (Alpha Brokers, thisMonth)
 const DRAFT_1_AT = MONTH_0 + 3 * DAY;
-const DRAFT_1_GROSS = 78_600; // applyPpm(524_000, 150_000)
-const DRAFT_1_CHANNEL = 27_510; // applyPpm(78_600, 350_000)
+const DRAFT_1_GROSS = 187_200; // applyPpm(1_248_000, 150_000)
+const DRAFT_1_CHANNEL = 65_520; // applyPpm(187_200, 350_000)
 const DRAFT_2_AT = MONTH_0 + 8 * DAY;
-const DRAFT_2_GROSS = 25_480; // applyPpm(196_000, 130_000)
-const DRAFT_2_CHANNEL = 8_918; // applyPpm(25_480, 350_000)
-const DRAFT_TOTAL = DRAFT_1_CHANNEL + DRAFT_2_CHANNEL; // 36_428
+const DRAFT_2_GROSS = 64_480; // applyPpm(496_000, 130_000)
+const DRAFT_2_CHANNEL = 22_568; // applyPpm(64_480, 350_000)
+const DRAFT_TOTAL = DRAFT_1_CHANNEL + DRAFT_2_CHANNEL; // 88_088 — above Alpha's 50_000 floor
 
 // disputed bucket (bank embed, thisMonth)
 const DISPUTED_AT = MONTH_0 + 5 * DAY;
@@ -323,6 +323,32 @@ describe("seedSettlement: the four ledger_settlements rows", () => {
     expect(s.txnId).toBeNull();
     expect(s.createdAt).toBe(MONTH_0 + 9 * DAY);
     expect(s.updatedAt).toBe(T0 - 2 * HOUR);
+  });
+
+  // The floor is the agreement's, and the engine re-applies it on approval
+  // (engines/settlement.ts totalsFor): a month under it pays nothing and carries
+  // its whole balance forward, so a draft seeded below the floor is one no
+  // controller could ever sign off — the approval refuses it as stale instead.
+  it("draft: clears the minimum payout its own agreement sets, so it can be approved", async () => {
+    const s = await settlementByPeriodCounterparty(THIS_MONTH, `channel:${alphaId}`);
+    // The same lookup the engine does: channel -> partner -> active agreement.
+    const partners = await db.select().from(schema.orbitPartners).where(eq(schema.orbitPartners.tenantId, tenantId));
+    const partner = partners.find(
+      (p) => (JSON.parse(p.revshareJson ?? "{}") as { channelId?: string }).channelId === alphaId
+    );
+    const [agreement] = await db
+      .select()
+      .from(schema.distPartnerAgreements)
+      .where(
+        and(
+          eq(schema.distPartnerAgreements.tenantId, tenantId),
+          eq(schema.distPartnerAgreements.partnerId, partner!.id),
+          eq(schema.distPartnerAgreements.state, "active")
+        )
+      );
+    const minPayoutMinor = (JSON.parse(agreement!.termsJson) as { settlement: { minPayoutMinor: number } }).settlement
+      .minPayoutMinor;
+    expect(s.netMinor).toBeGreaterThanOrEqual(minPayoutMinor);
   });
 
   it("disputed: this month, the argument is still open", async () => {
