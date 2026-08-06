@@ -540,6 +540,36 @@ each — session memory, not a fresh read — before treating any as still true.
       (Status: Proposed). Stays open until the module/product owner picks an
       option.
 
+### Go-live remediation pass (2026-08-05/06)
+
+Worked against `docs/superpowers/specs/2026-08-05-go-live-remediation-design.md`.
+Its cited source, `scratchpad/platform-audit-report.md`, no longer exists
+anywhere in the repo, so the remaining items were **re-derived** from this
+checklist, docs/12, docs/13, docs/17, docs/22 and fresh code reads rather
+than from the vanished finding texts.
+
+- [x] Daily hash-chained audit anchor written to R2 `EXPORTS` (docs/12 §1) —
+      commit `ce5062c`.
+- [x] Kill switches at agent / module / tenant / global scope (docs/12 §4) —
+      commit `a56441f`.
+- [x] Field-level encryption for national identifiers and bank details
+      (docs/12 §1, ADR-0032) — commit `cc78540`. Needs the `FIELD_KEY` secret
+      set per environment (§6 below).
+- [x] Eval gaps: `ar` and `en` scored as separate suites, plus a CX-quality
+      judge (docs/12 §4, docs/13 §3.3-3.4) — commit `d8a3fad`.
+- [x] Money Map surface (docs/22 §1.2) — commit `b856875`.
+- [x] `window.confirm()` on consequential actions — replaced at all 13 call
+      sites by an in-app dialog (`apps/web/app/components/confirm.tsx`), so
+      the guard translates, mirrors under RTL, carries tenant brand and
+      survives embedded webviews (CLAUDE.md §4, §7) — commit `3286a3b`.
+- [x] AXIS case copilot rendered in a drawer — now an in-page ambient panel;
+      last `Drawer` use in the app is gone (CLAUDE.md rule 11, docs/15 §4) —
+      commit `79baea2`.
+
+Still open from this pass: no settings form exposes tenant `defaultLocale` /
+`currency` (both are read by the UI, both are seeded, neither is editable in
+app), and ROLE-028 above.
+
 ---
 
 ## 4. Security & compliance — user-owned actions

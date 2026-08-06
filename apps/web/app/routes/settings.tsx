@@ -271,17 +271,23 @@ const LABELS: Record<string, Record<string, string>> = {
     "brand.ok": "Appearance saved. It applies on the next screen you open.",
     "brand.unavailable": "The tenant's appearance could not be read just now.",
 
-    "calendar.title": "Dates",
+    "calendar.title": "Dates, language and money",
     "calendar.intro":
-      "Which calendar this tenant reads dates in. Nothing is re-dated: the same instant is simply written the way your business writes it.",
+      "How this tenant reads dates, which language it opens in, and the currency its money is written in. Nothing is re-dated or re-priced: the same instant and the same amount are simply written the way your business writes them.",
     "calendar.field": "Calendar",
     "calendar.gregorian": "Gregorian",
     "calendar.islamic-umalqura": "Hijri (Umm al-Qura)",
     "calendar.dual": "Gregorian, with the Hijri date on hover",
     "calendar.hint": "Applies to every date on every screen, for everyone in this tenant.",
+    "calendar.locale": "Default language",
+    "calendar.localeHint": "What people see before they choose their own language.",
+    "calendar.currency": "Currency",
+    "calendar.currencyHint": "Three-letter code (ISO 4217), such as AED or SAR.",
     "calendar.submit": "Save",
     "calendar.ok": "Saved. It applies on the next screen you open.",
     "calendar.unknown": "That is not a calendar this platform renders.",
+    "calendar.localeUnknown": "This tenant does not run in that language.",
+    "calendar.currencyBad": "Use a three-letter currency code, such as AED.",
 
     "dsar.title": "Your data",
     "dsar.intro":
@@ -450,17 +456,23 @@ const LABELS: Record<string, Record<string, string>> = {
     "brand.ok": "تم حفظ الهوية. تُطبَّق على الشاشة التالية التي تفتحها.",
     "brand.unavailable": "تعذّرت قراءة هوية المؤسسة الآن.",
 
-    "calendar.title": "التواريخ",
+    "calendar.title": "التواريخ واللغة والعملة",
     "calendar.intro":
-      "التقويم الذي تُقرأ به التواريخ في هذه المؤسسة. لا يتغيّر أي تاريخ: اللحظة نفسها تُكتب بالطريقة التي تكتبها بها.",
+      "كيف تُقرأ التواريخ في هذه المؤسسة، وبأي لغة تُفتح، وبأي عملة تُكتب مبالغها. لا يتغيّر أي تاريخ ولا أي مبلغ: اللحظة نفسها والمبلغ نفسه يُكتبان بالطريقة التي تكتبها بها.",
     "calendar.field": "التقويم",
     "calendar.gregorian": "ميلادي",
     "calendar.islamic-umalqura": "هجري (أم القرى)",
     "calendar.dual": "ميلادي، مع التاريخ الهجري عند المرور بالمؤشر",
     "calendar.hint": "يُطبَّق على كل تاريخ في كل شاشة، ولكل من في هذه المؤسسة.",
+    "calendar.locale": "اللغة الافتراضية",
+    "calendar.localeHint": "ما يراه الناس قبل أن يختاروا لغتهم.",
+    "calendar.currency": "العملة",
+    "calendar.currencyHint": "رمز من ثلاثة أحرف (ISO 4217)، مثل AED أو SAR.",
     "calendar.submit": "حفظ",
     "calendar.ok": "تم الحفظ. يُطبَّق على الشاشة التالية التي تفتحها.",
     "calendar.unknown": "هذا ليس تقويمًا تعرضه المنصّة.",
+    "calendar.localeUnknown": "هذه المؤسسة لا تعمل بهذه اللغة.",
+    "calendar.currencyBad": "استخدم رمز عملة من ثلاثة أحرف، مثل AED.",
 
     "dsar.title": "بياناتك",
     "dsar.intro":
@@ -612,6 +624,11 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     },
     /** Rendering preference, stored on tenant policy; see UiCalendarProvider. */
     calendar: calendarFrom(me.policy?.calendarPreference),
+    /** The other two tenant-wide regional settings, edited on the same panel. */
+    defaultLocale: stringFrom(me.policy?.defaultLocale, "en"),
+    currency: stringFrom(me.policy?.currency, "AED"),
+    /** Which locales this tenant runs in — the only valid default locales. */
+    locales: localesFrom(me.policy?.locales),
     dsar: dsar.value?.data ?? [],
     dsarReadable: dsar.value !== null,
     lens: lens.value ? { workspace: lens.value.lens.workspace, isDefault: lens.value.isDefault } : null,
@@ -794,13 +811,37 @@ export async function action({ request, context }: ActionFunctionArgs) {
 
       // Policy is one JSON column and the CRUD PATCH replaces it wholesale, so
       // the current policy is read back and merged here. The form contributes
-      // one field; nothing else about it is reachable from the browser.
+      // three fields; nothing else about it is reachable from the browser.
       const me = await fetchMe(env, request);
+
+      // An omitted field means "leave it alone", so a narrower form (or a
+      // tenant on one locale) can post this same intent without clearing
+      // anything it never showed.
+      const defaultLocale = text("defaultLocale");
+      const runs = localesFrom(me.policy?.locales);
+      if (defaultLocale && !runs.includes(defaultLocale)) {
+        return { intent, errorKey: "calendar.localeUnknown" } satisfies ActionResult;
+      }
+
+      // ISO 4217 is three letters, upper case. Anything else would be written
+      // beside every money figure in the tenant and formatted by nothing.
+      const currency = text("currency").toUpperCase();
+      if (currency && !/^[A-Z]{3}$/.test(currency)) {
+        return { intent, errorKey: "calendar.currencyBad" } satisfies ActionResult;
+      }
+
       await api(`/v1/core/tenants/${encodeURIComponent(me.tenant.id)}`, {
         env,
         request,
         method: "PATCH",
-        body: { policyJson: { ...me.policy, calendarPreference: calendar } }
+        body: {
+          policyJson: {
+            ...me.policy,
+            calendarPreference: calendar,
+            ...(defaultLocale ? { defaultLocale } : {}),
+            ...(currency ? { currency } : {})
+          }
+        }
       });
       return { intent, ok: true } satisfies ActionResult;
     }
@@ -1177,6 +1218,27 @@ export default function Settings() {
                   name="calendar"
                   defaultValue={loaded.calendar}
                   options={CALENDARS.map((value) => ({ value, label: label(`calendar.${value}`) }))}
+                />
+              </Field>
+              {/* Only the locales the tenant actually runs in: a default the
+                  app has no catalogue for would leave every screen in a
+                  language nobody picked. */}
+              <Field label={label("calendar.locale")} hint={label("calendar.localeHint")}>
+                <Select
+                  name="defaultLocale"
+                  defaultValue={loaded.defaultLocale}
+                  options={loaded.locales.map((code) => ({ value: code, label: nameOfLocale(code) }))}
+                />
+              </Field>
+              <Field label={label("calendar.currency")} hint={label("calendar.currencyHint")}>
+                <Input
+                  name="currency"
+                  defaultValue={loaded.currency}
+                  maxLength={3}
+                  minLength={3}
+                  pattern="[A-Za-z]{3}"
+                  autoComplete="off"
+                  className="uppercase"
                 />
               </Field>
             </div>
@@ -1892,6 +1954,19 @@ function dsarColumns(label: (key: string) => string, locale: string): Array<Colu
 /** Every language names itself in its own words, in every catalogue. */
 function nameOfLocale(code: string): string {
   return new Intl.DisplayNames([code], { type: "language" }).of(code) ?? code;
+}
+
+// Tenant policy crosses the API boundary as an untyped JSON blob
+// (api.server.ts: `policy: Record<string, unknown>`), so what comes back is
+// whatever was last written to it — narrow before rendering it.
+
+function stringFrom(value: unknown, fallback: string): string {
+  return typeof value === "string" && value !== "" ? value : fallback;
+}
+
+/** The locales a tenant runs in; the platform's own set when unset. */
+function localesFrom(value: unknown): string[] {
+  return Array.isArray(value) && value.every((one) => typeof one === "string") ? value : [...LOCALES];
 }
 
 /** The approved typefaces are proper nouns; they read the same in every locale. */

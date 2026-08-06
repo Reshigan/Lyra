@@ -12,6 +12,8 @@ const env = { ENVIRONMENT: "test", API_ORIGIN: "https://api.test", SESSION_COOKI
 const POLICY = {
   autoApprove: ["axis.bind"],
   currency: "AED",
+  locales: ["en", "ar"],
+  defaultLocale: "en",
   domainPack: "insurance-retail",
   calendarPreference: "gregorian"
 };
@@ -35,11 +37,11 @@ function stubApi() {
   return calls;
 }
 
-function args(calendar: string): any {
+function args(calendar: string, extra: Record<string, string> = {}): any {
   return {
     request: new Request("https://web.test/settings", {
       method: "POST",
-      body: new URLSearchParams({ intent: "calendar", calendar })
+      body: new URLSearchParams({ intent: "calendar", calendar, ...extra })
     }),
     params: {},
     context: { get: () => ({ env, ctx: {} }) }
@@ -65,5 +67,48 @@ describe("the tenant's calendar is editable without disturbing the rest of polic
     const result = await action(args("julian"));
     expect(result).toMatchObject({ intent: "calendar", errorKey: "calendar.unknown" });
     expect(calls.filter((c) => c.method === "PATCH")).toHaveLength(0);
+  });
+});
+
+// The same panel owns the two other tenant-wide regional settings the UI reads
+// but nothing could edit: which locale a tenant defaults to, and the currency
+// every money figure is written in.
+describe("the tenant's default locale and currency are editable there too", () => {
+  it("saves both, and leaves the rest of policy alone", async () => {
+    const calls = stubApi();
+    const result = await action(args("gregorian", { defaultLocale: "ar", currency: "sar" }));
+    expect(result).toMatchObject({ intent: "calendar", ok: true });
+
+    const patch = calls.find((c) => c.method === "PATCH");
+    expect(JSON.parse(patch?.body ?? "{}").policyJson).toEqual({
+      ...POLICY,
+      calendarPreference: "gregorian",
+      defaultLocale: "ar",
+      currency: "SAR"
+    });
+  });
+
+  it("refuses a default locale the tenant does not run in", async () => {
+    const calls = stubApi();
+    const result = await action(args("gregorian", { defaultLocale: "fr" }));
+    expect(result).toMatchObject({ intent: "calendar", errorKey: "calendar.localeUnknown" });
+    expect(calls.filter((c) => c.method === "PATCH")).toHaveLength(0);
+  });
+
+  it("refuses anything that is not a three-letter currency code", async () => {
+    const calls = stubApi();
+    const result = await action(args("gregorian", { currency: "dirhams" }));
+    expect(result).toMatchObject({ intent: "calendar", errorKey: "calendar.currencyBad" });
+    expect(calls.filter((c) => c.method === "PATCH")).toHaveLength(0);
+  });
+
+  it("leaves both untouched when the form omits them", async () => {
+    const calls = stubApi();
+    await action(args("dual"));
+    const patch = calls.find((c) => c.method === "PATCH");
+    expect(JSON.parse(patch?.body ?? "{}").policyJson).toMatchObject({
+      defaultLocale: "en",
+      currency: "AED"
+    });
   });
 });
