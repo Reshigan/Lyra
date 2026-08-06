@@ -2,7 +2,7 @@ import { Money } from "@lyra/ui";
 // ../api-error, never ../api.server: this module is not a route, so the client
 // bundle takes it whole and a `.server` import here is a build error.
 import { ApiError } from "../api-error";
-import { translator } from "../i18n";
+import { pseudoText, translator } from "../i18n";
 
 // The half-dozen things every bespoke NORTH screen needs and none of them owns:
 // the label resolver, the 403-swallowing read, the action envelope, and the one
@@ -24,7 +24,8 @@ export function labelsFrom(
   const t = translator(locale);
   return (key, vars) => {
     const local = table[key] ?? fallback[key];
-    const shared = local ?? t(`common.${key}`);
+    // `t()` pseudoizes on its own; only the route's own table needs the wrap.
+    const shared = local === undefined ? t(`common.${key}`) : pseudoText(locale, local);
     const raw = shared === `common.${key}` ? key : shared;
     return vars ? raw.replace(/\{(\w+)\}/g, (match, name: string) => vars[name] ?? match) : raw;
   };

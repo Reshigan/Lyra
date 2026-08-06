@@ -1,5 +1,5 @@
 import { ApiError } from "../api-error";
-import { translator } from "../i18n";
+import { pseudoText, translator } from "../i18n";
 import type { Problem } from "../api-error";
 
 // Six ORBIT screens share the same eight lines of plumbing: a bilingual label
@@ -51,7 +51,8 @@ export function labelsFrom(table: Labels, locale: string): Label {
   const t = translator(locale);
   return (key, vars) => {
     const local = own[key] ?? fallback[key];
-    const shared = local ?? t(`common.${key}`);
+    // `t()` pseudoizes on its own; only the route's own table needs the wrap.
+    const shared = local === undefined ? t(`common.${key}`) : pseudoText(locale, local);
     const raw = shared === `common.${key}` ? key : shared;
     return vars ? raw.replace(/\{(\w+)\}/g, (match, name: string) => vars[name] ?? match) : raw;
   };

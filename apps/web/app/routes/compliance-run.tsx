@@ -25,6 +25,7 @@ import {
 import { ApiError, api, fetchMe } from "../api.server";
 import { cloudflare } from "../context";
 import { useShellData } from "./workspace";
+import { pseudoText } from "../i18n";
 
 // The three compliance capabilities that are runs rather than forms (docs/12
 // §3–§5, ADR-0002): a screening is a question put to a provider, an evidence
@@ -298,7 +299,7 @@ type Label = (key: string) => string;
  *  review rather than invisible in production. */
 function labelIn(locale: string): Label {
   const table = LABELS[locale] ?? LABELS.en!;
-  return (key) => table[key] ?? LABELS.en![key] ?? key;
+  return (key) => pseudoText(locale, table[key] ?? LABELS.en![key] ?? key);
 }
 
 /* ------------------------------------------------------------------- loader */

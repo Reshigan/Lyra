@@ -24,7 +24,7 @@ import {
 import { ApiError, api, fetchMe } from "../api.server";
 import { FieldInput, toneFor } from "../components/fields";
 import { cloudflare } from "../context";
-import { translator } from "../i18n";
+import { pseudoText, translator } from "../i18n";
 import { bodyFrom, humanise, optionLabel, type FieldSpec, type Row } from "../modules/spec";
 import { Problem } from "./module";
 import { useShellData } from "./workspace";
@@ -208,7 +208,8 @@ export function labelsIn(locale: string): (key: string, vars?: Record<string, st
   const t = translator(locale);
   return (key, vars) => {
     const local = table[key] ?? fallback[key];
-    const shared = local ?? t(`common.${key}`);
+    // `t()` pseudoizes on its own; only the route's own table needs the wrap.
+    const shared = local === undefined ? t(`common.${key}`) : pseudoText(locale, local);
     const raw = shared === `common.${key}` ? key : shared;
     return vars ? raw.replace(/\{(\w+)\}/g, (match, name: string) => vars[name] ?? match) : raw;
   };

@@ -9,7 +9,7 @@ import {
 import type { LoaderFunctionArgs } from "react-router";
 import { ApiError, api } from "../api.server";
 import { cloudflare } from "../context";
-import { translator } from "../i18n";
+import { pseudoText, translator } from "../i18n";
 import { useShellData } from "./workspace";
 import { useLoaderData } from "react-router";
 
@@ -76,7 +76,8 @@ const LABELS: Record<string, Record<string, string>> = {
 type Label = (key: string, fallback?: string) => string;
 
 function labeller(locale: string): Label {
-  return (key, fallback) => LABELS[locale]?.[key] ?? LABELS["en"]?.[key] ?? fallback ?? key;
+  return (key, fallback) =>
+    pseudoText(locale, LABELS[locale]?.[key] ?? LABELS["en"]?.[key] ?? fallback ?? key);
 }
 
 /* ------------------------------------------------------------------ shapes */

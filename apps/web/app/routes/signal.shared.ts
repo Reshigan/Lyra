@@ -1,4 +1,5 @@
 import { vocabulary } from "../modules/vocabulary";
+import { pseudoText } from "../i18n";
 
 // The six bespoke SIGNAL screens share one labeller and one set of derivations,
 // for the same reason ledger.shared.ts exists: the cockpit, the studio, the
@@ -992,7 +993,7 @@ export function labelsIn(locale: string, pack?: string): Label {
   const fallback = LABELS.en!;
   const word = vocabulary(pack, locale);
   return (key, vars) => {
-    const text = word(key) ?? table[key] ?? fallback[key] ?? key;
+    const text = pseudoText(locale, word(key) ?? table[key] ?? fallback[key] ?? key);
     return vars ? text.replace(/\{(\w+)\}/g, (whole, name: string) => vars[name] ?? whole) : text;
   };
 }

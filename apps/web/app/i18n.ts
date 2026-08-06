@@ -25,7 +25,7 @@ const ACCENTS: Record<string, string> = {
   s: "š", t: "ţ", u: "ú", v: "ѵ", w: "ŵ", x: "х", y: "ý", z: "ž"
 };
 
-function pseudoize(text: string): string {
+export function pseudoize(text: string): string {
   // Split on {placeholders} and leave them untouched — translator()'s
   // interpolation regex requires plain ASCII \w+ inside the braces.
   const mapped = text
@@ -41,6 +41,18 @@ function pseudoize(text: string): string {
 const PSEUDO_CATALOGUE: Messages = Object.fromEntries(
   Object.entries(en).map(([key, value]) => [key, pseudoize(value)])
 ) as Messages;
+
+/**
+ * The last step of a route-local label lookup. Route screens carry their own
+ * en/ar tables rather than keys in CATALOGUES, so `translator()` never sees
+ * that copy — and under the pseudo-locale those tables fall through to English,
+ * which is exactly what a hardcoded JSX literal looks like. The detector can
+ * only tell the two apart if translated route copy accents too, so every
+ * route-local resolver ends with this call.
+ */
+export function pseudoText(locale: string, text: string): string {
+  return locale === PSEUDO_LOCALE ? pseudoize(text) : text;
+}
 
 export type Translate = (key: string, vars?: Record<string, string | number>) => string;
 

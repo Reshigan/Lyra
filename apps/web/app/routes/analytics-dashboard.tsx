@@ -3,7 +3,7 @@ import { DateTime, EmptyState, ProgressBar, Sparkline, Stat, Table, type Column 
 import { ApiError, api, fetchMe } from "../api.server";
 import { Cell } from "../components/fields";
 import { cloudflare } from "../context";
-import { translator } from "../i18n";
+import { pseudoText, translator } from "../i18n";
 import type { Row } from "../modules/spec";
 import { useShellData } from "./workspace";
 
@@ -113,7 +113,7 @@ function labelsIn(locale: string): (key: string) => string {
   const t = translator(locale);
   return (key: string): string => {
     const local = table[key] ?? fallback[key];
-    if (local) return local;
+    if (local) return pseudoText(locale, local);
     const shared = t(`common.${key}`);
     return shared === `common.${key}` ? key : shared;
   };

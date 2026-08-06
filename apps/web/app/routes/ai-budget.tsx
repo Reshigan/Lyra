@@ -29,7 +29,7 @@ import {
 } from "@lyra/ui";
 import { ApiError, api } from "../api.server";
 import { cloudflare } from "../context";
-import { translator } from "../i18n";
+import { pseudoText, translator } from "../i18n";
 import { Problem } from "./module";
 import { useShellData } from "./workspace";
 
@@ -194,7 +194,8 @@ type Label = (key: string, fallback?: string) => string;
 
 /** Locale first, English next, then whatever the API actually said. */
 function labeller(locale: string): Label {
-  return (key, fallback) => LABELS[locale]?.[key] ?? LABELS["en"]?.[key] ?? fallback ?? key;
+  return (key, fallback) =>
+    pseudoText(locale, LABELS[locale]?.[key] ?? LABELS["en"]?.[key] ?? fallback ?? key);
 }
 
 /* ------------------------------------------------------------------ shapes */

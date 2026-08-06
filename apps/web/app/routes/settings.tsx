@@ -13,7 +13,7 @@ import {
 import { Badge, Button, Checkbox, DateTime, Field, Input, Select, Table, type Column } from "@lyra/ui";
 import { ApiError, api, fetchMe, type Problem as ProblemBody } from "../api.server";
 import { cloudflare } from "../context";
-import { CATALOGUES, LOCALES, translator } from "../i18n";
+import { CATALOGUES, LOCALES, pseudoText, translator } from "../i18n";
 import { Problem } from "./module";
 import { useShellData } from "./workspace";
 
@@ -464,7 +464,7 @@ function labelsFor(locale: string): (key: string) => string {
   const table = LABELS[locale] ?? LABELS.en!;
   // A missing translation falls back to English rather than to the raw key: a
   // half-translated screen still reads, an ar table with a hole does not.
-  return (key) => table[key] ?? LABELS.en![key] ?? key;
+  return (key) => pseudoText(locale, table[key] ?? LABELS.en![key] ?? key);
 }
 
 /** `{ratio}` in a local label. The shared catalogue has `translator`; this one

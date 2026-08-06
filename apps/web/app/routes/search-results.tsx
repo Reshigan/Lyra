@@ -2,7 +2,7 @@ import { Form, Link, useLoaderData, useNavigation, type LoaderFunctionArgs } fro
 import { Button, Card, EmptyState, Input, Ref } from "@lyra/ui";
 import { ApiError, api } from "../api.server";
 import { cloudflare } from "../context";
-import { translator } from "../i18n";
+import { pseudoText, translator } from "../i18n";
 import { WORKSPACES } from "../modules";
 import { labelsFor } from "../modules/spec";
 import { hitToItem, type SearchHit, type SearchItem } from "./search";
@@ -94,7 +94,7 @@ const LABELS: Record<string, Record<string, string>> = {
 export function labelsIn(locale: string): (key: string, vars?: Record<string, string>) => string {
   const table = LABELS[locale] ?? LABELS.en!;
   return (key, vars) =>
-    (table[key] ?? LABELS.en![key] ?? key).replace(
+    pseudoText(locale, table[key] ?? LABELS.en![key] ?? key).replace(
       /\{(\w+)\}/g,
       (whole, name: string) => vars?.[name] ?? whole
     );

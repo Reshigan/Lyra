@@ -24,7 +24,7 @@ import {
 import { ApiError, api, fetchMe } from "../api.server";
 import { cloudflare } from "../context";
 import type { Env } from "../env";
-import { translator, type Translate } from "../i18n";
+import { pseudoText, translator, type Translate } from "../i18n";
 import { useShellData } from "./workspace";
 
 // The finance reporting surface: six reports from /v1/ledger/reports, one route.
@@ -355,7 +355,7 @@ type Label = (key: string) => string;
  *  review rather than invisible in production. */
 function labelIn(locale: string): Label {
   const table = LABELS[locale] ?? LABELS.en!;
-  return (key) => table[key] ?? LABELS.en![key] ?? key;
+  return (key) => pseudoText(locale, table[key] ?? LABELS.en![key] ?? key);
 }
 
 /* -------------------------------------------------------------------- loader */

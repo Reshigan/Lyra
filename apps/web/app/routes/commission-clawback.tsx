@@ -23,7 +23,7 @@ import {
 import { ApiError, api, fetchMe, type Problem as ApiProblem } from "../api.server";
 import { toneFor } from "../components/fields";
 import { cloudflare } from "../context";
-import { translator } from "../i18n";
+import { pseudoText, translator } from "../i18n";
 import { optionLabel } from "../modules/spec";
 import { Problem } from "./module";
 import { labelsIn as statementLabels, type CommissionEntry } from "./commission-statement";
@@ -166,7 +166,9 @@ function labelsIn(locale: string): (key: string, vars?: Record<string, string>) 
   const fallback = LABELS.en ?? {};
   const shared = statementLabels(locale);
   return (key, vars) => {
-    const raw = table[key] ?? fallback[key] ?? shared(key);
+    // `shared` is commission-statement's own resolver and pseudoizes itself.
+    const own = table[key] ?? fallback[key];
+    const raw = own === undefined ? shared(key) : pseudoText(locale, own);
     return vars ? raw.replace(/\{(\w+)\}/g, (match, name: string) => vars[name] ?? match) : raw;
   };
 }

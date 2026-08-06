@@ -24,7 +24,7 @@ import {
 import { ApiError, api, fetchMe } from "../api.server";
 import { toneFor } from "../components/fields";
 import { cloudflare } from "../context";
-import { translator } from "../i18n";
+import { pseudoText, translator } from "../i18n";
 import { WORKSPACES } from "../modules";
 import { Problem } from "./module";
 import { useShellData } from "./workspace";
@@ -362,7 +362,7 @@ const LABELS: Record<string, Record<string, string>> = {
 
 function labeller(locale: string): (key: string) => string {
   const table = LABELS[locale] ?? LABELS.en!;
-  return (key) => table[key] ?? LABELS.en![key] ?? key;
+  return (key) => pseudoText(locale, table[key] ?? LABELS.en![key] ?? key);
 }
 
 export default function Approvals() {

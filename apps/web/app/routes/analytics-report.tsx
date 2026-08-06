@@ -10,7 +10,7 @@ import { Badge, Button, DateTime, EmptyState, Field, Select, Table, type Column 
 import { ApiError, api, fetchMe } from "../api.server";
 import { Cell, FieldInput, toneFor } from "../components/fields";
 import { cloudflare } from "../context";
-import { translator } from "../i18n";
+import { pseudoText, translator } from "../i18n";
 import { bodyFrom, type FieldSpec, type Row } from "../modules/spec";
 import { Problem } from "./module";
 import { useShellData } from "./workspace";
@@ -267,7 +267,7 @@ function labelsIn(locale: string): (key: string) => string {
   const t = translator(locale);
   return (key: string): string => {
     const local = table[key] ?? fallback[key];
-    if (local) return local;
+    if (local) return pseudoText(locale, local);
     const shared = t(`common.${key}`);
     return shared === `common.${key}` ? key : shared;
   };

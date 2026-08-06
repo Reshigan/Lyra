@@ -1,4 +1,5 @@
 // What the four bespoke ledger screens agree on: the state machine they may
+import { pseudoText } from "../i18n";
 // offer, the invariant they must show, and the words they say it in.
 //
 // Nothing here computes money. `balanceCheck` sums what the API already posted
@@ -667,7 +668,7 @@ export type Label = (key: string, vars?: Record<string, string | number>) => str
 export function labelIn(locale: string): Label {
   const table = LABELS[locale] ?? LABELS.en!;
   return (key, vars) => {
-    const text = table[key] ?? LABELS.en![key] ?? key;
+    const text = pseudoText(locale, table[key] ?? LABELS.en![key] ?? key);
     return vars
       ? text.replace(/\{(\w+)\}/g, (whole, name: string) => String(vars[name] ?? whole))
       : text;

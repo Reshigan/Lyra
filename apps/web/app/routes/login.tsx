@@ -12,7 +12,7 @@ import {
 import { cloudflare } from "../context";
 import { Button, Card, Field, Input } from "@lyra/ui";
 import { ApiError, api, apiFetch, relayCookies } from "../api.server";
-import { CATALOGUES, DEFAULT_LOCALE, localeFrom, translator } from "../i18n";
+import { CATALOGUES, DEFAULT_LOCALE, localeFrom, pseudoText, translator } from "../i18n";
 
 // Password, then a TOTP step when the account is enrolled. Both hops run
 // server-side and relay the API's Set-Cookie verbatim, so the session cookie
@@ -52,7 +52,7 @@ const LABELS: Record<string, Record<string, string>> = {
 
 function labeller(locale: string): (key: string) => string {
   const table = LABELS[locale] ?? LABELS[DEFAULT_LOCALE];
-  return (key) => table?.[key] ?? LABELS[DEFAULT_LOCALE]?.[key] ?? key;
+  return (key) => pseudoText(locale, table?.[key] ?? LABELS[DEFAULT_LOCALE]?.[key] ?? key);
 }
 
 interface LoginResponse {

@@ -22,7 +22,7 @@ import {
 } from "@lyra/ui";
 import { ApiError, api } from "../api.server";
 import { cloudflare } from "../context";
-import { translator } from "../i18n";
+import { pseudoText, translator } from "../i18n";
 import { useShellData } from "./workspace";
 
 // One agent run, opened. `GET /v1/ai/runs/:id/detail` (apps/api/src/routes/ai.ts)
@@ -192,7 +192,8 @@ const LABELS: Record<string, Record<string, string>> = {
 type Label = (key: string, fallback?: string) => string;
 
 function labeller(locale: string): Label {
-  return (key, fallback) => LABELS[locale]?.[key] ?? LABELS["en"]?.[key] ?? fallback ?? key;
+  return (key, fallback) =>
+    pseudoText(locale, LABELS[locale]?.[key] ?? LABELS["en"]?.[key] ?? fallback ?? key);
 }
 
 /* ------------------------------------------------------------------ shapes */

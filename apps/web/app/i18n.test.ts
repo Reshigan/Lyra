@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { chosenLocale, langFor, localeFrom, translator } from "./i18n";
+import { chosenLocale, langFor, localeFrom, pseudoText, translator } from "./i18n";
+import { labelsIn } from "./routes/search-results";
 
 const request = (headers: Record<string, string>) => new Request("https://lyra.test/", { headers });
 
@@ -37,5 +38,23 @@ describe("pseudo locale", () => {
   it("wraps every string so an untranslated one is visible on sight", () => {
     expect(translator("pseudo")("app.skipToContent")).toMatch(/^⟦.*⟧$/);
     expect(langFor("pseudo")).toBe("en-x-pseudo");
+  });
+
+  it("leaves real locales alone", () => {
+    expect(pseudoText("en", "Search results")).toBe("Search results");
+    expect(pseudoText("ar", "نتائج البحث")).toBe("نتائج البحث");
+  });
+
+  it("wraps route-local copy, which no catalogue and so no translator sees", () => {
+    expect(pseudoText("pseudo", "Search results")).toMatch(/^⟦.*⟧$/);
+  });
+
+  it("reaches a route's own label table, or the detector is blind to it", () => {
+    // A route table that fell through to English would be indistinguishable
+    // from a hardcoded JSX literal — which is the one thing this locale exists
+    // to catch. Placeholders stay intact so the label still interpolates.
+    const l = labelsIn("pseudo");
+    expect(l("title")).toMatch(/^⟦.*⟧$/);
+    expect(l("count", { count: "3", areas: "2" })).toContain("3");
   });
 });

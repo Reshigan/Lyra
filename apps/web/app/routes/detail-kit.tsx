@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { cn, focusRing } from "@lyra/ui";
 import { ApiError } from "../api-error";
+import { pseudoText } from "../i18n";
 import { optionLabel } from "../modules/spec";
 import { vocabulary } from "../modules/vocabulary";
 
@@ -299,7 +300,10 @@ export function labelsFrom(labels: Record<string, Record<string, string>>) {
     const ownEn = labels.en ?? {};
     const shared = SHARED[locale] ?? SHARED.en!;
     return (key, vars) => {
-      const raw = packed(key) ?? own[key] ?? ownEn[key] ?? shared[key] ?? SHARED.en![key] ?? key;
+      const raw = pseudoText(
+        locale,
+        packed(key) ?? own[key] ?? ownEn[key] ?? shared[key] ?? SHARED.en![key] ?? key
+      );
       return vars ? raw.replace(/\{(\w+)\}/g, (match, name: string) => vars[name] ?? match) : raw;
     };
   };

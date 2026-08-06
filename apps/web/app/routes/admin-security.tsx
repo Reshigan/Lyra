@@ -2,7 +2,7 @@ import { Link, useLoaderData, type LoaderFunctionArgs } from "react-router";
 import { Badge, Card, DateTime, EmptyState, Stat, Table, type Column } from "@lyra/ui";
 import { ApiError, api, fetchMe, type Problem } from "../api.server";
 import { cloudflare } from "../context";
-import { translator } from "../i18n";
+import { pseudoText, translator } from "../i18n";
 import { useShellData } from "./workspace";
 
 // docs/25 admin_security — "SSO, sessions, network and rate limits".
@@ -216,7 +216,8 @@ export function labelsIn(locale: string): (key: string, vars?: Record<string, st
   const fallback = LABELS.en!;
   return (key, vars) => {
     const local = table[key] ?? fallback[key];
-    const shared = local ?? t(`common.${key}`);
+    // `t()` pseudoizes on its own; only the route's own table needs the wrap.
+    const shared = local === undefined ? t(`common.${key}`) : pseudoText(locale, local);
     const raw = shared === `common.${key}` ? key : shared;
     return vars ? raw.replace(/\{(\w+)\}/g, (match, name: string) => vars[name] ?? match) : raw;
   };

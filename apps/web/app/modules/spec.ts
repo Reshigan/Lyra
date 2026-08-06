@@ -11,7 +11,7 @@
 // own vocabulary, and the domain pack may rename every noun in it (CLAUDE.md
 // §14), so nothing here is ever an English literal in a component.
 
-import { translator } from "../i18n";
+import { pseudoText, translator } from "../i18n";
 import { vocabulary } from "./vocabulary";
 
 export type Row = Record<string, unknown>;
@@ -174,10 +174,13 @@ export function labelsFor(spec: WorkspaceSpec, locale: string, pack?: string) {
   const own = labeller(spec, locale);
   const t = translator(locale);
   return (key: string): string => {
+    // `t()` pseudoizes on its own; the pack and the workspace's own tables are
+    // catalogues the translator never sees, so they need the wrap here or the
+    // pseudo-locale detector cannot tell them from a hardcoded literal.
     const renamed = packed(key);
-    if (renamed !== undefined) return renamed;
+    if (renamed !== undefined) return pseudoText(locale, renamed);
     const local = own(key);
-    if (local !== key) return local;
+    if (local !== key) return pseudoText(locale, local);
     const shared = t(`common.${key}`);
     return shared === `common.${key}` ? key : shared;
   };

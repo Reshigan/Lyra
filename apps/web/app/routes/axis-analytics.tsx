@@ -22,6 +22,7 @@ import {
 } from "@lyra/ui";
 import { ApiError, api } from "../api.server";
 import { cloudflare } from "../context";
+import { pseudoText } from "../i18n";
 import { Gate } from "./staff";
 import { useShellData } from "./workspace";
 
@@ -179,7 +180,7 @@ export type Label = (key: string, vars?: Record<string, string>) => string;
 
 export function labelsIn(locale: string): Label {
   return (key, vars) => {
-    const raw = LABELS[locale]?.[key] ?? LABELS["en"]?.[key] ?? key;
+    const raw = pseudoText(locale, LABELS[locale]?.[key] ?? LABELS["en"]?.[key] ?? key);
     return vars ? raw.replace(/\{(\w+)\}/g, (whole, name: string) => vars[name] ?? whole) : raw;
   };
 }

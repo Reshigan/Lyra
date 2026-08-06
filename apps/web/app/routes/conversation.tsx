@@ -30,7 +30,7 @@ import {
 } from "@lyra/ui";
 import { ApiError, api, fetchMe, type ApiOptions } from "../api.server";
 import { cloudflare } from "../context";
-import { translator } from "../i18n";
+import { pseudoText, translator } from "../i18n";
 import { Problem } from "./module";
 import { useShellData } from "./workspace";
 
@@ -563,7 +563,8 @@ export default function ConversationThread() {
   const held = new Set(shell?.permissions ?? []);
   const t = translator(locale);
   // Fall back to English for any key this locale has not been given yet.
-  const l = (key: string): string => LABELS[locale]?.[key] ?? LABELS["en"]?.[key] ?? key;
+  const l = (key: string): string =>
+    pseudoText(locale, LABELS[locale]?.[key] ?? LABELS["en"]?.[key] ?? key);
 
   const busy = navigation.state !== "idle";
   const conversation = loaded.conversation;

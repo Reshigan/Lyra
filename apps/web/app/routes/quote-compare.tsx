@@ -28,7 +28,7 @@ import {
 import { ApiError, api, fetchMe, type Problem as ApiProblem } from "../api.server";
 import { toneFor } from "../components/fields";
 import { cloudflare } from "../context";
-import { translator } from "../i18n";
+import { pseudoText, translator } from "../i18n";
 import { Problem } from "./module";
 import { useShellData } from "./workspace";
 
@@ -323,7 +323,7 @@ function labeller(locale: string) {
   const table = LABELS[locale] ?? LABELS.en ?? {};
   const fallback = LABELS.en ?? {};
   return (key: string, vars?: Record<string, string>): string => {
-    const raw = table[key] ?? fallback[key] ?? key;
+    const raw = pseudoText(locale, table[key] ?? fallback[key] ?? key);
     return vars ? raw.replace(/\{(\w+)\}/g, (match, name: string) => vars[name] ?? match) : raw;
   };
 }

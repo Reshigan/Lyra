@@ -26,7 +26,7 @@ import {
 } from "@lyra/ui";
 import { ApiError, api, fetchMe, type Problem } from "../api.server";
 import { cloudflare } from "../context";
-import { DEFAULT_LOCALE, translator } from "../i18n";
+import { DEFAULT_LOCALE, pseudoText, translator } from "../i18n";
 import { humanise } from "../modules/spec";
 import { labelKeyFor, moduleOf } from "../routing";
 import { useShellData } from "./workspace";
@@ -193,7 +193,7 @@ type Label = (key: string, vars?: Record<string, string>) => string;
 function labeller(locale: string): Label {
   const table = LABELS[locale] ?? LABELS[DEFAULT_LOCALE];
   return (key, vars) => {
-    const template = table?.[key] ?? LABELS[DEFAULT_LOCALE]?.[key] ?? key;
+    const template = pseudoText(locale, table?.[key] ?? LABELS[DEFAULT_LOCALE]?.[key] ?? key);
     if (!vars) return template;
     return template.replace(/\{(\w+)\}/g, (whole, name: string) => vars[name] ?? whole);
   };

@@ -21,7 +21,7 @@ import {
 } from "@lyra/ui";
 import { ApiError, api, fetchMe, type Problem } from "../api.server";
 import { cloudflare } from "../context";
-import { translator } from "../i18n";
+import { pseudoText, translator } from "../i18n";
 import {
   Gate,
   PERM,
@@ -219,7 +219,7 @@ function labelsIn(locale: string): (key: string, vars?: Record<string, string>) 
   const table = LABELS[locale] ?? LABELS.en ?? {};
   const fallback = LABELS.en ?? {};
   return (key, vars) => {
-    const raw = table[key] ?? fallback[key] ?? key;
+    const raw = pseudoText(locale, table[key] ?? fallback[key] ?? key);
     return vars ? raw.replace(/\{(\w+)\}/g, (match, name: string) => vars[name] ?? match) : raw;
   };
 }

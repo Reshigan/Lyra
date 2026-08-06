@@ -24,6 +24,7 @@ import { api, asRouteError, fetchMe, type Problem as ProblemShape } from "../api
 import { cloudflare } from "../context";
 import { Gate } from "./staff";
 import { ORBIT, labelsFrom, refusal, safe, type Label, type Labels, type Page } from "./orbit-shared";
+import { pseudoText } from "../i18n";
 
 // Customer analytics for ORBIT. Two different machines feed this screen and it
 // says which is which:
@@ -245,7 +246,7 @@ export function labelsIn(locale: string): Label {
 
 /** Our own name for a report column, falling back to the engine's English one. */
 export function headerFor(key: string, engineLabel: string, locale: string): string {
-  return LABELS[locale]?.[key] ?? LABELS.en?.[key] ?? engineLabel;
+  return pseudoText(locale, LABELS[locale]?.[key] ?? LABELS.en?.[key] ?? engineLabel);
 }
 
 /* ------------------------------------------------------------------ loader */

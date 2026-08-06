@@ -10,7 +10,7 @@ import {
 import { Badge, Button, Card, Checkbox, Field, Input, Textarea } from "@lyra/ui";
 import { cloudflare } from "../context";
 import { ApiError, api, asRouteError, type Brand } from "../api.server";
-import { DEFAULT_LOCALE, localeFrom } from "../i18n";
+import { DEFAULT_LOCALE, localeFrom, pseudoText } from "../i18n";
 import { optionLabel } from "../modules/spec";
 import { brandStyle } from "../components/shell";
 
@@ -76,7 +76,7 @@ const LABELS: Record<string, Record<string, string>> = {
 
 function labeller(locale: string): (key: string) => string {
   const table = LABELS[locale] ?? LABELS[DEFAULT_LOCALE];
-  return (key) => table?.[key] ?? LABELS[DEFAULT_LOCALE]?.[key] ?? key;
+  return (key) => pseudoText(locale, table?.[key] ?? LABELS[DEFAULT_LOCALE]?.[key] ?? key);
 }
 
 interface Product {
