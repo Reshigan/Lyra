@@ -14,6 +14,7 @@ import { ApiError, api, asRouteError } from "../api.server";
 import { Cell, FieldInput } from "../components/fields";
 import { cloudflare } from "../context";
 import { translator } from "../i18n";
+import { ConfirmButton } from "../components/confirm";
 import { workspaceFor } from "../modules";
 import {
   bodyFrom,
@@ -210,18 +211,17 @@ export default function Record() {
       ) : null}
 
       {canDelete ? (
-        <Form
-          className="border-t border-border pt-4"
-          method="post"
-          onSubmit={(event) => {
-            // Soft delete, but it still leaves the actor's view — ask once.
-            if (!confirm(t("common.deleteConfirm"))) event.preventDefault();
-          }}
-        >
+        <Form className="border-t border-border pt-4" method="post">
           <input type="hidden" name="intent" value="delete" />
-          <Button type="submit" variant="danger" size="sm">
+          {/* Soft delete, but it still leaves the actor's view — ask once. */}
+          <ConfirmButton
+            type="submit"
+            variant="danger"
+            size="sm"
+            message={t("common.deleteConfirm")}
+          >
             {t("common.delete")}
-          </Button>
+          </ConfirmButton>
         </Form>
       ) : null}
     </div>
@@ -250,13 +250,6 @@ function ActionForm({
       // An action that collects input takes its own line; a bare button does not
       // need one. `basis-full` rather than a second container to nest it in.
       className={`flex min-w-0 flex-col gap-3${fields.length ? " basis-full" : ""}`}
-      onSubmit={(event) => {
-        if (!spec.confirm) return;
-        // Consequential (CLAUDE.md §4): the same single ask delete uses.
-        if (!confirm(orElse(label, `${spec.labelKey}.confirm`, label(spec.labelKey)))) {
-          event.preventDefault();
-        }
-      }}
     >
       <input type="hidden" name="intent" value={spec.intent} />
       {fields.length ? (
@@ -267,9 +260,21 @@ function ActionForm({
         </div>
       ) : null}
       <div>
-        <Button type="submit" variant="secondary" loading={busy}>
-          {label(spec.labelKey)}
-        </Button>
+        {spec.confirm ? (
+          // Consequential (CLAUDE.md §4): the same single ask delete uses.
+          <ConfirmButton
+            type="submit"
+            variant="secondary"
+            loading={busy}
+            message={orElse(label, `${spec.labelKey}.confirm`, label(spec.labelKey))}
+          >
+            {label(spec.labelKey)}
+          </ConfirmButton>
+        ) : (
+          <Button type="submit" variant="secondary" loading={busy}>
+            {label(spec.labelKey)}
+          </Button>
+        )}
       </div>
     </Form>
   );

@@ -27,6 +27,7 @@ import {
 import { ApiError, api, fetchMe } from "../api.server";
 import { cloudflare } from "../context";
 import { translator } from "../i18n";
+import { ConfirmButton } from "../components/confirm";
 import { Problem } from "./module";
 import { useShellData } from "./workspace";
 import { PERM, labelIn } from "./ledger.shared";
@@ -302,31 +303,27 @@ export default function LedgerRecon() {
             <Field label={l("recon.reasonCode")} labelHidden className="w-48">
               <Input name="reasonCode" maxLength={64} required placeholder={l("recon.reasonCode")} />
             </Field>
-            <Button
+            <ConfirmButton
               type="submit"
               name="decision"
               value="confirmed"
               size="sm"
               loading={busy}
-              onClick={(event) => {
-                if (!confirm(l("recon.confirmConfirm"))) event.preventDefault();
-              }}
+              message={l("recon.confirmConfirm")}
             >
               {l("recon.confirm")}
-            </Button>
-            <Button
+            </ConfirmButton>
+            <ConfirmButton
               type="submit"
               name="decision"
               value="rejected"
               size="sm"
               variant="ghost"
               loading={busy}
-              onClick={(event) => {
-                if (!confirm(l("recon.rejectConfirm"))) event.preventDefault();
-              }}
+              message={l("recon.rejectConfirm")}
             >
               {l("recon.reject")}
-            </Button>
+            </ConfirmButton>
           </Form>
         ) : null
     }
@@ -503,13 +500,7 @@ export default function LedgerRecon() {
 
       {loaded.canRun ? (
         <Card title={l("recon.start")} elevation="flat">
-          <Form
-            method="post"
-            className="flex flex-col gap-4"
-            onSubmit={(event) => {
-              if (!confirm(l("recon.startConfirm"))) event.preventDefault();
-            }}
-          >
+          <Form method="post" className="flex flex-col gap-4">
             <div className="flex flex-wrap items-end gap-3">
               <Field label={l("recon.process")} required className="w-52">
                 <Select
@@ -543,9 +534,9 @@ export default function LedgerRecon() {
             <p className="font-ui text-12 text-subtle">{l("recon.proposeHint")}</p>
 
             <div>
-              <Button type="submit" loading={busy}>
+              <ConfirmButton type="submit" loading={busy} message={l("recon.startConfirm")}>
                 {l("recon.start")}
-              </Button>
+              </ConfirmButton>
             </div>
           </Form>
         </Card>

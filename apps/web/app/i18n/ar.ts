@@ -93,6 +93,8 @@ export const ar: Messages = {
   "common.rows": "{count} معروض",
   "common.of": "{count} إجمالًا",
   "common.deleteConfirm": "هل تريد حذف هذا السجل؟ يُحتفظ به للتدقيق ويمكن للمسؤول استعادته.",
+  "common.confirmTitle": "تأكيد هذا الإجراء",
+  "common.confirmGo": "متابعة",
   // Same wording detail-kit.tsx uses, so a gated refusal reads identically on
   // both the bespoke and the generic screens.
   "common.approvalTitle": "بانتظار موافقة",

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { goto, loginAsAxisAgent, loginAsAxisLead, loginAsFinanceController, loginAsTenantAdmin } from "./fixtures.js";
+import { confirmAction, goto, loginAsAxisAgent, loginAsAxisLead, loginAsFinanceController, loginAsTenantAdmin } from "./fixtures.js";
 
 // packages/ui/src/primitives.tsx's Select has no scroll-button affordance, so
 // any option outside the current viewport (a long catalogue, or one on the
@@ -109,8 +109,8 @@ test("J-O3 finance controller runs a reconciliation and decides an exception wit
   // CM-RECEIPT's own recipe (packages/ledger/src/recipes.ts ClientMoneyArgs)
   // separately requires `amountMinor` inside the free-form Arguments JSON.
   await page.getByLabel("Arguments", { exact: true }).fill(JSON.stringify({ amountMinor: 500000 }));
-  page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Open transaction" }).click();
+  await confirmAction(page);
   await expect(page.getByText(/Opened as/)).toBeVisible();
 
   // Import a statement line that references it, off by an amount the
@@ -121,8 +121,8 @@ test("J-O3 finance controller runs a reconciliation and decides an exception wit
     { ref: statementRef, amountMinor: 500050, currency: "AED", ourRef: naturalKey }
   ]);
   await page.getByLabel("Statement lines*", { exact: true }).fill(lines);
-  page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Start run" }).click();
+  await confirmAction(page);
   await expect(page.getByText(/started/)).toBeVisible();
 
   await page.getByRole("link", { name: "Run", exact: true }).click();
@@ -135,8 +135,8 @@ test("J-O3 finance controller runs a reconciliation and decides an exception wit
   await expect(matchRow.getByText("Proposed")).toBeVisible();
 
   await matchRow.getByLabel("Why", { exact: true }).fill("Matches bank feed for this period");
-  page.once("dialog", (dialog) => dialog.accept());
   await matchRow.getByRole("button", { name: "Confirm", exact: true }).click();
+  await confirmAction(page);
 
   await expect(page.getByText(/Match recorded as Confirmed/)).toBeVisible();
   await expect(matchRow.getByText("Confirmed")).toBeVisible();

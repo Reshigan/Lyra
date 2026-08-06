@@ -22,6 +22,7 @@ import {
 import { ApiError, api, fetchMe } from "../api.server";
 import { cloudflare } from "../context";
 import { translator } from "../i18n";
+import { ConfirmButton } from "../components/confirm";
 import { Problem } from "./module";
 import { useShellData } from "./workspace";
 import { PERM, labelIn, mintKey } from "./ledger.shared";
@@ -242,13 +243,7 @@ export default function LedgerOpenTxn() {
       ) : null}
 
       <Card title={l("open.title")} elevation="flat">
-        <Form
-          method="post"
-          className="flex flex-col gap-4"
-          onSubmit={(event) => {
-            if (!confirm(l("open.confirm"))) event.preventDefault();
-          }}
-        >
+        <Form method="post" className="flex flex-col gap-4">
           <input type="hidden" name="headerKey" value={loaded.headerKey} />
           <div className="flex flex-wrap items-end gap-3">
             <Field label={l("open.type")} required className="w-64">
@@ -280,9 +275,9 @@ export default function LedgerOpenTxn() {
 
           <p className="font-ui text-12 text-subtle">{l("idempotencyNote")}</p>
           <div>
-            <Button type="submit" loading={busy}>
+            <ConfirmButton type="submit" loading={busy} message={l("open.confirm")}>
               {l("open.submit")}
-            </Button>
+            </ConfirmButton>
           </div>
         </Form>
       </Card>

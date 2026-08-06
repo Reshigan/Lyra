@@ -25,6 +25,7 @@ import { ApiError, api, fetchMe } from "../api.server";
 import { toneFor } from "../components/fields";
 import { cloudflare } from "../context";
 import { pseudoText, translator } from "../i18n";
+import { ConfirmButton } from "../components/confirm";
 import { WORKSPACES } from "../modules";
 import { Problem } from "./module";
 import { useShellData } from "./workspace";
@@ -615,21 +616,7 @@ function ApprovalCard({
             {l("selfRaised")}
           </p>
         ) : pending ? (
-          <Form
-            method="post"
-            className="flex flex-col gap-3 border-t border-border pt-4"
-            onSubmit={(event) => {
-              const submitter = (event.nativeEvent as SubmitEvent).submitter as
-                | HTMLButtonElement
-                | null;
-              if (submitter?.value !== "reject") return;
-              // Both rules the API applies to a rejection, asked before the
-              // round trip rather than instead of it: the reason it requires,
-              // and the fact that nothing undoes this afterwards.
-              setNeedsReason(!reason.trim());
-              if (!reason.trim() || !confirm(l("confirmReject"))) event.preventDefault();
-            }}
-          >
+          <Form method="post" className="flex flex-col gap-3 border-t border-border pt-4">
             <input type="hidden" name="id" value={item.id} />
             <Field
               label={l("reason")}
@@ -651,16 +638,24 @@ function ApprovalCard({
               <Button type="submit" name="intent" value="approve" loading={mine} disabled={busy}>
                 {l("approve")}
               </Button>
-              <Button
+              {/* Both rules the API applies to a rejection, asked before the
+                  round trip rather than instead of it: the reason it requires,
+                  and the fact that nothing undoes this afterwards. */}
+              <ConfirmButton
                 type="submit"
                 name="intent"
                 value="reject"
                 variant="danger"
                 loading={mine}
                 disabled={busy}
+                message={l("confirmReject")}
+                guard={() => {
+                  setNeedsReason(!reason.trim());
+                  return reason.trim().length > 0;
+                }}
               >
                 {l("reject")}
-              </Button>
+              </ConfirmButton>
             </div>
           </Form>
         ) : null}

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { API_ORIGIN } from "./env.js";
-import { goto, loginAsTenantAdmin } from "./fixtures.js";
+import { confirmAction, goto, loginAsTenantAdmin } from "./fixtures.js";
 
 // J-D1 "the first API call" (docs/06-roles-and-journeys.md:94-95): "dev portal
 // -> test key -> SDK snippet -> webhook tester green -> promote to live
@@ -90,16 +90,16 @@ test("J-D1 a tenant admin issues a test key from Settings, calls the API with it
   expect(meBody.actor.kind).toBe("partner");
   expect(meBody.roles).toContain("apikey.test");
 
-  // Revoke it — a native confirm() guards the click (settings.tsx
-  // keys.confirm), same idiom as ops.spec.ts's recon/transaction dialogs.
-  // The click only waits for the click event, not the <Form>'s async
-  // action/revalidation — reading the row back immediately races the
-  // in-flight fetch. Wait for the POST response itself (RR7's client
+  // Revoke it — a confirm dialog guards the click (settings.tsx keys.confirm),
+  // same idiom as ops.spec.ts's recon/transaction asks. The submit only
+  // happens on "Continue", and that click only waits for the click event, not
+  // the <Form>'s async action/revalidation — reading the row back immediately
+  // races the in-flight fetch. Wait for the POST response itself (RR7's client
   // fetcher posts to "<path>.data", not the bare path — signal-budget.spec.ts).
-  page.once("dialog", (dialog) => dialog.accept());
+  await row.getByRole("button", { name: "Revoke", exact: true }).click();
   await Promise.all([
     page.waitForResponse((res) => res.url().endsWith("/settings.data") && res.request().method() === "POST"),
-    row.getByRole("button", { name: "Revoke", exact: true }).click()
+    confirmAction(page)
   ]);
   await expect(page.getByRole("status").getByText("That key has been revoked.")).toBeVisible();
 

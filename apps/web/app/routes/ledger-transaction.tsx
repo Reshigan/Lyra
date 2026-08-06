@@ -27,6 +27,7 @@ import {
 import { ApiError, api, fetchMe } from "../api.server";
 import { cloudflare } from "../context";
 import { arrowFor, translator } from "../i18n";
+import { ConfirmButton } from "../components/confirm";
 import { humanise } from "../modules/spec";
 import { Problem } from "./module";
 import { useShellData } from "./workspace";
@@ -519,13 +520,7 @@ export default function LedgerTransaction() {
 
       {actions.canReverse ? (
         <Card title={l("txn.reverse")} elevation="flat">
-          <Form
-            method="post"
-            className="flex flex-col gap-3"
-            onSubmit={(event) => {
-              if (!confirm(l("txn.reverseConfirm"))) event.preventDefault();
-            }}
-          >
+          <Form method="post" className="flex flex-col gap-3">
             <input type="hidden" name="intent" value="reverse" />
             <input type="hidden" name="idempotencyKey" value={loaded.reverseKey} />
             <p className="max-w-prose font-ui text-13 text-muted">{l("txn.reverseBody")}</p>
@@ -534,9 +529,14 @@ export default function LedgerTransaction() {
             </Field>
             <p className="font-ui text-12 text-subtle">{l("idempotencyNote")}</p>
             <div>
-              <Button type="submit" variant="danger" loading={busy}>
+              <ConfirmButton
+                type="submit"
+                variant="danger"
+                loading={busy}
+                message={l("txn.reverseConfirm")}
+              >
                 {l("txn.reverseSubmit")}
-              </Button>
+              </ConfirmButton>
             </div>
           </Form>
         </Card>

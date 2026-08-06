@@ -23,6 +23,7 @@ import {
 import { ApiError, api, fetchMe } from "../api.server";
 import { cloudflare } from "../context";
 import { translator } from "../i18n";
+import { ConfirmButton } from "../components/confirm";
 import { Problem } from "./module";
 import { useShellData } from "./workspace";
 import { PERM, labelIn, periodTone } from "./ledger.shared";
@@ -304,46 +305,40 @@ export default function LedgerPeriods() {
                 {/* Which close is legal is the period's own state machine:
                     a hard close follows a soft one, and neither follows itself. */}
                 {state === "open" ? (
-                  <Button
+                  <ConfirmButton
                     type="submit"
                     name="intent"
                     value="soft_closed"
                     variant="secondary"
                     loading={busy}
-                    onClick={(event) => {
-                      if (!confirm(l("period.closeSoftConfirm"))) event.preventDefault();
-                    }}
+                    message={l("period.closeSoftConfirm")}
                   >
                     {l("period.closeSoft")}
-                  </Button>
+                  </ConfirmButton>
                 ) : null}
                 {state === "soft_closed" ? (
-                  <Button
+                  <ConfirmButton
                     type="submit"
                     name="intent"
                     value="hard_closed"
                     variant="danger"
                     loading={busy}
-                    onClick={(event) => {
-                      if (!confirm(l("period.closeHardConfirm"))) event.preventDefault();
-                    }}
+                    message={l("period.closeHardConfirm")}
                   >
                     {l("period.closeHard")}
-                  </Button>
+                  </ConfirmButton>
                 ) : null}
                 {state !== "open" ? (
-                  <Button
+                  <ConfirmButton
                     type="submit"
                     name="intent"
                     value="reopen"
                     variant="ghost"
                     loading={busy}
-                    onClick={(event) => {
-                      if (!confirm(l("period.reopenConfirm"))) event.preventDefault();
-                    }}
+                    message={l("period.reopenConfirm")}
                   >
                     {l("period.reopen")}
-                  </Button>
+                  </ConfirmButton>
                 ) : null}
               </Form>
             ) : null}
@@ -407,15 +402,17 @@ export default function LedgerPeriods() {
         <Card title={l("period.rebuild")} elevation="flat">
           <div className="flex flex-col gap-3">
             <p className="max-w-prose font-ui text-13 text-muted">{l("period.rebuildBody")}</p>
-            <Form
-              method="post"
-              onSubmit={(event) => {
-                if (!confirm(l("period.rebuildConfirm"))) event.preventDefault();
-              }}
-            >
-              <Button type="submit" name="intent" value="rebuild" variant="secondary" loading={busy}>
+            <Form method="post">
+              <ConfirmButton
+                type="submit"
+                name="intent"
+                value="rebuild"
+                variant="secondary"
+                loading={busy}
+                message={l("period.rebuildConfirm")}
+              >
                 {l("period.rebuildSubmit")}
-              </Button>
+              </ConfirmButton>
             </Form>
 
             {drifted.length > 0 ? (

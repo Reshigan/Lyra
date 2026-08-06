@@ -106,3 +106,12 @@ export async function loginAsOrbitRetention(page: Page): Promise<void> {
   await page.getByRole("button", { name: new RegExp(PERSONAS.orbitRetention.name) }).click();
   await page.waitForURL(/^https?:\/\/[^/]+\/$/);
 }
+
+/**
+ * Say yes to the ask in front of a consequential action
+ * (apps/web/app/components/confirm.tsx). It replaced `window.confirm()`, so
+ * these clicks are ordinary DOM clicks, not `page.on("dialog")` acceptances.
+ */
+export async function confirmAction(page: Page): Promise<void> {
+  await page.getByRole("dialog").getByRole("button", { name: "Continue", exact: true }).click();
+}

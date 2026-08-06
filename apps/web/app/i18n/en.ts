@@ -96,6 +96,9 @@ export const en = {
   "common.rows": "{count} shown",
   "common.of": "{count} in total",
   "common.deleteConfirm": "Delete this record? It is retained for audit and can be restored by an administrator.",
+  // The ask in front of a consequential action (components/confirm.tsx).
+  "common.confirmTitle": "Confirm this action",
+  "common.confirmGo": "Continue",
   // A gated action (CLAUDE.md §4) refused with `approval_required`. The bespoke
   // detail screens say this already (routes/detail-kit.tsx); the generic record
   // screen used to render the bare policy key, which reads like a crash.

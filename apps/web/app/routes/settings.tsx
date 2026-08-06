@@ -14,6 +14,7 @@ import { Badge, Button, Checkbox, DateTime, Field, Input, Select, Table, type Co
 import { ApiError, api, fetchMe, type Problem as ProblemBody } from "../api.server";
 import { cloudflare } from "../context";
 import { CATALOGUES, LOCALES, pseudoText, translator } from "../i18n";
+import { ConfirmButton } from "../components/confirm";
 import { Problem } from "./module";
 import { CALENDARS, calendarFrom, useShellData } from "./workspace";
 import type { CalendarPreference } from "@lyra/ui";
@@ -1841,17 +1842,18 @@ function keyColumns(
       header: label("keys.revoke"),
       render: (row) =>
         row.revokedAt ? null : (
-          <Form
-            method="post"
-            onSubmit={(event) => {
-              if (!confirm(label("keys.confirm"))) event.preventDefault();
-            }}
-          >
+          <Form method="post">
             <input type="hidden" name="intent" value="revoke-key" />
             <input type="hidden" name="id" value={row.id} />
-            <Button type="submit" variant="danger" size="sm" loading={pending === "revoke-key"}>
+            <ConfirmButton
+              type="submit"
+              variant="danger"
+              size="sm"
+              loading={pending === "revoke-key"}
+              message={label("keys.confirm")}
+            >
               {label("keys.revoke")}
-            </Button>
+            </ConfirmButton>
           </Form>
         )
     });
