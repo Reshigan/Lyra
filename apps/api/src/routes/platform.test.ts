@@ -207,6 +207,87 @@ describe("feature flags (ADR-0028)", () => {
   });
 });
 
+// docs/12 §4: "Kill switches: per-agent, per-module, per-tenant, global — all
+// one click, all logged". The global tier is ops-held. It deliberately does NOT
+// take the dual-control route above: an approval in front of a kill switch is
+// an incident that keeps running while someone hunts for a second approver.
+// Releasing it is the direction that needs two people.
+describe("global AI kill switch", () => {
+  it("kills on one click, and reports who threw it", async () => {
+    const killed = await call(
+      "POST",
+      "/v1/platform/ai/kill",
+      { reason: "Provider is returning other tenants' text." },
+      engineerToken
+    );
+    expect(killed.status).toBe(200);
+    expect(killed.body).toMatchObject({ enabled: true });
+
+    const flags = await call("GET", "/v1/platform/flags", undefined, engineerToken);
+    const flag = (flags.body.flags as { key: string; enabled: boolean }[]).find(
+      (f) => f.key === "ai.kill_switch"
+    );
+    expect(flag?.enabled).toBe(true);
+
+    const audits = await database.select().from(schema.auditLog);
+    expect(audits.some((a) => a.action === "platform.ai.killed")).toBe(true);
+  });
+
+  it("can be scoped to named tenants", async () => {
+    const killed = await call(
+      "POST",
+      "/v1/platform/ai/kill",
+      { reason: "One tenant's prompt is leaking.", tenantIds: [tenantId] },
+      engineerToken
+    );
+    expect(killed.status).toBe(200);
+    expect(killed.body.targetTenantIdsJson).toBe(JSON.stringify([tenantId]));
+  });
+
+  it("needs a reason", async () => {
+    expect((await call("POST", "/v1/platform/ai/kill", {}, engineerToken)).status).toBe(400);
+  });
+
+  it("refuses a non-platform actor", async () => {
+    const tenantLogin = await call("POST", "/v1/auth/login", {
+      email: "amina.saleh@gonxt.ae",
+      password: "Gonxt-Demo-2026!",
+      tenantSlug: "gonxt"
+    });
+    const res = await call(
+      "POST",
+      "/v1/platform/ai/kill",
+      { reason: "not mine to throw" },
+      tenantLogin.body.token as string
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("releases only under dual control", async () => {
+    expect(
+      (await call("POST", "/v1/platform/ai/kill", { reason: "Vendor incident." }, engineerToken)).status
+    ).toBe(200);
+
+    const first = await call("POST", "/v1/platform/ai/release", undefined, engineerToken);
+    expect(first.status).toBe(403);
+    expect(first.body.type).toContain("approval_required");
+
+    const approvals = await call("GET", "/v1/core/approvals", undefined, adminToken);
+    const approval = (approvals.body.data as { id: string; subjectRef: string; decision: string }[]).find(
+      (a) => a.subjectRef.includes("ai.kill_switch") && a.decision === "pending"
+    );
+    expect(approval).toBeTruthy();
+    expect(
+      (await call("POST", `/v1/me/approvals/${approval!.id}/decide`, { decision: "approved" }, adminToken))
+        .status
+    ).toBe(200);
+
+    const second = await call("POST", "/v1/platform/ai/release", undefined, engineerToken);
+    expect(second.status).toBe(200);
+    expect(second.body).toMatchObject({ enabled: false });
+  });
+});
+
 describe("ops overview (ADR-0029)", () => {
   it("aggregates per-tenant diagnostics via the cross-tenant loop", async () => {
     const res = await call("GET", "/v1/platform/ops/overview", undefined, adminToken);

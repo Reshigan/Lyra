@@ -1,9 +1,19 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { and, desc, eq, gte } from "drizzle-orm";
 import { z } from "zod";
-import { id as newId, schema } from "@lyra/db";
-import { actorRef, audit, badRequest, gate, notFound, require_, type Ctx } from "@lyra/core";
-import { checkBudget, setLimits, type Message } from "@lyra/model-gateway";
+import { id as newId, parseJson, schema, toJson, PolicyJson } from "@lyra/db";
+import {
+  actorRef,
+  audit,
+  badRequest,
+  flagEnabled,
+  gate,
+  notFound,
+  require_,
+  MODULES,
+  type Ctx
+} from "@lyra/core";
+import { AI_KILL_SWITCH, checkBudget, setLimits, type Message } from "@lyra/model-gateway";
 import { body, intParam } from "../http.js";
 import { executeOrbitToolCalls, orbitToolsFor } from "../engines/orbit-tools.js";
 import { embedQuery } from "../engines/vectorize.js";
@@ -355,6 +365,80 @@ aiRoutes.post("/budget/limits", async (c) => {
   const { module, ...limits } = input;
   return c.json(await setLimits(ctx, limits, module));
 });
+
+/* ------------------------------------------------------------ kill switches */
+
+// docs/12 §4: "Kill switches: per-agent, per-module, per-tenant, global — all
+// one click, all logged, all tested monthly." Per-agent is the agent row below.
+// The tenant and module tiers are set here and enforced in the gateway
+// (packages/model-gateway/src/kill.ts), so a pause covers every caller — runs,
+// rooms, engines, schedulers — not only the routes in this file. The global
+// tier is ops-held in core_feature_flags and is read here so a tenant admin
+// staring at a dead assistant can see it is not theirs to release.
+
+async function globalKill(ctx: Ctx): Promise<boolean> {
+  const [row] = await ctx.db
+    .select()
+    .from(schema.featureFlags)
+    .where(eq(schema.featureFlags.key, AI_KILL_SWITCH))
+    .limit(1);
+  return row ? flagEnabled(row, ctx.tenantId) : false;
+}
+
+aiRoutes.get("/kill-switches", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "ai:agents:read", { tenantId: ctx.tenantId, module: "ai" });
+  return c.json({
+    global: await globalKill(ctx),
+    tenant: ctx.policy.aiPaused,
+    modules: ctx.policy.aiPausedModules
+  });
+});
+
+async function setAiPaused(c: Context<App>, paused: boolean) {
+  const ctx = ctxOf(c);
+  // Same split as the per-agent switch: `ai:killswitch:use` is what compliance
+  // holds so it can stop AI mid-incident, `ai:agents:write` is what it takes to
+  // turn it back on — the party that pauses is not automatically the party that
+  // decides the incident is over.
+  require_(ctx.actor, paused ? "ai:killswitch:use" : "ai:agents:write", {
+    tenantId: ctx.tenantId,
+    module: "ai"
+  });
+  const input = await body(
+    c,
+    z.object({
+      module: z.enum(MODULES).optional(),
+      // A pause with no reason is an outage nobody can explain a week later.
+      reason: paused ? z.string().min(3).max(500) : z.string().max(500).optional()
+    })
+  );
+
+  const [row] = await ctx.db.select().from(schema.tenants).where(eq(schema.tenants.id, ctx.tenantId)).limit(1);
+  if (!row) throw notFound("tenant");
+  const before = parseJson(PolicyJson, row.policyJson);
+  const modules = new Set(before.aiPausedModules);
+  if (input.module) modules[paused ? "add" : "delete"](input.module);
+  const after = input.module
+    ? { ...before, aiPausedModules: [...modules] }
+    : { ...before, aiPaused: paused };
+
+  await ctx.db
+    .update(schema.tenants)
+    .set({ policyJson: toJson(PolicyJson, after), updatedAt: ctx.now })
+    .where(eq(schema.tenants.id, ctx.tenantId));
+
+  await audit(ctx, {
+    action: `ai.${input.module ? "module" : "tenant"}.${paused ? "paused" : "resumed"}`,
+    subjectRef: input.module ?? `tenants:${ctx.tenantId}`,
+    before: { aiPaused: before.aiPaused, aiPausedModules: before.aiPausedModules },
+    after: { aiPaused: after.aiPaused, aiPausedModules: after.aiPausedModules, reason: input.reason }
+  });
+  return c.body(null, 204);
+}
+
+aiRoutes.post("/pause", (c) => setAiPaused(c, true));
+aiRoutes.post("/resume", (c) => setAiPaused(c, false));
 
 /* ------------------------------------------------------------------- agents */
 

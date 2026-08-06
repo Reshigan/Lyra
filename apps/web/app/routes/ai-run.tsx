@@ -112,6 +112,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "outcome.refused": "Refused",
     "outcome.awaiting_approval": "Awaiting approval",
     "outcome.budget_exceeded": "Over budget",
+    "outcome.killed": "AI paused",
     "autonomy.suggest": "Suggest only",
     "autonomy.act_with_approval": "Act with approval",
     "autonomy.act_within_limits": "Act within limits",
@@ -182,6 +183,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "outcome.refused": "رُفض",
     "outcome.awaiting_approval": "بانتظار الموافقة",
     "outcome.budget_exceeded": "تجاوز الميزانية",
+    "outcome.killed": "الذكاء الاصطناعي موقوف",
     "autonomy.suggest": "اقتراح فقط",
     "autonomy.act_with_approval": "التنفيذ بموافقة",
     "autonomy.act_within_limits": "التنفيذ ضمن حدود",
@@ -304,7 +306,8 @@ const STATE_TONES: Record<string, BadgeTone> = {
   ok: "success",
   error: "danger",
   blocked: "danger",
-  budget_exceeded: "danger"
+  budget_exceeded: "danger",
+  killed: "danger"
 };
 
 const toneOf = (value: string): BadgeTone => STATE_TONES[value] ?? "neutral";

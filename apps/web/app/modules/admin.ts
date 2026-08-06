@@ -272,6 +272,7 @@ export const admin: WorkspaceSpec = {
       warn: "Warning",
       block: "Block",
       budget_exceeded: "Budget exceeded",
+      killed: "AI paused",
       suggest: "Suggest",
       act: "Act",
       act_with_approval: "Act with approval",
@@ -580,6 +581,7 @@ export const admin: WorkspaceSpec = {
       warn: "تحذير",
       block: "حظر",
       budget_exceeded: "تجاوز الميزانية",
+      killed: "الذكاء الاصطناعي موقوف",
       suggest: "اقتراح",
       act: "تنفيذ",
       act_with_approval: "تنفيذ بموافقة",
@@ -1609,7 +1611,7 @@ export const admin: WorkspaceSpec = {
       sort: "ts",
       filters: [
         { name: "tier", options: ["fast", "standard", "reasoning"] },
-        { name: "outcome", options: ["ok", "refused", "error", "budget_exceeded"] }
+        { name: "outcome", options: ["ok", "refused", "error", "budget_exceeded", "killed"] }
       ],
       // Every model call the gateway made, hashes only — which is what makes it
       // safe to hand an auditor whole (CLAUDE.md rule 3).

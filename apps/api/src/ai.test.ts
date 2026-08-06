@@ -201,3 +201,61 @@ describe("numeric query params survive garbage input", () => {
     expect(res.status).toBe(200);
   });
 });
+
+/* ------------------------------------------------------------ kill switches */
+
+// docs/12 §4: "Kill switches: per-agent, per-module, per-tenant, global — all
+// one click, all logged". Per-agent is covered by J-A3 in journeys.test.ts;
+// these are the three wider tiers and the read that shows them.
+
+describe("tenant and module kill switches", () => {
+  async function state(who = "tenant.admin") {
+    return (await call(who, "GET", "/v1/ai/kill-switches")).body;
+  }
+
+  it("starts with every tier clear", async () => {
+    expect(await state()).toMatchObject({ global: false, tenant: false, modules: [] });
+  });
+
+  it("pauses one module without touching the rest", async () => {
+    const paused = await call("tenant.admin", "POST", "/v1/ai/pause", {
+      module: "scout",
+      reason: "Scout is citing a retired price list."
+    });
+    expect(paused.status).toBe(204);
+    expect(await state()).toMatchObject({ tenant: false, modules: ["scout"] });
+
+    const audits = await database.select().from(schema.auditLog);
+    expect(audits.some((a) => a.action === "ai.module.paused" && a.subjectRef === "scout")).toBe(true);
+
+    expect((await call("tenant.admin", "POST", "/v1/ai/resume", { module: "scout" })).status).toBe(204);
+    expect(await state()).toMatchObject({ modules: [] });
+  });
+
+  it("pauses the whole tenant, and stops a model call with 503", async () => {
+    expect(
+      (await call("tenant.admin", "POST", "/v1/ai/pause", { reason: "Vendor incident, stop everything." }))
+        .status
+    ).toBe(204);
+    expect(await state()).toMatchObject({ tenant: true });
+
+    const run = await call("axis.agent", "POST", "/v1/ai/runs", {
+      agentKey: "quoting",
+      purpose: "quote.explain",
+      input: "Why is Cedar cheaper?"
+    });
+    expect(run.status).toBe(503);
+
+    expect((await call("tenant.admin", "POST", "/v1/ai/resume", {})).status).toBe(204);
+    expect(await state()).toMatchObject({ tenant: false });
+  });
+
+  it("refuses a pause from an actor without ai:killswitch:use", async () => {
+    const res = await call("axis.agent", "POST", "/v1/ai/pause", { reason: "not mine to throw" });
+    expect(res.status).toBe(403);
+  });
+
+  it("needs a reason, so the audit row says why", async () => {
+    expect((await call("tenant.admin", "POST", "/v1/ai/pause", {})).status).toBe(400);
+  });
+});

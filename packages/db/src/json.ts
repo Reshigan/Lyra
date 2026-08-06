@@ -52,7 +52,12 @@ export const PolicyJson = z.object({
   // docs/modules/signal.md §8: "one-click global pause" for budget autopilot —
   // a tenant-wide kill switch, distinct from a single campaign's own
   // state=paused (packages/db/schema/signal.ts).
-  signalAutopilotPaused: z.boolean().default(false)
+  signalAutopilotPaused: z.boolean().default(false),
+  // docs/12 §4 kill switches. Per-agent is the agent row's status; these two
+  // are the tenant-wide and per-module tiers, read straight off the Ctx so the
+  // check in front of every model call costs no query.
+  aiPaused: z.boolean().default(false),
+  aiPausedModules: z.array(z.string()).default([])
 });
 export type PolicyJson = z.infer<typeof PolicyJson>;
 

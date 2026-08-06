@@ -101,6 +101,24 @@ const LABELS: Record<string, Record<string, string>> = {
     "spend.cost": "Cost",
     "spend.errors": "Errors",
     "spend.total": "Total",
+    "kill.title": "Kill switches",
+    "kill.intro": "Stop model calls for this tenant or for one module. Every switch is recorded against your name.",
+    "kill.global": "Platform-wide",
+    "kill.globalOn": "Platform operations has paused AI. Nothing here will release it.",
+    "kill.globalOff": "No platform-wide pause.",
+    "kill.tenant": "This tenant",
+    "kill.tenantOn": "AI is paused for the whole tenant. Every model call is refused.",
+    "kill.tenantOff": "Running.",
+    "kill.modules": "Paused modules",
+    "kill.none": "None",
+    "kill.pauseTenant": "Pause all AI",
+    "kill.resumeTenant": "Resume AI",
+    "kill.pauseModule": "Pause module",
+    "kill.resumeModule": "Resume",
+    "kill.module": "Module",
+    "kill.reason": "Reason",
+    "kill.noControls": "Your roles do not include the AI kill switch.",
+    "kill.unavailable": "You do not have access to the AI kill switches.",
     "agents.title": "Agents",
     "agents.module": "Module",
     "agents.tier": "Tier",
@@ -185,6 +203,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "outcome.refused": "Refused",
     "outcome.error": "Error",
     "outcome.budget_exceeded": "Budget exceeded",
+    "outcome.killed": "AI paused",
     "unit.ms": "ms"
   },
   ar: {
@@ -212,6 +231,24 @@ const LABELS: Record<string, Record<string, string>> = {
     "spend.cost": "التكلفة",
     "spend.errors": "الأخطاء",
     "spend.total": "الإجمالي",
+    "kill.title": "مفاتيح الإيقاف",
+    "kill.intro": "أوقف استدعاءات النماذج لهذا المستأجر أو لوحدة واحدة. كل إيقاف يُسجَّل باسمك.",
+    "kill.global": "على مستوى المنصة",
+    "kill.globalOn": "أوقفت عمليات المنصة الذكاء الاصطناعي. لا شيء هنا يرفع هذا الإيقاف.",
+    "kill.globalOff": "لا يوجد إيقاف على مستوى المنصة.",
+    "kill.tenant": "هذا المستأجر",
+    "kill.tenantOn": "الذكاء الاصطناعي موقوف للمستأجر بأكمله. تُرفض كل استدعاءات النماذج.",
+    "kill.tenantOff": "يعمل.",
+    "kill.modules": "الوحدات الموقوفة",
+    "kill.none": "لا شيء",
+    "kill.pauseTenant": "إيقاف الذكاء الاصطناعي بالكامل",
+    "kill.resumeTenant": "استئناف الذكاء الاصطناعي",
+    "kill.pauseModule": "إيقاف الوحدة",
+    "kill.resumeModule": "استئناف",
+    "kill.module": "الوحدة",
+    "kill.reason": "السبب",
+    "kill.noControls": "أدوارك لا تشمل مفتاح إيقاف الذكاء الاصطناعي.",
+    "kill.unavailable": "لا تملك صلاحية الاطلاع على مفاتيح الإيقاف.",
     "agents.title": "الوكلاء",
     "agents.module": "الوحدة",
     "agents.tier": "الفئة",
@@ -296,6 +333,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "outcome.refused": "رُفض",
     "outcome.error": "خطأ",
     "outcome.budget_exceeded": "تجاوز الميزانية",
+    "outcome.killed": "الذكاء الاصطناعي موقوف",
     "unit.ms": "مللي ثانية"
   }
 };
@@ -329,6 +367,14 @@ interface Agent {
   pausedBy: string | null;
   pausedReason: string | null;
   updatedAt: number;
+}
+
+/** The three wider kill-switch tiers as `GET /v1/ai/kill-switches` reports them. */
+interface KillState {
+  /** Held by platform operations, not by this tenant — read-only here. */
+  global: boolean;
+  tenant: boolean;
+  modules: string[];
 }
 
 interface BudgetCheck {
@@ -428,13 +474,14 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = context.get(cloudflare).env;
   const opts = { env, request };
 
-  const [budget, spend, agents, runs, guardrails, audit] = await Promise.all([
+  const [budget, spend, agents, runs, guardrails, audit, kill] = await Promise.all([
     readable(api<BudgetCheck>("/v1/ai/budget", opts)),
     readable(api<Spend>(`/v1/ai/audit/spend?days=${SPEND_DAYS}`, opts)),
     readable(api<Page<Agent>>("/v1/ai/agents?sort=key&order=asc&limit=100", opts)),
     readable(api<Page<Run>>(`/v1/ai/runs?sort=startedAt&order=desc&limit=${RUN_LIMIT}`, opts)),
     readable(api<Page<GuardrailEvent>>(`/v1/ai/guardrail-events?sort=ts&order=desc&limit=${EVENT_LIMIT}`, opts)),
-    readable(api<{ data: AuditRow[] }>(`/v1/ai/audit?limit=${AUDIT_LIMIT}`, opts))
+    readable(api<{ data: AuditRow[] }>(`/v1/ai/audit?limit=${AUDIT_LIMIT}`, opts)),
+    readable(api<KillState>("/v1/ai/kill-switches", opts))
   ]);
 
   return {
@@ -443,7 +490,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     agents: agents?.data ?? null,
     runs: runs?.data ?? null,
     guardrails: guardrails?.data ?? [],
-    audit: audit?.data ?? null
+    audit: audit?.data ?? null,
+    kill
   };
 }
 
@@ -459,11 +507,31 @@ export async function action({ request, context }: ActionFunctionArgs): Promise<
   const env = context.get(cloudflare).env;
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
-  const key = String(form.get("agentKey") ?? "");
-  if (!key) return { problem: { title: "agent key missing", status: 400 }, pending: null };
-  const agent = `/v1/ai/agents/${encodeURIComponent(key)}`;
 
   try {
+    // The tenant and module tiers of the kill switch (docs/12 §4) are not
+    // scoped to an agent, so they are handled before an agent key is demanded.
+    // A missing `module` is the tenant-wide switch, which is why it is omitted
+    // rather than sent empty — the API reads absence as "everything".
+    if (intent === "ai-pause" || intent === "ai-resume") {
+      const pausing = intent === "ai-pause";
+      const module = String(form.get("module") ?? "");
+      await api(pausing ? "/v1/ai/pause" : "/v1/ai/resume", {
+        env,
+        request,
+        method: "POST",
+        body: {
+          ...(module ? { module } : {}),
+          ...(pausing ? { reason: String(form.get("reason") ?? "") } : {})
+        }
+      });
+      return { problem: null, pending: null };
+    }
+
+    const key = String(form.get("agentKey") ?? "");
+    if (!key) return { problem: { title: "agent key missing", status: 400 }, pending: null };
+    const agent = `/v1/ai/agents/${encodeURIComponent(key)}`;
+
     if (intent === "pause") {
       await api(`${agent}/pause`, {
         env,
@@ -560,6 +628,7 @@ const STATE_TONES: Record<string, BadgeTone> = {
   ok: "success",
   error: "danger",
   budget_exceeded: "danger",
+  killed: "danger",
   active: "success",
   paused: "warning",
   retired: "neutral",
@@ -585,6 +654,13 @@ export default function AiConsole() {
   const nf = new Intl.NumberFormat(locale);
   const busy = navigation.state !== "idle";
   const budget = loaded.budget;
+
+  // Which modules the module-level kill switch can name: the ones this tenant
+  // actually runs agents in, plus anything already paused (an agent can be
+  // retired while its module pause stands, and that pause must stay releasable).
+  const moduleChoices = [
+    ...new Set([...(loaded.agents ?? []).map((agent) => agent.module), ...(loaded.kill?.modules ?? [])])
+  ].sort();
 
   const runColumns: Array<Column<Run>> = [
     {
@@ -868,6 +944,16 @@ export default function AiConsole() {
         </Card>
       ) : null}
 
+      {/* ------------------------------------------------------ kill switches */}
+      <KillSwitches
+        kill={loaded.kill}
+        L={L}
+        busy={busy}
+        canPause={held.has("ai:killswitch:use")}
+        canResume={held.has("ai:agents:write")}
+        modules={moduleChoices}
+      />
+
       {/* ------------------------------------------------------------ agents */}
       <section className="flex flex-col gap-4">
         <h2 className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">{L("agents.title")}</h2>
@@ -995,6 +1081,146 @@ function RunWhy({ run, L, locale }: { run: Run; L: Label; locale: string }) {
         <ConfidenceMeter value={run.confidence / 100} label={L("runs.confidence")} />
       )}
     </div>
+  );
+}
+
+interface KillSwitchesProps {
+  kill: KillState | null;
+  L: Label;
+  busy: boolean;
+  canPause: boolean;
+  canResume: boolean;
+  modules: string[];
+}
+
+/**
+ * docs/12 §4: the tenant and module tiers, one submit each. The global tier is
+ * shown but never operable here — it belongs to platform operations, and an
+ * operator staring at a dead assistant needs to know the release is not theirs
+ * to make rather than hunting for a control that would 403.
+ *
+ * Pausing takes `ai:killswitch:use` and resuming takes `ai:agents:write`, the
+ * same split the API enforces: the party that stops AI mid-incident is not
+ * automatically the party that decides the incident is over.
+ */
+function KillSwitches({ kill, L, busy, canPause, canResume, modules }: KillSwitchesProps) {
+  if (!kill) {
+    return (
+      <Card title={L("kill.title")}>
+        <p className="font-ui text-13 text-subtle">{L("kill.unavailable")}</p>
+      </Card>
+    );
+  }
+
+  const paused = new Set(kill.modules);
+  const pausable = modules.filter((module) => !paused.has(module));
+
+  return (
+    <Card title={L("kill.title")} description={L("kill.intro")}>
+      <div className="flex flex-col gap-4">
+        {kill.global ? <GuardrailNotice tone="danger" title={L("kill.global")} reason={L("kill.globalOn")} /> : null}
+        {kill.tenant ? <GuardrailNotice tone="danger" title={L("kill.tenant")} reason={L("kill.tenantOn")} /> : null}
+
+        <dl className="grid gap-x-8 gap-y-2 font-ui text-13 sm:grid-cols-2">
+          <Pair
+            term={L("kill.global")}
+            detail={
+              <Badge tone={kill.global ? "danger" : "success"} size="sm">
+                {kill.global ? L("kill.globalOn") : L("kill.globalOff")}
+              </Badge>
+            }
+          />
+          <Pair
+            term={L("kill.tenant")}
+            detail={
+              <Badge tone={kill.tenant ? "danger" : "success"} size="sm">
+                {kill.tenant ? L("kill.tenantOn") : L("kill.tenantOff")}
+              </Badge>
+            }
+          />
+          <Pair
+            term={L("kill.modules")}
+            detail={
+              kill.modules.length ? (
+                <span className="flex flex-wrap gap-1">
+                  {kill.modules.map((module) => (
+                    <Badge key={module} tone="warning" size="sm">
+                      {module}
+                    </Badge>
+                  ))}
+                </span>
+              ) : (
+                L("kill.none")
+              )
+            }
+          />
+        </dl>
+
+        {canPause || canResume ? (
+          <div className="flex flex-col gap-4 border-t border-border pt-4">
+            {kill.tenant
+              ? canResume && (
+                  <Form method="post">
+                    <input type="hidden" name="intent" value="ai-resume" />
+                    <Button type="submit" variant="secondary" loading={busy}>
+                      {L("kill.resumeTenant")}
+                    </Button>
+                  </Form>
+                )
+              : canPause && (
+                  <Form method="post" className="flex flex-col gap-2">
+                    <input type="hidden" name="intent" value="ai-pause" />
+                    <label className="flex flex-col gap-1 font-ui text-12 text-subtle">
+                      <span>{L("kill.reason")}</span>
+                      <Textarea name="reason" required minLength={3} maxLength={500} rows={2} />
+                    </label>
+                    <div>
+                      <Button type="submit" variant="danger" loading={busy}>
+                        {L("kill.pauseTenant")}
+                      </Button>
+                    </div>
+                  </Form>
+                )}
+
+            {canResume && kill.modules.length ? (
+              <div className="flex flex-wrap items-center gap-2">
+                {kill.modules.map((module) => (
+                  <Form key={module} method="post">
+                    <input type="hidden" name="intent" value="ai-resume" />
+                    <input type="hidden" name="module" value={module} />
+                    <Button type="submit" variant="secondary" loading={busy}>
+                      {L("kill.resumeModule")} · {module}
+                    </Button>
+                  </Form>
+                ))}
+              </div>
+            ) : null}
+
+            {canPause && pausable.length ? (
+              <Form method="post" className="flex flex-col gap-2">
+                <input type="hidden" name="intent" value="ai-pause" />
+                <div className="flex flex-wrap items-end gap-3">
+                  <Select
+                    name="module"
+                    aria-label={L("kill.module")}
+                    options={pausable.map((module) => ({ value: module, label: module }))}
+                  />
+                  <Button type="submit" variant="danger" loading={busy}>
+                    {L("kill.pauseModule")}
+                  </Button>
+                </div>
+                <label className="flex flex-col gap-1 font-ui text-12 text-subtle">
+                  <span>{L("kill.reason")}</span>
+                  <Textarea name="reason" required minLength={3} maxLength={500} rows={2} />
+                </label>
+              </Form>
+            ) : null}
+          </div>
+        ) : (
+          <p className="font-ui text-12 text-subtle">{L("kill.noControls")}</p>
+        )}
+      </div>
+    </Card>
   );
 }
 

@@ -3,6 +3,7 @@ import { and, desc, eq, gte, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { id, schema } from "@lyra/db";
 import { actorRef, audit, can, conflict, forbidden, gate, notFound, require_, type Ctx } from "@lyra/core";
+import { AI_KILL_SWITCH } from "@lyra/model-gateway";
 import { body, created } from "../http.js";
 import { allTenants } from "../auth.js";
 import type { App } from "../env.js";
@@ -84,6 +85,87 @@ platformRoutes.patch("/flags/:id", async (c) => {
   const updated = { ...row, ...patch };
   await audit(ctx, { action: "platform.flag.updated", subjectRef: flagId, before: row, after: updated });
   return c.json(updated);
+});
+
+/* ------------------------------------------------- global AI kill switch */
+
+// docs/12 §4: "Kill switches: per-agent, per-module, per-tenant, global — all
+// one click, all logged". This is the widest tier: one row in the flags table
+// (AI_KILL_SWITCH), read by the gateway in front of every model call. It gets
+// its own pair of routes rather than the PATCH above because the toggle there
+// is dual-controlled, and an approval queue in front of a kill switch means the
+// incident keeps running while someone hunts for a second approver. Killing is
+// one click; releasing keeps the dual control.
+
+const KillBody = z
+  .object({
+    reason: z.string().min(3).max(500),
+    /** Empty means every tenant; a list narrows the kill to those tenants. */
+    tenantIds: z.array(z.string().min(1)).max(500).optional()
+  })
+  .strict();
+
+async function killSwitchRow(ctx: Ctx) {
+  const rows = await ctx.db
+    .select()
+    .from(schema.featureFlags)
+    .where(eq(schema.featureFlags.key, AI_KILL_SWITCH))
+    .limit(1);
+  return rows[0];
+}
+
+platformRoutes.post("/ai/kill", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "admin:flags:write");
+  const input = await body(c, KillBody);
+  const patch = {
+    enabled: true,
+    rolloutPercent: 100,
+    targetTenantIdsJson: input.tenantIds?.length ? JSON.stringify(input.tenantIds) : null,
+    updatedBy: actorRef(ctx),
+    updatedAt: ctx.now
+  };
+
+  // The row is created on first use, so ops never has to remember to seed it
+  // before the day it is needed.
+  const before = await killSwitchRow(ctx);
+  const row = before
+    ? { ...before, ...patch }
+    : {
+        ...patch,
+        id: id("flg", ctx.now),
+        key: AI_KILL_SWITCH,
+        description: "Global AI kill switch (docs/12 §4). Enabled = all model calls refused."
+      };
+  if (before) {
+    await ctx.db.update(schema.featureFlags).set(patch).where(eq(schema.featureFlags.id, before.id));
+  } else {
+    await ctx.db.insert(schema.featureFlags).values(row);
+  }
+
+  await audit(ctx, {
+    action: "platform.ai.killed",
+    subjectRef: AI_KILL_SWITCH,
+    ...(before ? { before } : {}),
+    after: { ...row, reason: input.reason }
+  });
+  return c.json(row);
+});
+
+platformRoutes.post("/ai/release", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "admin:flags:write");
+  const before = await killSwitchRow(ctx);
+  if (!before) throw notFound("flag");
+  // Turning AI back on for everyone is the consequential direction, and it is
+  // the same decision `core.flag_toggle` already governs.
+  await gate(ctx, { policyKey: "core.flag_toggle", subjectRef: AI_KILL_SWITCH });
+
+  const patch = { enabled: false, updatedBy: actorRef(ctx), updatedAt: ctx.now };
+  await ctx.db.update(schema.featureFlags).set(patch).where(eq(schema.featureFlags.id, before.id));
+  const row = { ...before, ...patch };
+  await audit(ctx, { action: "platform.ai.released", subjectRef: AI_KILL_SWITCH, before, after: row });
+  return c.json(row);
 });
 
 /**

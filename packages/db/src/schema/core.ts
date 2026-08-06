@@ -267,7 +267,7 @@ export const aiAuditLog = sqliteTable(
     guardrailFlagsJson: text("guardrail_flags_json"),
     actorRef: text("actor_ref").notNull(),
     subjectRef: text("subject_ref"),
-    outcome: text("outcome").notNull().default("ok"), // ok|refused|error|budget_exceeded
+    outcome: text("outcome").notNull().default("ok"), // ok|refused|error|budget_exceeded|killed
     ts: integer("ts").notNull()
   },
   (t) => [

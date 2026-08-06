@@ -1,6 +1,7 @@
 import { id, schema } from "@lyra/db";
 import { actorRef, hashObject, sha256Hex, type Ctx } from "@lyra/core";
 import { assertBudget, charge } from "./budget.js";
+import { assertNotKilled } from "./kill.js";
 import { blocked, checkInput, checkOutput, recordGuardrails, type GuardrailHit } from "./guardrails.js";
 import { CATALOGUE, EMBED_MODEL, costMicro, resolveModel } from "./models.js";
 import { rehydrate, scrubMessages } from "./scrub.js";
@@ -73,27 +74,33 @@ export class Gateway {
     const inputHash = await hashObject({ model: def.model, messages: scrubbed.messages, tools: req.tools ?? [] });
     const auditId = id("aia", ctx.now);
 
-    // Budget is checked after the hash/audit id exist so a blocked call still
-    // lands in ai_audit_log (CLAUDE.md §3: every call is audited, not just the
-    // ones that reach a provider).
-    try {
-      await assertBudget(ctx, req.module);
-    } catch (err) {
-      await this.writeAudit(ctx, {
-        auditId,
-        req,
-        def,
-        inputHash,
-        outputHash: null,
-        tokensIn: 0,
-        tokensOut: 0,
-        cost: 0,
-        latencyMs: Date.now() - started,
-        toolCalls: [],
-        flags: [...flags, "budget_exceeded"],
-        outcome: "budget_exceeded"
-      });
-      throw err;
+    // Kill switch and budget are checked after the hash/audit id exist so a
+    // blocked call still lands in ai_audit_log (CLAUDE.md §3: every call is
+    // audited, not just the ones that reach a provider). The switch goes first:
+    // a paused tenant should not burn budget rows to be told AI is off.
+    for (const [outcome, check] of [
+      ["killed", () => assertNotKilled(ctx, req.module)],
+      ["budget_exceeded", () => assertBudget(ctx, req.module)]
+    ] as const) {
+      try {
+        await check();
+      } catch (err) {
+        await this.writeAudit(ctx, {
+          auditId,
+          req,
+          def,
+          inputHash,
+          outputHash: null,
+          tokensIn: 0,
+          tokensOut: 0,
+          cost: 0,
+          latencyMs: Date.now() - started,
+          toolCalls: [],
+          flags: [...flags, outcome],
+          outcome
+        });
+        throw err;
+      }
     }
 
     const outbound = { ...req, messages: scrubbed.messages };
@@ -177,6 +184,9 @@ export class Gateway {
 
   /** bge-m3 covers ar+en in one space (docs/02 §5), so no per-locale index. */
   async embed(ctx: Ctx, req: EmbedRequest): Promise<EmbedResponse> {
+    // A paused tenant is paused for indexing too, or a kill switch quietly
+    // leaves half the AI running.
+    await assertNotKilled(ctx, req.module);
     await assertBudget(ctx, req.module);
     const onPrem = ctx.policy.dataResidency === "on-prem";
     const key = onPrem ? EMBED_MODEL.onprem : EMBED_MODEL.cloud;
@@ -218,7 +228,7 @@ export class Gateway {
       latencyMs: number;
       toolCalls: unknown[];
       flags: string[];
-      outcome: "ok" | "refused" | "error" | "budget_exceeded";
+      outcome: "ok" | "refused" | "error" | "budget_exceeded" | "killed";
     }
   ): Promise<void> {
     // Hashes, never content: ai_audit_log is queried by Compliance and must not

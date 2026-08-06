@@ -1,6 +1,7 @@
 export * from "./types.js";
 export * from "./models.js";
 export * from "./budget.js";
+export * from "./kill.js";
 export * from "./guardrails.js";
 export * from "./gateway.js";
 export * from "./extract.js";

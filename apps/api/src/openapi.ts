@@ -148,6 +148,9 @@ const HAND_WRITTEN: Op[] = [
   { method: "post", path: "/v1/ai/agents/{key}/pause", summary: "Pause an agent", permission: "ai:agents:pause", tag: "ai", requestBody: true },
   { method: "post", path: "/v1/ai/agents/{key}/resume", summary: "Resume a paused agent", permission: "ai:agents:write", tag: "ai" },
   { method: "post", path: "/v1/ai/agents/{key}/autonomy", summary: "Change an agent's autonomy level", permission: "ai:agents:write", tag: "ai", requestBody: true },
+  { method: "get", path: "/v1/ai/kill-switches", summary: "Which AI kill switches are engaged: global, tenant, per module", permission: "ai:agents:read", tag: "ai" },
+  { method: "post", path: "/v1/ai/pause", summary: "Pause AI for the tenant, or for one module (docs/12 §4)", permission: "ai:killswitch:use", tag: "ai", requestBody: true },
+  { method: "post", path: "/v1/ai/resume", summary: "Release the tenant or module AI pause", permission: "ai:agents:write", tag: "ai", requestBody: true },
   { method: "get", path: "/v1/ai/audit", summary: "Every model call, prompt hash and cost", permission: "ai:audit:read", tag: "ai" },
   { method: "get", path: "/v1/ai/audit/spend", summary: "Spend rolled up by module and purpose", permission: "ai:budgets:read", tag: "ai" },
 
@@ -295,6 +298,9 @@ const HAND_WRITTEN: Op[] = [
   // Flipping `enabled` is dual-control (core.flag_toggle); a rollout-percent
   // nudge on its own is not.
   { method: "patch", path: "/v1/platform/flags/{id}", summary: "Update a flag's rollout or enable it (enabling gates on the core.flag_toggle approval)", permission: "admin:flags:write", tag: "platform", requestBody: true },
+  { method: "post", path: "/v1/platform/ai/kill", summary: "Throw the global AI kill switch — one click, no approval (docs/12 §4)", permission: "admin:flags:write", tag: "platform", requestBody: true },
+  { method: "post", path: "/v1/platform/ai/release", summary: "Release the global AI kill switch (gates on the core.flag_toggle approval)", permission: "admin:flags:write", tag: "platform" },
+
   { method: "get", path: "/v1/platform/ops/overview", summary: "Outbox backlog, DLQ depth and pending approvals, per tenant", permission: "admin:diagnostics:read", tag: "platform" },
   { method: "get", path: "/v1/platform/slo", summary: "Every SLO definition with its actual and burn percent over its window", permission: "admin:diagnostics:read", tag: "platform" },
   { method: "get", path: "/v1/platform/impersonation", summary: "The caller's own live impersonation sessions", permission: "core:impersonate:use", tag: "platform" },

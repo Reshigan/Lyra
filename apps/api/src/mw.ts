@@ -125,7 +125,10 @@ export function onError(err: unknown, c: Parameters<typeof problem>[0]): Respons
   // The client only ever sees the generic 500 (toProblem never leaks internals),
   // so without this line an unexpected failure is invisible in Workers Logs too.
   // Anything that maps to a 4xx is a normal outcome and stays quiet.
-  if (res.status >= 500) {
+  // 503 is excluded: it is a state we chose to be in (the AI kill switch,
+  // docs/12 §4), not a failure to explain — and while a pause is on, every
+  // call would log one.
+  if (res.status >= 500 && res.status !== 503) {
     console.error(`unhandled ${c.req.method} ${c.req.path}:`, err instanceof Error ? err.stack : err);
   }
   return res;
