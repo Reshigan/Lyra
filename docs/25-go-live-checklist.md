@@ -582,6 +582,14 @@ than from the vanished finding texts.
       npm/npx from the shipped image (it builds and runs on corepack + pnpm) and
       the scan is scoped to OS packages, which is the gap it was written to
       close.
+- [x] The `mutation` gate was in the same state for the same reason: a
+      whole-tree Stryker run over packages/core is 14,277 mutants — 8% done at
+      55 minutes, ETA ~10h — so every CI run was killed before it reported. It
+      now mutates only the source a change touches (`STRYKER_SINCE`, a git ref
+      the `mutation` job passes; `scripts/stryker-changed.mjs` resolves it —
+      Stryker 9 dropped its own `--since`). Break threshold stays at 70.
+      Verified locally on `cc78540^`: 52 mutants, 30 seconds, score 86.54,
+      exit 0; an empty diff exits 0 with nothing to mutate.
 
 Still open from this pass: ROLE-028 above.
 

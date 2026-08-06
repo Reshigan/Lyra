@@ -67,13 +67,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # `since` diffs against a ref, so it needs history
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Diff-scoped, not whole-tree: packages/core alone is 14,277 mutants and
+      # ran at 8% after 55 minutes (ETA ~10h) on 2026-08-06 — past the runner's
+      # ceiling, so every run was killed and the gate reported nothing. Scoped
+      # to what a change touched it finishes, and the break threshold is
+      # untouched: a commit that drops below 70% on the code it edits fails.
+      # The whole-tree sweep is `pnpm mutation` with STRYKER_SINCE unset.
       - run: pnpm mutation
+        env:
+          STRYKER_SINCE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || 'HEAD^' }}
 
 # a11y gate (CLAUDE.md WCAG 2.2 AA): e2e/a11y.ts's expectNoA11yViolations
 # (axe-core, tags wcag2a/wcag2aa/wcag22aa) runs inside the existing journey

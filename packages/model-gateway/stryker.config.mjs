@@ -6,6 +6,18 @@
  * dangling.
  * @type {import('@stryker-mutator/api/core').PartialStrykerOptions}
  */
+import { changedSources } from "../../scripts/stryker-changed.mjs";
+
+const excluded = [
+  "!packages/model-gateway/src/**/*.test.ts",
+  // never exercised except via stub.ts test double; real network adapters, no unit coverage
+  "!packages/model-gateway/src/providers/anthropic.ts",
+  "!packages/model-gateway/src/providers/workers-ai.ts",
+  "!packages/model-gateway/src/providers/openai-compat.ts"
+];
+
+const changed = changedSources("packages/model-gateway/src");
+
 export default {
   packageManager: "pnpm",
   plugins: ["@stryker-mutator/vitest-runner"],
@@ -25,14 +37,12 @@ export default {
     "infra",
     "e2e"
   ],
-  mutate: [
-    "packages/model-gateway/src/**/*.ts",
-    "!packages/model-gateway/src/**/*.test.ts",
-    // never exercised except via stub.ts test double; real network adapters, no unit coverage
-    "!packages/model-gateway/src/providers/anthropic.ts",
-    "!packages/model-gateway/src/providers/workers-ai.ts",
-    "!packages/model-gateway/src/providers/openai-compat.ts"
-  ],
+  // See packages/core/stryker.config.mjs: STRYKER_SINCE narrows a CI run to the
+  // files a change touched, unset it is the full sweep.
+  mutate: changed
+    ? [...changed, ...excluded]
+    : ["packages/model-gateway/src/**/*.ts", ...excluded],
   vitest: { dir: "packages/model-gateway" },
-  thresholds: { high: 80, low: 70, break: 70 }
+  thresholds: { high: 80, low: 70, break: 70 },
+  allowEmpty: true
 };

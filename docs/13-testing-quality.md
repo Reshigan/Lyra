@@ -104,3 +104,10 @@ changelog entry. Milestone close requires the full `@accept:Mx` suite green
 plus the premium-bar manual pass (docs/15 §6). Flaky = Sev-2, quarantined
 and fixed in 48h; the quarantine list must trend to zero and is reviewed in
 every retro. Error-budget burn > 50% freezes features for reliability work.
+
+The mutation gate runs on the source a change touches, not the whole tree:
+packages/core alone is 14,277 mutants, roughly ten hours on a CI runner, so a
+whole-tree run was killed by the job ceiling every time and the gate reported
+nothing (2026-08-06). The break threshold is unchanged — a change that leaves
+the code it edits below 70% still fails. `pnpm mutation` with `STRYKER_SINCE`
+unset is the whole-tree sweep, for a local or scheduled run.
