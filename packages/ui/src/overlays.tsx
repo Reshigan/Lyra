@@ -70,7 +70,7 @@ export function Dialog({
             dialogSizes[size]
           )}
         >
-          <RDialog.Title className="font-display text-18 font-medium text-text">
+          <RDialog.Title className="font-serif text-20 leading-[1.25] text-text">
             {title}
           </RDialog.Title>
           {description ? (
@@ -145,7 +145,7 @@ export function Drawer({
         >
           <header className="flex items-start justify-between gap-4 border-b border-border p-5">
             <div>
-              <RDialog.Title className="font-display text-16 font-medium text-text">
+              <RDialog.Title className="font-serif text-18 leading-[1.3] text-text">
                 {title}
               </RDialog.Title>
               {description ? (

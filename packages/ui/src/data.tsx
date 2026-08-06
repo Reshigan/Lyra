@@ -113,7 +113,7 @@ export function Table<T>({
                     {...(ariaSort ? { "aria-sort": ariaSort } : {})}
                     style={col.width ? { inlineSize: col.width } : undefined}
                     className={cn(
-                      "border-b border-border bg-surface-1 font-medium uppercase tracking-wider text-11 text-subtle",
+                      "border-b border-border bg-surface-1 font-medium uppercase tracking-[0.14em] text-11 text-subtle",
                       cellPad,
                       col.numeric ? "text-end" : "text-start"
                     )}
@@ -342,7 +342,7 @@ export function EmptyState({ title, body, action, className }: EmptyStateProps) 
       )}
     >
       <ConstellationArt />
-      <h3 className="font-display text-16 font-medium text-text">{title}</h3>
+      <h3 className="font-serif text-18 leading-[1.3] text-text">{title}</h3>
       {body ? <p className="max-w-prose font-ui text-13 text-subtle">{body}</p> : null}
       {action ? <div className="mt-2">{action}</div> : null}
     </div>
