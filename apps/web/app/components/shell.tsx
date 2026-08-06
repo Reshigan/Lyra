@@ -244,8 +244,17 @@ export function Shell({ t, nav, brand, tenantName, actorName, children }: ShellP
           key={pathname}
           id="workspace"
           tabIndex={-1}
-          className="lyra-stagger mx-auto min-w-0 w-full max-w-[100rem] flex-1 p-4 sm:p-6"
+          className="lyra-stagger mx-auto flex min-w-0 w-full max-w-[100rem] flex-1 flex-col gap-4 p-4 sm:p-6"
         >
+          {/* Every screen carries the hue of the workspace it belongs to — the
+              same 2px the rail draws beside the current item. Drawn once, here,
+              so a screen never has to know which module it is inside. Shared
+              surfaces (ledger, admin, settings) fall back to the accent. */}
+          <span
+            aria-hidden="true"
+            className="h-0.5 w-full shrink-0 rounded-full"
+            style={{ background: accentFor(pathname) }}
+          />
           {children}
         </main>
       </div>

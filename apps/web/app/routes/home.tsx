@@ -22,14 +22,13 @@ import {
   Stat,
   Timeline,
   type BadgeTone,
-  type LyraModule,
   type TimelineEvent
 } from "@lyra/ui";
 import { ApiError, api, fetchMe, type Problem } from "../api.server";
 import { cloudflare } from "../context";
 import { DEFAULT_LOCALE, translator } from "../i18n";
 import { humanise } from "../modules/spec";
-import { labelKeyFor } from "../routing";
+import { labelKeyFor, moduleOf } from "../routing";
 import { useShellData } from "./workspace";
 
 // The landing screen for an actor whose roles point at no particular workspace.
@@ -803,14 +802,6 @@ export default function Home() {
       ) : null}
     </div>
   );
-}
-
-const MODULES = new Set<string>(["axis", "orbit", "signal", "scout", "north"]);
-
-/** The module a workspace link belongs to, or null for the shared surfaces. */
-function moduleOf(href: string): LyraModule | null {
-  const first = href.split("/").filter(Boolean)[0];
-  return first && MODULES.has(first) ? (first as LyraModule) : null;
 }
 
 function filled(panel: Panel<unknown[]>): boolean {

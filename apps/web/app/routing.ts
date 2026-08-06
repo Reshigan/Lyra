@@ -2,6 +2,8 @@
 // says nothing about what a person may see — visibility and labels come from
 // /v1/me, so a role change takes effect on the next request (docs/07 §3).
 
+import type { LyraModule } from "@lyra/ui";
+
 /** Module workspaces, in rail order. Must match what /v1/me can emit, or the
  *  rail silently drops an item the actor is entitled to (isRouted filters it). */
 export const WORKSPACE_PATHS = [
@@ -154,4 +156,16 @@ export function isRouted(path: string): boolean {
 /** `/axis` → `nav.axis`. The label itself comes from the catalogue. */
 export function labelKeyFor(path: string): string {
   return `nav.${path.replace(/^\//, "") || "home"}`;
+}
+
+const MODULES = new Set<string>(["axis", "orbit", "signal", "scout", "north"]);
+
+/**
+ * The module a path belongs to, or null for the shared surfaces (ledger,
+ * admin, settings). Screens use it to draw the module's hue beside their
+ * title, so a workspace signs itself the same way the rail marks it.
+ */
+export function moduleOf(path: string): LyraModule | null {
+  const first = path.split("/").filter(Boolean)[0];
+  return first && MODULES.has(first) ? (first as LyraModule) : null;
 }
