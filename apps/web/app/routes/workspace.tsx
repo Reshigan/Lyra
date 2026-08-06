@@ -20,7 +20,7 @@ import { DEFAULT_PACK } from "../modules/vocabulary";
 
 export const ROUTE_ID = "routes/workspace";
 
-const CALENDARS: readonly CalendarPreference[] = ["gregorian", "islamic-umalqura", "dual"];
+export const CALENDARS: readonly CalendarPreference[] = ["gregorian", "islamic-umalqura", "dual"];
 
 /** Tenant policy is loosely typed across the wire; an unknown value is Gregorian. */
 export function calendarFrom(value: unknown): CalendarPreference {

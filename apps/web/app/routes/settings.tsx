@@ -15,7 +15,8 @@ import { ApiError, api, fetchMe, type Problem as ProblemBody } from "../api.serv
 import { cloudflare } from "../context";
 import { CATALOGUES, LOCALES, pseudoText, translator } from "../i18n";
 import { Problem } from "./module";
-import { useShellData } from "./workspace";
+import { CALENDARS, calendarFrom, useShellData } from "./workspace";
+import type { CalendarPreference } from "@lyra/ui";
 
 // The actor's own account, and — for whoever administers the tenant — the parts
 // of the tenant that are settings rather than records.
@@ -269,6 +270,18 @@ const LABELS: Record<string, Record<string, string>> = {
     "brand.ok": "Appearance saved. It applies on the next screen you open.",
     "brand.unavailable": "The tenant's appearance could not be read just now.",
 
+    "calendar.title": "Dates",
+    "calendar.intro":
+      "Which calendar this tenant reads dates in. Nothing is re-dated: the same instant is simply written the way your business writes it.",
+    "calendar.field": "Calendar",
+    "calendar.gregorian": "Gregorian",
+    "calendar.islamic-umalqura": "Hijri (Umm al-Qura)",
+    "calendar.dual": "Gregorian, with the Hijri date on hover",
+    "calendar.hint": "Applies to every date on every screen, for everyone in this tenant.",
+    "calendar.submit": "Save",
+    "calendar.ok": "Saved. It applies on the next screen you open.",
+    "calendar.unknown": "That is not a calendar this platform renders.",
+
     "dsar.title": "Your data",
     "dsar.intro":
       "Ask for a copy of the personal data held about you, or ask for it to be erased. A request is logged and answered by the compliance team.",
@@ -436,6 +449,18 @@ const LABELS: Record<string, Record<string, string>> = {
     "brand.ok": "تم حفظ الهوية. تُطبَّق على الشاشة التالية التي تفتحها.",
     "brand.unavailable": "تعذّرت قراءة هوية المؤسسة الآن.",
 
+    "calendar.title": "التواريخ",
+    "calendar.intro":
+      "التقويم الذي تُقرأ به التواريخ في هذه المؤسسة. لا يتغيّر أي تاريخ: اللحظة نفسها تُكتب بالطريقة التي تكتبها بها.",
+    "calendar.field": "التقويم",
+    "calendar.gregorian": "ميلادي",
+    "calendar.islamic-umalqura": "هجري (أم القرى)",
+    "calendar.dual": "ميلادي، مع التاريخ الهجري عند المرور بالمؤشر",
+    "calendar.hint": "يُطبَّق على كل تاريخ في كل شاشة، ولكل من في هذه المؤسسة.",
+    "calendar.submit": "حفظ",
+    "calendar.ok": "تم الحفظ. يُطبَّق على الشاشة التالية التي تفتحها.",
+    "calendar.unknown": "هذا ليس تقويمًا تعرضه المنصّة.",
+
     "dsar.title": "بياناتك",
     "dsar.intro":
       "اطلب نسخة من بياناتك الشخصية المحفوظة، أو اطلب محوها. يُسجَّل الطلب ويجيب عليه فريق الالتزام.",
@@ -584,6 +609,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       accentContrast: brand.palette?.accentContrast ?? "",
       font: brand.font ?? ""
     },
+    /** Rendering preference, stored on tenant policy; see UiCalendarProvider. */
+    calendar: calendarFrom(me.policy?.calendarPreference),
     dsar: dsar.value?.data ?? [],
     dsarReadable: dsar.value !== null,
     lens: lens.value ? { workspace: lens.value.lens.workspace, isDefault: lens.value.isDefault } : null,
@@ -754,6 +781,25 @@ export async function action({ request, context }: ActionFunctionArgs) {
         request,
         method: "PATCH",
         body: { brandJson: brand }
+      });
+      return { intent, ok: true } satisfies ActionResult;
+    }
+
+    if (intent === "calendar") {
+      const calendar = text("calendar");
+      if (!CALENDARS.includes(calendar as CalendarPreference)) {
+        return { intent, errorKey: "calendar.unknown" } satisfies ActionResult;
+      }
+
+      // Policy is one JSON column and the CRUD PATCH replaces it wholesale, so
+      // the current policy is read back and merged here. The form contributes
+      // one field; nothing else about it is reachable from the browser.
+      const me = await fetchMe(env, request);
+      await api(`/v1/core/tenants/${encodeURIComponent(me.tenant.id)}`, {
+        env,
+        request,
+        method: "PATCH",
+        body: { policyJson: { ...me.policy, calendarPreference: calendar } }
       });
       return { intent, ok: true } satisfies ActionResult;
     }
@@ -1116,6 +1162,30 @@ export default function Settings() {
           failure={failure}
           done={done}
         />
+      ) : null}
+
+      {loaded.can.brand ? (
+        <Panel id="settings-calendar" title={label("calendar.title")} lead={label("calendar.intro")}>
+          {failure("calendar")}
+          {done("calendar", "calendar.ok")}
+          <Form method="post" className="flex flex-col gap-4">
+            <input type="hidden" name="intent" value="calendar" />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label={label("calendar.field")} hint={label("calendar.hint")}>
+                <Select
+                  name="calendar"
+                  defaultValue={loaded.calendar}
+                  options={CALENDARS.map((value) => ({ value, label: label(`calendar.${value}`) }))}
+                />
+              </Field>
+            </div>
+            <div>
+              <Button type="submit" variant="primary" loading={pending === "calendar"}>
+                {pending === "calendar" ? t("common.working") : label("calendar.submit")}
+              </Button>
+            </div>
+          </Form>
+        </Panel>
       ) : null}
 
       {loaded.can.dsarCreate ? (
