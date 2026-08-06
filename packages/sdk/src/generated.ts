@@ -2427,6 +2427,8 @@ export interface Operations {
   "GET /v1/ledger/reports/commission": Op<never, never, never, Record<string, unknown>>;
   "GET /v1/ledger/reports/pnl": Op<never, never, never, Record<string, unknown>>;
   "GET /v1/ledger/reports/trial-balance": Op<never, never, never, Record<string, unknown>>;
+  "GET /v1/ledger/reports/value-flow": Op<never, never, never, Record<string, unknown>>;
+  "GET /v1/ledger/reports/value-flow/lines": Op<never, never, never, Record<string, unknown>>;
   "GET /v1/ledger/reports/{report}/export": Op<{ report: string }, never, never, Record<string, unknown>>;
   "GET /v1/ledger/revenue-schedules": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<LedgerRevenueSchedules>>;
   "GET /v1/ledger/revenue-schedules/{id}": Op<{ id: string }, never, never, LedgerRevenueSchedules>;
@@ -3030,6 +3032,8 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "GET /v1/ledger/reports/commission": { tag: "ledger", summary: "Commission earned, clawed back and payable by channel", permission: "ledger:journals:read", public: false },
   "GET /v1/ledger/reports/pnl": { tag: "ledger", summary: "Profit and loss for a period", permission: "ledger:journals:read", public: false },
   "GET /v1/ledger/reports/trial-balance": { tag: "ledger", summary: "Trial balance as at a moment", permission: "ledger:journals:read", public: false },
+  "GET /v1/ledger/reports/value-flow": { tag: "ledger", summary: "Money Map: premium in, remitted, retained, split and still held for a period", permission: "ledger:journals:read", public: false },
+  "GET /v1/ledger/reports/value-flow/lines": { tag: "ledger", summary: "The journal lines behind one Money Map node", permission: "ledger:journals:read", public: false },
   "GET /v1/ledger/reports/{report}/export": { tag: "ledger", summary: "Render any ledger report to xlsx, pdf, csv or json", permission: "ledger:journals:read", public: false },
   "GET /v1/ledger/revenue-schedules": { tag: "ledger", summary: "List revenue-schedules", permission: "ledger:journals:read", public: false },
   "GET /v1/ledger/revenue-schedules/{id}": { tag: "ledger", summary: "Fetch one revenue schedule", permission: "ledger:journals:read", public: false },

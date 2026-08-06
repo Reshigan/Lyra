@@ -32,6 +32,8 @@ import {
   trialBalance,
   trialBalanceTable,
   txnType,
+  valueFlow,
+  valueFlowLines,
   type MatchProposer,
   type ReportTable,
   type TxnState
@@ -275,6 +277,35 @@ ledgerRoutes.get("/reports/client-money", async (c) => {
   const ctx = ctxOf(c);
   require_(ctx.actor, "ledger:client_money:read", { tenantId: ctx.tenantId, module: "ledger" });
   return c.json({ data: await clientMoneyPosition(ctx, c.req.query("currency")) });
+});
+
+// docs/22 §1.2 — the Money Map. Same permission as the other journal reports:
+// it shows nothing the trial balance does not, only shaped as a flow.
+ledgerRoutes.get("/reports/value-flow", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "ledger:journals:read", { tenantId: ctx.tenantId, module: "ledger" });
+  const period = c.req.query("period") ?? periodCode(ctx.now);
+  return c.json(
+    await valueFlow(ctx, {
+      periodCode: period,
+      ...(c.req.query("currency") ? { currency: c.req.query("currency") as string } : {})
+    })
+  );
+});
+
+// What a node on the map opens: the lines that add up to the figure clicked.
+// The generic journal-lines list cannot answer this — it filters by column, and
+// the transaction type that produced a line is not one.
+ledgerRoutes.get("/reports/value-flow/lines", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "ledger:journals:read", { tenantId: ctx.tenantId, module: "ledger" });
+  return c.json(
+    await valueFlowLines(ctx, {
+      periodCode: c.req.query("period") ?? periodCode(ctx.now),
+      node: c.req.query("node") ?? "",
+      ...(c.req.query("currency") ? { currency: c.req.query("currency") as string } : {})
+    })
+  );
 });
 
 ledgerRoutes.get("/reports/chart-of-accounts", (c) => {

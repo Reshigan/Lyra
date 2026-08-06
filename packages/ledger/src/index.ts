@@ -4,4 +4,5 @@ export * from "./posting.js";
 export * from "./txn.js";
 export * from "./recipes.js";
 export * from "./reports.js";
+export * from "./money-map.js";
 export * from "./recon.js";

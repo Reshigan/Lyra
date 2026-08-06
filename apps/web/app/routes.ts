@@ -20,6 +20,7 @@ export default [
     route("admin/ai/runs/:id", "routes/ai-run.tsx"),
     route("admin/cost-explorer", "routes/cost-explorer.tsx"),
     route("ledger/reports/:report", "routes/ledger-reports.tsx"),
+    route("ledger/money-map", "routes/ledger-money-map.tsx"),
     route("ledger/transactions", "routes/ledger-open-txn.tsx"),
     route("ledger/transactions/:id", "routes/ledger-transaction.tsx"),
     route("ledger/period-close", "routes/ledger-periods.tsx"),

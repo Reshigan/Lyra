@@ -18,6 +18,9 @@ export const ledger: WorkspaceSpec = {
     { href: "/ledger/reports/aged", labelKey: "report.aged", permission: "ledger:journals:read" },
     { href: "/ledger/reports/commission", labelKey: "report.commission", permission: "ledger:journals:read" },
     { href: "/ledger/reports/client-money", labelKey: "report.client-money", permission: "ledger:client_money:read" },
+    // Not a seventh report: the map is a period's shape, and the reports are its
+    // figures. It reads the journal, so it gates on the journal.
+    { href: "/ledger/money-map", labelKey: "link.money-map", permission: "ledger:journals:read" },
     // The chart is a resource, not a report: it lists rows and is edited, so it
     // is the generic `/ledger/accounts` list rather than a seventh report screen.
     { href: "/ledger/accounts", labelKey: "report.chart-of-accounts", permission: "ledger:accounts:read" },
@@ -66,6 +69,7 @@ export const ledger: WorkspaceSpec = {
       "link.statement": "Account statement",
       "link.recon": "Reconciliation",
       "link.settlement": "Commission settlements",
+      "link.money-map": "Money map",
       "link.settlement-detail": "Remittance, approvals and payout",
 
       idempotencyKey: "Reference",
@@ -302,6 +306,7 @@ export const ledger: WorkspaceSpec = {
       "link.statement": "كشف حساب",
       "link.recon": "المطابقة",
       "link.settlement": "تسويات العمولات",
+      "link.money-map": "خريطة الأموال",
       "link.settlement-detail": "الإشعار والموافقات والدفع",
 
       idempotencyKey: "المرجع",

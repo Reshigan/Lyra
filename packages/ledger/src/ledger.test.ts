@@ -11,6 +11,7 @@ import { openTxn, reverseTxn, runSaga, runTxn, transition } from "./txn.js";
 import { closePeriod, ensurePeriod, periodCode } from "./periods.js";
 import { RECIPES, buildRecipe } from "./recipes.js";
 import { clientMoneyPosition, rebuildBalances, trialBalance } from "./reports.js";
+import { valueFlow, valueFlowLines, type MoneyMap } from "./money-map.js";
 import { reconcile } from "./recon.js";
 import { TXN_TYPES, autoApprovable } from "./types.js";
 
@@ -425,6 +426,153 @@ describe("reports", () => {
     }
     const drift = (await rebuildBalances(ctx)).filter((d) => d.drifted);
     expect(drift).toEqual([]);
+  });
+});
+
+/* ------------------------------------------------------------ money map */
+
+describe("money map", () => {
+  /**
+   * docs/22 §1.2. One period of the aggregator's actual shape: premium arrives,
+   * most of it goes to the insurer, a slice is drawn as commission and splits
+   * into partner share, tax and net. The two trailing postings are the control
+   * group — a partner accrual on 5400 and an output tax credit on 2200 that
+   * belong to no premium — because the failure this test exists to catch is a
+   * map that sums an account and calls it a flow.
+   */
+  async function postPeriod(): Promise<void> {
+    const seq: [string, string, number, Record<string, unknown>][] = [
+      ["tx_mm_1", "CM-RECEIPT", 100_000, { amountMinor: 100_000 }],
+      ["tx_mm_2", "PREM-COLLECT", 50_000, { amountMinor: 50_000 }],
+      ["tx_mm_3", "PREM-REMIT", 90_000, { amountMinor: 90_000 }],
+      [
+        "tx_mm_4",
+        "CM-TRANSFER",
+        20_000,
+        { amountMinor: 20_000, grossMinor: 20_000, channelMinor: 5_000, taxMinor: 1_000 }
+      ],
+      ["tx_mm_5", "RSHARE-ACCR", 3_000, { amountMinor: 3_000 }],
+      ["tx_mm_6", "SUB-INVOICE", 8_400, { netMinor: 8_000, taxMinor: 400 }]
+    ];
+    for (const [txnId, type, gross, args] of seq) {
+      await ctx.db.insert(schema.ledgerTxns).values(baseTxn(txnId, type, gross));
+      await post(ctx, { txnId, currency: "AED", lines: buildRecipe(type, args) });
+    }
+  }
+
+  function amount(map: MoneyMap, key: string): number | undefined {
+    return map.nodes.find((n) => n.key === key)?.amountMinor;
+  }
+
+  function link(map: MoneyMap, from: string, to: string): number | undefined {
+    return map.links.find((l) => l.from === from && l.to === to)?.amountMinor;
+  }
+
+  it("attributes each flow to a transaction type, not to an account movement", async () => {
+    await postPeriod();
+    const map = await valueFlow(ctx, { periodCode: "2026-06", currency: "AED" });
+
+    expect(amount(map, "premium-in")).toBe(150_000);
+    expect(amount(map, "insurer-remittance")).toBe(90_000);
+    expect(amount(map, "commission-retained")).toBe(20_000);
+    expect(amount(map, "partner-share")).toBe(5_000);
+    // 1_000 from the transfer, not 1_400: the invoice's output tax is tax the
+    // business owes, but it is not a slice of anybody's premium.
+    expect(amount(map, "tax")).toBe(1_000);
+    expect(amount(map, "net")).toBe(14_000);
+    expect(amount(map, "still-held")).toBe(40_000);
+  });
+
+  it("conserves — every node's inflow equals what leaves it", async () => {
+    await postPeriod();
+    const map = await valueFlow(ctx, { periodCode: "2026-06", currency: "AED" });
+
+    expect(link(map, "premium-in", "insurer-remittance")).toBe(90_000);
+    expect(link(map, "premium-in", "commission-retained")).toBe(20_000);
+    expect(link(map, "premium-in", "still-held")).toBe(40_000);
+    expect(link(map, "commission-retained", "partner-share")).toBe(5_000);
+    expect(link(map, "commission-retained", "tax")).toBe(1_000);
+    expect(link(map, "commission-retained", "net")).toBe(14_000);
+
+    for (const node of ["premium-in", "commission-retained"]) {
+      const out = map.links.filter((l) => l.from === node).reduce((s, l) => s + l.amountMinor, 0);
+      expect(out, `${node} conserves`).toBe(amount(map, node));
+    }
+    expect(map.carriedMinor).toBe(40_000);
+  });
+
+  it("drops the still-held ribbon when the period paid out more than it took in", async () => {
+    // Premium collected last month, remitted this one. The remainder is
+    // negative, which is a fact about the period, not an error — but a
+    // negative ribbon would draw a flow that never happened.
+    await ctx.db.insert(schema.ledgerTxns).values(baseTxn("tx_prior", "CM-RECEIPT", 60_000));
+    await post(ctx, {
+      txnId: "tx_prior",
+      currency: "AED",
+      lines: buildRecipe("CM-RECEIPT", { amountMinor: 60_000 })
+    });
+    await ctx.db.insert(schema.ledgerTxns).values({
+      ...baseTxn("tx_late_remit", "PREM-REMIT", 60_000),
+      createdAt: Date.UTC(2026, 6, 3),
+      updatedAt: Date.UTC(2026, 6, 3)
+    });
+    await post(ctx, {
+      txnId: "tx_late_remit",
+      currency: "AED",
+      lines: buildRecipe("PREM-REMIT", { amountMinor: 60_000 }),
+      postedAt: Date.UTC(2026, 6, 3)
+    });
+
+    const july = await valueFlow(ctx, { periodCode: "2026-07", currency: "AED" });
+    expect(amount(july, "premium-in")).toBe(0);
+    expect(amount(july, "insurer-remittance")).toBe(60_000);
+    expect(july.carriedMinor).toBe(-60_000);
+    expect(amount(july, "still-held")).toBe(0);
+    expect(link(july, "premium-in", "still-held")).toBeUndefined();
+  });
+
+  it("hands every node the filter that reproduces it in the journals", async () => {
+    await postPeriod();
+    const map = await valueFlow(ctx, { periodCode: "2026-06", currency: "AED" });
+
+    const premium = map.nodes.find((n) => n.key === "premium-in");
+    expect(premium?.drill).toEqual({
+      accountCodes: ["1010"],
+      side: "debit",
+      txnTypes: ["CM-RECEIPT", "PREM-COLLECT", "PREM-INSTALMENT"]
+    });
+    // still-held is a remainder, not a query — nothing to drill into.
+    expect(map.nodes.find((n) => n.key === "still-held")?.drill).toBeUndefined();
+    for (const node of map.nodes) {
+      if (!node.drill) continue;
+      expect(node.drill.accountCodes.length, `${node.key} names its accounts`).toBeGreaterThan(0);
+      expect(node.drill.txnTypes.length, `${node.key} names its types`).toBeGreaterThan(0);
+    }
+  });
+
+  it("opens a node onto the lines that add up to it, and nothing else", async () => {
+    await postPeriod();
+    const map = await valueFlow(ctx, { periodCode: "2026-06", currency: "AED" });
+
+    for (const node of map.nodes) {
+      if (!node.drill) continue;
+      const drilled = await valueFlowLines(ctx, {
+        periodCode: "2026-06",
+        node: node.key,
+        currency: "AED"
+      });
+      expect(drilled.totalMinor, `${node.key} ties to its lines`).toBe(node.amountMinor);
+    }
+
+    // The one that would break if the drill filtered on account alone: the
+    // subscription invoice credits 2200 too, and it is not premium tax.
+    const tax = await valueFlowLines(ctx, { periodCode: "2026-06", node: "tax", currency: "AED" });
+    expect(tax.lines).toHaveLength(1);
+    expect(tax.lines[0]).toMatchObject({ txnId: "tx_mm_4", accountCode: "2200", side: "credit" });
+  });
+
+  it("refuses a node that has no lines of its own", async () => {
+    await rejects(valueFlowLines(ctx, { periodCode: "2026-06", node: "still-held" }), /still-held/);
   });
 });
 
