@@ -5,6 +5,7 @@ import { drainOutbox, deliverQueued } from "./dispatch.js";
 import { sweepRenewals } from "./engines/renewals.js";
 import { runSnapshotter } from "./engines/north-snapshotter.js";
 import { backupTenant } from "./engines/backup.js";
+import { anchorAudit } from "./engines/anchor.js";
 import { nudgeApiKeyRotation } from "./engines/api-key-rotation.js";
 import { runBudgetAutopilot } from "./engines/signal-autopilot.js";
 import { expireDelegations } from "./engines/staff.js";
@@ -181,6 +182,15 @@ export default {
             await expireDelegations(ctx);
             // docs/10 §6: nightly D1 -> R2 backup, one write per tenant per day.
             if (isBackupWindow) await backupTenant(ctx, env.EXPORTS);
+            // docs/12 §1: tamper evidence for the audit chain, pinned outside D1.
+            if (isBackupWindow) {
+              const anchored = await anchorAudit(ctx, env.EXPORTS);
+              // A break means a row changed after it was written. Nothing here
+              // can repair it; what it must not do is pass unnoticed.
+              if (anchored?.breaks.length) {
+                console.error("audit chain broken", { tenantId, breaks: anchored.breaks });
+              }
+            }
             if (isBackupWindow) await nudgeApiKeyRotation(ctx);
             // docs/modules/north.md §3 Snapshotter: nightly, 02:00Z per seed.ts's timing model (ADR-0024).
             if (isBackupWindow) await runSnapshotter(ctx);
