@@ -24,6 +24,11 @@ WORKDIR /app
 COPY package.json ./
 RUN corepack enable && corepack install && chmod -R a+rX /opt/corepack
 
+# The image builds and runs on pnpm; the npm the base image bundles is never
+# invoked, and it is where every JS CVE in this image lives (its own vendored
+# tar, sigstore, brace-expansion). Deleting it ships nothing we don't use.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
+
 # ponytail: whole-tree copy rather than a per-package manifest list. The list
 # went stale the first time a package was added; .dockerignore already strips
 # node_modules and build output. Split it back out if install-layer cache

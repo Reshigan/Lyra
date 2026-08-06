@@ -122,11 +122,15 @@ jobs:
           echo "image=$base" >> "$GITHUB_OUTPUT"
       # ignore-unfixed: an unpatched distro CVE has no action available, and a
       # permanently red gate is a gate someone turns off.
+      # vuln-type os: the JS half of a `node:` image is npm's own vendored tree
+      # (tar, sigstore, brace-expansion), which ops/Dockerfile deletes and the
+      # container never executes; our own JS tree is gated by `audit` above.
       # Tags carry a `v` prefix; the unprefixed `0.28.0` never resolved.
       - uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ steps.base.outputs.image }}
           severity: HIGH,CRITICAL
+          vuln-type: os
           ignore-unfixed: true
           exit-code: "1"
 

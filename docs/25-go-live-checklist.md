@@ -576,7 +576,12 @@ than from the vanished finding texts.
       is satisfiable on the BSD side, 24 synthetic gitleaks findings allowlisted
       by rule/path/literal in `.gitleaks.toml` (verified against gitleaks 8.30.0
       over full history), and `trivy-action` pinned to a tag that resolves —
-      commit `e6029be`.
+      commit `e6029be`. The container scan then reported 8 HIGH/CRITICAL, every
+      one inside `node:22-slim`'s bundled npm (its own tar, sigstore,
+      brace-expansion) and none in the distro layer: `ops/Dockerfile` now deletes
+      npm/npx from the shipped image (it builds and runs on corepack + pnpm) and
+      the scan is scoped to OS packages, which is the gap it was written to
+      close.
 
 Still open from this pass: ROLE-028 above.
 
