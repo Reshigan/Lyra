@@ -842,7 +842,7 @@ contract — a module can be "feature complete" and still fail here.
 | ID | Requirement | Pri | MS | Verify | Status |
 |---|---|---|---|---|---|
 | SEC-001 | Transport encryption enforced everywhere; encryption at rest for all stores | M | M1 | D | ☐ |
-| SEC-002 | Field-level encryption for national identifiers and bank details | M | M2 | T | ☐ |
+| SEC-002 | Field-level encryption for national identifiers and bank details | M | M2 | T | ☑ |
 | SEC-003 | Card data never stored; payment handled by tokenised providers only | M | M2 | T,A | ☐ |
 | SEC-004 | Input validation at every boundary with schema enforcement | M | M1 | T | ☐ |
 | SEC-005 | Outbound fetch protected against server-side request forgery with host allowlisting | M | M1 | T | ☐ |

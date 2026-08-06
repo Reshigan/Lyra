@@ -596,6 +596,22 @@ These cannot be done by an assistant; they require the account owner directly.
       store. No live PSP connector is wired yet (credential-gated, tracked
       separately in Section 6); there is currently nothing that could persist
       card data even accidentally.
+- [ ] **Set the `FIELD_KEY` secret** for staging and production before the
+      first document is uploaded — field-level encryption for national
+      identifiers (docs/12 §1, [ADR-0032](decisions/ADR-0032-field-level-encryption.md)).
+      A wrangler *secret*, never a `wrangler.jsonc` `vars` entry: the day it
+      lands in `vars` it is in git.
+      ```
+      openssl rand -base64 32 | npx wrangler secret put FIELD_KEY --env staging
+      openssl rand -base64 32 | npx wrangler secret put FIELD_KEY --env production
+      ```
+      Run from `apps/api`. Different value per environment — a staging dump
+      must not open production identifiers. Without it the API fails the write
+      with a 500 rather than storing an Emirates ID in the clear, so a missing
+      secret shows up as a broken upload, not as silent plaintext. On-prem: the
+      same variable in the Docker env. Rotation is not built (ADR-0032
+      "Consequences") — changing the value makes existing envelopes unopenable,
+      so set it once, before real data.
 - [ ] `claude.ai` and `Higgfield` MCP connectors need interactive OAuth from
       the user directly (cannot be completed non-interactively) — not a go-live
       blocker unless a shipped feature depends on either.

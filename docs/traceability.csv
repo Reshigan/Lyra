@@ -520,7 +520,7 @@ DEP-015,"On-prem install, migrate, seed and smoke commands documented and workin
 DEP-016,"On-prem upgrade path (pull, migrate, restart) documented and rehearsed",M,M6,D,no,,,,not_started,,
 DEP-017,All five modules functional on-prem,M,M6,T,no,,,,not_started,,
 SEC-001,Transport encryption enforced everywhere; encryption at rest for all stores,M,M1,D,no,,,,not_started,,
-SEC-002,Field-level encryption for national identifiers and bank details,M,M2,T,no,,,,not_started,,
+SEC-002,Field-level encryption for national identifiers and bank details,M,M2,T,no,docs/12 §1,packages/core/src/field-crypto.test.ts::round-trips a national identifier;packages/core/src/field-crypto.test.ts::refuses a ciphertext that was edited in the database;apps/api/src/axis-extraction.test.ts::seals a corrected identifier rather than storing what the human typed;apps/api/src/axis-extraction.test.ts::is 500 rather than a plaintext fallback when FIELD_KEY is missing,"packages/core/src/field-crypto.ts, apps/api/src/resources.ts, docs/decisions/ADR-0032-field-level-encryption.md",verified,build,2026-08-05
 SEC-003,Card data never stored; payment handled by tokenised providers only,M,M2,"T,A",no,,,,not_started,,
 SEC-004,Input validation at every boundary with schema enforcement,M,M1,T,no,docs/12 §3,apps/api/src/api.test.ts::refuses an unknown dataset;apps/api/src/journeys.test.ts::J-C1 no-consent 400,zod .strict() on every body,verified,build,2026-07-30
 SEC-005,Outbound fetch protected against server-side request forgery with host allowlisting,M,M1,T,no,,,,not_started,,

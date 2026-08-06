@@ -6,21 +6,30 @@ import {
   actorRef,
   audit,
   badRequest,
+  canSeePii,
   conflict,
   emit,
+  forbidden,
   notFound,
+  openFields,
   require_,
   scoped,
+  sealFields,
   verifyGroundedness,
   withIdempotency,
   type Ctx
 } from "@lyra/core";
-import { EXTRACTION_FIELDS, extractionSchema, parseExtraction } from "@lyra/model-gateway";
+import {
+  EXTRACTION_FIELDS,
+  SENSITIVE_EXTRACTION_FIELDS,
+  extractionSchema,
+  parseExtraction
+} from "@lyra/model-gateway";
 import { body } from "../http.js";
 import { must } from "../rows.js";
 import { embedUpsert } from "../engines/vectorize.js";
 import { meterEgress } from "../engines/egress.js";
-import type { App } from "../env.js";
+import { fieldKey, type App } from "../env.js";
 
 // docs/07 §3. The one axis verb generated CRUD cannot express: verifying a
 // document. `verifiedBy` and `verifiedAt` are evidence that a named person
@@ -119,9 +128,12 @@ axisRoutes.post("/documents/:id/extract", async (c) => {
   }
 
   const { values, confidence } = parseExtraction(result.text, fields);
+  // docs/12 §1: the identifier fields never reach the column in the clear, so
+  // the audit `after` image and every CRUD read carry the sealed value too.
+  const sealed = await sealFields(fieldKey(c.env), values, SENSITIVE_EXTRACTION_FIELDS);
   const stamp = {
     status: "extracted" as const,
-    extractionJson: JSON.stringify(values),
+    extractionJson: JSON.stringify(sealed),
     extractionConfidence: confidence,
     extractionModel: result.model
   };
@@ -148,6 +160,37 @@ axisRoutes.post("/documents/:id/extract", async (c) => {
     metadata: { tenantId: ctx.tenantId, docType: before.docType }
   });
   return c.json(after);
+});
+
+/**
+ * docs/12 §2: "PII masked by default in UIs (reveal = permission + audit)".
+ * Reads hand back the sealed envelope; this is the one door that opens it, and
+ * it leaves a row behind naming who opened it and when.
+ *
+ * `core:pii:view` on top of `axis:documents:read`: the same split the customer
+ * spine uses (pii.ts), so an operator who may work a case is not thereby
+ * someone who may read the identity documents in it.
+ */
+axisRoutes.post("/documents/:id/reveal", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:documents:read", { tenantId: ctx.tenantId, module: "axis" });
+  if (!canSeePii(ctx.actor, ctx.tenantId)) throw forbidden("core:pii:view");
+  const rowId = c.req.param("id");
+  const before = await must(ctx, schema.axisDocuments, rowId, "documents");
+  if (!before.extractionJson) throw conflict("document has no extraction to reveal");
+
+  const values = await openFields(
+    fieldKey(c.env),
+    JSON.parse(before.extractionJson) as Record<string, string | null>
+  );
+  // The revealed values are the point of the row, so they stay out of it: the
+  // audit trail records the act, not a second copy of the identifier.
+  await audit(ctx, {
+    action: "axis.documents.reveal",
+    subjectRef: rowId,
+    after: { fields: Object.keys(values).filter((f) => SENSITIVE_EXTRACTION_FIELDS.has(f)) }
+  });
+  return c.json({ values });
 });
 
 const CopilotBody = z.object({

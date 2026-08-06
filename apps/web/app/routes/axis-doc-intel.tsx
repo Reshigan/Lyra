@@ -51,7 +51,9 @@ export const PERM = {
   read: "axis:documents:read",
   /** `resources.ts` maps the documents update path to `:verify`. */
   correct: "axis:documents:verify",
-  extract: "axis:documents:extract"
+  extract: "axis:documents:extract",
+  /** docs/12 §2: opening a sealed identifier is its own permission, and audited. */
+  pii: "core:pii:view"
 } as const;
 
 /** Status order is the desk's order: unread paper first, vouched-for paper last. */
@@ -98,6 +100,10 @@ const LABELS: Record<string, Record<string, string>> = {
     "correct.placeholder": "Your value",
     "correct.submit": "Save corrections",
     "correct.none": "There is nothing to correct until the file has been read.",
+    "sealed.value": "Hidden",
+    "sealed.why":
+      "Identity numbers are stored encrypted, so this screen holds the sealed value rather than the number. Opening it needs the PII permission and is written to the audit log.",
+    "sealed.submit": "Show identity numbers",
     "verify.submit": "Confirm",
     "verify.hint": "Stamps your name and the time on this row. It cannot be undone from here.",
     "extract.title": "Read this file",
@@ -114,6 +120,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "status.rejected": "Rejected",
     "status.verified": "Confirmed",
     "done.correct": "Corrections saved.",
+    "done.reveal": "Identity numbers shown. This was recorded against your name.",
     "done.verify": "Confirmed.",
     "done.extract": "Read. Check the fields before confirming.",
     "empty.title": "Nothing waiting",
@@ -159,6 +166,10 @@ const LABELS: Record<string, Record<string, string>> = {
     "correct.placeholder": "قيمتك",
     "correct.submit": "حفظ التصحيحات",
     "correct.none": "لا يوجد ما يُصحَّح قبل قراءة الملف.",
+    "sealed.value": "مخفي",
+    "sealed.why":
+      "أرقام الهوية محفوظة مشفّرة، لذا تحمل هذه الشاشة القيمة المختومة لا الرقم نفسه. إظهارها يتطلب صلاحية البيانات الشخصية ويُسجَّل في سجل التدقيق.",
+    "sealed.submit": "إظهار أرقام الهوية",
     "verify.submit": "تأكيد",
     "verify.hint": "يثبّت اسمك ووقتك على هذا الصف، ولا يمكن التراجع عنه من هنا.",
     "extract.title": "قراءة الملف",
@@ -174,6 +185,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "status.rejected": "مرفوض",
     "status.verified": "مؤكَّد",
     "done.correct": "حُفظت التصحيحات.",
+    "done.reveal": "أُظهرت أرقام الهوية، وسُجّل ذلك باسمك.",
     "done.verify": "تم التأكيد.",
     "done.extract": "قُرئ. راجع الحقول قبل التأكيد.",
     "empty.title": "لا شيء بالانتظار",
@@ -240,6 +252,18 @@ export function fieldsOf(doc: Pick<DocRow, "extractionJson">): Record<string, st
     return {};
   }
 }
+
+/**
+ * The envelope packages/core/src/field-crypto.ts writes around a national
+ * identifier. Restated here because the web app cannot import @lyra/core (same
+ * reason approvals.ts is restated in approvals.tsx) — and because this screen
+ * never decrypts anything: it only has to know not to render an envelope as if
+ * it were what the model read off the document.
+ */
+const SEALED_PREFIX = "enc.v1.";
+
+export const isSealedValue = (value: string | null | undefined): boolean =>
+  typeof value === "string" && value.startsWith(SEALED_PREFIX);
 
 /**
  * `_bbox`: an optional reserved key living beside the real fields in the same
@@ -363,6 +387,12 @@ export interface Refusal {
 export interface ActionResult {
   problem: Refusal | null;
   done: string | null;
+  /**
+   * Plaintext, for this response only. It is never put back into a form value
+   * or a loader, so a reload re-seals the screen and costs another audited
+   * reveal — which is the point of docs/12 §2.
+   */
+  revealed?: Record<string, string> | null;
 }
 
 const refuse = (code: string, status = 400): ActionResult => ({
@@ -400,6 +430,17 @@ export async function action({ request, context }: ActionFunctionArgs): Promise<
         body: { extractionJson: JSON.stringify(merged) }
       });
       return { problem: null, done: "correct" };
+    }
+
+    if (intent === "reveal") {
+      const opened = await api<{ values: Record<string, string> }>(`${at}/reveal`, {
+        env,
+        request,
+        method: "POST",
+        headers,
+        body: {}
+      });
+      return { problem: null, done: "reveal", revealed: opened?.values ?? {} };
     }
 
     if (intent === "verify") {
@@ -451,6 +492,11 @@ export default function AxisDocIntel() {
   const model = selected ? fieldsOf(selected) : {};
   const names = Object.keys(model);
   const confidence = selected ? confidenceOf(selected) : null;
+  // Plaintext lives here for exactly as long as this render: a reveal is scoped
+  // to the document it was asked for, so switching rows re-seals the screen.
+  const opened = result?.done === "reveal" && result.revealed ? result.revealed : {};
+  const shown = (name: string): string | null => opened[name] ?? model[name] ?? null;
+  const sealedNames = names.filter((name) => isSealedValue(model[name]) && !(name in opened));
   const boxes = selected ? bboxOf(selected) : {};
 
   useEffect(() => {
@@ -607,6 +653,17 @@ export default function AxisDocIntel() {
                 <GuardrailNotice tone="warning" title={l("review.title")} reason={l("review.reason")} />
               ) : null}
 
+              {sealedNames.length > 0 && held.has(PERM.pii) ? (
+                <Form method="post" className="flex flex-wrap items-center gap-3">
+                  <input type="hidden" name="intent" value="reveal" />
+                  <input type="hidden" name="docId" value={selected.id} />
+                  <Button type="submit" variant="ghost" loading={busy}>
+                    {l("sealed.submit")}
+                  </Button>
+                  <span className="font-ui text-12 text-subtle">{l("sealed.why")}</span>
+                </Form>
+              ) : null}
+
               {names.length === 0 ? (
                 <p className="font-ui text-13 text-subtle">{l("correct.none")}</p>
               ) : held.has(PERM.correct) ? (
@@ -622,7 +679,15 @@ export default function AxisDocIntel() {
                           <Input name={`${FIELD_PREFIX}${name}`} placeholder={l("correct.placeholder")} />
                         </Field>
                         <span className="pb-2 font-ui text-13">
-                          {model[name] ? <GhostText text={model[name]!} /> : <span className="text-subtle">—</span>}
+                          {isSealedValue(shown(name)) ? (
+                            <Badge tone="neutral" title={l("sealed.why")}>
+                              {l("sealed.value")}
+                            </Badge>
+                          ) : shown(name) ? (
+                            <GhostText text={shown(name)!} />
+                          ) : (
+                            <span className="text-subtle">—</span>
+                          )}
                         </span>
                       </li>
                     ))}
@@ -636,9 +701,15 @@ export default function AxisDocIntel() {
               ) : (
                 <ul className="flex flex-col gap-2">
                   {names.map((name) => (
-                    <li key={name} className="flex flex-wrap gap-2 font-ui text-13">
+                    <li key={name} className="flex flex-wrap items-center gap-2 font-ui text-13">
                       <span className="text-muted">{name}</span>
-                      <span className="text-text">{model[name] ?? "—"}</span>
+                      {isSealedValue(shown(name)) ? (
+                        <Badge tone="neutral" title={l("sealed.why")}>
+                          {l("sealed.value")}
+                        </Badge>
+                      ) : (
+                        <span className="text-text">{shown(name) ?? "—"}</span>
+                      )}
                     </li>
                   ))}
                 </ul>

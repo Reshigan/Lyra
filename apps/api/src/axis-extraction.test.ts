@@ -92,6 +92,7 @@ beforeAll(async () => {
     DB_CLIENT: database,
     ENVIRONMENT: "development",
     APP_ORIGIN: "http://localhost:5173",
+    FIELD_KEY: "test-field-encryption-secret",
     // The reply mirrors whatever fields the route actually asked for (read off
     // response_format.json_schema), so one stub covers both eid and mulkiya
     // without hard-coding a docType here.
@@ -182,17 +183,21 @@ describe("POST /v1/axis/documents/:id/extract", () => {
     expect(res.body.status).toBe("extracted");
     expect(res.body.extractionModel).toBeTruthy();
     expect(res.body.extractionConfidence).toBe(100);
-    expect(JSON.parse(res.body.extractionJson)).toEqual({
+    // docs/12 §1: the Emirates ID number is sealed before it reaches the column
+    // (ADR-0032); everything that is not an identifier stays legible.
+    const extracted = JSON.parse(res.body.extractionJson);
+    expect(extracted).toMatchObject({
       fullName: "Ahmed Al Mansoori",
-      idNumber: "784-1985-1234567-1",
       dateOfBirth: "1985-04-12",
       expiryDate: "2029-11-03",
       nationality: "United Arab Emirates"
     });
+    expect(extracted.idNumber).toMatch(/^enc\.v1\./);
 
     const rows = await database.select().from(schema.axisDocuments).where(eq(schema.axisDocuments.id, docId));
     expect(rows[0]?.status).toBe("extracted");
     expect(rows[0]?.extractionConfidence).toBe(100);
+    expect(rows[0]?.extractionJson).not.toContain("784-1985");
   });
 
   it("structures a mulkiya document's text (arabic locale) into named fields", async () => {
@@ -239,7 +244,12 @@ describe("POST /v1/axis/documents/:id/extract", () => {
       const docId = await upload(sample.docType);
       const res = await extract("agent", docId);
       expect(res.status).toBe(200);
-      const values = JSON.parse(res.body.extractionJson) as Record<string, string>;
+      // Read back through the reveal door rather than off the column: accuracy
+      // is a statement about what the model extracted, and sealed identifiers
+      // are unreadable by design (docs/12 §1).
+      const revealed = await call("lead", "POST", `/v1/axis/documents/${docId}/reveal`);
+      expect(revealed.status).toBe(200);
+      const values = revealed.body.values as Record<string, string>;
       for (const [field, expected] of Object.entries(sample.expected)) {
         total += 1;
         if (values[field] === expected) correct += 1;
@@ -314,5 +324,132 @@ describe("POST /v1/axis/documents/:id/extract", () => {
     expect(entry?.beforeHash).toBeTruthy();
     expect(entry?.afterHash).toBeTruthy();
     expect(entry?.actorRef).toMatch(/^user:/);
+  });
+});
+
+// docs/12 §2: "PII masked by default in UIs (reveal = permission + audit)".
+// axis.agent may extract a document and never read the identifier out of it;
+// axis.lead holds `core:pii:view` and does — with a row left behind either way.
+describe("POST /v1/axis/documents/:id/reveal", () => {
+  const reveal = (who: string, docId: string) =>
+    call(who, "POST", `/v1/axis/documents/${docId}/reveal`);
+
+  async function extracted(): Promise<string> {
+    const docId = await upload("eid");
+    expect((await extract("agent", docId)).status).toBe(200);
+    return docId;
+  }
+
+  it("opens the sealed identifier for an actor holding core:pii:view", async () => {
+    const res = await reveal("lead", await extracted());
+    expect(res.status).toBe(200);
+    expect(res.body.values.idNumber).toBe("784-1985-1234567-1");
+    expect(res.body.values.fullName).toBe("Ahmed Al Mansoori");
+  });
+
+  it("is 403 for an actor who may read the document but not its PII", async () => {
+    const res = await reveal("agent", await extracted());
+    expect(res.status).toBe(403);
+  });
+
+  it("audits the act without copying the identifier into the audit row", async () => {
+    const docId = await extracted();
+    expect((await reveal("lead", docId)).status).toBe(200);
+    const rows = await database.select().from(schema.auditLog);
+    const entry = rows.find((a) => a.subjectRef === docId && a.action === "axis.documents.reveal");
+    expect(entry).toBeDefined();
+    expect(entry?.actorRef).toMatch(/^user:/);
+    expect(JSON.stringify(entry)).not.toContain("784-1985");
+  });
+
+  it("is 409 for a document that has not been extracted yet", async () => {
+    expect((await reveal("lead", await upload("eid"))).status).toBe(409);
+  });
+
+  it("is 404 for a document in another tenant", async () => {
+    expect((await reveal("lead", foreignDocId)).status).toBe(404);
+  });
+
+  it("is 500 rather than a plaintext fallback when FIELD_KEY is missing", async () => {
+    const docId = await extracted();
+    const { FIELD_KEY: _dropped, ...keyless } = env as Env & { FIELD_KEY: string };
+    const res = await app.fetch(
+      new Request(`http://api.test/v1/axis/documents/${docId}/reveal`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${tokens.lead}` }
+      }),
+      keyless as never,
+      exec as never
+    );
+    expect(res.status).toBe(500);
+  });
+});
+
+// The correction desk (apps/web/app/routes/axis-doc-intel.tsx) saves a human's
+// answer through generic CRUD, not through the extract route — so the sealing
+// sits on the write path itself (resources.ts beforeWrite, docs/12 §1).
+describe("PATCH /v1/axis/documents/:id — corrected extractions", () => {
+  async function extracted(): Promise<string> {
+    const docId = await upload("eid");
+    expect((await extract("agent", docId)).status).toBe(200);
+    return docId;
+  }
+
+  const stored = async (docId: string): Promise<string | null> =>
+    (await database.select().from(schema.axisDocuments).where(eq(schema.axisDocuments.id, docId)))[0]
+      ?.extractionJson ?? null;
+
+  it("seals a corrected identifier rather than storing what the human typed", async () => {
+    const docId = await extracted();
+    const res = await call("lead", "PATCH", `/v1/axis/documents/${docId}`, {
+      extractionJson: JSON.stringify({ fullName: "Ahmed Al Mansoori", idNumber: "784-1985-7654321-9" })
+    });
+    expect(res.status).toBe(200);
+
+    expect(await stored(docId)).not.toContain("784-1985");
+    const revealed = await call("lead", "POST", `/v1/axis/documents/${docId}/reveal`);
+    expect(revealed.body.values.idNumber).toBe("784-1985-7654321-9");
+    expect(revealed.body.values.fullName).toBe("Ahmed Al Mansoori");
+  });
+
+  it("does not re-seal a value the caller read back and submitted unchanged", async () => {
+    const docId = await extracted();
+    const before = JSON.parse((await stored(docId))!) as Record<string, string>;
+
+    const res = await call("lead", "PATCH", `/v1/axis/documents/${docId}`, {
+      extractionJson: JSON.stringify({ ...before, nationality: "United Arab Emirates" })
+    });
+    expect(res.status).toBe(200);
+
+    // Same envelope, not an envelope wrapping an envelope: the reveal still
+    // returns the identifier itself after a round trip through the form.
+    const after = JSON.parse((await stored(docId))!) as Record<string, string>;
+    expect(after.idNumber).toBe(before.idNumber);
+    const revealed = await call("lead", "POST", `/v1/axis/documents/${docId}/reveal`);
+    expect(revealed.body.values.idNumber).toBe("784-1985-1234567-1");
+  });
+
+  it("keeps the model's reserved keys and non-identifier fields legible", async () => {
+    const docId = await extracted();
+    const res = await call("lead", "PATCH", `/v1/axis/documents/${docId}`, {
+      extractionJson: JSON.stringify({
+        fullName: "Ahmed Al Mansoori",
+        idNumber: "784-1985-7654321-9",
+        _bbox: { fullName: [1, 2, 3, 4] }
+      })
+    });
+    expect(res.status).toBe(200);
+
+    const after = JSON.parse((await stored(docId))!) as Record<string, unknown>;
+    expect(after.fullName).toBe("Ahmed Al Mansoori");
+    expect(after._bbox).toEqual({ fullName: [1, 2, 3, 4] });
+  });
+
+  it("refuses an extractionJson that is not an object of fields", async () => {
+    const docId = await extracted();
+    expect((await call("lead", "PATCH", `/v1/axis/documents/${docId}`, { extractionJson: "not json" })).status).toBe(
+      400
+    );
+    expect((await call("lead", "PATCH", `/v1/axis/documents/${docId}`, { extractionJson: "[1,2]" })).status).toBe(400);
   });
 });

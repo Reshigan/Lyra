@@ -1,3 +1,4 @@
+import { internal } from "@lyra/core";
 import type { Db } from "@lyra/db";
 import type { Ctx } from "@lyra/core";
 import type { Gateway } from "@lyra/model-gateway";
@@ -67,6 +68,21 @@ export interface Env {
   OPENAI_COMPAT_URL?: string;
   OPENAI_COMPAT_API_KEY?: string;
   SESSION_COOKIE?: string;
+  /**
+   * docs/12 §1 field-level encryption key (ADR-0032). A wrangler secret, never
+   * a `vars` entry: the day it lands in wrangler.jsonc it is in git.
+   */
+  FIELD_KEY?: string;
+}
+
+/**
+ * The field-encryption secret, or a failed request. Fails the write rather than
+ * quietly storing an Emirates ID in the clear — a deployment without the secret
+ * is a misconfiguration, not a degraded mode (docs/12 §1, ADR-0032).
+ */
+export function fieldKey(env: Pick<Env, "FIELD_KEY">): string {
+  if (!env.FIELD_KEY) throw internal("FIELD_KEY is not configured");
+  return env.FIELD_KEY;
 }
 
 /** Per-request state carried on the Hono context. */

@@ -15,6 +15,21 @@ export const EXTRACTION_FIELDS: Record<string, readonly string[]> = {
   mulkiya: ["plateNumber", "ownerName", "vehicleModel", "registrationExpiry"]
 };
 
+/**
+ * Extracted fields that are national identifiers or account details, and so are
+ * sealed before they touch the database (docs/12 §1, ADR-0032). Listed by field
+ * name rather than by doc type: the day a bank-statement doc type arrives, its
+ * `iban` is covered the moment it is named here.
+ *
+ * `plateNumber` is deliberately absent — it identifies a vehicle, is printed on
+ * the outside of one, and every quote screen shows it.
+ */
+export const SENSITIVE_EXTRACTION_FIELDS: ReadonlySet<string> = new Set([
+  "idNumber",
+  "iban",
+  "accountNumber"
+]);
+
 export interface Extraction {
   /** null where the model omitted the field or the reply did not parse at all. */
   values: Record<string, string | null>;

@@ -1,6 +1,8 @@
 import { id } from "@lyra/db";
 import { schema } from "@lyra/db";
-import { badRequest, can, checkKAnonymity, CUSTOMER_PII, DEFAULT_K_FLOOR } from "@lyra/core";
+import { badRequest, can, checkKAnonymity, CUSTOMER_PII, DEFAULT_K_FLOOR, sealFields } from "@lyra/core";
+import { SENSITIVE_EXTRACTION_FIELDS } from "@lyra/model-gateway";
+import { fieldKey } from "./env.js";
 import { register, type Resource } from "./crud.js";
 import { gatewayFor } from "./mw.js";
 import { embedUpsert } from "./engines/vectorize.js";
@@ -253,6 +255,30 @@ export const AXIS = register(
     read: "axis:documents:read",
     create: "axis:documents:upload",
     update: "axis:documents:verify"
+  }, {
+    // The extract route is not the only door to this column: a human correcting
+    // the Emirates ID the model misread writes through here. Sealing sits on the
+    // write, not on one caller of it (docs/12 §1, ADR-0032). Already-sealed
+    // values pass through untouched, so the common correction — a different
+    // field, with the sealed one carried along unchanged — re-seals nothing.
+    beforeWrite: async (_ctx, values, _existing, env) => {
+      if (typeof values.extractionJson !== "string") return values;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(values.extractionJson);
+      } catch {
+        throw badRequest("extractionJson is not valid JSON");
+      }
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw badRequest("extractionJson must be an object of fields");
+      }
+      const sealed = await sealFields(
+        fieldKey(env),
+        parsed as Record<string, unknown>,
+        SENSITIVE_EXTRACTION_FIELDS
+      );
+      return { ...values, extractionJson: JSON.stringify(sealed) };
+    }
   }),
   r("tasks", schema.axisTasks, "tsk", "axis", rw("axis:tasks"), { actorColumns: ["createdBy"] }),
   r("case-approvals", schema.axisApprovals, "cap", "axis", ro("axis:cases:approve")),

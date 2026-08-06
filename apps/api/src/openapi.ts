@@ -84,6 +84,11 @@ const HAND_WRITTEN: Op[] = [
   // text into named fields via the model gateway (packages/model-gateway/src/extract.ts).
   { method: "post", path: "/v1/axis/documents/{id}/extract", summary: "Structure a document's raw text into named fields via the model gateway", permission: "axis:documents:extract", tag: "axis", requestBody: true },
 
+  // docs/12 §1-2: identifier fields are sealed in the column (ADR-0032), so the
+  // only way back to the plaintext is this door — `core:pii:view` on top of the
+  // read permission, and an audit row per opening.
+  { method: "post", path: "/v1/axis/documents/{id}/reveal", summary: "Open the sealed identifier fields of an extraction (requires core:pii:view; audited)", permission: "axis:documents:read", tag: "axis" },
+
   // Atomic swap: the target SOP goes active and whatever else held that title
   // + kind is retired in the same transaction, so there is never a moment with
   // two active versions of the same procedure (routes/axis.ts).

@@ -2059,16 +2059,19 @@ export interface Operations {
   "GET /v1/ai/evals/{id}": Op<{ id: string }, never, never, AiEvals>;
   "GET /v1/ai/guardrail-events": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<AiGuardrailEvents>>;
   "GET /v1/ai/guardrail-events/{id}": Op<{ id: string }, never, never, AiGuardrailEvents>;
+  "GET /v1/ai/kill-switches": Op<never, never, never, Record<string, unknown>>;
   "GET /v1/ai/knowledge-sources": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<AiKnowledgeSources>>;
   "POST /v1/ai/knowledge-sources": Op<never, never, AiKnowledgeSources, AiKnowledgeSources>;
   "GET /v1/ai/knowledge-sources/{id}": Op<{ id: string }, never, never, AiKnowledgeSources>;
   "PATCH /v1/ai/knowledge-sources/{id}": Op<{ id: string }, never, AiKnowledgeSources, AiKnowledgeSources>;
   "DELETE /v1/ai/knowledge-sources/{id}": Op<{ id: string }, never, never, void>;
+  "POST /v1/ai/pause": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/ai/prompts": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<AiPrompts>>;
   "POST /v1/ai/prompts": Op<never, never, AiPrompts, AiPrompts>;
   "GET /v1/ai/prompts/{id}": Op<{ id: string }, never, never, AiPrompts>;
   "PATCH /v1/ai/prompts/{id}": Op<{ id: string }, never, AiPrompts, AiPrompts>;
   "DELETE /v1/ai/prompts/{id}": Op<{ id: string }, never, never, void>;
+  "POST /v1/ai/resume": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/ai/runs": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<AiRuns>>;
   "POST /v1/ai/runs": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/ai/runs/{id}": Op<{ id: string }, never, never, AiRuns>;
@@ -2156,6 +2159,7 @@ export interface Operations {
   "PATCH /v1/axis/documents/{id}": Op<{ id: string }, never, AxisDocuments, AxisDocuments>;
   "POST /v1/axis/documents/{id}/extract": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/axis/documents/{id}/file": Op<{ id: string }, never, never, Record<string, unknown>>;
+  "POST /v1/axis/documents/{id}/reveal": Op<{ id: string }, never, never, Record<string, unknown>>;
   "POST /v1/axis/documents/{id}/verify": Op<{ id: string }, never, never, Record<string, unknown>>;
   "GET /v1/axis/escrow-batches": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<AxisEscrowBatches>>;
   "GET /v1/axis/escrow-batches/{id}": Op<{ id: string }, never, never, AxisEscrowBatches>;
@@ -2541,6 +2545,8 @@ export interface Operations {
   "POST /v1/orbit/renewals/sweep": Op<never, never, never, Record<string, unknown>>;
   "GET /v1/orbit/renewals/{id}": Op<{ id: string }, never, never, OrbitRenewals>;
   "PATCH /v1/orbit/renewals/{id}": Op<{ id: string }, never, OrbitRenewals, OrbitRenewals>;
+  "POST /v1/platform/ai/kill": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
+  "POST /v1/platform/ai/release": Op<never, never, never, Record<string, unknown>>;
   "GET /v1/platform/deployments": Op<never, never, never, Record<string, unknown>>;
   "GET /v1/platform/flags": Op<never, never, never, Record<string, unknown>>;
   "POST /v1/platform/flags": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
@@ -2656,16 +2662,19 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "GET /v1/ai/evals/{id}": { tag: "ai", summary: "Fetch one eval", permission: "ai:evals:read", public: false },
   "GET /v1/ai/guardrail-events": { tag: "ai", summary: "List guardrail-events", permission: "ai:audit:read", public: false },
   "GET /v1/ai/guardrail-events/{id}": { tag: "ai", summary: "Fetch one guardrail event", permission: "ai:audit:read", public: false },
+  "GET /v1/ai/kill-switches": { tag: "ai", summary: "Which AI kill switches are engaged: global, tenant, per module", permission: "ai:agents:read", public: false },
   "GET /v1/ai/knowledge-sources": { tag: "ai", summary: "List knowledge-sources", permission: "ai:prompts:read", public: false },
   "POST /v1/ai/knowledge-sources": { tag: "ai", summary: "Create a knowledge source", permission: "ai:prompts:write", public: false },
   "GET /v1/ai/knowledge-sources/{id}": { tag: "ai", summary: "Fetch one knowledge source", permission: "ai:prompts:read", public: false },
   "PATCH /v1/ai/knowledge-sources/{id}": { tag: "ai", summary: "Update a knowledge source", permission: "ai:prompts:write", public: false },
   "DELETE /v1/ai/knowledge-sources/{id}": { tag: "ai", summary: "Soft-delete a knowledge source", permission: "ai:prompts:write", public: false },
+  "POST /v1/ai/pause": { tag: "ai", summary: "Pause AI for the tenant, or for one module (docs/12 §4)", permission: "ai:killswitch:use", public: false },
   "GET /v1/ai/prompts": { tag: "ai", summary: "List prompts", permission: "ai:prompts:read", public: false },
   "POST /v1/ai/prompts": { tag: "ai", summary: "Create a prompt", permission: "ai:prompts:write", public: false },
   "GET /v1/ai/prompts/{id}": { tag: "ai", summary: "Fetch one prompt", permission: "ai:prompts:read", public: false },
   "PATCH /v1/ai/prompts/{id}": { tag: "ai", summary: "Update a prompt", permission: "ai:prompts:write", public: false },
   "DELETE /v1/ai/prompts/{id}": { tag: "ai", summary: "Soft-delete a prompt", permission: "ai:prompts:write", public: false },
+  "POST /v1/ai/resume": { tag: "ai", summary: "Release the tenant or module AI pause", permission: "ai:agents:write", public: false },
   "GET /v1/ai/runs": { tag: "ai", summary: "List runs", permission: "ai:runs:read", public: false },
   "POST /v1/ai/runs": { tag: "ai", summary: "Run an agent through the gateway, budgeted and audited (needs the agent module's :ai:invoke)", permission: "core:ai:invoke", public: false },
   "GET /v1/ai/runs/{id}": { tag: "ai", summary: "Fetch one run", permission: "ai:runs:read", public: false },
@@ -2753,6 +2762,7 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "PATCH /v1/axis/documents/{id}": { tag: "axis", summary: "Update a document", permission: "axis:documents:verify", public: false },
   "POST /v1/axis/documents/{id}/extract": { tag: "axis", summary: "Structure a document's raw text into named fields via the model gateway", permission: "axis:documents:extract", public: false },
   "GET /v1/axis/documents/{id}/file": { tag: "axis", summary: "Stream a document's underlying file", permission: "axis:documents:read", public: false },
+  "POST /v1/axis/documents/{id}/reveal": { tag: "axis", summary: "Open the sealed identifier fields of an extraction (requires core:pii:view; audited)", permission: "axis:documents:read", public: false },
   "POST /v1/axis/documents/{id}/verify": { tag: "axis", summary: "Mark a document verified; the verifier and the time are stamped server-side", permission: "axis:documents:verify", public: false },
   "GET /v1/axis/escrow-batches": { tag: "axis", summary: "List escrow-batches", permission: "axis:escrow:read", public: false },
   "GET /v1/axis/escrow-batches/{id}": { tag: "axis", summary: "Fetch one escrow batche", permission: "axis:escrow:read", public: false },
@@ -3138,6 +3148,8 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "POST /v1/orbit/renewals/sweep": { tag: "orbit", summary: "Force the renewal sweep now (also runs on the scheduled tick)", permission: "orbit:renewals:update", public: false },
   "GET /v1/orbit/renewals/{id}": { tag: "orbit", summary: "Fetch one renewal", permission: "orbit:renewals:read", public: false },
   "PATCH /v1/orbit/renewals/{id}": { tag: "orbit", summary: "Update a renewal", permission: "orbit:renewals:update", public: false },
+  "POST /v1/platform/ai/kill": { tag: "platform", summary: "Throw the global AI kill switch — one click, no approval (docs/12 §4)", permission: "admin:flags:write", public: false },
+  "POST /v1/platform/ai/release": { tag: "platform", summary: "Release the global AI kill switch (gates on the core.flag_toggle approval)", permission: "admin:flags:write", public: false },
   "GET /v1/platform/deployments": { tag: "platform", summary: "Deployment history, newest first", permission: "admin:diagnostics:read", public: false },
   "GET /v1/platform/flags": { tag: "platform", summary: "Every feature flag and its rollout", permission: "admin:flags:read", public: false },
   "POST /v1/platform/flags": { tag: "platform", summary: "Create a feature flag, disabled by default", permission: "admin:flags:write", public: false },

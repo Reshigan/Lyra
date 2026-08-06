@@ -2,6 +2,7 @@ export * from "./rbac.js";
 export * from "./errors.js";
 export * from "./flags.js";
 export * from "./crypto.js";
+export * from "./field-crypto.js";
 export * from "./context.js";
 export * from "./entitlements.js";
 export * from "./audit.js";

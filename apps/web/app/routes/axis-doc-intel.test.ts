@@ -9,6 +9,7 @@ import {
   bboxOf,
   confidenceOf,
   fieldsOf,
+  isSealedValue,
   labelsIn,
   mergeCorrections,
   needsReview,
@@ -80,6 +81,10 @@ describe("labelsIn", () => {
       "correct.placeholder",
       "correct.submit",
       "correct.none",
+      "sealed.value",
+      "sealed.why",
+      "sealed.submit",
+      "done.reveal",
       "verify.submit",
       "verify.hint",
       "extract.title",
@@ -269,6 +274,19 @@ describe("correct", () => {
     expect(calls[0]?.body).not.toContain("status");
   });
 
+  it("carries the sealed envelope through untouched when another field is corrected", async () => {
+    const calls = stubFetch(new Response(null, { status: 204 }));
+    const form = new FormData();
+    form.set("intent", "correct");
+    form.set("docId", "doc_2");
+    form.set("extractionJson", '{"fullName":"Aisha","idNumber":"enc.v1.Zm9vYmFy"}');
+    form.set(`${FIELD_PREFIX}fullName`, "Aisha Khan");
+
+    await action(args(form));
+
+    expect(calls[0]?.body).toContain("enc.v1.Zm9vYmFy");
+  });
+
   it("refuses an empty correction without calling the API", async () => {
     const calls = stubFetch(new Response(null, { status: 204 }));
     const form = new FormData();
@@ -278,6 +296,55 @@ describe("correct", () => {
 
     expect((await action(args(form))).problem?.code).toBe("no_change");
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe("isSealedValue", () => {
+  // Mirrors the envelope packages/core/src/field-crypto.ts writes. The screen
+  // never decrypts anything — it only has to know not to show the envelope as
+  // if it were the value the model read.
+  it("recognises a sealed identifier and nothing else", () => {
+    expect(isSealedValue("enc.v1.Zm9vYmFy")).toBe(true);
+    expect(isSealedValue("784-1990-1234567-1")).toBe(false);
+    expect(isSealedValue(null)).toBe(false);
+  });
+});
+
+describe("reveal", () => {
+  it("asks the reveal door for the plaintext and hands back what it opened", async () => {
+    const calls = stubFetch(
+      new Response(JSON.stringify({ values: { fullName: "Aisha", idNumber: "784-1990-1234567-1" } }), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      })
+    );
+    const form = new FormData();
+    form.set("intent", "reveal");
+    form.set("docId", "doc_6");
+
+    const result = await action(args(form));
+
+    expect(calls[0]?.url).toBe("https://api.test/v1/axis/documents/doc_6/reveal");
+    expect(calls[0]?.method).toBe("POST");
+    expect(result.done).toBe("reveal");
+    expect(result.revealed).toEqual({ fullName: "Aisha", idNumber: "784-1990-1234567-1" });
+  });
+
+  it("reports the API's own 403 rather than pretending nothing is sealed", async () => {
+    stubFetch(
+      new Response(JSON.stringify({ title: "core:pii:view", status: 403, code: "forbidden" }), {
+        status: 403,
+        headers: { "content-type": "application/json" }
+      })
+    );
+    const form = new FormData();
+    form.set("intent", "reveal");
+    form.set("docId", "doc_6");
+
+    const result = await action(args(form));
+
+    expect(result.problem?.status).toBe(403);
+    expect(result.revealed).toBeFalsy();
   });
 });
 
