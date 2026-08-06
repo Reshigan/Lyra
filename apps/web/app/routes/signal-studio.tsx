@@ -328,7 +328,7 @@ export default function CampaignStudio() {
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-1">
-        <h1 className="font-display text-24 font-bold text-text">{l("studio.title")}</h1>
+        <h1 className="font-serif text-24 leading-[1.2] text-text">{l("studio.title")}</h1>
         <p className="max-w-prose font-ui text-13 text-muted">{l("studio.lede")}</p>
       </header>
 
@@ -409,7 +409,7 @@ export default function CampaignStudio() {
 
           {loaded.drafts.length > 0 ? (
             <div className="mt-6 border-t border-border pt-4">
-              <h2 className="mb-2 font-ui text-12 uppercase tracking-wider text-subtle">
+              <h2 className="mb-2 font-ui text-12 uppercase tracking-[0.14em] text-subtle">
                 {l("studio.pickCampaign")}
               </h2>
               <ul className="flex flex-col divide-y divide-border border-y border-border">

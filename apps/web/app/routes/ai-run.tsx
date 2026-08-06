@@ -443,7 +443,7 @@ export default function AiRun() {
       <header className="flex flex-col gap-2">
         {back}
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="min-w-0 font-display text-24 text-text">
+          <h1 className="min-w-0 font-serif text-24 leading-[1.2] text-text">
             <span aria-hidden="true">{AGENT_MARK}</span>{" "}
             <span className="font-mono">{run.agentKey}</span>
           </h1>

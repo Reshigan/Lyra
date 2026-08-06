@@ -372,7 +372,7 @@ export function Facts({ children }: { children: ReactNode }) {
 export function Entry({ term, children }: { term: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-1">
-      <dt className="font-ui text-11 uppercase tracking-wider text-subtle">{term}</dt>
+      <dt className="font-ui text-11 uppercase tracking-[0.14em] text-subtle">{term}</dt>
       <dd className="font-ui text-13 text-text">{children}</dd>
     </div>
   );
@@ -381,7 +381,7 @@ export function Entry({ term, children }: { term: string; children: ReactNode })
 export function Header({ title, intro }: { title: string; intro: string }) {
   return (
     <header className="flex flex-col gap-1">
-      <h1 className="font-display text-24 text-text">{title}</h1>
+      <h1 className="font-serif text-24 leading-[1.2] text-text">{title}</h1>
       <p className="max-w-prose font-ui text-13 text-muted">{intro}</p>
     </header>
   );

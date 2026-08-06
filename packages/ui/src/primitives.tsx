@@ -530,10 +530,12 @@ export interface CardProps extends Omit<React.ComponentPropsWithRef<"section">, 
   padded?: boolean;
 }
 
+/* Horizon carries depth on the hairline, not the shadow: `--elev`/`--elev2`
+   are a whisper in daylight and literally `none` after dark (ADR-0031). */
 const cardElevation = {
   flat: "bg-surface-1",
-  raised: "bg-surface-2 shadow-glow",
-  floating: "bg-surface-3 shadow-raised"
+  raised: "bg-surface-2 shadow-elev",
+  floating: "bg-surface-3 shadow-elev2"
 } as const;
 
 export function Card({
@@ -551,22 +553,18 @@ export function Card({
     <section
       {...props}
       {...(title ? { "aria-labelledby": headingId } : {})}
-      className={cn(
-        "rounded-lg border border-border text-start",
-        cardElevation[elevation],
-        className
-      )}
+      className={cn("rounded-md border border-border text-start", cardElevation[elevation], className)}
     >
       {title || actions ? (
         <header
           className={cn(
             "flex items-start justify-between gap-4 border-b border-border",
-            padded ? "px-5 py-4" : "pb-3"
+            padded ? "px-4 py-3" : "pb-3"
           )}
         >
           <div className="min-w-0">
             {title ? (
-              <h3 id={headingId} className="font-display text-16 font-medium text-text">
+              <h3 id={headingId} className="font-display text-14 font-semibold tracking-[0.01em] text-text">
                 {title}
               </h3>
             ) : null}
@@ -577,7 +575,7 @@ export function Card({
           {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
         </header>
       ) : null}
-      <div className={padded ? "p-5" : undefined}>{children}</div>
+      <div className={padded ? "p-4" : undefined}>{children}</div>
     </section>
   );
 }

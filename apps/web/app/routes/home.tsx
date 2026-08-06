@@ -13,6 +13,8 @@ import {
   Card,
   DateTime,
   EmptyState,
+  Eyebrow,
+  hueVar,
   KPIWall,
   Money,
   shortRef,
@@ -20,6 +22,7 @@ import {
   Stat,
   Timeline,
   type BadgeTone,
+  type LyraModule,
   type TimelineEvent
 } from "@lyra/ui";
 import { ApiError, api, fetchMe, type Problem } from "../api.server";
@@ -54,6 +57,15 @@ const LABELS: Record<string, Record<string, string>> = {
     greeting: "Welcome back, {name}",
     "greeting.anon": "Welcome back",
     subtitle: "What is waiting for you in {brand}.",
+
+    // The one sentence the screen opens with — Horizon answers rather than
+    // displays. It is deliberately count-free: the numbers are one row below on
+    // the KPI wall, and a sentence carrying a count needs a plural rule per
+    // locale to stay grammatical (Arabic has five).
+    "answer.decisions": "There is work waiting on your decision.",
+    "answer.unread": "Nothing needs your decision; there is news to read.",
+    "answer.clear": "Nothing is waiting on you.",
+    "answer.unknown": "Your inbox did not load. Everything else on this page did.",
 
     "kpi.approvals": "Waiting on you",
     "kpi.notifications": "Unread",
@@ -114,6 +126,11 @@ const LABELS: Record<string, Record<string, string>> = {
     greeting: "أهلًا بعودتك، {name}",
     "greeting.anon": "أهلًا بعودتك",
     subtitle: "ما ينتظرك في {brand}.",
+
+    "answer.decisions": "هناك عمل بانتظار قرارك.",
+    "answer.unread": "لا شيء يحتاج قرارك؛ هناك إشعارات غير مقروءة.",
+    "answer.clear": "لا شيء ينتظرك الآن.",
+    "answer.unknown": "تعذّر تحميل صندوق الوارد. بقية هذه الصفحة حُمّلت.",
 
     "kpi.approvals": "بانتظار قرارك",
     "kpi.notifications": "غير مقروء",
@@ -455,6 +472,18 @@ export default function Home() {
 
   // An actor with nothing to do and nothing to read still gets a door, not a
   // blank page.
+  // Horizon's opening move: the screen says what the state of play is, in one
+  // serif sentence, before it shows a single number. Derived from the inbox
+  // counts the KPI wall is already drawing — nothing is inferred, so the
+  // sentence carries no ✦ (it is arithmetic, not an agent).
+  const answer = !loaded.counts
+    ? label("answer.unknown")
+    : loaded.counts.approvals
+      ? label("answer.decisions")
+      : loaded.counts.notifications
+        ? label("answer.unread")
+        : label("answer.clear");
+
   const barren =
     !filled(loaded.approvals) &&
     !filled(loaded.notifications) &&
@@ -464,10 +493,12 @@ export default function Home() {
 
   return (
     <div className="flex flex-col gap-8">
-      <header className="flex flex-col gap-1">
-        <h1 className="font-display text-28 text-text">
-          {actorName ? label("greeting", { name: actorName }) : label("greeting.anon")}
-        </h1>
+      <header className="flex flex-col gap-2">
+        {/* Eyebrow names who is reading; the serif line answers them. The
+            greeting stops being the headline because "Welcome back" is not an
+            answer to anything. */}
+        <Eyebrow>{actorName ? label("greeting", { name: actorName }) : label("greeting.anon")}</Eyebrow>
+        <h1 className="max-w-[46ch] font-serif text-28 leading-[1.25] text-text">{answer}</h1>
         {brand ? (
           <p className="font-ui text-13 text-subtle">{label("subtitle", { brand })}</p>
         ) : null}
@@ -515,7 +546,11 @@ export default function Home() {
       ) : null}
 
       <section aria-label={label("approvals.title")} className="flex flex-col gap-3">
-        <h2 className="font-display text-16 font-medium text-text">{label("approvals.title")}</h2>
+        {/* Eyebrow's classes rather than <Eyebrow>: the block still needs a
+            real heading in the outline, and the component is a <p>. */}
+        <h2 className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">
+          {label("approvals.title")}
+        </h2>
         {loaded.approvals.state === "error" ? (
           <PanelFailure label={label} />
         ) : loaded.approvals.state === "ok" && loaded.approvals.data.length ? (
@@ -723,15 +758,24 @@ export default function Home() {
 
       {links.length ? (
         <nav aria-label={label("links.label")} className="flex flex-col gap-3">
-          <h2 className="font-display text-16 font-medium text-text">{label("links.title")}</h2>
+          <h2 className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">
+            {label("links.title")}
+          </h2>
           <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {links.map((item) => (
               <li key={item.href}>
                 <Link
                   to={item.href}
-                  className="flex h-10 items-center rounded-md border border-border px-3 font-ui text-13 text-text hover:bg-surface-2"
+                  className="flex h-10 items-center gap-2.5 overflow-hidden rounded-md border border-border pe-3 font-ui text-13 text-text transition-colors duration-150 hover:border-border-strong hover:bg-surface-2"
                 >
-                  {t(item.labelKey)}
+                  {/* The module signs its own door: 2px of its hue, the same
+                      bar the sidebar draws beside the current item. */}
+                  <span
+                    aria-hidden="true"
+                    className="h-full w-0.5 shrink-0"
+                    style={{ background: hueVar(moduleOf(item.href)) }}
+                  />
+                  <span className="truncate">{t(item.labelKey)}</span>
                 </Link>
               </li>
             ))}
@@ -759,6 +803,14 @@ export default function Home() {
       ) : null}
     </div>
   );
+}
+
+const MODULES = new Set<string>(["axis", "orbit", "signal", "scout", "north"]);
+
+/** The module a workspace link belongs to, or null for the shared surfaces. */
+function moduleOf(href: string): LyraModule | null {
+  const first = href.split("/").filter(Boolean)[0];
+  return first && MODULES.has(first) ? (first as LyraModule) : null;
 }
 
 function filled(panel: Panel<unknown[]>): boolean {

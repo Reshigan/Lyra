@@ -142,7 +142,7 @@ export default function ScoutRadar() {
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-1">
-        <h1 className="font-display text-24 font-bold text-text">{l("radar.title")}</h1>
+        <h1 className="font-serif text-24 leading-[1.2] text-text">{l("radar.title")}</h1>
         <p className="max-w-prose font-ui text-13 text-muted">{l("radar.lede")}</p>
       </header>
 
@@ -183,7 +183,7 @@ export default function ScoutRadar() {
             <EmptyState title={l("radar.pick")} />
           ) : (
             <div className="flex flex-col gap-3">
-              <h2 className="font-display text-18 font-semibold text-text">
+              <h2 className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">
                 {loaded.cluster?.theme ?? chosen.description}
               </h2>
 

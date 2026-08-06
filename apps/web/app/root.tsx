@@ -12,7 +12,7 @@ import {
 } from "react-router";
 import { UiTextProvider } from "@lyra/ui";
 import "./app.css";
-import { DEFAULT_LOCALE, dirFor, langFor, localeFrom, translator } from "./i18n";
+import { DEFAULT_LOCALE, dirFor, langFor, localeFrom, readCookie, translator } from "./i18n";
 
 // Only the two first-paint faces (packages/ui/FONTS.md §Preload; ADR-0026).
 // The mono, the four Arabic cuts, and Instrument Serif are discovered when
@@ -40,8 +40,20 @@ export const links: LinksFunction = () => [
 // login page — which has no session and therefore no profile — still renders in
 // the right direction on the first frame.
 
+/**
+ * Horizon is two palettes, not one behind a filter (tokens.css): daylight is a
+ * white page with no starfield, night is the deep field. Resolving the choice on
+ * the server is the whole point — a client-side flip flashes the wrong palette
+ * on every navigation. No cookie means no override, and `prefers-color-scheme`
+ * decides.
+ */
+function themeFrom(request: Request): "dark" | "light" | undefined {
+  const theme = readCookie(request.headers.get("cookie"), "lyra_theme");
+  return theme === "dark" || theme === "light" ? theme : undefined;
+}
+
 export function loader({ request }: LoaderFunctionArgs) {
-  return { locale: localeFrom(request) };
+  return { locale: localeFrom(request), theme: themeFrom(request) };
 }
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -51,7 +63,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const locale = data?.locale ?? DEFAULT_LOCALE;
 
   return (
-    <html lang={langFor(locale)} dir={dirFor(locale)}>
+    <html lang={langFor(locale)} dir={dirFor(locale)} data-theme={data?.theme}>
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />

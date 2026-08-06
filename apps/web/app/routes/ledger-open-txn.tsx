@@ -189,7 +189,7 @@ export default function LedgerOpenTxn() {
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-2">
-        <h1 className="font-display text-24 text-text">{l("open.title")}</h1>
+        <h1 className="font-serif text-24 leading-[1.2] text-text">{l("open.title")}</h1>
         <p className="max-w-prose font-ui text-13 text-subtle">{l("open.intro")}</p>
       </header>
 
@@ -199,7 +199,7 @@ export default function LedgerOpenTxn() {
           aria-live="polite"
           className="flex flex-col gap-2 rounded-lg border border-warning/40 bg-warning/10 p-5"
         >
-          <p className="font-display text-16 font-medium text-text">{l("txn.approvalRaised")}</p>
+          <p className="font-serif text-18 leading-[1.3] text-text">{l("txn.approvalRaised")}</p>
           <p className="max-w-prose font-ui text-13 text-muted">{l("txn.approvalRaisedBody")}</p>
           <div>
             <Button asChild variant="secondary">
@@ -288,7 +288,7 @@ export default function LedgerOpenTxn() {
       </Card>
 
       <section className="flex flex-col gap-3">
-        <h2 className="font-display text-18 text-text">{l("open.catalogue")}</h2>
+        <h2 className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">{l("open.catalogue")}</h2>
         <Table<TxnType>
           caption={l("open.catalogueCaption")}
           captionHidden

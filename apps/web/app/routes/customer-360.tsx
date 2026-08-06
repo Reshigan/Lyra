@@ -705,7 +705,7 @@ export default function Customer360() {
           </Badge>
         }
       >
-        <p className="mb-3 font-display text-18 text-text">{nameOf(customer.nameJson, locale, customer.id)}</p>
+        <p className="mb-3 font-serif text-18 leading-[1.3] text-text">{nameOf(customer.nameJson, locale, customer.id)}</p>
         <Facts>
           <Entry term={l("type")}>{tag(l, "type", customer.type)}</Entry>
           <Entry term={l("kyc")}>{tag(l, "kycStatus", customer.kycStatus)}</Entry>

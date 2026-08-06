@@ -30,6 +30,8 @@ export const ar: Messages = {
   "header.signedInAs": "تسجيل الدخول باسم {name}",
   "header.settings": "الإعدادات",
   "header.signOut": "تسجيل الخروج",
+  "header.themeDark": "التبديل إلى السمة الداكنة",
+  "header.themeLight": "التبديل إلى السمة الفاتحة",
 
   "auth.signIn": "تسجيل الدخول",
   "auth.intro": "أدخل بريد العمل وكلمة المرور للمتابعة.",

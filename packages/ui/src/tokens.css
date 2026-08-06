@@ -221,9 +221,12 @@
   --font-ui: "Instrument Sans", "IBM Plex Sans Arabic", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
   --font-arabic: "IBM Plex Sans Arabic", "Instrument Sans", system-ui, sans-serif;
-  /* Login hero + dashboard headline only, not part of the tenant font
-     contract (docs/01 §6) — see the @font-face comment above. */
-  --font-serif: "Instrument Serif", Georgia, serif;
+  /* The Horizon lede, the login hero and the answer headline. Not part of the
+     tenant font contract (docs/01 §6) — see the @font-face comment above.
+     Instrument Serif carries no Arabic, so the Arabic face sits ahead of the
+     generic serif: an Arabic lede should read as Plex, not as whatever serif
+     the OS happens to ship. */
+  --font-serif: "Instrument Serif", "IBM Plex Sans Arabic", Georgia, serif;
 
   /* Scale (docs/01 §4): 12, 13, 14 (body), 16, 18, 22, 28, 36, 48 */
   --text-12: 0.75rem;
@@ -247,9 +250,11 @@
 
   /* ---- Space, radius, elevation, motion — docs/07 §1, docs/01 §5 -------- */
   --space-base: 4px; /* 4px grid */
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 16px;
+  /* Horizon draws hairlines, not rounded slabs: the corner is a chamfer you
+     notice only when it is missing. The pill stays a pill. */
+  --radius-sm: 2px;
+  --radius-md: 3px;
+  --radius-lg: 6px;
   --radius-orbit: 999px; /* full-round pills */
 
   /* Elevation is lightness first; the glow is a hairline + soft drop */
@@ -265,43 +270,107 @@
   --control-padding-block: 8px;
   --row-height: 44px;
 
-  /* ---- 2. Semantic layer — dark-first ----------------------------------- */
-  --bg: var(--ink-900);
-  --surface-1: var(--ink-800);
-  --surface-2: var(--ink-700);
-  --surface-3: var(--ink-600);
-  --border: #1b212c;
-  --border-strong: #232b38;
-  --border-strongest: #333d4e;
-  --text: var(--star-100);
-  --text-muted: var(--star-300);
-  --text-subtle: var(--star-500);
+  /* ---- 2. Semantic layer — dark-first (Horizon, ADR-0031) ----------------
+     Horizon works in ramps rather than three named steps: six foregrounds,
+     four lines, four surfaces. The older `--text*`, `--border*` and
+     `--surface-*` names survive as aliases onto the ramp so no call site had
+     to change when the palette did.
+
+     Tokens contrast.test.ts reads (`text`, `text-subtle`, `bg`, the five
+     fills and their `-contrast`) carry literal hex in every theme block: the
+     test resolves one level of var() against the *first* declaration, which
+     is always the dark one, so a light block aliasing a per-theme ramp token
+     would be measured against dark values. */
+  --tx0: #f4f7fc;
+  --tx: #edf1f7;
+  --tx2: #d3d9e4;
+  --tx3: #aeb6c6;
+  --tx4: #97a1b2; /* 7.69:1 on --bg (AA) — the quiet step that is still body */
+  --tx5: #5e6879; /* decoration only: rules, disabled glyphs. Fails AA as text. */
+  --tx6: #3f4959; /* decoration only */
+  --steel: #8fa0bc;
+
+  --s1: #080b10;
+  --s2: #0a0d13; /* the card */
+  --s2b: #0b0e13;
+  --s3: #0d1219;
+  --s4: #161c28;
+  --track: #101620; /* slider and meter groove */
+  --line: #131926;
+  --line2: #1a2030;
+  --line3: #232b38;
+  --line4: #2a3346;
+
+  --bg: #06080b;
+  --surface-1: var(--s1);
+  --surface-2: var(--s2);
+  --surface-3: var(--s4);
+  --border: var(--line);
+  --border-strong: var(--line2);
+  --border-strongest: var(--line3);
+  --text: #edf1f7;
+  --text-muted: #aeb6c6;
+  --text-subtle: #97a1b2;
 
   --accent: var(--vega-500);
   --accent-hover: var(--vega-600);
-  --accent-contrast: var(--ink-900); /* 14.93:1 on vega-500 (AA) */
+  --accent-contrast: #06080b; /* 15.2:1 on vega-500 (AA) */
   --accent-soft: #1b2e1a;
   --accent-line: #2e4a2a;
   --focus: var(--accent);
+  --sel: #c8f16333; /* selection wash */
 
   /* success/danger/warning/info fills are all bright pastels in this
-     palette, so ink-900 clears AA as fill text for every one of them
-     (7.36:1 on the tightest case, info's medium blue) — one universal
+     palette, so the app background clears AA as fill text for every one of
+     them (7.44:1 on the tightest case, info's medium blue) — one universal
      dark-on-fill choice instead of four bespoke shades. */
   --success: var(--ion-500);
-  --success-contrast: var(--ink-900);
+  --success-contrast: #06080b;
   --danger: var(--flare-500);
-  --danger-contrast: var(--ink-900);
+  --danger-contrast: #06080b;
   --danger-soft: #26161a;
   --warning: var(--solar-500);
-  --warning-contrast: var(--ink-900);
+  --warning-contrast: #06080b;
   --warning-soft: #191507;
   --warning-line: #4a3a17;
   --info: var(--photon-500);
-  --info-contrast: var(--ink-900);
+  --info-contrast: #06080b;
+
+  /* Status triplets — the tinted chip: fill, hairline, and the two text
+     weights that sit on it. `-soft`/`-line` above stay as their aliases. */
+  --ok-bg: #08120f;
+  --ok-bg2: #14301f;
+  --ok-line: #1c2e29;
+  --ok-tx: #bfd8d2;
+  --ok-tx2: #6fbfb0;
+  --warn-bg: #0f0d08;
+  --warn-line: #2a2417;
+  --warn-tx: #e4d9c4;
+  --warn-tx2: #c9a25c;
+  --bad-line: #3a2020;
+  --north-bg: #0f0c16;
+  --north-line: #2a2438;
+  --north-tx: #8e7bb5;
+  --scout-bg: #080f18;
+  --scout-line: #1c3350;
+
+  /* Depth. Dark theme has no drop shadow at all — the hairline carries it. */
+  --elev: none;
+  --elev2: none;
+  --scrim: #06080bee;
+  --shadow: #000000cc;
+  --shadow2: #000000aa;
+
+  /* The deep field behind the shell (`.lyra-field`). Light theme zeroes it. */
+  --star-op: 0.18;
+  --neb-op: 0.55;
+  --sky1: #0c1220;
+  --neb1: #14263a55;
+  --neb2: #1e1633;
+  --star: #c7d2e4;
 
   --hatch: rgb(255 255 255 / 5%);
-  --heat-fg: var(--ink-900);
+  --heat-fg: #06080b;
 
   color-scheme: dark;
 }
@@ -316,95 +385,196 @@
 /* ---- Light theme: the SAME tokens re-mapped (docs/01 §3, docs/07 §1) ----- */
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
-    --bg: #f5f6f2;
-    --surface-1: #ffffff;
-    --surface-2: #eef0ea;
-    --surface-3: #e4e7de;
-    --border: #e2e5dc;
-    --border-strong: #d2d7ca;
-    --border-strongest: #b4bbab;
-    --text: #14181e;
-    --text-muted: #414852;
-    --text-subtle: #616875; /* 5.17:1 on --bg (AA) */
+    --tx0: #0b0e13;
+    --tx: #0e1116;
+    --tx2: #1f242c;
+    --tx3: #3a424e;
+    --tx4: #4e5866;
+    --tx5: #5d6775; /* 5.67:1 on --bg (AA) */
+    --tx6: #6f7a88; /* decoration only: 4.36:1, under AA for body */
+    --steel: #3e4c61;
 
-    --accent: var(--vega-700); /* vega-500 fails AA as text on light */
-    --accent-hover: var(--vega-800);
-    --accent-contrast: #ffffff; /* 6.25:1 on --accent (AA) */
+    --s1: #ffffff;
+    --s2: #ffffff;
+    --s2b: #fcfcfd;
+    --s3: #f4f6f9;
+    --s4: #edf0f4;
+    --track: #edeff3;
+    --line: #e6e9ee;
+    --line2: #d9dee5;
+    --line3: #c1c8d2;
+    --line4: #a6afbc;
+
+    --bg: #ffffff;
+    --surface-1: var(--s1);
+    --surface-2: var(--s2);
+    --surface-3: var(--s4);
+    --border: var(--line);
+    --border-strong: var(--line2);
+    --border-strongest: var(--line3);
+    --text: #0e1116;
+    --text-muted: #4e5866;
+    --text-subtle: #5d6775; /* 5.67:1 on --bg (AA) */
+
+    --accent: #3f6212; /* vega-500 fails AA as text on light */
+    --accent-hover: #33500e;
+    --accent-contrast: #ffffff; /* 7.17:1 on --accent (AA) */
     --accent-soft: #eef5dc;
     --accent-line: #cbdd9c;
+    --sel: #3f62121f;
 
-    /* white clears AA as fill text for every status color here too (5.32:1 on
-       the tightest case, warning's gold) — mirrors the dark-theme choice above. */
-    --success: #1f7a48;
+    /* white clears AA as fill text for every status color here too (4.97:1 on
+       the tightest case, warning's amber) — mirrors the dark-theme choice above. */
+    --success: #15803d;
     --success-contrast: #ffffff;
-    --danger: #b23428;
+    --danger: #b91c1c;
     --danger-contrast: #ffffff;
     --danger-soft: #faedeb;
-    --warning: #8a6511;
-    --warning-contrast: #ffffff; /* 5.32:1 on --warning, the tightest margin */
-    --warning-soft: #fcf6e6;
-    --warning-line: #e4d5a6;
-    --info: #2b5cbb;
+    --warning: #a16207;
+    --warning-contrast: #ffffff; /* 4.97:1 on --warning, the tightest margin */
+    --warning-soft: #fefbea;
+    --warning-line: #f0e0ae;
+    --info: #1d4ed8;
     --info-contrast: #ffffff;
+
+    --ok-bg: #f1faf4;
+    --ok-bg2: #dcf2e4;
+    --ok-line: #b4dec5;
+    --ok-tx: #14532d;
+    --ok-tx2: #15803d;
+    --warn-bg: #fefbea;
+    --warn-line: #f0e0ae;
+    --warn-tx: #6b4e07;
+    --warn-tx2: #a16207;
+    --bad-line: #f2c6c2;
+    --north-bg: #f7f4fe;
+    --north-line: #ddd2f5;
+    --north-tx: #5b21b6;
+    --scout-bg: #f0f6fe;
+    --scout-line: #c7dbf7;
+
+    --elev: 0 1px 1px #0f172a0a, 0 4px 14px #0f172a08;
+    --elev2: 0 2px 4px #0f172a12, 0 14px 40px #0f172a14;
+    --scrim: #fffffff2;
+    --shadow: #0f172a26;
+    --shadow2: #0f172a14;
+
+    /* No starfield in daylight. */
+    --star-op: 0;
+    --neb-op: 0;
+    --sky1: #ffffff;
+    --neb1: #e8eff900;
+    --neb2: #f4f1fc00;
+    --star: #94a3b8;
 
     --hatch: rgb(0 0 0 / 5%);
     --heat-fg: #ffffff;
 
     /* Module identity accents — light-mode hues (ADR-0026 exception, see the
        raw palette comment above). */
-    --module-axis: #a2660b;
-    --module-orbit: #0b7a6a;
-    --module-signal: #be4118;
-    --module-scout: #2b5cbb;
-    --module-north: #6440ad;
+    --module-axis: #b45309;
+    --module-orbit: #00786a;
+    --module-signal: #c2410c;
+    --module-scout: #1d4ed8;
+    --module-north: #6d28d9;
 
-    --shadow-glow: 0 0 0 1px #e2e5dc, 0 8px 24px #1a1f2a14;
-    --shadow-raised: 0 0 0 1px #e2e5dc, 0 24px 60px #1a1f2a1f;
+    --shadow-glow: 0 0 0 1px #e6e9ee, 0 4px 14px #0f172a08;
+    --shadow-raised: 0 0 0 1px #e6e9ee, 0 14px 40px #0f172a14;
     color-scheme: light;
   }
 }
 
 :root[data-theme="light"] {
-  --bg: #f5f6f2;
-  --surface-1: #ffffff;
-  --surface-2: #eef0ea;
-  --surface-3: #e4e7de;
-  --border: #e2e5dc;
-  --border-strong: #d2d7ca;
-  --border-strongest: #b4bbab;
-  --text: #14181e;
-  --text-muted: #414852;
-  --text-subtle: #616875; /* 5.17:1 on --bg (AA) */
+  --tx0: #0b0e13;
+  --tx: #0e1116;
+  --tx2: #1f242c;
+  --tx3: #3a424e;
+  --tx4: #4e5866;
+  --tx5: #5d6775; /* 5.67:1 on --bg (AA) */
+  --tx6: #6f7a88; /* decoration only: 4.36:1, under AA for body */
+  --steel: #3e4c61;
 
-  --accent: var(--vega-700);
-  --accent-hover: var(--vega-800);
-  --accent-contrast: #ffffff; /* 6.25:1 on --accent (AA) */
+  --s1: #ffffff;
+  --s2: #ffffff;
+  --s2b: #fcfcfd;
+  --s3: #f4f6f9;
+  --s4: #edf0f4;
+  --track: #edeff3;
+  --line: #e6e9ee;
+  --line2: #d9dee5;
+  --line3: #c1c8d2;
+  --line4: #a6afbc;
+
+  --bg: #ffffff;
+  --surface-1: var(--s1);
+  --surface-2: var(--s2);
+  --surface-3: var(--s4);
+  --border: var(--line);
+  --border-strong: var(--line2);
+  --border-strongest: var(--line3);
+  --text: #0e1116;
+  --text-muted: #4e5866;
+  --text-subtle: #5d6775; /* 5.67:1 on --bg (AA) */
+
+  --accent: #3f6212;
+  --accent-hover: #33500e;
+  --accent-contrast: #ffffff; /* 7.17:1 on --accent (AA) */
   --accent-soft: #eef5dc;
   --accent-line: #cbdd9c;
+  --sel: #3f62121f;
 
-  --success: #1f7a48;
+  --success: #15803d;
   --success-contrast: #ffffff;
-  --danger: #b23428;
+  --danger: #b91c1c;
   --danger-contrast: #ffffff;
   --danger-soft: #faedeb;
-  --warning: #8a6511;
-  --warning-contrast: #ffffff; /* 5.32:1 on --warning, the tightest margin */
-  --warning-soft: #fcf6e6;
-  --warning-line: #e4d5a6;
-  --info: #2b5cbb;
+  --warning: #a16207;
+  --warning-contrast: #ffffff; /* 4.97:1 on --warning, the tightest margin */
+  --warning-soft: #fefbea;
+  --warning-line: #f0e0ae;
+  --info: #1d4ed8;
   --info-contrast: #ffffff;
+
+  --ok-bg: #f1faf4;
+  --ok-bg2: #dcf2e4;
+  --ok-line: #b4dec5;
+  --ok-tx: #14532d;
+  --ok-tx2: #15803d;
+  --warn-bg: #fefbea;
+  --warn-line: #f0e0ae;
+  --warn-tx: #6b4e07;
+  --warn-tx2: #a16207;
+  --bad-line: #f2c6c2;
+  --north-bg: #f7f4fe;
+  --north-line: #ddd2f5;
+  --north-tx: #5b21b6;
+  --scout-bg: #f0f6fe;
+  --scout-line: #c7dbf7;
+
+  --elev: 0 1px 1px #0f172a0a, 0 4px 14px #0f172a08;
+  --elev2: 0 2px 4px #0f172a12, 0 14px 40px #0f172a14;
+  --scrim: #fffffff2;
+  --shadow: #0f172a26;
+  --shadow2: #0f172a14;
+
+  --star-op: 0;
+  --neb-op: 0;
+  --sky1: #ffffff;
+  --neb1: #e8eff900;
+  --neb2: #f4f1fc00;
+  --star: #94a3b8;
 
   --hatch: rgb(0 0 0 / 5%);
   --heat-fg: #ffffff;
 
-  --module-axis: #a2660b;
-  --module-orbit: #0b7a6a;
-  --module-signal: #be4118;
-  --module-scout: #2b5cbb;
-  --module-north: #6440ad;
+  --module-axis: #b45309;
+  --module-orbit: #00786a;
+  --module-signal: #c2410c;
+  --module-scout: #1d4ed8;
+  --module-north: #6d28d9;
 
-  --shadow-glow: 0 0 0 1px #e2e5dc, 0 8px 24px #1a1f2a14;
-  --shadow-raised: 0 0 0 1px #e2e5dc, 0 24px 60px #1a1f2a1f;
+  --shadow-glow: 0 0 0 1px #e6e9ee, 0 4px 14px #0f172a08;
+  --shadow-raised: 0 0 0 1px #e6e9ee, 0 14px 40px #0f172a14;
   color-scheme: light;
 }
 
@@ -465,6 +635,45 @@
   --color-hatch: var(--hatch);
   --color-heat-fg: var(--heat-fg);
 
+  /* Horizon ramps (ADR-0031). The aliases above stay — these are the extra
+     steps between them that the older three-step names could not express. */
+  --color-tx0: var(--tx0);
+  --color-tx: var(--tx);
+  --color-tx2: var(--tx2);
+  --color-tx3: var(--tx3);
+  --color-tx4: var(--tx4);
+  --color-tx5: var(--tx5);
+  --color-tx6: var(--tx6);
+  --color-steel: var(--steel);
+  --color-s1: var(--s1);
+  --color-s2: var(--s2);
+  --color-s2b: var(--s2b);
+  --color-s3: var(--s3);
+  --color-s4: var(--s4);
+  --color-track: var(--track);
+  --color-line: var(--line);
+  --color-line2: var(--line2);
+  --color-line3: var(--line3);
+  --color-line4: var(--line4);
+  --color-sel: var(--sel);
+
+  /* Status triplets — the tinted chip. */
+  --color-ok-bg: var(--ok-bg);
+  --color-ok-bg2: var(--ok-bg2);
+  --color-ok-line: var(--ok-line);
+  --color-ok-tx: var(--ok-tx);
+  --color-ok-tx2: var(--ok-tx2);
+  --color-warn-bg: var(--warn-bg);
+  --color-warn-line: var(--warn-line);
+  --color-warn-tx: var(--warn-tx);
+  --color-warn-tx2: var(--warn-tx2);
+  --color-bad-line: var(--bad-line);
+  --color-north-bg: var(--north-bg);
+  --color-north-line: var(--north-line);
+  --color-north-tx: var(--north-tx);
+  --color-scout-bg: var(--scout-bg);
+  --color-scout-line: var(--scout-line);
+
   --font-display: var(--font-display);
   --font-ui: var(--font-ui);
   --font-mono: var(--font-mono);
@@ -490,6 +699,9 @@
 
   --shadow-glow: var(--shadow-glow);
   --shadow-raised: var(--shadow-raised);
+  /* Horizon depth: `none` in dark, a whisper in light. */
+  --shadow-elev: var(--elev);
+  --shadow-elev2: var(--elev2);
 
   --ease-out: var(--ease-out);
   --animate-twinkle: twinkle 2.6s var(--ease-out) infinite;

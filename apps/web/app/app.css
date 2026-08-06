@@ -54,31 +54,27 @@
 
   /* The stars: two tiled layers, drifting at different rates for parallax. The
      `drift` keyframe moves exactly two background layers, so this element must
-     carry exactly two. */
+     carry exactly two.
+
+     `--star-op` is 0 in the light theme: Horizon's daylight is a clean white
+     page, and the sky only appears after dark. One token, both themes. */
   .lyra-field::before {
     background-image:
-      radial-gradient(1px 1px at 20% 30%, var(--text-muted) 50%, transparent 50%),
-      radial-gradient(1px 1px at 70% 60%, var(--text-muted) 50%, transparent 50%);
+      radial-gradient(1px 1px at 20% 30%, var(--star) 50%, transparent 50%),
+      radial-gradient(1px 1px at 70% 60%, var(--star) 50%, transparent 50%);
     background-size:
       220px 180px,
       340px 260px;
-    opacity: 0.35;
+    opacity: var(--star-op);
     animation: var(--animate-drift);
   }
 
   /* The glows sit still: a light source that crawls reads as a bug. */
   .lyra-field::after {
     background-image:
-      radial-gradient(
-        60rem 40rem at 12% -8%,
-        color-mix(in oklab, var(--accent) 14%, transparent),
-        transparent 70%
-      ),
-      radial-gradient(
-        50rem 36rem at 96% 104%,
-        color-mix(in oklab, var(--module-orbit) 12%, transparent),
-        transparent 70%
-      );
+      radial-gradient(60rem 40rem at 12% -8%, var(--neb1), transparent 70%),
+      radial-gradient(50rem 36rem at 96% 104%, var(--neb2), transparent 70%);
+    opacity: var(--neb-op);
   }
 
   .lyra-enter {

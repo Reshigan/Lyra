@@ -3,9 +3,16 @@ import type { Brand, NavItem } from "../api.server";
 import type { Translate } from "../i18n";
 import { isRouted } from "../routing";
 import { SearchPalette } from "./search";
+import { ThemeToggle } from "./theme-toggle";
 
-// The frame every workspace renders inside: brand mark and account controls on
-// top, a labelled navigation sidebar beside the work.
+// The frame every workspace renders inside: a 50px top bar carrying the tenant
+// lockup, the ask bar and the account controls, a labelled navigation sidebar
+// beside the work, and a status strip under it.
+//
+// Horizon proportions (docs/superpowers/specs/2026-08-06-horizon-frontend-design.md):
+// the chrome is thin and hairlined, the ask bar is the widest thing in the bar
+// because asking is the first move on every screen, and depth is a line rather
+// than a shadow.
 //
 // The sidebar is text-labelled, always. docs/07 §3 describes a rail that
 // collapses to icons; that is overridden here by an explicit product decision —
@@ -112,6 +119,11 @@ export function Shell({ t, nav, brand, tenantName, actorName, children }: ShellP
   // The arrival is keyed on the path: React throws the old main away on every
   // navigation, so the entrance plays again instead of only on first paint.
   const { pathname } = useLocation();
+  // What the status strip names. The nav has already decided which destinations
+  // exist, so the longest matching href wins: /axis/quotes over /axis.
+  const currentItem = items
+    .filter((item) => (item.href === "/" ? pathname === "/" : pathname.startsWith(item.href)))
+    .sort((a, b) => b.href.length - a.href.length)[0];
 
   return (
     <div className="lyra-field min-h-screen bg-bg text-text" style={brandStyle(brand)}>
@@ -122,22 +134,33 @@ export function Shell({ t, nav, brand, tenantName, actorName, children }: ShellP
         {t("app.skipToContent")}
       </a>
 
-      <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-surface-1/95 px-4 backdrop-blur-sm">
+      <header className="sticky top-0 z-30 flex h-[50px] items-center gap-2 border-b border-border bg-surface-1/95 px-3 backdrop-blur-sm sm:gap-3 sm:px-4">
         <NavLink
           to="/"
           end
-          className="flex items-center gap-2 rounded-md px-1 py-1 font-display text-14 tracking-wide text-text hover:text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          className="flex shrink-0 items-center gap-2 rounded-md px-1 py-1 font-display text-14 tracking-[0.02em] text-text hover:text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
         >
-          {logo ? <img src={logo} alt={productName} className="h-6 w-auto" /> : productName}
+          {logo ? (
+            <img src={logo} alt={productName} className="h-6 w-auto" />
+          ) : (
+            <>
+              {/* The lockup mark: one dot in the tenant accent. A tenant with a
+                  logo gets its own; a tenant without one is not left with a
+                  bare word. */}
+              <span
+                aria-hidden="true"
+                className="size-2 shrink-0 rounded-orbit"
+                style={{ background: "var(--accent)" }}
+              />
+              <span className="truncate">{productName}</span>
+            </>
+          )}
         </NavLink>
 
-        <div className="ms-auto flex items-center gap-1">
-          <SearchPalette t={t} />
-          {actorName ? (
-            <span className="me-2 hidden font-ui text-12 text-muted sm:inline">
-              {t("header.signedInAs", { name: actorName })}
-            </span>
-          ) : null}
+        <SearchPalette t={t} />
+
+        <div className="ms-auto flex shrink-0 items-center gap-1">
+          <ThemeToggle t={t} />
           <NavLink
             to="/settings"
             className={({ isActive }) =>
@@ -157,10 +180,31 @@ export function Shell({ t, nav, brand, tenantName, actorName, children }: ShellP
               {t("header.signOut")}
             </button>
           </Form>
+          {actorName ? (
+            <span
+              className="ms-1 hidden items-center gap-2 rounded-orbit border border-border py-0.5 pe-2.5 ps-0.5 sm:inline-flex"
+              title={t("header.signedInAs", { name: actorName })}
+            >
+              {/* Initials in the tenant accent, the name beside them: the pill
+                  says who is acting without a menu having to be opened. The
+                  full "signed in as" sentence stays as the pill's title. */}
+              <span
+                aria-hidden="true"
+                className="grid size-6 shrink-0 place-items-center rounded-orbit font-mono text-11 font-medium"
+                style={{
+                  background: "color-mix(in oklab, var(--accent) 20%, transparent)",
+                  color: "var(--accent)"
+                }}
+              >
+                {initialsOf(actorName)}
+              </span>
+              <span className="max-w-40 truncate font-ui text-12 text-muted">{actorName}</span>
+            </span>
+          ) : null}
         </div>
       </header>
 
-      <div className="flex min-h-[calc(100vh-3.5rem)] flex-col md:flex-row">
+      <div className="flex min-h-[calc(100vh-50px)] flex-col md:flex-row">
         <nav
           aria-label={t("nav.primary")}
           className={[
@@ -176,12 +220,12 @@ export function Shell({ t, nav, brand, tenantName, actorName, children }: ShellP
 
         <nav
           aria-label={t("nav.primary")}
-          className="hidden md:sticky md:top-14 md:flex md:h-[calc(100vh-3.5rem)] md:w-60 md:shrink-0 md:flex-col md:gap-0.5 md:overflow-y-auto md:border-e md:border-border md:p-3"
+          className="hidden md:sticky md:top-[50px] md:flex md:h-[calc(100vh-50px)] md:w-60 md:shrink-0 md:flex-col md:gap-0.5 md:overflow-y-auto md:border-e md:border-border md:p-3"
         >
           {groups.map((group, i) => (
             <div key={group.heading?.href ?? group.items[0]?.href ?? i} className="mb-1">
               {group.heading ? (
-                <h2 className="mb-1 mt-3 px-3 font-ui text-11 font-medium uppercase tracking-wide text-subtle first:mt-0">
+                <h2 className="mb-1 mt-4 px-3 font-ui text-11 font-medium uppercase tracking-[0.14em] text-subtle first:mt-0">
                   {t(group.heading.labelKey)}
                 </h2>
               ) : null}
@@ -205,12 +249,45 @@ export function Shell({ t, nav, brand, tenantName, actorName, children }: ShellP
           {children}
         </main>
       </div>
+
+      {/* The status strip: who you are working inside, in the same mono the
+          numbers use. Decorative in the accessibility tree — every fact on it
+          is already announced by the lockup and the nav's current item. */}
+      <footer
+        aria-hidden="true"
+        className="sticky bottom-0 z-20 hidden h-7 items-center gap-2 border-t border-border bg-surface-1/95 px-4 font-mono text-11 text-subtle backdrop-blur-sm sm:flex"
+      >
+        <span className="truncate">{productName}</span>
+        <span className="text-border-strong">/</span>
+        <span className="truncate">{t(currentItem?.labelKey ?? "nav.primary")}</span>
+      </footer>
     </div>
   );
 }
 
+/**
+ * Two letters at most, from the first and last word of the name — the pill is
+ * 24px and a third initial turns it into a smudge. Works the same in Arabic:
+ * the split is on whitespace, not on script.
+ */
+function initialsOf(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return "";
+  const first = [...(words[0] ?? "")][0] ?? "";
+  const last = words.length > 1 ? ([...(words.at(-1) ?? "")][0] ?? "") : "";
+  return (first + last).toLocaleUpperCase();
+}
+
+/** A module's screens carry the module's hue, not just its landing page. */
+function accentFor(href: string): string {
+  for (const [prefix, hue] of Object.entries(MODULE_ACCENT)) {
+    if (href === prefix || href.startsWith(`${prefix}/`)) return hue;
+  }
+  return "var(--accent)";
+}
+
 function NavItemLink({ item, t, nested }: { item: NavItem; t: Translate; nested?: boolean }) {
-  const accent = MODULE_ACCENT[item.href] ?? "var(--accent)";
+  const accent = accentFor(item.href);
   return (
     <NavLink
       to={item.href}
@@ -229,13 +306,14 @@ function NavItemLink({ item, t, nested }: { item: NavItem; t: Translate; nested?
     >
       {({ isActive }) => (
         <>
-          {/* Which workspace, before the word is read. Decoration only — the
-              label is the item, never an icon or a dot on its own. */}
+          {/* Which workspace, before the word is read: Horizon's 2px module
+              hue bar. Decoration only — the label is the item, never a bar or
+              an icon on its own. */}
           <span
             aria-hidden="true"
             className={[
-              "size-1.5 shrink-0 rounded-full transition-opacity duration-150",
-              nested ? "opacity-0" : isActive ? "opacity-100" : "opacity-30 group-hover:opacity-60"
+              "h-4 w-0.5 shrink-0 rounded-orbit transition-opacity duration-150",
+              isActive ? "opacity-100" : "opacity-0 group-hover:opacity-50"
             ].join(" ")}
             style={{ background: accent }}
           />

@@ -42,14 +42,23 @@ export function SearchPalette({ t }: { t: Translate }) {
 
   return (
     <>
+      {/* Horizon's ask bar: the widest thing in the top bar, because asking is
+          the first move on every screen. It is a button, not an input — the
+          typing happens in the palette, and a second focusable field in the
+          header would only be somewhere to lose a query. */}
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="hidden rounded-md px-2.5 py-1.5 font-ui text-12 text-muted transition-colors duration-150 hover:bg-surface-2 hover:text-text sm:inline-flex"
+        className="hidden h-8 min-w-0 max-w-md flex-1 items-center gap-2 rounded-md border border-border bg-surface-2/50 px-2.5 text-start font-ui text-12 text-subtle transition-colors duration-150 hover:border-border-strong hover:text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent sm:flex"
       >
-        {t("search.open")}
+        <span
+          aria-hidden="true"
+          className="size-1.5 shrink-0 rounded-orbit bg-accent"
+          style={{ animation: "var(--animate-twinkle)" }}
+        />
+        <span className="truncate">{t("search.open")}</span>
         {/* A key cap, not a word: the same two glyphs in every locale. */}
-        <kbd className="ms-2 font-mono text-11 text-subtle">⌘K</kbd>
+        <kbd className="ms-auto shrink-0 font-mono text-11 text-subtle">⌘K</kbd>
       </button>
       <CommandBar
         open={open}

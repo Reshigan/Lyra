@@ -30,6 +30,8 @@ export const en = {
   "header.signedInAs": "Signed in as {name}",
   "header.settings": "Settings",
   "header.signOut": "Sign out",
+  "header.themeDark": "Switch to the dark theme",
+  "header.themeLight": "Switch to the light theme",
 
   "auth.signIn": "Sign in",
   "auth.intro": "Enter your work email and password to continue.",

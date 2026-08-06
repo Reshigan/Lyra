@@ -350,7 +350,7 @@ export default function LedgerTransaction() {
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="font-display text-24 text-text">
+          <h1 className="font-serif text-24 leading-[1.2] text-text">
             {l("txn.title")} <span className="font-mono text-16 text-muted">{txn.type}</span>
           </h1>
           <Badge tone={txnTone(txn.state)}>{l(`state.${txn.state}`)}</Badge>
@@ -436,7 +436,7 @@ export default function LedgerTransaction() {
           <EmptyState title={l("txn.noLines")} body={l("txn.noLinesBody")} />
         ) : (
           <section className="flex flex-col gap-3">
-            <h2 className="font-display text-18 text-text">{l("txn.lines")}</h2>
+            <h2 className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">{l("txn.lines")}</h2>
             <Table<JournalLine>
               caption={l("txn.linesCaption")}
               captionHidden
@@ -473,13 +473,13 @@ export default function LedgerTransaction() {
                 role="alert"
                 className="flex flex-col gap-2 rounded-lg border border-danger/40 bg-danger/10 p-5"
               >
-                <p className="font-display text-16 font-medium text-text">{l("txn.imbalance")}</p>
+                <p className="font-serif text-18 leading-[1.3] text-text">{l("txn.imbalance")}</p>
                 <Money
                   amountMinor={balance.deltaMinor}
                   currency={txn.currency}
                   locale={locale}
                   signed
-                  className="font-display text-28 font-bold text-danger"
+                  className="font-mono text-28 font-medium tabular-nums text-danger"
                 />
                 <p className="max-w-prose font-ui text-13 text-muted">{l("txn.imbalanceBody")}</p>
               </div>
@@ -544,14 +544,14 @@ export default function LedgerTransaction() {
 
       {timeline.length > 0 ? (
         <section className="flex flex-col gap-3">
-          <h2 className="font-display text-18 text-text">{l("txn.history")}</h2>
+          <h2 className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">{l("txn.history")}</h2>
           <Timeline events={timeline} label={l("txn.historyLabel")} />
         </section>
       ) : null}
 
       <section className="flex flex-col gap-3">
         <div className="flex flex-wrap items-baseline justify-between gap-3">
-          <h2 className="font-display text-18 text-text">{l("txn.approvals")}</h2>
+          <h2 className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">{l("txn.approvals")}</h2>
           {/* The queue lives at /approvals and is not rebuilt here. */}
           <Button asChild variant="ghost">
             <Link to="/approvals">{l("txn.approvalsInbox")}</Link>
@@ -602,7 +602,7 @@ export default function LedgerTransaction() {
 
       {loaded.audit.length > 0 ? (
         <section className="flex flex-col gap-3">
-          <h2 className="font-display text-18 text-text">{l("txn.audit")}</h2>
+          <h2 className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">{l("txn.audit")}</h2>
           <Table<AuditRow>
             caption={l("txn.audit")}
             captionHidden
@@ -649,7 +649,7 @@ function Announcement({
         aria-live="polite"
         className="flex flex-col gap-2 rounded-lg border border-warning/40 bg-warning/10 p-5"
       >
-        <p className="font-display text-16 font-medium text-text">{l("txn.approvalRaised")}</p>
+        <p className="font-serif text-18 leading-[1.3] text-text">{l("txn.approvalRaised")}</p>
         <p className="max-w-prose font-ui text-13 text-muted">{l("txn.approvalRaisedBody")}</p>
         {result.approval ? (
           <p className="font-mono text-12 text-subtle">{result.approval}</p>

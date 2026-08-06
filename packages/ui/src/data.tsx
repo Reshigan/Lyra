@@ -84,7 +84,7 @@ export function Table<T>({
         role="region"
         aria-label={caption}
         tabIndex={0}
-        className={cn("overflow-auto rounded-lg border border-border", focusRing)}
+        className={cn("overflow-auto rounded-md border border-border", focusRing)}
       >
         <table className="w-full border-collapse font-ui text-13">
           <caption
@@ -179,7 +179,9 @@ export function Table<T>({
                       className={cn(
                         cellPad,
                         "align-top text-muted",
-                        col.numeric ? "text-end tabular-nums text-text" : "text-start"
+                        // Horizon sets every number in mono so a column aligns
+                        // and a changing value never shifts its neighbours.
+                        col.numeric ? "text-end font-mono tabular-nums text-text" : "text-start"
                       )}
                     >
                       {col.render(row)}
@@ -335,7 +337,7 @@ export function EmptyState({ title, body, action, className }: EmptyStateProps) 
   return (
     <div
       className={cn(
-        "flex flex-col items-center gap-3 rounded-lg border border-dashed border-border p-10 text-center",
+        "flex flex-col items-center gap-3 rounded-md border border-dashed border-border p-10 text-center",
         className
       )}
     >
@@ -379,10 +381,12 @@ export function Stat({
   const tone: BadgeTone = good === undefined ? "neutral" : good ? "success" : "danger";
   return (
     <div className={cn("flex flex-col gap-1 text-start", className)}>
-      <span className="font-ui text-12 uppercase tracking-wider text-subtle">{label}</span>
+      <span className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">{label}</span>
+      {/* Mono, like every other number in Horizon: a KPI wall of these lines
+          up on the decimal without anyone laying out a grid for it. */}
       <span
         className={cn(
-          "font-display text-28 font-bold tabular-nums text-text",
+          "font-mono text-28 font-medium tabular-nums text-text",
           live && "motion-safe:animate-twinkle"
         )}
       >
@@ -443,7 +447,12 @@ export function Sparkline({ values, label, tone = "accent", className }: Sparkli
 
 export function KPIWall({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={cn("grid gap-6 sm:grid-cols-2 lg:grid-cols-4", className)}>{children}</div>
+    <div
+      className={cn("grid gap-4", className)}
+      style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(13rem, 100%), 1fr))" }}
+    >
+      {children}
+    </div>
   );
 }
 

@@ -187,7 +187,7 @@ export default function AnalyticsDashboard() {
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-2">
         <p className="font-ui text-12 text-subtle">{l("dashboard")}</p>
-        <h1 className="font-display text-24 text-text">{loaded.name}</h1>
+        <h1 className="font-serif text-24 leading-[1.2] text-text">{loaded.name}</h1>
         {data ? (
           <p className="font-ui text-12 text-subtle">
             {l("generated")}{" "}
@@ -211,7 +211,7 @@ export default function AnalyticsDashboard() {
                 aria-label={l(spec.key)}
                 className={`flex min-w-0 flex-col gap-3 rounded-lg border border-border bg-surface-1 p-4 ${span}`}
               >
-                <h2 className="font-display text-16 text-text">{l(spec.key)}</h2>
+                <h2 className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">{l(spec.key)}</h2>
                 <Tile spec={spec} result={result} locale={locale} l={l} t={t} />
               </section>
             );

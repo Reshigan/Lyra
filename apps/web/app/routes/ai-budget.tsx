@@ -453,7 +453,7 @@ export default function AiBudget() {
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-1">
-        <h1 className="font-display text-24 text-text">
+        <h1 className="font-serif text-24 leading-[1.2] text-text">
           <span aria-hidden="true">{AGENT_MARK}</span> {L("title")}
         </h1>
         <p className="max-w-prose font-ui text-13 text-subtle">{L("intro")}</p>

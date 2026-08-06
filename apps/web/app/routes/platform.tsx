@@ -770,7 +770,7 @@ export default function Platform() {
 function Header({ l }: { l: Label }) {
   return (
     <header className="flex flex-col gap-1">
-      <h1 className="font-display text-24 text-text">{l("title")}</h1>
+      <h1 className="font-serif text-24 leading-[1.2] text-text">{l("title")}</h1>
       <p className="font-ui text-14 text-muted">{l("intro")}</p>
     </header>
   );

@@ -335,7 +335,7 @@ export default function LedgerRecon() {
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-2">
-        <h1 className="font-display text-24 text-text">{l("recon.title")}</h1>
+        <h1 className="font-serif text-24 leading-[1.2] text-text">{l("recon.title")}</h1>
         <p className="max-w-prose font-ui text-13 text-subtle">{l("recon.intro")}</p>
       </header>
 
@@ -396,15 +396,15 @@ export default function LedgerRecon() {
           <dl className="grid grid-cols-[repeat(auto-fit,minmax(10rem,1fr))] gap-5">
             <div className="flex flex-col gap-1">
               <dt className="font-ui text-12 text-subtle">{l("recon.matched")}</dt>
-              <dd className="font-display text-20 text-text">{summary.matchedCount}</dd>
+              <dd className="font-mono text-20 tabular-nums text-text">{summary.matchedCount}</dd>
             </div>
             <div className="flex flex-col gap-1">
               <dt className="font-ui text-12 text-subtle">{l("recon.variance")}</dt>
-              <dd className="font-display text-20 text-text">{summary.varianceCount}</dd>
+              <dd className="font-mono text-20 tabular-nums text-text">{summary.varianceCount}</dd>
             </div>
             <div className="flex flex-col gap-1">
               <dt className="font-ui text-12 text-subtle">{l("recon.varianceMinor")}</dt>
-              <dd className="font-display text-20 text-text">
+              <dd className="font-mono text-20 tabular-nums text-text">
                 <Money
                   amountMinor={summary.varianceMinor}
                   currency={summary.currency}
@@ -416,7 +416,7 @@ export default function LedgerRecon() {
             </div>
             <div className="flex flex-col gap-1">
               <dt className="font-ui text-12 text-subtle">{l("recon.open")}</dt>
-              <dd className="font-display text-20 text-text">{summary.open}</dd>
+              <dd className="font-mono text-20 tabular-nums text-text">{summary.open}</dd>
             </div>
           </dl>
         </Card>
@@ -424,7 +424,7 @@ export default function LedgerRecon() {
 
       {loaded.runId ? (
         <section className="flex flex-col gap-3">
-          <h2 className="font-display text-18 text-text">{l("recon.matches")}</h2>
+          <h2 className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">{l("recon.matches")}</h2>
           <Table<ReconMatch>
             caption={l("recon.matchesCaption")}
             captionHidden
@@ -441,7 +441,7 @@ export default function LedgerRecon() {
 
       {loaded.runs.length > 0 ? (
         <section className="flex flex-col gap-3">
-          <h2 className="font-display text-18 text-text">{l("recon.runs")}</h2>
+          <h2 className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">{l("recon.runs")}</h2>
           <Table<ReconRun>
             caption={l("recon.runsCaption")}
             captionHidden

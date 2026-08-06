@@ -120,7 +120,7 @@ export default function Record() {
         >
           {t("common.back")}
         </Link>
-        <h1 className="font-display text-24 text-text">{heading}</h1>
+        <h1 className="font-serif text-24 leading-[1.2] text-text">{heading}</h1>
         <p className="font-ui text-12 text-subtle">
           {label(tab.key)} · <span className="font-mono">{String(row.id ?? "")}</span>
         </p>
@@ -178,7 +178,7 @@ export default function Record() {
           aria-labelledby="record-actions"
           className="flex flex-col gap-4 rounded-lg border border-border p-4"
         >
-          <h2 id="record-actions" className="font-display text-16 text-text">
+          <h2 id="record-actions" className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">
             {t("common.actions")}
           </h2>
           <div className="flex flex-wrap items-end gap-4">
@@ -191,7 +191,7 @@ export default function Record() {
 
       {canEdit ? (
         <Form method="post" className="flex flex-col gap-4 rounded-lg border border-border p-4">
-          <h2 className="font-display text-16 text-text">{t("common.edit")}</h2>
+          <h2 className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">{t("common.edit")}</h2>
           <input type="hidden" name="intent" value="update" />
           <div className="grid gap-4 sm:grid-cols-2">
             {editable.map((field) => (

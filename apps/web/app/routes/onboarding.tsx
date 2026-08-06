@@ -564,7 +564,7 @@ export default function Onboarding() {
       {partner ? <Subject l={l} locale={locale} partner={partner} /> : null}
 
       <section aria-labelledby="checklist-heading" className="flex flex-col gap-3">
-        <h2 id="checklist-heading" className="font-display text-16 text-text">
+        <h2 id="checklist-heading" className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">
           {l("onb.checklist")}
         </h2>
         {target ? (
@@ -621,7 +621,7 @@ function Header({ l, loaded }: { l: Label; loaded: Awaited<ReturnType<typeof loa
       >
         {l("onb.back")}
       </Link>
-      <h1 className="font-display text-24 text-text">
+      <h1 className="font-serif text-24 leading-[1.2] text-text">
         {loaded.partner?.name ?? l(`onb.subject.${loaded.subjectKind}`)}
       </h1>
       <p className="max-w-prose font-ui text-13 text-muted">{l("onb.intro")}</p>
@@ -902,7 +902,7 @@ function Lifecycle({
 
   return (
     <section aria-labelledby="lifecycle-heading" className="flex flex-col gap-4">
-      <h2 id="lifecycle-heading" className="font-display text-16 text-text">
+      <h2 id="lifecycle-heading" className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">
         {l("onb.lifecycle")}
       </h2>
 
@@ -987,7 +987,7 @@ function Agreements({
   const mayWrite = loaded.may.agreementsWrite;
   return (
     <section aria-labelledby="agreements-heading" className="flex flex-col gap-3">
-      <h2 id="agreements-heading" className="font-display text-16 text-text">
+      <h2 id="agreements-heading" className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">
         {l("onb.agreements")}
       </h2>
 

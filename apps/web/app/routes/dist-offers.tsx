@@ -322,7 +322,7 @@ export default function NextBestOffers() {
         >
           {l("backToOffers")}
         </Link>
-        <h1 className="font-display text-24 text-text">{l("title")}</h1>
+        <h1 className="font-serif text-24 leading-[1.2] text-text">{l("title")}</h1>
         <p className="max-w-prose font-ui text-13 text-muted">{l("intro")}</p>
       </header>
 
@@ -332,7 +332,7 @@ export default function NextBestOffers() {
         <>
           {loaded.may.propose ? (
             <section aria-labelledby="propose-heading" className="flex flex-col gap-3">
-              <h2 id="propose-heading" className="font-display text-16 text-text">
+              <h2 id="propose-heading" className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">
                 {l("ask")}
               </h2>
               <p className="max-w-prose font-ui text-13 text-muted">{l("askIntro")}</p>
@@ -375,7 +375,7 @@ export default function NextBestOffers() {
             <EmptyState title={l("emptyTitle")} body={l("emptyBody")} />
           ) : (
             <section aria-labelledby="offers-heading" className="flex flex-col gap-3">
-              <h2 id="offers-heading" className="font-display text-16 text-text">
+              <h2 id="offers-heading" className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">
                 {l("results")}
               </h2>
               {/* Ranked, not tiled: the order is the model's answer, and a grid
@@ -422,7 +422,7 @@ function OfferRow({
     <article className="flex flex-col gap-3 py-4 sm:flex-row sm:items-start sm:gap-6">
       <div className="flex min-w-0 flex-1 flex-col gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          <h3 className="font-display text-15 text-text">{optionLabel(l, "kind", offer.kind)}</h3>
+          <h3 className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">{optionLabel(l, "kind", offer.kind)}</h3>
           <Badge tone={toneFor(offer.state)} size="sm" dot>
             {optionLabel(l, "state", offer.state)}
           </Badge>

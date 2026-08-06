@@ -599,7 +599,7 @@ export default function ConversationThread() {
         >
           {t("common.back")}
         </Link>
-        <h1 className="font-display text-24 text-text">
+        <h1 className="font-serif text-24 leading-[1.2] text-text">
           {loaded.customerName ?? l("conversation")}
         </h1>
         <p className="flex flex-wrap items-center gap-2 font-ui text-12 text-subtle">

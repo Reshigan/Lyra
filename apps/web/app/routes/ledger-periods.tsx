@@ -183,7 +183,7 @@ export default function LedgerPeriods() {
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-2">
-        <h1 className="font-display text-24 text-text">{l("period.title")}</h1>
+        <h1 className="font-serif text-24 leading-[1.2] text-text">{l("period.title")}</h1>
         <p className="max-w-prose font-ui text-13 text-subtle">{l("period.intro")}</p>
       </header>
 
@@ -259,7 +259,7 @@ export default function LedgerPeriods() {
                 role="alert"
                 className="flex flex-col gap-2 rounded-lg border border-danger/40 bg-danger/10 p-5"
               >
-                <p className="font-display text-16 font-medium text-text">{l("period.blocked")}</p>
+                <p className="font-serif text-18 leading-[1.3] text-text">{l("period.blocked")}</p>
                 <p className="max-w-prose font-ui text-13 text-muted">{l("period.blockedBody")}</p>
                 <ul className="flex flex-col gap-1">
                   {failed.map((check) => (
@@ -355,7 +355,7 @@ export default function LedgerPeriods() {
 
       {loaded.recent.length > 0 ? (
         <section className="flex flex-col gap-3">
-          <h2 className="font-display text-18 text-text">{l("period.recent")}</h2>
+          <h2 className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">{l("period.recent")}</h2>
           <Table<Period>
             caption={l("period.recentCaption")}
             captionHidden
@@ -424,7 +424,7 @@ export default function LedgerPeriods() {
                   role="alert"
                   className="flex flex-col gap-2 rounded-lg border border-danger/40 bg-danger/10 p-5"
                 >
-                  <p className="font-display text-16 font-medium text-text">
+                  <p className="font-serif text-18 leading-[1.3] text-text">
                     {l("period.driftedTitle", {
                       count: drifted.length,
                       total: result?.rebuild?.total ?? drifted.length

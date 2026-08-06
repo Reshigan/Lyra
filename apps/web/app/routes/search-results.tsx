@@ -113,7 +113,7 @@ export default function SearchResults() {
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-2">
-        <h1 className="font-display text-24 text-text">{l("title")}</h1>
+        <h1 className="font-serif text-24 leading-[1.2] text-text">{l("title")}</h1>
         <p className="max-w-prose font-ui text-13 text-subtle">{l("intro")}</p>
       </header>
 
@@ -178,7 +178,7 @@ function Group({
 
   return (
     <section className="flex flex-col gap-2">
-      <h2 className="font-ui text-11 tracking-wider text-subtle uppercase">
+      <h2 className="font-ui text-11 tracking-[0.14em] uppercase tracking-[0.14em] text-subtle">
         {l("group", { area, count: String(group.items.length) })}
       </h2>
       <Card elevation="flat" padded={false}>

@@ -462,7 +462,7 @@ export default function LedgerReports() {
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-4">
-        <h1 className="font-display text-24 text-text">{l("title")}</h1>
+        <h1 className="font-serif text-24 leading-[1.2] text-text">{l("title")}</h1>
         <nav aria-label={t("common.tabs")}>
           <ul className="flex flex-wrap gap-1">
             {ORDER.map((key) => {
@@ -608,13 +608,13 @@ function Discrepancy({
 }) {
   return (
     <div role="alert" className="flex flex-col gap-2 rounded-lg border border-danger/40 bg-danger/10 p-5">
-      <p className="font-display text-16 font-medium text-text">{title}</p>
+      <p className="font-serif text-18 leading-[1.3] text-text">{title}</p>
       <Money
         amountMinor={amountMinor}
         currency={currency}
         locale={locale}
         signed
-        className="font-display text-28 font-bold text-danger"
+        className="font-mono text-28 font-medium tabular-nums text-danger"
       />
       <p className="max-w-prose font-ui text-13 text-muted">{body}</p>
     </div>
@@ -739,7 +739,7 @@ function SectionTable({
 
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="font-display text-16 text-text">{title}</h2>
+      <h2 className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">{title}</h2>
       <Table
         columns={columns}
         rows={section.rows}

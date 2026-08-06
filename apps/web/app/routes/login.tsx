@@ -359,7 +359,7 @@ export default function Login() {
         <Mark />
       </div>
       <Card>
-        <h1 className="font-display text-22">{t(title)}</h1>
+        <h1 className="font-serif text-24 leading-[1.2]">{t(title)}</h1>
         <p className="mt-1 text-13 text-muted">{t(intro)}</p>
 
         {result?.errorKey || result?.localErrorKey ? (

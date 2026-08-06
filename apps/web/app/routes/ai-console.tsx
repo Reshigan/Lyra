@@ -749,7 +749,7 @@ export default function AiConsole() {
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-1">
-        <h1 className="font-display text-24 text-text">
+        <h1 className="font-serif text-24 leading-[1.2] text-text">
           <span aria-hidden="true">{AGENT_MARK}</span> {L("title")}
         </h1>
         <p className="font-ui text-13 text-subtle">{L("intro")}</p>
@@ -869,7 +869,7 @@ export default function AiConsole() {
 
       {/* ------------------------------------------------------------ agents */}
       <section className="flex flex-col gap-4">
-        <h2 className="font-display text-16 text-text">{L("agents.title")}</h2>
+        <h2 className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">{L("agents.title")}</h2>
         {loaded.agents ? (
           loaded.agents.length ? (
             loaded.agents.map((agent) => (

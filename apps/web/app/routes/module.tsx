@@ -226,7 +226,7 @@ export default function ModuleList() {
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-4">
-        <h1 className="font-display text-24 text-text">{t(labelKeyFor(spec.path))}</h1>
+        <h1 className="font-serif text-24 leading-[1.2] text-text">{t(labelKeyFor(spec.path))}</h1>
 
         {tabs.length > 1 ? (
           <nav aria-label={t("common.tabs")}>

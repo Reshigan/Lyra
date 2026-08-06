@@ -234,7 +234,7 @@ export default function CostExplorer() {
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-1">
-        <h1 className="font-display text-24 text-text">{L("title")}</h1>
+        <h1 className="font-serif text-24 leading-[1.2] text-text">{L("title")}</h1>
         <p className="max-w-prose font-ui text-13 text-subtle">{L("intro")}</p>
       </header>
 
@@ -262,11 +262,11 @@ export default function CostExplorer() {
           <dl className="flex flex-wrap gap-x-10 gap-y-3">
             <div className="flex flex-col gap-0.5">
               <dt className="font-ui text-12 text-subtle">{L("usage.storage")}</dt>
-              <dd className="font-display text-18 text-text">{formatBytes(loaded.usage.storageBytes, locale)}</dd>
+              <dd className="font-mono text-18 tabular-nums text-text">{formatBytes(loaded.usage.storageBytes, locale)}</dd>
             </div>
             <div className="flex flex-col gap-0.5">
               <dt className="font-ui text-12 text-subtle">{L("usage.egress")}</dt>
-              <dd className="font-display text-18 text-text">{formatBytes(egressTotal(loaded.usage), locale)}</dd>
+              <dd className="font-mono text-18 tabular-nums text-text">{formatBytes(egressTotal(loaded.usage), locale)}</dd>
             </div>
           </dl>
         </Card>

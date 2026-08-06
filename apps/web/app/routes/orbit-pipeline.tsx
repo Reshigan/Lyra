@@ -224,7 +224,7 @@ export default function RenewalPipeline() {
     <div className="flex flex-col gap-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-col gap-1">
-          <h1 className="font-display text-24 text-text">{l("title")}</h1>
+          <h1 className="font-serif text-24 leading-[1.2] text-text">{l("title")}</h1>
           <p className="font-ui text-13 text-muted">{l("lede")}</p>
         </div>
         <div className="flex items-center gap-3">

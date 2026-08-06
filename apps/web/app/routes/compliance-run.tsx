@@ -410,7 +410,7 @@ export default function ComplianceRun() {
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-4">
-        <h1 className="font-display text-24 text-text">{l("title")}</h1>
+        <h1 className="font-serif text-24 leading-[1.2] text-text">{l("title")}</h1>
         {loaded.allowed.length > 1 ? (
           <nav aria-label={l("title")}>
             <ul className="flex flex-wrap gap-1">
@@ -453,7 +453,7 @@ export default function ComplianceRun() {
 
           {fresh?.problem ? (
             <div role="alert" className="flex flex-col gap-1 rounded-lg border border-danger/40 bg-danger/10 p-4">
-              <p className="font-display text-16 text-text">{l("problem")}</p>
+              <p className="font-serif text-18 leading-[1.3] text-text">{l("problem")}</p>
               <p className="max-w-prose font-ui text-13 text-muted">
                 {fresh.problem.detail ?? fresh.problem.title}
               </p>
@@ -563,7 +563,7 @@ function ScreeningResult({ screening, locale, l }: { screening: Screening; local
       {/* Said before the result is read, not after: a "clear" nobody qualifies
           is the one thing this screen must never imply. */}
       <div role="note" className="flex flex-col gap-1 rounded-lg border border-warning/40 bg-warning/10 p-4">
-        <p className="font-display text-16 text-text">{l("stub.title")}</p>
+        <p className="font-serif text-18 leading-[1.3] text-text">{l("stub.title")}</p>
         <p className="max-w-prose font-ui text-13 text-muted">{l("stub.body")}</p>
       </div>
 
@@ -588,7 +588,7 @@ function ScreeningResult({ screening, locale, l }: { screening: Screening; local
 
       {screening.blocked ? (
         <div role="alert" className="flex flex-col gap-1 rounded-lg border border-danger/40 bg-danger/10 p-4">
-          <p className="font-display text-16 text-text">{l("blocked")}</p>
+          <p className="font-serif text-18 leading-[1.3] text-text">{l("blocked")}</p>
           <p className="max-w-prose font-ui text-13 text-muted">{l("blocked.body")}</p>
         </div>
       ) : null}
@@ -731,7 +731,7 @@ function RetentionResultView({
           className="flex flex-col gap-2 rounded-lg border border-danger/40 bg-danger/10 p-4"
           aria-label={l("purge.title")}
         >
-          <p className="font-display text-16 text-text">{l("purge.title")}</p>
+          <p className="font-serif text-18 leading-[1.3] text-text">{l("purge.title")}</p>
           <p className="max-w-prose font-ui text-13 text-muted">{l("purge.body")}</p>
           <input type="hidden" name="policyKey" value={result.policyKey} />
           <input type="hidden" name="confirm" value="purge" />

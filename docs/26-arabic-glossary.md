@@ -34,6 +34,7 @@ the vocabulary per screen reads the product as translated, not written.
 | audit log | سجل التدقيق | — |
 | settlement | التسوية | — |
 | release / pay out | الصرف | — |
+| theme (the light or dark palette) | السمة | الموضوع (a topic)، النمط (a pattern) |
 
 ## Orthography
 
