@@ -121,7 +121,7 @@ export const scout: WorkspaceSpec = {
       subscribersJson: "المشتركون",
       delivery: "طريقة التسليم",
 
-      search: "طلب البحث",
+      search: "الطلب عبر البحث",
       quotes: "مسار عروض الأسعار",
       abandonment: "التخلي عن الطلب",
       reviews: "المراجعات",

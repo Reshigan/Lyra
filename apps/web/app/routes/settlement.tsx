@@ -16,6 +16,7 @@ import {
   Field,
   Input,
   Money,
+  Ref,
   Select,
   Table,
   type BadgeTone,
@@ -278,10 +279,10 @@ export const LABELS: Record<string, Record<string, string>> = {
   ar: {
     title: "تسوية العمولات",
     intro:
-      "احسب ما استحقته القناة في الفترة ثم أحِل الرقم. الحساب مجرد حساب — لا استحقاق ولا تحويل أموال. إقرار الرقم وصرف الدفعة قراران يتخذهما شخصان مختلفان.",
+      "احسب ما استحقته القناة في الفترة ثم أحِل الرقم. الحساب مجرد حساب — لا استحقاق ولا تحويل أموال. الموافقة على الرقم وصرف الدفعة قراران يتخذهما شخصان مختلفان.",
     deniedTitle: "لا يمكنك عرض التسويات",
     runTitle: "احسب فترة",
-    runIntro: "إعادة حساب فترة لا تزال مسودة تستبدل أرقامها. وبعد الإقرار تُعاد الفترة كما هي دون تغيير.",
+    runIntro: "إعادة حساب فترة لا تزال مسودة تستبدل أرقامها. وبعد الموافقة عليها تُعاد الفترة كما هي دون تغيير.",
     counterpartyKind: "نوع الطرف المقابل",
     channelId: "القناة",
     channelIdHint: "معرّف القناة؛ تُحسب التسوية للمرجع channel:{example}.",
@@ -297,7 +298,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     "kind.creator": "صانع محتوى",
     "kind.publisher": "ناشر",
     "state.draft": "مسودة",
-    "state.approved": "مُقرّة، في انتظار الصرف",
+    "state.approved": "موافَق عليها، بانتظار الصرف",
     "state.paid": "مدفوعة",
     "state.disputed": "متنازع عليها",
     draftedTitle: "تم الحساب",
@@ -319,13 +320,13 @@ export const LABELS: Record<string, Record<string, string>> = {
     groupCount: "{count} تسوية",
     emptyTitle: "لا توجد تسوية هنا بعد",
     emptyBody: "لم تُحسب أي فترة لهذا الطرف المقابل. احسبها من الأعلى.",
-    approvalTitle: "يحتاج هذا إلى موافقة أولاً",
+    approvalTitle: "يحتاج هذا إلى موافقة أولًا",
     approvalBody: "تشترط مساحة عملك توقيع شخص ثانٍ قبل تنفيذ هذا الإجراء ({policy}).",
     approvalLink: "افتح الموافقات",
     periodInvalid: "أدخل الشهر بالصيغة YYYY-MM، مثل 2026-06.",
     channelRequired: "حدّد القناة التي تخصها هذه التسوية.",
     awaitingSecond: "في انتظار توقيع ثانٍ",
-    twoSignatures: "الإقرار يسجّل ما هو مستحق، والصرف يدفعه. وهما صلاحيتان مختلفتان بقصد."
+    twoSignatures: "الموافقة تسجّل ما هو مستحق، والصرف يدفعه. وهما صلاحيتان مختلفتان بقصد."
   }
 };
 
@@ -453,7 +454,7 @@ export default function SettlementPeriod() {
       header: l("colCounterparty"),
       render: (row) => (
         <span className="flex flex-col gap-0.5">
-          <span className="font-mono text-12">{row.counterpartyRef}</span>
+          <Ref value={row.counterpartyRef} className="text-12" />
           <span className="font-ui text-11 text-subtle">{l(`kind.${row.counterpartyKind}`)}</span>
         </span>
       )

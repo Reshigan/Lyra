@@ -1,5 +1,5 @@
 import { Form, Link, useLoaderData, useNavigation, type LoaderFunctionArgs } from "react-router";
-import { Button, Card, EmptyState, Input } from "@lyra/ui";
+import { Button, Card, EmptyState, Input, Ref } from "@lyra/ui";
 import { ApiError, api } from "../api.server";
 import { cloudflare } from "../context";
 import { translator } from "../i18n";
@@ -191,7 +191,7 @@ function Group({
               >
                 <span className="min-w-0">
                   <span className="block font-ui text-13 break-words text-text">{item.label}</span>
-                  <span className="block font-mono text-11 text-subtle">{item.id}</span>
+                  <Ref value={item.id} className="block text-11 text-subtle" />
                 </span>
                 <span className="font-ui text-12 text-accent">{t("common.open")}</span>
               </Link>

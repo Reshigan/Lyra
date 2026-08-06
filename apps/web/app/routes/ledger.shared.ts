@@ -510,7 +510,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     "open.confirm": "هل تفتح هذه المعاملة؟ سيتم الترحيل إلى الدفتر.",
     "open.opened": "فُتحت المعاملة",
     "open.catalogue": "دليل الأنواع",
-    "open.catalogueCaption": "أنواع المعاملات المتاحة لهذا المستأجر",
+    "open.catalogueCaption": "أنواع المعاملات المتاحة لهذه المؤسسة",
     "open.code": "الرمز",
     "open.openedAs": "فُتحت بالمعرّف {id}.",
     "open.openRecord": "فتحها",

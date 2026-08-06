@@ -78,4 +78,9 @@ describe("humanise", () => {
   it("keeps an empty value as-is rather than inventing one", () => {
     expect(humanise("")).toBe("");
   });
+
+  it("reads a dotted audit code as a sentence", () => {
+    expect(humanise("core.session.login")).toBe("Core session login");
+    expect(humanise("compliance.screening.run")).toBe("Compliance screening run");
+  });
 });

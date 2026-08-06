@@ -8,7 +8,23 @@ import {
   type ActionFunctionArgs,
   type LoaderFunctionArgs
 } from "react-router";
-import { AgentBadge, Badge, Button, Card, ConfidenceMeter, DateTime, Drawer, EmptyState, GhostText, Money, Select, Stat, Table, type Column } from "@lyra/ui";
+import {
+  AgentBadge,
+  Badge,
+  Button,
+  Card,
+  ConfidenceMeter,
+  DateTime,
+  Drawer,
+  EmptyState,
+  GhostText,
+  Money,
+  Ref,
+  Select,
+  Stat,
+  Table,
+  type Column
+} from "@lyra/ui";
 import { ApiError, api, fetchMe, type Problem } from "../api.server";
 import { cloudflare } from "../context";
 import { translator } from "../i18n";
@@ -205,9 +221,9 @@ export const LABELS: Record<string, Record<string, string>> = {
     exported: "الحزمة جاهزة.",
     download: "تنزيل",
     copilotTitle: "اسأل مساعد الحالة",
-    copilotPlaceholder: "اطرح سؤالاً حول هذه الحالة…",
+    copilotPlaceholder: "اطرح سؤالًا حول هذه الحالة…",
     copilotSubmit: "اسأل",
-    copilotEmpty: "اطرح سؤالاً وستظهر الإجابة هنا، مستندة إلى وقائع هذه الحالة.",
+    copilotEmpty: "اطرح سؤالًا وستظهر الإجابة هنا، مستندة إلى وقائع هذه الحالة.",
     copilotWhyGrounded: "تم التحقق منها مقابل وقائع هذه الحالة المسجّلة. لا توجد ادعاءات غير مدعومة.",
     copilotWhyFlagged: "تم التحقق منها مقابل وقائع هذه الحالة المسجّلة. تم رصد {count} ادعاء محتمل غير مدعوم يستحق المراجعة.",
     moveTitle: "تحريك البند",
@@ -223,7 +239,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     verify: "توثيق",
     verified: "تم توثيق المستند.",
     documentRequired: "اختر مستندًا للتوثيق.",
-    approvalsTitle: "الاعتماد",
+    approvalsTitle: "الموافقات",
     approvalsCaption: "كل موافقة طُلبت أثناء العمل على هذا البند.",
     tasksTitle: "المهام",
     tasksCaption: "المهام المفتوحة على بند العمل.",
@@ -403,7 +419,7 @@ export default function CaseDetail() {
       header: l("colOutcome"),
       render: (row) => (row.outcome ? <Badge size="sm">{tag(l, "outcome", row.outcome)}</Badge> : <span>—</span>)
     },
-    { key: "actorRef", header: l("colWho"), render: (row) => <span className="font-mono text-11">{row.actorRef}</span> },
+    { key: "actorRef", header: l("colWho"), render: (row) => <Ref value={row.actorRef} className="text-11" /> },
     {
       key: "durationMs",
       header: l("colDuration"),
@@ -454,14 +470,14 @@ export default function CaseDetail() {
       header: l("colOutcome"),
       render: (row) => <Badge size="sm">{tag(l, "decision", row.decision)}</Badge>
     },
-    { key: "subjectRef", header: l("colSubject"), render: (row) => <span className="font-mono text-11">{row.subjectRef}</span> },
+    { key: "subjectRef", header: l("colSubject"), render: (row) => <Ref value={row.subjectRef} className="text-11" /> },
     { key: "ts", header: l("colWhen"), render: (row) => <DateTime value={row.ts} locale={locale} precision="minute" /> }
   ];
 
   const taskColumns: Array<Column<TaskRow>> = [
     { key: "titleKey", header: l("colTask"), render: (row) => <span className="font-ui text-12">{tag(l, "titleKey", row.titleKey)}</span> },
     { key: "state", header: l("colStatus"), render: (row) => <Badge size="sm">{tag(l, "state", row.state)}</Badge> },
-    { key: "assigneeRef", header: l("colAssignee"), render: (row) => <span className="font-mono text-11">{row.assigneeRef ?? "—"}</span> },
+    { key: "assigneeRef", header: l("colAssignee"), render: (row) => <Ref value={row.assigneeRef} className="text-11" /> },
     {
       key: "dueAt",
       header: l("colDue"),

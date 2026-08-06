@@ -144,9 +144,9 @@ const LABELS: Record<string, Record<string, string>> = {
     "ledger.spent": "المنفق",
     "ledger.none.title": "لم تُضبط أي ميزانية",
     "ledger.none.body":
-      "لم يُقَس أي استهلاك لهذا المستأجر بعد، فلا توجد نافذة لعرضها. ضبط حد ينشئ نافذة اليوم.",
+      "لم يُقَس أي استهلاك لهذه المؤسسة بعد، فلا توجد نافذة لعرضها. ضبط حد ينشئ نافذة اليوم.",
     "ledger.denied":
-      "لا تملك صلاحية الاطلاع على ميزانيات الذكاء الاصطناعي، لذا أُخفيت الأرقام. اطلب الصلاحية من مسؤول المستأجر.",
+      "لا تملك صلاحية الاطلاع على ميزانيات الذكاء الاصطناعي، لذا أُخفيت الأرقام. اطلب الصلاحية من مسؤول المؤسسة.",
     "uncapped.title": "الإنفاق بلا سقف",
     "uncapped.reason":
       "كلا الحدين صفر لوحدة واحدة على الأقل، وهو ما تقرأه البوابة كغير محدود. لن تُوقف تشغيلات الوكلاء بسبب الميزانية.",
@@ -183,7 +183,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "acceptance.denied": "لا تملك صلاحية الاطلاع على نتائج الاقتراحات.",
     "module.all": "كل الوحدات",
     "unit.tokens": "رمز",
-    "problem.confirm_required": "أكّد الإقرار قبل تغيير أي حد.",
+    "problem.confirm_required": "علّم خانة التأكيد قبل تغيير أي حد.",
     "problem.invalid_amount": "يجب أن يكون الحد رقمًا يساوي صفرًا أو أكثر.",
     "problem.nothing_to_set": "اضبط أحد الحدين على الأقل.",
     "problem.bad_intent": "لم يحمل النموذج إجراءً معروفًا."
@@ -513,7 +513,12 @@ export default function AiBudget() {
                       ) : null}
                     </div>
                     {mayWrite ? (
-                      <Button variant="ghost" size="sm" onClick={() => aimAt(row.module)}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => aimAt(row.module)}
+                        aria-label={`${L("ledger.set")}: ${moduleLabel(row.module)}`}
+                      >
                         {L("ledger.set")}
                       </Button>
                     ) : null}

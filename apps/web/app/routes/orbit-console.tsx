@@ -199,7 +199,7 @@ export const LABELS: Labels = {
     email: "البريد الإلكتروني",
     agent: "قناة الوكيل",
     unknownIntent: "هذا الإجراء غير متاح.",
-    missingConversation: "اختر محادثة أولاً.",
+    missingConversation: "اختر محادثة أولًا.",
     approvalTitle: "هذا الإجراء يحتاج موافقة",
     approvalBody: "السياسة {policy} تحتجز هذا الإجراء حتى يوافق عليه شخص مسؤول.",
     approvalLink: "افتح الموافقات"

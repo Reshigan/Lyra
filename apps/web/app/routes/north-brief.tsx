@@ -19,6 +19,7 @@ import {
   Field,
   GuardrailNotice,
   Input,
+  Ref,
   Select
 } from "@lyra/ui";
 import { api } from "../api.server";
@@ -111,7 +112,7 @@ const LABELS: Labels = {
     print: "طباعة",
     "brief.none.title": "لم تُكتب أي إحاطة بعد",
     "brief.none.body": "طلب إحاطة يشغّل الراوي على المؤشرات المغلقة، ويضع النتيجة هنا للمراجعة.",
-    "brief.denied": "لا تملك صلاحية قراءة الإحاطات. اطلب من مسؤول المستأجر صلاحية إحاطات نورث.",
+    "brief.denied": "لا تملك صلاحية قراءة الإحاطات. اطلب من مسؤول المؤسسة صلاحية إحاطات نورث.",
     "brief.audit": "كيف كُتب هذا",
     "brief.auditBody": "كتبه راوي نورث من اللقطات المغلقة لهذا التاريخ. أي رقم لا يمكن ربطه بلقطة يُبقي الإحاطة مسودة.",
     "brief.draft": "أرقام غير موثّقة",
@@ -385,7 +386,7 @@ export default function NorthBrief() {
               source={
                 <p className="max-w-xs font-ui text-12 text-muted">
                   {l("brief.auditBody")}
-                  {brief?.aiAuditId ? <span className="block font-mono text-11">{brief.aiAuditId}</span> : null}
+                  {brief?.aiAuditId ? <Ref value={brief.aiAuditId} className="block text-11" /> : null}
                 </p>
               }
             >
@@ -456,6 +457,7 @@ export default function NorthBrief() {
                     ) : null}
                     <Link
                       to={`/north/anomalies/${anomaly.id}`}
+                      aria-label={`${l("anomaly.open")}: ${name(anomaly.metricKey)}`}
                       className="font-ui text-12 text-accent underline underline-offset-4"
                     >
                       {l("anomaly.open")}

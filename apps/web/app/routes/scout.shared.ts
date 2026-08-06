@@ -631,16 +631,16 @@ const LABELS: Record<string, Record<string, string>> = {
     approvalBody: "هذا التغيير يحتاج موافقة بموجب سياسة {policy}. هو في الانتظار ولم يُفقد.",
     approvalLink: "افتح قائمة الموافقات",
     "problem.bad_intent": "لم يحدد هذا النموذج ما يريد فعله.",
-    "problem.whitespace_required": "اختر فكرة من الرادار أولاً.",
-    "problem.state_required": "اختر واحداً من القرارات الثلاثة.",
+    "problem.whitespace_required": "اختر فكرة من الرادار أولًا.",
+    "problem.state_required": "اختر واحدًا من القرارات الثلاثة.",
     "problem.format_required": "اختر صيغة الملف.",
     "problem.dataset_required": "اختر ما تريد تصديره.",
     "problem.experiment_required": "هذه التجربة غير موجودة.",
 
     /* radar */
     "radar.title": "الرادار",
-    "radar.lede": "فرص غير مخدومة مستخلصة من إشاراتنا وعناقيدنا وبيانات اللجنة — لا شيء مُشترى من الخارج.",
-    "radar.axisX": "الملاءمة مع قوة التوزيع →",
+    "radar.lede": "فرص غير مخدومة مستخلصة من إشاراتنا وعناقيدنا وبيانات قائمة الجهات المسعّرة — لا شيء مُشترى من الخارج.",
+    "radar.axisX": "الملاءمة مع قوة التوزيع ←",
     "radar.axisY": "المحور الرأسي = زخم الطلب · حجم النقطة = كمية الأدلة · اختر فكرة لعرض ملفها",
     "radar.pursue": "تابع",
     "radar.park": "أوقف",
@@ -650,20 +650,20 @@ const LABELS: Record<string, Record<string, string>> = {
     "radar.dossier": "الملف",
     "radar.demand": "تقدير الطلب",
     "radar.competition": "المنافسة",
-    "radar.momentum": "الزخم ٩٠ يوماً",
+    "radar.momentum": "الزخم ٩٠ يومًا",
     "radar.signals": "حجم العنقود",
     "radar.pick": "اختر فكرة لقراءة ملفها.",
-    "radar.summaryWhy": "ملخص العنقود كتبته أداة التعنيد من {n} إشارة.",
+    "radar.summaryWhy": "ملخص العنقود كتبته أداة التجميع العنقودي من {n} إشارة.",
     "radar.sweep": "شغّل مسح الفرص",
     "radar.sweepHint": "يعيد قراءة عروض الربع الأخير ويكتب قائمة المرشحات من جديد.",
-    "radar.swept": "تمت كتابة {n} مرشحاً.",
+    "radar.swept": "تمت كتابة {n} مرشحًا.",
     "radar.experiment": "أنشئ تجربة",
     "radar.experimentHint": "ينشئ تجربة مسودة على هذه الفكرة. لا شيء ينطلق قبل أن تبدأها.",
     "radar.created": "تم إنشاء تجربة مسودة.",
     "radar.openBoard": "لوحة التجارب",
 
     /* panel */
-    "panel.title": "معلومات اللجنة",
+    "panel.title": "معلومات قائمة الجهات المسعّرة",
     "panel.lede": "موقع كل شركة تأمين من حيث السعر والتحويل، لفترة {period}.",
     "panel.empty": "لا توجد صفوف مقارنة لهذه الفترة.",
     "panel.lines": "خطوط الأعمال",
@@ -679,10 +679,10 @@ const LABELS: Record<string, Record<string, string>> = {
 
     /* price benchmarks */
     "price.title": "مقاييس السعر",
-    "price.lede": "سعرنا المعروض مقابل وسيط اللجنة، بحسب خط الأعمال، لفترة {period}.",
+    "price.lede": "سعرنا المعروض مقابل وسيط قائمة الجهات المسعّرة، بحسب خط الأعمال، لفترة {period}.",
     "price.byLine": "المؤشر مقابل الوسيط",
     "price.losing": "أين نخسر",
-    "price.note": "المؤشر هو سعرنا المعروض مقسوماً على وسيط ردود اللجنة على الطلب نفسه. وهو ليس مسحاً لأسعار السوق.",
+    "price.note": "المؤشر هو سعرنا المعروض مقسومًا على وسيط ردود الجهات المسعّرة على الطلب نفسه. وهو ليس مسحًا لأسعار السوق.",
     "price.above": "{pct}٪ أعلى",
     "price.below": "{pct}٪ أقل",
     "price.empty": "لا شيء مُسعّر في هذه الفترة.",
@@ -704,10 +704,10 @@ const LABELS: Record<string, Record<string, string>> = {
     "xp.notReplicated": "لم تتكرر",
     "xp.parked": "موقوفة",
     "xp.interim": "قراءة مؤقتة",
-    "xp.cap": "{amount} {currency} يومياً، {days} يوماً كحد أقصى",
+    "xp.cap": "{amount} {currency} يوميًا، {days} يومًا كحد أقصى",
     "xp.noPlan": "لا خطة مسجلة",
-    "xp.footnote": "الإيقاف ليس فشلاً — تبقى الأدلة مرفقة ليُعاد فتح الفكرة عندما يتغير السوق.",
-    "xp.decide": "سجّل قراراً",
+    "xp.footnote": "الإيقاف ليس فشلًا — تبقى الأدلة مرفقة ليُعاد فتح الفكرة عندما يتغير السوق.",
+    "xp.decide": "سجّل قرارًا",
     "xp.decideHint": "إنهاء تجربة هو قرار بشأن بناء منتج، لذا يُسجَّل باسمك.",
     "xp.pick": "التجربة",
     "xp.newState": "القرار",
@@ -717,8 +717,8 @@ const LABELS: Record<string, Record<string, string>> = {
 
     /* analytics */
     "an.title": "تحليلات التسعير",
-    "an.lede": "المرونة ومعدل الفوز وكفاية السعر على كامل اللجنة.",
-    "an.periods": "الفترات على اللجنة",
+    "an.lede": "المرونة ومعدل الفوز وكفاية السعر على كامل قائمة الجهات المسعّرة.",
+    "an.periods": "الفترات على القائمة",
     "an.winRate": "معدل الفوز المدمج",
     "an.adequacy": "الحجم عند الوسيط أو أقل",
     "an.index": "المؤشر المدمج",
@@ -731,7 +731,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "an.ratio": "نقاط لكل بالمئة",
     "an.window": "الفترات",
     "an.held": "السعر ثابت",
-    "an.empty": "أقل من فترتين على اللجنة، فلا شيء للمقارنة.",
+    "an.empty": "أقل من فترتين على القائمة، فلا شيء للمقارنة.",
     "an.export": "تصدير",
     "an.exportHint": "يُنتجه محرك التقارير في المنصة، بقواعد الحجب الخاصة به.",
     "an.dataset": "الجدول",
@@ -744,7 +744,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "an.benchNotExportable": "جدول المقارنة نفسه غير قابل للتصدير",
     "an.benchNotExportableWhy":
       "محرك التقارير لا يسجّل جدول مقارنة الأسعار، لذا لا يمكن إخراج أرقام المؤشر ومعدل الفوز أعلاه كملف. ملف التفاوض هو التصدير الذي يحملها.",
-    "an.openPanel": "معلومات اللجنة"
+    "an.openPanel": "معلومات قائمة الجهات المسعّرة"
   }
 };
 

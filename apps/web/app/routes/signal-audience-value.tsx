@@ -8,6 +8,7 @@ import {
   audienceValue,
   labelsIn,
   ltvToCac,
+  multipleText,
   safe,
   windowDays,
   type AudienceRow,
@@ -102,7 +103,7 @@ export default function AudienceValueScreen() {
         <Stat
           label={l("aud.best")}
           value={loaded.best ? loaded.best.audience.name : l("none")}
-          hint={loaded.best?.multiple ? `${loaded.best.multiple.toFixed(1)}×` : undefined}
+          hint={loaded.best?.multiple ? multipleText(locale, loaded.best.multiple) : undefined}
         />
         <Stat label={l("aud.worst")} value={String(loaded.losing)} />
       </KPIWall>
@@ -181,7 +182,7 @@ function valueColumns(l: Label, locale: string, currency: string): Array<Column<
         return ratio === null ? (
           l("none")
         ) : (
-          <span className={ratio < 1 ? "text-danger" : undefined}>{ratio.toFixed(1)}×</span>
+          <span className={ratio < 1 ? "text-danger" : undefined}>{multipleText(locale, ratio)}</span>
         );
       }
     },

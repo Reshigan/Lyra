@@ -7,7 +7,19 @@ import {
   type ActionFunctionArgs,
   type LoaderFunctionArgs
 } from "react-router";
-import { Badge, Button, Card, EmptyState, Field, Input, KPIWall, Select, Stat, type BadgeTone } from "@lyra/ui";
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  Field,
+  Input,
+  KPIWall,
+  Select,
+  shortRef,
+  Stat,
+  type BadgeTone
+} from "@lyra/ui";
 import { ApiError, api } from "../api.server";
 import { cloudflare } from "../context";
 import { Gate } from "./staff";
@@ -90,7 +102,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "problem.missing_task": "No task was named."
   },
   ar: {
-    title: "طابور الاستثناءات",
+    title: "قائمة انتظار الاستثناءات",
     intro:
       "كل ما ينتظر شخصًا، الأسوأ أولًا. كل سطر يفتح السجل المتعطل؛ القرارات الوحيدة من هذه الشاشة هي تولّي المسؤولية وإعادة فتح مهمة متعطلة.",
     "bucket.cases": "حالات تنتظر قرارًا",
@@ -433,7 +445,7 @@ export default function AxisExceptions() {
                   {row.docType}
                 </Link>
                 <Link to={`/axis/cases/${row.caseId}`} className="font-mono text-12 text-subtle">
-                  {row.caseId}
+                  {shortRef(row.caseId)}
                 </Link>
                 <span className="ms-auto font-ui text-12 tabular-nums text-subtle">
                   {ageIn(now - row.createdAt, l)}
@@ -460,7 +472,13 @@ export default function AxisExceptions() {
                   <Form method="post" className="ms-auto">
                     <input type="hidden" name="intent" value="unblock" />
                     <input type="hidden" name="taskId" value={row.id} />
-                    <Button type="submit" size="sm" variant="ghost" loading={busy}>
+                    <Button
+                      type="submit"
+                      size="sm"
+                      variant="ghost"
+                      loading={busy}
+                      aria-label={`${l("unblock.submit")}: ${row.titleKey}`}
+                    >
                       {l("unblock.submit")}
                     </Button>
                   </Form>

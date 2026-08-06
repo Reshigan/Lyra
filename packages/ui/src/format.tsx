@@ -4,6 +4,7 @@
  */
 import * as React from "react";
 import { cn } from "./cn.js";
+import { useUiLocale } from "./text.js";
 
 /** Minor-unit exponent for a currency (AED/USD → 2, JPY → 0, KWD → 3). */
 function minorUnits(currency: string, locale: string): number {
@@ -34,7 +35,7 @@ export interface MoneyProps extends Omit<React.ComponentPropsWithRef<"span">, "c
 export function Money({
   amountMinor,
   currency,
-  locale = "en",
+  locale: explicitLocale,
   baseMinor,
   baseCurrency,
   signed = false,
@@ -42,6 +43,10 @@ export function Money({
   className,
   ...props
 }: MoneyProps) {
+  // Unset means "whatever the document is in" — a formatter that silently
+  // defaults to English is how an Arabic screen ends up with Latin digits.
+  const inherited = useUiLocale();
+  const locale = explicitLocale ?? inherited;
   const format = (minor: number, code: string) => {
     const value = minor / 10 ** minorUnits(code, locale);
     const text = new Intl.NumberFormat(locale, { style: "currency", currency: code }).format(value);
@@ -66,6 +71,48 @@ export function Money({
           ({format(baseMinor, baseCurrency)})
         </span>
       ) : null}
+    </span>
+  );
+}
+
+/**
+ * A storage key that escaped into the interface: `us_01KE953T07XY8ZQK4M2N6VJH3B`,
+ * or `user:us_…` with a scope on the front. Twenty-six base-32 characters are
+ * unreadable, unmemorable, and wide enough to burst a card.
+ */
+const OPAQUE_REF = /^(?:([a-z][a-z0-9]*):)?([a-z][a-z0-9]*_)([0-9a-hjkmnp-tv-z]{16,})$/i;
+
+/**
+ * Head and tail of an opaque ref — enough to match one against a log line —
+ * and anything that is not one (a case number, an email, a name) untouched, so
+ * this is safe to wrap around a field that is only sometimes an id.
+ *
+ * ponytail: shortening, not resolution. When an endpoint starts returning the
+ * display name behind a ref, render the name and demote this to its subtitle.
+ */
+export function shortRef(value: string): string {
+  const match = OPAQUE_REF.exec(value.trim());
+  if (!match) return value;
+  const [, scope, prefix, body] = match;
+  return `${scope ? `${scope}:` : ""}${prefix}${body!.slice(0, 4)}…${body!.slice(-4)}`;
+}
+
+export interface RefProps extends Omit<React.ComponentPropsWithRef<"span">, "children"> {
+  value: string | null | undefined;
+  /** Shown when there is no ref at all. */
+  fallback?: string;
+}
+
+/** An identifier, shortened when it is opaque, with the whole value on hover. */
+export function Ref({ value, fallback = "—", className, title, ...props }: RefProps) {
+  const short = value ? shortRef(value) : fallback;
+  return (
+    <span
+      {...props}
+      title={title ?? (value && short !== value ? value : undefined)}
+      className={cn("font-mono", className)}
+    >
+      {short}
     </span>
   );
 }
@@ -118,7 +165,7 @@ function relativeText(date: Date, locale: string): string {
 
 export function DateTime({
   value,
-  locale = "en",
+  locale: explicitLocale,
   timeZone,
   precision = "minute",
   calendar,
@@ -126,6 +173,8 @@ export function DateTime({
   className,
   ...props
 }: DateTimeProps) {
+  const inherited = useUiLocale();
+  const locale = explicitLocale ?? inherited;
   const date = value instanceof Date ? value : new Date(value);
   const options: Intl.DateTimeFormatOptions = {
     ...precisionOptions[precision],

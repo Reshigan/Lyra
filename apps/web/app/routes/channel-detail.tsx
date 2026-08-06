@@ -1,5 +1,5 @@
 import { Link, useLoaderData, type LoaderFunctionArgs } from "react-router";
-import { Badge, Card, DateTime, EmptyState, Money, Stat, Table, type Column } from "@lyra/ui";
+import { Badge, Card, DateTime, EmptyState, Money, Ref, Stat, Table, type Column } from "@lyra/ui";
 import { api, fetchMe } from "../api.server";
 import { cloudflare } from "../context";
 import { translator } from "../i18n";
@@ -350,7 +350,7 @@ export default function ChannelDetail() {
       key: "offeringId",
       header: l("colScope"),
       render: (row) => (
-        <span className="font-mono text-11">{row.offeringId ?? row.productId ?? row.line ?? l("scopeAll")}</span>
+        <Ref value={row.offeringId ?? row.productId ?? row.line} className="text-11" fallback={l("scopeAll")} />
       )
     },
     {

@@ -6,6 +6,7 @@ import * as React from "react";
 import { cn, focusRing } from "./cn.js";
 import { Badge, Button, type BadgeTone } from "./primitives.js";
 import { DateTime } from "./format.js";
+import { useUiText } from "./text.js";
 
 /* -------------------------------------------------------------------------- */
 /* Table                                                                       */
@@ -71,11 +72,20 @@ export function Table<T>({
   footer,
   className
 }: TableProps<T>) {
+  const t = useUiText();
   const cellPad = density === "compact" ? "px-2.5 py-1.5" : "px-3 py-2.5";
 
   return (
     <div className={cn("flex flex-col", className)}>
-      <div className="overflow-auto rounded-lg border border-border">
+      {/* A scroller a mouse can reach and a keyboard cannot is a wall (WCAG 2.2
+          AA, axe scrollable-region-focusable). The caption already names the
+          table, so it names the region too. */}
+      <div
+        role="region"
+        aria-label={caption}
+        tabIndex={0}
+        className={cn("overflow-auto rounded-lg border border-border", focusRing)}
+      >
         <table className="w-full border-collapse font-ui text-13">
           <caption
             className={cn(
@@ -137,8 +147,10 @@ export function Table<T>({
                   key={rowKey(row)}
                   {...(onRowActivate
                     ? {
+                        // No role="button": that would replace the row/cell
+                        // semantics a screen reader navigates a table with. The
+                        // row stays a row, and stays operable by Enter.
                         tabIndex: 0,
-                        role: "button",
                         onClick: () => onRowActivate(row),
                         onKeyDown: (e: React.KeyboardEvent) => {
                           if (e.key === "Enter" || e.key === " ") {
@@ -179,7 +191,7 @@ export function Table<T>({
             {rows.length === 0 ? (
               <tr>
                 <td colSpan={columns.length} className="p-8 text-center">
-                  {empty ?? <span className="font-ui text-13 text-subtle">Nothing here yet.</span>}
+                  {empty ?? <span className="font-ui text-13 text-subtle">{t("empty")}</span>}
                 </td>
               </tr>
             ) : null}
@@ -207,7 +219,7 @@ export interface PaginationProps {
   pageSizes?: number[];
   onPageSizeChange?: (size: number) => void;
   label?: string;
-  /** Row-count select label. Caller passes its own i18n string; English default for untranslated call sites. */
+  /** Row-count select label. A prop wins; otherwise the kit catalogue answers. */
   rowsLabel?: string;
   previousLabel?: string;
   nextLabel?: string;
@@ -223,15 +235,19 @@ export function Pagination({
   pageSize,
   pageSizes = [25, 50, 100],
   onPageSizeChange,
-  label = "Pagination",
-  rowsLabel = "Rows",
-  previousLabel = "Previous",
-  nextLabel = "Next",
+  label,
+  rowsLabel,
+  previousLabel,
+  nextLabel,
   className
 }: PaginationProps) {
+  const t = useUiText();
+  const rows = rowsLabel ?? t("rows");
+  const back = previousLabel ?? t("previous");
+  const forward = nextLabel ?? t("next");
   return (
     <nav
-      aria-label={label}
+      aria-label={label ?? t("pagination")}
       className={cn("flex flex-wrap items-center justify-between gap-3", className)}
     >
       <div className="flex items-center gap-3">
@@ -242,7 +258,7 @@ export function Pagination({
         ) : null}
         {onPageSizeChange && pageSize !== undefined ? (
           <label className="flex items-center gap-2 font-ui text-12 text-subtle">
-            <span>{rowsLabel}</span>
+            <span>{rows}</span>
             <select
               value={pageSize}
               onChange={(e) => onPageSizeChange(Number(e.currentTarget.value))}
@@ -265,18 +281,18 @@ export function Pagination({
           size="sm"
           disabled={!hasPrevious}
           {...(onPrevious ? { onClick: onPrevious } : {})}
-          aria-label={previousLabel}
+          aria-label={back}
         >
           <span aria-hidden="true">‹</span>
-          <span>{previousLabel}</span>
+          <span>{back}</span>
         </Button>
         <Button
           size="sm"
           disabled={!hasNext}
           {...(onNext ? { onClick: onNext } : {})}
-          aria-label={nextLabel}
+          aria-label={forward}
         >
-          <span>{nextLabel}</span>
+          <span>{forward}</span>
           <span aria-hidden="true">›</span>
         </Button>
       </div>
@@ -456,6 +472,7 @@ export interface TimelineProps {
 }
 
 export function Timeline({ events, label, locale, timeZone, className }: TimelineProps) {
+  const t = useUiText();
   return (
     <ol aria-label={label} className={cn("flex flex-col border-s border-border ps-5", className)}>
       {events.map((e) => (
@@ -469,7 +486,7 @@ export function Timeline({ events, label, locale, timeZone, className }: Timelin
             <span className="font-ui text-14 text-text">{e.title}</span>
             {e.tone ? (
               <Badge tone={e.tone} size="sm">
-                {e.pending ? "Waiting" : "Done"}
+                {t(e.pending ? "waiting" : "done")}
               </Badge>
             ) : null}
           </div>
@@ -496,27 +513,48 @@ export interface AuditEntry {
 
 export function AuditTrail({
   entries,
-  label = "Audit trail",
+  label,
+  locale,
+  timeZone,
   className
 }: {
   entries: AuditEntry[];
   label?: string;
+  /** Overrides the provider's locale; the stamps follow it. */
+  locale?: string;
+  timeZone?: string;
   className?: string;
 }) {
+  const t = useUiText();
   return (
     <Table<AuditEntry>
       {...(className ? { className } : {})}
-      caption={label}
+      caption={label ?? t("auditTrail")}
       rows={entries}
       rowKey={(e) => e.id}
       density="compact"
       rowState={() => "sealed"}
       columns={[
-        { key: "at", header: "When", render: (e) => <DateTime value={e.at} precision="second" /> },
-        { key: "actor", header: "Actor", render: (e) => e.actor },
-        { key: "action", header: "Action", render: (e) => <span className="font-mono text-12">{e.action}</span> },
-        { key: "target", header: "Target", render: (e) => e.target ?? "—" },
-        { key: "detail", header: "Detail", render: (e) => e.detail ?? null }
+        {
+          key: "at",
+          header: t("when"),
+          render: (e) => (
+            <DateTime
+              value={e.at}
+              precision="second"
+              {...(locale ? { locale } : {})}
+              {...(timeZone ? { timeZone } : {})}
+            />
+          )
+        },
+        { key: "actor", header: t("actor"), render: (e) => e.actor },
+        {
+          key: "action",
+          header: t("action"),
+          render: (e) => <span className="font-mono text-12">{e.action}</span>
+        },
+        { key: "target", header: t("target"), render: (e) => e.target ?? "—" },
+        { key: "detail", header: t("detail"), render: (e) => e.detail ?? null }
       ]}
     />
   );

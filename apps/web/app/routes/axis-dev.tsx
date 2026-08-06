@@ -69,7 +69,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "locale.en": "الإنجليزية",
     "locale.ar": "العربية",
     rawText: "نص تجريبي",
-    rawTextHint: "الصق نصاً كما لو أنه استُخرج من مستند حقيقي.",
+    rawTextHint: "الصق نصًا كما لو أنه استُخرج من مستند حقيقي.",
     extract: "استخرج الحقول",
     resultsTitle: "الحقول المستخرجة",
     confidence: "درجة الثقة",

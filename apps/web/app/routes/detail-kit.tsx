@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { cn, focusRing } from "@lyra/ui";
 import { ApiError } from "../api-error";
 import { optionLabel } from "../modules/spec";
 import { vocabulary } from "../modules/vocabulary";
@@ -167,7 +168,7 @@ export const SHARED: Record<string, Record<string, string>> = {
     open: "فتح",
     none: "لا يوجد شيء مسجّل هنا.",
     approvalTitle: "بانتظار موافقة",
-    approvalBody: "يحتاج هذا إلى اعتماد بموجب {policy} قبل أن يمضي.",
+    approvalBody: "يحتاج هذا إلى موافقة بموجب {policy} قبل أن يمضي.",
     approvalLink: "افتح قائمة الموافقات",
 
     policies: "التغطية",
@@ -221,13 +222,13 @@ export const SHARED: Record<string, Record<string, string>> = {
     "status.quoting": "التسعير",
     "status.awaiting_docs": "بانتظار المستندات",
     "status.review": "المراجعة",
-    "status.approval": "الاعتماد",
+    "status.approval": "الموافقة",
     "status.issued": "صادرة",
     "status.failed": "فشل",
 
     "status.received": "مستلم",
     "status.extracting": "قيد القراءة",
-    "status.extracted": "تم القراءة",
+    "status.extracted": "تمت القراءة",
     "status.verified": "موثّق",
 
     "docType.eid": "بطاقة الهوية",
@@ -386,10 +387,21 @@ export function Header({ title, intro }: { title: string; intro: string }) {
   );
 }
 
-/** A JSON column shown as-is: cover terms, rating inputs, an FNOL statement. */
+/**
+ * A JSON column shown as-is: cover terms, rating inputs, an FNOL statement.
+ * `tabIndex` because a wide payload scrolls sideways and nothing inside it can
+ * take focus — a mouse-only scroller is a wall to a keyboard (WCAG 2.2 AA,
+ * axe scrollable-region-focusable).
+ */
 export function Payload({ value }: { value: unknown }) {
   return (
-    <pre className="overflow-x-auto rounded-md bg-surface-2 p-3 font-mono text-11 text-muted">
+    <pre
+      tabIndex={0}
+      className={cn(
+        "overflow-x-auto rounded-md bg-surface-2 p-3 font-mono text-11 text-muted",
+        focusRing
+      )}
+    >
       {JSON.stringify(value ?? {}, null, 2)}
     </pre>
   );

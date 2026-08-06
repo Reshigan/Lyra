@@ -22,6 +22,7 @@ import {
   type Column
 } from "@lyra/ui";
 import { api, asRouteError, fetchMe, type Problem as ProblemShape } from "../api.server";
+import { arrowFor } from "../i18n";
 import { cloudflare } from "../context";
 import { Gate } from "./staff";
 import { ORBIT, labelsFrom, refusal, safe, type Label, type Labels, type Page } from "./orbit-shared";
@@ -325,7 +326,7 @@ export const LABELS: Labels = {
     noRuns: "لا رحلات بعد",
     noRunsBody: "تظهر الرحلات بعد تنشيط الرحلة ووقوع ما يُشغِّلها.",
     noSteps: "لا خطوات بعد",
-    noStepsBody: "أضف مُشغِّلًا أولاً، ثم الخطوات التي تليه.",
+    noStepsBody: "أضف مُشغِّلًا أولًا، ثم الخطوات التي تليه.",
     noBranches: "لا تفرعات بعد",
     noBranchesBody: "أضف تفرّعًا لتحديد الخطوة التالية.",
     blocked: "غير جاهزة للتنشيط",
@@ -545,7 +546,16 @@ export default function JourneyBuilder() {
                       <input type="hidden" name="intent" value="remove-step" />
                       <input type="hidden" name="key" value={node.key} />
                       <input type="hidden" name="nonce" value={`remove:${loaded.nonce}:${node.key}`} />
-                      <Button type="submit" variant="ghost" size="sm" disabled={busy}>
+                      <Button
+                        type="submit"
+                        variant="ghost"
+                        size="sm"
+                        disabled={busy}
+                        // Every step's button says "Remove". Which step it removes
+                        // is only visible on screen, so name it for the ones who
+                        // are not looking at the screen.
+                        aria-label={`${l("removeStep")}: ${node.key}`}
+                      >
                         {l("removeStep")}
                       </Button>
                     </Form>
@@ -589,7 +599,7 @@ export default function JourneyBuilder() {
                 className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-line bg-surface-1 p-3"
               >
                 <span className="font-mono text-12 text-text">
-                  {edge.from} <span aria-hidden="true">{"→"}</span> {edge.to}
+                  {edge.from} <span aria-hidden="true">{arrowFor(loaded.locale)}</span> {edge.to}
                 </span>
                 {loaded.may.edit ? (
                   <Form method="post" replace>
@@ -597,7 +607,13 @@ export default function JourneyBuilder() {
                     <input type="hidden" name="from" value={edge.from} />
                     <input type="hidden" name="to" value={edge.to} />
                     <input type="hidden" name="nonce" value={`unlink:${loaded.nonce}:${edge.from}:${edge.to}`} />
-                    <Button type="submit" variant="ghost" size="sm" disabled={busy}>
+                    <Button
+                      type="submit"
+                      variant="ghost"
+                      size="sm"
+                      disabled={busy}
+                      aria-label={`${l("unlink")}: ${edge.from} ${arrowFor(loaded.locale)} ${edge.to}`}
+                    >
                       {l("unlink")}
                     </Button>
                   </Form>

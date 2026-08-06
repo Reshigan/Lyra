@@ -15,6 +15,7 @@ import {
   EmptyState,
   Input,
   Money,
+  Ref,
   Select,
   Stat,
   Table,
@@ -23,6 +24,7 @@ import {
 import { ApiError, api, fetchMe, type Problem } from "../api.server";
 import { cloudflare } from "../context";
 import { translator } from "../i18n";
+import { humanise } from "../modules/spec";
 import { Entry, Facts, Header, Payload, labelsFrom, rowsOf, safe, tag, type Page } from "./detail-kit";
 import { Gate } from "./staff";
 import { useShellData } from "./workspace";
@@ -159,21 +161,21 @@ export const LABELS: Record<string, Record<string, string>> = {
     against: "مقدّمة على",
     caseRef: "بند العمل",
     assessTitle: "التقييم",
-    assessIntro: "سجّل موقف التقييم. كل تغيير على المطالبة يحتاج الاعتماد نفسه المطلوب للدفع.",
+    assessIntro: "سجّل موقف التقييم. كل تغيير على المطالبة يحتاج الموافقة نفسها المطلوبة للدفع.",
     outcome: "النتيجة",
     reserve: "المبلغ المحتجز المعدّل بالوحدات الصغرى",
     assessSubmit: "تسجيل التقييم",
     assessed: "تم تسجيل التقييم.",
     outcomeRequired: "اختر نتيجة.",
     settleTitle: "التسوية",
-    settleIntro: "التسوية تدفع للمطالِب. تبقى معلّقة حتى الاعتماد، ولا تُدفع من هذه الشاشة.",
+    settleIntro: "التسوية تدفع للمطالِب. تبقى معلّقة حتى الموافقة، ولا تُدفع من هذه الشاشة.",
     settleAmount: "مبلغ التسوية بالوحدات الصغرى",
     settleSubmit: "طلب التسوية",
     settleDone: "تم تسجيل التسوية.",
     settleRequired: "أدخل مبلغ التسوية كرقم صحيح أكبر من صفر.",
     documentsTitle: "المستندات",
     documentsCaption: "الأدلة المرفقة ببند العمل الخاص بهذه المطالبة.",
-    approvalsTitle: "الاعتماد",
+    approvalsTitle: "الموافقات",
     approvalsCaption: "كل موافقة طُلبت على هذه المطالبة.",
     historyTitle: "السجل",
     historyCaption: "كل تغيير مسجّل على هذه المطالبة، الأحدث أولًا.",
@@ -354,7 +356,7 @@ export default function ClaimDetail() {
       header: l("colOutcome"),
       render: (row) => <Badge size="sm">{tag(l, "decision", row.decision)}</Badge>
     },
-    { key: "requestedBy", header: l("colWho"), render: (row) => <span className="font-mono text-11">{row.requestedBy}</span> },
+    { key: "requestedBy", header: l("colWho"), render: (row) => <Ref value={row.requestedBy} className="text-11" /> },
     {
       key: "requestedAt",
       header: l("colWhen"),
@@ -364,8 +366,8 @@ export default function ClaimDetail() {
   ];
 
   const trailColumns: Array<Column<AuditRow>> = [
-    { key: "action", header: l("colAction"), render: (row) => <span className="font-mono text-11">{row.action}</span> },
-    { key: "actorRef", header: l("colWho"), render: (row) => <span className="font-mono text-11">{row.actorRef}</span> },
+    { key: "action", header: l("colAction"), render: (row) => humanise(row.action) },
+    { key: "actorRef", header: l("colWho"), render: (row) => <Ref value={row.actorRef} className="text-11" /> },
     { key: "ts", header: l("colWhen"), render: (row) => <DateTime value={row.ts} locale={locale} precision="minute" /> }
   ];
 

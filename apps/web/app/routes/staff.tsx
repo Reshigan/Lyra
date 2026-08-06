@@ -13,6 +13,7 @@ import {
   Card,
   Checkbox,
   DatePicker,
+  DateTime,
   EmptyState,
   Field,
   Input,
@@ -191,7 +192,7 @@ export const LABELS: Record<string, Record<string, string>> = {
   },
   ar: {
     title: "الموظفون",
-    intro: "من يعمل هنا، بماذا يُؤتمن، ومن ينوب عن من.",
+    intro: "من يعمل هنا، بماذا يُؤتمن، وعمّن ينوب.",
     deniedTitle: "لا يمكنك عرض الموظفين",
     directoryTitle: "الدليل",
     directoryCaption: "الأشخاص الذين لديهم وصول إلى مساحة العمل هذه",
@@ -203,7 +204,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     colJoined: "تاريخ الانضمام",
     open: "افتح",
     openFor: "افتح سجل {name}",
-    emptyDirectory: "لا يوجد مطابقة لهذا البحث.",
+    emptyDirectory: "لا توجد مطابقة لهذا البحث.",
     "status.invited": "مدعو",
     "status.active": "نشط",
     "status.suspended": "موقوف",
@@ -265,7 +266,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     reasonRequired: "اختر سببًا.",
     currencyRequired: "السقف يحتاج إلى عملة.",
     confirmRequired: "أكّد قبل الإرسال.",
-    approvalTitle: "يحتاج هذا إلى موافقة أولاً",
+    approvalTitle: "يحتاج هذا إلى موافقة أولًا",
     approvalBody: "تشترط مساحة عملك توقيع شخص ثانٍ قبل تنفيذ هذا الإجراء ({policy}).",
     approvalLink: "افتح الموافقات"
   }
@@ -494,7 +495,11 @@ export default function Staff() {
         </Badge>
       )
     },
-    { key: "createdAt", header: l("colJoined"), render: (row) => new Date(row.createdAt).toLocaleDateString(locale) },
+    {
+      key: "createdAt",
+      header: l("colJoined"),
+      render: (row) => <DateTime value={row.createdAt} precision="day" />
+    },
     {
       key: "open",
       header: t("common.actions"),
@@ -519,7 +524,7 @@ export default function Staff() {
       header: l("colWindow"),
       render: (row) => (
         <span className="font-mono text-12">
-          {new Date(row.startsAt).toLocaleDateString(locale)} – {new Date(row.endsAt).toLocaleDateString(locale)}
+          <DateTime value={row.startsAt} precision="day" /> – <DateTime value={row.endsAt} precision="day" />
         </span>
       )
     },

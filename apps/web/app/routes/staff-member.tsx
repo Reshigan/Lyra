@@ -13,6 +13,7 @@ import {
   Card,
   Checkbox,
   DatePicker,
+  DateTime,
   EmptyState,
   Field,
   Input,
@@ -123,7 +124,7 @@ const LABELS: Record<string, Record<string, string>> = {
     reasonRequired: "اشرح السبب بإيجاز.",
     reassignRequired: "اختر من يرث العمل المفتوح لهذا الشخص.",
     confirmRequired: "أكّد قبل الإرسال.",
-    approvalTitle: "يحتاج هذا إلى موافقة أولاً",
+    approvalTitle: "يحتاج هذا إلى موافقة أولًا",
     approvalBody: "تشترط مساحة عملك توقيع شخص ثانٍ قبل تنفيذ هذا الإجراء ({policy}).",
     approvalLink: "افتح الموافقات"
   }
@@ -324,7 +325,7 @@ export default function StaffMember() {
     {
       key: "due",
       header: l("colDue"),
-      render: (row) => (row.dueAt ? new Date(row.dueAt).toLocaleDateString(locale) : "—")
+      render: (row) => (row.dueAt ? <DateTime value={row.dueAt} precision="day" /> : "—")
     }
   ];
 

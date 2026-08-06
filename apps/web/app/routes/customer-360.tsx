@@ -17,6 +17,8 @@ import {
   DateTime,
   EmptyState,
   Money,
+  Ref,
+  shortRef,
   Sparkline,
   Stat,
   Table,
@@ -625,7 +627,7 @@ export default function Customer360() {
   ];
 
   const quoteColumns: Array<Column<QuoteRequestRow>> = [
-    { key: "productId", header: l("colProduct"), render: (row) => <span className="font-mono text-12">{row.productId}</span> },
+    { key: "productId", header: l("colProduct"), render: (row) => <Ref value={row.productId} className="text-12" /> },
     { key: "state", header: l("colStatus"), render: (row) => <Badge size="sm">{tag(l, "state", row.state)}</Badge> },
     {
       key: "bestPremiumMinor",
@@ -642,7 +644,13 @@ export default function Customer360() {
       key: "open",
       header: l("open"),
       render: (row) => (
-        <Link to={`/distribution/quote-requests/${row.id}/compare`} className="font-ui text-12 text-accent hover:underline">
+        <Link
+          to={`/distribution/quote-requests/${row.id}/compare`}
+          // Twenty links all named "Open" are twenty identical stops in a screen
+          // reader's link list. The name has to say which one this is.
+          aria-label={`${l("open")}: ${row.productId}`}
+          className="font-ui text-12 text-accent hover:underline"
+        >
           {l("open")}
         </Link>
       )
@@ -842,9 +850,9 @@ export default function Customer360() {
               // ponytail: audit actions are an open set of `module.resource.verb`
               // codes — humanise beats a label table nobody maintains; add
               // `action.*` keys per-code if a translated verb ever matters.
-              title: humanise(row.action.replaceAll(".", " ")),
+              title: humanise(row.action),
               at: row.ts,
-              actor: row.actorRef
+              actor: shortRef(row.actorRef)
             }))}
           />
         </Card>
@@ -954,7 +962,7 @@ function OfferCard({
           {tag(l, "kind", offer.kind)} {AGENT_MARK}
         </span>
         <span className="font-ui text-12 text-muted">{tag(l, "reason", offer.reasonKey)}</span>
-        <span className="font-mono text-11 text-subtle">{offer.offeringId}</span>
+        <Ref value={offer.offeringId} className="text-11 text-subtle" />
       </div>
       <div className="flex items-center gap-4">
         <ConfidenceMeter value={offer.score / 100} label={l("colScore")} className="w-32" />

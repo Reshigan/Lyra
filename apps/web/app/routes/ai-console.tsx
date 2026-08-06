@@ -19,7 +19,9 @@ import {
   EvidenceLink,
   GuardrailNotice,
   Money,
+  Ref,
   Select,
+  shortRef,
   Table,
   Textarea,
   type BadgeTone,
@@ -202,7 +204,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "budget.near.reason": "المستهلك اليوم حتى الآن:",
     "budget.unavailable": "لا تملك صلاحية الاطلاع على أرقام الميزانية.",
     "spend.title": "الإنفاق حسب الوحدة والغرض",
-    "spend.window": "آخر ٣٠ يوماً",
+    "spend.window": "آخر ٣٠ يومًا",
     "spend.module": "الوحدة",
     "spend.purpose": "الغرض",
     "spend.calls": "الاستدعاءات",
@@ -227,7 +229,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "agents.setAutonomy": "تغيير مستوى الاستقلالية",
     "agents.confirmRaise":
       "أفهم أن هذا يوسّع ما يمكن للوكيل فعله دون سؤال، وأنه يُسجَّل باسمي.",
-    "agents.confirmMissing": "رفع مستوى الاستقلالية يتطلب تأكيداً.",
+    "agents.confirmMissing": "رفع مستوى الاستقلالية يتطلب تأكيدًا.",
     "agents.pendingTitle": "تغيير الاستقلالية بانتظار الموافقة",
     "agents.pendingReason":
       "المستوى المعروض أعلاه هو ما تحتفظ به الواجهة البرمجية، ولا يتغير إلا بعد منح الموافقة.",
@@ -239,7 +241,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "autonomy.autonomous": "مستقل",
     "status.active": "نشط",
     "status.paused": "موقوف",
-    "status.retired": "متقاعد",
+    "status.retired": "مسحوب",
     "runs.title": "التشغيلات الأخيرة",
     "runs.when": "البداية",
     "runs.agent": "الوكيل",
@@ -277,7 +279,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "severity.warn": "تحذير",
     "severity.block": "حجب",
     "audit.title": "سجل تدقيق الذكاء الاصطناعي",
-    "audit.note": "لا يُخزَّن المحتوى هنا إطلاقاً — كل سطر يحمل بصمات فقط.",
+    "audit.note": "لا يُخزَّن المحتوى هنا إطلاقًا — كل سطر يحمل بصمات فقط.",
     "audit.when": "الوقت",
     "audit.actor": "الفاعل",
     "audit.module": "الوحدة",
@@ -679,7 +681,7 @@ export default function AiConsole() {
     {
       key: "runId",
       header: L("guardrails.run"),
-      render: (event) => <span className="font-mono text-12">{event.runId ?? "—"}</span>
+      render: (event) => <Ref value={event.runId} className="text-12" />
     },
     { key: "subjectRef", header: L("guardrails.subject"), render: (event) => event.subjectRef ?? "—" }
   ];
@@ -984,7 +986,7 @@ function RunWhy({ run, L, locale }: { run: Run; L: Label; locale: string }) {
         {run.outputRef ? (
           <Pair
             term={L("runs.auditRef")}
-            detail={<code className="font-mono">{run.outputRef}</code>}
+            detail={<code className="font-mono">{shortRef(run.outputRef)}</code>}
           />
         ) : null}
       </dl>
@@ -1045,7 +1047,7 @@ function AgentCard({ agent, L, locale, busy, canPause, canWrite, pending }: Agen
               system text and this screen does not load it. */}
           <Pair
             term={L("agents.prompt")}
-            detail={<code className="font-mono text-12">{agent.promptRef ?? "—"}</code>}
+            detail={<code className="font-mono text-12">{agent.promptRef ? shortRef(agent.promptRef) : "—"}</code>}
           />
           {tools.length ? (
             <Pair

@@ -16,6 +16,8 @@ import {
   Field,
   GuardrailNotice,
   Money,
+  Ref,
+  shortRef,
   Textarea
 } from "@lyra/ui";
 import { ApiError, api, fetchMe, type Problem as ApiProblem } from "../api.server";
@@ -108,9 +110,9 @@ const LABELS: Record<string, Record<string, string>> = {
   ar: {
     title: "استرداد عمولة",
     intro:
-      "يكتب قيداً ثانياً يعكس هذا القيد بإشارات معاكسة، وينقل هذا القيد إلى حالة الاسترداد. لا يُحذف شيء — يبقى القيدان في الكشف.",
+      "يكتب قيدًا ثانيًا يعكس هذا القيد بإشارات معاكسة، وينقل هذا القيد إلى حالة الاسترداد. لا يُحذف شيء — يبقى القيدان في الكشف.",
     back: "العودة إلى الكشف",
-    entry: "القيد القائم حالياً",
+    entry: "القيد القائم حاليًا",
     preview: "ما سيتم كتابته",
     policyId: "الوثيقة",
     providerId: "المزود",
@@ -126,22 +128,22 @@ const LABELS: Record<string, Record<string, string>> = {
     taxMinor: "الضريبة",
     reason: "لماذا يتم عكس هذا القيد؟",
     reasonHint:
-      "بين {min} و{max} حرفاً. يقرأه من يعتمد الاسترداد ويبقى في سجل التدقيق.",
+      "بين {min} و{max} حرفًا. يقرأه من يعتمد الاسترداد ويبقى في سجل التدقيق.",
     confirm: "راجعت الأرقام أعلاه وأريد كتابة هذا القيد العكسي.",
     submit: "كتابة القيد العكسي",
     blockedTitle: "لا يمكن عكس هذا القيد",
-    blockedReversal: "هو أصلاً قيد عكسي لقيد آخر، والنظام يرفض عكس قيد عكسي.",
+    blockedReversal: "هو أصلًا قيد عكسي لقيد آخر، والنظام يرفض عكس قيد عكسي.",
     blockedClawedBack: "تم استرداده بالفعل. عكسه مرة أخرى سيكتب المبلغ السالب مرتين.",
     blockedPermission: "عكس العمولة يتطلب صلاحية تسوية العمولات.",
     deniedTitle: "لا يمكنك قراءة العمولات",
     missingTitle: "لا يوجد قيد عمولة بهذا المعرف",
-    missingBody: "قد يكون مكتوباً تحت مستأجر آخر، أو أن الرابط قديم.",
-    approvalTitle: "يحتاج هذا الاسترداد إلى اعتماد أولاً",
+    missingBody: "قد يكون مكتوبًا تحت مستأجر آخر، أو أن الرابط قديم.",
+    approvalTitle: "يحتاج هذا الاسترداد إلى موافقة أولًا",
     approvalBody:
-      "سياسة {policy} تحتجز تسويات العمولة لمراجعة ثانية. تم رفع الطلب — ويُكتب بعد الاعتماد.",
-    approvalLink: "فتح الاعتمادات",
+      "سياسة {policy} تحتجز تسويات العمولة لمراجعة ثانية. تم رفع الطلب — ويُكتب بعد الموافقة.",
+    approvalLink: "فتح الموافقات",
     doneTitle: "تمت كتابة القيد العكسي",
-    doneBody: "القيد {id} أصبح مقابلاً لهذا القيد.",
+    doneBody: "القيد {id} أصبح مقابلًا لهذا القيد.",
     doneLink: "العودة إلى الكشف",
     "kind.new_business": "أعمال جديدة",
     "kind.renewal": "تجديد",
@@ -309,14 +311,14 @@ export default function CommissionClawback() {
             to={`/distribution/policies/${entry.policyId}`}
             className="font-mono text-12 text-accent underline-offset-2 hover:underline"
           >
-            {entry.policyId}
+            {shortRef(entry.policyId)}
           </Link>
         </Facet>
         <Facet term={l("providerId")}>
-          <span className="font-mono text-12">{entry.providerId}</span>
+          <Ref value={entry.providerId} className="text-12" />
         </Facet>
         <Facet term={l("channelId")}>
-          <span className="font-mono text-12">{entry.channelId}</span>
+          <Ref value={entry.channelId} className="text-12" />
         </Facet>
         <Facet term={l("kind")}>
           <span>{optionLabel(l, "kind", entry.kind)}</span>

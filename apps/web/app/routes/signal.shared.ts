@@ -280,6 +280,12 @@ export function ltvToCac(ltv: number | null, cac: number | null): number | null 
   return ltv / cac;
 }
 
+/** A ratio as "2.4×" in the reader's digits — `toFixed` always writes Latin ones. */
+export function multipleText(locale: string, value: number): string {
+  const nf = new Intl.NumberFormat(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  return `${nf.format(value)}×`;
+}
+
 /** The plan the actuals are measured against, over `days` of the window. */
 export function plannedMinor(budget: Budget, days: number): number {
   if (typeof budget.capMinor === "number") return budget.capMinor;
@@ -759,7 +765,7 @@ const LABELS: Record<string, Record<string, string>> = {
     confirm: "أفهم أن هذا يغيّر حدود إنفاق الوكلاء",
 
     /* cockpit */
-    "cockpit.title": "قمرة النمو",
+    "cockpit.title": "مركز قيادة النمو",
     "cockpit.lede": "ماذا حقّق الإنفاق في هذه الفترة، وما غيّره الوكلاء في غيابك.",
     "cockpit.spendToDate": "المنفق في هذه الفترة",
     "cockpit.againstPlan": "مقابل الخطة",
@@ -768,21 +774,21 @@ const LABELS: Record<string, Record<string, string>> = {
     "cockpit.liveCampaigns": "تعمل الآن",
     "cockpit.liveCaption": "الحملات المباشرة أو المتوقفة مؤقتًا",
     "cockpit.changesToday": "ما غيّره الوكلاء",
-    "cockpit.changesCaption": "تحويلات الميزانية التي نفّذها القائد الآلي، الأحدث أولًا",
-    "cockpit.noChanges": "لم ينفّذ القائد الآلي أي تحويل في هذه الفترة.",
+    "cockpit.changesCaption": "تحويلات الميزانية التي نفّذها الطيار الآلي، الأحدث أولًا",
+    "cockpit.noChanges": "لم ينفّذ الطيار الآلي أي تحويل في هذه الفترة.",
     "cockpit.noCampaigns": "لا شيء يعمل حاليًا.",
     "cockpit.startOne": "افتح استوديو الحملات",
-    "cockpit.autopilot": "القائد الآلي",
-    "cockpit.pause": "إيقاف القائد الآلي مؤقتًا",
-    "cockpit.resume": "استئناف القائد الآلي",
+    "cockpit.autopilot": "الطيار الآلي",
+    "cockpit.pause": "إيقاف الطيار الآلي مؤقتًا",
+    "cockpit.resume": "استئناف الطيار الآلي",
     "cockpit.runNow": "ابحث عن تحويل الآن",
     "cockpit.paused": "متوقف مؤقتًا",
     "cockpit.running": "يعمل",
-    "cockpit.adjusted": "نفّذ القائد الآلي {n} تحويلًا.",
+    "cockpit.adjusted": "نفّذ الطيار الآلي {n} تحويلًا.",
     "cockpit.movedBy": "نفّذه",
     "cockpit.trend": "الإنفاق اليومي",
     "cockpit.autopilotWhy":
-      "يقارن القائد الآلي تكلفة الاستحواذ بين القنوات خلال آخر سبعة أيام ويحوّل الميزانية نحو الأرخص، داخل سقف الحركة الواحدة لكل حملة.",
+      "يقارن الطيار الآلي تكلفة الاستحواذ بين القنوات خلال آخر سبعة أيام ويحوّل الميزانية نحو الأرخص، داخل سقف الحركة الواحدة لكل حملة.",
     "cockpit.openBudget": "الميزانية والحدود",
     "cockpit.openAnalytics": "تحليلات النمو",
 
@@ -799,7 +805,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "studio.audienceHint": "من تصل إليه. اتركه فارغًا للوصول إلى الجميع.",
     "studio.channels": "أين تعمل",
     "studio.daily": "الميزانية اليومية",
-    "studio.boundHint": "أقصى مبلغ يحوّله القائد الآلي بين القنوات في قرار واحد.",
+    "studio.boundHint": "أقصى مبلغ يحوّله الطيار الآلي بين القنوات في قرار واحد.",
     "studio.owner": "من المسؤول عنها",
     "studio.create": "ابدأ الحملة",
     "studio.created": "أُنشئت المسودة. أعطِ النموذج الآن موجزًا.",
@@ -957,7 +963,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "problem.bound_required": "أدخل سقفًا للحركة الواحدة كعدد صحيح من الوحدات الصغرى.",
     "problem.bound_over_daily": "سقف الحركة الواحدة لا يجوز أن يتجاوز الميزانية اليومية.",
     "problem.autonomy_required": "حدّد ما يجوز للوكلاء فعله وحدهم.",
-    "problem.confirm_required": "أكّد الإقرار قبل تغيير الحدود.",
+    "problem.confirm_required": "علّم خانة التأكيد قبل تغيير الحدود.",
     "problem.move_required": "اختر التحويل المطلوب عكسه.",
     "problem.actor_required": "لا بد من تسجيل العكس باسم شخص.",
     "problem.name_required": "أعطِ الحملة اسمًا.",

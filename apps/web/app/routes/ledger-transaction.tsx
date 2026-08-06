@@ -11,11 +11,12 @@ import {
   Badge,
   Button,
   Card,
+  DateTime,
   EmptyState,
   Field,
   Input,
   Money,
-  DateTime,
+  Ref,
   Select,
   Table,
   Textarea,
@@ -25,7 +26,8 @@ import {
 } from "@lyra/ui";
 import { ApiError, api, fetchMe } from "../api.server";
 import { cloudflare } from "../context";
-import { translator } from "../i18n";
+import { arrowFor, translator } from "../i18n";
+import { humanise } from "../modules/spec";
 import { Problem } from "./module";
 import { useShellData } from "./workspace";
 import {
@@ -337,7 +339,7 @@ export default function LedgerTransaction() {
   const timeline: TimelineEvent[] = loaded.transitions.map((row) => ({
     id: row.id,
     title: row.fromState
-      ? `${l(`state.${row.fromState}`)} → ${l(`state.${row.toState}`)}`
+      ? `${l(`state.${row.fromState}`)} ${arrowFor(locale)} ${l(`state.${row.toState}`)}`
       : l(`state.${row.toState}`),
     at: row.ts,
     actor: row.actorRef,
@@ -363,7 +365,7 @@ export default function LedgerTransaction() {
       <Card title={t("common.details")} elevation="flat">
         <dl className="grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-5">
           <Entry term={t("common.id")}>
-            <span className="font-mono text-12">{txn.id}</span>
+            <Ref value={txn.id} className="text-12" />
           </Entry>
           <Entry term={l("txn.gross")}>
             <Money
@@ -395,7 +397,7 @@ export default function LedgerTransaction() {
           ) : null}
           {txn.correlationId ? (
             <Entry term={l("txn.correlation")}>
-              <span className="font-mono text-12">{txn.correlationId}</span>
+              <Ref value={txn.correlationId} className="text-12" />
             </Entry>
           ) : null}
           {txn.parentTxnId ? (
@@ -416,7 +418,7 @@ export default function LedgerTransaction() {
           ) : null}
           {txn.ledgerBatchId ? (
             <Entry term={l("txn.batch")}>
-              <span className="font-mono text-12">{txn.ledgerBatchId}</span>
+              <Ref value={txn.ledgerBatchId} className="text-12" />
             </Entry>
           ) : null}
           {txn.failureCode ? (
@@ -618,7 +620,7 @@ export default function LedgerTransaction() {
               {
                 key: "action",
                 header: t("common.actions"),
-                render: (row) => <span className="font-mono text-12">{row.action}</span>
+                render: (row) => humanise(row.action)
               }
             ]}
           />

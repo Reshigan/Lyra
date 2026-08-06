@@ -420,6 +420,7 @@ export default function CampaignStudio() {
                       <Badge tone="neutral">{l(draft.state)}</Badge>
                       <Link
                         to={`/signal/studio?campaignId=${encodeURIComponent(draft.id)}`}
+                        aria-label={`${l("studio.open")}: ${draft.name}`}
                         className="font-ui text-12 text-accent underline-offset-2 hover:underline"
                       >
                         {l("studio.open")}

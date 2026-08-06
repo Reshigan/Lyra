@@ -2,7 +2,7 @@ import { useLoaderData, type LoaderFunctionArgs } from "react-router";
 import { EmptyState } from "@lyra/ui";
 import { api, fetchMe } from "../api.server";
 import { cloudflare } from "../context";
-import { translator } from "../i18n";
+import { arrowFor, translator } from "../i18n";
 import { Header, labelsFrom, rowsOf, safe, tag, type Page } from "./detail-kit";
 import { useShellData } from "./workspace";
 
@@ -256,7 +256,7 @@ export default function AxisProcessMap() {
           {laid.links.map((link, i) => (
             <path key={i} d={link.path} fill="none" stroke="var(--accent)" strokeOpacity={0.35} strokeWidth={link.width}>
               <title>
-                {`${tag(l, "step", link.from)} → ${tag(l, "step", link.to)}: ${link.count} (avg ${Math.round(link.avgMs)}ms)`}
+                {`${tag(l, "step", link.from)} ${arrowFor(locale)} ${tag(l, "step", link.to)}: ${link.count} (avg ${Math.round(link.avgMs)}ms)`}
               </title>
             </path>
           ))}

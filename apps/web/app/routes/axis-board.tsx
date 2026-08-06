@@ -16,7 +16,9 @@ import {
   GuardrailNotice,
   Input,
   Money,
+  Ref,
   Select,
+  shortRef,
   type BadgeTone
 } from "@lyra/ui";
 import { ApiError, api } from "../api.server";
@@ -116,13 +118,13 @@ const LABELS: Record<string, Record<string, string>> = {
   ar: {
     title: "لوحة الإنتاج",
     intro:
-      "كل حالة مفتوحة بترتيب مسار العمل. المسار الذي يتحول إلى العنبري يحمل عملًا أكثر مما ينبغي. افتح البطاقة للتعامل معها — هذه اللوحة تُبلّغ ولا تنقل العمل.",
+      "كل حالة مفتوحة بترتيب مسار العمل. المسار الذي يتحول إلى الكهرماني يحمل عملًا أكثر مما ينبغي. افتح البطاقة للتعامل معها — هذه اللوحة تُبلّغ ولا تنقل العمل.",
     "lane.intake": "الاستلام",
     "lane.quoting": "التسعير",
     "lane.awaiting_docs": "بانتظار المستندات",
     "lane.review": "المراجعة",
     "lane.approval": "الموافقة",
-    "lane.issued": "صُدرت",
+    "lane.issued": "أُصدرت",
     "lane.failed": "فشلت",
     "wip.count": "{open} مفتوحة",
     "wip.congested": "يحمل {open}، أكثر من {limit} المسموح لهذا المسار",
@@ -403,7 +405,7 @@ export default function AxisBoard() {
                         className="flex flex-col gap-1 rounded-md border border-border bg-surface-2 p-2 hover:border-accent-line"
                       >
                         <span className="flex items-center justify-between gap-2">
-                          <span className="font-mono text-12 text-accent">{card.ref}</span>
+                          <Ref value={card.ref} className="text-12 text-accent" />
                           {flag ? (
                             <Badge tone={flag.tone} size="sm" dot>
                               {l(flag.key)}
@@ -412,7 +414,7 @@ export default function AxisBoard() {
                         </span>
                         <span className="font-ui text-12 text-muted">{card.kind}</span>
                         <span className="flex items-center justify-between gap-2 font-ui text-12 text-subtle">
-                          <span>{card.ownerRef ?? l("unassigned")}</span>
+                          <span>{card.ownerRef ? shortRef(card.ownerRef) : l("unassigned")}</span>
                           {card.valueMinor !== null && card.currency ? (
                             <Money
                               amountMinor={card.valueMinor}

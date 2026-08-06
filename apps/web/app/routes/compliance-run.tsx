@@ -17,6 +17,7 @@ import {
   EmptyState,
   Field,
   Input,
+  Ref,
   Select,
   Table,
   type Column
@@ -213,7 +214,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "intro.evidence":
       "يجمع قيود التدقيق وتدقيق الذكاء الاصطناعي ضمن النطاق في أرشيف واحد، ويحسب بصمة كل ملف فيه، ويسجّل بصمة الأرشيف الذي سُلِّم.",
     "intro.retention":
-      "يحذف رسائل المحادثات الأقدم من مدة الاحتفاظ لدى هذا المستأجر. اعرض المعاينة أولًا: تُحصي ما سيُحذف وما يحتفظ به التجميد القانوني.",
+      "يحذف رسائل المحادثات الأقدم من مدة الاحتفاظ لدى هذه المؤسسة. اعرض المعاينة أولًا: تُحصي ما سيُحذف وما يحتفظ به التجميد القانوني.",
     "field.subject": "الاسم",
     "hint.subject": "الاسم المراد فحصه كما هو مكتوب في الوثيقة",
     "field.customerId": "العميل",
@@ -273,7 +274,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "result.retention.plan": "المعاينة",
     "result.retention.run": "الحذف",
     cutoffAt: "تاريخ القطع",
-    "cutoffAt.hint": "يُحتسب من سياسة الاحتفاظ لدى المستأجر والحد التنظيمي الأدنى، ولا يمكن تحديده هنا.",
+    "cutoffAt.hint": "يُحتسب من سياسة الاحتفاظ لدى المؤسسة والحد التنظيمي الأدنى، ولا يمكن تحديده هنا.",
     retentionMonths: "مدة الاحتفاظ",
     months: "شهرًا",
     rowsAffected: "صفوف ستُحذف",
@@ -577,7 +578,7 @@ function ScreeningResult({ screening, locale, l }: { screening: Screening; local
                 </Badge>
               )
             },
-            { label: l("subject"), value: <span className="font-mono text-12">{screening.subjectRef}</span> },
+            { label: l("subject"), value: <Ref value={screening.subjectRef} className="text-12" /> },
             { label: l("provider"), value: screening.provider },
             { label: l("queryHash"), value: <Hash value={screening.queryHash} />, hint: l("queryHash.hint") },
             { label: l("when"), value: <DateTime value={screening.ts} locale={locale} precision="minute" /> }

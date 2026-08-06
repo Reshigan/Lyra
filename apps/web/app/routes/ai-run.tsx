@@ -6,12 +6,16 @@ import {
   Badge,
   Button,
   Card,
+  cn,
   ConfidenceMeter,
   DateTime,
   EmptyState,
   EvidenceLink,
+  focusRing,
   GuardrailNotice,
   Money,
+  Ref,
+  shortRef,
   Table,
   type BadgeTone,
   type Column
@@ -169,7 +173,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "state.awaiting_approval": "بانتظار الموافقة",
     "state.succeeded": "نجح",
     "state.refused": "رُفض",
-    "state.failed": "أخفق",
+    "state.failed": "فشل",
     "state.cancelled": "أُلغي",
     "state.budget_stopped": "أوقفته الميزانية",
     "outcome.ok": "سليم",
@@ -368,8 +372,16 @@ export default function AiRun() {
                   detail={<code className="font-mono text-12 break-all">{call.resultHash}</code>}
                 />
               ) : null}
+              {/* Focusable: redacted args run wide, and a scroller only a mouse
+                  can reach strands the keyboard (WCAG 2.2 AA). */}
               {call.argsRedactedJson ? (
-                <pre className="overflow-x-auto rounded-sm bg-surface-1 p-2 font-mono text-11 text-muted">
+                <pre
+                  tabIndex={0}
+                  className={cn(
+                    "overflow-x-auto rounded-sm bg-surface-1 p-2 font-mono text-11 text-muted",
+                    focusRing
+                  )}
+                >
                   {JSON.stringify(call.argsRedactedJson, null, 2)}
                 </pre>
               ) : null}
@@ -418,7 +430,7 @@ export default function AiRun() {
             to="/approvals"
             className="font-mono text-12 text-accent underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
           >
-            {call.approvalId}
+            {shortRef(call.approvalId)}
           </Link>
         ) : (
           <span className="text-subtle">—</span>
@@ -576,7 +588,7 @@ export default function AiRun() {
                 {run.subjectRef ? (
                   <Pair
                     term={L("run.subject")}
-                    detail={<span className="break-all font-mono text-12">{run.subjectRef}</span>}
+                    detail={<Ref value={run.subjectRef} className="break-all text-12" />}
                   />
                 ) : null}
                 {run.endedAt ? (

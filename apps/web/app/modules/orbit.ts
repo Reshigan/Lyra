@@ -246,7 +246,7 @@ export const orbit: WorkspaceSpec = {
       agent_ai: "وكيل ذكاء اصطناعي",
       agent_human: "وكيل بشري",
       system: "النظام",
-      queued: "في الطابور",
+      queued: "في قائمة الانتظار",
       sent: "أُرسلت",
       delivered: "وصلت",
       read: "مقروءة",

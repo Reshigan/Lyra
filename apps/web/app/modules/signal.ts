@@ -200,7 +200,7 @@ export const signal: WorkspaceSpec = {
       daily: "يومي",
       acq: "اكتساب",
       renewal: "تجديد",
-      xsell: "بيع متقاطع",
+      xsell: "بيع تكميلي",
       draft: "مسودة",
       review: "قيد المراجعة",
       scheduled: "مجدولة",
@@ -232,7 +232,7 @@ export const signal: WorkspaceSpec = {
       api: "واجهة برمجية",
       import: "استيراد",
 
-      "link.cockpit": "قمرة النمو",
+      "link.cockpit": "مركز قيادة النمو",
       "link.studio": "استوديو الحملات",
       "link.audience-value": "الجماهير والقيمة",
       "link.answer-engines": "محرّكات الإجابات",

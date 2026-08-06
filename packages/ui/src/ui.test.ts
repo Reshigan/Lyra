@@ -12,7 +12,9 @@ import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { shortRef } from "./format.js";
 import { fromSelectValue, toSelectValue } from "./primitives.js";
+import { KIT_TEXT, uiText } from "./text.js";
 
 const SRC = dirname(fileURLToPath(import.meta.url));
 const REPO = join(SRC, "..", "..", "..");
@@ -243,6 +245,106 @@ describe("Select reserves the empty string for Radix", () => {
     // sentinel never reaches the hidden native input that `name` submits.
     expect(primitives).toContain("fromSelectValue(next)");
   });
+});
+
+/* -------------------------------------------------------------------------- */
+
+describe("kit chrome is translated, not hardcoded", () => {
+  it("ships an Arabic entry for every English key", () => {
+    expect(Object.keys(KIT_TEXT.ar!).sort()).toEqual(Object.keys(KIT_TEXT.en!).sort());
+  });
+
+  it("resolves a region subtag to its base locale", () => {
+    expect(uiText("ar-AE")("approve")).toBe(KIT_TEXT.ar!.approve);
+  });
+
+  it("falls back to English for a locale it has never heard of", () => {
+    expect(uiText("pseudo")("approve")).toBe(KIT_TEXT.en!.approve);
+  });
+
+  it("fills named slots", () => {
+    expect(uiText("en")("requestedBy", { who: "Dana" })).toBe("Requested by Dana");
+  });
+
+  // The literals these components used to render inline. A kit that speaks its
+  // own English cannot be translated by the app that embeds it, and 98 Table
+  // call sites will never all remember to pass a string in.
+  const banned = [
+    '"Nothing here yet."',
+    '"Audit trail"',
+    '"Pagination"',
+    '"Rows"',
+    '"Previous"',
+    '"Next"',
+    '"Waiting"',
+    '"Done"',
+    '"When"',
+    '"Actor"',
+    '"Action"',
+    '"Target"',
+    '"Detail"',
+    '"AI-generated"',
+    '"Why this was drafted"',
+    '"Model confidence"',
+    '"Evidence"',
+    '"AI budget"',
+    '"Pending approval"',
+    "Drafted by",
+    "Requested by",
+    "Budget exhausted",
+    "Resets {",
+    ">Reject<",
+    ">Approve<",
+    "Accept <kbd",
+    "Discard <kbd"
+  ];
+
+  it.each(["data.tsx", "ai.tsx"])("%s renders no English of its own", (name) => {
+    const code = read(join(SRC, name))
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "")
+      .replace(/\s+/g, " ");
+    for (const literal of banned) {
+      expect(code.includes(literal), `${name} must not contain ${literal}`).toBe(false);
+    }
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+
+describe("Table is reachable from the keyboard", () => {
+  const data = read(join(SRC, "data.tsx"));
+
+  it("names its scroll region and gives it a tab stop", () => {
+    // WCAG 2.2 AA scrollable-region-focusable: a pointer-only scroller strands
+    // keyboard users on every wide table in the product.
+    expect(data).toMatch(/role="region"[\s\S]{0,240}tabIndex=\{0\}/);
+  });
+
+  it("never calls a table row a button", () => {
+    // role="button" on a <tr> deletes the row/cell semantics screen readers
+    // navigate a table with; the row keeps its tabIndex and Enter handler.
+    expect(data).not.toMatch(/role:\s*"button"/);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+
+describe("shortRef hides storage keys without hiding anything else", () => {
+  it("keeps the prefix and both ends of a ULID", () => {
+    expect(shortRef("us_01KE953T07XY8ZQK4M2N6VJH3B")).toBe("us_01KE…JH3B");
+  });
+
+  it("keeps a scope in front of the ref", () => {
+    expect(shortRef("user:us_01KE953T07XY8ZQK4M2N6VJH3B")).toBe("user:us_01KE…JH3B");
+  });
+
+  it.each(["CASE-1042", "sara@example.com", "Sara Haddad", "MOTOR-COMP", ""])(
+    "leaves %s alone",
+    (value) => {
+      expect(shortRef(value)).toBe(value);
+    }
+  );
 });
 
 /* -------------------------------------------------------------------------- */

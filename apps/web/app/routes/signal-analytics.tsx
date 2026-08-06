@@ -34,6 +34,7 @@ import {
   labelsIn,
   ltvMinor,
   ltvToCac,
+  multipleText,
   rollByChannel,
   safe,
   totalSpendMinor,
@@ -214,7 +215,7 @@ export default function GrowthAnalytics() {
         />
         <Stat
           label={l("growth.ratio")}
-          value={loaded.ratio === null ? l("none") : `${loaded.ratio.toFixed(1)}×`}
+          value={loaded.ratio === null ? l("none") : multipleText(locale, loaded.ratio)}
           hint={l("growth.ratioHint")}
         />
         <Stat
@@ -341,7 +342,7 @@ export function attributionColumns(l: Label, locale: string, currency: string): 
         return ratio === null ? (
           l("none")
         ) : (
-          <span className={ratio < 1 ? "text-danger" : undefined}>{ratio.toFixed(1)}×</span>
+          <span className={ratio < 1 ? "text-danger" : undefined}>{multipleText(locale, ratio)}</span>
         );
       }
     }

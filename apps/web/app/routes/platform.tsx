@@ -207,16 +207,16 @@ export const LABELS: Record<string, Record<string, string>> = {
     intro: "حال كل مستأجر، وأي القدرات مفعّلة، ومن ينوب عن عميل الآن.",
     deniedTitle: "لا يمكنك قراءة تشخيصات المنصة",
 
-    kpiTenants: "المستأجرون النشطون",
+    kpiTenants: "المؤسسات النشطة",
     kpiOutbox: "أحداث في الانتظار",
     kpiDlq: "رسائل فاشلة",
     kpiApprovals: "قرارات في الانتظار",
     snapshotHint: "آخر لقطة قياس",
     snapshotNever: "لا لقطة بعد",
 
-    healthTitle: "حال المستأجرين",
+    healthTitle: "حال المؤسسات",
     healthCaption: "عمق الطوابير والقرارات المنتظرة لكل مستأجر",
-    colTenant: "المستأجر",
+    colTenant: "المؤسسة",
     colOutbox: "الصادر",
     colDlq: "الفاشلة",
     colApprovals: "منتظرة",
@@ -251,7 +251,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     deploysEmpty: "لا إصدارات مسجلة",
 
     flagsTitle: "مفاتيح القدرات",
-    flagsCaption: "مفاتيح عامة، ونسبة المستأجرين التي تشملها",
+    flagsCaption: "مفاتيح عامة، ونسبة المؤسسات التي تشملها",
     colFlag: "المفتاح",
     colDescription: "ما يفعله",
     colEnabled: "مفعّل",
@@ -290,7 +290,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     approvalBody: "هذا محفوظ للموافقة تحت {policy}. يمضي بعد أن يقرر شخص آخر.",
     approvalLink: "فتح القرارات المنتظرة",
 
-    errKeyRequired: "أعطِ المفتاح اسماً",
+    errKeyRequired: "أعطِ المفتاح اسمًا",
     errDescriptionRequired: "اذكر ما يفعله المفتاح",
     errRolloutRange: "نسبة الإطلاق بين ٠ و١٠٠",
     errTargetRequired: "حدد المستخدم المنوب عنه",

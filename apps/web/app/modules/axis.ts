@@ -311,7 +311,7 @@ export const axis: WorkspaceSpec = {
       "status.variance": "فرق",
       "status.closed": "مغلقة",
       "status.draft": "مسودة",
-      "status.retired": "موقوفة",
+      "status.retired": "مسحوبة",
       "priority.low": "منخفضة",
       "priority.normal": "عادية",
       "priority.high": "عالية",
@@ -358,7 +358,7 @@ export const axis: WorkspaceSpec = {
         "يُسجَّل التحقق باسمك ولا يمكن الرجوع عنه. هل تريد التحقق من هذا المستند؟",
       "documents.extract": "القراءة بالنموذج",
 
-      "link.exceptions": "طابور الاستثناءات",
+      "link.exceptions": "قائمة انتظار الاستثناءات",
       "link.board": "لوحة الإنتاج",
       "link.quoteDesk": "مكتب عروض الأسعار",
       "link.groupBids": "العطاءات الجماعية",

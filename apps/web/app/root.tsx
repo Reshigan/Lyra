@@ -10,6 +10,7 @@ import {
   type LinksFunction,
   type LoaderFunctionArgs
 } from "react-router";
+import { UiTextProvider } from "@lyra/ui";
 import "./app.css";
 import { DEFAULT_LOCALE, dirFor, langFor, localeFrom, translator } from "./i18n";
 
@@ -59,7 +60,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <Links />
       </head>
       <body className="min-h-screen bg-bg text-text antialiased">
-        {children}
+        {/* One locale for every @lyra/ui surface below: kit chrome, <Money>,
+            <DateTime>. Without it the kit formats in English under an Arabic
+            document, and 98 Table call sites each have to remember a prop. */}
+        <UiTextProvider locale={locale}>{children}</UiTextProvider>
         <ScrollRestoration />
         <Scripts />
       </body>

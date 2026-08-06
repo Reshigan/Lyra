@@ -15,6 +15,7 @@ import {
   EmptyState,
   KPIWall,
   Money,
+  shortRef,
   Sparkline,
   Stat,
   Timeline,
@@ -24,6 +25,7 @@ import {
 import { ApiError, api, fetchMe, type Problem } from "../api.server";
 import { cloudflare } from "../context";
 import { DEFAULT_LOCALE, translator } from "../i18n";
+import { humanise } from "../modules/spec";
 import { labelKeyFor } from "../routing";
 import { useShellData } from "./workspace";
 
@@ -524,9 +526,12 @@ export default function Home() {
               // here would hard-code the industry's nouns into the shell — that
               // vocabulary belongs to the active domain pack (docs/21).
               summary={approval.policyKey}
-              consequence={label("approvals.subject", { ref: approval.subjectRef })}
-              requestedBy={approval.requestedBy}
-              label={label("approvals.title")}
+              consequence={label("approvals.subject", { ref: shortRef(approval.subjectRef) })}
+              requestedBy={shortRef(approval.requestedBy)}
+              // Each strip is a region landmark. Sharing one name with the
+              // section around them makes a landmark list of identical entries
+              // (axe landmark-unique), so each carries what it is waiting on.
+              label={`${label("approvals.title")}: ${approval.policyKey}`}
               // A strip mid-decision explains why its buttons are gone rather
               // than offering a second click that would race the first.
               {...(busyId === approval.id
@@ -574,9 +579,12 @@ export default function Home() {
               events={rows.map(
                 (entry): TimelineEvent => ({
                   id: entry.id,
-                  title: entry.action,
+                  // Audit codes (`core.session.login`) are not a sentence a
+                  // person reads. ponytail: humanise, not a per-code label
+                  // table nobody maintains.
+                  title: humanise(entry.action),
                   at: entry.ts,
-                  ...(entry.subjectRef ? { detail: entry.subjectRef } : {})
+                  ...(entry.subjectRef ? { detail: shortRef(entry.subjectRef) } : {})
                 })
               )}
             />
@@ -603,7 +611,7 @@ export default function Home() {
                     </p>
                     {note.subjectRef ? (
                       <p className="mt-0.5 break-all font-ui text-12 text-muted">
-                        {note.subjectRef}
+                        {shortRef(note.subjectRef)}
                       </p>
                     ) : null}
                   </div>

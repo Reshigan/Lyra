@@ -24,6 +24,7 @@ import {
   type Column
 } from "@lyra/ui";
 import { ApiError, api, fetchMe } from "../api.server";
+import { arrowFor } from "../i18n";
 import { cloudflare } from "../context";
 import { Gate } from "./staff";
 import { channelColumns } from "./signal-studio";
@@ -354,7 +355,11 @@ function campaignColumns(l: (key: string) => string, locale: string): Array<Colu
 export function moveColumns(l: (key: string) => string, locale: string): Array<Column<MoveRow>> {
   return [
     { key: "when", header: l("when"), render: (move) => <DateTime value={move.ts} locale={locale} /> },
-    { key: "from", header: l("budget.moves"), render: (move) => `${move.fromRef} → ${move.toRef}` },
+    {
+      key: "from",
+      header: l("budget.moves"),
+      render: (move) => `${move.fromRef} ${arrowFor(locale)} ${move.toRef}`
+    },
     {
       key: "amount",
       header: l("amount"),

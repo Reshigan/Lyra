@@ -49,6 +49,16 @@ export function dirFor(locale: string): "rtl" | "ltr" {
 }
 
 /**
+ * "from → to" written the way the reader's eye travels. Unicode does not mirror
+ * U+2192 for you: an Arabic sentence that reads right-to-left with a rightward
+ * arrow in it points back at where the reader started. Direction glyphs are the
+ * one place a logical CSS property cannot help — the character itself is wrong.
+ */
+export function arrowFor(locale: string): "→" | "←" {
+  return dirFor(locale) === "rtl" ? "←" : "→";
+}
+
+/**
  * `<html lang>` must be a valid BCP-47 tag (WCAG 3.1.1 / axe `html-lang-valid`)
  * — "pseudo" alone fails that check. "en-x-pseudo" is valid: a real primary
  * subtag plus the standard "-x-" private-use extension.

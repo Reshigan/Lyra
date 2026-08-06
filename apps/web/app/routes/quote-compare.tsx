@@ -15,13 +15,15 @@ import {
   Badge,
   Button,
   Card,
+  cn,
   ConfidenceMeter,
   DateTime,
   EmptyState,
+  focusRing,
   GuardrailNotice,
   Money,
-  cn,
-  focusRing
+  Ref,
+  shortRef
 } from "@lyra/ui";
 import { ApiError, api, fetchMe, type Problem as ApiProblem } from "../api.server";
 import { toneFor } from "../components/fields";
@@ -241,27 +243,27 @@ const LABELS: Record<string, Record<string, string>> = {
     select: "اختيار",
     choose: "الاختيار",
     selectConsequence:
-      "الاختيار يسجّل قرار العميل ويكتبه في سجل التدقيق ويغلق هذه المقارنة كمحوّلة. قد تشترط سياسة المستأجر موافقة قبل اعتماده.",
+      "الاختيار يسجّل قرار العميل ويكتبه في سجل التدقيق ويغلق هذه المقارنة كمحوّلة. قد تشترط سياسة المؤسسة موافقة قبل اعتماده.",
     share: "مشاركة مع العميل",
     sharedAt: "تمت المشاركة مع العميل",
     reshop: "إعادة طلب العروض",
     reshopHint: "يعيد تسعير المتطلب نفسه لدى كل عرض مؤهل، كمقارنة جديدة.",
-    region: "مقارنة العروض — مرّر جانبياً لعرض المزيد",
+    region: "مقارنة العروض — مرّر جانبيًا لعرض المزيد",
     responded: "{responded} من {fanout} استجابوا",
     expires: "تنتهي صلاحية المقارنة",
     expired: "منتهية الصلاحية",
     expiredBody: "انتهت صلاحية هذه المقارنة. الأسعار استرشادية فقط — أعد طلب العروض للحصول على إجابة حديثة.",
     quoteExpired: "انتهت صلاحية هذا السعر",
     emptyTitle: "لا توجد عروض للمقارنة",
-    emptyBody: "لم يُرجع أي عضو في اللوحة سعراً لهذا الطلب.",
+    emptyBody: "لم تُرجع أي جهة في قائمة الجهات المسعّرة سعرًا لهذا الطلب.",
     emptyWaitingTitle: "لم تصل أي إجابة بعد",
-    emptyWaitingBody: "أُرسل المتطلب إلى {fanout} في اللوحة ولم يجب أحد. تظهر الإجابات هنا فور وصولها.",
-    emptySilentTitle: "لم تُسأل اللوحة إطلاقاً",
-    emptySilentBody: "لا يحمل هذا الطلب أي استجابة، ولا حتى رفضاً. أعد طلب العروض لإرسال المتطلب.",
-    awaitingTitle: "ما زالت لدى اللوحة",
-    awaitingBody: "سُئلت ولم تجب بعد. قد تتحول إلى سعر لاحقاً.",
-    unavailableTitle: "لم تقدّم عرضاً",
-    unavailableBody: "أجابت دون سعر. السبب الذي ذكرته كل جهة هو مؤشر جودة اللوحة.",
+    emptyWaitingBody: "أُرسل المتطلب إلى {fanout} في قائمة الجهات المسعّرة ولم يجب أحد. تظهر الإجابات هنا فور وصولها.",
+    emptySilentTitle: "لم تُسأل القائمة إطلاقًا",
+    emptySilentBody: "لا يحمل هذا الطلب أي استجابة، ولا حتى رفضًا. أعد طلب العروض لإرسال المتطلب.",
+    awaitingTitle: "ما زالت لدى القائمة",
+    awaitingBody: "سُئلت ولم تجب بعد. قد تتحول إلى سعر لاحقًا.",
+    unavailableTitle: "لم تقدّم عرضًا",
+    unavailableBody: "أجابت دون سعر. السبب الذي ذكرته كل جهة هو مؤشر جودة القائمة.",
     reason: "السبب",
     "done.share": "سُجّلت المشاركة مع العميل.",
     "done.select": "سُجّل الاختيار وأُغلقت المقارنة كمحوّلة.",
@@ -280,13 +282,13 @@ const LABELS: Record<string, Record<string, string>> = {
     offerExpires: "ينتهي الاقتراح",
     suppressed: "موقوف",
     "suppress.no_consent": "موقوف — لم يوافق العميل على تلقي هذا العرض.",
-    "suppress.frequency_cap": "موقوف — بلغ هذا العميل حدّ العروض المسموح بها حالياً.",
+    "suppress.frequency_cap": "موقوف — بلغ هذا العميل حدّ العروض المسموح بها حاليًا.",
     "suppress.not_eligible": "موقوف — العميل غير مؤهل لهذا العرض.",
     "suppress.agent_declined": "موقوف — رفضه موظف نيابة عن العميل.",
     accept: "قبول",
     dismiss: "تجاهل",
     offerNote: "القبول يسجّل الاهتمام فقط — لا شراء ولا طلب عروض جديد.",
-    "kind.cross_sell": "بيع متقاطع",
+    "kind.cross_sell": "بيع تكميلي",
     "kind.upsell": "ترقية",
     "kind.renewal": "تجديد",
     "kind.bundle": "حزمة",
@@ -501,7 +503,7 @@ export default function QuoteCompare() {
         </Link>
         <h1 className="font-display text-24 text-text">{L("title")}</h1>
         <p className="flex flex-wrap items-center gap-2 font-ui text-12 text-subtle">
-          <span className="font-mono">{request.id}</span>
+          <Ref value={request.id} />
           <Badge tone={toneFor(request.state)} size="sm" dot>
             {L(`state.${request.state}`)}
           </Badge>
@@ -609,7 +611,7 @@ export default function QuoteCompare() {
                     <th key={quote.id} scope="col" className="min-w-52 p-3 text-start align-top">
                       <span className="flex flex-col gap-1">
                         <span className="font-ui text-14 text-text">{offeringName(quote, locale)}</span>
-                        <span className="font-mono text-11 text-subtle">{quote.providerId}</span>
+                        <Ref value={quote.providerId} className="text-11 text-subtle" />
                         <span className="flex flex-wrap gap-1">
                           <Badge tone={toneFor(quote.state)} size="sm" dot>
                             {L(`state.${quote.state}`)}
@@ -791,7 +793,7 @@ function PanelSection({
                     key={`${entry.offeringId}:${index}`}
                     className="flex flex-wrap items-baseline gap-x-2 font-ui text-13 text-text"
                   >
-                    <span className="font-mono text-11 text-subtle">{entry.providerId}</span>
+                    <Ref value={entry.providerId} className="text-11 text-subtle" />
                     {entry.reason ? (
                       <span className="min-w-0 break-words text-subtle">
                         {L("reason")}: {entry.reason}
@@ -850,7 +852,7 @@ function OfferCard({
                 {offer.offeringId ? (
                   <Fragment>
                     <dt>{L("detail")}</dt>
-                    <dd className="font-mono text-11 text-text">{offer.offeringId}</dd>
+                    <dd className="font-mono text-11 text-text">{shortRef(offer.offeringId)}</dd>
                   </Fragment>
                 ) : null}
               </dl>
@@ -1013,9 +1015,15 @@ function attributesFor(
         key: "commissionRate",
         label: L("commissionRate"),
         // Rates are stored in parts per million (packages/db dist schema).
+        // Intl, not `toFixed` + "%": the sign's side and the digits are the
+        // reader's, not English's.
         cell: (quote) =>
           quote.commissionPpm === null ? null : (
-            <span className="tabular-nums">{(quote.commissionPpm / 10_000).toFixed(2)}%</span>
+            <span className="tabular-nums">
+              {new Intl.NumberFormat(locale, { style: "percent", maximumFractionDigits: 2 }).format(
+                quote.commissionPpm / 1_000_000
+              )}
+            </span>
           ),
         stamp: (quote) => String(quote.commissionPpm ?? "")
       }

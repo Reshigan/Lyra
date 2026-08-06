@@ -22,6 +22,7 @@ import {
   GuardrailNotice,
   Input,
   KPIWall,
+  Ref,
   Select,
   Stat,
   Textarea,
@@ -570,7 +571,7 @@ export default function AxisDocIntel() {
                 source={
                   <span className="flex flex-col gap-1 font-ui text-12 text-muted">
                     <span>
-                      {l("evidence.file")}: <span className="font-mono">{selected.fileId}</span>
+                      {l("evidence.file")}: <Ref value={selected.fileId} />
                     </span>
                     <span>
                       {l("evidence.type")}: {selected.docType}

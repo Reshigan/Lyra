@@ -14,14 +14,17 @@ import {
   Badge,
   Button,
   Card,
+  cn,
   ConfidenceMeter,
   DateTime,
   EmptyState,
   EvidenceLink,
   Field,
+  focusRing,
   GhostText,
   GuardrailNotice,
   Input,
+  Ref,
   Textarea,
   type BadgeTone
 } from "@lyra/ui";
@@ -495,14 +498,14 @@ const LABELS: Record<string, Record<string, string>> = {
     started: "بدأت",
     lastMessage: "آخر رسالة",
     closedAt: "أُغلقت",
-    assign: "تكليف نفسي",
+    assign: "إسنادها إليّ",
     close: "إغلاق المحادثة",
     reopen: "إعادة فتح المحادثة",
     handoverAdd: "تسليم المحادثة",
     handoverTo: "التسليم إلى",
     handoverSummary: "ما يحتاج الشخص التالي معرفته",
     handoverSave: "حفظ ملاحظة التسليم",
-    "done.assign": "أصبحت هذه المحادثة مكلّفاً بها وخرجت من وضع الرد الآلي.",
+    "done.assign": "أُسندت إليك هذه المحادثة وخرجت من وضع الرد الآلي.",
     "done.close": "أُغلقت المحادثة.",
     "done.reopen": "أُعيد فتح المحادثة وأُسندت إلى موظف.",
     "done.handover": "حُفظت ملاحظة التسليم.",
@@ -510,8 +513,8 @@ const LABELS: Record<string, Record<string, string>> = {
     draft: "رد مقترح",
     agent: "المساعد",
     draftNote: "مسودة لم تُرسل. اعتمدها كما هي، أو انقلها إلى صندوق الرد لتعديلها، أو تجاهلها.",
-    approve: "اعتماد وإضافة للإرسال",
-    approveHint: "الاعتماد يضيف هذا النص كما هو إلى قائمة الإرسال كرد آلي مع الاحتفاظ بسجل التدقيق.",
+    approve: "موافقة وإضافة للإرسال",
+    approveHint: "الموافقة تضيف هذا النص كما هو إلى قائمة الإرسال كرد آلي مع الاحتفاظ بسجل التدقيق.",
     accept: "استخدام المسودة",
     dismiss: "تجاهل المسودة",
     why: "سبب هذه المسودة",
@@ -604,7 +607,7 @@ export default function ConversationThread() {
           <Badge tone={conversation.state === "closed" ? "neutral" : "accent"}>
             {l(`state.${conversation.state}`)}
           </Badge>
-          <span className="font-mono">{conversation.id}</span>
+          <Ref value={conversation.id} />
         </p>
         {conversation.summary ? (
           <p className="max-w-prose font-ui text-13 text-muted">{conversation.summary}</p>
@@ -748,9 +751,6 @@ export default function ConversationThread() {
           className="flex flex-col gap-3 rounded-lg border border-dashed border-border p-4"
         >
           <div className="flex flex-wrap items-center gap-3">
-            {/* ponytail: AgentBadge and GhostText ship their own English chrome
-                ("Drafted by", "Accept"). Thread a `t` through @lyra/ui when the
-                design system takes an i18n prop — not from one screen. */}
             <AgentBadge
               agent={run?.agentKey ?? l("agent")}
               why={
@@ -768,7 +768,13 @@ export default function ConversationThread() {
               <EvidenceLink
                 sourceLabel={l("evidence")}
                 source={
-                  <pre className="max-w-xs overflow-x-auto font-mono text-11 text-muted">
+                  <pre
+                    tabIndex={0}
+                    className={cn(
+                      "max-w-xs overflow-x-auto font-mono text-11 text-muted",
+                      focusRing
+                    )}
+                  >
                     {JSON.stringify(run.evidenceJson, null, 2)}
                   </pre>
                 }

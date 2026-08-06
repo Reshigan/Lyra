@@ -14,7 +14,9 @@ import {
   EmptyState,
   Input,
   Money,
+  Ref,
   Select,
+  shortRef,
   Table,
   type Column
 } from "@lyra/ui";
@@ -217,13 +219,13 @@ const LABELS: Record<string, Record<string, string>> = {
     emptyTitle: "لم تُستحق أي عمولة بعد",
     emptyBody: "تظهر القيود هنا بعد احتساب وثيقة وفق السعر الساري.",
     filteredTitle: "لا توجد قيود مطابقة لهذه المرشحات",
-    filteredBody: "امسح المرشحات لعرض المركز كاملاً.",
+    filteredBody: "امسح المرشحات لعرض المركز كاملًا.",
     deniedTitle: "لا يمكنك قراءة العمولات",
     accrue: "احتساب عمولة",
     accrueIntro:
-      "يحتسب الوثيقة وفق سعر العمولة الساري ويكتب القيد. المبالغ مشتقة ولا تُكتب يدوياً — لا يمكن لقناة أن تسجل عمولتها بنفسها.",
+      "يحتسب الوثيقة وفق سعر العمولة الساري ويكتب القيد. المبالغ مشتقة ولا تُكتب يدويًا — لا يمكن لقناة أن تسجل عمولتها بنفسها.",
     policyIdHint: "الوثيقة الصادرة المراد احتسابها.",
-    taxMinorHint: "الضريبة المستقطعة بالوحدات الصغرى. اتركه فارغاً إن لم توجد.",
+    taxMinorHint: "الضريبة المستقطعة بالوحدات الصغرى. اتركه فارغًا إن لم توجد.",
     accrued: "تم الاحتساب على الوثيقة {policy}.",
     accruedGross: "الإجمالي",
     openEntry: "فتح القيد",
@@ -393,9 +395,9 @@ export default function CommissionStatement() {
             to={`/distribution/commission-entries/${row.id}`}
             className="font-mono text-12 text-accent underline-offset-2 hover:underline"
           >
-            {row.policyId}
+            {shortRef(row.policyId)}
           </Link>
-          <span className="font-mono text-11 text-subtle">{row.providerId}</span>
+          <Ref value={row.providerId} className="text-11 text-subtle" />
         </span>
       )
     },

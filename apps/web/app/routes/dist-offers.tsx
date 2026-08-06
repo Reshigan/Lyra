@@ -17,7 +17,9 @@ import {
   DateTime,
   EmptyState,
   EvidenceLink,
-  Money
+  Money,
+  Ref,
+  shortRef
 } from "@lyra/ui";
 import { ApiError, api, fetchMe } from "../api.server";
 import { FieldInput, toneFor } from "../components/fields";
@@ -144,7 +146,7 @@ const LABELS: Record<string, Record<string, string>> = {
   ar: {
     title: "أفضل العروض التالية",
     intro:
-      "يسأل النموذج عما يرجَّح أن يأخذه هذا العميل تالياً، ولماذا. الاقتراح لا يغيّر شيئاً يراه العميل — لا يصل إليه العرض إلا حين يعرضه شخص ما.",
+      "يسأل النموذج عما يرجَّح أن يأخذه هذا العميل تاليًا، ولماذا. الاقتراح لا يغيّر شيئًا يراه العميل — لا يصل إليه العرض إلا حين يعرضه شخص ما.",
     backToOffers: "العودة إلى أفضل العروض التالية",
     ask: "اقتراح عروض",
     askIntro: "تُحتسب مقابل ما يملكه العميل بالفعل. لا يُرسل شيء.",
@@ -156,13 +158,13 @@ const LABELS: Record<string, Record<string, string>> = {
     anchorPolicyIdHint: "الوثيقة التي يُبنى عليها الاقتراح. اختياري.",
     limit: "العدد",
     limitHint: "بين 1 و10. الافتراضي هو حد النموذج نفسه.",
-    proposed: "تم اقتراح {count} عرضاً.",
+    proposed: "تم اقتراح {count} عرضًا.",
     results: "ما اقترحه النموذج",
     startTitle: "ابدأ بعميل",
-    startBody: "أدخل عميلاً وسيحتسب النموذج كل عرض لا يملكه بعد.",
+    startBody: "أدخل عميلًا وسيحتسب النموذج كل عرض لا يملكه بعد.",
     emptyTitle: "لا يوجد ما يُعرض على هذا العميل",
     emptyBody:
-      "لم يجد النموذج عرضاً يستحق الاقتراح — غالباً لأن العميل يملكها بالفعل أو لا ينطبق عليه أي منها.",
+      "لم يجد النموذج عرضًا يستحق الاقتراح — غالبًا لأن العميل يملكها بالفعل أو لا ينطبق عليه أي منها.",
     deniedTitle: "لا يمكنك قراءة العروض",
     matchScore: "التطابق",
     noScore: "غير محتسب",
@@ -181,7 +183,7 @@ const LABELS: Record<string, Record<string, string>> = {
     surfacedNow: "تم العرض.",
     notSurfaceable: "تم البت فيه — العرض الآن بلا أثر.",
     suppressed: "محجوب",
-    "kind.cross_sell": "بيع تكاملي",
+    "kind.cross_sell": "بيع تكميلي",
     "kind.upsell": "ترقية",
     "kind.renewal": "تجديد",
     "kind.bundle": "باقة",
@@ -194,7 +196,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "state.expired": "منتهٍ",
     "state.converted": "محوَّل",
     "suppress.no_consent": "لم يوافق العميل على تلقي هذا العرض.",
-    "suppress.frequency_cap": "تلقى ما يكفي من العروض حالياً.",
+    "suppress.frequency_cap": "تلقى ما يكفي من العروض حاليًا.",
     "suppress.not_eligible": "غير مؤهل لهذا المنتج.",
     "suppress.agent_declined": "رفضه أحد الوكلاء."
   }
@@ -434,7 +436,7 @@ function OfferRow({
                 <dl className="grid grid-cols-2 gap-x-3 gap-y-1 font-ui text-12 text-subtle">
                   <Fragment>
                     <dt>{l("offering")}</dt>
-                    <dd className="font-mono text-11 text-text">{offer.offeringId}</dd>
+                    <dd className="font-mono text-11 text-text">{shortRef(offer.offeringId)}</dd>
                   </Fragment>
                   {offer.runId ? (
                     <Fragment>
@@ -460,7 +462,7 @@ function OfferRow({
               source={
                 <span className="flex flex-col gap-1 font-ui text-12">
                   <span className="text-subtle">{l("anchor")}</span>
-                  <span className="font-mono text-11 text-text">{offer.anchorRef}</span>
+                  <Ref value={offer.anchorRef} className="text-11 text-text" />
                 </span>
               }
               sourceLabel={l("evidence")}

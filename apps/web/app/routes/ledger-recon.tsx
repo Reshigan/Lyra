@@ -17,7 +17,9 @@ import {
   Field,
   Input,
   Money,
+  Ref,
   Select,
+  shortRef,
   Table,
   Textarea,
   type Column
@@ -209,7 +211,7 @@ export default function LedgerRecon() {
     {
       key: "statementLineRef",
       header: l("recon.statementRef"),
-      render: (row) => <span className="font-mono text-12">{row.statementLineRef ?? l("none")}</span>
+      render: (row) => <Ref value={row.statementLineRef} className="text-12" fallback={l("none")} />
     },
     {
       key: "txnId",
@@ -220,7 +222,7 @@ export default function LedgerRecon() {
             to={`/ledger/transactions/${encodeURIComponent(row.txnId)}`}
             className="rounded-sm font-mono text-12 text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent"
           >
-            {row.txnId}
+            {shortRef(row.txnId)}
           </Link>
         ) : (
           l("none")

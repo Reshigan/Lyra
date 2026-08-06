@@ -148,7 +148,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "issue.none": "اختر عرضًا فائزًا أولًا — لا يوجد ما يُصدر منه بعد.",
     "done.pick": "سُجّل الفائز.",
     "done.decline": "رُفض العرض.",
-    "done.issue": "صُدر العقد.",
+    "done.issue": "أُصدر العقد.",
     "empty.title": "المكتب خالٍ",
     "empty.body": "لا توجد حالة مطروحة على مزوّد الآن.",
     approvalTitle: "بانتظار موافقة",
@@ -528,7 +528,14 @@ export default function AxisQuoteDesk() {
                         <Form method="post">
                           <input type="hidden" name="intent" value="pick" />
                           <input type="hidden" name="quoteId" value={bid.id} />
-                          <Button type="submit" size="sm" variant="secondary" loading={busy}>
+                          <Button
+                            type="submit"
+                            size="sm"
+                            variant="secondary"
+                            loading={busy}
+                            // One "Pick" per bid: the provider is what tells them apart.
+                            aria-label={`${l("pick.submit")}: ${bid.providerId}`}
+                          >
                             {l("pick.submit")}
                           </Button>
                         </Form>
@@ -539,7 +546,13 @@ export default function AxisQuoteDesk() {
                         <Field label={l("decline.reason")} labelHidden className="w-48">
                           <Input name="reason" size="sm" />
                         </Field>
-                        <Button type="submit" size="sm" variant="ghost" loading={busy}>
+                        <Button
+                          type="submit"
+                          size="sm"
+                          variant="ghost"
+                          loading={busy}
+                          aria-label={`${l("decline.submit")}: ${bid.providerId}`}
+                        >
                           {l("decline.submit")}
                         </Button>
                       </Form>

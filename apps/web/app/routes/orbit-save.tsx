@@ -181,13 +181,13 @@ export const LABELS: Labels = {
     atRisk: "خطر تسرب مرتفع",
     scheduledCount: "بانتظار إجراء منّا",
     offeredCount: "عرض قائم",
-    savedRate: "أُنقذت في هذه الفترة",
-    queue: "طابور الاستبقاء",
-    queueBody: "الأعلى خطرًا أولاً. لم يُقدَّم أي عرض على هذه بعد.",
+    savedRate: "استُبقيت في هذه الفترة",
+    queue: "قائمة انتظار الاستبقاء",
+    queueBody: "الأعلى خطرًا أولًا. لم يُقدَّم أي عرض على هذه بعد.",
     outstanding: "عروض قائمة",
     outstandingBody: "أُرسلت ولم يُحسم أمرها. المسح الدوري يعدّها خسارة إذا انتهى تاريخ الانتهاء.",
     settled: "حُسمت مؤخرًا",
-    settledBody: "مقبولة أو خسارة، الأحدث قرارًا أولاً.",
+    settledBody: "مقبولة أو خسارة، الأحدث قرارًا أولًا.",
     customer: "العميل",
     policy: "مرجع الوثيقة",
     expires: "تنتهي",
@@ -213,7 +213,7 @@ export const LABELS: Labels = {
     working: "جارٍ التنفيذ",
     saved: "تم التسجيل.",
     unknownIntent: "هذا الإجراء غير متاح.",
-    missingRenewal: "اختر تجديدًا أولاً.",
+    missingRenewal: "اختر تجديدًا أولًا.",
     badResolution: "اختر مقبول أو خسارة.",
     notOfferable: "لا يمكن تقديم عرض على هذا التجديد من حالته الحالية.",
     riskWhy: "سبب هذه الدرجة",
@@ -531,65 +531,82 @@ function Desk({
       key: "act",
       header: l("act"),
       width: "22rem",
-      render: (row) => (
-        <div className="flex flex-col gap-3">
-          {canOffer(row) ? (
-            <Form method="post" replace className="flex flex-col gap-2">
-              <input type="hidden" name="intent" value="offer" />
-              <input type="hidden" name="id" value={row.id} />
-              <input type="hidden" name="nonce" value={`offer:${nonce}:${row.id}`} />
-              <Checkbox name="confirm" label={l("confirm")} />
-              <Button type="submit" size="sm" disabled={busy}>
-                {busy ? l("working") : l("offer")}
-              </Button>
-            </Form>
-          ) : null}
+      render: (row) => {
+        // Every row's buttons read "Offer", "Resolve", "Apply". Screen-reader
+        // names carry the renewal they act on; the eye gets it from the row.
+        const who = row.policyRef ?? row.customerId ?? row.id;
+        return (
+          <div className="flex flex-col gap-3">
+            {canOffer(row) ? (
+              <Form method="post" replace className="flex flex-col gap-2">
+                <input type="hidden" name="intent" value="offer" />
+                <input type="hidden" name="id" value={row.id} />
+                <input type="hidden" name="nonce" value={`offer:${nonce}:${row.id}`} />
+                <Checkbox name="confirm" label={l("confirm")} />
+                <Button type="submit" size="sm" disabled={busy} aria-label={`${l("offer")}: ${who}`}>
+                  {busy ? l("working") : l("offer")}
+                </Button>
+              </Form>
+            ) : null}
 
-          {canResolve(row) ? (
-            <Form method="post" replace className="flex flex-col gap-2">
-              <input type="hidden" name="intent" value="resolve" />
+            {canResolve(row) ? (
+              <Form method="post" replace className="flex flex-col gap-2">
+                <input type="hidden" name="intent" value="resolve" />
+                <input type="hidden" name="id" value={row.id} />
+                <input type="hidden" name="nonce" value={`resolve:${nonce}:${row.id}`} />
+                <Field label={l("resolution")} labelHidden>
+                  <Select
+                    name="state"
+                    aria-label={l("resolution")}
+                    options={RESOLUTIONS.map((value) => ({ value, label: l(value) }))}
+                    defaultValue="accepted"
+                  />
+                </Field>
+                <Field label={l("reason")} labelHidden>
+                  <Select
+                    name="reason"
+                    aria-label={l("reason")}
+                    options={REASONS.map((value) => ({ value, label: l(value) }))}
+                    defaultValue="saved_discount"
+                  />
+                </Field>
+                <Button
+                  type="submit"
+                  variant="secondary"
+                  size="sm"
+                  disabled={busy}
+                  aria-label={`${l("resolve")}: ${who}`}
+                >
+                  {l("resolve")}
+                </Button>
+              </Form>
+            ) : null}
+
+            <Form method="post" replace className="flex items-end gap-2">
+              <input type="hidden" name="intent" value="strategy" />
               <input type="hidden" name="id" value={row.id} />
-              <input type="hidden" name="nonce" value={`resolve:${nonce}:${row.id}`} />
-              <Field label={l("resolution")} labelHidden>
+              <input type="hidden" name="nonce" value={`strategy:${nonce}:${row.id}`} />
+              <Field label={l("setStrategy")} labelHidden>
                 <Select
-                  name="state"
-                  aria-label={l("resolution")}
-                  options={RESOLUTIONS.map((value) => ({ value, label: l(value) }))}
-                  defaultValue="accepted"
+                  name="strategy"
+                  aria-label={l("setStrategy")}
+                  options={STRATEGIES.map((value) => ({ value, label: l(value) }))}
+                  defaultValue={row.strategy}
                 />
               </Field>
-              <Field label={l("reason")} labelHidden>
-                <Select
-                  name="reason"
-                  aria-label={l("reason")}
-                  options={REASONS.map((value) => ({ value, label: l(value) }))}
-                  defaultValue="saved_discount"
-                />
-              </Field>
-              <Button type="submit" variant="secondary" size="sm" disabled={busy}>
-                {l("resolve")}
+              <Button
+                type="submit"
+                variant="ghost"
+                size="sm"
+                disabled={busy}
+                aria-label={`${l("apply")}: ${who}`}
+              >
+                {l("apply")}
               </Button>
             </Form>
-          ) : null}
-
-          <Form method="post" replace className="flex items-end gap-2">
-            <input type="hidden" name="intent" value="strategy" />
-            <input type="hidden" name="id" value={row.id} />
-            <input type="hidden" name="nonce" value={`strategy:${nonce}:${row.id}`} />
-            <Field label={l("setStrategy")} labelHidden>
-              <Select
-                name="strategy"
-                aria-label={l("setStrategy")}
-                options={STRATEGIES.map((value) => ({ value, label: l(value) }))}
-                defaultValue={row.strategy}
-              />
-            </Field>
-            <Button type="submit" variant="ghost" size="sm" disabled={busy}>
-              {l("apply")}
-            </Button>
-          </Form>
-        </div>
-      )
+          </div>
+        );
+      }
     });
   }
 
