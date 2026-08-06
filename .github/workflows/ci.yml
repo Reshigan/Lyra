@@ -81,12 +81,17 @@ jobs:
 # `e2e` job above already fails the build on any assertion failure, this one
 # included.
 #
-# ponytail: as of 2026-07-31 `pnpm e2e` cannot boot locally at all — unrelated
-# pre-existing bug, not caused by the a11y specs. apps/api/src/node.ts (the
-# on-prem/e2e entrypoint) transitively imports engines/agent-room.ts, which
-# does `import { DurableObject } from "cloudflare:workers"`; that specifier is
-# only aliased for vitest (apps/api/vitest.config.ts), never for plain
-# tsx/node, so the webServer process this job's `pnpm e2e` step starts crashes
-# before any spec — old or new — can run. Fix apps/api's node runtime alias
-# separately; this job stays blocking (unchanged) since that failure is
-# already there regardless of these a11y assertions.
+# The 2026-07-31 note here — that `pnpm e2e` could not boot because
+# apps/api/src/node.ts pulls in engines/agent-room.ts and its bare
+# `import { DurableObject } from "cloudflare:workers"` — no longer holds. The
+# four engines that touch that specifier now load it with
+# `await import("cloudflare:workers").catch(...)` and fall back to a plain
+# base class off workerd, so `tsx src/node.ts` starts. Verified 2026-08-06 on
+# a clean DB: 40 passed, 5 skipped.
+#
+# One local-only trap: e2e/global-setup.ts skips the wipe when the DB file
+# already exists (it would yank the inode from a reused API process), so a
+# second local run inherits the first one's writes. J-C3 fails that way —
+# the seed's one `proposed` offer has already been surfaced, and NBO's
+# FREQUENCY_CAP of 3 leaves no room to propose another. `rm -rf
+# $TMPDIR/lyra-e2e` before re-running. CI always starts empty.
