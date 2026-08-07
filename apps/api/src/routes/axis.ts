@@ -54,6 +54,13 @@ import {
   requestClaimPayment,
   writeOffRecovery
 } from "../engines/axis-claims.js";
+import {
+  CoverageCheckBody,
+  FnolBody,
+  checkCoverage,
+  policyForCoverage,
+  registerFnol
+} from "../engines/axis-fnol.js";
 import { embedUpsert } from "../engines/vectorize.js";
 import { meterEgress } from "../engines/egress.js";
 import { fieldKey, type App } from "../env.js";
@@ -816,6 +823,37 @@ axisRoutes.post("/policies/:id/reinstate", async (c) => {
   const key = c.req.header("idempotency-key") ?? `axis_reinstate:${policy.id}:${policy.lapsedAt ?? 0}`;
   const out = await withIdempotency(ctx, key, `POST ${c.req.path}`, input, () => reinstatePolicy(ctx, policy, input));
   return c.json(out, 200);
+});
+
+/* -------------------------------------------------------- FNOL (§D.1) --- */
+
+/**
+ * Cover as it stood on the day of the loss. Read-only on purpose: the intake
+ * screen calls it before anything is written, so a handler learns there is no
+ * cover *before* they take a statement, not after.
+ */
+axisRoutes.post("/claims/coverage-check", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:claims:register", { tenantId: ctx.tenantId, module: "axis" });
+  const input = await body(c, CoverageCheckBody);
+  const policy = await policyForCoverage(ctx, input.policyId);
+  return c.json(await checkCoverage(ctx, policy, input.incidentAt), 200);
+});
+
+/**
+ * Registering a notification. Shadows generated CRUD (mounted later in
+ * `index.ts`) because a claim is not a row someone types: it snapshots the
+ * cover in force, numbers itself, and emits into ORBIT. It never refuses on
+ * failed cover — §D.1, refusing to record a notification is a conduct failure.
+ */
+axisRoutes.post("/claims", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:claims:register", { tenantId: ctx.tenantId, module: "axis" });
+  const input = await body(c, FnolBody);
+  const key = c.req.header("idempotency-key");
+  const run = () => registerFnol(ctx, input);
+  const out = key ? await withIdempotency(ctx, key, `POST ${c.req.path}`, input, run) : await run();
+  return c.json(out, 201);
 });
 
 /* ------------------------------------------------- claim money (§D.10) --- */

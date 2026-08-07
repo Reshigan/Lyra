@@ -116,6 +116,7 @@ const HAND_WRITTEN: Op[] = [
 
   // docs/27 F23. Claim money in both directions: paying out of the insurer's
   // float, and what a third party gives back afterwards.
+  { method: "post", path: "/v1/axis/claims/coverage-check", summary: "Cover in force on the incident date, without writing anything", permission: "axis:claims:register", tag: "axis", requestBody: true },
   { method: "post", path: "/v1/axis/claims/{id}/payments", summary: "Pay a claim out of the funded float", permission: "axis:claims:pay", tag: "axis", requestBody: true },
   { method: "post", path: "/v1/axis/claims/{id}/recoveries", summary: "Open a recovery against a settled claim", permission: "axis:claims:recover", tag: "axis", requestBody: true },
   { method: "post", path: "/v1/axis/recoveries/{id}/receipt", summary: "Record money recovered, net of the handling fee", permission: "axis:claims:recover", tag: "axis", requestBody: true },

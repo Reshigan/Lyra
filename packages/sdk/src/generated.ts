@@ -2184,6 +2184,7 @@ export interface Operations {
   "POST /v1/axis/cases/{id}/restore": Op<{ id: string }, never, never, AxisCases>;
   "GET /v1/axis/claims": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<AxisClaims>>;
   "POST /v1/axis/claims": Op<never, never, AxisClaims, AxisClaims>;
+  "POST /v1/axis/claims/coverage-check": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/axis/claims/{id}": Op<{ id: string }, never, never, AxisClaims>;
   "PATCH /v1/axis/claims/{id}": Op<{ id: string }, never, AxisClaims, AxisClaims>;
   "POST /v1/axis/claims/{id}/payments": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
@@ -2802,6 +2803,7 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "POST /v1/axis/cases/{id}/restore": { tag: "axis", summary: "Restore a soft-deleted cas", permission: "axis:cases:delete", public: false },
   "GET /v1/axis/claims": { tag: "axis", summary: "List claims", permission: "axis:claims:read", public: false },
   "POST /v1/axis/claims": { tag: "axis", summary: "Create a claim", permission: "axis:claims:create", public: false },
+  "POST /v1/axis/claims/coverage-check": { tag: "axis", summary: "Cover in force on the incident date, without writing anything", permission: "axis:claims:register", public: false },
   "GET /v1/axis/claims/{id}": { tag: "axis", summary: "Fetch one claim", permission: "axis:claims:read", public: false },
   "PATCH /v1/axis/claims/{id}": { tag: "axis", summary: "Update a claim", permission: "axis:claims:update", public: false },
   "POST /v1/axis/claims/{id}/payments": { tag: "axis", summary: "Pay a claim out of the funded float", permission: "axis:claims:pay", public: false },
