@@ -61,7 +61,7 @@ export const APPROVAL_POLICIES: Record<string, ApprovalPolicy> = Object.fromEntr
     // when small; the threshold only decides whether a second pair of eyes is needed.
     policy({ key: "axis.bind", module: "axis", decide: "axis:policies:create", dualControl: "above_threshold", defaultThresholdMinor: 250_000_00 }),
     policy({ key: "axis.bind_group", module: "axis", decide: "axis:policies:create", dualControl: "above_threshold", defaultThresholdMinor: 100_000_00 }),
-    policy({ key: "axis.endorse", module: "axis", decide: "axis:policies:update", dualControl: "above_threshold", defaultThresholdMinor: 25_000_00 }),
+    policy({ key: "axis.endorse", module: "axis", decide: "axis:policies:endorse", dualControl: "above_threshold", defaultThresholdMinor: 25_000_00 }),
     policy({ key: "axis.cancel", module: "axis", decide: "axis:policies:cancel", dualControl: "never" }),
     policy({ key: "axis.reinstate", module: "axis", decide: "axis:policies:update", dualControl: "never" }),
     // distribution — commercial terms with a counterparty, so a second pair of eyes

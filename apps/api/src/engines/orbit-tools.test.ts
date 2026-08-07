@@ -51,6 +51,10 @@ async function makeCtx(now = 1_770_000_000_000): Promise<Ctx> {
   };
 }
 
+// A policy on risk is a head row plus its effective version (design §C.2) —
+// endorsement reads the version, not the head, so seeding only the head would
+// make every endorsement test fail on "no effective version" instead of on the
+// thing it is testing.
 async function seedPolicy(id: string, tenantId = ctx.tenantId) {
   await ctx.db.insert(schema.axisPolicies).values({
     id,
@@ -61,10 +65,36 @@ async function seedPolicy(id: string, tenantId = ctx.tenantId) {
     startAt: ctx.now,
     endAt: ctx.now + 365 * 86_400_000,
     premiumMinor: 500_00,
+    grossMinor: 500_00,
     currency: "AED",
+    status: "bound",
+    currentVersionId: `pver_${id}`,
+    versionSeq: 1,
     createdAt: ctx.now,
     updatedAt: ctx.now
   });
+  await ctx.db.insert(schema.axisPolicyVersions).values({
+    id: `pver_${id}`,
+    tenantId,
+    policyId: id,
+    versionSeq: 1,
+    reason: "issue",
+    effectiveFrom: ctx.now,
+    effectiveTo: ctx.now + 365 * 86_400_000,
+    premiumMinor: 500_00,
+    currency: "AED",
+    termsJson: "{}",
+    state: "effective",
+    issuedBy: "user:seed",
+    issuedAt: ctx.now,
+    createdAt: ctx.now,
+    updatedAt: ctx.now
+  });
+}
+
+/** The endorsement handler runs with the desk's grants (design §A.3). */
+function endorser(): Ctx {
+  return { ...ctx, actor: actorWithRole("axis.lead") };
 }
 
 beforeEach(async () => {
@@ -144,7 +174,7 @@ describe("tool execution enforces its own RBAC, not just the agent-invoke gate",
     });
   });
 
-  it("create_endorsement_request rejects an actor without axis:cases:create, before any approval gate", async () => {
+  it("create_endorsement_request rejects an actor without axis:policies:endorse, before any approval gate", async () => {
     await seedPolicy("pol_5");
     const retention = { ...ctx, actor: actorWithRole("orbit.retention") };
     await expect(
@@ -159,20 +189,23 @@ describe("create_endorsement_request", () => {
     expect(def.consequential).toBe(true);
   });
 
-  it("blocks on approval_required and writes no case until one exists", async () => {
+  it("blocks on approval_required and writes no version until one exists", async () => {
     await seedPolicy("pol_4");
     await expect(
-      runOrbitTool(ctx, "create_endorsement_request", {
+      runOrbitTool(endorser(), "create_endorsement_request", {
         policyId: "pol_4",
-        changes: { sumInsuredMinor: 1_200_00 }
+        changes: { sumInsuredMinor: 1_200_00 },
+        premiumMinor: 1_200_00
       })
     ).rejects.toMatchObject({ status: 403, code: "approval_required" });
 
-    const cases = await ctx.db
+    // The contract is untouched: still one version, still the issued price.
+    const versions = await ctx.db
       .select()
-      .from(schema.axisCases)
-      .where(and(eq(schema.axisCases.tenantId, ctx.tenantId), eq(schema.axisCases.kind, "endorse")));
-    expect(cases).toHaveLength(0);
+      .from(schema.axisPolicyVersions)
+      .where(and(eq(schema.axisPolicyVersions.tenantId, ctx.tenantId), eq(schema.axisPolicyVersions.policyId, "pol_4")));
+    expect(versions).toHaveLength(1);
+    expect(versions[0]!.state).toBe("effective");
 
     // The pending approval is real, not swallowed.
     const approvals = await ctx.db.select().from(schema.approvals);
@@ -195,22 +228,26 @@ describe("create_endorsement_request", () => {
       decidedBy: "user:amina",
       decision: "approved",
       reason: "within threshold",
-      contextJson: null,
+      // An approval covers at most what it was granted for — the delta here is
+      // 700_00, so the record has to say so or the gate asks again.
+      contextJson: JSON.stringify({ amountMinor: 700_00 }),
       decidedAt: ctx.now - 500,
       delegationId: null
     });
 
-    const result = (await runOrbitTool(ctx, "create_endorsement_request", {
+    const result = (await runOrbitTool(endorser(), "create_endorsement_request", {
       policyId: "pol_5",
-      changes
-    })) as { kind: string; status: string; metaJson: string };
-    expect(result.kind).toBe("endorse");
-    expect(JSON.parse(result.metaJson).policyId).toBe("pol_5");
+      changes,
+      premiumMinor: 1_200_00
+    })) as { policy: { currentVersionId: string | null }; version: { id: string; versionSeq: number; premiumMinor: number } };
+    expect(result.version.versionSeq).toBe(2);
+    expect(result.version.premiumMinor).toBe(1_200_00);
+    expect(result.policy.currentVersionId).toBe(result.version.id);
   });
 
   it("rejects a missing policy before touching approvals", async () => {
     await expect(
-      runOrbitTool(ctx, "create_endorsement_request", { policyId: "nope", changes: { a: 1 } })
+      runOrbitTool(endorser(), "create_endorsement_request", { policyId: "nope", changes: { a: 1 } })
     ).rejects.toMatchObject({ status: 404 });
     const approvals = await ctx.db.select().from(schema.approvals);
     expect(approvals).toHaveLength(0);
@@ -235,11 +272,15 @@ describe("executeOrbitToolCalls", () => {
     });
 
     const messages = await executeOrbitToolCalls(
-      ctx,
+      endorser(),
       "air_1",
       [
         { id: "call_1", name: "fetch_policy", args: { policyId: "pol_6" } },
-        { id: "call_2", name: "create_endorsement_request", args: { policyId: "pol_6", changes: { a: 1 } } }
+        {
+          id: "call_2",
+          name: "create_endorsement_request",
+          args: { policyId: "pol_6", changes: { a: 1 }, premiumMinor: 1_200_00 }
+        }
       ],
       new Set(ORBIT_TOOL_DEFS.map((d) => d.name))
     );

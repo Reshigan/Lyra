@@ -113,3 +113,71 @@ export function canPolicyVersionTransition(
 ): boolean {
   return POLICY_VERSION_TRANSITIONS[from].includes(to);
 }
+
+/**
+ * Pro-rata arithmetic for a mid-term change (design §D.4). Pure: the same
+ * inputs price the same way in the preview endpoint, in the write endpoint and
+ * in the cancellation path, so a desk never sees one number and gets charged
+ * another.
+ *
+ * Deltas are stated for the **full term** — that is what §C.2's
+ * `Σ premiumDeltaMinor = head.premium − v1.premium` invariant measures — while
+ * the money that actually moves is the pro-rated slice of them.
+ */
+export interface EndorsementInput {
+  /** The version being replaced. */
+  current: { premiumMinor: number; taxMinor: number; commissionMinor: number };
+  /** The whole term the contract runs for. */
+  term: { startAt: number; endAt: number };
+  effectiveFrom: number;
+  /** New full-term premium. Absent means the change carries no price. */
+  premiumMinor?: number | undefined;
+}
+
+export interface EndorsementQuote {
+  proRataDays: number;
+  termDays: number;
+  /** Full-term, signed. */
+  premiumDeltaMinor: number;
+  taxDeltaMinor: number;
+  commissionDeltaMinor: number;
+  /** Pro-rated, signed: what the customer owes (+) or is owed (−). */
+  chargeMinor: number;
+  /** Pro-rated, signed: the commission difference the ENDORSE recipe posts. */
+  commissionChargeMinor: number;
+  /** `−chargeMinor` when the customer is owed money, else 0. */
+  refundMinor: number;
+}
+
+const ENDORSE_DAY_MS = 86_400_000;
+
+export function quoteEndorsement(input: EndorsementInput): EndorsementQuote {
+  const { current, term } = input;
+  const termDays = Math.max(1, Math.ceil((term.endAt - term.startAt) / ENDORSE_DAY_MS));
+  const proRataDays = Math.min(
+    termDays,
+    Math.max(0, Math.ceil((term.endAt - input.effectiveFrom) / ENDORSE_DAY_MS))
+  );
+  const share = (full: number): number => Math.round((full * proRataDays) / termDays);
+
+  const newPremium = input.premiumMinor ?? current.premiumMinor;
+  // Tax and commission follow the premium at the rates the contract already
+  // carries: an endorsement re-prices the risk, it does not renegotiate the
+  // tax rate or the commission split.
+  const ratio = current.premiumMinor > 0 ? newPremium / current.premiumMinor : 1;
+  const premiumDeltaMinor = newPremium - current.premiumMinor;
+  const taxDeltaMinor = Math.round(current.taxMinor * ratio) - current.taxMinor;
+  const commissionDeltaMinor = Math.round(current.commissionMinor * ratio) - current.commissionMinor;
+  const chargeMinor = share(premiumDeltaMinor + taxDeltaMinor);
+
+  return {
+    proRataDays,
+    termDays,
+    premiumDeltaMinor,
+    taxDeltaMinor,
+    commissionDeltaMinor,
+    chargeMinor,
+    commissionChargeMinor: share(commissionDeltaMinor),
+    refundMinor: chargeMinor < 0 ? -chargeMinor : 0
+  };
+}

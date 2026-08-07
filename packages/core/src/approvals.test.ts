@@ -77,7 +77,7 @@ describe("APPROVAL_POLICIES", () => {
       "axis.escrow_release": { key: "axis.escrow_release", module: "axis", decide: "axis:escrow:approve", dualControl: "always", neverAutoApprove: true },
       "axis.bind": { key: "axis.bind", module: "axis", decide: "axis:policies:create", dualControl: "above_threshold", defaultThresholdMinor: 250_000_00 },
       "axis.bind_group": { key: "axis.bind_group", module: "axis", decide: "axis:policies:create", dualControl: "above_threshold", defaultThresholdMinor: 100_000_00 },
-      "axis.endorse": { key: "axis.endorse", module: "axis", decide: "axis:policies:update", dualControl: "above_threshold", defaultThresholdMinor: 25_000_00 },
+      "axis.endorse": { key: "axis.endorse", module: "axis", decide: "axis:policies:endorse", dualControl: "above_threshold", defaultThresholdMinor: 25_000_00 },
       "axis.cancel": { key: "axis.cancel", module: "axis", decide: "axis:policies:cancel", dualControl: "never" },
       "axis.reinstate": { key: "axis.reinstate", module: "axis", decide: "axis:policies:update", dualControl: "never" },
       "dist.rate_change": { key: "dist.rate_change", module: "core", decide: "dist:rates:approve", dualControl: "always", neverAutoApprove: true },

@@ -100,6 +100,11 @@ const HAND_WRITTEN: Op[] = [
   { method: "post", path: "/v1/axis/quote-responses/{id}/bind", summary: "Bind an accepted quote response into a policy at version 1", permission: "axis:policies:bind", tag: "axis", requestBody: true },
   { method: "post", path: "/v1/axis/policies/{id}/bind", summary: "Bind a draft policy, issuing version 1", permission: "axis:policies:bind", tag: "axis", requestBody: true },
 
+  // docs/27 F5. Mid-term change: the preview prices it and writes nothing, the
+  // endorse appends a priced version and moves the pro-rated money.
+  { method: "post", path: "/v1/axis/policies/{id}/endorse/preview", summary: "Price a mid-term change without writing anything", permission: "axis:policies:endorse", tag: "axis", requestBody: true },
+  { method: "post", path: "/v1/axis/policies/{id}/endorse", summary: "Endorse a policy, appending a priced version", permission: "axis:policies:endorse", tag: "axis", requestBody: true },
+
   // docs/27 F13. The manual capture path onto the one quote table, and the
   // desk's ruling-out of an answer it will not take forward.
   { method: "post", path: "/v1/axis/cases/{id}/quotes", summary: "Key a quote received off-panel onto the case, as a quote response", permission: "axis:quotes:create", tag: "axis", requestBody: true },

@@ -1,15 +1,18 @@
 import { eq } from "drizzle-orm";
 import { id as newId, schema } from "@lyra/db";
-import { AppError, badRequest, gate, hashObject, notFound, require_, scoped, sha256Hex, type Ctx } from "@lyra/core";
+import { AppError, badRequest, hashObject, notFound, require_, scoped, type Ctx } from "@lyra/core";
 import type { Message, ToolCall, ToolDef } from "@lyra/model-gateway";
+import { endorsePolicy } from "./axis-endorse.js";
 
 // docs/15. The seam between "the model wants X" and "X actually happened":
 // ORBIT's agent gets tool defs from ORBIT_TOOL_DEFS and every call the model
 // makes is dispatched through runOrbitTool, never executed inline in the AI
 // route. Reads are direct scoped() queries (fetch_policy, the intake half of
 // start_quote); the one action that touches contractual state
-// (create_endorsement_request) goes through the pre-existing axis.endorse
-// approval policy before anything is written (CLAUDE.md rule 4).
+// (create_endorsement_request) calls the same endorsePolicy the desk's endpoint
+// calls, so the axis.endorse gate fires once for either raiser and an
+// agent-raised and desk-raised change of the same change-set share one approval
+// record (CLAUDE.md rule 4, design §A.3).
 
 export const ORBIT_TOOL_DEFS: ToolDef[] = [
   {
@@ -48,7 +51,9 @@ export const ORBIT_TOOL_DEFS: ToolDef[] = [
         policyId: { type: "string" },
         changes: { type: "object" },
         reason: { type: "string" },
-        premiumDeltaMinor: { type: "number" }
+        /** New full-term premium, not the delta: the endorsement prices itself. */
+        premiumMinor: { type: "number" },
+        effectiveFrom: { type: "number" }
       },
       required: ["policyId", "changes"]
     },
@@ -119,9 +124,11 @@ async function createEndorsementRequest(ctx: Ctx, args: Record<string, unknown>)
   if (!policyId) throw badRequest("create_endorsement_request needs policyId");
   const changes = args.changes && typeof args.changes === "object" ? (args.changes as Record<string, unknown>) : undefined;
   if (!changes || Object.keys(changes).length === 0) throw badRequest("create_endorsement_request needs changes");
-  require_(ctx.actor, "axis:cases:create", { tenantId: ctx.tenantId, module: "axis" });
+  // The agent endorses with the grants of the human whose session it runs in:
+  // it can only change a contract for someone who may change contracts, and the
+  // approval gate still fires underneath (design §A.3).
+  require_(ctx.actor, "axis:policies:endorse", { tenantId: ctx.tenantId, module: "axis" });
   const reason = str(args.reason) ?? null;
-  const premiumDeltaMinor = typeof args.premiumDeltaMinor === "number" ? args.premiumDeltaMinor : undefined;
 
   const policyRows = await ctx.db
     .select()
@@ -131,35 +138,15 @@ async function createEndorsementRequest(ctx: Ctx, args: Record<string, unknown>)
   const policy = policyRows[0];
   if (!policy) throw notFound("policy");
 
-  // No dedicated endorsement table exists (docs/03 AXIS): an endorsement
-  // request is an axis_cases row of kind "endorse", same as bind/renewal_ops.
-  // Distinct change-sets get distinct approval identities so two different
-  // asks against the same policy do not collide on one pending approval, but
-  // a retry of the same ask reuses it (mirrors crud.ts's `path:new:hash`).
-  const subjectRef = `axis_endorse:${policyId}:${await sha256Hex(JSON.stringify({ changes, reason }))}`;
-  await gate(ctx, {
-    policyKey: "axis.endorse",
-    subjectRef,
-    ...(premiumDeltaMinor !== undefined ? { amountMinor: Math.abs(premiumDeltaMinor) } : {}),
-    context: { policyId, changes, reason }
+  // One endorsement path, not two. The subject-ref hash this used to build by
+  // hand now lives in the endpoint, so a desk-raised and an agent-raised change
+  // of the same change-set are one approval record rather than two.
+  return endorsePolicy(ctx, policy, {
+    changes,
+    reason,
+    ...(typeof args.premiumMinor === "number" ? { premiumMinor: args.premiumMinor } : {}),
+    ...(typeof args.effectiveFrom === "number" ? { effectiveFrom: args.effectiveFrom } : {})
   });
-
-  const caseId = newId("cas", ctx.now);
-  const row = {
-    id: caseId,
-    tenantId: ctx.tenantId,
-    ref: caseId,
-    kind: "endorse",
-    customerId: policy.customerId,
-    status: "review",
-    ownerRef: `${ctx.actor.kind}:${ctx.actor.id}`,
-    source: "agent",
-    metaJson: JSON.stringify({ policyId, changes, reason }),
-    createdAt: ctx.now,
-    updatedAt: ctx.now
-  };
-  await ctx.db.insert(schema.axisCases).values(row);
-  return row;
 }
 
 const HANDLERS: Record<string, ToolHandler> = {

@@ -9,7 +9,8 @@ import {
   canClaimTransition,
   canPolicyTransition,
   isClaimState,
-  isPolicyState
+  isPolicyState,
+  quoteEndorsement
 } from "./lifecycle.js";
 
 describe("policy lifecycle", () => {
@@ -96,5 +97,58 @@ describe("claim lifecycle", () => {
   it("isClaimState rejects an unknown status", () => {
     expect(isClaimState("settled")).toBe(true);
     expect(isClaimState("paid")).toBe(false);
+  });
+});
+
+// docs/27 F5 / design §C.2. The version stores the full-term delta so
+// `Σ delta = head − v1` holds; the money that actually moves is the pro-rated
+// share of it. Both numbers come out of one call so they cannot drift.
+describe("quoteEndorsement", () => {
+  const DAY = 86_400_000;
+  const term = { startAt: 0, endAt: 100 * DAY };
+  const current = { premiumMinor: 1_000_00, taxMinor: 0, commissionMinor: 200_00 };
+
+  it("charges the remaining share of a full-term increase", () => {
+    const q = quoteEndorsement({ current, term, effectiveFrom: 50 * DAY, premiumMinor: 1_200_00 });
+    expect(q.proRataDays).toBe(50);
+    expect(q.termDays).toBe(100);
+    expect(q.premiumDeltaMinor).toBe(200_00);
+    expect(q.chargeMinor).toBe(100_00);
+    expect(q.commissionDeltaMinor).toBe(40_00);
+    expect(q.commissionChargeMinor).toBe(20_00);
+    expect(q.refundMinor).toBe(0);
+  });
+
+  it("turns a reduction into a refund, not a negative charge to collect", () => {
+    const q = quoteEndorsement({ current, term, effectiveFrom: 50 * DAY, premiumMinor: 800_00 });
+    expect(q.premiumDeltaMinor).toBe(-200_00);
+    expect(q.chargeMinor).toBe(-100_00);
+    expect(q.refundMinor).toBe(100_00);
+  });
+
+  it("moves no money when the change carries no price", () => {
+    const q = quoteEndorsement({ current, term, effectiveFrom: 50 * DAY });
+    expect(q.premiumDeltaMinor).toBe(0);
+    expect(q.taxDeltaMinor).toBe(0);
+    expect(q.commissionDeltaMinor).toBe(0);
+    expect(q.chargeMinor).toBe(0);
+    expect(q.refundMinor).toBe(0);
+  });
+
+  it("prices a mid-term change against a zero-premium contract without dividing by zero", () => {
+    const q = quoteEndorsement({
+      current: { premiumMinor: 0, taxMinor: 0, commissionMinor: 0 },
+      term,
+      effectiveFrom: 50 * DAY,
+      premiumMinor: 100_00
+    });
+    expect(q.premiumDeltaMinor).toBe(100_00);
+    expect(q.chargeMinor).toBe(50_00);
+  });
+
+  it("charges the whole term when the change back-dates to inception", () => {
+    const q = quoteEndorsement({ current, term, effectiveFrom: 0, premiumMinor: 1_200_00 });
+    expect(q.proRataDays).toBe(100);
+    expect(q.chargeMinor).toBe(200_00);
   });
 });

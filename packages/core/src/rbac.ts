@@ -104,7 +104,10 @@ export const PERMISSIONS = [
   // CRUD; `axis:policies:bind` is the lifecycle verb that issues a contract
   // (docs/specs/gap-axis-design.md §A.1). Authority over the two differs.
   "axis:policies:read", "axis:policies:create", "axis:policies:update", "axis:policies:cancel",
-  "axis:policies:bind",
+  // `axis:policies:endorse` is the mid-term counterpart of `:bind` — it appends
+  // a priced version to a contract that is already on risk (design §A.1). It is
+  // not `:update`, which edits the row and moves no money.
+  "axis:policies:bind", "axis:policies:endorse",
   "axis:escrow:read", "axis:escrow:reconcile", "axis:escrow:approve",
   "axis:sops:read", "axis:sops:write",
   "axis:claims:read", "axis:claims:create", "axis:claims:update", "axis:claims:approve",
@@ -313,7 +316,7 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     "axis:cases:approve", "axis:quotes:create", "axis:quotes:compare", "axis:quotes:approve",
     "axis:documents:upload", "axis:documents:extract", "axis:documents:verify",
     "axis:tasks:write", "axis:policies:create", "axis:policies:bind",
-    "axis:policies:update", "axis:policies:cancel",
+    "axis:policies:endorse", "axis:policies:update", "axis:policies:cancel",
     "axis:claims:create", "axis:claims:update", "axis:claims:approve", "axis:sops:write",
     "core:customers:read", "core:customers:create", "core:customers:update", "core:pii:view",
     "core:consents:read", "core:consents:create", "core:files:read", "core:files:create",

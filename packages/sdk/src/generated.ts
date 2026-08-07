@@ -2189,6 +2189,8 @@ export interface Operations {
   "GET /v1/axis/policies/{id}": Op<{ id: string }, never, never, AxisPolicies>;
   "PATCH /v1/axis/policies/{id}": Op<{ id: string }, never, AxisPolicies, AxisPolicies>;
   "POST /v1/axis/policies/{id}/bind": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
+  "POST /v1/axis/policies/{id}/endorse": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
+  "POST /v1/axis/policies/{id}/endorse/preview": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/axis/process-events": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<AxisProcessEvents>>;
   "GET /v1/axis/process-events/{id}": Op<{ id: string }, never, never, AxisProcessEvents>;
   "POST /v1/axis/quote-responses/{id}/bind": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
@@ -2796,6 +2798,8 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "GET /v1/axis/policies/{id}": { tag: "axis", summary: "Fetch one policy", permission: "axis:policies:read", public: false },
   "PATCH /v1/axis/policies/{id}": { tag: "axis", summary: "Update a policy", permission: "axis:policies:update", public: false },
   "POST /v1/axis/policies/{id}/bind": { tag: "axis", summary: "Bind a draft policy, issuing version 1", permission: "axis:policies:bind", public: false },
+  "POST /v1/axis/policies/{id}/endorse": { tag: "axis", summary: "Endorse a policy, appending a priced version", permission: "axis:policies:endorse", public: false },
+  "POST /v1/axis/policies/{id}/endorse/preview": { tag: "axis", summary: "Price a mid-term change without writing anything", permission: "axis:policies:endorse", public: false },
   "GET /v1/axis/process-events": { tag: "axis", summary: "List process-events", permission: "axis:metrics:read", public: false },
   "GET /v1/axis/process-events/{id}": { tag: "axis", summary: "Fetch one process event", permission: "axis:metrics:read", public: false },
   "POST /v1/axis/quote-responses/{id}/bind": { tag: "axis", summary: "Bind an accepted quote response into a policy at version 1", permission: "axis:policies:bind", public: false },

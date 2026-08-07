@@ -17,6 +17,7 @@ import {
   require_,
   scoped,
   sealFields,
+  sha256Hex,
   verifyGroundedness,
   withIdempotency,
   type Ctx
@@ -31,6 +32,7 @@ import {
 } from "@lyra/model-gateway";
 import { body } from "../http.js";
 import { must } from "../rows.js";
+import { EndorseBody, endorsePolicy, priceEndorsement } from "../engines/axis-endorse.js";
 import { embedUpsert } from "../engines/vectorize.js";
 import { meterEgress } from "../engines/egress.js";
 import { fieldKey, type App } from "../env.js";
@@ -710,4 +712,29 @@ axisRoutes.post("/policies/:id/bind", async (c) => {
     bindPolicy(ctx, before, { ...(input.terms ? { terms: input.terms } : {}) })
   );
   return c.json(out, 201);
+});
+
+/** §D.4 step 3: the desk sees the price before it commits. Writes nothing. */
+axisRoutes.post("/policies/:id/endorse/preview", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:policies:endorse", { tenantId: ctx.tenantId, module: "axis" });
+  const policy = await must(ctx, schema.axisPolicies, c.req.param("id"), "policies");
+  const input = await body(c, EndorseBody);
+  const { quote, needsApproval, needsReferral } = await priceEndorsement(ctx, policy, input);
+  return c.json({ ...quote, needsApproval, needsReferral });
+});
+
+axisRoutes.post("/policies/:id/endorse", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:policies:endorse", { tenantId: ctx.tenantId, module: "axis" });
+  const policy = await must(ctx, schema.axisPolicies, c.req.param("id"), "policies");
+  const input = await body(c, EndorseBody);
+  // Without a caller-supplied key the change-set is the key: submitting the same
+  // change twice is one endorsement. A throw releases the slot, so the retry
+  // that follows a granted approval runs rather than replaying the 403.
+  const key =
+    c.req.header("idempotency-key") ??
+    `axis_endorse:${policy.id}:${await sha256Hex(JSON.stringify({ changes: input.changes, reason: input.reason ?? null }))}`;
+  const out = await withIdempotency(ctx, key, `POST ${c.req.path}`, input, () => endorsePolicy(ctx, policy, input));
+  return c.json(out, 200);
 });
