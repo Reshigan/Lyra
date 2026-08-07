@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { PolicyJson, EntitlementsJson } from "@lyra/db";
 import { notFound, pruneIdempotency, type Envelope } from "@lyra/core";
 import { drainOutbox, deliverQueued } from "./dispatch.js";
+import { sweepPolicyLifecycle } from "./engines/axis-lifecycle.js";
 import { sweepRenewals } from "./engines/renewals.js";
 import { runSnapshotter } from "./engines/north-snapshotter.js";
 import { backupTenant } from "./engines/backup.js";
@@ -174,6 +175,10 @@ export default {
               now
             );
             await drainOutbox(ctx, env.EVENTS);
+            // Cover starts, lapses and ends on the clock, not on a request. Runs
+            // before the renewal sweep so a policy that expired this tick is in
+            // the right state when renewals look at it.
+            await sweepPolicyLifecycle(ctx);
             await sweepRenewals(ctx, env.WF);
             await runBudgetAutopilot(ctx);
             await runDueSchedules(ctx, env.FILES, env.BROWSER);

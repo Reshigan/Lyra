@@ -78,8 +78,10 @@ describe("APPROVAL_POLICIES", () => {
       "axis.bind": { key: "axis.bind", module: "axis", decide: "axis:policies:create", dualControl: "above_threshold", defaultThresholdMinor: 250_000_00 },
       "axis.bind_group": { key: "axis.bind_group", module: "axis", decide: "axis:policies:create", dualControl: "above_threshold", defaultThresholdMinor: 100_000_00 },
       "axis.endorse": { key: "axis.endorse", module: "axis", decide: "axis:policies:endorse", dualControl: "above_threshold", defaultThresholdMinor: 25_000_00 },
-      "axis.cancel": { key: "axis.cancel", module: "axis", decide: "axis:policies:cancel", dualControl: "never" },
-      "axis.reinstate": { key: "axis.reinstate", module: "axis", decide: "axis:policies:update", dualControl: "never" },
+      "axis.cancel": { key: "axis.cancel", module: "axis", decide: "axis:policies:cancel", dualControl: "above_threshold", defaultThresholdMinor: 0 },
+      "axis.reinstate": { key: "axis.reinstate", module: "axis", decide: "axis:policies:reinstate", dualControl: "always", neverAutoApprove: true },
+      "axis.ntu": { key: "axis.ntu", module: "axis", decide: "axis:policies:ntu", dualControl: "above_threshold", defaultThresholdMinor: 0 },
+      "axis.renew": { key: "axis.renew", module: "axis", decide: "axis:policies:renew", dualControl: "above_threshold", defaultThresholdMinor: 250_000_00 },
       "dist.rate_change": { key: "dist.rate_change", module: "core", decide: "dist:rates:approve", dualControl: "always", neverAutoApprove: true },
       "dist.commission_adjust": { key: "dist.commission_adjust", module: "core", decide: "dist:commissions:adjust", dualControl: "above_threshold", defaultThresholdMinor: 1_000_00 },
       "dist.commission_accrue": { key: "dist.commission_accrue", module: "core", decide: "dist:commissions:adjust", dualControl: "above_threshold", defaultThresholdMinor: 1_000_00, singleUse: false },
@@ -141,8 +143,8 @@ describe("gate: dual control threshold", () => {
 
   it("dualControl:'never' policies never require dual control regardless of amount", async () => {
     const ops = makeCtx(actor("axis.claims_handler", "u_ops"));
-    await expect(gate(ops, { policyKey: "axis.cancel", subjectRef: "pol:1", amountMinor: 999_999_99 })).rejects.toThrow();
-    const row = await client.execute("SELECT context_json FROM core_approvals WHERE subject_ref = 'pol:1'");
+    await expect(gate(ops, { policyKey: "dist.offering_publish", subjectRef: "off:1", amountMinor: 999_999_99 })).rejects.toThrow();
+    const row = await client.execute("SELECT context_json FROM core_approvals WHERE subject_ref = 'off:1'");
     expect(JSON.parse(row.rows[0]!.context_json as string).dualControl).toBe(false);
   });
 });

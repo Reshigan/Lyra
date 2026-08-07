@@ -33,6 +33,17 @@ import {
 import { body } from "../http.js";
 import { must } from "../rows.js";
 import { EndorseBody, endorsePolicy, priceEndorsement } from "../engines/axis-endorse.js";
+import {
+  CancelBody,
+  LapseBody,
+  NtuBody,
+  ReinstateBody,
+  cancelPolicy,
+  lapsePolicy,
+  ntuPolicy,
+  priceCancellation,
+  reinstatePolicy
+} from "../engines/axis-lifecycle.js";
 import { embedUpsert } from "../engines/vectorize.js";
 import { meterEgress } from "../engines/egress.js";
 import { fieldKey, type App } from "../env.js";
@@ -736,5 +747,63 @@ axisRoutes.post("/policies/:id/endorse", async (c) => {
     c.req.header("idempotency-key") ??
     `axis_endorse:${policy.id}:${await sha256Hex(JSON.stringify({ changes: input.changes, reason: input.reason ?? null }))}`;
   const out = await withIdempotency(ctx, key, `POST ${c.req.path}`, input, () => endorsePolicy(ctx, policy, input));
+  return c.json(out, 200);
+});
+
+/** §D.5 step 2: what comes back and what is clawed, before anything is written. */
+axisRoutes.post("/policies/:id/cancel/preview", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:policies:cancel", { tenantId: ctx.tenantId, module: "axis" });
+  const policy = await must(ctx, schema.axisPolicies, c.req.param("id"), "policies");
+  const input = await body(c, CancelBody);
+  const { effectiveAt, quote, refundMinor, clawbackMinor } = await priceCancellation(ctx, policy, input);
+  return c.json({ effectiveAt, refundMinor, clawbackMinor, proRataDays: quote.proRataDays, currency: policy.currency });
+});
+
+axisRoutes.post("/policies/:id/cancel", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:policies:cancel", { tenantId: ctx.tenantId, module: "axis" });
+  const policy = await must(ctx, schema.axisPolicies, c.req.param("id"), "policies");
+  const input = await body(c, CancelBody);
+  // One cancellation per policy, whoever asks twice — the policy id is the key.
+  const key = c.req.header("idempotency-key") ?? `axis_cancel:${policy.id}`;
+  const out = await withIdempotency(ctx, key, `POST ${c.req.path}`, input, () => cancelPolicy(ctx, policy, input));
+  return c.json(out, 200);
+});
+
+axisRoutes.post("/policies/:id/ntu", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:policies:ntu", { tenantId: ctx.tenantId, module: "axis" });
+  const policy = await must(ctx, schema.axisPolicies, c.req.param("id"), "policies");
+  const input = await body(c, NtuBody);
+  const key = c.req.header("idempotency-key") ?? `axis_ntu:${policy.id}`;
+  const out = await withIdempotency(ctx, key, `POST ${c.req.path}`, input, () => ntuPolicy(ctx, policy, input));
+  return c.json(out, 200);
+});
+
+/**
+ * The sweep lapses policies on the clock; this is the manual path for the cases
+ * the plan cannot see — a returned debit order, a broker's instruction.
+ */
+axisRoutes.post("/policies/:id/lapse", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:policies:lapse", { tenantId: ctx.tenantId, module: "axis" });
+  const policy = await must(ctx, schema.axisPolicies, c.req.param("id"), "policies");
+  const input = await body(c, LapseBody);
+  const key = c.req.header("idempotency-key") ?? `axis_lapse:${policy.id}:${input.missedSeq}`;
+  const out = await withIdempotency(ctx, key, `POST ${c.req.path}`, input, () =>
+    lapsePolicy(ctx, policy, input.missedSeq, input.reason)
+  );
+  return c.json(out, 200);
+});
+
+axisRoutes.post("/policies/:id/reinstate", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:policies:reinstate", { tenantId: ctx.tenantId, module: "axis" });
+  const policy = await must(ctx, schema.axisPolicies, c.req.param("id"), "policies");
+  const input = await body(c, ReinstateBody);
+  // Keyed on the lapse being cured, so a later lapse can be cured again.
+  const key = c.req.header("idempotency-key") ?? `axis_reinstate:${policy.id}:${policy.lapsedAt ?? 0}`;
+  const out = await withIdempotency(ctx, key, `POST ${c.req.path}`, input, () => reinstatePolicy(ctx, policy, input));
   return c.json(out, 200);
 });

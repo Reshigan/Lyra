@@ -62,8 +62,15 @@ export const APPROVAL_POLICIES: Record<string, ApprovalPolicy> = Object.fromEntr
     policy({ key: "axis.bind", module: "axis", decide: "axis:policies:create", dualControl: "above_threshold", defaultThresholdMinor: 250_000_00 }),
     policy({ key: "axis.bind_group", module: "axis", decide: "axis:policies:create", dualControl: "above_threshold", defaultThresholdMinor: 100_000_00 }),
     policy({ key: "axis.endorse", module: "axis", decide: "axis:policies:endorse", dualControl: "above_threshold", defaultThresholdMinor: 25_000_00 }),
-    policy({ key: "axis.cancel", module: "axis", decide: "axis:policies:cancel", dualControl: "never" }),
-    policy({ key: "axis.reinstate", module: "axis", decide: "axis:policies:update", dualControl: "never" }),
+    // Cancellation gives unearned premium back, so docs/19 §4.1 wants a second
+    // pair of eyes whenever money moves: threshold 0 means "any amount at all".
+    policy({ key: "axis.cancel", module: "axis", decide: "axis:policies:cancel", dualControl: "above_threshold", defaultThresholdMinor: 0 }),
+    // Putting cover back on risk after a lapse is never routine and never
+    // automatic — `dualControl: "always"` alone would still yield to a tenant
+    // allowlist entry, so it carries `neverAutoApprove` too.
+    policy({ key: "axis.reinstate", module: "axis", decide: "axis:policies:reinstate", dualControl: "always", neverAutoApprove: true }),
+    policy({ key: "axis.ntu", module: "axis", decide: "axis:policies:ntu", dualControl: "above_threshold", defaultThresholdMinor: 0 }),
+    policy({ key: "axis.renew", module: "axis", decide: "axis:policies:renew", dualControl: "above_threshold", defaultThresholdMinor: 250_000_00 }),
     // distribution — commercial terms with a counterparty, so a second pair of eyes
     policy({ key: "dist.rate_change", module: "core", decide: "dist:rates:approve", dualControl: "always", neverAutoApprove: true }),
     policy({ key: "dist.commission_adjust", module: "core", decide: "dist:commissions:adjust", dualControl: "above_threshold", defaultThresholdMinor: 1_000_00 }),

@@ -107,7 +107,11 @@ export const PERMISSIONS = [
   // `axis:policies:endorse` is the mid-term counterpart of `:bind` — it appends
   // a priced version to a contract that is already on risk (design §A.1). It is
   // not `:update`, which edits the row and moves no money.
-  "axis:policies:bind", "axis:policies:endorse",
+  // The rest of the lifecycle verbs (design §A.1). Ending cover and putting it
+  // back are distinct authorities: a desk that may cancel need not be the desk
+  // that may reinstate, and NTU unwinds a contract nobody was ever on risk for.
+  "axis:policies:bind", "axis:policies:endorse", "axis:policies:ntu", "axis:policies:lapse",
+  "axis:policies:reinstate", "axis:policies:renew",
   "axis:escrow:read", "axis:escrow:reconcile", "axis:escrow:approve",
   "axis:sops:read", "axis:sops:write",
   "axis:claims:read", "axis:claims:create", "axis:claims:update", "axis:claims:approve",
@@ -317,6 +321,7 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     "axis:documents:upload", "axis:documents:extract", "axis:documents:verify",
     "axis:tasks:write", "axis:policies:create", "axis:policies:bind",
     "axis:policies:endorse", "axis:policies:update", "axis:policies:cancel",
+    "axis:policies:ntu", "axis:policies:lapse", "axis:policies:reinstate", "axis:policies:renew",
     "axis:claims:create", "axis:claims:update", "axis:claims:approve", "axis:sops:write",
     "core:customers:read", "core:customers:create", "core:customers:update", "core:pii:view",
     "core:consents:read", "core:consents:create", "core:files:read", "core:files:create",

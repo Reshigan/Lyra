@@ -1,0 +1,531 @@
+import { and, eq, inArray, isNotNull, lte } from "drizzle-orm";
+import { z } from "zod";
+import { schema } from "@lyra/db";
+import {
+  assertPolicyTransition,
+  audit,
+  badRequest,
+  conflict,
+  emit,
+  gate,
+  isPolicyState,
+  quoteEndorsement,
+  scoped,
+  type Ctx
+} from "@lyra/core";
+import { autoApprovable, buildRecipe, runTxn } from "@lyra/ledger";
+
+type PolicyRow = typeof schema.axisPolicies.$inferSelect;
+type TxnRow = Awaited<ReturnType<typeof runTxn>>;
+
+const DAY_MS = 86_400_000;
+
+/* ------------------------------------------------------------------ shared */
+// docs/27 F5 part 2 / docs/specs/gap-axis-design.md §B.1. The ways cover stops.
+// Cancellation and NTU are requests; inception, expiry and lapse are clock
+// events the scheduler fires. All five are transactions rather than column
+// writes, because `runTxn` is the only writer that gives an idempotent,
+// audited, reversible state hop — a mis-fired sweep has to be undoable.
+
+function hop(policy: PolicyRow, to: Parameters<typeof assertPolicyTransition>[1]): void {
+  if (!isPolicyState(policy.status)) throw conflict(`policy is in unknown state ${policy.status}`);
+  assertPolicyTransition(policy.status, to);
+}
+
+async function effectiveVersion(ctx: Ctx, policyId: string) {
+  const [row] = await ctx.db
+    .select()
+    .from(schema.axisPolicyVersions)
+    .where(
+      scoped(
+        ctx,
+        schema.axisPolicyVersions,
+        and(eq(schema.axisPolicyVersions.policyId, policyId), eq(schema.axisPolicyVersions.state, "effective"))
+      )
+    );
+  return row;
+}
+
+/** One head write for every terminal hop, so the stamped columns stay together. */
+async function stampHead(ctx: Ctx, policy: PolicyRow, stamp: Partial<PolicyRow>): Promise<PolicyRow> {
+  const set = { ...stamp, updatedAt: ctx.now };
+  await ctx.db
+    .update(schema.axisPolicies)
+    .set(set)
+    .where(scoped(ctx, schema.axisPolicies, eq(schema.axisPolicies.id, policy.id)));
+  return { ...policy, ...set };
+}
+
+/* ----------------------------------------------------------- cancellation */
+
+export const CancelBody = z.object({
+  /** Defaults to now. Forward-dating is normal: notice periods are contractual. */
+  effectiveAt: z.number().int().optional(),
+  reasonCode: z.string().min(1).max(64),
+  /** `none` = forfeited premium: cover ends, the customer gets nothing back. */
+  refundMethod: z.enum(["credit", "bank", "none"]).default("credit"),
+  note: z.string().max(500).nullish()
+});
+export type CancelInput = z.infer<typeof CancelBody>;
+
+/**
+ * Pro-rata cancellation is an endorsement to a nil premium: the same arithmetic
+ * decides what is unearned, so there is one pricing function for both rather
+ * than a second one that can drift from it (§B.2).
+ */
+export async function priceCancellation(ctx: Ctx, policy: PolicyRow, input: CancelInput) {
+  hop(policy, "cancelled");
+  const current = await effectiveVersion(ctx, policy.id);
+  if (!current) throw conflict("policy has no effective version to cancel");
+
+  const effectiveAt = input.effectiveAt ?? ctx.now;
+  // Equal to `effectiveFrom` would leave a zero-length interval, which §C.2
+  // forbids — and cancelling a contract from its own start date is NTU, a
+  // different verb with a different money story.
+  if (effectiveAt <= current.effectiveFrom) {
+    throw badRequest("cancelling from inception is not-taken-up; use POST /ntu");
+  }
+  if (effectiveAt >= policy.endAt) throw badRequest("effectiveAt must fall inside the remaining term");
+
+  const quote = quoteEndorsement({
+    current: { premiumMinor: current.premiumMinor, taxMinor: current.taxMinor, commissionMinor: current.commissionMinor },
+    term: { startAt: policy.startAt, endAt: policy.endAt },
+    effectiveFrom: effectiveAt,
+    premiumMinor: 0
+  });
+
+  return {
+    current,
+    effectiveAt,
+    quote,
+    // Only the unearned share comes back; the days already on risk were earned.
+    clawbackMinor: -quote.commissionChargeMinor,
+    refundMinor: input.refundMethod === "none" ? 0 : quote.refundMinor
+  };
+}
+
+export async function cancelPolicy(ctx: Ctx, policy: PolicyRow, input: CancelInput) {
+  const { current, effectiveAt, clawbackMinor, refundMinor } = await priceCancellation(ctx, policy, input);
+  const subjectRef = `axis_cancel:${policy.id}`;
+
+  // Both gates run before the first write: settling the clawback and then
+  // failing the refund approval would leave money posted against a contract
+  // that is still on risk.
+  await gate(ctx, { policyKey: "axis.cancel", subjectRef, amountMinor: refundMinor });
+  if (refundMinor > 0) {
+    if (!autoApprovable("REFUND-ISSUE") && ctx.policy.autoApprove.includes("ledger.refund")) {
+      throw conflict("REFUND-ISSUE may not be auto-approved (docs/19 §7)");
+    }
+    await gate(ctx, { policyKey: "ledger.refund", subjectRef: `${subjectRef}:refund`, amountMinor: refundMinor });
+  }
+
+  // ponytail: a cancellation on the last day of the term claws nothing back, and
+  // `buildRecipe` refuses a zero-value batch. No journal, no CANCEL row — the
+  // status hop below still happens.
+  let txn: TxnRow | null = null;
+  if (clawbackMinor > 0) {
+    txn = await runTxn(
+      ctx,
+      {
+        type: "CANCEL",
+        idempotencyKey: `axis.cancel:${policy.id}`,
+        currency: policy.currency,
+        grossMinor: refundMinor,
+        subjectRefs: { policy: policy.id }
+      },
+      {
+        recipe: { lines: buildRecipe("CANCEL", { amountMinor: clawbackMinor }), currency: policy.currency },
+        approvalSubjectRef: subjectRef,
+        preApproved: true
+      }
+    );
+  }
+  let refundTxn: TxnRow | null = null;
+  if (refundMinor > 0) {
+    refundTxn = await runTxn(
+      ctx,
+      {
+        type: "REFUND-ISSUE",
+        idempotencyKey: `axis.cancel.refund:${policy.id}`,
+        currency: policy.currency,
+        grossMinor: refundMinor,
+        ...(txn ? { parentTxnId: txn.id } : {}),
+        subjectRefs: { policy: policy.id }
+      },
+      {
+        recipe: { lines: buildRecipe("REFUND-ISSUE", { amountMinor: refundMinor }), currency: policy.currency },
+        approvalSubjectRef: `${subjectRef}:refund`,
+        preApproved: true
+      }
+    );
+  }
+
+  // §C.2: cancellation truncates the effective version rather than appending
+  // one. A cancellation version would be zero-length, and superseding this row
+  // without a successor would leave the contract with no effective version.
+  await ctx.db
+    .update(schema.axisPolicyVersions)
+    .set({ effectiveTo: effectiveAt, reasonCode: input.reasonCode, updatedAt: ctx.now })
+    .where(scoped(ctx, schema.axisPolicyVersions, eq(schema.axisPolicyVersions.id, current.id)));
+
+  const after = await stampHead(ctx, policy, {
+    status: "cancelled",
+    cancelledAt: ctx.now,
+    cancelEffectiveAt: effectiveAt,
+    cancelReasonCode: input.reasonCode,
+    statusReason: input.note ?? input.reasonCode,
+    ...(txn ? { lastTxnId: txn.id } : {})
+  });
+
+  await audit(ctx, { action: "axis.policy.cancel", subjectRef: policy.id, before: policy, after });
+  await emit(ctx, {
+    module: "axis",
+    type: "axis.policy.cancelled",
+    subject: policy.id,
+    data: {
+      policyId: policy.id,
+      customerId: policy.customerId,
+      effectiveAt,
+      reasonCode: input.reasonCode,
+      refundMinor,
+      clawbackMinor,
+      currency: policy.currency
+    }
+  });
+  return { policy: after, txn, refundTxn, refundMinor, clawbackMinor, effectiveAt };
+}
+
+/* ------------------------------------------------------------- not taken up */
+
+export const NtuBody = z.object({
+  reasonCode: z.string().min(1).max(64),
+  /** Premium already banked, if any. Comes straight back — nothing was earned. */
+  collectedMinor: z.number().int().nonnegative().default(0),
+  note: z.string().max(500).nullish()
+});
+export type NtuInput = z.infer<typeof NtuBody>;
+
+/**
+ * The contract never went on risk, so there is no pro-rata: the whole
+ * commission is unearned and the whole collected premium goes back. The state
+ * machine already refuses NTU on an `active` policy, so "before inception" needs
+ * no second check here.
+ */
+export async function ntuPolicy(ctx: Ctx, policy: PolicyRow, input: NtuInput) {
+  hop(policy, "ntu");
+
+  const refundMinor = input.collectedMinor;
+  if (refundMinor > 0) {
+    if (!autoApprovable("REFUND-ISSUE") && ctx.policy.autoApprove.includes("ledger.refund")) {
+      throw conflict("REFUND-ISSUE may not be auto-approved (docs/19 §7)");
+    }
+    await gate(ctx, { policyKey: "ledger.refund", subjectRef: `axis_ntu:${policy.id}:refund`, amountMinor: refundMinor });
+  }
+
+  // NTU itself moves no money — unwinding a contract is not a payment. What
+  // already moved comes back as children, so each leg reverses on its own.
+  const txn = await runTxn(
+    ctx,
+    {
+      type: "NTU",
+      idempotencyKey: `axis.ntu:${policy.id}`,
+      currency: policy.currency,
+      grossMinor: refundMinor,
+      subjectRefs: { policy: policy.id }
+    },
+    { approvalSubjectRef: `axis_ntu:${policy.id}` }
+  );
+
+  let clawbackTxn: TxnRow | null = null;
+  if (policy.commissionMinor > 0) {
+    clawbackTxn = await runTxn(
+      ctx,
+      {
+        type: "CMSN-CLAWBACK",
+        idempotencyKey: `axis.ntu.clawback:${policy.id}`,
+        currency: policy.currency,
+        grossMinor: policy.commissionMinor,
+        parentTxnId: txn.id,
+        subjectRefs: { policy: policy.id }
+      },
+      {
+        recipe: {
+          lines: buildRecipe("CMSN-CLAWBACK", { amountMinor: policy.commissionMinor }),
+          currency: policy.currency
+        }
+      }
+    );
+  }
+  let refundTxn: TxnRow | null = null;
+  if (refundMinor > 0) {
+    refundTxn = await runTxn(
+      ctx,
+      {
+        type: "REFUND-ISSUE",
+        idempotencyKey: `axis.ntu.refund:${policy.id}`,
+        currency: policy.currency,
+        grossMinor: refundMinor,
+        parentTxnId: txn.id,
+        subjectRefs: { policy: policy.id }
+      },
+      {
+        recipe: { lines: buildRecipe("REFUND-ISSUE", { amountMinor: refundMinor }), currency: policy.currency },
+        approvalSubjectRef: `axis_ntu:${policy.id}:refund`,
+        preApproved: true
+      }
+    );
+  }
+
+  // A contract that never started grows no version history: version 1 stays
+  // exactly as issued, and the head status is what says it never took effect.
+  const after = await stampHead(ctx, policy, {
+    status: "ntu",
+    cancelReasonCode: input.reasonCode,
+    statusReason: input.note ?? input.reasonCode,
+    lastTxnId: txn.id
+  });
+
+  await audit(ctx, { action: "axis.policy.ntu", subjectRef: policy.id, before: policy, after });
+  await emit(ctx, {
+    module: "axis",
+    type: "axis.policy.ntu",
+    subject: policy.id,
+    data: {
+      policyId: policy.id,
+      customerId: policy.customerId,
+      reasonCode: input.reasonCode,
+      clawbackMinor: policy.commissionMinor,
+      refundMinor,
+      currency: policy.currency
+    }
+  });
+  return { policy: after, txn, clawbackTxn, refundTxn };
+}
+
+/* ------------------------------------------------------------ reinstatement */
+
+export const ReinstateBody = z.object({
+  /** Premium collected to clear the arrears. Drives the commission re-accrual. */
+  arrearsMinor: z.number().int().nonnegative().default(0),
+  note: z.string().max(500).nullish()
+});
+export type ReinstateInput = z.infer<typeof ReinstateBody>;
+
+export async function reinstatePolicy(ctx: Ctx, policy: PolicyRow, input: ReinstateInput) {
+  hop(policy, "active");
+
+  // LAPSE reverses nothing (⊘), so reinstatement must not re-credit the full
+  // term's commission — only the share the arrears payment earns.
+  const commissionMinor =
+    policy.premiumMinor > 0 ? Math.round((policy.commissionMinor * input.arrearsMinor) / policy.premiumMinor) : 0;
+
+  // Gated here rather than inside `runTxn` so a refused reinstatement leaves no
+  // transaction row at all: cover that is still off risk must look untouched.
+  const subjectRef = `axis_reinstate:${policy.id}`;
+  await gate(ctx, { policyKey: "axis.reinstate", subjectRef, amountMinor: input.arrearsMinor });
+
+  let txn: TxnRow | null = null;
+  if (commissionMinor > 0) {
+    txn = await runTxn(
+      ctx,
+      {
+        type: "REINSTATE",
+        idempotencyKey: `axis.reinstate:${policy.id}:${policy.lapsedAt ?? 0}`,
+        currency: policy.currency,
+        grossMinor: input.arrearsMinor,
+        subjectRefs: { policy: policy.id }
+      },
+      {
+        recipe: { lines: buildRecipe("REINSTATE", { grossMinor: commissionMinor }), currency: policy.currency },
+        approvalSubjectRef: subjectRef,
+        preApproved: true
+      }
+    );
+  }
+
+  const after = await stampHead(ctx, policy, {
+    status: "active",
+    lapsedAt: null,
+    statusReason: input.note ?? "reinstated",
+    ...(txn ? { lastTxnId: txn.id } : {})
+  });
+
+  await audit(ctx, { action: "axis.policy.reinstate", subjectRef: policy.id, before: policy, after });
+  await emit(ctx, {
+    module: "axis",
+    type: "axis.policy.reinstated",
+    subject: policy.id,
+    data: {
+      policyId: policy.id,
+      customerId: policy.customerId,
+      arrearsMinor: input.arrearsMinor,
+      commissionMinor,
+      currency: policy.currency
+    }
+  });
+  return { policy: after, txn, commissionMinor };
+}
+
+/* ------------------------------------------------------------------- lapse */
+
+export const LapseBody = z.object({
+  /** Which instalment went unpaid — also the idempotency discriminator. */
+  missedSeq: z.number().int().nonnegative().default(0),
+  reason: z.string().min(1).max(200).default("instalment unpaid past grace")
+});
+
+export async function lapsePolicy(ctx: Ctx, policy: PolicyRow, missedSeq: number, reason: string) {
+  hop(policy, "lapsed");
+  const txn = await runTxn(ctx, {
+    type: "LAPSE",
+    idempotencyKey: `axis.lapse:${policy.id}:${missedSeq}`,
+    currency: policy.currency,
+    subjectRefs: { policy: policy.id }
+  });
+
+  const after = await stampHead(ctx, policy, { status: "lapsed", lapsedAt: ctx.now, statusReason: reason, lastTxnId: txn.id });
+
+  await audit(ctx, { action: "axis.policy.lapse", subjectRef: policy.id, before: policy, after });
+  const data = {
+    policyId: policy.id,
+    customerId: policy.customerId,
+    missedSeq,
+    reason,
+    endAt: policy.endAt,
+    currency: policy.currency
+  };
+  await emit(ctx, { module: "axis", type: "axis.policy.lapsed", subject: policy.id, data });
+  // CLAUDE.md §6: ORBIT learns a renewal died from the bus, never from a call.
+  await emit(ctx, { module: "axis", type: "orbit.renewal.lost", subject: policy.id, data });
+  return { policy: after, txn };
+}
+
+/* ----------------------------------------------------------------- the sweep */
+
+const PaymentPlan = z.object({
+  graceDays: z.number().int().nonnegative().default(0),
+  lapseOnMissed: z.boolean().default(false),
+  instalments: z
+    .array(z.object({ seq: z.number().int(), dueAt: z.number().int(), state: z.string() }))
+    .default([])
+});
+
+/** First instalment still unpaid past its grace window, if any. */
+function missedInstalment(planJson: string | null, now: number): { seq: number; dueAt: number } | null {
+  if (!planJson) return null;
+  const parsed = PaymentPlan.safeParse(JSON.parse(planJson));
+  if (!parsed.success || !parsed.data.lapseOnMissed) return null;
+  const grace = parsed.data.graceDays * DAY_MS;
+  const missed = parsed.data.instalments
+    .filter((i) => i.state !== "paid" && i.state !== "waived" && i.dueAt + grace <= now)
+    .sort((a, b) => a.dueAt - b.dueAt)[0];
+  return missed ? { seq: missed.seq, dueAt: missed.dueAt } : null;
+}
+
+/**
+ * The clock events, in the order the clock produces them: a policy bound in the
+ * past incepts, then a policy whose instalment went unpaid past grace lapses,
+ * then a policy that ran to term end expires. Each pass re-reads, so one tick
+ * can walk a back-dated policy through more than one hop.
+ *
+ * Runs below the permission layer: the scheduler's actor holds no grants
+ * (apps/api/src/index.ts), and a clock event is not somebody's request. One
+ * policy's failure never stops the sweep.
+ */
+export async function sweepPolicyLifecycle(ctx: Ctx): Promise<{ incepted: number; lapsed: number; expired: number }> {
+  const out = { incepted: 0, lapsed: 0, expired: 0 };
+
+  const due = await ctx.db
+    .select()
+    .from(schema.axisPolicies)
+    .where(
+      scoped(
+        ctx,
+        schema.axisPolicies,
+        and(eq(schema.axisPolicies.status, "bound"), lte(schema.axisPolicies.startAt, ctx.now))
+      )
+    );
+  for (const policy of due) {
+    try {
+      const txn = await runTxn(ctx, {
+        type: "INCEPT",
+        idempotencyKey: `axis.incept:${policy.id}`,
+        currency: policy.currency,
+        subjectRefs: { policy: policy.id }
+      });
+      const after = await stampHead(ctx, policy, { status: "active", inceptedAt: ctx.now, lastTxnId: txn.id });
+      await audit(ctx, { action: "axis.policy.incept", subjectRef: policy.id, before: policy, after });
+      await emit(ctx, {
+        module: "axis",
+        type: "axis.policy.incepted",
+        subject: policy.id,
+        data: { policyId: policy.id, customerId: policy.customerId, startAt: policy.startAt, endAt: policy.endAt }
+      });
+      out.incepted += 1;
+    } catch (err) {
+      console.error("incept failed", policy.id, err);
+    }
+  }
+
+  const onRisk = await ctx.db
+    .select()
+    .from(schema.axisPolicies)
+    .where(
+      scoped(
+        ctx,
+        schema.axisPolicies,
+        and(eq(schema.axisPolicies.status, "active"), isNotNull(schema.axisPolicies.paymentPlanJson))
+      )
+    );
+  for (const policy of onRisk) {
+    try {
+      const missed = missedInstalment(policy.paymentPlanJson, ctx.now);
+      if (!missed) continue;
+      await lapsePolicy(ctx, policy, missed.seq, "instalment unpaid past grace");
+      out.lapsed += 1;
+    } catch (err) {
+      console.error("lapse failed", policy.id, err);
+    }
+  }
+
+  const ended = await ctx.db
+    .select()
+    .from(schema.axisPolicies)
+    .where(
+      scoped(
+        ctx,
+        schema.axisPolicies,
+        and(
+          inArray(schema.axisPolicies.status, ["active", "lapsed"]),
+          lte(schema.axisPolicies.endAt, ctx.now)
+        )
+      )
+    );
+  for (const policy of ended) {
+    try {
+      const txn = await runTxn(ctx, {
+        type: "EXPIRE",
+        idempotencyKey: `axis.expire:${policy.id}`,
+        currency: policy.currency,
+        subjectRefs: { policy: policy.id }
+      });
+      const after = await stampHead(ctx, policy, {
+        status: "expired",
+        statusReason: "term ended",
+        lastTxnId: txn.id
+      });
+      await audit(ctx, { action: "axis.policy.expire", subjectRef: policy.id, before: policy, after });
+      await emit(ctx, {
+        module: "axis",
+        type: "axis.policy.expired",
+        subject: policy.id,
+        data: { policyId: policy.id, customerId: policy.customerId, endAt: policy.endAt }
+      });
+      out.expired += 1;
+    } catch (err) {
+      console.error("expire failed", policy.id, err);
+    }
+  }
+
+  return out;
+}

@@ -63,10 +63,19 @@ export const TXN_TYPES: Record<string, TxnTypeDef> = def([
   ["BIND", true, "axis.bind"],
   ["BIND-GROUP", true, "axis.bind_group"],
   ["ENDORSE", true, "axis.endorse"],
+  // Inception, expiry, lapse and NTU move no money, but they are transactions
+  // rather than column writes because `runTxn` is the only writer that produces
+  // a reversible, idempotent, audited state hop — and a mis-fired scheduler has
+  // to be reversible (design §B.1).
+  ["INCEPT", false, null],
+  ["EXPIRE", false, null],
+  ["NTU", false, "axis.ntu"],
   ["CANCEL", true, "axis.cancel"],
   ["LAPSE", false, null],
   ["REINSTATE", true, "axis.reinstate"],
-  ["RENEW", true, "axis.bind"],
+  // Renewal used to borrow `axis.bind`'s gate; its own key lets the renewal
+  // threshold move without touching new business (design §B.3).
+  ["RENEW", true, "axis.renew"],
   ["FNOL-REGISTER", false, null],
   ["CLAIM-SYNC", false, null],
   ["PARAM-TRIGGER", false, null],
