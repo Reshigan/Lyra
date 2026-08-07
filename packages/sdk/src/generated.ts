@@ -2161,6 +2161,7 @@ export interface Operations {
   "PATCH /v1/axis/cases/{id}": Op<{ id: string }, never, AxisCases, AxisCases>;
   "DELETE /v1/axis/cases/{id}": Op<{ id: string }, never, never, void>;
   "POST /v1/axis/cases/{id}/copilot": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
+  "POST /v1/axis/cases/{id}/quotes": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/axis/cases/{id}/restore": Op<{ id: string }, never, never, AxisCases>;
   "GET /v1/axis/claims": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<AxisClaims>>;
   "POST /v1/axis/claims": Op<never, never, AxisClaims, AxisClaims>;
@@ -2191,10 +2192,9 @@ export interface Operations {
   "GET /v1/axis/process-events": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<AxisProcessEvents>>;
   "GET /v1/axis/process-events/{id}": Op<{ id: string }, never, never, AxisProcessEvents>;
   "POST /v1/axis/quote-responses/{id}/bind": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
+  "POST /v1/axis/quote-responses/{id}/decline": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/axis/quotes": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<AxisQuotes>>;
-  "POST /v1/axis/quotes": Op<never, never, AxisQuotes, AxisQuotes>;
   "GET /v1/axis/quotes/{id}": Op<{ id: string }, never, never, AxisQuotes>;
-  "PATCH /v1/axis/quotes/{id}": Op<{ id: string }, never, AxisQuotes, AxisQuotes>;
   "GET /v1/axis/sops": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<AxisSops>>;
   "POST /v1/axis/sops": Op<never, never, AxisSops, AxisSops>;
   "GET /v1/axis/sops/{id}": Op<{ id: string }, never, never, AxisSops>;
@@ -2768,6 +2768,7 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "PATCH /v1/axis/cases/{id}": { tag: "axis", summary: "Update a cas", permission: "axis:cases:update", public: false },
   "DELETE /v1/axis/cases/{id}": { tag: "axis", summary: "Soft-delete a cas", permission: "axis:cases:delete", public: false },
   "POST /v1/axis/cases/{id}/copilot": { tag: "axis", summary: "Answer a question about a case, grounded only in its own documents, events and tasks", permission: "axis:cases:read", public: false },
+  "POST /v1/axis/cases/{id}/quotes": { tag: "axis", summary: "Key a quote received off-panel onto the case, as a quote response", permission: "axis:quotes:create", public: false },
   "POST /v1/axis/cases/{id}/restore": { tag: "axis", summary: "Restore a soft-deleted cas", permission: "axis:cases:delete", public: false },
   "GET /v1/axis/claims": { tag: "axis", summary: "List claims", permission: "axis:claims:read", public: false },
   "POST /v1/axis/claims": { tag: "axis", summary: "Create a claim", permission: "axis:claims:create", public: false },
@@ -2798,10 +2799,9 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "GET /v1/axis/process-events": { tag: "axis", summary: "List process-events", permission: "axis:metrics:read", public: false },
   "GET /v1/axis/process-events/{id}": { tag: "axis", summary: "Fetch one process event", permission: "axis:metrics:read", public: false },
   "POST /v1/axis/quote-responses/{id}/bind": { tag: "axis", summary: "Bind an accepted quote response into a policy at version 1", permission: "axis:policies:bind", public: false },
+  "POST /v1/axis/quote-responses/{id}/decline": { tag: "axis", summary: "Rule a quote out, recording why", permission: "axis:quotes:create", public: false },
   "GET /v1/axis/quotes": { tag: "axis", summary: "List quotes", permission: "axis:quotes:read", public: false },
-  "POST /v1/axis/quotes": { tag: "axis", summary: "Create a quote", permission: "axis:quotes:create", public: false },
   "GET /v1/axis/quotes/{id}": { tag: "axis", summary: "Fetch one quote", permission: "axis:quotes:read", public: false },
-  "PATCH /v1/axis/quotes/{id}": { tag: "axis", summary: "Update a quote", permission: "axis:quotes:create", public: false },
   "GET /v1/axis/sops": { tag: "axis", summary: "List sops", permission: "axis:sops:read", public: false },
   "POST /v1/axis/sops": { tag: "axis", summary: "Create a sop", permission: "axis:sops:write", public: false },
   "GET /v1/axis/sops/{id}": { tag: "axis", summary: "Fetch one sop", permission: "axis:sops:read", public: false },
@@ -2994,7 +2994,7 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "GET /v1/dist/quote-requests/{id}": { tag: "dist", summary: "Fetch one quote request", permission: "dist:quote_requests:read", public: false },
   "PATCH /v1/dist/quote-requests/{id}": { tag: "dist", summary: "Update a quote request", permission: "dist:quote_requests:create", public: false },
   "GET /v1/dist/quote-requests/{id}/comparison": { tag: "dist", summary: "Ranked comparison across the responses received", permission: "dist:quote_requests:read", public: false },
-  "POST /v1/dist/quote-requests/{id}/select": { tag: "dist", summary: "Record the quote the customer chose", permission: "dist:quote_requests:share", public: false },
+  "POST /v1/dist/quote-requests/{id}/select": { tag: "dist", summary: "Record the quote the customer chose", permission: "dist:quote_requests:select", public: false },
   "POST /v1/dist/quote-requests/{id}/share": { tag: "dist", summary: "Share the comparison with the customer over their consented channel", permission: "dist:quote_requests:share", public: false },
   "GET /v1/dist/quote-responses": { tag: "dist", summary: "List quote-responses", permission: "dist:quote_requests:read", public: false },
   "GET /v1/dist/quote-responses/{id}": { tag: "dist", summary: "Fetch one quote respons", permission: "dist:quote_requests:read", public: false },

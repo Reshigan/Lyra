@@ -38,6 +38,14 @@ export const cases = sqliteTable(
   ]
 );
 
+/**
+ * @deprecated docs/27 F13 / docs/specs/gap-axis-design.md §C.10. Two tables
+ * held one concept; `dist_quote_responses` won. Nothing writes here any more —
+ * a hand-keyed quote goes to POST /v1/axis/cases/:id/quotes, which files it as
+ * a quote response. Kept readable for cases quoted before the change; the
+ * removal migration waits until those have aged out (migrations are
+ * forward-only, so dropping it is a one-way door).
+ */
 export const quotes = sqliteTable(
   "axis_quotes",
   {

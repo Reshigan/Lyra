@@ -788,24 +788,17 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
     createdAt: now,
     updatedAt: issuedAt
   });
-  await db.insert(schema.axisQuotes).values({
-    id: id("qt", now),
-    tenantId,
-    caseId,
-    providerId: won.providerId,
-    offeringId: offerings[won.key],
-    responseId: responseIds[won.key]!,
-    premiumMinor: won.premiumMinor,
-    currency: "AED",
-    validUntil: now + 14 * DAY,
-    winFlag: true,
-    source: "api",
-    createdAt: now + 1_000,
-    updatedAt: issuedAt
-  });
+  // docs/27 F13: the winning quote is the `dist_quote_responses` row the panel
+  // already wrote. There is no second `axis_quotes` row saying the same thing —
+  // the sale points at the answer the provider actually gave.
+  await db
+    .update(schema.distQuoteResponses)
+    .set({ selectedAt: issuedAt, updatedAt: issuedAt })
+    .where(eq(schema.distQuoteResponses.id, responseIds[won.key]!));
 
   const sale = splitCommission({ premiumMinor: won.premiumMinor, baseCommissionPpm: won.basePpm });
   const policyId = id("pol", issuedAt);
+  const versionId = id("pver", issuedAt);
   await db.insert(schema.axisPolicies).values({
     id: policyId,
     tenantId,
@@ -822,6 +815,33 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
     currency: "AED",
     commissionMinor: sale.grossMinor,
     status: "active",
+    currentVersionId: versionId,
+    versionSeq: 1,
+    createdAt: issuedAt,
+    updatedAt: issuedAt
+  });
+  // Version 1 of the schedule, as a real bind writes it (routes/axis.ts
+  // `bindPolicy`). Without it the demo policy has no history for the versions
+  // tab, and F13's join — sale back to quote — has nothing to hang on.
+  await db.insert(schema.axisPolicyVersions).values({
+    id: versionId,
+    tenantId,
+    policyId,
+    versionSeq: 1,
+    reason: "issue",
+    effectiveFrom: issuedAt,
+    effectiveTo: issuedAt + 365 * DAY,
+    premiumMinor: won.premiumMinor,
+    taxMinor: 0,
+    feesMinor: 0,
+    commissionMinor: sale.grossMinor,
+    currency: "AED",
+    premiumDeltaMinor: 0,
+    termsJson: JSON.stringify({ excessMinor: 100_000, agencyRepair: true, roadside: true }),
+    quoteResponseId: responseIds[won.key]!,
+    state: "effective",
+    issuedBy: `user:${users["axis.agent"]}`,
+    issuedAt,
     createdAt: issuedAt,
     updatedAt: issuedAt
   });

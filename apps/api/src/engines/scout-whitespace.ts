@@ -59,35 +59,34 @@ function buildDescriptionPrompt(c: { category: string; momentum: number; coverag
  *  Idempotent per category: re-running skips a category that already has a
  *  live (candidate|validating|validated) row. */
 export async function sweepWhitespace(ctx: Ctx, gateway: Gateway): Promise<number> {
+  // docs/27 F13: demand is every answer the panel gave, plus the ones the desk
+  // keyed by hand — one table. The grouping key is the product's line, read
+  // through the request rather than off the case, so a shop that never opened
+  // a case still counts as demand.
   const quotes = await ctx.db
     .select({
-      id: schema.axisQuotes.id,
-      caseId: schema.axisQuotes.caseId,
-      createdAt: schema.axisQuotes.createdAt
+      id: schema.distQuoteResponses.id,
+      category: schema.products.line,
+      customerId: schema.distQuoteRequests.customerId,
+      createdAt: schema.distQuoteResponses.createdAt
     })
-    .from(schema.axisQuotes)
-    .where(and(eq(schema.axisQuotes.tenantId, ctx.tenantId), gte(schema.axisQuotes.createdAt, ctx.now - LOOKBACK_MS)));
-  if (!quotes.length) return 0;
+    .from(schema.distQuoteResponses)
+    .innerJoin(schema.distQuoteRequests, eq(schema.distQuoteRequests.id, schema.distQuoteResponses.requestId))
+    .innerJoin(schema.products, eq(schema.products.id, schema.distQuoteRequests.productId))
+    .where(
+      and(
+        eq(schema.distQuoteResponses.tenantId, ctx.tenantId),
+        gte(schema.distQuoteResponses.createdAt, ctx.now - LOOKBACK_MS)
+      )
+    );
 
-  const caseIds = [...new Set(quotes.map((q) => q.caseId))];
-  const cases = await ctx.db
-    .select({ id: schema.axisCases.id, customerId: schema.axisCases.customerId, productLine: schema.axisCases.productLine })
-    .from(schema.axisCases)
-    .where(and(eq(schema.axisCases.tenantId, ctx.tenantId), inArray(schema.axisCases.id, caseIds)));
-  const caseById = new Map(cases.map((c) => [c.id, c]));
-
-  const signals: RawSignal[] = [];
-  for (const q of quotes) {
-    const kase = caseById.get(q.caseId);
-    if (!kase?.productLine) continue; // no grouping key, no signal
-    signals.push({
-      id: q.id,
-      category: kase.productLine,
-      sourceRef: kase.customerId,
-      weight: 1,
-      observedAt: q.createdAt
-    });
-  }
+  const signals: RawSignal[] = quotes.map((q) => ({
+    id: q.id,
+    category: q.category,
+    sourceRef: q.customerId,
+    weight: 1,
+    observedAt: q.createdAt
+  }));
   if (!signals.length) return 0;
 
   const coverageByLine = await coveragePerLine(ctx);

@@ -246,11 +246,11 @@ export const DIST = register(
 
 export const AXIS = register(
   r("cases", schema.axisCases, "cas", "axis", rcud("axis:cases"), { searchable: ["ref"] }),
-  r("quotes", schema.axisQuotes, "qt", "axis", {
-    read: "axis:quotes:read",
-    create: "axis:quotes:create",
-    update: "axis:quotes:create"
-  }),
+  // docs/27 F13: `dist_quote_responses` is the single source of quote truth.
+  // This table is history — readable so old cases still render, but the write
+  // doors are gone: a hand-keyed quote goes through POST /v1/axis/cases/:id/quotes
+  // (routes/axis.ts), which files it beside the panel's own answers.
+  r("quotes", schema.axisQuotes, "qt", "axis", ro("axis:quotes:read")),
   r("documents", schema.axisDocuments, "doc", "axis", {
     read: "axis:documents:read",
     create: "axis:documents:upload",

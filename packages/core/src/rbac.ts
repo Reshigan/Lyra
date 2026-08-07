@@ -82,7 +82,11 @@ export const PERMISSIONS = [
   // `dist:ai:invoke` is not listed here: the per-module invoke permissions are
   // declared together further down, and declaring it twice made the catalogue
   // 256 entries long while only 255 distinct permissions existed.
+  // Pushing a comparison out to a customer and recording which quote won are
+  // different acts: the first is outbound contact, the second closes the sale
+  // and is the AXIS desk's daily work (docs/27 F13).
   "dist:quote_requests:read", "dist:quote_requests:create", "dist:quote_requests:share",
+  "dist:quote_requests:select",
   "dist:commissions:read", "dist:commissions:adjust", "dist:commissions:settle",
   "dist:offers:read", "dist:offers:surface", "dist:offers:override",
   // The commercial agreement behind a partnership. Countersigning is separate
@@ -297,8 +301,11 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     "core:customers:read", "core:customers:create", "core:customers:update",
     "core:consents:read", "core:consents:create", "core:files:read", "core:files:create",
     "core:search:read", "core:notifications:read", "ledger:txns:read",
+    // docs/27 F13: the agent closes sales but does not decide what goes out to
+    // a customer — `:select` without `:share`. Before F13 the desk wrote its own
+    // `axis_quotes.winFlag`; now there is one table, so it needs dist's verb.
     "dist:ai:invoke", "dist:offerings:read", "dist:quote_requests:read", "dist:quote_requests:create",
-    "dist:offers:read", "dist:offers:surface"
+    "dist:quote_requests:select", "dist:offers:read", "dist:offers:surface"
   ],
   "axis.lead": [
     ...readsOf("axis"), "axis:ai:invoke", "ai:suggestions:read",
@@ -316,6 +323,7 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     "analytics:saved_views:read", "analytics:saved_views:write",
     "dist:channels:read", "dist:offerings:read", "dist:rates:read",
     "dist:ai:invoke", "dist:quote_requests:read", "dist:quote_requests:create", "dist:quote_requests:share",
+    "dist:quote_requests:select",
     "dist:commissions:read", "dist:offers:read", "dist:offers:surface", "dist:offers:override"
   ],
   "axis.admin": [

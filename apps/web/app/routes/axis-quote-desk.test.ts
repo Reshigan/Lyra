@@ -13,8 +13,10 @@ import {
   labelsIn,
   phrase,
   policyFrom,
+  toDeskQuotes,
   type DeskCase,
-  type DeskQuote
+  type DeskQuote,
+  type QuoteResponse
 } from "./axis-quote-desk";
 
 // The desk makes three claims that can be wrong in money-shaped ways: which
@@ -61,11 +63,13 @@ const kase = (over: Partial<DeskCase> = {}): DeskCase => ({
   customerId: "cus_1",
   currency: "AED",
   slaDueAt: NOW + 3 * DAY,
+  quoteRequestId: "qr_1",
   ...over
 });
 
 const quote = (over: Partial<DeskQuote> = {}): DeskQuote => ({
   id: "q_1",
+  requestId: "qr_1",
   caseId: "case_1",
   providerId: "prov_a",
   premiumMinor: 500_000,
@@ -253,40 +257,96 @@ describe("epochOf", () => {
   });
 });
 
+describe("toDeskQuotes", () => {
+  const response = (over: Partial<QuoteResponse> = {}): QuoteResponse => ({
+    id: "qs_1",
+    requestId: "qr_1",
+    providerId: "prov_a",
+    premiumMinor: 500_000,
+    currency: "AED",
+    validUntil: NOW + 30 * DAY,
+    declineReason: null,
+    selectedAt: null,
+    latencyMs: 420,
+    createdAt: NOW - DAY,
+    ...over
+  });
+
+  it("hangs each response on the case whose shop it answered", () => {
+    const bids = toDeskQuotes([kase({ quoteRequestId: "qr_9" })], [response({ requestId: "qr_9" })]);
+    expect(bids).toHaveLength(1);
+    expect(bids[0]?.caseId).toBe("case_1");
+    expect(bids[0]?.requestId).toBe("qr_9");
+  });
+
+  it("drops an answer whose shop belongs to no case on this desk", () => {
+    expect(toDeskQuotes([kase({ quoteRequestId: "qr_1" })], [response({ requestId: "qr_other" })])).toEqual([]);
+  });
+
+  // A panel decline or a timeout never carried a price. Showing it as a bid
+  // would put a zero, or a blank, into the cheapest-price comparison.
+  it("drops an unpriced answer rather than comparing it", () => {
+    expect(toDeskQuotes([kase()], [response({ premiumMinor: null, declineReason: "no appetite" })])).toEqual([]);
+  });
+
+  it("reads selection as the win and a missing latency as a hand-keyed quote", () => {
+    const [machine] = toDeskQuotes([kase()], [response({ selectedAt: NOW })]);
+    expect(machine?.winFlag).toBe(true);
+    expect(machine?.source).toBe("api");
+
+    const [keyed] = toDeskQuotes([kase()], [response({ latencyMs: null })]);
+    expect(keyed?.winFlag).toBe(false);
+    expect(keyed?.source).toBe("manual");
+  });
+});
+
 describe("pick / decline", () => {
-  it("patches the winner flag and clears any earlier decline, with an idempotency key", async () => {
+  // F13: one quote table means one selection verb — the same `/select` the
+  // customer-facing comparison posts to, not an AXIS-only winner flag.
+  it("selects the winning response on its shop, with an idempotency key", async () => {
     const calls = stubFetch(new Response(null, { status: 204 }));
     const form = new FormData();
     form.set("intent", "pick");
-    form.set("quoteId", "q_7");
+    form.set("quoteId", "qs_7");
+    form.set("requestId", "qr_7");
 
     const result = await action(args(form));
 
-    expect(calls[0]?.url).toBe("https://api.test/v1/axis/quotes/q_7");
-    expect(calls[0]?.method).toBe("PATCH");
-    expect(calls[0]?.body).toBe(JSON.stringify({ winFlag: true, declineReason: null }));
+    expect(calls[0]?.url).toBe("https://api.test/v1/dist/quote-requests/qr_7/select");
+    expect(calls[0]?.method).toBe("POST");
+    expect(calls[0]?.body).toBe(JSON.stringify({ responseId: "qs_7" }));
     expect(calls[0]?.key).toMatch(/^[0-9a-f-]{36}$/);
     expect(result).toEqual({ problem: null, done: "pick" });
+  });
+
+  it("refuses a pick that names no shop, so it cannot select against the wrong one", async () => {
+    const calls = stubFetch(new Response(null, { status: 204 }));
+    const form = new FormData();
+    form.set("intent", "pick");
+    form.set("quoteId", "qs_7");
+
+    expect((await action(args(form))).problem?.code).toBe("missing_quote");
+    expect(calls).toHaveLength(0);
   });
 
   it("carries the decline reason the provider is told", async () => {
     const calls = stubFetch(new Response(null, { status: 204 }));
     const form = new FormData();
     form.set("intent", "decline");
-    form.set("quoteId", "q_7");
+    form.set("quoteId", "qs_7");
     form.set("reason", "loading too high");
 
     expect((await action(args(form))).done).toBe("decline");
-    expect(calls[0]?.body).toBe(
-      JSON.stringify({ winFlag: false, declineReason: "loading too high" })
-    );
+    expect(calls[0]?.url).toBe("https://api.test/v1/axis/quote-responses/qs_7/decline");
+    expect(calls[0]?.method).toBe("POST");
+    expect(calls[0]?.body).toBe(JSON.stringify({ reason: "loading too high" }));
   });
 
   it("refuses a reasonless decline without calling the API", async () => {
     const calls = stubFetch(new Response(null, { status: 204 }));
     const form = new FormData();
     form.set("intent", "decline");
-    form.set("quoteId", "q_7");
+    form.set("quoteId", "qs_7");
     form.set("reason", "   ");
 
     expect((await action(args(form))).problem?.code).toBe("missing_reason");

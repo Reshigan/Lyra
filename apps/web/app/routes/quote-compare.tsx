@@ -41,11 +41,13 @@ import { useShellData } from "./workspace";
 /* --------------------------------------------------------------- contract */
 
 /** Permission strings exactly as apps/api spells them: the DIST registry in
- *  apps/api/src/resources.ts, plus the share/select handlers in
- *  apps/api/src/routes/dist.ts, which both require the *share* permission. */
+ *  apps/api/src/resources.ts, plus the share and select handlers in
+ *  apps/api/src/routes/dist.ts. Since docs/27 F13 those are two verbs —
+ *  sending a comparison out is not the same authority as closing on one. */
 const PERM = {
   shop: "dist:quote_requests:create",
   share: "dist:quote_requests:share",
+  select: "dist:quote_requests:select",
   commissions: "dist:commissions:read",
   offersRead: "dist:offers:read",
   offersDecide: "dist:offers:override"
@@ -390,7 +392,8 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
     can: {
       commission,
       shop: held.has(PERM.shop),
-      select: held.has(PERM.share),
+      share: held.has(PERM.share),
+      select: held.has(PERM.select),
       decide: held.has(PERM.offersDecide)
     }
   };
@@ -530,7 +533,7 @@ export default function QuoteCompare() {
       {expired ? <GuardrailNotice title={L("expired")} reason={L("expiredBody")} /> : null}
 
       <div className="flex flex-wrap items-center gap-3">
-        {loaded.can.select ? (
+        {loaded.can.share ? (
           <Form method="post">
             <input type="hidden" name="intent" value="share" />
             <Button type="submit" variant="secondary" size="sm" loading={busy}>

@@ -42,9 +42,11 @@ import { useShellData } from "./workspace";
 
 export const PERM = {
   cases: "axis:cases:read",
-  quotes: "axis:quotes:read",
-  /** resources.ts maps the quotes update path to `:create`, not `:update`. */
+  quotes: "dist:quote_requests:read",
+  /** Ruling a quote out is an AXIS desk judgment. */
   quoteWrite: "axis:quotes:create",
+  /** Picking the winner is dist's `/select` verb — one table, one door (F13). */
+  pick: "dist:quote_requests:select",
   issue: "axis:policies:create"
 } as const;
 
@@ -182,10 +184,27 @@ export interface DeskCase {
   customerId: string | null;
   currency: string | null;
   slaDueAt: number | null;
+  /** The shop this case is quoting through — where its bids live (F13). */
+  quoteRequestId: string | null;
+}
+
+/** One row of `dist_quote_responses`, as the API returns it. */
+export interface QuoteResponse {
+  id: string;
+  requestId: string;
+  providerId: string;
+  premiumMinor: number | null;
+  currency: string | null;
+  validUntil: number | null;
+  declineReason: string | null;
+  selectedAt: number | null;
+  latencyMs: number | null;
+  createdAt: number;
 }
 
 export interface DeskQuote {
   id: string;
+  requestId: string;
   caseId: string;
   providerId: string;
   premiumMinor: number;
@@ -270,6 +289,40 @@ export function flagsOf(bid: Bid): { key: string; tone: BadgeTone }[] {
   return flags;
 }
 
+/**
+ * docs/27 F13. The desk reads `dist_quote_responses` — the panel's own answers
+ * and the ones the desk keyed by hand, one table. A response carrying no
+ * premium is a decline or a timeout the provider never priced: nothing to
+ * compare, so it is not a bid on this screen.
+ */
+export function toDeskQuotes(cases: DeskCase[], responses: QuoteResponse[]): DeskQuote[] {
+  const caseOf = new Map(
+    cases.flatMap((kase) => (kase.quoteRequestId ? [[kase.quoteRequestId, kase] as const] : []))
+  );
+  return responses.flatMap((row) => {
+    const kase = caseOf.get(row.requestId);
+    if (!kase || row.premiumMinor === null) return [];
+    return [
+      {
+        id: row.id,
+        requestId: row.requestId,
+        caseId: kase.id,
+        providerId: row.providerId,
+        premiumMinor: row.premiumMinor,
+        currency: row.currency ?? kase.currency ?? "",
+        validUntil: row.validUntil,
+        winFlag: row.selectedAt !== null,
+        declineReason: row.declineReason,
+        // ponytail: the response table has no `source` column — every machine
+        // path stamps a latency and the manual capture route does not. Display
+        // only; a migration for one cell can wait for a second use.
+        source: row.latencyMs === null ? "manual" : "api",
+        createdAt: row.createdAt
+      }
+    ];
+  });
+}
+
 async function safe<T>(call: Promise<T>, fallback: T): Promise<T> {
   try {
     return await call;
@@ -296,20 +349,21 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     { data: [] as DeskCase[] }
   );
 
-  // One call for every quote on those cases: the CRUD filter reads a comma as
-  // "either", so the desk does not fan out one request per case.
-  const ids = cases.data.map((row) => row.id);
-  const quotes = ids.length
+  // One call for every bid on those cases: the CRUD filter reads a comma as
+  // "either", so the desk does not fan out one request per case. A case with no
+  // shop open yet has no request id and simply has no bids.
+  const ids = cases.data.flatMap((row) => (row.quoteRequestId ? [row.quoteRequestId] : []));
+  const responses = ids.length
     ? await safe(
-        api<{ data: DeskQuote[] }>(
-          `/v1/axis/quotes?caseId=${ids.map(encodeURIComponent).join(",")}&sort=validUntil&order=asc&limit=${PAGE}`,
+        api<{ data: QuoteResponse[] }>(
+          `/v1/dist/quote-responses?requestId=${ids.map(encodeURIComponent).join(",")}&sort=validUntil&order=asc&limit=${PAGE}`,
           opts
         ),
-        { data: [] as DeskQuote[] }
+        { data: [] as QuoteResponse[] }
       )
-    : { data: [] as DeskQuote[] };
+    : { data: [] as QuoteResponse[] };
 
-  return { now: Date.now(), kind, cases: cases.data, quotes: quotes.data };
+  return { now: Date.now(), kind, cases: cases.data, quotes: toDeskQuotes(cases.data, responses.data) };
 }
 
 /* ----------------------------------------------------------------- action */
@@ -377,20 +431,33 @@ export async function action({ request, context }: ActionFunctionArgs): Promise<
       const id = String(form.get("quoteId") ?? "").trim();
       if (!id) return refuse("missing_quote");
 
+      // Picking a winner is `/select` on the shop the bid answered — the same
+      // verb the customer-facing comparison uses, so a sale looks identical
+      // whether the desk closed it or the customer did (F13).
+      if (intent === "pick") {
+        const requestId = String(form.get("requestId") ?? "").trim();
+        if (!requestId) return refuse("missing_quote");
+        await api(`/v1/dist/quote-requests/${encodeURIComponent(requestId)}/select`, {
+          env,
+          request,
+          method: "POST",
+          headers,
+          body: { responseId: id }
+        });
+        return { problem: null, done: intent };
+      }
+
       // Declining says why: `declineReason` is what the provider is told, and a
       // blank one turns a negotiation into an unexplained rejection.
       const reason = String(form.get("reason") ?? "").trim();
-      if (intent === "decline" && !reason) return refuse("missing_reason");
+      if (!reason) return refuse("missing_reason");
 
-      await api(`/v1/axis/quotes/${encodeURIComponent(id)}`, {
+      await api(`/v1/axis/quote-responses/${encodeURIComponent(id)}/decline`, {
         env,
         request,
-        method: "PATCH",
+        method: "POST",
         headers,
-        body:
-          intent === "pick"
-            ? { winFlag: true, declineReason: null }
-            : { winFlag: false, declineReason: reason }
+        body: { reason }
       });
       return { problem: null, done: intent };
     }
@@ -523,12 +590,16 @@ export default function AxisQuoteDesk() {
                     </Badge>
                   ))}
 
-                  {held.has(PERM.quoteWrite) && bid.expiry !== "expired" ? (
+                  {/* Two verbs, two grants since F13: picking a winner is dist's
+                      `/select`, ruling one out is the AXIS desk's own. A role
+                      holding one and not the other sees only its own button. */}
+                  {(held.has(PERM.pick) || held.has(PERM.quoteWrite)) && bid.expiry !== "expired" ? (
                     <span className="ms-auto flex flex-wrap items-end gap-2">
-                      {bid.winFlag ? null : (
+                      {bid.winFlag || !held.has(PERM.pick) ? null : (
                         <Form method="post">
                           <input type="hidden" name="intent" value="pick" />
                           <input type="hidden" name="quoteId" value={bid.id} />
+                          <input type="hidden" name="requestId" value={bid.requestId} />
                           <Button
                             type="submit"
                             size="sm"
@@ -541,22 +612,24 @@ export default function AxisQuoteDesk() {
                           </Button>
                         </Form>
                       )}
-                      <Form method="post" className="flex items-end gap-2">
-                        <input type="hidden" name="intent" value="decline" />
-                        <input type="hidden" name="quoteId" value={bid.id} />
-                        <Field label={l("decline.reason")} labelHidden className="w-48">
-                          <Input name="reason" size="sm" />
-                        </Field>
-                        <Button
-                          type="submit"
-                          size="sm"
-                          variant="ghost"
-                          loading={busy}
-                          aria-label={`${l("decline.submit")}: ${bid.providerId}`}
-                        >
-                          {l("decline.submit")}
-                        </Button>
-                      </Form>
+                      {held.has(PERM.quoteWrite) && !bid.declineReason ? (
+                        <Form method="post" className="flex items-end gap-2">
+                          <input type="hidden" name="intent" value="decline" />
+                          <input type="hidden" name="quoteId" value={bid.id} />
+                          <Field label={l("decline.reason")} labelHidden className="w-48">
+                            <Input name="reason" size="sm" />
+                          </Field>
+                          <Button
+                            type="submit"
+                            size="sm"
+                            variant="ghost"
+                            loading={busy}
+                            aria-label={`${l("decline.submit")}: ${bid.providerId}`}
+                          >
+                            {l("decline.submit")}
+                          </Button>
+                        </Form>
+                      ) : null}
                     </span>
                   ) : null}
                 </li>

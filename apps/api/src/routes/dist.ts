@@ -254,10 +254,12 @@ distRoutes.post("/quote-requests/:id/share", async (c) => {
   return c.body(null, 204);
 });
 
-/** The customer picks one. Everything downstream keys off this row. */
+/** The customer picks one. Everything downstream keys off this row. Its own
+ *  verb since docs/27 F13: closing the sale is not the same authority as
+ *  deciding what gets sent to a customer, and the AXIS desk does the first. */
 distRoutes.post("/quote-requests/:id/select", async (c) => {
   const ctx = ctxOf(c);
-  require_(ctx.actor, "dist:quote_requests:share", { tenantId: ctx.tenantId, module: "dist" });
+  require_(ctx.actor, "dist:quote_requests:select", { tenantId: ctx.tenantId, module: "dist" });
   const { responseId } = await body(c, z.object({ responseId: z.string().min(1) }));
   const request = await one(ctx, schema.distQuoteRequests, c.req.param("id"));
   if (!request) throw notFound("quote request");

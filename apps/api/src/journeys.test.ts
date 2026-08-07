@@ -680,12 +680,21 @@ describe("J-X2 the save desk", () => {
 
   it("a price match above the threshold needs an approver who is not the asker", async () => {
     const caseRow = ok(
-      await call("axis.agent", "POST", "/v1/axis/cases", { ref: "CASE-J-X2", kind: "renewal", customerId, status: "open" }),
+      await call("axis.agent", "POST", "/v1/axis/cases", {
+        ref: "CASE-J-X2",
+        kind: "renewal",
+        customerId,
+        // A hand-keyed quote needs a channel to shop through (docs/27 F13).
+        channelId: seeded.channels.callCentre,
+        status: "open"
+      }),
       201
     );
+    // The save desk keys the retention price it negotiated by phone. Since F13
+    // that lands in `dist_quote_responses` beside the panel's own answers.
     const quote = ok(
-      await call("axis.agent", "POST", "/v1/axis/quotes", {
-        caseId: caseRow.id,
+      await call("axis.agent", "POST", `/v1/axis/cases/${caseRow.id}/quotes`, {
+        offeringId: seeded.offerings.cedarMotor,
         providerId: seeded.providers.cedar,
         premiumMinor: 120_000,
         currency: "AED"
@@ -693,6 +702,7 @@ describe("J-X2 the save desk", () => {
       201
     );
     expect(quote.premiumMinor).toBe(120_000);
+    expect(quote.state).toBe("quoted");
   });
 
   it("a policy above the delegated authority is refused, not quietly bound", async () => {

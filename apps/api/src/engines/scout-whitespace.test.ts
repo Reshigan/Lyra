@@ -58,34 +58,62 @@ function stubbedGateway(opts?: { replies?: string[]; fail?: Error }): { stub: Re
 // "motor" already has seed's own case/quote plus two active policies, so a
 // fresh category with zero coverage and 20 same-window quotes clears both the
 // momentum-above-average and coverage-below-average bars against it.
+// docs/27 F13: demand is `dist_quote_responses`, grouped by the line of the
+// product its request shopped for. A cluster is therefore one product, one
+// offering, and `count` request/response pairs from distinct customers.
 async function seedQuoteCluster(category: string, count: number, at: number): Promise<void> {
+  const productId = newId("prd", at);
+  const offeringId = newId("off", at);
+  await ctx.db.insert(schema.products).values({
+    id: productId,
+    tenantId,
+    line: category,
+    nameJson: JSON.stringify({ en: category }),
+    createdAt: at,
+    updatedAt: at
+  } as never);
+  await ctx.db.insert(schema.distOfferings).values({
+    id: offeringId,
+    tenantId,
+    productId,
+    providerId: "prov_test",
+    code: `WSP-${category}`,
+    nameJson: JSON.stringify({ en: category }),
+    currency: "AED",
+    effectiveFrom: at,
+    createdAt: at,
+    updatedAt: at
+  } as never);
+
   const rows = Array.from({ length: count }, (_, i) => ({
-    caseId: newId("cs", at + i),
-    quoteId: newId("qt", at + i)
+    requestId: newId("qr", at + i),
+    responseId: newId("qs", at + i),
+    customerId: `cust_${category}_${i}`
   }));
-  await ctx.db.insert(schema.axisCases).values(
-    rows.map((r, i) => ({
-      id: r.caseId,
+  await ctx.db.insert(schema.distQuoteRequests).values(
+    rows.map((r) => ({
+      id: r.requestId,
       tenantId,
-      ref: `WSP-TEST-${category}-${i}`,
-      kind: "quote",
-      customerId: `cust_${category}_${i}`,
-      productLine: category,
-      status: "quoted",
-      source: "web",
+      customerId: r.customerId,
+      channelId: "chn_test",
+      productId,
+      inputsJson: "{}",
+      currency: "AED",
+      state: "complete",
       createdAt: at,
       updatedAt: at
     })) as never
   );
-  await ctx.db.insert(schema.axisQuotes).values(
+  await ctx.db.insert(schema.distQuoteResponses).values(
     rows.map((r) => ({
-      id: r.quoteId,
+      id: r.responseId,
       tenantId,
-      caseId: r.caseId,
+      requestId: r.requestId,
+      offeringId,
       providerId: "prov_test",
+      state: "quoted",
       premiumMinor: 100_000,
       currency: "AED",
-      source: "manual",
       createdAt: at,
       updatedAt: at
     })) as never

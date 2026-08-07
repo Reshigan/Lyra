@@ -499,11 +499,11 @@ export const axis: WorkspaceSpec = {
       ]
     },
     {
+      // docs/27 F13: history. Quotes are written to `dist_quote_responses` now —
+      // this surface reads the cases quoted before the change and nothing else.
       key: "quotes",
       api: "/v1/axis/quotes",
       read: "axis:quotes:read",
-      create: "axis:quotes:create",
-      update: "axis:quotes:create",
       columns: [
         { name: "caseId", type: "text" },
         { name: "providerId", type: "text" },

@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, eq, desc, not } from "drizzle-orm";
+import { and, eq, desc, not, sql } from "drizzle-orm";
 import { z } from "zod";
 import { id as newId, schema } from "@lyra/db";
 import {
@@ -564,6 +564,138 @@ axisRoutes.post("/quote-responses/:id/bind", async (c) => {
     });
   });
   return c.json(out, 201);
+});
+
+const ManualQuoteBody = z.object({
+  offeringId: z.string().min(1),
+  /** Redundant with the offering, and checked against it — a desk keying from
+   *  an email should not be able to file Provider A's price under Provider B. */
+  providerId: z.string().min(1).optional(),
+  premiumMinor: z.number().int().nonnegative(),
+  taxMinor: z.number().int().nonnegative().optional(),
+  feesMinor: z.number().int().nonnegative().optional(),
+  commissionMinor: z.number().int().optional(),
+  currency: z.string().length(3),
+  validUntil: z.number().int().optional(),
+  coverage: z.record(z.string(), z.unknown()).optional()
+});
+
+/**
+ * docs/27 F13 / docs/specs/gap-axis-design.md §C.10. A quote that arrives by
+ * phone or email, keyed by hand. It lands in `dist_quote_responses` beside the
+ * panel's own answers, so comparison, ranking, selection and bind read one
+ * table. `axis_quotes` is retired as a write target.
+ */
+axisRoutes.post("/cases/:id/quotes", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:quotes:create", { tenantId: ctx.tenantId, module: "axis" });
+  const kase = await must(ctx, schema.axisCases, c.req.param("id"), "case");
+  const input = await body(c, ManualQuoteBody);
+
+  const out = await withIdempotency(ctx, c.req.header("idempotency-key"), `POST ${c.req.path}`, input, async () => {
+    const offering = await must(ctx, schema.distOfferings, input.offeringId, "offering");
+    if (input.providerId && input.providerId !== offering.providerId) {
+      throw badRequest("providerId does not own that offering");
+    }
+
+    // A case opened without a shop has no request to hang an answer on, so the
+    // first hand-keyed quote creates one. Every later quote on the case joins
+    // it, which is what keeps `/comparison` and `/select` working for a panel
+    // assembled by hand. `inputsJson` is empty: the risk was never normalised
+    // to the product's rating inputs, because nobody rated it here.
+    let requestId = kase.quoteRequestId;
+    if (!requestId) {
+      if (!kase.channelId) throw conflict("that case has no channel to quote against");
+      requestId = newId("qr", ctx.now);
+      await ctx.db.insert(schema.distQuoteRequests).values({
+        id: requestId,
+        tenantId: ctx.tenantId,
+        caseId: kase.id,
+        customerId: kase.customerId,
+        channelId: kase.channelId,
+        productId: offering.productId,
+        inputsJson: "{}",
+        currency: input.currency,
+        state: "open",
+        createdAt: ctx.now,
+        updatedAt: ctx.now
+      });
+      await ctx.db
+        .update(schema.axisCases)
+        .set({ quoteRequestId: requestId, updatedAt: ctx.now })
+        .where(scoped(ctx, schema.axisCases, eq(schema.axisCases.id, kase.id)));
+    }
+
+    // `dist_quote_responses_uq` says one answer per offering per request. Catch
+    // it here so a second keying reads as a conflict, not a constraint dump.
+    const clash = await ctx.db
+      .select({ id: schema.distQuoteResponses.id })
+      .from(schema.distQuoteResponses)
+      .where(
+        scoped(
+          ctx,
+          schema.distQuoteResponses,
+          and(
+            eq(schema.distQuoteResponses.requestId, requestId),
+            eq(schema.distQuoteResponses.offeringId, offering.id)
+          )
+        )
+      )
+      .limit(1);
+    if (clash[0]) throw conflict("that offering has already answered this case");
+
+    const row = {
+      id: newId("qs", ctx.now),
+      tenantId: ctx.tenantId,
+      requestId,
+      offeringId: offering.id,
+      providerId: offering.providerId,
+      state: "quoted",
+      premiumMinor: input.premiumMinor,
+      taxMinor: input.taxMinor ?? 0,
+      feesMinor: input.feesMinor ?? 0,
+      currency: input.currency,
+      commissionMinor: input.commissionMinor ?? null,
+      coverageJson: input.coverage ? JSON.stringify(input.coverage) : null,
+      validUntil: input.validUntil ?? null,
+      // ponytail: the response table has no `source` column, and a null latency
+      // is already the marker — every machine path stamps one. Display only; a
+      // migration for a column that decorates one cell can wait for a second use.
+      latencyMs: null,
+      createdAt: ctx.now,
+      updatedAt: ctx.now
+    };
+    await ctx.db.insert(schema.distQuoteResponses).values(row);
+    await ctx.db
+      .update(schema.distQuoteRequests)
+      .set({ respondedCount: sql`responded_count + 1`, updatedAt: ctx.now })
+      .where(scoped(ctx, schema.distQuoteRequests, eq(schema.distQuoteRequests.id, requestId)));
+
+    await audit(ctx, { action: "axis.quote.capture", subjectRef: row.id, after: row });
+    return row;
+  });
+  return c.json(out, 201);
+});
+
+/** The desk ruling a quote out — the answer stays on the record, because a
+ *  panel's declines are what tell us which underwriter is worth shopping. */
+axisRoutes.post("/quote-responses/:id/decline", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:quotes:create", { tenantId: ctx.tenantId, module: "axis" });
+  const before = await must(ctx, schema.distQuoteResponses, c.req.param("id"), "quote response");
+  const input = await body(c, z.object({ reason: z.string().min(1) }));
+
+  const out = await withIdempotency(ctx, c.req.header("idempotency-key"), `POST ${c.req.path}`, input, async () => {
+    if (before.selectedAt !== null) throw conflict("that quote has already been selected");
+    const after = { ...before, state: "declined", declineReason: input.reason, updatedAt: ctx.now };
+    await ctx.db
+      .update(schema.distQuoteResponses)
+      .set({ state: "declined", declineReason: input.reason, updatedAt: ctx.now })
+      .where(scoped(ctx, schema.distQuoteResponses, eq(schema.distQuoteResponses.id, before.id)));
+    await audit(ctx, { action: "axis.quote.decline", subjectRef: before.id, before, after });
+    return after;
+  });
+  return c.json(out);
 });
 
 /** The same hop for a draft written some other way — a correction, or a retry
