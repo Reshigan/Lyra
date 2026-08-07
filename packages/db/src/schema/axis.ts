@@ -317,12 +317,134 @@ export const claims = sqliteTable(
     status: text("status").notNull().default("reported"), // reported|assessing|approved|rejected|settled|withdrawn
     fnolJson: text("fnol_json"),
     assessorRef: text("assessor_ref"),
+    // docs/27 F23/F24. `amountMinor` is what the claimant notified; `settledMinor`
+    // is what was agreed. `incurredMinor` is never stored — it is
+    // paid + reserve - recovered, computed in `@lyra/core` claims.ts:incurred().
+    policyVersionId: text("policy_version_id"), // the version in force at incidentAt
+    coverageState: text("coverage_state").notNull().default("unknown"),
+    // in_force|not_yet_incepted|lapsed_at_loss|cancelled_at_loss|out_of_cover|unknown
+    coverageCheckedAt: integer("coverage_checked_at"),
+    coverageJson: text("coverage_json"), // the limits/excess applied, snapshotted
+    perilCode: text("peril_code"),
+    causeCode: text("cause_code"),
+    catCode: text("cat_code"), // catastrophe event grouping
+    reserveMinor: integer("reserve_minor").notNull().default(0), // denormalized head of history
+    paidMinor: integer("paid_minor").notNull().default(0),
+    recoveredMinor: integer("recovered_minor").notNull().default(0),
+    excessMinor: integer("excess_minor").notNull().default(0),
+    handlerRef: text("handler_ref"), // user:<id>; assessorRef stays for the external assessor
+    slaDueAt: integer("sla_due_at"),
+    fraudScore: integer("fraud_score"), // 0-100, from the SIU model
+    siuState: text("siu_state"), // null|referred|clearing|substantiated
+    complexity: text("complexity").notNull().default("standard"), // fast_track|standard|complex|litigated
+    reopenedAt: integer("reopened_at"),
+    closedAt: integer("closed_at"),
+    lastTxnId: text("last_txn_id"),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull()
   },
   (t) => [
     index("axis_claims_tenant_idx").on(t.tenantId, t.status, t.reportedAt),
     index("axis_claims_customer_idx").on(t.tenantId, t.customerId),
+    index("axis_claims_policy_idx").on(t.tenantId, t.policyId, t.reportedAt),
     uniqueIndex("axis_claims_no_uq").on(t.tenantId, t.claimNo)
   ]
+);
+
+/**
+ * Reserve movement history (§C.4). Append-only — enforced by triggers in
+ * migration 0017, because a reserve you can edit in place cannot answer "what
+ * did we think this was worth in March", which is what triangles and reserve
+ * adequacy are made of. `axis_claims.reserveMinor` is the sum of the latest
+ * `amountMinor` per head, written in the same batch; invariants in
+ * `claim-reserves.ts`.
+ */
+export const claimReserves = sqliteTable(
+  "axis_claim_reserves",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    claimId: text("claim_id").notNull(),
+    seq: integer("seq").notNull(),
+    head: text("head").notNull().default("indemnity"), // indemnity|expense|recovery
+    amountMinor: integer("amount_minor").notNull(), // reserve AFTER this movement
+    previousMinor: integer("previous_minor").notNull().default(0),
+    deltaMinor: integer("delta_minor").notNull(), // signed
+    currency: text("currency").notNull(),
+    basis: text("basis").notNull(), // ai_recommended|assessor|desk_estimate|insurer_advised|formula|closure
+    rationale: text("rationale"),
+    evidenceJson: text("evidence_json"), // doc ids / comparable claims the estimate cites
+    confidence: integer("confidence"), // 0-100 when basis = ai_recommended
+    aiAuditId: text("ai_audit_id"), // -> ai_audit_log.id
+    approvalId: text("approval_id"),
+    txnId: text("txn_id"),
+    setBy: text("set_by").notNull(),
+    setAt: integer("set_at").notNull(),
+    createdAt: integer("created_at").notNull()
+  },
+  (t) => [
+    uniqueIndex("axis_claim_reserves_seq_uq").on(t.tenantId, t.claimId, t.head, t.seq),
+    index("axis_claim_reserves_claim_idx").on(t.tenantId, t.claimId, t.setAt)
+  ]
+);
+
+/**
+ * One ledger transaction, one payment record (§C.5). The unique index on txnId
+ * is what makes paying a claim twice structurally impossible — the money is the
+ * transaction, this row is the record of who it went to and why.
+ */
+export const claimPayments = sqliteTable(
+  "axis_claim_payments",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    claimId: text("claim_id").notNull(),
+    kind: text("kind").notNull(), // indemnity|expense|interim|final|ex_gratia|excess_refund
+    payeeKind: text("payee_kind").notNull(), // claimant|repairer|provider|third_party|insurer
+    payeeRef: text("payee_ref"),
+    payeeSealed: text("payee_sealed"), // bank details via sealFields — never plaintext
+    amountMinor: integer("amount_minor").notNull(),
+    currency: text("currency").notNull(),
+    method: text("method").notNull().default("eft"), // eft|cheque|card|insurer_direct
+    txnId: text("txn_id").notNull(), // -> ledger_txns.id
+    approvalId: text("approval_id"),
+    state: text("state").notNull().default("requested"), // requested|approved|paid|failed|reversed
+    failureCode: text("failure_code"),
+    requestedBy: text("requested_by").notNull(),
+    requestedAt: integer("requested_at").notNull(),
+    paidAt: integer("paid_at"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull()
+  },
+  (t) => [
+    uniqueIndex("axis_claim_payments_txn_uq").on(t.tenantId, t.txnId),
+    index("axis_claim_payments_claim_idx").on(t.tenantId, t.claimId, t.state)
+  ]
+);
+
+/** Money coming back the other way (§C.6): subrogation, salvage, excess, reinsurance. */
+export const claimRecoveries = sqliteTable(
+  "axis_claim_recoveries",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    claimId: text("claim_id").notNull(),
+    kind: text("kind").notNull(), // subrogation|salvage|excess|reinsurance|third_party
+    counterpartyRef: text("counterparty_ref"),
+    expectedMinor: integer("expected_minor").notNull().default(0),
+    recoveredMinor: integer("recovered_minor").notNull().default(0),
+    feeMinor: integer("fee_minor").notNull().default(0),
+    currency: text("currency").notNull(),
+    state: text("state").notNull().default("identified"), // identified|pursuing|agreed|recovered|written_off|abandoned
+    nextActionAt: integer("next_action_at"),
+    prospects: integer("prospects"), // 0-100, AI-scored likelihood
+    txnId: text("txn_id"),
+    approvalId: text("approval_id"), // write-off approval
+    openedBy: text("opened_by").notNull(),
+    openedAt: integer("opened_at").notNull(),
+    closedAt: integer("closed_at"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull()
+  },
+  (t) => [index("axis_claim_recoveries_idx").on(t.tenantId, t.state, t.nextActionAt)]
 );

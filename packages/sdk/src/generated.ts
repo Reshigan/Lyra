@@ -381,6 +381,25 @@ export interface AxisClaims {
   status?: string;
   fnolJson?: string;
   assessorRef?: string;
+  policyVersionId?: string;
+  coverageState?: string;
+  coverageCheckedAt?: number;
+  coverageJson?: string;
+  perilCode?: string;
+  causeCode?: string;
+  catCode?: string;
+  reserveMinor?: number;
+  paidMinor?: number;
+  recoveredMinor?: number;
+  excessMinor?: number;
+  handlerRef?: string;
+  slaDueAt?: number;
+  fraudScore?: number;
+  siuState?: string;
+  complexity?: string;
+  reopenedAt?: number;
+  closedAt?: number;
+  lastTxnId?: string;
   createdAt?: number;
   updatedAt?: number;
 }

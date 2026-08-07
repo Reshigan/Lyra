@@ -25,3 +25,4 @@ export * from "./whitespace.js";
 export * from "./wording-diff.js";
 export * from "./seams.js";
 export * from "./lifecycle.js";
+export * from "./claims.js";
