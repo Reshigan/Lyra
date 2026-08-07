@@ -118,9 +118,17 @@ const HAND_WRITTEN: Op[] = [
   // attaches it to the version it describes; ORBIT delivers it.
   { method: "post", path: "/v1/axis/policies/{id}/documents", summary: "Issue a policy document for a version and attach it", permission: "axis:policies:document", tag: "axis", requestBody: true },
 
+  // docs/27 F5. The endorsement history of one contract, and next year's
+  // contract born from this one.
+  { method: "get", path: "/v1/axis/policies/{id}/versions", summary: "The endorsement history of this policy, newest first", permission: "axis:policies:read", tag: "axis" },
+  { method: "post", path: "/v1/axis/policies/{id}/renew", summary: "Bind a successor term and close the prior one", permission: "axis:policies:renew", tag: "axis", requestBody: true },
+
   // docs/27 F23. Claim money in both directions: paying out of the insurer's
   // float, and what a third party gives back afterwards.
   { method: "post", path: "/v1/axis/claims/coverage-check", summary: "Cover in force on the incident date, without writing anything", permission: "axis:claims:register", tag: "axis", requestBody: true },
+  { method: "post", path: "/v1/axis/claims/{id}/transition", summary: "Move a claim through its state machine", permission: "axis:claims:update", tag: "axis", requestBody: true },
+  { method: "post", path: "/v1/axis/claims/{id}/reserves", summary: "Append a reserve movement on one head", permission: "axis:claims:reserve", tag: "axis", requestBody: true },
+  { method: "get", path: "/v1/axis/claims/{id}/reserves", summary: "The reserve history of this claim, newest first", permission: "axis:claims:read", tag: "axis" },
   { method: "post", path: "/v1/axis/claims/{id}/payments", summary: "Pay a claim out of the funded float", permission: "axis:claims:pay", tag: "axis", requestBody: true },
   { method: "post", path: "/v1/axis/claims/{id}/recoveries", summary: "Open a recovery against a settled claim", permission: "axis:claims:recover", tag: "axis", requestBody: true },
   { method: "post", path: "/v1/axis/recoveries/{id}/receipt", summary: "Record money recovered, net of the handling fee", permission: "axis:claims:recover", tag: "axis", requestBody: true },

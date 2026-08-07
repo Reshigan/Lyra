@@ -2189,6 +2189,9 @@ export interface Operations {
   "PATCH /v1/axis/claims/{id}": Op<{ id: string }, never, AxisClaims, AxisClaims>;
   "POST /v1/axis/claims/{id}/payments": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/axis/claims/{id}/recoveries": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
+  "GET /v1/axis/claims/{id}/reserves": Op<{ id: string }, never, never, Record<string, unknown>>;
+  "POST /v1/axis/claims/{id}/reserves": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
+  "POST /v1/axis/claims/{id}/transition": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/axis/dev/extract-sample": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/axis/documents": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<AxisDocuments>>;
   "POST /v1/axis/documents": Op<never, never, AxisDocuments, AxisDocuments>;
@@ -2219,6 +2222,8 @@ export interface Operations {
   "POST /v1/axis/policies/{id}/lapse": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/axis/policies/{id}/ntu": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/axis/policies/{id}/reinstate": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
+  "POST /v1/axis/policies/{id}/renew": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
+  "GET /v1/axis/policies/{id}/versions": Op<{ id: string }, never, never, Record<string, unknown>>;
   "GET /v1/axis/process-events": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<AxisProcessEvents>>;
   "GET /v1/axis/process-events/{id}": Op<{ id: string }, never, never, AxisProcessEvents>;
   "POST /v1/axis/quote-responses/{id}/bind": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
@@ -2809,6 +2814,9 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "PATCH /v1/axis/claims/{id}": { tag: "axis", summary: "Update a claim", permission: "axis:claims:update", public: false },
   "POST /v1/axis/claims/{id}/payments": { tag: "axis", summary: "Pay a claim out of the funded float", permission: "axis:claims:pay", public: false },
   "POST /v1/axis/claims/{id}/recoveries": { tag: "axis", summary: "Open a recovery against a settled claim", permission: "axis:claims:recover", public: false },
+  "GET /v1/axis/claims/{id}/reserves": { tag: "axis", summary: "The reserve history of this claim, newest first", permission: "axis:claims:read", public: false },
+  "POST /v1/axis/claims/{id}/reserves": { tag: "axis", summary: "Append a reserve movement on one head", permission: "axis:claims:reserve", public: false },
+  "POST /v1/axis/claims/{id}/transition": { tag: "axis", summary: "Move a claim through its state machine", permission: "axis:claims:update", public: false },
   "POST /v1/axis/dev/extract-sample": { tag: "axis", summary: "Developer console: run field extraction against pasted text, no document row created", permission: "dev:sandbox:use", public: false },
   "GET /v1/axis/documents": { tag: "axis", summary: "List documents", permission: "axis:documents:read", public: false },
   "POST /v1/axis/documents": { tag: "axis", summary: "Create a document", permission: "axis:documents:upload", public: false },
@@ -2839,6 +2847,8 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "POST /v1/axis/policies/{id}/lapse": { tag: "axis", summary: "Lapse a policy for an unpaid instalment", permission: "axis:policies:lapse", public: false },
   "POST /v1/axis/policies/{id}/ntu": { tag: "axis", summary: "Mark a policy not-taken-up, clawing back the whole commission", permission: "axis:policies:ntu", public: false },
   "POST /v1/axis/policies/{id}/reinstate": { tag: "axis", summary: "Put cover back on risk after arrears are cleared", permission: "axis:policies:reinstate", public: false },
+  "POST /v1/axis/policies/{id}/renew": { tag: "axis", summary: "Bind a successor term and close the prior one", permission: "axis:policies:renew", public: false },
+  "GET /v1/axis/policies/{id}/versions": { tag: "axis", summary: "The endorsement history of this policy, newest first", permission: "axis:policies:read", public: false },
   "GET /v1/axis/process-events": { tag: "axis", summary: "List process-events", permission: "axis:metrics:read", public: false },
   "GET /v1/axis/process-events/{id}": { tag: "axis", summary: "Fetch one process event", permission: "axis:metrics:read", public: false },
   "POST /v1/axis/quote-responses/{id}/bind": { tag: "axis", summary: "Bind an accepted quote response into a policy at version 1", permission: "axis:policies:bind", public: false },

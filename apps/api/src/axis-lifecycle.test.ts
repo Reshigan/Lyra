@@ -379,4 +379,85 @@ describe("AXIS policy lifecycle (docs/27 F5)", () => {
 
     expect((await eventsFor(policyId, "axis.policy.ntu")).length).toBe(1);
   });
+
+  it("renewal binds a successor term and closes the prior one", async () => {
+    await autoApprove("axis.bind", "axis.renew");
+    const start = Date.now() - 360 * DAY;
+    const { id: priorId, premiumMinor, commissionMinor } = await boundPolicy("POL-REN-1", start);
+    // Only cover that went on risk can be renewed — the state machine refuses
+    // `bound -> renewed`, because there is nothing to renew.
+    await database
+      .update(schema.axisPolicies)
+      .set({ status: "active", inceptedAt: start })
+      .where(eq(schema.axisPolicies.id, priorId));
+
+    const out = ok(await call("POST", `/v1/axis/policies/${priorId}/renew`, {}), 201);
+
+    // A renewal is a new contract, not an edit: its own head row, its own
+    // version 1, pointing back at the term it replaces.
+    expect(out.policy.id).not.toBe(priorId);
+    expect(out.policy.renewedFromPolicyId).toBe(priorId);
+    expect(out.policy.renewalSeq).toBe(1);
+    expect(out.policy.policyNo).toBe("POL-REN-1-R1");
+    expect(out.policy.status).toBe("bound");
+    expect(out.policy.versionSeq).toBe(1);
+    // The successor's term starts where the prior one ended, same length.
+    const prior = await policyRow(priorId);
+    expect(out.policy.startAt).toBe(prior.endAt);
+    expect(out.policy.endAt - out.policy.startAt).toBe(365 * DAY);
+    expect(out.policy.premiumMinor).toBe(premiumMinor);
+    // A new term starts clean: no inception, no scars from the prior one.
+    expect(out.policy.inceptedAt).toBeNull();
+    expect(out.policy.caseId).toBeNull();
+
+    expect(prior.status).toBe("renewed");
+
+    const versions = await versionsOf(out.policy.id as string);
+    expect(versions.length).toBe(1);
+    expect(versions[0]!.versionSeq).toBe(1);
+    expect(versions[0]!.reason).toBe("issue");
+    expect(versions[0]!.state).toBe("effective");
+    expect(versions[0]!.premiumDeltaMinor).toBe(0);
+
+    // RENEW accrues next term's commission through a balanced batch.
+    expect(out.txn.type).toBe("RENEW");
+    const legs = await balanced(out.txn.ledgerBatchId as string);
+    expect(legs.legs.length).toBeGreaterThanOrEqual(2);
+    expect(legs.debit).toBe(legs.credit);
+    expect(legs.debit).toBe(commissionMinor);
+
+    expect((await eventsFor(priorId, "axis.policy.renewed")).length).toBe(1);
+
+    // Asking twice renews once: the key is the term being replaced, so the
+    // retry replays rather than minting a second successor.
+    const again = ok(await call("POST", `/v1/axis/policies/${priorId}/renew`, {}), 201);
+    expect(again.policy.id).toBe(out.policy.id);
+  });
+
+  it("the version list is scoped to one policy", async () => {
+    await autoApprove("axis.bind", "axis.endorse");
+    const start = Date.now() - 20 * DAY;
+    const { id: mine } = await boundPolicy("POL-VER-1", start);
+    const { id: theirs } = await boundPolicy("POL-VER-2", start);
+    ok(
+      await call("POST", `/v1/axis/policies/${mine}/endorse`, {
+        changes: { excessMinor: 150_000 },
+        reason: "excess raised"
+      }),
+      200,
+      201
+    );
+
+    const listed = ok(await call("GET", `/v1/axis/policies/${mine}/versions`));
+    // The customer's *other* contracts are a different list with the same
+    // shape — the bug F5 names is a schedule citing somebody else's version.
+    expect(listed.total).toBe(2);
+    expect(listed.data.every((v: { policyId: string }) => v.policyId === mine)).toBe(true);
+    // Newest first, so the screen's first row is the cover on risk now.
+    expect(listed.data.map((v: { versionSeq: number }) => v.versionSeq)).toEqual([2, 1]);
+
+    const other = ok(await call("GET", `/v1/axis/policies/${theirs}/versions`));
+    expect(other.total).toBe(1);
+    expect(other.data[0]!.policyId).toBe(theirs);
+  });
 });

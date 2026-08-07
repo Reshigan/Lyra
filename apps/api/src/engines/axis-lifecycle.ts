@@ -1,7 +1,8 @@
 import { and, eq, inArray, isNotNull, lte } from "drizzle-orm";
 import { z } from "zod";
-import { schema } from "@lyra/db";
+import { id as newId, schema } from "@lyra/db";
 import {
+  actorRef,
   assertPolicyTransition,
   audit,
   badRequest,
@@ -398,6 +399,160 @@ export async function lapsePolicy(ctx: Ctx, policy: PolicyRow, missedSeq: number
   // CLAUDE.md §6: ORBIT learns a renewal died from the bus, never from a call.
   await emit(ctx, { module: "axis", type: "orbit.renewal.lost", subject: policy.id, data });
   return { policy: after, txn };
+}
+
+/* ------------------------------------------------------------------ renewal */
+
+export const RenewBody = z.object({
+  /** Defaults to the prior number suffixed with the renewal sequence. */
+  policyNo: z.string().min(1).max(64).optional(),
+  /** Defaults to a term that starts the instant the prior one ends. */
+  startAt: z.number().int().optional(),
+  endAt: z.number().int().optional(),
+  premiumMinor: z.number().int().nonnegative().optional(),
+  taxMinor: z.number().int().nonnegative().optional(),
+  feesMinor: z.number().int().nonnegative().optional(),
+  commissionMinor: z.number().int().nonnegative().optional(),
+  /** The introducer's share of the new term's commission. */
+  channelMinor: z.number().int().nonnegative().default(0),
+  /** Set when the renewal was re-shopped rather than rolled at the same price. */
+  quoteResponseId: z.string().min(1).nullish(),
+  terms: z.record(z.unknown()).optional(),
+  note: z.string().max(500).nullish()
+});
+export type RenewInput = z.infer<typeof RenewBody>;
+
+/**
+ * A renewal is a new contract, not an edit of the old one: a fresh head row
+ * with its own version 1, pointing back at the term it replaces. Cover, claims
+ * and money all belong to a term, so folding the next year into the same row
+ * would make "what were we on risk for in March" unanswerable.
+ *
+ * The state machine refuses `bound -> renewed`, so a policy has to have gone on
+ * risk (or run to term) before it can be renewed — nothing to renew otherwise.
+ */
+export async function renewPolicy(ctx: Ctx, prior: PolicyRow, input: RenewInput) {
+  hop(prior, "renewed");
+
+  const startAt = input.startAt ?? prior.endAt;
+  const endAt = input.endAt ?? startAt + (prior.endAt - prior.startAt);
+  if (endAt <= startAt) throw badRequest("a renewal term must end after it starts");
+
+  const premiumMinor = input.premiumMinor ?? prior.premiumMinor;
+  const taxMinor = input.taxMinor ?? prior.taxMinor;
+  const feesMinor = input.feesMinor ?? prior.feesMinor;
+  const commissionMinor = input.commissionMinor ?? prior.commissionMinor;
+  // Same reason as bind: RENEW posts a commission accrual and `buildRecipe`
+  // refuses a batch of fewer than two lines.
+  if (commissionMinor <= 0) {
+    throw badRequest("cannot renew with no commission: RENEW posts a commission accrual");
+  }
+  const channelMinor = Math.min(Math.max(input.channelMinor, 0), commissionMinor);
+  const renewalSeq = prior.renewalSeq + 1;
+
+  const policyId = newId("pol", ctx.now);
+  const txn = await runTxn(
+    ctx,
+    {
+      type: "RENEW",
+      // Keyed on the term being replaced: two calls renewing the same policy are
+      // the same money movement, whatever number the successor is given.
+      idempotencyKey: `axis.renew:${prior.id}`,
+      currency: prior.currency,
+      grossMinor: premiumMinor + taxMinor + feesMinor,
+      subjectRefs: { policy: policyId, priorPolicy: prior.id }
+    },
+    {
+      recipe: { lines: buildRecipe("RENEW", { grossMinor: commissionMinor, channelMinor }), currency: prior.currency },
+      approvalSubjectRef: `axis_renew:${prior.id}`
+    }
+  );
+
+  const versionId = newId("pver", ctx.now);
+  const successor: PolicyRow = {
+    ...prior,
+    id: policyId,
+    caseId: null,
+    policyNo: input.policyNo ?? `${prior.policyNo}-R${renewalSeq}`,
+    startAt,
+    endAt,
+    premiumMinor,
+    taxMinor,
+    feesMinor,
+    grossMinor: premiumMinor + taxMinor + feesMinor,
+    commissionMinor,
+    currentVersionId: versionId,
+    versionSeq: 1,
+    renewedFromPolicyId: prior.id,
+    renewalSeq,
+    // A new term starts off risk, and carries none of the prior term's scars.
+    status: "bound",
+    inceptedAt: null,
+    lapsedAt: null,
+    cancelledAt: null,
+    cancelReasonCode: null,
+    cancelEffectiveAt: null,
+    statusReason: input.note ?? "renewed",
+    escrowBatchId: null,
+    lastTxnId: txn.id,
+    createdAt: ctx.now,
+    updatedAt: ctx.now
+  };
+  await ctx.db.insert(schema.axisPolicies).values(successor);
+  await ctx.db.insert(schema.axisPolicyVersions).values({
+    id: versionId,
+    tenantId: ctx.tenantId,
+    policyId,
+    versionSeq: 1,
+    reason: "issue",
+    effectiveFrom: startAt,
+    effectiveTo: endAt,
+    premiumMinor,
+    taxMinor,
+    feesMinor,
+    commissionMinor,
+    currency: prior.currency,
+    premiumDeltaMinor: 0,
+    termsJson: JSON.stringify(input.terms ?? {}),
+    quoteResponseId: input.quoteResponseId ?? null,
+    txnId: txn.id,
+    state: "effective",
+    issuedBy: actorRef(ctx),
+    issuedAt: ctx.now,
+    createdAt: ctx.now,
+    updatedAt: ctx.now
+  });
+
+  const after = await stampHead(ctx, prior, {
+    status: "renewed",
+    statusReason: input.note ?? `renewed as ${successor.policyNo}`,
+    lastTxnId: txn.id
+  });
+
+  await audit(ctx, { action: "axis.policy.renew", subjectRef: prior.id, before: prior, after });
+  await emit(ctx, {
+    module: "axis",
+    type: "axis.policy.renewed",
+    subject: policyId,
+    data: {
+      policyId,
+      priorPolicyId: prior.id,
+      customerId: prior.customerId,
+      providerId: prior.providerId,
+      productId: prior.productId,
+      channelId: prior.channelId,
+      policyNo: successor.policyNo,
+      renewalSeq,
+      startAt,
+      endAt,
+      premiumMinor,
+      grossMinor: successor.grossMinor,
+      commissionMinor,
+      currency: prior.currency,
+      txnId: txn.id
+    }
+  });
+  return { policy: successor, prior: after, versionId, txn };
 }
 
 /* ----------------------------------------------------------------- the sweep */

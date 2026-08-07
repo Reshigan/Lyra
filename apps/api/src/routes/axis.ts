@@ -38,12 +38,22 @@ import {
   LapseBody,
   NtuBody,
   ReinstateBody,
+  RenewBody,
   cancelPolicy,
   lapsePolicy,
   ntuPolicy,
   priceCancellation,
-  reinstatePolicy
+  reinstatePolicy,
+  renewPolicy
 } from "../engines/axis-lifecycle.js";
+import {
+  ClaimReserveBody,
+  ClaimTransitionBody,
+  appendReserve,
+  listReserves,
+  permissionForClaimTransition,
+  transitionClaim
+} from "../engines/axis-claim-lifecycle.js";
 import { PolicyDocumentBody, issuePolicyDocument } from "../engines/axis-policy-document.js";
 import {
   ClaimPaymentBody,
@@ -841,6 +851,36 @@ axisRoutes.post("/policies/:id/reinstate", async (c) => {
   return c.json(out, 200);
 });
 
+/**
+ * §D.4 / F5: the endorsement history of *this* contract. The web detail screen
+ * used to reach for the customer's other policies, which is a different list
+ * with the same shape — the kind of bug nobody sees until an audit asks why a
+ * schedule cites a version that belongs to somebody else's car.
+ */
+axisRoutes.get("/policies/:id/versions", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:policies:read", { tenantId: ctx.tenantId, module: "axis" });
+  const policy = await must(ctx, schema.axisPolicies, c.req.param("id"), "policies");
+  const data = await ctx.db
+    .select()
+    .from(schema.axisPolicyVersions)
+    .where(scoped(ctx, schema.axisPolicyVersions, eq(schema.axisPolicyVersions.policyId, policy.id)))
+    .orderBy(desc(schema.axisPolicyVersions.versionSeq));
+  return c.json({ data, total: data.length });
+});
+
+/** §D.7: next year's contract, born from this one and pointing back at it. */
+axisRoutes.post("/policies/:id/renew", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:policies:renew", { tenantId: ctx.tenantId, module: "axis" });
+  const policy = await must(ctx, schema.axisPolicies, c.req.param("id"), "policies");
+  const input = await body(c, RenewBody);
+  // One successor per term, whoever asks twice — a policy renews once.
+  const key = c.req.header("idempotency-key") ?? `axis_renew:${policy.id}`;
+  const out = await withIdempotency(ctx, key, `POST ${c.req.path}`, input, () => renewPolicy(ctx, policy, input));
+  return c.json(out, 201);
+});
+
 /* -------------------------------------------------------- FNOL (§D.1) --- */
 
 /**
@@ -870,6 +910,51 @@ axisRoutes.post("/claims", async (c) => {
   const run = () => registerFnol(ctx, input);
   const out = key ? await withIdempotency(ctx, key, `POST ${c.req.path}`, input, run) : await run();
   return c.json(out, 201);
+});
+
+/* --------------------------------------------- claim desk (§B.2, §C.4) --- */
+
+/**
+ * Moving the claim through its machine. Every legal hop is here except the two
+ * that money owns: `settling` and `settled` belong to the payment endpoint, so
+ * that no claim can read as paying without a payment behind it.
+ */
+axisRoutes.post("/claims/:id/transition", async (c) => {
+  const ctx = ctxOf(c);
+  const input = await body(c, ClaimTransitionBody);
+  // The right you need depends on where you are going — triaging is a handler's
+  // job, declining is not.
+  require_(ctx.actor, permissionForClaimTransition(input.to), { tenantId: ctx.tenantId, module: "axis" });
+  const claim = await must(ctx, schema.axisClaims, c.req.param("id"), "claims");
+  const key = c.req.header("idempotency-key");
+  const run = () => transitionClaim(ctx, claim, input);
+  const out = key ? await withIdempotency(ctx, key, `POST ${c.req.path}`, input, run) : await run();
+  return c.json(out, 200);
+});
+
+/**
+ * A reserve movement. Like payments and unlike everything else, the key is
+ * never derived from the claim: a reserve is revised many times over a claim's
+ * life and a claim-derived key would replay the first estimate forever.
+ */
+axisRoutes.post("/claims/:id/reserves", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:claims:reserve", { tenantId: ctx.tenantId, module: "axis" });
+  const claim = await must(ctx, schema.axisClaims, c.req.param("id"), "claims");
+  const input = await body(c, ClaimReserveBody);
+  const key = c.req.header("idempotency-key");
+  const run = () => appendReserve(ctx, claim, input);
+  const out = key ? await withIdempotency(ctx, key, `POST ${c.req.path}`, input, run) : await run();
+  return c.json(out, 201);
+});
+
+/** What we thought this was worth, and when — the history under the control. */
+axisRoutes.get("/claims/:id/reserves", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:claims:read", { tenantId: ctx.tenantId, module: "axis" });
+  const claim = await must(ctx, schema.axisClaims, c.req.param("id"), "claims");
+  const data = await listReserves(ctx, claim.id);
+  return c.json({ data, total: data.length });
 });
 
 /* ------------------------------------------------- claim money (§D.10) --- */
