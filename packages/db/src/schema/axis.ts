@@ -141,14 +141,82 @@ export const policies = sqliteTable(
     docsJson: text("docs_json"),
     escrowBatchId: text("escrow_batch_id"),
     paymentPlanJson: text("payment_plan_json"), // H9 reserved
-    status: text("status").notNull().default("active"), // active|lapsed|cancelled|renewed
+    // docs/27 F5. The head row is the contract; terms live in axis_policy_versions.
+    // premiumMinor/startAt/endAt above are denormalizations of the effective
+    // version and are written only by the lifecycle endpoints.
+    currentVersionId: text("current_version_id"), // -> axis_policy_versions.id
+    versionSeq: integer("version_seq").notNull().default(1),
+    taxMinor: integer("tax_minor").notNull().default(0),
+    feesMinor: integer("fees_minor").notNull().default(0),
+    grossMinor: integer("gross_minor").notNull().default(0), // premium + tax + fees
+    renewedFromPolicyId: text("renewed_from_policy_id"), // prior term, same risk
+    renewalSeq: integer("renewal_seq").notNull().default(0), // 0 = new business
+    inceptedAt: integer("incepted_at"),
+    lapsedAt: integer("lapsed_at"),
+    cancelledAt: integer("cancelled_at"),
+    cancelReasonCode: text("cancel_reason_code"),
+    cancelEffectiveAt: integer("cancel_effective_at"), // may differ from cancelledAt
+    statusReason: text("status_reason"),
+    lastTxnId: text("last_txn_id"), // -> ledger_txns.id
+    status: text("status").notNull().default("active"),
+    // draft|bound|active|lapsed|cancelled|expired|renewed|ntu — POLICY_STATES in
+    // packages/core/src/lifecycle.ts is the authority.
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull()
   },
   (t) => [
     index("axis_policies_tenant_idx").on(t.tenantId, t.endAt),
     index("axis_policies_customer_idx").on(t.tenantId, t.customerId),
+    index("axis_policies_renewal_idx").on(t.tenantId, t.renewedFromPolicyId),
     uniqueIndex("axis_policies_no_uq").on(t.tenantId, t.providerId, t.policyNo)
+  ]
+);
+
+/**
+ * docs/27 F5 / design §C.2. Endorsement history is a real child list, not
+ * "every policy sharing a customerId". One row per priced state of the
+ * contract; `[effectiveFrom, effectiveTo)` intervals of the non-voided rows are
+ * contiguous and non-overlapping, and exactly one is `effective` at a time.
+ */
+export const policyVersions = sqliteTable(
+  "axis_policy_versions",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    policyId: text("policy_id").notNull(), // -> axis_policies.id
+    versionSeq: integer("version_seq").notNull(), // 1 = as issued, dense
+    endorsementNo: text("endorsement_no"), // insurer's ref, null on seq 1
+    reason: text("reason").notNull(),
+    // issue|endorsement|cancellation|reinstatement|renewal_rollover|correction
+    reasonCode: text("reason_code"), // tenant taxonomy, e.g. mta.vehicle_change
+    effectiveFrom: integer("effective_from").notNull(),
+    effectiveTo: integer("effective_to").notNull(),
+    premiumMinor: integer("premium_minor").notNull(),
+    taxMinor: integer("tax_minor").notNull().default(0),
+    feesMinor: integer("fees_minor").notNull().default(0),
+    commissionMinor: integer("commission_minor").notNull().default(0),
+    currency: text("currency").notNull(),
+    premiumDeltaMinor: integer("premium_delta_minor").notNull().default(0), // signed vs prior
+    proRataDays: integer("pro_rata_days"),
+    termsJson: text("terms_json").notNull(), // cover, limits, excess, insured items
+    ratingJson: text("rating_json"), // apps/api/src/engines/rating.ts output
+    quoteResponseId: text("quote_response_id"), // -> dist_quote_responses.id (F13 seam)
+    txnId: text("txn_id"), // -> ledger_txns.id that authorized it
+    approvalId: text("approval_id"), // -> core_approvals.id
+    documentFileId: text("document_file_id"), // -> core_files.id, this version's schedule
+    deliveredAt: integer("delivered_at"),
+    deliveryRef: text("delivery_ref"), // orbit message id
+    state: text("state").notNull().default("pending"), // pending|effective|superseded|voided
+    issuedBy: text("issued_by").notNull(),
+    issuedAt: integer("issued_at").notNull(),
+    supersededAt: integer("superseded_at"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull()
+  },
+  (t) => [
+    uniqueIndex("axis_policy_versions_seq_uq").on(t.tenantId, t.policyId, t.versionSeq),
+    index("axis_policy_versions_policy_idx").on(t.tenantId, t.policyId, t.effectiveFrom),
+    index("axis_policy_versions_txn_idx").on(t.tenantId, t.txnId)
   ]
 );
 
