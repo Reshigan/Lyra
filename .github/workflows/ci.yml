@@ -47,6 +47,28 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm eval
 
+  # docs/27 F10 / docs/13 §3.6: the deterministic suite above cannot see a
+  # prompt or model regression, so this one calls the real model through the
+  # real Gateway. Not on the PR path — it costs money and needs network — but a
+  # model or tier change that skips it is a change nobody measured. `secrets` on
+  # a job is not inherited by fork PRs, and with LYRA_EVAL_LIVE=1 a missing key
+  # fails rather than skips, so this deliberately does not run on pull_request.
+  eval-live:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @lyra/model-gateway eval:live
+        env:
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_AI_TOKEN: ${{ secrets.CF_AI_TOKEN }}
+
   e2e:
     runs-on: ubuntu-latest
     steps:

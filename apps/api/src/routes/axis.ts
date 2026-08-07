@@ -22,6 +22,7 @@ import {
 import {
   EXTRACTION_FIELDS,
   SENSITIVE_EXTRACTION_FIELDS,
+  extractionMessages,
   extractionSchema,
   parseExtraction
 } from "@lyra/model-gateway";
@@ -107,15 +108,14 @@ axisRoutes.post("/documents/:id/extract", async (c) => {
       subjectRef: rowId,
       locale: input.locale,
       responseSchema: extractionSchema(fields),
-      messages: [
-        {
-          role: "system",
-          content:
-            `Extract these fields from the ${before.docType} document text below and reply with ` +
-            `JSON only, matching the schema: ${fields.join(", ")}. Locale: ${input.locale}.`
-        },
-        { role: "user", content: input.rawText }
-      ]
+      // Prompt lives in @lyra/model-gateway so evals/live-extraction scores the
+      // prompt this route actually sends (docs/27 F10).
+      messages: extractionMessages({
+        docType: before.docType,
+        fields,
+        locale: input.locale,
+        rawText: input.rawText
+      })
     });
   } catch (err) {
     // Nothing stays stuck "extracting" for a call that never landed — the
@@ -279,15 +279,14 @@ axisRoutes.post("/dev/extract-sample", async (c) => {
     tier: "standard",
     locale: input.locale,
     responseSchema: extractionSchema(fields),
-    messages: [
-      {
-        role: "system",
-        content:
-          `Extract these fields from the ${input.docType} document text below and reply with ` +
-          `JSON only, matching the schema: ${fields.join(", ")}. Locale: ${input.locale}.`
-      },
-      { role: "user", content: input.rawText }
-    ]
+    // Same builder as the real route, so "check the prompt before wiring an
+    // upload" checks the prompt that ships.
+    messages: extractionMessages({
+      docType: input.docType,
+      fields,
+      locale: input.locale,
+      rawText: input.rawText
+    })
   });
 
   const { values, confidence } = parseExtraction(result.text, fields);

@@ -1,10 +1,12 @@
-import { readdir, readFile } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { checkInput, checkOutput, blocked } from "../src/guardrails.js";
 import { EXTRACTION_FIELDS, normalizeField, parseExtraction } from "../src/extract.js";
 import { aggregateCxScore, localeGap } from "../src/cx-judge.js";
 import { verifyNumericClaims, verifyGroundedness, checkCompliance as checkSignalCompliance, type BriefingSnapshot } from "@lyra/core";
+import { loadCases, loadThresholds, metric, metricOk, type Metric } from "./harness.js";
+import { LIVE_SCORERS } from "./live.js";
 
 // docs/13 §3 (Eval-driven development): the golden set + threshold is the
 // failing test for model/guardrail behaviour. One task = one directory under
@@ -12,23 +14,6 @@ import { verifyNumericClaims, verifyGroundedness, checkCompliance as checkSignal
 // finds a scorer for and fails the gate on any missed threshold.
 
 const EVALS_DIR = dirname(fileURLToPath(import.meta.url));
-
-interface Metric {
-  name: string;
-  value: number;
-  /** -Infinity when the metric has no lower bound. */
-  min: number;
-  /** Infinity when the metric has no upper bound. */
-  max: number;
-}
-
-function metric(name: string, value: number, bound: { min?: number; max?: number }): Metric {
-  return { name, value, min: bound.min ?? -Infinity, max: bound.max ?? Infinity };
-}
-
-function metricOk(m: Metric): boolean {
-  return m.value >= m.min && m.value <= m.max;
-}
 
 interface InjectionCase {
   id: string;
@@ -310,34 +295,39 @@ const SCORERS: Record<string, (dir: string) => Promise<Metric[]>> = {
   signal: scoreSignal
 };
 
-async function loadCases<T>(dir: string): Promise<T[]> {
-  const raw = await readFile(join(dir, "cases.jsonl"), "utf8");
-  return raw
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => JSON.parse(line) as T);
-}
-
-async function loadThresholds<T>(dir: string): Promise<T> {
-  return JSON.parse(await readFile(join(dir, "thresholds.json"), "utf8")) as T;
-}
-
 async function main(): Promise<void> {
   const tasks = (await readdir(EVALS_DIR, { withFileTypes: true }))
     .filter((e) => e.isDirectory())
     .map((e) => e.name);
+  const live = process.env["LYRA_EVAL_LIVE"] === "1";
 
   let failed = false;
 
   for (const task of tasks) {
-    const scorer = SCORERS[task];
-    if (!scorer) {
-      console.log(`skip ${task}: no scorer registered in evals/run.ts`);
+    const isLive = Boolean(LIVE_SCORERS[task]);
+    if (isLive && !live) {
+      console.log(`\n${task}\n  skipped: live eval, run \`pnpm eval:live\` (LYRA_EVAL_LIVE=1)`);
       continue;
     }
-    const metrics = await scorer(join(EVALS_DIR, task));
+    const scorer = SCORERS[task] ?? LIVE_SCORERS[task];
+    if (!scorer) {
+      // docs/27 F10: a golden set nobody scores is worse than no golden set —
+      // it reads as coverage. An unregistered directory fails the gate.
+      console.error(`\n${task}\n  FAIL no scorer registered in evals/run.ts or evals/live.ts`);
+      failed = true;
+      continue;
+    }
     console.log(`\n${task}`);
+    let metrics: Metric[];
+    try {
+      metrics = await scorer(join(EVALS_DIR, task));
+    } catch (err) {
+      // Includes "live requested but no credentials": with the flag on, a run
+      // that cannot reach a model is a failure, never a silent pass.
+      console.error(`  FAIL ${(err as Error).message}`);
+      failed = true;
+      continue;
+    }
     for (const m of metrics) {
       const ok = metricOk(m);
       if (!ok) failed = true;

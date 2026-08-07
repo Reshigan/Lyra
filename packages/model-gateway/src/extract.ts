@@ -54,6 +54,28 @@ export function extractionSchema(fields: readonly string[]): Record<string, unkn
   };
 }
 
+/**
+ * The extraction prompt, in one place. docs/27 F10: the live eval must send the
+ * prompt production sends, or it measures a prompt nobody runs — so the route
+ * (apps/api/src/routes/axis.ts) and evals/live-extraction both call this.
+ */
+export function extractionMessages(input: {
+  docType: string;
+  fields: readonly string[];
+  locale: string;
+  rawText: string;
+}): { role: "system" | "user"; content: string }[] {
+  return [
+    {
+      role: "system",
+      content:
+        `Extract these fields from the ${input.docType} document text below and reply with ` +
+        `JSON only, matching the schema: ${input.fields.join(", ")}. Locale: ${input.locale}.`
+    },
+    { role: "user", content: input.rawText }
+  ];
+}
+
 /** Models sometimes wrap JSON in a code fence despite `responseSchema`; strip it before parsing. */
 export function stripFence(text: string): string {
   const m = text.match(/```(?:json)?\s*([\s\S]*?)```/i);

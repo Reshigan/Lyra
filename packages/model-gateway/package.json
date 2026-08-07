@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "eval": "tsx evals/run.ts",
+    "eval:live": "LYRA_EVAL_LIVE=1 tsx evals/run.ts",
     "mutation": "cd ../.. && stryker run packages/model-gateway/stryker.config.mjs"
   },
   "dependencies": {
