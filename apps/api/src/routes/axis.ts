@@ -1,9 +1,11 @@
 import { Hono } from "hono";
 import { and, eq, desc, not } from "drizzle-orm";
 import { z } from "zod";
-import { schema } from "@lyra/db";
+import { id as newId, schema } from "@lyra/db";
 import {
   actorRef,
+  assertPolicyTransition,
+  isPolicyState,
   audit,
   badRequest,
   canSeePii,
@@ -19,6 +21,7 @@ import {
   withIdempotency,
   type Ctx
 } from "@lyra/core";
+import { buildRecipe, runTxn } from "@lyra/ledger";
 import {
   EXTRACTION_FIELDS,
   SENSITIVE_EXTRACTION_FIELDS,
@@ -352,4 +355,227 @@ axisRoutes.post("/sops/:id/publish", async (c) => {
     return after;
   });
   return c.json(after);
+});
+
+// docs/27 F4 / docs/specs/gap-axis-design.md §D.10. Binding is not a row
+// insert. A contract comes into existence: one BIND transaction with its
+// commission accrual, version 1 of the schedule, an audited state hop, and an
+// event the rest of the platform can hang renewals and servicing off. Generic
+// CRUD (`axis:policies:create`) can still write a policy row for corrections;
+// it can do none of the above, which is why `axis:policies:bind` is a
+// separate permission.
+
+const BindBody = z.object({
+  policyNo: z.string().min(1).max(64),
+  startAt: z.number().int().positive(),
+  endAt: z.number().int().positive(),
+  caseId: z.string().min(1).optional(),
+  terms: z.record(z.string(), z.unknown()).optional()
+});
+
+type PolicyRow = typeof schema.axisPolicies.$inferSelect;
+
+/** The half both bind entrypoints share: transaction, version 1, head, audit, event. */
+async function bindPolicy(
+  ctx: Ctx,
+  policy: PolicyRow,
+  opts: { quoteResponseId?: string; channelMinor?: number; terms?: Record<string, unknown> }
+) {
+  if (!isPolicyState(policy.status)) throw conflict(`policy is in unknown state ${policy.status}`);
+  assertPolicyTransition(policy.status, "bound");
+  if (policy.currentVersionId) throw conflict("policy already has a version history");
+  // BIND is financial (docs/19 §4) and `buildRecipe` refuses a batch of fewer
+  // than two lines, so a zero-commission bind would strand the transaction in
+  // `failed`. A 400 naming the reason is more use than that.
+  if (policy.commissionMinor <= 0) {
+    throw badRequest("cannot bind with no commission: BIND posts a commission accrual");
+  }
+  const channelMinor = Math.min(Math.max(opts.channelMinor ?? 0, 0), policy.commissionMinor);
+
+  const txn = await runTxn(
+    ctx,
+    {
+      type: "BIND",
+      // Derived from the policy, not from the request: two calls that bind the
+      // same contract are the same money movement whatever headers they carry.
+      idempotencyKey: `axis.bind:${policy.id}`,
+      currency: policy.currency,
+      // The approval threshold measures the premium the customer pays, not the
+      // commission the recipe splits.
+      grossMinor: policy.grossMinor,
+      subjectRefs: {
+        policy: policy.id,
+        ...(opts.quoteResponseId ? { quoteResponse: opts.quoteResponseId } : {})
+      }
+    },
+    {
+      recipe: {
+        lines: buildRecipe("BIND", { grossMinor: policy.commissionMinor, channelMinor }),
+        currency: policy.currency
+      },
+      approvalSubjectRef: `axis_policy:${policy.id}`
+    }
+  );
+
+  const version = {
+    id: newId("pver", ctx.now),
+    tenantId: ctx.tenantId,
+    policyId: policy.id,
+    versionSeq: 1,
+    reason: "issue",
+    effectiveFrom: policy.startAt,
+    effectiveTo: policy.endAt,
+    premiumMinor: policy.premiumMinor,
+    taxMinor: policy.taxMinor,
+    feesMinor: policy.feesMinor,
+    commissionMinor: policy.commissionMinor,
+    currency: policy.currency,
+    premiumDeltaMinor: 0,
+    termsJson: JSON.stringify(opts.terms ?? {}),
+    quoteResponseId: opts.quoteResponseId ?? null,
+    txnId: txn.id,
+    state: "effective",
+    issuedBy: actorRef(ctx),
+    issuedAt: ctx.now,
+    createdAt: ctx.now,
+    updatedAt: ctx.now
+  };
+  await ctx.db.insert(schema.axisPolicyVersions).values(version);
+
+  // ponytail: bind stops at `bound`. `bound -> active` is inception, which is
+  // a clock event, not a request — the INCEPT scheduler owns that hop.
+  const stamp = {
+    status: "bound",
+    currentVersionId: version.id,
+    versionSeq: 1,
+    lastTxnId: txn.id,
+    updatedAt: ctx.now
+  };
+  await ctx.db
+    .update(schema.axisPolicies)
+    .set(stamp)
+    .where(scoped(ctx, schema.axisPolicies, eq(schema.axisPolicies.id, policy.id)));
+  const after = { ...policy, ...stamp };
+
+  await audit(ctx, { action: "axis.policy.bind", subjectRef: policy.id, before: policy, after });
+  // Emitted here rather than through runTxn's `event` option: that stamps
+  // `module: "ledger"`, and this is AXIS telling the platform a policy exists.
+  await emit(ctx, {
+    module: "axis",
+    type: "axis.policy.issued",
+    subject: policy.id,
+    data: {
+      policyId: policy.id,
+      customerId: policy.customerId,
+      providerId: policy.providerId,
+      channelId: policy.channelId,
+      productId: policy.productId,
+      premiumMinor: policy.premiumMinor,
+      grossMinor: policy.grossMinor,
+      currency: policy.currency,
+      txnId: txn.id,
+      ...(opts.quoteResponseId ? { quoteResponseId: opts.quoteResponseId } : {})
+    }
+  });
+  return { policy: after, version, txn };
+}
+
+/** The sale: the quote the customer accepted becomes the contract they hold. */
+axisRoutes.post("/quote-responses/:id/bind", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:policies:bind", { tenantId: ctx.tenantId, module: "axis" });
+  const input = await body(c, BindBody);
+  const response = await must(ctx, schema.distQuoteResponses, c.req.param("id"), "quote response");
+  const request = await must(ctx, schema.distQuoteRequests, response.requestId, "quote request");
+
+  const out = await withIdempotency(ctx, c.req.header("idempotency-key"), `POST ${c.req.path}`, input, async () => {
+    // Inside the wrap, not before it: a retry with the same idempotency key
+    // must replay the cached success, not trip over the state its own first
+    // attempt already produced.
+    if (response.state !== "quoted") throw conflict(`that response is ${response.state}, not a quote`);
+    if (response.selectedAt === null) throw conflict("that quote has not been selected");
+    if (response.premiumMinor === null) throw conflict("that quote carries no premium");
+    if (input.endAt <= input.startAt) throw badRequest("endAt must be after startAt");
+    // An anonymous shop can price a risk; it cannot sell one. A policy without
+    // a customer has nobody to service, renew or pay a claim to.
+    if (!request.customerId) throw conflict("quote request has no customer to bind");
+
+    const already = await ctx.db
+      .select({ id: schema.axisPolicyVersions.policyId })
+      .from(schema.axisPolicyVersions)
+      .where(scoped(ctx, schema.axisPolicyVersions, eq(schema.axisPolicyVersions.quoteResponseId, response.id)))
+      .limit(1);
+    if (already[0]) throw conflict(`that quote response is already bound to ${already[0].id}`);
+
+    // An approval gate throws after the draft head is written, so a caller who
+    // retries once the approval lands must land on the same draft rather than
+    // colliding with `axis_policies_no_uq`.
+    const prior = (
+      await ctx.db
+        .select()
+        .from(schema.axisPolicies)
+        .where(
+          scoped(
+            ctx,
+            schema.axisPolicies,
+            and(
+              eq(schema.axisPolicies.providerId, response.providerId),
+              eq(schema.axisPolicies.policyNo, input.policyNo)
+            )
+          )
+        )
+        .limit(1)
+    )[0];
+    if (prior && prior.status !== "draft") throw conflict(`policy number ${input.policyNo} is already in use`);
+
+    let policy = prior;
+    if (!policy) {
+      const premiumMinor = response.premiumMinor;
+      const row = {
+        id: newId("pol", ctx.now),
+        tenantId: ctx.tenantId,
+        caseId: input.caseId ?? request.caseId,
+        customerId: request.customerId,
+        providerId: response.providerId,
+        productId: request.productId,
+        offeringId: response.offeringId,
+        channelId: request.channelId,
+        policyNo: input.policyNo,
+        startAt: input.startAt,
+        endAt: input.endAt,
+        premiumMinor,
+        taxMinor: response.taxMinor,
+        feesMinor: response.feesMinor,
+        grossMinor: premiumMinor + response.taxMinor + response.feesMinor,
+        currency: response.currency ?? request.currency,
+        commissionMinor: response.commissionMinor ?? 0,
+        status: "draft",
+        createdAt: ctx.now,
+        updatedAt: ctx.now
+      };
+      await ctx.db.insert(schema.axisPolicies).values(row);
+      policy = row as PolicyRow;
+    }
+
+    return bindPolicy(ctx, policy, {
+      quoteResponseId: response.id,
+      channelMinor: response.channelCommissionMinor ?? 0,
+      ...(input.terms ? { terms: input.terms } : {})
+    });
+  });
+  return c.json(out, 201);
+});
+
+/** The same hop for a draft written some other way — a correction, or a retry
+ *  after the bind approval landed. */
+axisRoutes.post("/policies/:id/bind", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:policies:bind", { tenantId: ctx.tenantId, module: "axis" });
+  const rowId = c.req.param("id");
+  const before = await must(ctx, schema.axisPolicies, rowId, "policies");
+  const input = await body(c, z.object({ terms: z.record(z.string(), z.unknown()).optional() }));
+  const out = await withIdempotency(ctx, c.req.header("idempotency-key"), `POST ${c.req.path}`, input, () =>
+    bindPolicy(ctx, before, { ...(input.terms ? { terms: input.terms } : {}) })
+  );
+  return c.json(out, 201);
 });

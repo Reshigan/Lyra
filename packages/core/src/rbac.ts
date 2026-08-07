@@ -96,7 +96,11 @@ export const PERMISSIONS = [
   "axis:quotes:read", "axis:quotes:create", "axis:quotes:compare", "axis:quotes:approve",
   "axis:documents:read", "axis:documents:upload", "axis:documents:extract", "axis:documents:verify",
   "axis:tasks:read", "axis:tasks:write",
+  // `axis:policies:create` still means "insert a policy row" through generic
+  // CRUD; `axis:policies:bind` is the lifecycle verb that issues a contract
+  // (docs/specs/gap-axis-design.md §A.1). Authority over the two differs.
   "axis:policies:read", "axis:policies:create", "axis:policies:update", "axis:policies:cancel",
+  "axis:policies:bind",
   "axis:escrow:read", "axis:escrow:reconcile", "axis:escrow:approve",
   "axis:sops:read", "axis:sops:write",
   "axis:claims:read", "axis:claims:create", "axis:claims:update", "axis:claims:approve",
@@ -301,7 +305,8 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     "axis:cases:create", "axis:cases:update", "axis:cases:assign",
     "axis:cases:approve", "axis:quotes:create", "axis:quotes:compare", "axis:quotes:approve",
     "axis:documents:upload", "axis:documents:extract", "axis:documents:verify",
-    "axis:tasks:write", "axis:policies:create", "axis:policies:update", "axis:policies:cancel",
+    "axis:tasks:write", "axis:policies:create", "axis:policies:bind",
+    "axis:policies:update", "axis:policies:cancel",
     "axis:claims:create", "axis:claims:update", "axis:claims:approve", "axis:sops:write",
     "core:customers:read", "core:customers:create", "core:customers:update", "core:pii:view",
     "core:consents:read", "core:consents:create", "core:files:read", "core:files:create",

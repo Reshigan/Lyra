@@ -59,6 +59,7 @@ export {
   tasks as axisTasks,
   approvals as axisApprovals,
   policies as axisPolicies,
+  policyVersions as axisPolicyVersions,
   escrowBatches as axisEscrowBatches,
   sops as axisSops,
   processEvents as axisProcessEvents,
