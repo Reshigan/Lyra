@@ -29,6 +29,7 @@ const exec = { waitUntil() {}, passThroughOnException() {} };
 const RISK = { age: 34, sumInsuredMinor: 28_000_000, priorClaims: false, vehicleUse: "private", market: "AE" };
 
 let env: Env;
+let objects: Map<string, Uint8Array>;
 let database: Db;
 let seeded: SeedResult;
 let tokens: Record<string, string>;
@@ -76,22 +77,21 @@ beforeAll(async () => {
   database = drizzle(client) as unknown as Db;
   seeded = await seed(database as never, { mfaSecret: DEMO_TOTP_SECRET });
 
-  // ponytail: a Map is the whole of R2 that exports use — put then get. Without
-  // it every export lands in state "failed" and the PDF leg can never be walked.
+  // ponytail: a Map is the whole of R2 this test needs — put then get. It is
+  // held in a module-level binding so the assertions can read the bytes that
+  // were actually stored without a download route standing in for the check.
+  objects = new Map<string, Uint8Array>();
   env = {
     DB_CLIENT: database,
     ENVIRONMENT: "development",
     APP_ORIGIN: "http://localhost:5173",
-    FILES: (() => {
-      const objects = new Map<string, Uint8Array>();
-      return {
-        put: async (key: string, bytes: Uint8Array) => void objects.set(key, bytes),
-        get: async (key: string) => {
-          const bytes = objects.get(key);
-          return bytes ? { body: new Response(bytes).body } : null;
-        }
-      };
-    })()
+    FILES: {
+      put: async (key: string, bytes: Uint8Array) => void objects.set(key, bytes),
+      get: async (key: string) => {
+        const bytes = objects.get(key);
+        return bytes ? { body: new Response(bytes).body, size: bytes.byteLength } : null;
+      }
+    }
   } as unknown as Env;
 
   // The tenant/policy fixture: `axis.bind` explicitly on this tenant's own
@@ -180,22 +180,24 @@ describe("AXIS motor: fully automated happy path (docs/25, AXIS §8)", () => {
     // row, ever, for this request. This is the one call under test; the rest of
     // the sequence is here only to prove it sits inside a real pipeline.
     const start = t0;
-    const bindRes = await call("lead", "POST", "/v1/axis/policies", {
-      customerId,
-      providerId: best.providerId,
-      offeringId: best.offeringId,
-      channelId: seeded.channels.web,
+    // The customer accepts the quote, then the accepted quote becomes the
+    // contract. This is the real bind (§H task 3), not a hand-assembled row:
+    // it posts BIND, writes version 1 and stamps the head.
+    ok(await call("lead", "POST", `/v1/dist/quote-requests/${shopped.request.id}/select`, { responseId: best.id }));
+    const bindRes = await call("lead", "POST", `/v1/axis/quote-responses/${best.id}/bind`, {
       policyNo: "POL-ZT-1",
       startAt: start,
       endAt: start + 365 * 86_400_000,
-      premiumMinor: best.premiumMinor,
-      currency: "AED",
       caseId
     });
     expect(bindRes.status).not.toBe(403);
     const bound = ok(bindRes, 201);
-    const policyRow = (await database.select().from(schema.axisPolicies).where(eq(schema.axisPolicies.id, bound.id)))[0]!;
-    expect(policyRow.status).toBe("active");
+    const policyId = bound.policy.id as string;
+    const policyRow = (await database.select().from(schema.axisPolicies).where(eq(schema.axisPolicies.id, policyId)))[0]!;
+    // Bind stops at `bound`; `bound -> active` is inception, a clock event the
+    // INCEPT scheduler owns. Nothing here waits on a human either way.
+    expect(policyRow.status).toBe("bound");
+    expect(policyRow.currentVersionId).toBe(bound.version.id);
 
     // Zero human touches: this bind added no `axis.bind` approval row. An
     // approval row is only ever created on the *pending* path — the
@@ -214,28 +216,31 @@ describe("AXIS motor: fully automated happy path (docs/25, AXIS §8)", () => {
     const auditRows = await database.select().from(schema.auditLog).where(eq(schema.auditLog.tenantId, seeded.tenantId));
     expect(auditRows.some((r) => r.action === "core.approval.auto")).toBe(true);
 
-    // Policy PDF delivered: no axis-specific PDF route exists (confirmed by
-    // reading apps/api/src/routes/axis.ts in full) — the actual delivery
-    // mechanism for "a policy document" is the generic analytics export system
-    // (apps/api/src/routes/analytics.ts) over the registered `policies` dataset
-    // (apps/api/src/engines/report.ts), scoped to this one customer's policy.
-    const exported = ok(
-      await call("lead", "POST", "/v1/analytics/exports", {
-        format: "pdf",
-        definition: {
-          dataset: "policies",
-          metrics: ["policies", "gwp"],
-          dimensions: ["status", "providerId"],
-          filters: [{ field: "customerId", op: "eq", value: customerId }]
-        }
-      }),
-      201
-    );
-    expect(exported.state).toBe("ready");
+    // The policy document: a schedule for the contract just bound, attached to
+    // the version it describes (§D.11). Delivery is ORBIT's — AXIS issues.
+    const issued = ok(await call("lead", "POST", `/v1/axis/policies/${policyId}/documents`, { kind: "schedule" }), 201);
+    expect(issued.kind).toBe("schedule");
+    expect(issued.versionId).toBe(bound.version.id);
 
-    const downloaded = await call("lead", "GET", `/v1/analytics/exports/${exported.id}/download`);
-    expect(downloaded.status).toBe(200);
-    expect((downloaded.body as ArrayBuffer).byteLength).toBeGreaterThan(0);
+    const version = (
+      await database.select().from(schema.axisPolicyVersions).where(eq(schema.axisPolicyVersions.id, bound.version.id))
+    )[0]!;
+    expect(version.versionSeq).toBe(1);
+    expect(version.documentFileId, "the schedule is attached to version 1").toBe(issued.fileId);
+    // Nobody has sent it yet: delivery is a separate fact from issuance.
+    expect(version.deliveredAt).toBeNull();
+
+    const file = (await database.select().from(schema.files).where(eq(schema.files.id, issued.fileId)))[0]!;
+    expect(file.contentType).toBe("application/pdf");
+    expect(file.subjectRef).toBe(bound.version.id);
+
+    const bytes = objects.get(file.r2Key);
+    expect(bytes, "the schedule bytes are in the object store").toBeTruthy();
+    expect(file.sizeBytes).toBe(bytes!.byteLength);
+    expect(new TextDecoder().decode(bytes!.slice(0, 5))).toBe("%PDF-");
+
+    const outbox = await database.select().from(schema.eventOutbox).where(eq(schema.eventOutbox.tenantId, seeded.tenantId));
+    expect(outbox.some((e) => e.type === "axis.policy.document_issued" && e.envelopeJson.includes(issued.fileId))).toBe(true);
 
     const elapsedMs = Date.now() - t0;
     expect(elapsedMs).toBeLessThan(600_000);

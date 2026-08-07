@@ -112,6 +112,10 @@ export const PERMISSIONS = [
   // that may reinstate, and NTU unwinds a contract nobody was ever on risk for.
   "axis:policies:bind", "axis:policies:endorse", "axis:policies:ntu", "axis:policies:lapse",
   "axis:policies:reinstate", "axis:policies:renew",
+  // Issuing the document a customer holds is its own authority (design §D.11):
+  // a schedule or certificate is evidence of cover, so reissuing one is not
+  // covered by `:read` and is not a side effect of `:bind`.
+  "axis:policies:document",
   "axis:escrow:read", "axis:escrow:reconcile", "axis:escrow:approve",
   "axis:sops:read", "axis:sops:write",
   "axis:claims:read", "axis:claims:create", "axis:claims:update", "axis:claims:approve",
@@ -330,6 +334,7 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     "axis:tasks:write", "axis:policies:create", "axis:policies:bind",
     "axis:policies:endorse", "axis:policies:update", "axis:policies:cancel",
     "axis:policies:ntu", "axis:policies:lapse", "axis:policies:reinstate", "axis:policies:renew",
+    "axis:policies:document",
     "axis:claims:create", "axis:claims:update", "axis:claims:approve", "axis:sops:write",
     // The lead handles claims end to end but does not sign off their own
     // payments — `pay_approve` stays with axis.admin (design §A.2).

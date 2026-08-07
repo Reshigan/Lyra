@@ -114,6 +114,10 @@ const HAND_WRITTEN: Op[] = [
   { method: "post", path: "/v1/axis/policies/{id}/lapse", summary: "Lapse a policy for an unpaid instalment", permission: "axis:policies:lapse", tag: "axis", requestBody: true },
   { method: "post", path: "/v1/axis/policies/{id}/reinstate", summary: "Put cover back on risk after arrears are cleared", permission: "axis:policies:reinstate", tag: "axis", requestBody: true },
 
+  // docs/27 F27. The contract the customer can actually hold. AXIS issues and
+  // attaches it to the version it describes; ORBIT delivers it.
+  { method: "post", path: "/v1/axis/policies/{id}/documents", summary: "Issue a policy document for a version and attach it", permission: "axis:policies:document", tag: "axis", requestBody: true },
+
   // docs/27 F23. Claim money in both directions: paying out of the insurer's
   // float, and what a third party gives back afterwards.
   { method: "post", path: "/v1/axis/claims/coverage-check", summary: "Cover in force on the incident date, without writing anything", permission: "axis:claims:register", tag: "axis", requestBody: true },

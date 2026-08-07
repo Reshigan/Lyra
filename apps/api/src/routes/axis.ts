@@ -44,6 +44,7 @@ import {
   priceCancellation,
   reinstatePolicy
 } from "../engines/axis-lifecycle.js";
+import { PolicyDocumentBody, issuePolicyDocument } from "../engines/axis-policy-document.js";
 import {
   ClaimPaymentBody,
   RecoveryOpenBody,
@@ -765,6 +766,21 @@ axisRoutes.post("/policies/:id/endorse", async (c) => {
     `axis_endorse:${policy.id}:${await sha256Hex(JSON.stringify({ changes: input.changes, reason: input.reason ?? null }))}`;
   const out = await withIdempotency(ctx, key, `POST ${c.req.path}`, input, () => endorsePolicy(ctx, policy, input));
   return c.json(out, 200);
+});
+
+/** §D.11: the document the customer holds — rendered, stored, attached. */
+axisRoutes.post("/policies/:id/documents", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:policies:document", { tenantId: ctx.tenantId, module: "axis" });
+  const policy = await must(ctx, schema.axisPolicies, c.req.param("id"), "policies");
+  const input = await body(c, PolicyDocumentBody);
+  // One document per version per kind, whoever asks twice. Asking again after
+  // an endorsement is a different version, so it renders a new one.
+  const key = c.req.header("idempotency-key") ?? `axis_policy_doc:${policy.id}:${input.versionId ?? "current"}:${input.kind}`;
+  const out = await withIdempotency(ctx, key, `POST ${c.req.path}`, input, () =>
+    issuePolicyDocument(ctx, policy, input, c.env.FILES)
+  );
+  return c.json(out, 201);
 });
 
 /** §D.5 step 2: what comes back and what is clawed, before anything is written. */

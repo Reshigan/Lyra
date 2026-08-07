@@ -2213,6 +2213,7 @@ export interface Operations {
   "POST /v1/axis/policies/{id}/bind": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/axis/policies/{id}/cancel": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/axis/policies/{id}/cancel/preview": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
+  "POST /v1/axis/policies/{id}/documents": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/axis/policies/{id}/endorse": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/axis/policies/{id}/endorse/preview": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/axis/policies/{id}/lapse": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
@@ -2832,6 +2833,7 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "POST /v1/axis/policies/{id}/bind": { tag: "axis", summary: "Bind a draft policy, issuing version 1", permission: "axis:policies:bind", public: false },
   "POST /v1/axis/policies/{id}/cancel": { tag: "axis", summary: "Cancel a policy, refunding the unearned premium", permission: "axis:policies:cancel", public: false },
   "POST /v1/axis/policies/{id}/cancel/preview": { tag: "axis", summary: "Price a cancellation without writing anything", permission: "axis:policies:cancel", public: false },
+  "POST /v1/axis/policies/{id}/documents": { tag: "axis", summary: "Issue a policy document for a version and attach it", permission: "axis:policies:document", public: false },
   "POST /v1/axis/policies/{id}/endorse": { tag: "axis", summary: "Endorse a policy, appending a priced version", permission: "axis:policies:endorse", public: false },
   "POST /v1/axis/policies/{id}/endorse/preview": { tag: "axis", summary: "Price a mid-term change without writing anything", permission: "axis:policies:endorse", public: false },
   "POST /v1/axis/policies/{id}/lapse": { tag: "axis", summary: "Lapse a policy for an unpaid instalment", permission: "axis:policies:lapse", public: false },
