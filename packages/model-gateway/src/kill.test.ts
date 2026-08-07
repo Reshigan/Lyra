@@ -140,7 +140,7 @@ describe("gateway enforcement", () => {
     const ctx = makeCtx({ aiPaused: true });
 
     await expect(
-      gw.complete(ctx, { module: "axis", purpose: "test", tier: "fast", messages: [] })
+      gw.complete(ctx, { module: "axis", purpose: "axis.case.copilot", tier: "fast", messages: [] })
     ).rejects.toBeInstanceOf(AppError);
 
     const rows = await ctx.db.select().from(schema.aiAuditLog);

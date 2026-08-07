@@ -13,7 +13,7 @@ import {
   MODULES,
   type Ctx
 } from "@lyra/core";
-import { AI_KILL_SWITCH, checkBudget, setLimits, type Message } from "@lyra/model-gateway";
+import { AI_KILL_SWITCH, checkBudget, isKnownPurpose, setLimits, type Message } from "@lyra/model-gateway";
 import { body, intParam } from "../http.js";
 import { executeOrbitToolCalls, orbitToolsFor } from "../engines/orbit-tools.js";
 import { embedQuery } from "../engines/vectorize.js";
@@ -53,6 +53,12 @@ aiRoutes.post("/runs", async (c) => {
   const agent = await agentByKey(ctx, input.agentKey);
   require_(ctx.actor, `${agent.module}:ai:invoke`, { tenantId: ctx.tenantId, module: agent.module });
   if (agent.status !== "active") throw badRequest(`agent ${agent.key} is ${agent.status}`);
+  // docs/27 F40. `purpose` steers the output guardrail, so it is a safety input
+  // arriving from the request body. The gateway still fails closed on anything
+  // unknown; rejecting here means a typo is a 400 at the door rather than a
+  // silently over-strict run the caller cannot explain.
+  if (!isKnownPurpose(agent.module, input.purpose))
+    throw badRequest(`purpose ${input.purpose} is not registered for module ${agent.module}`);
 
   const prompt = await activePrompt(ctx, agent.promptRef);
   const runId = newId("air", ctx.now);
@@ -74,18 +80,21 @@ aiRoutes.post("/runs", async (c) => {
   });
 
   try {
-    // docs/21 ORBIT conversation memory (VEC_CONVO): no reliable conversationId
-    // correlates a `/runs` call back to a room (routes/orbit.ts posts turns
-    // straight to the AgentRoom DO, never through here) — so recall is scoped
-    // to the tenant's ORBIT history, not one conversation.
+    // docs/27 F9. VEC_CONVO metadata is written by the AgentRoom DO as
+    // { tenantId, conversationId, role, text } (apps/agents AgentRoom), and an
+    // ORBIT run's subjectRef IS the conversation id (apps/web conversation.tsx
+    // calls /v1/ai/runs?subjectRef=<id>). A tenant-only filter therefore pulls
+    // another customer's messages into a run about this one: not a tenancy
+    // breach, a confidentiality one. No subjectRef, no recall — a tenant-wide
+    // sweep is the thing we are removing, not the fallback.
     const recall =
-      agent.module === "orbit"
+      agent.module === "orbit" && input.subjectRef
         ? await embedQuery(ctx, c.get("gateway"), c.env.VEC_CONVO, {
             module: "orbit",
             purpose: "orbit.message.recall",
             text: input.input,
             topK: 5,
-            filter: { tenantId: ctx.tenantId }
+            filter: { tenantId: ctx.tenantId, conversationId: input.subjectRef }
           })
         : [];
 

@@ -4,6 +4,7 @@ import { assertBudget, charge } from "./budget.js";
 import { assertNotKilled } from "./kill.js";
 import { blocked, checkInput, checkOutput, recordGuardrails, type GuardrailHit } from "./guardrails.js";
 import { CATALOGUE, EMBED_MODEL, costMicro, resolveModel } from "./models.js";
+import { resolvePurpose } from "./purposes.js";
 import { rehydrate, scrubMessages } from "./scrub.js";
 import { anthropic } from "./providers/anthropic.js";
 import { openaiCompat } from "./providers/openai-compat.js";
@@ -32,10 +33,12 @@ export interface GatewayOptions {
   env: ProviderEnv;
   /** Tests and the seed pass a stub here; production never does. */
   providers?: Partial<Record<ProviderName, Provider>>;
-  /** Tenant tier -> catalogue key overrides, from tenant settings. */
+  /**
+   * Tier -> catalogue key. Tests only: production routing comes off
+   * `ctx.policy.modelOverrides`, because a constructor option is one nobody
+   * remembers to pass (docs/27 F8).
+   */
   overrides?: Record<string, string>;
-  /** Purposes whose output reaches a customer, so a regulated claim blocks. */
-  customerFacing?: ReadonlySet<string>;
 }
 
 /** Retryable transport failures; a 4xx from a provider is not one. */
@@ -56,7 +59,7 @@ export class Gateway {
     const onPrem = ctx.policy.dataResidency === "on-prem";
     const def = resolveModel(req.tier, {
       onPrem,
-      overrides: this.opts.overrides as never,
+      overrides: (this.opts.overrides ?? ctx.policy.modelOverrides) as never,
       needsTools: Boolean(req.tools?.length)
     });
 
@@ -66,10 +69,19 @@ export class Gateway {
       : scrubMessages(req.messages);
     const flags = new Set(scrubbed.flags);
 
+    // docs/27 F37. A tool result is third-party text — a fetched page, a
+    // retrieved document, a partner API response — and reaches the model with
+    // the same authority as the user turn, so it is screened with it. Assistant
+    // turns are our own prior output and are not re-screened.
     const preHits: GuardrailHit[] = scrubbed.messages.flatMap((m) =>
-      m.role === "user" ? checkInput(m.content) : []
+      m.role === "user" || m.role === "tool" ? checkInput(m.content) : []
     );
     for (const h of preHits) flags.add(h.rule);
+
+    // docs/27 F40. `purpose` arrives from the request body; `module` comes from
+    // the trusted agent row. An unknown pair is treated as the strictest case.
+    const purpose = resolvePurpose(req.module, req.purpose);
+    for (const f of purpose.flags) flags.add(f);
 
     const inputHash = await hashObject({ model: def.model, messages: scrubbed.messages, tools: req.tools ?? [] });
     const auditId = id("aia", ctx.now);
@@ -140,7 +152,7 @@ export class Gateway {
     const postHits = checkOutput({
       text: result.text,
       issued: new Set(scrubbed.map.keys()),
-      customerFacing: this.opts.customerFacing?.has(req.purpose) ?? false,
+      customerFacing: purpose.customerFacing,
       ...(req.intent !== undefined ? { intent: req.intent } : {})
     });
     for (const h of postHits) flags.add(h.rule);

@@ -57,7 +57,11 @@ export const PolicyJson = z.object({
   // are the tenant-wide and per-module tiers, read straight off the Ctx so the
   // check in front of every model call costs no query.
   aiPaused: z.boolean().default(false),
-  aiPausedModules: z.array(z.string()).default([])
+  aiPausedModules: z.array(z.string()).default([]),
+  // docs/27 F8. Tier -> model-gateway catalogue key. Values are validated by
+  // the gateway's own CATALOGUE (an unknown key is ignored, not obeyed), which
+  // is why this stays a loose record: @lyra/db must not depend on the gateway.
+  modelOverrides: z.record(z.string(), z.string()).default({})
 });
 export type PolicyJson = z.infer<typeof PolicyJson>;
 
