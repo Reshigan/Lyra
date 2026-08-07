@@ -57,6 +57,14 @@ export const APPROVAL_POLICIES: Record<string, ApprovalPolicy> = Object.fromEntr
     policy({ key: "axis.price_match", module: "axis", decide: "axis:quotes:approve", dualControl: "above_threshold", defaultThresholdMinor: 1_000_00 }),
     policy({ key: "axis.claim_settlement", module: "axis", decide: "axis:claims:approve", dualControl: "always", neverAutoApprove: true }),
     policy({ key: "axis.escrow_release", module: "axis", decide: "axis:escrow:approve", dualControl: "always", neverAutoApprove: true }),
+    // claims (design §A.3). Moving a reserve is a solvency figure, not cash, so a
+    // threshold is enough. Paying a claim moves client money out of the door: it
+    // is dual control always AND never auto-approved, so no tenant allowlist
+    // entry can turn a payout into a one-click action (docs/19 §7).
+    policy({ key: "axis.claim_reserve", module: "axis", decide: "axis:claims:reserve_approve", dualControl: "above_threshold", defaultThresholdMinor: 50_000_00 }),
+    policy({ key: "axis.claim_payment", module: "axis", decide: "axis:claims:pay_approve", dualControl: "always", neverAutoApprove: true }),
+    policy({ key: "axis.claim_exgratia", module: "axis", decide: "axis:claims:pay_approve", dualControl: "always", neverAutoApprove: true }),
+    policy({ key: "axis.recovery_writeoff", module: "axis", decide: "axis:claims:recover", dualControl: "above_threshold", defaultThresholdMinor: 10_000_00 }),
     // policy lifecycle — a bind is a contract with a customer, so it is gated even
     // when small; the threshold only decides whether a second pair of eyes is needed.
     policy({ key: "axis.bind", module: "axis", decide: "axis:policies:create", dualControl: "above_threshold", defaultThresholdMinor: 250_000_00 }),

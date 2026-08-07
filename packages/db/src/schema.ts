@@ -64,7 +64,10 @@ export {
   sops as axisSops,
   processEvents as axisProcessEvents,
   opsPolicies as axisOpsPolicies,
-  claims as axisClaims
+  claims as axisClaims,
+  claimReserves as axisClaimReserves,
+  claimPayments as axisClaimPayments,
+  claimRecoveries as axisClaimRecoveries
 } from "./schema/axis.js";
 
 export {

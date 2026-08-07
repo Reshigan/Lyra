@@ -115,6 +115,13 @@ export const PERMISSIONS = [
   "axis:escrow:read", "axis:escrow:reconcile", "axis:escrow:approve",
   "axis:sops:read", "axis:sops:write",
   "axis:claims:read", "axis:claims:create", "axis:claims:update", "axis:claims:approve",
+  // Claims split the handler from the approver (design §A.2): whoever sets a
+  // reserve or requests a payment must not be the one who signs it off, so
+  // `:reserve`/`:pay` and `:reserve_approve`/`:pay_approve` are separate verbs
+  // and never granted to the same role.
+  "axis:claims:register", "axis:claims:triage", "axis:claims:reserve",
+  "axis:claims:reserve_approve", "axis:claims:pay", "axis:claims:pay_approve",
+  "axis:claims:recover", "axis:claims:reopen", "axis:claims:close",
   "axis:metrics:read",
   "axis:ops_policies:read", "axis:ops_policies:write",
 
@@ -305,6 +312,7 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     "axis:quotes:create", "axis:quotes:compare",
     "axis:documents:upload", "axis:documents:extract",
     "axis:tasks:write", "axis:claims:create", "axis:claims:update",
+    "axis:claims:register", "axis:claims:triage", "axis:claims:reserve",
     "core:customers:read", "core:customers:create", "core:customers:update",
     "core:consents:read", "core:consents:create", "core:files:read", "core:files:create",
     "core:search:read", "core:notifications:read", "ledger:txns:read",
@@ -323,6 +331,10 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     "axis:policies:endorse", "axis:policies:update", "axis:policies:cancel",
     "axis:policies:ntu", "axis:policies:lapse", "axis:policies:reinstate", "axis:policies:renew",
     "axis:claims:create", "axis:claims:update", "axis:claims:approve", "axis:sops:write",
+    // The lead handles claims end to end but does not sign off their own
+    // payments — `pay_approve` stays with axis.admin (design §A.2).
+    "axis:claims:register", "axis:claims:triage", "axis:claims:reserve",
+    "axis:claims:pay", "axis:claims:recover", "axis:claims:reopen", "axis:claims:close",
     "core:customers:read", "core:customers:create", "core:customers:update", "core:pii:view",
     "core:consents:read", "core:consents:create", "core:files:read", "core:files:create",
     "core:search:read", "core:approvals:read", "core:approvals:decide",

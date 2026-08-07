@@ -1,0 +1,389 @@
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { createClient } from "@libsql/client";
+import { drizzle } from "drizzle-orm/libsql";
+import { and, eq } from "drizzle-orm";
+import { beforeAll, describe, expect, it } from "vitest";
+import { schema, type Db } from "@lyra/db";
+import { seed, totpAt, TOTP_STEP_SEC, type SeedResult } from "@lyra/core";
+import { app } from "./index.js";
+import type { Env } from "./env.js";
+
+// docs/27 F23 / docs/specs/gap-axis-design.md §H task 8. Paying a claim is the
+// one AXIS action that moves other people's money out of the door. Three things
+// hold it: the gate can never be automated away, one idempotency key buys one
+// payment, and the float we were funded is a hard ceiling on what we can pay.
+
+const MIGRATIONS = join(import.meta.dirname, "..", "..", "..", "packages", "db", "migrations");
+const PASSWORD = "Gonxt-Demo-2026!";
+const DEMO_TOTP_SECRET = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
+const DAY = 86_400_000;
+const exec = { waitUntil() {}, passThroughOnException() {} };
+const RISK = { age: 34, sumInsuredMinor: 28_000_000, priorClaims: false, vehicleUse: "private", market: "AE" };
+
+let env: Env;
+let database: Db;
+let seeded: SeedResult;
+let token: string;
+/** Funding the float is a ledger action; an AXIS lead holds no ledger permission. */
+let controllerToken: string;
+let productId: string;
+let customerId: string;
+let consentId: string;
+let approvalSeq = 0;
+
+interface Res<T = any> {
+  status: number;
+  body: T;
+}
+
+async function call<T = any>(
+  method: string,
+  path: string,
+  payload?: unknown,
+  headers: Record<string, string> = {},
+  as: () => string = () => token
+): Promise<Res<T>> {
+  const res = await app.fetch(
+    new Request(`http://api.test${path}`, {
+      method,
+      headers: { "content-type": "application/json", authorization: `Bearer ${as()}`, ...headers },
+      ...(payload !== undefined ? { body: JSON.stringify(payload) } : {})
+    }),
+    env as never,
+    exec as never
+  );
+  const isJson = (res.headers.get("content-type") ?? "").includes("json");
+  return { status: res.status, body: (isJson ? await res.json() : await res.arrayBuffer()) as T };
+}
+
+function ok<T>(res: Res<T>, ...accept: number[]): T {
+  const allowed = accept.length ? accept : [200, 201, 204];
+  if (!allowed.includes(res.status)) {
+    throw new Error(`expected ${allowed.join("|")}, got ${res.status}: ${JSON.stringify(res.body)}`);
+  }
+  return res.body;
+}
+
+async function login(local: string): Promise<string> {
+  const res = ok(await call("POST", "/v1/auth/login", { email: `${local}@gonxt.ae`, password: PASSWORD, tenantSlug: "gonxt" }));
+  const issued = res.token as string;
+  const verified = await call(
+    "POST",
+    "/v1/auth/mfa/verify",
+    { code: await totpAt(DEMO_TOTP_SECRET, Math.floor(Date.now() / 1000 / TOTP_STEP_SEC)) },
+    {},
+    () => issued
+  );
+  expect(verified.status).toBe(200);
+  return issued;
+}
+
+/** Each test automates every gate except the one it is about. */
+async function autoApprove(...keys: string[]): Promise<void> {
+  const tenantRow = (await database.select().from(schema.tenants).where(eq(schema.tenants.id, seeded.tenantId)))[0]!;
+  const policy = JSON.parse(tenantRow.policyJson as string) as { autoApprove: string[] };
+  await database
+    .update(schema.tenants)
+    .set({ policyJson: JSON.stringify({ ...policy, autoApprove: keys }) })
+    .where(eq(schema.tenants.id, seeded.tenantId));
+}
+
+/**
+ * A claim payment is a payout, so docs/19 §7 forbids the tenant automating it
+ * and the only way past the gate is a real decision. Tests that are about the
+ * posting rather than the gate grant one up front — a fresh one per payment,
+ * because the approval is single-use.
+ */
+async function grantPayment(claimId: string, amountMinor: number): Promise<void> {
+  await database.insert(schema.approvals).values({
+    id: `apr_clm_pay_${++approvalSeq}`,
+    tenantId: seeded.tenantId,
+    subjectRef: `axis_claim_payment:${claimId}`,
+    policyKey: "axis.claim_payment",
+    module: "axis",
+    requestedBy: "user:tester",
+    requestedAt: Date.now(),
+    decidedBy: "user:approver",
+    decision: "approved",
+    reason: "test fixture",
+    contextJson: JSON.stringify({ amountMinor }),
+    decidedAt: Date.now(),
+    delegationId: null
+  });
+}
+
+async function boundPolicy(policyNo: string, startAt: number) {
+  const shopped = ok(
+    await call("POST", "/v1/dist/quote-requests/shop", {
+      productId,
+      channelId: seeded.channels.web,
+      customerId,
+      consentId,
+      inputs: RISK,
+      currency: "AED"
+    }),
+    201
+  );
+  const quoted = (shopped.responses as any[]).filter((r) => r.state === "quoted");
+  const best = quoted.slice().sort((a, b) => a.premiumMinor - b.premiumMinor)[0];
+  expect(best, "the motor panel returned no quote to bind").toBeTruthy();
+  ok(await call("POST", `/v1/dist/quote-requests/${shopped.request.id}/select`, { responseId: best.id }));
+  const bound = ok(
+    await call("POST", `/v1/axis/quote-responses/${best.id}/bind`, { policyNo, startAt, endAt: startAt + 365 * DAY }),
+    201
+  );
+  return bound.policy.id as string;
+}
+
+async function openClaim(policyId: string, claimNo: string, amountMinor: number) {
+  const claim = ok(
+    await call("POST", "/v1/axis/claims", {
+      policyId,
+      customerId,
+      claimNo,
+      incidentAt: Date.now() - DAY,
+      reportedAt: Date.now(),
+      amountMinor,
+      currency: "AED"
+    }),
+    201
+  );
+  return (claim.claim ?? claim).id as string;
+}
+
+/** Insurer funds the claim float before we pay anyone out of it. */
+async function fundFloat(policyId: string, claimId: string, amountMinor: number) {
+  return ok(
+    await call(
+      "POST",
+      "/v1/ledger/txn/CLAIM-FUND",
+      {
+        idempotencyKey: `fund:${claimId}:${amountMinor}`,
+        grossMinor: amountMinor,
+        subjectRefs: { policy: policyId, claim: claimId },
+        args: { amountMinor }
+      },
+      {},
+      () => controllerToken
+    ),
+    201
+  );
+}
+
+async function claimRow(claimId: string) {
+  return (await database.select().from(schema.axisClaims).where(eq(schema.axisClaims.id, claimId)))[0]!;
+}
+
+async function paymentsOf(claimId: string) {
+  return database.select().from(schema.axisClaimPayments).where(eq(schema.axisClaimPayments.claimId, claimId));
+}
+
+async function txnsFor(claimId: string, type: string) {
+  const rows = await database
+    .select()
+    .from(schema.ledgerTxns)
+    .where(and(eq(schema.ledgerTxns.tenantId, seeded.tenantId), eq(schema.ledgerTxns.type, type)));
+  return rows.filter((t) => (t.subjectRefsJson ?? "").includes(claimId));
+}
+
+async function legsOf(batchId: string) {
+  const legs = await database
+    .select()
+    .from(schema.ledgerJournalLines)
+    .where(eq(schema.ledgerJournalLines.batchId, batchId));
+  const debit = legs.filter((l) => l.side === "debit").reduce((n, l) => n + l.amountMinor, 0);
+  const credit = legs.filter((l) => l.side === "credit").reduce((n, l) => n + l.amountMinor, 0);
+  return { legs, debit, credit };
+}
+
+beforeAll(async () => {
+  const client = createClient({ url: ":memory:" });
+  const statements = readdirSync(MIGRATIONS)
+    .filter((f) => f.endsWith(".sql"))
+    .sort()
+    .flatMap((f) => readFileSync(join(MIGRATIONS, f), "utf8").split("--> statement-breakpoint"))
+    .map((s) => s.trim())
+    .filter(Boolean);
+  for (const stmt of statements) await client.execute(stmt);
+  database = drizzle(client) as unknown as Db;
+  seeded = await seed(database as never, { mfaSecret: DEMO_TOTP_SECRET });
+  env = { DB_CLIENT: database, ENVIRONMENT: "development", APP_ORIGIN: "http://localhost:5173" } as unknown as Env;
+
+  token = await login("omar.farouk");
+  controllerToken = await login("faisal.omar");
+
+  productId = (await database.select().from(schema.products).where(eq(schema.products.line, "motor")))[0]!.id;
+  const customer = (await database.select().from(schema.customers).limit(1))[0]!;
+  customerId = customer.id;
+  consentId = customer.consentId!;
+}, 120_000);
+
+describe("AXIS claim payment (docs/27 F23)", () => {
+  it("a claim payment cannot be auto-approved even on the tenant allowlist", async () => {
+    // The tenant asks for it explicitly. docs/19 §7 says no: a payout of client
+    // money is dual-control always, and `neverAutoApprove` means the allowlist
+    // is not even consulted.
+    await autoApprove("axis.bind", "axis.claim_payment", "ledger.claim_payment");
+    const policyId = await boundPolicy("POL-CLMPAY-1", Date.now() - 10 * DAY);
+    const claimId = await openClaim(policyId, "CLM-PAY-1", 400_00);
+    await fundFloat(policyId, claimId, 400_00);
+
+    const refused = await call("POST", `/v1/axis/claims/${claimId}/payments`, {
+      kind: "indemnity",
+      payeeKind: "claimant",
+      payeeRef: `customer:${customerId}`,
+      amountMinor: 250_00,
+      method: "eft"
+    });
+
+    expect(refused.status).toBe(403);
+    expect(refused.body.code).toBe("approval_required");
+
+    // Refused means nothing happened: no payment record, no transaction, and
+    // the claim's paid total untouched. An allowlist entry must not leave a
+    // half-made payout behind for someone to find and finish.
+    expect(await paymentsOf(claimId)).toHaveLength(0);
+    expect(await txnsFor(claimId, "CLAIM-PAY")).toHaveLength(0);
+    expect((await claimRow(claimId)).paidMinor).toBe(0);
+
+    // It did raise the approval the handler now has to get decided.
+    const pending = await database
+      .select()
+      .from(schema.approvals)
+      .where(
+        and(
+          eq(schema.approvals.tenantId, seeded.tenantId),
+          eq(schema.approvals.subjectRef, `axis_claim_payment:${claimId}`)
+        )
+      );
+    expect(pending.map((a) => a.decision)).toEqual(["pending"]);
+  });
+
+  it("two payment requests with one idempotency key produce one ledger transaction", async () => {
+    await autoApprove("axis.bind");
+    const policyId = await boundPolicy("POL-CLMPAY-2", Date.now() - 10 * DAY);
+    const claimId = await openClaim(policyId, "CLM-PAY-2", 900_00);
+    await fundFloat(policyId, claimId, 900_00);
+    await grantPayment(claimId, 900_00);
+
+    const payload = {
+      kind: "indemnity",
+      payeeKind: "repairer",
+      payeeRef: "vendor:garage-1",
+      amountMinor: 600_00,
+      method: "eft"
+    };
+    const key = { "idempotency-key": "clm-pay-2-once" };
+
+    const first = ok(await call("POST", `/v1/axis/claims/${claimId}/payments`, payload, key), 201);
+    const second = ok(await call("POST", `/v1/axis/claims/${claimId}/payments`, payload, key), 200, 201);
+
+    // Same record, same money. A retried request is the same payment, not a
+    // second one — the payee is not paid twice because a phone lost signal.
+    expect(second.payment.id).toBe(first.payment.id);
+    expect(second.txn.id).toBe(first.txn.id);
+    expect(await paymentsOf(claimId)).toHaveLength(1);
+    expect(await txnsFor(claimId, "CLAIM-PAY")).toHaveLength(1);
+    expect((await claimRow(claimId)).paidMinor).toBe(600_00);
+
+    // The posting drains client money rather than our own cash.
+    const { legs, debit, credit } = await legsOf(first.txn.ledgerBatchId as string);
+    expect(debit).toBe(credit);
+    expect(legs.find((l) => l.accountCode === "2010" && l.side === "debit")?.amountMinor).toBe(600_00);
+    expect(legs.find((l) => l.accountCode === "1010" && l.side === "credit")?.amountMinor).toBe(600_00);
+  });
+
+  it("paid total never exceeds funded float", async () => {
+    // docs/19 §11 obligation eleven. Property, run over a spread of amounts:
+    // whatever sequence of payments is attempted, the paid total for a claim
+    // never rises above what the insurer funded. Paying out client money we do
+    // not hold is the failure that closes a broker.
+    await autoApprove("axis.bind");
+    const policyId = await boundPolicy("POL-CLMPAY-3", Date.now() - 10 * DAY);
+    const floatMinor = 1_000_00;
+
+    // Deterministic pseudo-random amounts — a fixed seed keeps a failure
+    // reproducible while still walking cases a hand-picked list would miss.
+    let s = 0x2f6e2b1;
+    const next = () => ((s = (s * 1103515245 + 12345) & 0x7fffffff) % 40 + 1) * 10_00;
+
+    for (let round = 0; round < 6; round++) {
+      const claimId = await openClaim(policyId, `CLM-PAY-3-${round}`, floatMinor);
+      await fundFloat(policyId, claimId, floatMinor);
+
+      let expected = 0;
+      for (let attempt = 0; attempt < 4; attempt++) {
+        const amountMinor = next();
+        await grantPayment(claimId, amountMinor);
+        const res = await call("POST", `/v1/axis/claims/${claimId}/payments`, {
+          kind: "interim",
+          payeeKind: "claimant",
+          payeeRef: `customer:${customerId}`,
+          amountMinor,
+          method: "eft"
+        });
+
+        if (expected + amountMinor <= floatMinor) {
+          expect(res.status, `funded payment of ${amountMinor} refused`).toBe(201);
+          expected += amountMinor;
+        } else {
+          expect(res.status, `unfunded payment of ${amountMinor} allowed`).toBe(409);
+          expect(String(res.body.detail ?? res.body.title)).toMatch(/float/i);
+        }
+        expect((await claimRow(claimId)).paidMinor).toBe(expected);
+      }
+      expect(expected).toBeLessThanOrEqual(floatMinor);
+    }
+  });
+});
+
+describe("AXIS claim recovery (docs/27 F23)", () => {
+  it("recovery receipt splits the fee to 4090", async () => {
+    await autoApprove("axis.bind");
+    const policyId = await boundPolicy("POL-CLMREC-1", Date.now() - 10 * DAY);
+    const claimId = await openClaim(policyId, "CLM-REC-1", 500_00);
+
+    const opened = ok(
+      await call("POST", `/v1/axis/claims/${claimId}/recoveries`, {
+        kind: "subrogation",
+        counterpartyRef: "insurer:third-party",
+        expectedMinor: 300_00
+      }),
+      201
+    );
+    expect(opened.recovery.state).toBe("identified");
+
+    const received = ok(
+      await call("POST", `/v1/axis/recoveries/${opened.recovery.id}/receipt`, {
+        amountMinor: 300_00,
+        feeMinor: 30_00
+      }),
+      201
+    );
+
+    // Money in is not ours. The gross lands in client money whole; the handling
+    // fee is recognised only in the transfer that takes it out of the client
+    // account, because docs/19 §5.2 B refuses income in any batch that debits
+    // client money. Design §B.4 wanted one batch — docs/19 wins.
+    const receipt = await legsOf(received.txn.ledgerBatchId as string);
+    expect(receipt.debit).toBe(receipt.credit);
+    expect(receipt.legs.find((l) => l.accountCode === "1010" && l.side === "debit")?.amountMinor).toBe(300_00);
+    expect(receipt.legs.find((l) => l.accountCode === "2010" && l.side === "credit")?.amountMinor).toBe(300_00);
+    expect(receipt.legs.some((l) => l.accountCode === "4090")).toBe(false);
+
+    const fee = await legsOf(received.feeTxn.ledgerBatchId as string);
+    expect(fee.debit).toBe(fee.credit);
+    expect(fee.legs.find((l) => l.accountCode === "2010" && l.side === "debit")?.amountMinor).toBe(30_00);
+    expect(fee.legs.find((l) => l.accountCode === "1010" && l.side === "credit")?.amountMinor).toBe(30_00);
+    expect(fee.legs.find((l) => l.accountCode === "1000" && l.side === "debit")?.amountMinor).toBe(30_00);
+    expect(fee.legs.find((l) => l.accountCode === "4090" && l.side === "credit")?.amountMinor).toBe(30_00);
+
+    expect(received.recovery.state).toBe("recovered");
+    expect(received.recovery.recoveredMinor).toBe(300_00);
+    expect(received.recovery.feeMinor).toBe(30_00);
+
+    // The claim's net cost falls by the recovery — `incurred()` reads this.
+    expect((await claimRow(claimId)).recoveredMinor).toBe(300_00);
+  });
+});

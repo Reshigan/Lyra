@@ -2186,6 +2186,8 @@ export interface Operations {
   "POST /v1/axis/claims": Op<never, never, AxisClaims, AxisClaims>;
   "GET /v1/axis/claims/{id}": Op<{ id: string }, never, never, AxisClaims>;
   "PATCH /v1/axis/claims/{id}": Op<{ id: string }, never, AxisClaims, AxisClaims>;
+  "POST /v1/axis/claims/{id}/payments": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
+  "POST /v1/axis/claims/{id}/recoveries": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/axis/dev/extract-sample": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/axis/documents": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<AxisDocuments>>;
   "POST /v1/axis/documents": Op<never, never, AxisDocuments, AxisDocuments>;
@@ -2221,6 +2223,8 @@ export interface Operations {
   "POST /v1/axis/quote-responses/{id}/decline": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/axis/quotes": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<AxisQuotes>>;
   "GET /v1/axis/quotes/{id}": Op<{ id: string }, never, never, AxisQuotes>;
+  "POST /v1/axis/recoveries/{id}/receipt": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
+  "POST /v1/axis/recoveries/{id}/writeoff": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/axis/sops": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<AxisSops>>;
   "POST /v1/axis/sops": Op<never, never, AxisSops, AxisSops>;
   "GET /v1/axis/sops/{id}": Op<{ id: string }, never, never, AxisSops>;
@@ -2800,6 +2804,8 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "POST /v1/axis/claims": { tag: "axis", summary: "Create a claim", permission: "axis:claims:create", public: false },
   "GET /v1/axis/claims/{id}": { tag: "axis", summary: "Fetch one claim", permission: "axis:claims:read", public: false },
   "PATCH /v1/axis/claims/{id}": { tag: "axis", summary: "Update a claim", permission: "axis:claims:update", public: false },
+  "POST /v1/axis/claims/{id}/payments": { tag: "axis", summary: "Pay a claim out of the funded float", permission: "axis:claims:pay", public: false },
+  "POST /v1/axis/claims/{id}/recoveries": { tag: "axis", summary: "Open a recovery against a settled claim", permission: "axis:claims:recover", public: false },
   "POST /v1/axis/dev/extract-sample": { tag: "axis", summary: "Developer console: run field extraction against pasted text, no document row created", permission: "dev:sandbox:use", public: false },
   "GET /v1/axis/documents": { tag: "axis", summary: "List documents", permission: "axis:documents:read", public: false },
   "POST /v1/axis/documents": { tag: "axis", summary: "Create a document", permission: "axis:documents:upload", public: false },
@@ -2835,6 +2841,8 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "POST /v1/axis/quote-responses/{id}/decline": { tag: "axis", summary: "Rule a quote out, recording why", permission: "axis:quotes:create", public: false },
   "GET /v1/axis/quotes": { tag: "axis", summary: "List quotes", permission: "axis:quotes:read", public: false },
   "GET /v1/axis/quotes/{id}": { tag: "axis", summary: "Fetch one quote", permission: "axis:quotes:read", public: false },
+  "POST /v1/axis/recoveries/{id}/receipt": { tag: "axis", summary: "Record money recovered, net of the handling fee", permission: "axis:claims:recover", public: false },
+  "POST /v1/axis/recoveries/{id}/writeoff": { tag: "axis", summary: "Abandon pursuit and write the outstanding recovery off", permission: "axis:claims:recover", public: false },
   "GET /v1/axis/sops": { tag: "axis", summary: "List sops", permission: "axis:sops:read", public: false },
   "POST /v1/axis/sops": { tag: "axis", summary: "Create a sop", permission: "axis:sops:write", public: false },
   "GET /v1/axis/sops/{id}": { tag: "axis", summary: "Fetch one sop", permission: "axis:sops:read", public: false },

@@ -114,6 +114,13 @@ const HAND_WRITTEN: Op[] = [
   { method: "post", path: "/v1/axis/policies/{id}/lapse", summary: "Lapse a policy for an unpaid instalment", permission: "axis:policies:lapse", tag: "axis", requestBody: true },
   { method: "post", path: "/v1/axis/policies/{id}/reinstate", summary: "Put cover back on risk after arrears are cleared", permission: "axis:policies:reinstate", tag: "axis", requestBody: true },
 
+  // docs/27 F23. Claim money in both directions: paying out of the insurer's
+  // float, and what a third party gives back afterwards.
+  { method: "post", path: "/v1/axis/claims/{id}/payments", summary: "Pay a claim out of the funded float", permission: "axis:claims:pay", tag: "axis", requestBody: true },
+  { method: "post", path: "/v1/axis/claims/{id}/recoveries", summary: "Open a recovery against a settled claim", permission: "axis:claims:recover", tag: "axis", requestBody: true },
+  { method: "post", path: "/v1/axis/recoveries/{id}/receipt", summary: "Record money recovered, net of the handling fee", permission: "axis:claims:recover", tag: "axis", requestBody: true },
+  { method: "post", path: "/v1/axis/recoveries/{id}/writeoff", summary: "Abandon pursuit and write the outstanding recovery off", permission: "axis:claims:recover", tag: "axis", requestBody: true },
+
   // docs/27 F13. The manual capture path onto the one quote table, and the
   // desk's ruling-out of an answer it will not take forward.
   { method: "post", path: "/v1/axis/cases/{id}/quotes", summary: "Key a quote received off-panel onto the case, as a quote response", permission: "axis:quotes:create", tag: "axis", requestBody: true },

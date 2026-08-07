@@ -44,6 +44,16 @@ import {
   priceCancellation,
   reinstatePolicy
 } from "../engines/axis-lifecycle.js";
+import {
+  ClaimPaymentBody,
+  RecoveryOpenBody,
+  RecoveryReceiptBody,
+  RecoveryWriteOffBody,
+  openRecovery,
+  receiveRecovery,
+  requestClaimPayment,
+  writeOffRecovery
+} from "../engines/axis-claims.js";
 import { embedUpsert } from "../engines/vectorize.js";
 import { meterEgress } from "../engines/egress.js";
 import { fieldKey, type App } from "../env.js";
@@ -805,5 +815,58 @@ axisRoutes.post("/policies/:id/reinstate", async (c) => {
   // Keyed on the lapse being cured, so a later lapse can be cured again.
   const key = c.req.header("idempotency-key") ?? `axis_reinstate:${policy.id}:${policy.lapsedAt ?? 0}`;
   const out = await withIdempotency(ctx, key, `POST ${c.req.path}`, input, () => reinstatePolicy(ctx, policy, input));
+  return c.json(out, 200);
+});
+
+/* ------------------------------------------------- claim money (§D.10) --- */
+
+/**
+ * Paying a claim. Unlike every other endpoint here the key is never derived
+ * from the subject: a claim takes many payments, and a claim-derived key would
+ * make the second interim payment replay the first.
+ */
+axisRoutes.post("/claims/:id/payments", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:claims:pay", { tenantId: ctx.tenantId, module: "axis" });
+  const claim = await must(ctx, schema.axisClaims, c.req.param("id"), "claims");
+  const input = await body(c, ClaimPaymentBody);
+  const key = c.req.header("idempotency-key");
+  const run = () => requestClaimPayment(ctx, claim, input);
+  const out = key ? await withIdempotency(ctx, key, `POST ${c.req.path}`, input, run) : await run();
+  return c.json(out, 201);
+});
+
+axisRoutes.post("/claims/:id/recoveries", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:claims:recover", { tenantId: ctx.tenantId, module: "axis" });
+  const claim = await must(ctx, schema.axisClaims, c.req.param("id"), "claims");
+  const input = await body(c, RecoveryOpenBody);
+  const key = c.req.header("idempotency-key");
+  const run = () => openRecovery(ctx, claim, input);
+  const out = key ? await withIdempotency(ctx, key, `POST ${c.req.path}`, input, run) : await run();
+  return c.json(out, 201);
+});
+
+axisRoutes.post("/recoveries/:id/receipt", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:claims:recover", { tenantId: ctx.tenantId, module: "axis" });
+  const recovery = await must(ctx, schema.axisClaimRecoveries, c.req.param("id"), "recoveries");
+  const input = await body(c, RecoveryReceiptBody);
+  const key = c.req.header("idempotency-key");
+  const run = () => receiveRecovery(ctx, recovery, input);
+  const out = key ? await withIdempotency(ctx, key, `POST ${c.req.path}`, input, run) : await run();
+  return c.json(out, 201);
+});
+
+axisRoutes.post("/recoveries/:id/writeoff", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:claims:recover", { tenantId: ctx.tenantId, module: "axis" });
+  const recovery = await must(ctx, schema.axisClaimRecoveries, c.req.param("id"), "recoveries");
+  const input = await body(c, RecoveryWriteOffBody);
+  // One write-off per recovery, whoever asks twice.
+  const key = c.req.header("idempotency-key") ?? `axis_recovery_writeoff:${recovery.id}`;
+  const out = await withIdempotency(ctx, key, `POST ${c.req.path}`, input, () =>
+    writeOffRecovery(ctx, recovery, input)
+  );
   return c.json(out, 200);
 });

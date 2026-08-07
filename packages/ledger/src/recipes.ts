@@ -167,6 +167,36 @@ export function clientMoneyTransfer(a: z.infer<typeof TransferArgs>): PostingLin
   ];
 }
 
+/* ------------------------------------------------------------ B2. claims */
+
+// Funding a claim float and paying out of it are client-money moves in both
+// directions, so they reuse the premium shapes rather than clone two identical
+// lines: CLAIM-FUND is `clientMoneyReceipt`, CLAIM-PAY is `premiumRemittance`.
+// Only the memo differs, and the memo is the caller's to pass.
+
+// Recovered money arrives into client money gross and is owed onward to the
+// insurer; our handling fee is drawn out afterwards by RECOVERY-FEE, which is
+// `clientMoneyTransfer` pointed at 4090. Design §B.4 wanted the fee split
+// inside the receipt itself, but docs/19 §5.2 B forbids recognising income in
+// any batch that debits the client-money asset — the money is not ours until
+// it has left the client account, and the transfer is what makes it leave.
+// RECOVERY-RECEIPT is therefore plain `clientMoneyReceipt`.
+
+const RecoveryArgs = z.object({
+  amountMinor: Pos,
+  receivableAccount: z.string().default("1155"),
+  memo: Memo,
+  dims: Dims
+});
+
+/** Pursuit abandoned: the receivable we raised comes off as a cost. */
+export function recoveryWriteOff(a: z.infer<typeof RecoveryArgs>): PostingLine[] {
+  return lines(
+    line("5450", "debit", a.amountMinor, a.memo ?? "recovery written off", a.dims),
+    line(a.receivableAccount, "credit", a.amountMinor, "recovery receivable cleared", a.dims)
+  );
+}
+
 /* ------------------------------------------ C. partner & channel settlement */
 
 const AccrualArgs = z.object({
@@ -350,6 +380,14 @@ export const RECIPES: Record<string, RecipeSpec> = {
   CANCEL: spec(ClawbackArgs, commissionClawback),
   "PARTNER-BIND": spec(CommissionArgs, commissionAccrual, { incomeAccount: "4075" }),
   "AGENT-BIND": spec(CommissionArgs, commissionAccrual, { incomeAccount: "4000" }),
+
+  // claims (design §B.4)
+  "CLAIM-FUND": spec(ClientMoneyArgs, clientMoneyReceipt),
+  "CLAIM-PAY": spec(ClientMoneyArgs, premiumRemittance),
+  "RECOVERY-RECEIPT": spec(ClientMoneyArgs, clientMoneyReceipt),
+  "RECOVERY-REMIT": spec(ClientMoneyArgs, premiumRemittance),
+  "RECOVERY-WRITEOFF": spec(RecoveryArgs, recoveryWriteOff),
+  "RECOVERY-FEE": spec(TransferArgs, clientMoneyTransfer, { incomeAccount: "4090" }),
 
   // money in
   "PREM-COLLECT": spec(ClientMoneyArgs, clientMoneyReceipt),

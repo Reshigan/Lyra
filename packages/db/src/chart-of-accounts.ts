@@ -22,6 +22,7 @@ export const CHART_OF_ACCOUNTS: readonly AccountDef[] = [
   { code: "1010", en: "Cash – Client Money", ar: "النقد – أموال العملاء", type: "asset", normalSide: "debit", clientMoney: true },
   { code: "1100", en: "Commission Receivable", ar: "عمولات مستحقة القبض", type: "asset", normalSide: "debit" },
   { code: "1150", en: "Financier Receivable", ar: "مستحقات من جهة التمويل", type: "asset", normalSide: "debit" },
+  { code: "1155", en: "Recovery Receivable", ar: "مستحقات الاسترداد", type: "asset", normalSide: "debit" },
   { code: "1160", en: "Trade Receivable", ar: "ذمم مدينة تجارية", type: "asset", normalSide: "debit" },
   { code: "1200", en: "Premium Receivable", ar: "أقساط مستحقة القبض", type: "asset", normalSide: "debit" },
   { code: "1300", en: "PSP Clearing", ar: "تسوية مزود خدمة الدفع", type: "asset", normalSide: "debit" },
@@ -57,7 +58,8 @@ export const CHART_OF_ACCOUNTS: readonly AccountDef[] = [
   { code: "5150", en: "Creator Spend", ar: "إنفاق صنّاع المحتوى", type: "expense", normalSide: "debit" },
   { code: "5200", en: "AI & Inference COGS", ar: "تكلفة الذكاء الاصطناعي والاستدلال", type: "expense", normalSide: "debit" },
   { code: "5300", en: "Payment Processing Fees", ar: "رسوم معالجة المدفوعات", type: "expense", normalSide: "debit" },
-  { code: "5400", en: "Partner Revenue Share", ar: "حصة الشركاء من الإيرادات", type: "expense", normalSide: "debit" }
+  { code: "5400", en: "Partner Revenue Share", ar: "حصة الشركاء من الإيرادات", type: "expense", normalSide: "debit" },
+  { code: "5450", en: "Recovery Written Off", ar: "استرداد مشطوب", type: "expense", normalSide: "debit" }
 ];
 
 const BY_CODE = new Map(CHART_OF_ACCOUNTS.map((a) => [a.code, a]));

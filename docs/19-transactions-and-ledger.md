@@ -100,6 +100,33 @@ Non-financial transactions are marked ⊘ (no journal); all others post.
 | `CLAIM-SYNC` | Claim status mirrored from insurer | provider webhook/poll | ⊘ | none | `claim.status.updated` |
 | `PARAM-TRIGGER` | Parametric index condition met (dual-source confirmed) | oracle connectors | ⊘ | none | `product.param.triggered` |
 
+### 4.1b Claims
+The claim's own state hops post no journal — a reserve is a memorandum figure,
+not a ledger balance. The money legs do: the insurer funds a float, we pay out
+of it, and recoveries come back the other way. `CLAIM-PAY` is the one AXIS type
+that is both a payout and client money, so no tenant allowlist can make it
+auto-approvable (§7).
+
+| Code | Transaction | Trigger | Journal | Approval | Event |
+|---|---|---|---|---|---|
+| `CLAIM-RESERVE` | Reserve set or moved | handler estimate | ⊘ | above threshold | `axis.claim.reserved` |
+| `CLAIM-APPROVE` | Settlement approved | adjuster decision | ⊘ | dual control | `axis.claim.approved` |
+| `CLAIM-DECLINE` | Claim declined | adjuster decision | ⊘ | dual control | `axis.claim.declined` |
+| `CLAIM-CLOSE` | File closed | no further activity | ⊘ | none | `axis.claim.closed` |
+| `CLAIM-REOPEN` | File reopened | new evidence | ⊘ | dual control | `axis.claim.reopened` |
+| `CLAIM-FUND` | Insurer funds the claim float | insurer transfer | ✓ | none (client money) | `axis.claim.funded` |
+| `CLAIM-PAY` | Payment out of the float | approved settlement | ✓ | dual control, never auto | `axis.claim.paid` |
+| `RECOVERY-OPEN` | Recovery pursued | subrogation/salvage identified | ⊘ | none | `axis.claim.recovery_opened` |
+| `RECOVERY-RECEIPT` | Third-party money received, gross | counterparty pays | ✓ | none (client money) | `axis.claim.recovery_received` |
+| `RECOVERY-FEE` | Handling fee drawn out of client money | follows the receipt | ✓ | none (client money) | — |
+| `RECOVERY-REMIT` | Net recovery paid on to the insurer | remittance run | ✓ | none (client money) | — |
+| `RECOVERY-WRITEOFF` | Pursuit abandoned | handler decision | ✓ | above threshold | `axis.claim.recovery_written_off` |
+
+A recovery is two transactions, never one. The gross lands in client money
+(`1010` Dr / `2010` Cr) and only the transfer out recognises our fee
+(`2010` Dr / `1010` Cr / `1000` Dr / `4090` Cr) — §5.2 B and obligation 3 forbid
+crediting income in any batch that debits the client-money asset.
+
 ### 4.2 Money in
 | Code | Transaction | Notes |
 |---|---|---|
@@ -209,8 +236,9 @@ Non-financial transactions are marked ⊘ (no journal); all others post.
 
 ### 5.1 Chart of accounts (tenant-scoped, extensible)
 **Assets** `1000` Cash–Operating · `1010` Cash–Client Money (segregated) ·
-`1100` Commission Receivable · `1150` Financier Receivable · `1160` Trade
-Receivable · `1200` Premium Receivable · `1300` PSP Clearing.
+`1100` Commission Receivable · `1150` Financier Receivable · `1155` Recovery
+Receivable · `1160` Trade Receivable · `1200` Premium Receivable · `1300` PSP
+Clearing.
 **Liabilities** `2000` Insurer Payable · `2010` Client Money Liability ·
 `2100` Partner/Publisher Payable · `2150` Creator Payable · `2200` Tax Payable ·
 `2250` Accrued Expenses · `2300` Deferred Revenue · `2350` Customer Deposits ·
@@ -221,7 +249,7 @@ Fees · `4030` Referral · `4040` Subscription · `4045` Membership · `4050` Us
 Financing Commission · `4090` Service Fees.
 **Expense / contra** `5000` Commission Clawback (contra-income) · `5100` Media
 Spend · `5150` Creator Spend · `5200` AI & Inference COGS · `5300` Payment
-Processing Fees · `5400` Partner Revenue Share.
+Processing Fees · `5400` Partner Revenue Share · `5450` Recovery Written Off.
 
 ### 5.2 Worked entries (the flows that must be exactly right)
 
@@ -386,3 +414,5 @@ treatment so immutability is visible, not merely enforced.
 8. Trial balance equals sum of all journal lines at any point in time.
 9. Recognition schedules never recognise more than invoiced.
 10. `SUCCESS-FEE` cannot post without a verified metric snapshot reference.
+11. A claim float never goes negative — for any claim, Σ `CLAIM-PAY` ≤ Σ
+    `CLAIM-FUND` plus opening float, under any random ordering of payments.

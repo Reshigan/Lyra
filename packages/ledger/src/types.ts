@@ -80,6 +80,24 @@ export const TXN_TYPES: Record<string, TxnTypeDef> = def([
   ["CLAIM-SYNC", false, null],
   ["PARAM-TRIGGER", false, null],
 
+  // 4.1b claims (design §B.3). The claim's own state hops post no journal — the
+  // reserve is a memorandum figure, not a ledger balance — but the money legs
+  // do: the insurer funds a float, we pay out of it, and recoveries come back
+  // the other way. CLAIM-PAY is the one AXIS type that is both a payout and
+  // client money, so it can never be auto-approved however a tenant is set up.
+  ["CLAIM-RESERVE", false, "axis.claim_reserve"],
+  ["CLAIM-APPROVE", false, "axis.claim_settlement"],
+  ["CLAIM-DECLINE", false, "axis.claim_settlement"],
+  ["CLAIM-CLOSE", false, null],
+  ["CLAIM-REOPEN", false, "axis.claim_settlement"],
+  ["CLAIM-FUND", true, null, { clientMoney: true }],
+  ["CLAIM-PAY", true, "axis.claim_payment", { payout: true, clientMoney: true }],
+  ["RECOVERY-OPEN", false, null],
+  ["RECOVERY-RECEIPT", true, null, { clientMoney: true }],
+  ["RECOVERY-REMIT", true, null, { clientMoney: true }],
+  ["RECOVERY-WRITEOFF", true, "axis.recovery_writeoff"],
+  ["RECOVERY-FEE", true, null, { clientMoney: true }],
+
   // 4.2 money in
   ["PREM-COLLECT", true, null],
   ["PREM-INSTALMENT", true, null],
