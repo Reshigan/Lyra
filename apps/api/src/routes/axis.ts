@@ -60,6 +60,8 @@ import {
   RecoveryOpenBody,
   RecoveryReceiptBody,
   RecoveryWriteOffBody,
+  listClaimPayments,
+  listClaimRecoveries,
   openRecovery,
   receiveRecovery,
   requestClaimPayment,
@@ -975,6 +977,15 @@ axisRoutes.post("/claims/:id/payments", async (c) => {
   return c.json(out, 201);
 });
 
+/** What has left the door on this claim, newest first. */
+axisRoutes.get("/claims/:id/payments", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:claims:read", { tenantId: ctx.tenantId, module: "axis" });
+  const claim = await must(ctx, schema.axisClaims, c.req.param("id"), "claims");
+  const data = await listClaimPayments(ctx, claim.id);
+  return c.json({ data, total: data.length });
+});
+
 axisRoutes.post("/claims/:id/recoveries", async (c) => {
   const ctx = ctxOf(c);
   require_(ctx.actor, "axis:claims:recover", { tenantId: ctx.tenantId, module: "axis" });
@@ -984,6 +995,15 @@ axisRoutes.post("/claims/:id/recoveries", async (c) => {
   const run = () => openRecovery(ctx, claim, input);
   const out = key ? await withIdempotency(ctx, key, `POST ${c.req.path}`, input, run) : await run();
   return c.json(out, 201);
+});
+
+/** What is being chased back on this claim, newest first. */
+axisRoutes.get("/claims/:id/recoveries", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:claims:read", { tenantId: ctx.tenantId, module: "axis" });
+  const claim = await must(ctx, schema.axisClaims, c.req.param("id"), "claims");
+  const data = await listClaimRecoveries(ctx, claim.id);
+  return c.json({ data, total: data.length });
 });
 
 axisRoutes.post("/recoveries/:id/receipt", async (c) => {

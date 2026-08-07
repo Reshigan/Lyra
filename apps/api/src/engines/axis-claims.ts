@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { id as newId, schema } from "@lyra/db";
 import { actorRef, audit, conflict, emit, gate, scoped, type Ctx } from "@lyra/core";
@@ -368,6 +368,26 @@ export async function writeOffRecovery(ctx: Ctx, recovery: RecoveryRow, input: R
     data: { claimId: claim.id, recoveryId: recovery.id, amountMinor: outstanding, reasonCode: input.reasonCode }
   });
   return { recovery: after, txn };
+}
+
+/* --------------------------------------------------------------- read side */
+
+/** What has left, newest first — the panel §D.3 draws under the claim. */
+export async function listClaimPayments(ctx: Ctx, claimId: string) {
+  return ctx.db
+    .select()
+    .from(schema.axisClaimPayments)
+    .where(scoped(ctx, schema.axisClaimPayments, eq(schema.axisClaimPayments.claimId, claimId)))
+    .orderBy(desc(schema.axisClaimPayments.requestedAt));
+}
+
+/** What is being chased back, newest first. */
+export async function listClaimRecoveries(ctx: Ctx, claimId: string) {
+  return ctx.db
+    .select()
+    .from(schema.axisClaimRecoveries)
+    .where(scoped(ctx, schema.axisClaimRecoveries, eq(schema.axisClaimRecoveries.claimId, claimId)))
+    .orderBy(desc(schema.axisClaimRecoveries.openedAt));
 }
 
 async function claimOf(ctx: Ctx, recovery: RecoveryRow): Promise<ClaimRow> {

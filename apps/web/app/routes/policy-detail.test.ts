@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ActionFunctionArgs } from "react-router";
+import type { LoaderFunctionArgs } from "react-router";
 import type { Env } from "../env";
-import { LABELS, action, labelsIn } from "./policy-detail";
+import { LABELS, PERM, labelsIn, loader } from "./policy-detail";
 
-// An endorsement is a new priced version of an agreement, so it is a create
-// under `axis.bind`: the reference must be new, the premium must be a positive
-// integer of minor units, and a sign-off refusal must reach the screen intact.
+// This screen reads. Its one historic bug (F5) was reading the wrong thing:
+// "endorsement history" asked for every other contract the same holder owns,
+// which is a different question and leaked one customer's book into another
+// contract's page. The versions of an agreement have their own resource.
 
 const env = { ENVIRONMENT: "test", API_ORIGIN: "https://api.test", SESSION_COOKIE: "s" } as Env;
 
@@ -13,41 +14,62 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function stubFetch(reply: Response) {
-  const calls: Array<{ url: string; method: string; body: string | null }> = [];
-  vi.stubGlobal("fetch", (input: URL | string, init: RequestInit = {}) => {
-    calls.push({
-      url: String(input),
-      method: init.method ?? "GET",
-      body: typeof init.body === "string" ? init.body : null
-    });
-    return Promise.resolve(reply.clone());
+const json = (body: unknown) =>
+  new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+
+const POLICY = {
+  id: "pol_1",
+  customerId: "cus_1",
+  providerId: "prv_1",
+  policyNo: "POL-1",
+  startAt: 1_750_000_000_000,
+  endAt: 1_780_000_000_000,
+  premiumMinor: 120_000,
+  currency: "AED",
+  commissionMinor: 12_000,
+  status: "active",
+  createdAt: 1_750_000_000_000,
+  updatedAt: 1_750_000_000_000
+};
+
+const VERSION = {
+  id: "pvr_2",
+  versionSeq: 2,
+  endorsementNo: "POL-1/E1",
+  reason: "vehicle swapped",
+  reasonCode: "endorsement",
+  effectiveFrom: 1_760_000_000_000,
+  effectiveTo: 1_780_000_000_000,
+  premiumMinor: 132_000,
+  premiumDeltaMinor: 12_000,
+  currency: "AED",
+  state: "effective",
+  issuedAt: 1_760_000_000_000,
+  createdAt: 1_760_000_000_000
+};
+
+/** Every request the loader makes, in order, answered by path. */
+function stubApi(permissions: string[]) {
+  const calls: string[] = [];
+  vi.stubGlobal("fetch", (input: URL | string) => {
+    const url = String(input);
+    calls.push(url);
+    if (url.endsWith("/v1/me")) return Promise.resolve(json({ permissions }));
+    if (url.endsWith("/v1/axis/policies/pol_1")) return Promise.resolve(json(POLICY));
+    if (url.endsWith("/v1/axis/policies/pol_1/versions")) {
+      return Promise.resolve(json({ data: [VERSION], total: 1 }));
+    }
+    return Promise.resolve(json({ data: [] }));
   });
   return calls;
 }
 
-function args(form: FormData): ActionFunctionArgs {
+function args(): LoaderFunctionArgs {
   return {
-    request: new Request("https://web.test/axis/policies/pol_1/detail", { method: "POST", body: form }),
+    request: new Request("https://web.test/axis/policies/pol_1/detail"),
     context: { get: () => ({ env, ctx: null }) },
     params: { id: "pol_1" }
-  } as unknown as ActionFunctionArgs;
-}
-
-function endorsement(over: Record<string, string> = {}) {
-  const form = new FormData();
-  form.set("intent", "endorse");
-  form.set("basePolicyNo", "POL-1");
-  form.set("policyNo", "POL-1-E");
-  form.set("premiumMinor", "125000");
-  form.set("endAt", "2027-01-31");
-  form.set("customerId", "cus_1");
-  form.set("providerId", "prv_1");
-  form.set("currency", "AED");
-  form.set("startAt", "1750000000000");
-  form.set("idempotencyKey", "key-1");
-  for (const [name, value] of Object.entries(over)) form.set(name, value);
-  return form;
+  } as unknown as LoaderFunctionArgs;
 }
 
 describe("labelsIn", () => {
@@ -71,76 +93,52 @@ describe("labelsIn", () => {
   it("renames the agreement noun for a non-insurance pack", () => {
     expect(labelsIn("en", "retail-ecom")("policies")).not.toBe(labelsIn("en")("policies"));
   });
+
+  it("does not describe the history as the holder's, which is the bug it had", () => {
+    for (const locale of ["en", "ar"]) expect(labelsIn(locale)("historyCaption")).not.toContain("holder");
+    expect(labelsIn("en")("historyCaption")).toContain("this agreement");
+  });
 });
 
-describe("action", () => {
-  it("posts a new version, not an edit of the current one", async () => {
-    const calls = stubFetch(new Response(JSON.stringify({ id: "pol_2" }), { status: 201, headers: { "content-type": "application/json" } }));
+describe("loader", () => {
+  it("endorsement history shows only versions of this policy", async () => {
+    const calls = stubApi(Object.values(PERM));
 
-    const result = await action(args(endorsement()));
+    const loaded = await loader(args());
 
-    expect(calls[0]?.url).toBe("https://api.test/v1/axis/policies");
-    expect(calls[0]?.method).toBe("POST");
-    expect(JSON.parse(calls[0]!.body!)).toMatchObject({ policyNo: "POL-1-E", premiumMinor: 125000, currency: "AED" });
-    expect(result.done).toBe("endorsed");
+    expect(calls).toContain("https://api.test/v1/axis/policies/pol_1/versions");
+    // The F5 regression: no request may ask for a holder's other contracts.
+    for (const url of calls) expect(url, url).not.toContain("customerId=");
+    expect(loaded.versions).toEqual([VERSION]);
   });
 
-  it("drops optional links it was not given", async () => {
-    const calls = stubFetch(new Response(JSON.stringify({ id: "pol_2" }), { status: 201, headers: { "content-type": "application/json" } }));
+  it("degrades the version panel rather than the page when it is refused", async () => {
+    vi.stubGlobal("fetch", (input: URL | string) => {
+      const url = String(input);
+      if (url.endsWith("/v1/me")) return Promise.resolve(json({ permissions: Object.values(PERM) }));
+      if (url.endsWith("/v1/axis/policies/pol_1")) return Promise.resolve(json(POLICY));
+      if (url.endsWith("/versions")) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ title: "forbidden", status: 403 }), {
+            status: 403,
+            headers: { "content-type": "application/json" }
+          })
+        );
+      }
+      return Promise.resolve(json({ data: [] }));
+    });
 
-    await action(args(endorsement({ productId: "prd_1" })));
+    const loaded = await loader(args());
 
-    const body = JSON.parse(calls[0]!.body!) as Record<string, unknown>;
-    expect(body.productId).toBe("prd_1");
-    expect("caseId" in body).toBe(false);
+    expect(loaded.policy?.id).toBe("pol_1");
+    expect(loaded.versions).toEqual([]);
   });
 
-  it("refuses a missing reference", async () => {
-    const calls = stubFetch(new Response(null, { status: 201 }));
-    const result = await action(args(endorsement({ policyNo: "  " })));
-    expect(result.error).toBe("refRequired");
-    expect(calls).toHaveLength(0);
-  });
+  it("offers a change only to an actor who may make it", async () => {
+    stubApi(["axis:policies:read", "axis:policies:cancel"]);
 
-  it("refuses reusing the current reference, which the unique index would reject anyway", async () => {
-    const result = await action(args(endorsement({ policyNo: "POL-1" })));
-    expect(result.error).toBe("refSame");
-  });
+    const loaded = await loader(args());
 
-  it("refuses a premium that is not a positive whole number of minor units", async () => {
-    for (const premiumMinor of ["0", "-1", "12.5", "abc", ""]) {
-      const result = await action(args(endorsement({ premiumMinor })));
-      expect(result.error, premiumMinor).toBe("premiumRequired");
-    }
-  });
-
-  it("refuses an unparseable end date", async () => {
-    const result = await action(args(endorsement({ endAt: "whenever" })));
-    expect(result.error).toBe("endRequired");
-  });
-
-  it("returns the sign-off refusal for the screen to render", async () => {
-    stubFetch(
-      new Response(
-        JSON.stringify({ title: "approval required", status: 403, code: "approval_required", policy_key: "axis.bind" }),
-        { status: 403, headers: { "content-type": "application/json" } }
-      )
-    );
-
-    const result = await action(args(endorsement()));
-
-    expect(result.problem?.status).toBe(403);
-    expect(result.done).toBeNull();
-  });
-
-  it("rejects an intent it does not implement", async () => {
-    const calls = stubFetch(new Response(null, { status: 201 }));
-    const form = endorsement();
-    form.set("intent", "cancel");
-
-    const result = await action(args(form));
-
-    expect(result.problem?.status).toBe(400);
-    expect(calls).toHaveLength(0);
+    expect(loaded.may).toMatchObject({ read: true, cancel: true, endorse: false, renew: false });
   });
 });

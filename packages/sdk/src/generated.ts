@@ -2187,7 +2187,9 @@ export interface Operations {
   "POST /v1/axis/claims/coverage-check": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/axis/claims/{id}": Op<{ id: string }, never, never, AxisClaims>;
   "PATCH /v1/axis/claims/{id}": Op<{ id: string }, never, AxisClaims, AxisClaims>;
+  "GET /v1/axis/claims/{id}/payments": Op<{ id: string }, never, never, Record<string, unknown>>;
   "POST /v1/axis/claims/{id}/payments": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
+  "GET /v1/axis/claims/{id}/recoveries": Op<{ id: string }, never, never, Record<string, unknown>>;
   "POST /v1/axis/claims/{id}/recoveries": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/axis/claims/{id}/reserves": Op<{ id: string }, never, never, Record<string, unknown>>;
   "POST /v1/axis/claims/{id}/reserves": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
@@ -2812,7 +2814,9 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "POST /v1/axis/claims/coverage-check": { tag: "axis", summary: "Cover in force on the incident date, without writing anything", permission: "axis:claims:register", public: false },
   "GET /v1/axis/claims/{id}": { tag: "axis", summary: "Fetch one claim", permission: "axis:claims:read", public: false },
   "PATCH /v1/axis/claims/{id}": { tag: "axis", summary: "Update a claim", permission: "axis:claims:update", public: false },
+  "GET /v1/axis/claims/{id}/payments": { tag: "axis", summary: "The payments made on this claim, newest first", permission: "axis:claims:read", public: false },
   "POST /v1/axis/claims/{id}/payments": { tag: "axis", summary: "Pay a claim out of the funded float", permission: "axis:claims:pay", public: false },
+  "GET /v1/axis/claims/{id}/recoveries": { tag: "axis", summary: "The recoveries being pursued on this claim, newest first", permission: "axis:claims:read", public: false },
   "POST /v1/axis/claims/{id}/recoveries": { tag: "axis", summary: "Open a recovery against a settled claim", permission: "axis:claims:recover", public: false },
   "GET /v1/axis/claims/{id}/reserves": { tag: "axis", summary: "The reserve history of this claim, newest first", permission: "axis:claims:read", public: false },
   "POST /v1/axis/claims/{id}/reserves": { tag: "axis", summary: "Append a reserve movement on one head", permission: "axis:claims:reserve", public: false },

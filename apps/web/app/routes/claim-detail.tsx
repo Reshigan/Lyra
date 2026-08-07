@@ -29,10 +29,18 @@ import { Entry, Facts, Header, Payload, labelsFrom, rowsOf, safe, tag, type Page
 import { Gate } from "./staff";
 import { useShellData } from "./workspace";
 
-// One claim: what was reported, what it is reserved at, the paper behind it, and
-// the two writes that move it — an assessment and a settlement. Both go through
-// the `axis.claim_settlement` gate (apps/api/src/resources.ts), so both surface
-// the approval path instead of pretending the write landed (CLAUDE.md §4, §12).
+// One claim: what was reported, what cover answered for it, what it is reserved
+// at, what has left through the ledger, and what is being chased back.
+//
+// Three writes, kept apart on purpose (docs/specs/gap-axis-design.md §D.3):
+//   reserve         — appends a movement with a basis, never overwrites the
+//                     estimate, so the desk keeps its own history
+//   transition      — a declared hop from `CLAIM_TRANSITIONS`, so the screen
+//                     cannot offer a move the state machine refuses
+//   request-payment — money leaves through the ledger, never through a PATCH
+// The last two go through the `axis.claim_settlement` gate
+// (apps/api/src/resources.ts), so both surface the approval path instead of
+// pretending the write landed (CLAUDE.md §4, §12).
 
 /* --------------------------------------------------------------- contract */
 
@@ -50,8 +58,56 @@ export interface Claim {
   status: string;
   fnolJson?: unknown;
   assessorRef?: string | null;
+  /** The cover snapshot taken at notification — §D.3's coverage panel. */
+  policyVersionId?: string | null;
+  coverageState?: string | null;
+  coverageCheckedAt?: number | null;
+  excessMinor?: number | null;
+  reserveMinor?: number | null;
+  paidMinor?: number | null;
+  recoveredMinor?: number | null;
+  fraudScore?: number | null;
+  siuState?: string | null;
   createdAt: number;
   updatedAt: number;
+}
+
+export interface ReserveRow {
+  id: string;
+  seq: number;
+  head: string;
+  amountMinor: number;
+  previousMinor: number;
+  basis: string;
+  rationale?: string | null;
+  approvalId?: string | null;
+  setBy: string;
+  setAt: number;
+}
+
+export interface PaymentRow {
+  id: string;
+  kind: string;
+  payeeKind: string;
+  payeeRef: string;
+  amountMinor: number;
+  currency: string;
+  method: string;
+  state: string;
+  requestedAt: number;
+  paidAt?: number | null;
+}
+
+export interface RecoveryRow {
+  id: string;
+  kind: string;
+  counterpartyRef?: string | null;
+  expectedMinor: number;
+  recoveredMinor: number;
+  currency: string;
+  state: string;
+  nextActionAt?: number | null;
+  openedAt: number;
 }
 
 export interface PolicyRef {
@@ -93,14 +149,56 @@ export interface AuditRow {
 export const PERM = {
   read: "axis:claims:read",
   update: "axis:claims:update",
+  reserve: "axis:claims:reserve",
+  pay: "axis:claims:pay",
   policy: "axis:policies:read",
   documents: "axis:documents:read",
   approvals: "core:approvals:read",
   audit: "core:audit:read"
 } as const;
 
-/** The transitions an assessor owns. Settlement is its own, gated, intent. */
-export const ASSESSMENTS = ["assessing", "approved", "rejected"] as const;
+/**
+ * Mirrors packages/core/src/lifecycle.ts. The web app cannot import @lyra/core
+ * (same reason approvals.tsx restates the approval states). Drift is caught by
+ * the API, which refuses a hop this map would wrongly allow.
+ */
+export const CLAIM_TRANSITIONS: Record<string, readonly string[]> = {
+  reported: ["triage", "withdrawn"],
+  triage: ["assessing", "rejected", "withdrawn"],
+  assessing: ["awaiting_docs", "approved", "rejected", "withdrawn"],
+  awaiting_docs: ["assessing", "withdrawn"],
+  approved: ["settling"],
+  settling: ["settled", "approved"],
+  settled: ["recovering", "closed", "reopened"],
+  recovering: ["closed", "reopened"],
+  rejected: ["reopened", "closed"],
+  closed: ["reopened"],
+  reopened: ["assessing"],
+  withdrawn: []
+};
+
+/**
+ * The hops this screen may offer. `settling` and `settled` are reached by
+ * requesting a payment — the API refuses them as transitions, so offering them
+ * would be a dead end the desk discovers only after submitting.
+ */
+export function hopsFor(status: string): readonly string[] {
+  return (CLAIM_TRANSITIONS[status] ?? []).filter((to) => to !== "settling" && to !== "settled");
+}
+
+/** Where a reserve sits. Mirrors RESERVE_HEADS in the claims engine. */
+export const RESERVE_HEADS = ["indemnity", "expense", "recovery"] as const;
+
+/**
+ * Why the reserve moved. `ai_recommended` is deliberately absent: a person
+ * typing into this form is not the model, and the basis is what the audit
+ * reads back (docs/15 — an AI artifact carries its own marker and its own why).
+ */
+export const RESERVE_BASES = ["assessor", "desk_estimate", "insurer_advised", "closure"] as const;
+
+export const PAY_KINDS = ["indemnity", "expense", "interim", "final", "ex_gratia", "excess_refund"] as const;
+export const PAYEE_KINDS = ["claimant", "repairer", "provider", "third_party", "insurer"] as const;
+export const PAY_METHODS = ["eft", "cheque", "card", "insurer_direct"] as const;
 
 /* ---------------------------------------------------------------- labels */
 
@@ -119,19 +217,109 @@ export const LABELS: Record<string, Record<string, string>> = {
     holder: "Claimant",
     against: "Claimed against",
     caseRef: "Work item",
-    assessTitle: "Assessment",
-    assessIntro: "Record where the assessment stands. Every change to a claim needs the same sign-off as a payment.",
-    outcome: "Outcome",
-    reserve: "Revised reserve, in minor units",
-    assessSubmit: "Record the assessment",
-    assessed: "The assessment was recorded.",
-    outcomeRequired: "Choose an outcome.",
-    settleTitle: "Settlement",
-    settleIntro: "A settlement pays the claimant. It is held until it is approved, and it is never paid from this screen.",
-    settleAmount: "Amount to settle, in minor units",
-    settleSubmit: "Request the settlement",
-    settleDone: "The settlement was recorded.",
-    settleRequired: "Enter the settlement as a whole number above zero.",
+    reserveTitle: "Reserve",
+    reserveIntro: "Say what the claim is now worth and why. Each figure is added to the history; nothing is written over.",
+    reserveHead: "Head",
+    reserveAmount: "Reserve after this movement, in minor units",
+    reserveBasis: "Basis",
+    reserveRationale: "Why",
+    reserveSubmit: "Add the reserve",
+    reserveDone: "The reserve was added.",
+    reserveRequired: "Enter the reserve as a whole number of minor units, zero or above.",
+    basisRequired: "Choose what the figure is based on.",
+    hopTitle: "Move the claim",
+    hopIntro: "Only the moves the claim can legally make are offered. Settlement is reached by requesting a payment.",
+    outcome: "Move to",
+    hopReason: "Note",
+    hopSubmit: "Move the claim",
+    transitionDone: "The claim was moved.",
+    outcomeRequired: "Choose a move the claim can make from where it stands.",
+    noHops: "This claim has nowhere left to go.",
+    payTitle: "Payment",
+    payIntro: "A payment leaves through the ledger and is held until it is approved. Nothing is paid from this screen.",
+    payKind: "Kind",
+    payPayeeKind: "Paid to",
+    payPayeeRef: "Payee",
+    payAmount: "Amount, in minor units",
+    payMethod: "Method",
+    paySubmit: "Request the payment",
+    paymentDone: "The payment was requested.",
+    payRequired: "Name a payee and enter the amount as a whole number above zero.",
+    coverageTitle: "Cover at the loss",
+    coverageCaption: "The version of the contract that answered for this incident.",
+    coverageStateLabel: "Cover",
+    coverageVersion: "Version in force",
+    coverageChecked: "Checked",
+    excess: "Excess",
+    fraud: "Fraud score",
+    siu: "Investigation",
+    incurred: "Incurred",
+    paid: "Paid",
+    recovered: "Recovered",
+    reservesTitle: "Reserve history",
+    reservesCaption: "Every movement of this claim's reserve, newest first.",
+    paymentsTitle: "Payments",
+    paymentsCaption: "What has left on this claim, newest first.",
+    recoveriesTitle: "Recoveries",
+    recoveriesCaption: "What is being chased back, newest first.",
+    colSeq: "#",
+    colHead: "Head",
+    colBasis: "Basis",
+    colMovement: "From → to",
+    colPayee: "Payee",
+    colExpected: "Expected",
+    colRecovered: "Recovered",
+    colMethod: "Method",
+    "status.triage": "Triage",
+    "status.settling": "Settling",
+    "status.recovering": "Recovering",
+    "status.closed": "Closed",
+    "status.reopened": "Reopened",
+    "basis.assessor": "Assessor",
+    "basis.desk_estimate": "Desk estimate",
+    "basis.insurer_advised": "Insurer advised",
+    "basis.closure": "Closure",
+    "basis.ai_recommended": "Suggested",
+    "basis.formula": "Formula",
+    "head.indemnity": "Indemnity",
+    "head.expense": "Expense",
+    "head.recovery": "Recovery",
+    "kind.indemnity": "Indemnity",
+    "kind.expense": "Expense",
+    "kind.interim": "Interim",
+    "kind.final": "Final",
+    "kind.ex_gratia": "Goodwill",
+    "kind.excess_refund": "Excess refund",
+    "kind.subrogation": "Subrogation",
+    "kind.salvage": "Salvage",
+    "kind.excess": "Excess",
+    "kind.reinsurance": "Reinsurance",
+    "kind.third_party": "Third party",
+    "payee.claimant": "Claimant",
+    "payee.repairer": "Repairer",
+    "payee.provider": "Provider",
+    "payee.third_party": "Third party",
+    "payee.insurer": "Insurer",
+    "method.eft": "Transfer",
+    "method.cheque": "Cheque",
+    "method.card": "Card",
+    "method.insurer_direct": "Paid by insurer",
+    "state.requested": "Requested",
+    "state.failed": "Failed",
+    "state.reversed": "Reversed",
+    "state.identified": "Identified",
+    "state.pursuing": "Being chased",
+    "state.agreed": "Agreed",
+    "state.recovered": "Recovered",
+    "coverage.in_force": "On risk",
+    "coverage.not_yet_incepted": "Not yet started",
+    "coverage.lapsed_at_loss": "Lapsed at the loss",
+    "coverage.cancelled_at_loss": "Cancelled at the loss",
+    "coverage.out_of_cover": "Outside cover",
+    "coverage.unknown": "Not checked",
+    "siu.referred": "Referred",
+    "siu.clearing": "Being cleared",
+    "siu.substantiated": "Substantiated",
     documentsTitle: "Documents",
     documentsCaption: "Evidence filed on the work item behind this claim.",
     approvalsTitle: "Sign-off",
@@ -160,19 +348,109 @@ export const LABELS: Record<string, Record<string, string>> = {
     holder: "المطالِب",
     against: "مقدّمة على",
     caseRef: "بند العمل",
-    assessTitle: "التقييم",
-    assessIntro: "سجّل موقف التقييم. كل تغيير على المطالبة يحتاج الموافقة نفسها المطلوبة للدفع.",
-    outcome: "النتيجة",
-    reserve: "المبلغ المحتجز المعدّل بالوحدات الصغرى",
-    assessSubmit: "تسجيل التقييم",
-    assessed: "تم تسجيل التقييم.",
-    outcomeRequired: "اختر نتيجة.",
-    settleTitle: "التسوية",
-    settleIntro: "التسوية تدفع للمطالِب. تبقى معلّقة حتى الموافقة، ولا تُدفع من هذه الشاشة.",
-    settleAmount: "مبلغ التسوية بالوحدات الصغرى",
-    settleSubmit: "طلب التسوية",
-    settleDone: "تم تسجيل التسوية.",
-    settleRequired: "أدخل مبلغ التسوية كرقم صحيح أكبر من صفر.",
+    reserveTitle: "الاحتياطي",
+    reserveIntro: "حدّد قيمة المطالبة الآن وسبب ذلك. كل رقم يُضاف إلى السجل، ولا يُستبدل أي رقم سابق.",
+    reserveHead: "البند",
+    reserveAmount: "الاحتياطي بعد هذه الحركة بالوحدات الصغرى",
+    reserveBasis: "الأساس",
+    reserveRationale: "السبب",
+    reserveSubmit: "إضافة الاحتياطي",
+    reserveDone: "تمت إضافة الاحتياطي.",
+    reserveRequired: "أدخل الاحتياطي كرقم صحيح بالوحدات الصغرى، صفر أو أكثر.",
+    basisRequired: "اختر الأساس الذي بُني عليه الرقم.",
+    hopTitle: "تحريك المطالبة",
+    hopIntro: "تُعرض الحركات المسموح بها فقط. التسوية تتم بطلب دفعة.",
+    outcome: "الانتقال إلى",
+    hopReason: "ملاحظة",
+    hopSubmit: "تحريك المطالبة",
+    transitionDone: "تم تحريك المطالبة.",
+    outcomeRequired: "اختر حركة متاحة من الوضع الحالي للمطالبة.",
+    noHops: "لا توجد حركة متاحة لهذه المطالبة.",
+    payTitle: "الدفع",
+    payIntro: "الدفعة تخرج عبر دفتر الأستاذ وتبقى معلّقة حتى الموافقة. لا يتم الدفع من هذه الشاشة.",
+    payKind: "النوع",
+    payPayeeKind: "جهة الدفع",
+    payPayeeRef: "المستفيد",
+    payAmount: "المبلغ بالوحدات الصغرى",
+    payMethod: "الوسيلة",
+    paySubmit: "طلب الدفع",
+    paymentDone: "تم طلب الدفع.",
+    payRequired: "حدّد المستفيد وأدخل المبلغ كرقم صحيح أكبر من صفر.",
+    coverageTitle: "التغطية وقت الحادث",
+    coverageCaption: "نسخة العقد التي كانت سارية على هذا الحادث.",
+    coverageStateLabel: "التغطية",
+    coverageVersion: "النسخة السارية",
+    coverageChecked: "تاريخ التحقق",
+    excess: "التحمّل",
+    fraud: "مؤشر الاحتيال",
+    siu: "التحقيق",
+    incurred: "المتكبد",
+    paid: "المدفوع",
+    recovered: "المسترد",
+    reservesTitle: "سجل الاحتياطي",
+    reservesCaption: "كل حركة على احتياطي هذه المطالبة، الأحدث أولًا.",
+    paymentsTitle: "المدفوعات",
+    paymentsCaption: "ما تم صرفه على هذه المطالبة، الأحدث أولًا.",
+    recoveriesTitle: "الاستردادات",
+    recoveriesCaption: "ما يجري استرداده، الأحدث أولًا.",
+    colSeq: "التسلسل",
+    colHead: "البند",
+    colBasis: "الأساس",
+    colMovement: "من ← إلى",
+    colPayee: "المستفيد",
+    colExpected: "المتوقع",
+    colRecovered: "المسترد",
+    colMethod: "الوسيلة",
+    "status.triage": "الفرز",
+    "status.settling": "قيد التسوية",
+    "status.recovering": "قيد الاسترداد",
+    "status.closed": "مغلقة",
+    "status.reopened": "أُعيد فتحها",
+    "basis.assessor": "المُقيّم",
+    "basis.desk_estimate": "تقدير المكتب",
+    "basis.insurer_advised": "إفادة شركة التأمين",
+    "basis.closure": "الإغلاق",
+    "basis.ai_recommended": "مقترح",
+    "basis.formula": "معادلة",
+    "head.indemnity": "التعويض",
+    "head.expense": "المصروفات",
+    "head.recovery": "الاسترداد",
+    "kind.indemnity": "تعويض",
+    "kind.expense": "مصروف",
+    "kind.interim": "دفعة مؤقتة",
+    "kind.final": "دفعة نهائية",
+    "kind.ex_gratia": "دفعة ودّية",
+    "kind.excess_refund": "ردّ التحمّل",
+    "kind.subrogation": "الحلول",
+    "kind.salvage": "الخردة",
+    "kind.excess": "التحمّل",
+    "kind.reinsurance": "إعادة التأمين",
+    "kind.third_party": "طرف ثالث",
+    "payee.claimant": "المطالِب",
+    "payee.repairer": "الورشة",
+    "payee.provider": "مقدّم الخدمة",
+    "payee.third_party": "طرف ثالث",
+    "payee.insurer": "شركة التأمين",
+    "method.eft": "تحويل",
+    "method.cheque": "شيك",
+    "method.card": "بطاقة",
+    "method.insurer_direct": "دفع مباشر من شركة التأمين",
+    "state.requested": "مطلوبة",
+    "state.failed": "فشلت",
+    "state.reversed": "عُكست",
+    "state.identified": "محددة",
+    "state.pursuing": "قيد المتابعة",
+    "state.agreed": "متفق عليها",
+    "state.recovered": "مستردة",
+    "coverage.in_force": "سارية",
+    "coverage.not_yet_incepted": "لم تبدأ بعد",
+    "coverage.lapsed_at_loss": "منقضية وقت الحادث",
+    "coverage.cancelled_at_loss": "ملغاة وقت الحادث",
+    "coverage.out_of_cover": "خارج التغطية",
+    "coverage.unknown": "لم يتم التحقق",
+    "siu.referred": "محالة",
+    "siu.clearing": "قيد التصفية",
+    "siu.substantiated": "مثبتة",
     documentsTitle: "المستندات",
     documentsCaption: "الأدلة المرفقة ببند العمل الخاص بهذه المطالبة.",
     approvalsTitle: "الموافقات",
@@ -199,7 +477,12 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   const me = await fetchMe(env, request);
   const held = new Set(me.permissions);
   const options = { env, request };
-  const may = { read: held.has(PERM.read), update: held.has(PERM.update) };
+  const may = {
+    read: held.has(PERM.read),
+    update: held.has(PERM.update),
+    reserve: held.has(PERM.reserve),
+    pay: held.has(PERM.pay)
+  };
 
   const empty = {
     claim: null as Claim | null,
@@ -207,6 +490,9 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
     documents: [] as DocumentRow[],
     approvals: [] as ApprovalRow[],
     trail: [] as AuditRow[],
+    reserves: [] as ReserveRow[],
+    payments: [] as PaymentRow[],
+    recoveries: [] as RecoveryRow[],
     may,
     idempotencyKey: crypto.randomUUID()
   };
@@ -217,7 +503,7 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
 
   // Evidence hangs off the work item, not the claim, so that read needs the
   // claim first. The rest of the fan-out is independent.
-  const [policy, documents, approvals, trail] = await Promise.all([
+  const [policy, documents, approvals, trail, reserves, payments, recoveries] = await Promise.all([
     held.has(PERM.policy) ? safe(() => api<PolicyRef>(`/v1/axis/policies/${claim.policyId}`, options), null) : null,
     held.has(PERM.documents) && claim.caseId
       ? safe(
@@ -244,7 +530,12 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
             ),
           null
         )
-      : null
+      : null,
+    // The claim's own money. Each panel degrades on its own so a desk that may
+    // see the claim but not its payments still gets the claim.
+    safe(() => api<Page<ReserveRow>>(`/v1/axis/claims/${id}/reserves?limit=25`, options), null),
+    safe(() => api<Page<PaymentRow>>(`/v1/axis/claims/${id}/payments`, options), null),
+    safe(() => api<Page<RecoveryRow>>(`/v1/axis/claims/${id}/recoveries`, options), null)
   ]);
 
   return {
@@ -253,7 +544,10 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
     policy,
     documents: rowsOf(documents),
     approvals: rowsOf(approvals),
-    trail: rowsOf(trail)
+    trail: rowsOf(trail),
+    reserves: rowsOf(reserves),
+    payments: rowsOf(payments),
+    recoveries: rowsOf(recoveries)
   };
 }
 
@@ -266,40 +560,70 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
   const id = params.id ?? String(form.get("id") ?? "");
   const nothing = { done: null as string | null, problem: null as Problem | null, error: null as string | null };
 
+  const text = (name: string) => String(form.get(name) ?? "").trim();
+
+  let path: string;
   let body: Record<string, unknown>;
-  if (intent === "assess") {
-    const status = String(form.get("status") ?? "");
-    if (!(ASSESSMENTS as readonly string[]).includes(status)) return { ...nothing, error: "outcomeRequired" };
-    const raw = String(form.get("amountMinor") ?? "").trim();
-    const amountMinor = raw === "" ? null : Number(raw);
-    if (amountMinor !== null && (!Number.isInteger(amountMinor) || amountMinor < 0)) {
-      return { ...nothing, error: "settleRequired" };
+  let suffix: string;
+  let done: string;
+
+  if (intent === "reserve") {
+    const head = text("head") || "indemnity";
+    const raw = text("amountMinor");
+    const amountMinor = Number(raw);
+    if (!(RESERVE_HEADS as readonly string[]).includes(head)) return { ...nothing, error: "reserveRequired" };
+    if (raw === "" || !Number.isInteger(amountMinor) || amountMinor < 0) {
+      return { ...nothing, error: "reserveRequired" };
     }
-    body = { status, ...(amountMinor === null ? {} : { amountMinor }) };
-  } else if (intent === "settle") {
-    const settledMinor = Number(form.get("settledMinor"));
-    if (!Number.isInteger(settledMinor) || settledMinor <= 0) return { ...nothing, error: "settleRequired" };
-    body = { settledMinor, status: "settled" };
+    const basis = text("basis");
+    if (!(RESERVE_BASES as readonly string[]).includes(basis)) return { ...nothing, error: "basisRequired" };
+    const rationale = text("rationale");
+    path = `/v1/axis/claims/${id}/reserves`;
+    body = { head, amountMinor, basis, ...(rationale ? { rationale } : {}) };
+    // Two reserves in one page load are a normal afternoon, so the key carries
+    // what it would write. A per-intent suffix alone would replay the first.
+    suffix = `reserve:${head}:${amountMinor}`;
+    done = "reserveDone";
+  } else if (intent === "transition") {
+    const to = text("to");
+    if (!hopsFor(text("from")).includes(to)) return { ...nothing, error: "outcomeRequired" };
+    const reason = text("reason");
+    path = `/v1/axis/claims/${id}/transition`;
+    body = { to, ...(reason ? { reason } : {}) };
+    suffix = `transition:${to}`;
+    done = "transitionDone";
+  } else if (intent === "request-payment") {
+    const raw = text("amountMinor");
+    const amountMinor = Number(raw);
+    const payeeRef = text("payeeRef");
+    const payeeKind = text("payeeKind");
+    if (raw === "" || !Number.isInteger(amountMinor) || amountMinor <= 0 || !payeeRef) {
+      return { ...nothing, error: "payRequired" };
+    }
+    if (!(PAYEE_KINDS as readonly string[]).includes(payeeKind)) return { ...nothing, error: "payRequired" };
+    const kind = text("kind") || "indemnity";
+    const method = text("method") || "eft";
+    path = `/v1/axis/claims/${id}/payments`;
+    body = { kind, payeeKind, payeeRef, amountMinor, method };
+    suffix = `payment:${amountMinor}`;
+    done = "paymentDone";
   } else {
     return { ...nothing, problem: { title: "unknown intent", status: 400 } };
   }
 
   const key = String(form.get("idempotencyKey") ?? "");
   try {
-    // Every update to a claim is gated by `axis.claim_settlement`; a 403 with
-    // `approval_required` is the normal answer here, not an error to hide.
-    // `assess` and `settle` both PATCH this same route from the one
-    // loader-minted key, so the key is suffixed with the intent — otherwise a
-    // same-page assess-then-settle reuses the key with a different body and
-    // 409s (see case-detail.tsx's identical suffixing for the same reason).
-    await api<Claim>(`/v1/axis/claims/${id}`, {
+    // A hop and a payment are gated by `axis.claim_settlement`, and a large
+    // reserve by `axis.claim_reserve`; a 403 with `approval_required` is the
+    // normal answer here, not an error to hide.
+    await api<unknown>(path, {
       env,
       request,
-      method: "PATCH",
-      ...(key ? { headers: { "idempotency-key": `${key}:${intent}` } } : {}),
+      method: "POST",
+      ...(key ? { headers: { "idempotency-key": `${key}:${suffix}` } } : {}),
       body
     });
-    return { ...nothing, done: intent === "settle" ? "settleDone" : "assessed" };
+    return { ...nothing, done };
   } catch (error) {
     if (error instanceof ApiError) return { ...nothing, problem: error.problem };
     throw error;
@@ -365,6 +689,69 @@ export default function ClaimDetail() {
     { key: "reason", header: l("colReason"), render: (row) => <span className="font-ui text-12">{row.reason ?? "—"}</span> }
   ];
 
+  const money = (amountMinor: number) => (
+    <Money amountMinor={amountMinor} currency={claim.currency} locale={locale} />
+  );
+
+  // What the claim has cost so far: what is still held for it, plus what has
+  // left, less what has come back. `amountMinor` is the notified figure and
+  // only stands in until the desk sets its first reserve.
+  const reserveMinor = claim.reserveMinor ?? claim.amountMinor ?? 0;
+  const paidMinor = claim.paidMinor ?? 0;
+  const recoveredMinor = claim.recoveredMinor ?? 0;
+  const incurredMinor = reserveMinor + paidMinor - recoveredMinor;
+
+  const hops = hopsFor(claim.status);
+
+  const reserveColumns: Array<Column<ReserveRow>> = [
+    { key: "seq", header: l("colSeq"), numeric: true, render: (row) => <span className="font-mono text-11">{row.seq}</span> },
+    { key: "setAt", header: l("colWhen"), render: (row) => <DateTime value={row.setAt} locale={locale} precision="minute" /> },
+    { key: "head", header: l("colHead"), render: (row) => tag(l, "head", row.head) },
+    {
+      key: "amountMinor",
+      header: l("colMovement"),
+      numeric: true,
+      render: (row) => (
+        <span className="font-mono text-12">
+          {money(row.previousMinor)} → {money(row.amountMinor)}
+        </span>
+      )
+    },
+    { key: "basis", header: l("colBasis"), render: (row) => <Badge size="sm">{tag(l, "basis", row.basis)}</Badge> },
+    { key: "rationale", header: l("colReason"), render: (row) => <span className="font-ui text-12">{row.rationale ?? "—"}</span> },
+    { key: "setBy", header: l("colWho"), render: (row) => <Ref value={row.setBy} className="text-11" /> }
+  ];
+
+  const paymentColumns: Array<Column<PaymentRow>> = [
+    { key: "requestedAt", header: l("colWhen"), render: (row) => <DateTime value={row.requestedAt} locale={locale} precision="minute" /> },
+    { key: "kind", header: l("colKind"), render: (row) => tag(l, "kind", row.kind) },
+    {
+      key: "payeeRef",
+      header: l("colPayee"),
+      render: (row) => (
+        <span className="font-ui text-12">
+          {tag(l, "payee", row.payeeKind)} · <Ref value={row.payeeRef} className="text-11" />
+        </span>
+      )
+    },
+    { key: "amountMinor", header: l("colAmount"), numeric: true, render: (row) => money(row.amountMinor) },
+    { key: "method", header: l("colMethod"), render: (row) => tag(l, "method", row.method) },
+    { key: "state", header: l("colStatus"), render: (row) => <Badge size="sm" dot>{tag(l, "state", row.state)}</Badge> }
+  ];
+
+  const recoveryColumns: Array<Column<RecoveryRow>> = [
+    { key: "openedAt", header: l("colWhen"), render: (row) => <DateTime value={row.openedAt} locale={locale} precision="day" /> },
+    { key: "kind", header: l("colKind"), render: (row) => tag(l, "kind", row.kind) },
+    {
+      key: "counterpartyRef",
+      header: l("colPayee"),
+      render: (row) => (row.counterpartyRef ? <Ref value={row.counterpartyRef} className="text-11" /> : <span>—</span>)
+    },
+    { key: "expectedMinor", header: l("colExpected"), numeric: true, render: (row) => money(row.expectedMinor) },
+    { key: "recoveredMinor", header: l("colRecovered"), numeric: true, render: (row) => money(row.recoveredMinor) },
+    { key: "state", header: l("colStatus"), render: (row) => <Badge size="sm" dot>{tag(l, "state", row.state)}</Badge> }
+  ];
+
   const trailColumns: Array<Column<AuditRow>> = [
     { key: "action", header: l("colAction"), render: (row) => humanise(row.action) },
     { key: "actorRef", header: l("colWho"), render: (row) => <Ref value={row.actorRef} className="text-11" /> },
@@ -387,15 +774,11 @@ export default function ClaimDetail() {
           </Badge>
         }
       >
-        <div className="mb-4 grid grid-cols-2 gap-6 md:grid-cols-3">
-          <Stat
-            label={l("reserved")}
-            value={<Money amountMinor={claim.amountMinor ?? 0} currency={claim.currency} locale={locale} />}
-          />
-          <Stat
-            label={l("settled")}
-            value={<Money amountMinor={claim.settledMinor ?? 0} currency={claim.currency} locale={locale} />}
-          />
+        <div className="mb-4 grid grid-cols-2 gap-6 md:grid-cols-4">
+          <Stat label={l("incurred")} value={money(incurredMinor)} />
+          <Stat label={l("reserved")} value={money(reserveMinor)} />
+          <Stat label={l("paid")} value={money(paidMinor)} />
+          <Stat label={l("recovered")} value={money(recoveredMinor)} />
           <Stat label={l("reportedAt")} value={<DateTime value={claim.reportedAt} locale={locale} precision="day" />} />
         </div>
         <Facts>
@@ -433,62 +816,163 @@ export default function ClaimDetail() {
         <Payload value={claim.fnolJson} />
       </Card>
 
-      {loaded.may.update ? (
-        <div className="grid gap-6 md:grid-cols-2">
-          <Card title={l("assessTitle")} description={l("assessIntro")}>
+      <Card title={l("coverageTitle")} description={l("coverageCaption")}>
+        <Facts>
+          <Entry term={l("coverageStateLabel")}>
+            <Badge size="sm" dot>
+              {tag(l, "coverage", claim.coverageState ?? "unknown")}
+            </Badge>
+          </Entry>
+          <Entry term={l("coverageVersion")}>
+            {claim.policyVersionId ? (
+              <Link to={`/axis/policies/${claim.policyId}/detail`} className="text-accent hover:underline">
+                <Ref value={claim.policyVersionId} className="text-11" />
+              </Link>
+            ) : (
+              "—"
+            )}
+          </Entry>
+          <Entry term={l("coverageChecked")}>
+            {claim.coverageCheckedAt ? (
+              <DateTime value={claim.coverageCheckedAt} locale={locale} precision="minute" />
+            ) : (
+              "—"
+            )}
+          </Entry>
+          <Entry term={l("excess")}>{claim.excessMinor == null ? "—" : money(claim.excessMinor)}</Entry>
+          <Entry term={l("fraud")}>
+            <span className="font-mono text-12">{claim.fraudScore ?? "—"}</span>
+          </Entry>
+          <Entry term={l("siu")}>{claim.siuState ? tag(l, "siu", claim.siuState) : "—"}</Entry>
+        </Facts>
+      </Card>
+
+      <div className="grid gap-6 md:grid-cols-2">
+        {loaded.may.reserve ? (
+          <Card title={l("reserveTitle")} description={l("reserveIntro")}>
             <Form method="post" className="flex flex-wrap items-end gap-4">
-              <input type="hidden" name="intent" value="assess" />
+              <input type="hidden" name="intent" value="reserve" />
               <input type="hidden" name="idempotencyKey" value={loaded.idempotencyKey} />
               <label className="flex flex-col gap-1 font-ui text-12 text-muted">
-                {l("outcome")}
+                {l("reserveHead")}
                 <Select
-                  name="status"
-                  defaultValue={claim.status}
-                  options={ASSESSMENTS.map((value) => ({ value, label: tag(l, "status", value) }))}
+                  name="head"
+                  defaultValue="indemnity"
+                  options={RESERVE_HEADS.map((value) => ({ value, label: tag(l, "head", value) }))}
                 />
               </label>
               <label className="flex flex-col gap-1 font-ui text-12 text-muted">
-                {l("reserve")}
+                {l("reserveAmount")}
                 <Input
                   name="amountMinor"
                   type="number"
                   min={0}
                   step={1}
                   inputMode="numeric"
-                  defaultValue={claim.amountMinor ?? undefined}
-                  className="w-40"
-                />
-              </label>
-              <Button type="submit" loading={busy}>
-                {l("assessSubmit")}
-              </Button>
-            </Form>
-          </Card>
-
-          <Card title={l("settleTitle")} description={l("settleIntro")}>
-            <Form method="post" className="flex flex-wrap items-end gap-4">
-              <input type="hidden" name="intent" value="settle" />
-              <input type="hidden" name="idempotencyKey" value={loaded.idempotencyKey} />
-              <label className="flex flex-col gap-1 font-ui text-12 text-muted">
-                {l("settleAmount")}
-                <Input
-                  name="settledMinor"
-                  type="number"
-                  min={1}
-                  step={1}
-                  inputMode="numeric"
-                  defaultValue={claim.settledMinor ?? claim.amountMinor ?? undefined}
                   required
                   className="w-40"
                 />
               </label>
-              <Button type="submit" variant="primary" loading={busy}>
-                {l("settleSubmit")}
+              <label className="flex flex-col gap-1 font-ui text-12 text-muted">
+                {l("reserveBasis")}
+                <Select
+                  name="basis"
+                  defaultValue="desk_estimate"
+                  options={RESERVE_BASES.map((value) => ({ value, label: tag(l, "basis", value) }))}
+                />
+              </label>
+              <label className="flex flex-col gap-1 font-ui text-12 text-muted">
+                {l("reserveRationale")}
+                <Input name="rationale" className="w-56" />
+              </label>
+              <Button type="submit" loading={busy}>
+                {l("reserveSubmit")}
               </Button>
             </Form>
           </Card>
-        </div>
-      ) : null}
+        ) : null}
+
+        {loaded.may.update ? (
+          <Card title={l("hopTitle")} description={l("hopIntro")}>
+            {hops.length === 0 ? (
+              <EmptyState title={l("noHops")} />
+            ) : (
+              <Form method="post" className="flex flex-wrap items-end gap-4">
+                <input type="hidden" name="intent" value="transition" />
+                <input type="hidden" name="from" value={claim.status} />
+                <input type="hidden" name="idempotencyKey" value={loaded.idempotencyKey} />
+                <label className="flex flex-col gap-1 font-ui text-12 text-muted">
+                  {l("outcome")}
+                  <Select
+                    name="to"
+                    defaultValue={hops[0] ?? ""}
+                    options={hops.map((value) => ({ value, label: tag(l, "status", value) }))}
+                  />
+                </label>
+                <label className="flex flex-col gap-1 font-ui text-12 text-muted">
+                  {l("hopReason")}
+                  <Input name="reason" className="w-56" />
+                </label>
+                <Button type="submit" loading={busy}>
+                  {l("hopSubmit")}
+                </Button>
+              </Form>
+            )}
+          </Card>
+        ) : null}
+
+        {loaded.may.pay ? (
+          <Card title={l("payTitle")} description={l("payIntro")}>
+            <Form method="post" className="flex flex-wrap items-end gap-4">
+              <input type="hidden" name="intent" value="request-payment" />
+              <input type="hidden" name="idempotencyKey" value={loaded.idempotencyKey} />
+              <label className="flex flex-col gap-1 font-ui text-12 text-muted">
+                {l("payKind")}
+                <Select
+                  name="kind"
+                  defaultValue="indemnity"
+                  options={PAY_KINDS.map((value) => ({ value, label: tag(l, "kind", value) }))}
+                />
+              </label>
+              <label className="flex flex-col gap-1 font-ui text-12 text-muted">
+                {l("payPayeeKind")}
+                <Select
+                  name="payeeKind"
+                  defaultValue="claimant"
+                  options={PAYEE_KINDS.map((value) => ({ value, label: tag(l, "payee", value) }))}
+                />
+              </label>
+              <label className="flex flex-col gap-1 font-ui text-12 text-muted">
+                {l("payPayeeRef")}
+                <Input name="payeeRef" required className="w-56" />
+              </label>
+              <label className="flex flex-col gap-1 font-ui text-12 text-muted">
+                {l("payAmount")}
+                <Input
+                  name="amountMinor"
+                  type="number"
+                  min={1}
+                  step={1}
+                  inputMode="numeric"
+                  required
+                  className="w-40"
+                />
+              </label>
+              <label className="flex flex-col gap-1 font-ui text-12 text-muted">
+                {l("payMethod")}
+                <Select
+                  name="method"
+                  defaultValue="eft"
+                  options={PAY_METHODS.map((value) => ({ value, label: tag(l, "method", value) }))}
+                />
+              </label>
+              <Button type="submit" variant="primary" loading={busy}>
+                {l("paySubmit")}
+              </Button>
+            </Form>
+          </Card>
+        ) : null}
+      </div>
 
       {result?.error ? (
         <p role="alert" className="font-ui text-13 text-danger">
@@ -497,6 +981,36 @@ export default function ClaimDetail() {
       ) : null}
       {result?.done ? <p className="font-ui text-13 text-success">{l(result.done)}</p> : null}
       {result?.problem ? <Gate problem={result.problem} l={l} /> : null}
+
+      <Card title={l("reservesTitle")} padded={false}>
+        <Table
+          caption={l("reservesCaption")}
+          columns={reserveColumns}
+          rows={loaded.reserves}
+          rowKey={(row) => row.id}
+          empty={<EmptyState title={l("none")} />}
+        />
+      </Card>
+
+      <Card title={l("paymentsTitle")} padded={false}>
+        <Table
+          caption={l("paymentsCaption")}
+          columns={paymentColumns}
+          rows={loaded.payments}
+          rowKey={(row) => row.id}
+          empty={<EmptyState title={l("none")} />}
+        />
+      </Card>
+
+      <Card title={l("recoveriesTitle")} padded={false}>
+        <Table
+          caption={l("recoveriesCaption")}
+          columns={recoveryColumns}
+          rows={loaded.recoveries}
+          rowKey={(row) => row.id}
+          empty={<EmptyState title={l("none")} />}
+        />
+      </Card>
 
       <Card title={l("documentsTitle")} padded={false}>
         <Table

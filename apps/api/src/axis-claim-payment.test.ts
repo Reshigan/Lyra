@@ -387,3 +387,45 @@ describe("AXIS claim recovery (docs/27 F23)", () => {
     expect((await claimRow(claimId)).recoveredMinor).toBe(300_00);
   });
 });
+
+describe("AXIS claim money, read back (§D.3)", () => {
+  it("a handler can read the payments and recoveries of one claim", async () => {
+    // The claim screen shows what left and what is being chased. Without a read
+    // side the desk can only see money by making more of it move.
+    await autoApprove("axis.bind");
+    const policyId = await boundPolicy("POL-CLMLIST-1", Date.now() - 10 * DAY);
+    const claimId = await openClaim(policyId, "CLM-LIST-1", 900_00);
+    const otherId = await openClaim(policyId, "CLM-LIST-2", 100_00);
+    await fundFloat(policyId, claimId, 900_00);
+    await grantPayment(claimId, 900_00);
+
+    const paid = ok(
+      await call(
+        "POST",
+        `/v1/axis/claims/${claimId}/payments`,
+        { kind: "indemnity", payeeKind: "repairer", payeeRef: "vendor:garage-2", amountMinor: 700_00, method: "eft" },
+        { "idempotency-key": "clm-list-pay" }
+      ),
+      201
+    );
+    const opened = ok(
+      await call("POST", `/v1/axis/claims/${claimId}/recoveries`, {
+        kind: "salvage",
+        counterpartyRef: "vendor:salvage-1",
+        expectedMinor: 200_00
+      }),
+      201
+    );
+
+    const payments = ok(await call("GET", `/v1/axis/claims/${claimId}/payments`));
+    const recoveries = ok(await call("GET", `/v1/axis/claims/${claimId}/recoveries`));
+
+    expect(payments.data.map((p: any) => p.id)).toEqual([paid.payment.id]);
+    expect(payments.total).toBe(1);
+    expect(recoveries.data.map((r: any) => r.id)).toEqual([opened.recovery.id]);
+
+    // One claim's money, not the desk's. A neighbouring claim reads empty.
+    expect(ok(await call("GET", `/v1/axis/claims/${otherId}/payments`)).data).toEqual([]);
+    expect(ok(await call("GET", `/v1/axis/claims/${otherId}/recoveries`)).data).toEqual([]);
+  });
+});
