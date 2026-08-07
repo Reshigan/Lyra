@@ -412,6 +412,17 @@ describe("periods", () => {
     await ensurePeriod(ctx, code);
     await rejects(closePeriod(ctx, code, "hard_closed"), /soft closed/);
   });
+
+  it("refuses to close over a batch that disagrees with its own lines", async () => {
+    // Damage from before posting was atomic still sits in the table. Freezing a
+    // month over it would make the tear permanent and unexplained.
+    await ctx.db.insert(schema.ledgerTxns).values(baseTxn("tx_torn", "CMSN-ACCR", 1_000));
+    await post(ctx, { txnId: "tx_torn", currency: "AED", lines: buildRecipe("CMSN-ACCR", { grossMinor: 1_000 }) });
+    const [line] = await ctx.db.select().from(schema.ledgerJournalLines).limit(1);
+    await ctx.db.delete(schema.ledgerJournalLines).where(eq(schema.ledgerJournalLines.id, line!.id));
+
+    await rejects(closePeriod(ctx, periodCode(ctx.now), "soft_closed"), /batches_match_lines/);
+  });
 });
 
 describe("reports", () => {
@@ -654,5 +665,88 @@ describe("catalogue", () => {
     for (const t of Object.values(TXN_TYPES)) {
       if (t.payout || t.clientMoney) expect(autoApprovable(t.code), t.code).toBe(false);
     }
+  });
+});
+
+/* --------------------------------------------------------- §5 atomicity */
+
+/**
+ * A ctx on a real migrated database whose driver can be made to fail the write
+ * set *after* the engine has applied part of it — the only honest way to model
+ * "the process went away mid-post". `poison` appends a statement SQLite will
+ * refuse to the end of every batch, so everything before it has already been
+ * applied inside the transaction when it dies; if the write is not atomic, the
+ * damage survives. `batches` counts trips through the atomic path so a test can
+ * tell one batch from a sequence of statements.
+ */
+async function armedCtx(
+  opts: { poison?: boolean } = {}
+): Promise<{ ctx: Ctx; batches: () => number; disarm: () => void }> {
+  const client = createClient({ url: ":memory:" });
+  for (const sql of statements()) await client.execute(sql);
+
+  let batchCalls = 0;
+  let poison = opts.poison === true;
+  const trapped = new Proxy(client, {
+    get(target, prop, recv) {
+      const value = Reflect.get(target, prop, recv);
+      if (typeof value !== "function") return value;
+      if (prop !== "batch") return (value as (...a: unknown[]) => unknown).bind(target);
+      return (stmts: unknown[], ...rest: unknown[]) => {
+        batchCalls += 1;
+        const armed = poison
+          ? [...stmts, { sql: `insert into "ledger_journal_batches" ("id") values (null)`, args: [] }]
+          : stmts;
+        return (value as (...a: unknown[]) => unknown).apply(target, [armed, ...rest]);
+      };
+    }
+  });
+
+  const base = await freshCtx();
+  return {
+    ctx: { ...base, db: drizzle(trapped) as unknown as Ctx["db"] },
+    batches: () => batchCalls,
+    disarm: () => {
+      poison = false;
+    }
+  };
+}
+
+const TWO_LINES = [
+  { accountCode: "1000", side: "debit" as const, amountMinor: 5_000 },
+  { accountCode: "4000", side: "credit" as const, amountMinor: 5_000 }
+];
+
+describe("a posting is one write or none", () => {
+  it("hands its whole write set to the driver at once", async () => {
+    const { ctx: armed, batches } = await armedCtx();
+    await post(armed, { txnId: "txn_batched", currency: "AED", lines: TWO_LINES });
+    expect(batches()).toBe(1);
+  });
+
+  it("leaves nothing behind when the write dies part-way through", async () => {
+    // The header carries the unique index on (tenant, txn). An orphan header
+    // burns the transaction id: the retry is refused as a duplicate and the
+    // money is gone with no way to re-post it. The balance cache matters for
+    // the same reason from the other side — closeChecks reads it for
+    // trial_balance_zero, so a half-applied bump makes the trial balance
+    // disagree with the lines it summarises.
+    const { ctx: armed } = await armedCtx({ poison: true });
+    await expect(post(armed, { txnId: "txn_torn", currency: "AED", lines: TWO_LINES })).rejects.toThrow();
+
+    expect(await armed.db.select().from(schema.ledgerJournalBatches)).toHaveLength(0);
+    expect(await armed.db.select().from(schema.ledgerJournalLines)).toHaveLength(0);
+    expect(await armed.db.select().from(schema.ledgerAccountBalances)).toHaveLength(0);
+  });
+
+  it("still accepts the retry after a write that died", async () => {
+    // The point of all-or-nothing: the transaction id is not burned, so the
+    // caller can simply post again.
+    const { ctx: armed, disarm } = await armedCtx({ poison: true });
+    await post(armed, { txnId: "txn_retry", currency: "AED", lines: TWO_LINES }).catch(() => undefined);
+
+    disarm();
+    await post(armed, { txnId: "txn_retry", currency: "AED", lines: TWO_LINES });
+    expect(await armed.db.select().from(schema.ledgerJournalBatches)).toHaveLength(1);
   });
 });

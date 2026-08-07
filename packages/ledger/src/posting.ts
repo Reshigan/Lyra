@@ -1,5 +1,13 @@
 import { and, eq, sql } from "drizzle-orm";
-import { CLIENT_MONEY_ACCOUNT, CLIENT_MONEY_LIABILITY_ACCOUNT, account, id, schema } from "@lyra/db";
+import {
+  CLIENT_MONEY_ACCOUNT,
+  CLIENT_MONEY_LIABILITY_ACCOUNT,
+  account,
+  atomically,
+  id,
+  schema,
+  type Write
+} from "@lyra/db";
 import { PPM, actorRef, applyPpm, badRequest, conflict, type Ctx } from "@lyra/core";
 import { assertPostable, ensurePeriod, periodCode } from "./periods.js";
 
@@ -11,6 +19,11 @@ import { assertPostable, ensurePeriod, periodCode } from "./periods.js";
 //   1. the batch balances in transaction *and* base currency,
 //   2. no batch debits segregated client money to credit income or expense,
 //   3. client-money assets never fall below client-money liabilities.
+//
+// All three are decided before anything is written, because the write itself is
+// a single atomic batch (docs/19 §5, the `atomically` seam in @lyra/db). A post
+// therefore lands whole or not at all: no header without its lines, no balance
+// bump without the lines it summarises.
 
 export type Side = "debit" | "credit";
 
@@ -143,12 +156,18 @@ export async function post(ctx: Ctx, input: PostInput): Promise<PostedBatch> {
   });
 
   const baseDebit = prepared.filter((l) => l.side === "debit").reduce((a, l) => a + l.baseAmountMinor, 0);
+  // Summed rather than copied from the debit side: balanceBase() has just made
+  // the two equal, and a header that cannot disagree with itself proves nothing.
+  const baseCredit = prepared.filter((l) => l.side === "credit").reduce((a, l) => a + l.baseAmountMinor, 0);
   const batchId = id("bat", postedAt);
 
-  // The unique index on (tenant, txn) is what makes replay post nothing new:
-  // a second post() for the same transaction is a conflict, not a duplicate batch.
-  try {
-    await ctx.db.insert(schema.ledgerJournalBatches).values({
+  const deltas = aggregate(prepared);
+  // Decided against the position this batch *would* leave behind, so a breach
+  // refuses the write instead of being discovered after it.
+  const cmCheck = await clientMoneyCheck(ctx, input.currency, input.txnId, postedAt, deltas);
+
+  const writes: Write[] = [
+    ctx.db.insert(schema.ledgerJournalBatches).values({
       id: batchId,
       tenantId: ctx.tenantId,
       txnId: input.txnId,
@@ -159,11 +178,44 @@ export async function post(ctx: Ctx, input: PostInput): Promise<PostedBatch> {
       totalDebitMinor: debit,
       totalCreditMinor: credit,
       baseTotalDebitMinor: baseDebit,
-      baseTotalCreditMinor: baseDebit,
+      baseTotalCreditMinor: baseCredit,
       reversalOfBatchId: input.reversalOfBatchId ?? null,
       postedBy: actorRef(ctx),
       postedAt
-    });
+    }),
+
+    ctx.db.insert(schema.ledgerJournalLines).values(
+      prepared.map((l, i) => ({
+        id: id("jln", postedAt),
+        tenantId: ctx.tenantId,
+        batchId,
+        txnId: input.txnId,
+        seq: i + 1,
+        accountCode: l.accountCode,
+        side: l.side,
+        amountMinor: l.amountMinor,
+        currency: input.currency,
+        baseAmountMinor: l.baseAmountMinor,
+        baseCurrency,
+        memo: l.memo ?? null,
+        dimsJson: l.dims ? JSON.stringify(l.dims) : null,
+        postedAt
+      }))
+    ),
+
+    ...balanceWrites(ctx, input.currency, deltas, postedAt),
+    ...(cmCheck ? [ctx.db.insert(schema.ledgerClientMoneyChecks).values(cmCheck)] : []),
+
+    ctx.db
+      .update(schema.ledgerTxns)
+      .set({ ledgerBatchId: batchId, fxRatePpm, updatedAt: postedAt })
+      .where(and(eq(schema.ledgerTxns.tenantId, ctx.tenantId), eq(schema.ledgerTxns.id, input.txnId)))
+  ];
+
+  // The unique index on (tenant, txn) is what makes replay post nothing new:
+  // a second post() for the same transaction is a conflict, not a duplicate batch.
+  try {
+    await atomically(ctx.db, writes);
   } catch (err) {
     // Drivers wrap: the text that names the constraint is on a `cause` a level
     // or two down ("Failed query: insert into …" is all the outer message says).
@@ -172,33 +224,6 @@ export async function post(ctx: Ctx, input: PostInput): Promise<PostedBatch> {
     }
     throw err;
   }
-
-  await ctx.db.insert(schema.ledgerJournalLines).values(
-    prepared.map((l, i) => ({
-      id: id("jln", postedAt),
-      tenantId: ctx.tenantId,
-      batchId,
-      txnId: input.txnId,
-      seq: i + 1,
-      accountCode: l.accountCode,
-      side: l.side,
-      amountMinor: l.amountMinor,
-      currency: input.currency,
-      baseAmountMinor: l.baseAmountMinor,
-      baseCurrency,
-      memo: l.memo ?? null,
-      dimsJson: l.dims ? JSON.stringify(l.dims) : null,
-      postedAt
-    }))
-  );
-
-  await bumpBalances(ctx, input.currency, prepared, postedAt);
-  await assertClientMoneySegregation(ctx, input.currency, input.txnId, postedAt);
-
-  await ctx.db
-    .update(schema.ledgerTxns)
-    .set({ ledgerBatchId: batchId, fxRatePpm, updatedAt: postedAt })
-    .where(and(eq(schema.ledgerTxns.tenantId, ctx.tenantId), eq(schema.ledgerTxns.id, input.txnId)));
 
   return {
     batchId,
@@ -209,21 +234,18 @@ export async function post(ctx: Ctx, input: PostInput): Promise<PostedBatch> {
   };
 }
 
-/**
- * Running balances are a cache of the lines, maintained in the same write so a
- * report never has to re-sum a year of journal. reports.ts rebuilds from lines
- * to prove the cache agrees.
- *
- * ponytail: one upsert per account, not per line — a batch touches a handful of
- * accounts. Batching into a single statement matters only if batches get wide.
- */
-async function bumpBalances(
-  ctx: Ctx,
-  currency: string,
-  lines: readonly { accountCode: string; side: Side; amountMinor: number; baseAmountMinor: number }[],
-  at: number
-): Promise<void> {
-  const agg = new Map<string, { debit: number; credit: number; baseDebit: number; baseCredit: number }>();
+interface Delta {
+  debit: number;
+  credit: number;
+  baseDebit: number;
+  baseCredit: number;
+}
+
+/** The batch's net effect per account. One upsert per account, not per line. */
+function aggregate(
+  lines: readonly { accountCode: string; side: Side; amountMinor: number; baseAmountMinor: number }[]
+): Map<string, Delta> {
+  const agg = new Map<string, Delta>();
   for (const l of lines) {
     const a = agg.get(l.accountCode) ?? { debit: 0, credit: 0, baseDebit: 0, baseCredit: 0 };
     if (l.side === "debit") {
@@ -235,36 +257,49 @@ async function bumpBalances(
     }
     agg.set(l.accountCode, a);
   }
+  return agg;
+}
 
+/**
+ * Running balances are a cache of the lines, maintained in the same write so a
+ * report never has to re-sum a year of journal. reports.ts rebuilds from lines
+ * to prove the cache agrees — which only means anything because these statements
+ * ride in the same batch as the lines they summarise.
+ */
+function balanceWrites(ctx: Ctx, currency: string, agg: Map<string, Delta>, at: number): Write[] {
+  const writes: Write[] = [];
   for (const [accountCode, a] of agg) {
-    await ctx.db
-      .insert(schema.ledgerAccountBalances)
-      .values({
-        id: id("bal", at),
-        tenantId: ctx.tenantId,
-        accountCode,
-        currency,
-        debitMinor: a.debit,
-        creditMinor: a.credit,
-        baseDebitMinor: a.baseDebit,
-        baseCreditMinor: a.baseCredit,
-        updatedAt: at
-      })
-      .onConflictDoUpdate({
-        target: [
-          schema.ledgerAccountBalances.tenantId,
-          schema.ledgerAccountBalances.accountCode,
-          schema.ledgerAccountBalances.currency
-        ],
-        set: {
-          debitMinor: sql`${schema.ledgerAccountBalances.debitMinor} + ${a.debit}`,
-          creditMinor: sql`${schema.ledgerAccountBalances.creditMinor} + ${a.credit}`,
-          baseDebitMinor: sql`${schema.ledgerAccountBalances.baseDebitMinor} + ${a.baseDebit}`,
-          baseCreditMinor: sql`${schema.ledgerAccountBalances.baseCreditMinor} + ${a.baseCredit}`,
+    writes.push(
+      ctx.db
+        .insert(schema.ledgerAccountBalances)
+        .values({
+          id: id("bal", at),
+          tenantId: ctx.tenantId,
+          accountCode,
+          currency,
+          debitMinor: a.debit,
+          creditMinor: a.credit,
+          baseDebitMinor: a.baseDebit,
+          baseCreditMinor: a.baseCredit,
           updatedAt: at
-        }
-      });
+        })
+        .onConflictDoUpdate({
+          target: [
+            schema.ledgerAccountBalances.tenantId,
+            schema.ledgerAccountBalances.accountCode,
+            schema.ledgerAccountBalances.currency
+          ],
+          set: {
+            debitMinor: sql`${schema.ledgerAccountBalances.debitMinor} + ${a.debit}`,
+            creditMinor: sql`${schema.ledgerAccountBalances.creditMinor} + ${a.credit}`,
+            baseDebitMinor: sql`${schema.ledgerAccountBalances.baseDebitMinor} + ${a.baseDebit}`,
+            baseCreditMinor: sql`${schema.ledgerAccountBalances.baseCreditMinor} + ${a.baseCredit}`,
+            updatedAt: at
+          }
+        })
+    );
   }
+  return writes;
 }
 
 export interface Balance {
@@ -310,44 +345,62 @@ export async function balanceOf(ctx: Ctx, accountCode: string, currency: string)
   };
 }
 
+/** A delta applied to a balance, signed by that account's normal side. */
+function signedDelta(accountCode: string, agg: Map<string, Delta>): number {
+  const d = agg.get(accountCode);
+  if (!d) return 0;
+  return (account(accountCode)?.normalSide ?? "debit") === "debit"
+    ? d.debit - d.credit
+    : d.credit - d.debit;
+}
+
 /**
  * docs/19 §5.2 B, the invariant the regulator actually cares about: the money we
  * hold for clients (asset 1010) is never less than what we owe them (liability
- * 2010). Checked after every posting rather than nightly, and recorded either
- * way so the compliance evidence exists without a separate job.
+ * 2010). Checked on every posting rather than nightly, and recorded either way
+ * so the compliance evidence exists without a separate job.
+ *
+ * The position tested is the one the batch *would* leave behind, so a breach
+ * refuses the write rather than being found after it. On a breach the evidence
+ * row is written on its own and then the post is rejected — the alarm has to
+ * outlive the batch it stopped, so it cannot ride inside it.
+ *
+ * Returns the row to include in the batch, or null when there is no client
+ * money in this currency at all and nothing worth recording.
  */
-export async function assertClientMoneySegregation(
+export async function clientMoneyCheck(
   ctx: Ctx,
   currency: string,
   triggeredBy: string,
-  at: number
-): Promise<void> {
-  const asset = await balanceOf(ctx, CLIENT_MONEY_ACCOUNT, currency);
-  const liability = await balanceOf(ctx, CLIENT_MONEY_LIABILITY_ACCOUNT, currency);
-  if (asset.balanceMinor === 0 && liability.balanceMinor === 0) return;
+  at: number,
+  agg: Map<string, Delta>
+): Promise<typeof schema.ledgerClientMoneyChecks.$inferInsert | null> {
+  const asset = (await balanceOf(ctx, CLIENT_MONEY_ACCOUNT, currency)).balanceMinor
+    + signedDelta(CLIENT_MONEY_ACCOUNT, agg);
+  const liability = (await balanceOf(ctx, CLIENT_MONEY_LIABILITY_ACCOUNT, currency)).balanceMinor
+    + signedDelta(CLIENT_MONEY_LIABILITY_ACCOUNT, agg);
+  if (asset === 0 && liability === 0) return null;
 
-  const shortfall = liability.balanceMinor - asset.balanceMinor;
+  const shortfall = liability - asset;
   const breach = shortfall > 0;
-  await ctx.db.insert(schema.ledgerClientMoneyChecks).values({
+  const row = {
     id: id("cmc", at),
     tenantId: ctx.tenantId,
-    assetMinor: asset.balanceMinor,
-    liabilityMinor: liability.balanceMinor,
+    assetMinor: asset,
+    liabilityMinor: liability,
     currency,
     shortfallMinor: breach ? shortfall : 0,
     breach,
     triggeredBy,
     resolvedAt: null,
     ts: at
-  });
+  };
+  if (!breach) return row;
 
-  if (breach) {
-    // Throwing rolls the caller's transaction back where one is open; where it is
-    // not, the check row above is the alarm that survives.
-    throw conflict(
-      `client money shortfall of ${shortfall} ${currency}: asset ${asset.balanceMinor} < liability ${liability.balanceMinor}`
-    );
-  }
+  await ctx.db.insert(schema.ledgerClientMoneyChecks).values(row);
+  throw conflict(
+    `client money shortfall of ${shortfall} ${currency}: asset ${asset} < liability ${liability}`
+  );
 }
 
 /**

@@ -96,6 +96,33 @@ export async function closeChecks(ctx: Ctx, code: string): Promise<CloseCheck[]>
     detail: debit === credit ? undefined : `base debits ${debit} vs credits ${credit}`
   });
 
+  // A header that disagrees with its own lines is the fingerprint of a write
+  // that landed in pieces. post() is atomic now (docs/19 §5), so this can only
+  // catch damage that predates it — which is exactly the point: the month must
+  // not freeze over a tear nobody has looked at.
+  const debitLines = sql<number>`coalesce(sum(case when ${schema.ledgerJournalLines.side} = 'debit' then ${schema.ledgerJournalLines.amountMinor} else 0 end), 0)`;
+  const creditLines = sql<number>`coalesce(sum(case when ${schema.ledgerJournalLines.side} = 'credit' then ${schema.ledgerJournalLines.amountMinor} else 0 end), 0)`;
+  const torn = await ctx.db
+    .select({ id: schema.ledgerJournalBatches.id })
+    .from(schema.ledgerJournalBatches)
+    .leftJoin(
+      schema.ledgerJournalLines,
+      and(
+        eq(schema.ledgerJournalLines.tenantId, schema.ledgerJournalBatches.tenantId),
+        eq(schema.ledgerJournalLines.batchId, schema.ledgerJournalBatches.id)
+      )
+    )
+    .where(eq(schema.ledgerJournalBatches.tenantId, ctx.tenantId))
+    .groupBy(schema.ledgerJournalBatches.id)
+    .having(
+      sql`${schema.ledgerJournalBatches.totalDebitMinor} <> ${debitLines} or ${schema.ledgerJournalBatches.totalCreditMinor} <> ${creditLines}`
+    );
+  checks.push({
+    name: "batches_match_lines",
+    ok: torn.length === 0,
+    detail: torn.length ? `${torn.length} batches disagree with their lines: ${torn.map((t) => t.id).join(", ")}` : undefined
+  });
+
   const unsettled = await ctx.db
     .select({ n: sql<number>`count(*)` })
     .from(schema.ledgerTxns)

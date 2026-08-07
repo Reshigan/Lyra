@@ -1,12 +1,15 @@
 import { eq, and, isNull, type SQL } from "drizzle-orm";
 import type { BaseSQLiteDatabase, SQLiteColumn } from "drizzle-orm/sqlite-core";
-import type { EntitlementsJson, PolicyJson } from "@lyra/db";
+import type { Atomic, EntitlementsJson, PolicyJson } from "@lyra/db";
 import { notFound } from "./errors.js";
 import type { Actor } from "./rbac.js";
 
 // ponytail: one structural DB type instead of a driver union — the same code runs
 // on D1 (cloud) and libsql (on-prem), and neither needs the relational query API.
-export type CoreDb = BaseSQLiteDatabase<"async", any, Record<string, never>>;
+// `Atomic` is the one driver capability the money path needs and both homes have
+// (docs/19 §5); it is on the base type because a handler must never receive a
+// connection it cannot write a transaction through.
+export type CoreDb = BaseSQLiteDatabase<"async", any, Record<string, never>> & Atomic;
 
 /** Everything a request handler is allowed to know. Built once by the API gateway. */
 export interface Ctx {
