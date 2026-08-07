@@ -66,6 +66,7 @@ export const ar: Messages = {
 
   "common.search": "بحث",
   "search.open": "ابحث",
+  "search.allSurfaces": "كل الشاشات",
   "search.label": "ابحث في كل شيء",
   "search.placeholder": "ابحث عن الأشخاص والسجلات والطلبات",
   "search.prompt": "اكتب حرفين على الأقل.",

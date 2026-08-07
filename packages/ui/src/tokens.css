@@ -705,6 +705,7 @@
 
   --ease-out: var(--ease-out);
   --animate-twinkle: twinkle 2.6s var(--ease-out) infinite;
+  --animate-pulse: pulse 2.6s var(--ease-out) infinite;
   --animate-orbit-spin: orbit-spin 1.1s linear infinite;
   --animate-rise: rise 420ms var(--ease-out) both;
   --animate-draw: draw 900ms var(--ease-out) both;
@@ -747,6 +748,18 @@
   0%,
   100% {
     opacity: 0.85;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* twinkle's louder sibling, for the one indicator that has to read as alive
+   across a room — the ask bar's dot. Anything else at this depth is noise. */
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.3;
   }
   50% {
     opacity: 1;

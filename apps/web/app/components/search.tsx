@@ -71,16 +71,27 @@ export function SearchPalette({ t, destinations }: { t: Translate; destinations:
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="hidden h-8 min-w-0 max-w-md flex-1 items-center gap-2 rounded-md border border-border bg-surface-2/50 px-2.5 text-start font-ui text-12 text-subtle transition-colors duration-150 hover:border-border-strong hover:text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent sm:flex"
+        className="group hidden h-[31px] min-w-0 max-w-[680px] flex-1 items-center gap-2.5 rounded-[4px] border border-border bg-surface-2/50 px-3 text-start font-ui text-13 text-subtle transition-colors duration-150 hover:border-border-strong hover:text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent sm:flex"
       >
         <span
           aria-hidden="true"
           className="size-1.5 shrink-0 rounded-orbit bg-accent"
-          style={{ animation: "var(--animate-twinkle)" }}
+          style={{ animation: "var(--animate-pulse)" }}
         />
         <span className="truncate">{t("search.open")}</span>
-        {/* A key cap, not a word: the same two glyphs in every locale. */}
-        <kbd className="ms-auto shrink-0 font-mono text-11 text-subtle">⌘K</kbd>
+        {/* The scope chip. Not its own button — everything here opens the same
+            palette, and a button inside a button is invalid anyway. */}
+        <span className="ms-auto hidden shrink-0 items-center gap-1.5 rounded-[3px] border border-border px-2 py-[3px] text-11 text-subtle transition-colors duration-150 group-hover:border-border-strong group-hover:text-text md:flex">
+          <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" focusable="false">
+            <rect x="0.5" y="0.5" width="4" height="4" fill="none" stroke="currentColor" strokeWidth="0.8" />
+            <rect x="5.5" y="0.5" width="4" height="4" fill="currentColor" opacity="0.5" />
+            <rect x="0.5" y="5.5" width="4" height="4" fill="currentColor" opacity="0.3" />
+            <rect x="5.5" y="5.5" width="4" height="4" fill="none" stroke="currentColor" strokeWidth="0.8" />
+          </svg>
+          {t("search.allSurfaces")}
+          {/* A key cap, not a word: the same two glyphs in every locale. */}
+          <kbd className="font-mono text-11 text-muted">⌘K</kbd>
+        </span>
       </button>
       <CommandBar
         open={open}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { brandStyle } from "./shell";
+import { brandStyle, lockupNames } from "./shell";
 
 // A tenant may re-map exactly five custom properties (packages/ui/src/tokens.css
 // §TENANT OVERRIDE CONTRACT). `brand.font` is tenant-controlled data on its way
@@ -36,5 +36,30 @@ describe("brandStyle typeface", () => {
     }) as Record<string, string | undefined>;
 
     expect(Object.keys(style).sort()).toEqual(["--accent", "--accent-contrast", "--accent-hover"]);
+  });
+});
+
+// The Horizon lockup shows the product mark next to the tenant it is serving —
+// two names, a divider between them. Most tenants never set a brand name, and
+// "Sahab Cover | Sahab Cover" is worse than one word, so the second slot is
+// earned, not reserved.
+
+describe("lockupNames", () => {
+  it("shows the tenant beside the brand when the brand renamed the product", () => {
+    expect(lockupNames({ name: "Nova" }, "Sahab Cover")).toEqual({ product: "Nova", tenant: "Sahab Cover" });
+  });
+
+  it("falls back to the tenant as the product when no brand name is set", () => {
+    expect(lockupNames(null, "Sahab Cover")).toEqual({ product: "Sahab Cover", tenant: null });
+    expect(lockupNames({}, "Sahab Cover")).toEqual({ product: "Sahab Cover", tenant: null });
+  });
+
+  it("does not print the same name twice", () => {
+    expect(lockupNames({ name: "Sahab Cover" }, "Sahab Cover")).toEqual({
+      product: "Sahab Cover",
+      tenant: null
+    });
+    // Whitespace and case are presentation, not identity.
+    expect(lockupNames({ name: " sahab cover " }, "Sahab Cover").tenant).toBeNull();
   });
 });

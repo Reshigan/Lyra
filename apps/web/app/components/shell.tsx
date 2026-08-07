@@ -2,6 +2,7 @@ import { Form, NavLink, useLocation } from "react-router";
 import type { Brand, NavItem } from "../api.server";
 import type { Translate } from "../i18n";
 import { isRouted } from "../routing";
+import { ConstellationMark } from "./mark";
 import { SearchPalette } from "./search";
 import { ThemeToggle } from "./theme-toggle";
 
@@ -68,6 +69,20 @@ export function brandStyle(brand: TenantBrand | null): React.CSSProperties {
   } as React.CSSProperties;
 }
 
+/**
+ * The two names in the lockup: what the product is called here, and who is
+ * being served. A tenant that never renamed the product has one name, not the
+ * same word printed twice with a divider between it.
+ */
+export function lockupNames(
+  brand: Pick<TenantBrand, "name"> | null,
+  tenantName: string
+): { product: string; tenant: string | null } {
+  const product = brand?.name ?? tenantName;
+  const same = product.trim().toLowerCase() === tenantName.trim().toLowerCase();
+  return { product, tenant: same ? null : tenantName };
+}
+
 export interface ShellProps {
   t: Translate;
   nav: NavItem[];
@@ -100,7 +115,7 @@ function routedLeaves(item: NavItem): NavItem[] {
 }
 
 export function Shell({ t, nav, brand, tenantName, actorName, children }: ShellProps) {
-  const productName = brand?.name ?? tenantName;
+  const { product: productName, tenant: servedName } = lockupNames(brand, tenantName);
   // The API returns every item this actor may open, including modules whose
   // screens have not shipped yet (and headings whose one real destination
   // hasn't). Linking to an unrouted path would hand them a 404, so the shell
@@ -135,27 +150,38 @@ export function Shell({ t, nav, brand, tenantName, actorName, children }: ShellP
       </a>
 
       <header className="sticky top-0 z-30 flex h-[50px] items-center gap-2 border-b border-border bg-surface-1/95 px-3 backdrop-blur-sm sm:gap-3 sm:px-4">
-        <NavLink
-          to="/"
-          end
-          className="flex shrink-0 items-center gap-2 rounded-md px-1 py-1 font-display text-14 tracking-[0.02em] text-text hover:text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-        >
-          {logo ? (
-            <img src={logo} alt={productName} className="h-6 w-auto" />
-          ) : (
+        <div className="flex shrink-0 items-center gap-2">
+          <NavLink
+            to="/"
+            end
+            className="flex shrink-0 items-center gap-[9px] rounded-md px-1 py-1 font-display text-13 text-text hover:text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          >
+            {logo ? (
+              <img src={logo} alt={productName} className="h-6 w-auto" />
+            ) : (
+              <>
+                {/* A tenant with a logo gets its own; a tenant without one is
+                    not left with a bare word. */}
+                <ConstellationMark className="shrink-0" />
+                {/* ponytail: the wide tracking is the display face's Latin
+                    setting. Arabic is cursive — spacing it out pulls joined
+                    letters apart — so the LTR variant carries it. */}
+                <span className="truncate font-semibold ltr:tracking-[0.15em]">{productName}</span>
+              </>
+            )}
+          </NavLink>
+          {/* Whose workspace this is, beside what it is called. Only when the
+              two are different words (docs/07 §6: the brand renames the
+              product, it does not replace the tenant). */}
+          {servedName ? (
             <>
-              {/* The lockup mark: one dot in the tenant accent. A tenant with a
-                  logo gets its own; a tenant without one is not left with a
-                  bare word. */}
-              <span
-                aria-hidden="true"
-                className="size-2 shrink-0 rounded-orbit"
-                style={{ background: "var(--accent)" }}
-              />
-              <span className="truncate">{productName}</span>
+              <span aria-hidden="true" className="h-[15px] w-px shrink-0 bg-border-strong" />
+              <span className="hidden max-w-[16ch] truncate font-ui text-12 text-muted sm:inline">
+                {servedName}
+              </span>
             </>
-          )}
-        </NavLink>
+          ) : null}
+        </div>
 
         {/* ⌘K answers both halves of the design's two overlays: what is this,
             and where do I go. The destinations are the nav's own, so a place

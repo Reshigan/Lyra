@@ -69,6 +69,7 @@ export const en = {
   // because a domain pack may rename it (CLAUDE.md §14).
   "common.search": "Search",
   "search.open": "Search",
+  "search.allSurfaces": "All surfaces",
   "search.label": "Search everything",
   "search.placeholder": "Search people, records and requests",
   "search.prompt": "Type at least two letters.",

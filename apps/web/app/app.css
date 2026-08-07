@@ -38,9 +38,14 @@
    Add view transitions when a screen needs an element to fly *between*
    routes rather than simply arrive. */
 @layer components {
+  /* The dome: the sky is lighter overhead than at the horizon, so the page
+     top lifts a shade off the background. `--sky1` equals `--bg` in the light
+     theme, which makes this a no-op there rather than a second rule. */
   .lyra-field {
     position: relative;
     isolation: isolate;
+    background-image: radial-gradient(130% 95% at 50% -10%, var(--sky1) 0%, var(--bg) 55%, var(--bg) 100%);
+    background-attachment: fixed;
   }
 
   .lyra-field::before,
