@@ -4,10 +4,9 @@
 // not in apps/api, so the parsing evals/axis scores is the exact parsing the
 // route runs (packages/model-gateway/evals/axis/cases.jsonl -> run.ts).
 //
-// ponytail: text-in, JSON-out only. No image/vision content part exists on
-// `Message` (types.ts) and none of the three provider adapters accept one —
-// that is a separate, larger change. Real pipelines already split OCR from
-// field structuring, so the caller supplies the already-OCR'd text.
+// AXIS §G.5: when the caller has no `rawText`, the route renders pages to
+// images and calls the vision variants below instead — see
+// visionExtractionSchema/visionExtractionMessages/parseVisionExtraction.
 
 /** The only two doc types docs/modules/axis.md §8 puts a threshold on. */
 export const EXTRACTION_FIELDS: Record<string, readonly string[]> = {
@@ -108,4 +107,96 @@ export function parseExtraction(reply: string, fields: readonly string[]): Extra
 /** trim + case-fold, so the eval scorer and any UI diff do not fail on whitespace or case alone. */
 export function normalizeField(value: string | null): string {
   return (value ?? "").trim().toLowerCase();
+}
+
+/**
+ * A field value plus where on the page it was read, or all-null if unread.
+ * `page` is evidence only (documents are rendered page 1 only today, see
+ * axis-document-render.ts) — the route drops it before storage. `bbox` is
+ * kept, as `[x, y, width, height]` percent of the page (apps/web's
+ * axis-doc-intel.tsx `_bbox`/`bboxOf` contract, not pixels).
+ */
+export interface FieldEvidence {
+  value: string | null;
+  page: number | null;
+  bbox: [number, number, number, number] | null;
+}
+
+export interface VisionExtraction {
+  values: Record<string, FieldEvidence>;
+  /** Same heuristic as Extraction.confidence, but "present" requires evidence, not just a value. */
+  confidence: number;
+}
+
+/** JSON schema for the vision path: each field carries its evidence, not just its value. */
+export function visionExtractionSchema(fields: readonly string[]): Record<string, unknown> {
+  const evidence = {
+    type: "object",
+    properties: {
+      value: { type: ["string", "null"] },
+      page: { type: ["integer", "null"] },
+      bbox: { type: ["array", "null"], items: { type: "number" }, minItems: 4, maxItems: 4 }
+    },
+    required: ["value", "page", "bbox"]
+  };
+  return {
+    name: "axis_document_fields_vision",
+    schema: {
+      type: "object",
+      properties: Object.fromEntries(fields.map((f) => [f, evidence])),
+      required: [...fields]
+    }
+  };
+}
+
+/** Same prompt contract as extractionMessages, but points at the attached page image, not rawText. */
+export function visionExtractionMessages(input: {
+  docType: string;
+  fields: readonly string[];
+  locale: string;
+}): { role: "system" | "user"; content: string }[] {
+  return [
+    {
+      role: "system",
+      content:
+        `Extract these fields from the attached ${input.docType} document image and reply with JSON only, ` +
+        `matching the schema: ${input.fields.join(", ")}. Locale: ${input.locale}. For each field return its ` +
+        `value plus the page number and bounding box [x, y, width, height] as percentages of the page (0-100), ` +
+        `where you read it. If a field is not visible or you are not certain, set value, page and bbox to ` +
+        `null — never guess.`
+    },
+    { role: "user", content: `Extract the ${input.docType} fields from the attached image.` }
+  ];
+}
+
+/**
+ * Parses one vision reply. hallucinatedFieldRateMax: 0.0 (docs/modules/axis.md §8) means a
+ * value the model did not also point at with page+bbox is dropped rather than trusted — a
+ * plausible-looking string with no evidence is exactly what that threshold exists to catch.
+ */
+export function parseVisionExtraction(reply: string, fields: readonly string[]): VisionExtraction {
+  let parsed: Record<string, unknown> = {};
+  try {
+    parsed = JSON.parse(stripFence(reply)) as Record<string, unknown>;
+  } catch {
+    parsed = {};
+  }
+
+  const values: Record<string, FieldEvidence> = {};
+  let present = 0;
+  for (const field of fields) {
+    const raw = (parsed[field] ?? {}) as Partial<FieldEvidence>;
+    const value = typeof raw.value === "string" ? raw.value.trim() : "";
+    const page = typeof raw.page === "number" ? raw.page : null;
+    const bbox =
+      Array.isArray(raw.bbox) && raw.bbox.length === 4 && raw.bbox.every((n) => typeof n === "number")
+        ? (raw.bbox as [number, number, number, number])
+        : null;
+
+    const hasEvidence = value !== "" && page !== null && bbox !== null;
+    values[field] = hasEvidence ? { value, page, bbox } : { value: null, page: null, bbox: null };
+    if (hasEvidence) present += 1;
+  }
+
+  return { values, confidence: fields.length ? Math.round((present / fields.length) * 100) : 0 };
 }

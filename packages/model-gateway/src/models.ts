@@ -52,12 +52,15 @@ export interface RouteOptions {
   overrides?: Partial<Record<Tier, string>>;
   /** The request carries tools, so a model without tool support cannot serve it. */
   needsTools?: boolean;
+  /** ModelRequest.modelKey: names a CATALOGUE entry directly, skipping tier/override lookup. */
+  modelKey?: string;
 }
 
 export function resolveModel(tier: Tier, opts: RouteOptions = {}): ModelDef & { key: string } {
   const base = opts.onPrem ? ONPREM_ROUTES : CLOUD_ROUTES;
   const override = opts.overrides?.[tier];
-  let key = override && CATALOGUE[override] ? override : base[tier];
+  let key =
+    opts.modelKey && CATALOGUE[opts.modelKey] ? opts.modelKey : override && CATALOGUE[override] ? override : base[tier];
   let def = CATALOGUE[key];
   if (!def) throw new Error(`no model for tier ${tier}`);
 

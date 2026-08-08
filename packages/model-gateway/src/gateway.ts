@@ -60,7 +60,8 @@ export class Gateway {
     const def = resolveModel(req.tier, {
       onPrem,
       overrides: (this.opts.overrides ?? ctx.policy.modelOverrides) as never,
-      needsTools: Boolean(req.tools?.length)
+      needsTools: Boolean(req.tools?.length),
+      ...(req.modelKey !== undefined ? { modelKey: req.modelKey } : {})
     });
 
     // Scrub before anything sees the messages, including our own audit hash.

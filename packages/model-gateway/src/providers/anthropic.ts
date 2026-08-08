@@ -52,6 +52,31 @@ export const anthropic: Provider = {
     const base = env.AI_GATEWAY_URL ?? "https://api.anthropic.com";
     const { system, rest } = split(req.messages);
 
+    // AXIS §G.5 vision extraction: image blocks precede the text block in the
+    // last user turn, per the Messages API's "put images before the question" rule.
+    if (req.images?.length) {
+      let lastUser = -1;
+      for (let i = rest.length - 1; i >= 0; i--) {
+        if (rest[i]!.role === "user") {
+          lastUser = i;
+          break;
+        }
+      }
+      if (lastUser >= 0) {
+        const target = rest[lastUser]!;
+        rest[lastUser] = {
+          ...target,
+          content: [
+            ...req.images.map((img) => ({
+              type: "image",
+              source: { type: "base64", media_type: img.mimeType, data: img.data }
+            })),
+            { type: "text", text: target.content as string }
+          ]
+        } as never;
+      }
+    }
+
     const body: Record<string, unknown> = {
       model,
       max_tokens: req.maxTokens ?? 1024,

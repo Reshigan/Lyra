@@ -31,7 +31,10 @@ import {
   SENSITIVE_EXTRACTION_FIELDS,
   extractionMessages,
   extractionSchema,
-  parseExtraction
+  parseExtraction,
+  parseVisionExtraction,
+  visionExtractionMessages,
+  visionExtractionSchema
 } from "@lyra/model-gateway";
 import { body } from "../http.js";
 import { must } from "../rows.js";
@@ -66,6 +69,7 @@ import {
   transitionCase
 } from "../engines/axis-case-lifecycle.js";
 import { PolicyDocumentBody, issuePolicyDocument } from "../engines/axis-policy-document.js";
+import { renderDocumentPages } from "../engines/axis-document-render.js";
 import {
   ClaimPaymentBody,
   RecoveryOpenBody,
@@ -130,17 +134,25 @@ axisRoutes.post("/documents/:id/verify", async (c) => {
 });
 
 const ExtractBody = z.object({
-  // ponytail: OCR is out of scope (see model-gateway/extract.ts) — the caller
-  // hands over text it already has, not the file itself.
-  rawText: z.string().min(1).max(20_000),
+  // Optional now (AXIS §G.5, ADR-0036): without it, the route renders the
+  // document's own file to a page image and runs vision extraction instead.
+  // Still accepted directly for tests and any doc type whose text is already
+  // in hand — that path skips rendering entirely.
+  rawText: z.string().min(1).max(20_000).optional(),
   locale: z.enum(["en", "ar"]).default("en")
 });
 
 /**
- * docs/04 §4 "documents(+extract)". Structures a document's already-OCR'd text
- * into named fields via the gateway's `responseSchema` (docs/02 §5) — every
- * model call still budgeted, scrubbed, guardrailed and written to
- * ai_audit_log, same as any other gateway.complete() call.
+ * docs/04 §4 "documents(+extract)". Structures a document into named fields via
+ * the gateway's `responseSchema` (docs/02 §5) — every model call still
+ * budgeted, scrubbed, guardrailed and written to ai_audit_log, same as any
+ * other gateway.complete() call.
+ *
+ * Two paths (AXIS §G.5): `rawText` given -> text extraction, same as before.
+ * Omitted -> the document's file is rendered to a page image and read by a
+ * vision model instead (packages/model-gateway/src/extract.ts). On-prem
+ * tenants have no browser-rendering/vision route today, so they must supply
+ * `rawText` directly.
  */
 axisRoutes.post("/documents/:id/extract", async (c) => {
   const ctx = ctxOf(c);
@@ -152,29 +164,72 @@ axisRoutes.post("/documents/:id/extract", async (c) => {
   if (before.status !== "received") throw conflict(`document is already ${before.status}`);
 
   const input = await body(c, ExtractBody);
+  if (!input.rawText && ctx.policy.dataResidency === "on-prem") {
+    throw badRequest("on-prem tenants must supply rawText — vision extraction is not available");
+  }
+
   await ctx.db
     .update(schema.axisDocuments)
     .set({ status: "extracting" })
     .where(scoped(ctx, schema.axisDocuments, eq(schema.axisDocuments.id, rowId)));
 
   let result;
+  let plainValues: Record<string, string | null>;
+  const bbox: Record<string, [number, number, number, number]> = {};
+  let confidence: number;
   try {
-    result = await c.get("gateway").complete(ctx, {
-      module: "axis",
-      purpose: "axis.document.extract",
-      tier: "standard",
-      subjectRef: rowId,
-      locale: input.locale,
-      responseSchema: extractionSchema(fields),
-      // Prompt lives in @lyra/model-gateway so evals/live-extraction scores the
-      // prompt this route actually sends (docs/27 F10).
-      messages: extractionMessages({
-        docType: before.docType,
-        fields,
+    if (input.rawText) {
+      result = await c.get("gateway").complete(ctx, {
+        module: "axis",
+        purpose: "axis.document.extract",
+        tier: "standard",
+        subjectRef: rowId,
         locale: input.locale,
-        rawText: input.rawText
-      })
-    });
+        responseSchema: extractionSchema(fields),
+        // Prompt lives in @lyra/model-gateway so evals/live-extraction scores the
+        // prompt this route actually sends (docs/27 F10).
+        messages: extractionMessages({
+          docType: before.docType,
+          fields,
+          locale: input.locale,
+          rawText: input.rawText
+        })
+      });
+      ({ values: plainValues, confidence } = parseExtraction(result.text, fields));
+    } else {
+      const file = await must(ctx, schema.files, before.fileId, "document file");
+      const object = await c.env.FILES?.get(file.r2Key);
+      if (!object) throw notFound("document file");
+      if (!c.env.BROWSER) throw badRequest("vision extraction unavailable: no browser binding");
+
+      const pages = await renderDocumentPages(c.env.BROWSER, {
+        bytes: new Uint8Array(await object.arrayBuffer()),
+        contentType: file.contentType ?? "application/pdf"
+      });
+
+      result = await c.get("gateway").complete(ctx, {
+        module: "axis",
+        purpose: "axis.document.extract",
+        tier: "standard",
+        // AXIS §G.5, ADR-0036: vision goes to Anthropic regardless of tier
+        // routing — Workers AI has no vision-capable catalogue entry today.
+        modelKey: "claude-haiku-4-5",
+        subjectRef: rowId,
+        locale: input.locale,
+        responseSchema: visionExtractionSchema(fields),
+        images: pages,
+        messages: visionExtractionMessages({ docType: before.docType, fields, locale: input.locale })
+      });
+
+      const vision = parseVisionExtraction(result.text, fields);
+      confidence = vision.confidence;
+      plainValues = {};
+      for (const f of fields) {
+        const evidence = vision.values[f];
+        plainValues[f] = evidence?.value ?? null;
+        if (evidence?.bbox) bbox[f] = evidence.bbox;
+      }
+    }
   } catch (err) {
     // Nothing stays stuck "extracting" for a call that never landed — the
     // document is exactly as receivable as before this request.
@@ -185,13 +240,15 @@ axisRoutes.post("/documents/:id/extract", async (c) => {
     throw err;
   }
 
-  const { values, confidence } = parseExtraction(result.text, fields);
   // docs/12 §1: the identifier fields never reach the column in the clear, so
   // the audit `after` image and every CRUD read carry the sealed value too.
-  const sealed = await sealFields(fieldKey(c.env), values, SENSITIVE_EXTRACTION_FIELDS);
+  const sealed = await sealFields(fieldKey(c.env), plainValues, SENSITIVE_EXTRACTION_FIELDS);
+  // `_bbox`: the reserved key apps/web's axis-doc-intel.tsx already reads
+  // (bboxOf) — present only when the vision path had a box to give it.
+  const extractionJson = Object.keys(bbox).length ? { ...sealed, _bbox: bbox } : sealed;
   const stamp = {
     status: "extracted" as const,
-    extractionJson: JSON.stringify(sealed),
+    extractionJson: JSON.stringify(extractionJson),
     extractionConfidence: confidence,
     extractionModel: result.model
   };
@@ -209,12 +266,14 @@ axisRoutes.post("/documents/:id/extract", async (c) => {
     data: { docType: before.docType, confidence }
   });
   // docs/21 KB search: the extracted text is the only thing worth recalling
-  // later, so it's embedded after extraction succeeds, not on upload.
+  // later, so it's embedded after extraction succeeds, not on upload. The
+  // vision path has no rawText to embed, so the read fields stand in for it.
+  const embedText = input.rawText ?? Object.values(plainValues).filter((v): v is string => Boolean(v)).join(" ");
   await embedUpsert(ctx, c.get("gateway"), c.env.VEC_KB, {
     module: "axis",
     purpose: "axis.document.embed",
     id: rowId,
-    text: input.rawText,
+    text: embedText,
     metadata: { tenantId: ctx.tenantId, docType: before.docType }
   });
   return c.json(after);

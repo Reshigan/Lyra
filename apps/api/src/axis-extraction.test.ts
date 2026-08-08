@@ -3,9 +3,10 @@ import { join } from "node:path";
 import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
 import { eq } from "drizzle-orm";
-import { beforeAll, describe, expect, it } from "vitest";
-import { seed, totpAt, TOTP_STEP_SEC } from "@lyra/core";
-import { id as newId, schema, type Db } from "@lyra/db";
+import { beforeAll, describe, expect, it, vi } from "vitest";
+import { hashPassword, ROLES, seed, totpAt, TOTP_STEP_SEC } from "@lyra/core";
+import { EntitlementsJson, id as newId, PolicyJson, schema, type Db } from "@lyra/db";
+import { EXTRACTION_FIELDS } from "@lyra/model-gateway";
 import { app } from "./index.js";
 import type { Env } from "./env.js";
 
@@ -324,6 +325,155 @@ describe("POST /v1/axis/documents/:id/extract", () => {
     expect(entry?.beforeHash).toBeTruthy();
     expect(entry?.afterHash).toBeTruthy();
     expect(entry?.actorRef).toMatch(/^user:/);
+  });
+
+  // AXIS §G.5, ADR-0036: no rawText -> render the doc's own file to a page
+  // image and run vision extraction (Anthropic) instead of the AI-binding
+  // text path. `contentType: "image/png"` short-circuits renderDocumentPages
+  // (axis-document-render.ts) to the image branch, so BROWSER.fetch is never
+  // actually called here.
+  it("runs vision extraction when no rawText is given, reading the document's own file", async () => {
+    const docId = await upload("eid");
+    const docRow = (
+      await database.select().from(schema.axisDocuments).where(eq(schema.axisDocuments.id, docId))
+    )[0]!;
+
+    const bytes = new Uint8Array([1, 2, 3, 4]);
+    await database.insert(schema.files).values({
+      id: docRow.fileId,
+      tenantId: docRow.tenantId,
+      r2Key: `docs/${docRow.fileId}`,
+      kind: "axis.document",
+      sha256: "deadbeef",
+      contentType: "image/png",
+      createdAt: Date.now()
+    });
+
+    const original = env;
+    env = {
+      ...env,
+      ANTHROPIC_API_KEY: "test-anthropic-key",
+      FILES: { get: async () => ({ arrayBuffer: async () => bytes.buffer }) },
+      BROWSER: { fetch: async () => new Response() }
+    } as unknown as Env;
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        const out: Record<string, unknown> = {};
+        for (const field of EXTRACTION_FIELDS.eid!) {
+          out[field] = { value: FIELD_VALUES[field], page: 1, bbox: [1, 2, 3, 4] };
+        }
+        return new Response(
+          JSON.stringify({
+            content: [{ type: "text", text: JSON.stringify(out) }],
+            usage: { input_tokens: 1, output_tokens: 1 }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      })
+    );
+
+    try {
+      const res = await extract("agent", docId, { locale: "en" });
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe("extracted");
+      expect(res.body.extractionModel).toBeTruthy();
+
+      const extracted = JSON.parse(res.body.extractionJson);
+      expect(extracted._bbox.fullName).toEqual([1, 2, 3, 4]);
+      expect(extracted.fullName).toBe("Ahmed Al Mansoori");
+      // Same sealing rule as the text path: idNumber never reaches the column in the clear.
+      expect(extracted.idNumber).toMatch(/^enc\.v1\./);
+    } finally {
+      vi.unstubAllGlobals();
+      env = original;
+    }
+  });
+
+  // ADR-0036: on-prem tenants have no browser-rendering/vision route today,
+  // so the guard fires before any render/gateway call is attempted.
+  it("is 400 for an on-prem tenant with no rawText, before any render is attempted", async () => {
+    const now = Date.now();
+    const tenantId = newId("tn", now);
+    await database.insert(schema.tenants).values({
+      id: tenantId,
+      slug: "onprem-test",
+      name: "On-Prem Test Co",
+      status: "active",
+      policyJson: JSON.stringify(PolicyJson.parse({ dataResidency: "on-prem" })),
+      entitlementsJson: JSON.stringify(EntitlementsJson.parse({ modules: ["axis"] })),
+      createdAt: now,
+      updatedAt: now
+    });
+
+    const roleId = newId("rl", now);
+    await database.insert(schema.roles).values({
+      id: roleId,
+      tenantId,
+      key: "axis.agent",
+      name: "axis.agent",
+      permissionsJson: JSON.stringify(ROLES["axis.agent"]),
+      system: true,
+      createdAt: now
+    });
+
+    const userId = newId("us", now);
+    await database.insert(schema.users).values({
+      id: userId,
+      tenantId,
+      email: "onprem.agent@onprem-test.ae",
+      name: "On-Prem Agent",
+      locale: "en",
+      status: "active",
+      authProvider: "password",
+      passwordHash: await hashPassword(PASSWORD),
+      mfaEnrolled: true,
+      mfaSecret: DEMO_TOTP_SECRET,
+      createdAt: now,
+      updatedAt: now
+    });
+
+    await database.insert(schema.userRoles).values({
+      id: newId("url", now),
+      tenantId,
+      userId,
+      roleId,
+      scopeJson: null,
+      createdAt: now
+    });
+
+    const login = await call(null, "POST", "/v1/auth/login", {
+      email: "onprem.agent@onprem-test.ae",
+      password: PASSWORD,
+      tenantSlug: "onprem-test"
+    });
+    expect(login.status).toBe(200);
+    const token = login.body.token as string;
+    const verified = await app.fetch(
+      new Request("http://api.test/v1/auth/mfa/verify", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          code: await totpAt(DEMO_TOTP_SECRET, Math.floor(Date.now() / 1000 / TOTP_STEP_SEC))
+        })
+      }),
+      env as never,
+      exec as never
+    );
+    expect(verified.status).toBe(200);
+    tokens.onprem = token;
+
+    const created = await call("onprem", "POST", "/v1/axis/documents", {
+      caseId: newId("cas", now),
+      fileId: newId("fil", now),
+      docType: "eid"
+    });
+    expect(created.status).toBe(201);
+
+    const res = await extract("onprem", created.body.id as string, { locale: "en" });
+    expect(res.status).toBe(400);
+    expect(String(res.body.detail)).toContain("on-prem tenants must supply rawText");
   });
 });
 

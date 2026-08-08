@@ -54,6 +54,18 @@ export interface ModelRequest {
   unscrubbed?: boolean;
   /** Stops a runaway retry loop from re-billing the tenant. */
   idempotencyKey?: string;
+  /**
+   * Vision input, page-rendered document images (AXIS §G.5). Only the Anthropic
+   * adapter reads this today — see docs/decisions/ADR-0036.
+   */
+  images?: { data: string; mimeType: string; page?: number }[];
+  /**
+   * Bypasses tier routing to name a CATALOGUE key directly, still subject to the
+   * on-prem residency pin in resolveModel. For calls (like vision extraction)
+   * that need a specific model's capability, not "whatever this tier resolves
+   * to today."
+   */
+  modelKey?: string;
 }
 
 export interface Usage {
