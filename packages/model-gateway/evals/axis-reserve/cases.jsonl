@@ -1,0 +1,9 @@
+{"id": "clean-standard", "text": "{\"recommendedMinor\":120000,\"bandLowMinor\":90000,\"bandHighMinor\":150000,\"comparables\":[\"clmr_1\",\"clmr_2\"]}", "actualSettledMinor": 125000}
+{"id": "fenced-reply", "text": "```json\n{\"recommendedMinor\":200000,\"bandLowMinor\":150000,\"bandHighMinor\":250000,\"comparables\":[\"clmr_3\"]}\n```", "actualSettledMinor": 210000}
+{"id": "missing-band", "text": "{\"recommendedMinor\":80000,\"comparables\":[\"clmr_4\"]}", "actualSettledMinor": 75000}
+{"id": "inverted-band", "text": "{\"recommendedMinor\":300000,\"bandLowMinor\":350000,\"bandHighMinor\":300000,\"comparables\":[\"clmr_5\"]}", "actualSettledMinor": 310000}
+{"id": "extra-properties-ignored", "text": "{\"recommendedMinor\":50000,\"bandLowMinor\":40000,\"bandHighMinor\":60000,\"comparables\":[\"clmr_9\"],\"note\":\"ignore me\"}", "actualSettledMinor": 52000}
+{"id": "empty-comparables", "text": "{\"recommendedMinor\":150000,\"bandLowMinor\":120000,\"bandHighMinor\":180000,\"comparables\":[]}", "actualSettledMinor": 160000}
+{"id": "wide-miss-still-in-band", "text": "{\"recommendedMinor\":100000,\"bandLowMinor\":90000,\"bandHighMinor\":140000,\"comparables\":[\"clmr_6\"]}", "actualSettledMinor": 130000}
+{"id": "invalid-json", "text": "not json at all", "actualSettledMinor": 90000}
+{"id": "wrong-type-recommended", "text": "{\"recommendedMinor\":\"not-a-number\",\"bandLowMinor\":50000,\"bandHighMinor\":90000,\"comparables\":[\"clmr_7\"]}", "actualSettledMinor": 70000}

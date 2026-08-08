@@ -1,0 +1,5 @@
+{
+  "medianAbsPctErrorMax": 0.25,
+  "bandCoverageMin": 0.8,
+  "overReserveBiasMax": 0.1
+}

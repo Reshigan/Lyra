@@ -2260,6 +2260,7 @@ export interface Operations {
   "POST /v1/axis/claims/{id}/payments": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/axis/claims/{id}/recoveries": Op<{ id: string }, never, never, Record<string, unknown>>;
   "POST /v1/axis/claims/{id}/recoveries": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
+  "POST /v1/axis/claims/{id}/reserve-recommendation": Op<{ id: string }, never, never, Record<string, unknown>>;
   "GET /v1/axis/claims/{id}/reserves": Op<{ id: string }, never, never, Record<string, unknown>>;
   "POST /v1/axis/claims/{id}/reserves": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/axis/claims/{id}/transition": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
@@ -2901,6 +2902,7 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "POST /v1/axis/claims/{id}/payments": { tag: "axis", summary: "Pay a claim out of the funded float", permission: "axis:claims:pay", public: false },
   "GET /v1/axis/claims/{id}/recoveries": { tag: "axis", summary: "The recoveries being pursued on this claim, newest first", permission: "axis:claims:read", public: false },
   "POST /v1/axis/claims/{id}/recoveries": { tag: "axis", summary: "Open a recovery against a settled claim", permission: "axis:claims:recover", public: false },
+  "POST /v1/axis/claims/{id}/reserve-recommendation": { tag: "axis", summary: "Suggest and write an AI-recommended reserve from comparable closed claims", permission: "axis:claims:reserve", public: false },
   "GET /v1/axis/claims/{id}/reserves": { tag: "axis", summary: "The reserve history of this claim, newest first", permission: "axis:claims:read", public: false },
   "POST /v1/axis/claims/{id}/reserves": { tag: "axis", summary: "Append a reserve movement on one head", permission: "axis:claims:reserve", public: false },
   "POST /v1/axis/claims/{id}/transition": { tag: "axis", summary: "Move a claim through its state machine", permission: "axis:claims:update", public: false },

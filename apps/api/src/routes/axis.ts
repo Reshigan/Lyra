@@ -57,6 +57,7 @@ import {
   permissionForClaimTransition,
   transitionClaim
 } from "../engines/axis-claim-lifecycle.js";
+import { writeRecommendedReserve } from "../engines/axis-reserve-advisor.js";
 import {
   CaseTransitionBody,
   permissionForCaseTransition,
@@ -1124,6 +1125,23 @@ axisRoutes.get("/claims/:id/reserves", async (c) => {
   const claim = await must(ctx, schema.axisClaims, c.req.param("id"), "claims");
   const data = await listReserves(ctx, claim.id);
   return c.json({ data, total: data.length });
+});
+
+/**
+ * §G.3. A reserve suggested by the model gateway from comparable closed
+ * claims, not the handler's own figure — but written through the very same
+ * appendReserve gate, so an above-threshold suggestion still stops for
+ * approval instead of ever landing unsupervised. No body: everything it
+ * needs already lives on the claim.
+ */
+axisRoutes.post("/claims/:id/reserve-recommendation", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:claims:reserve", { tenantId: ctx.tenantId, module: "axis" });
+  const claim = await must(ctx, schema.axisClaims, c.req.param("id"), "claims");
+  const key = c.req.header("idempotency-key");
+  const run = () => writeRecommendedReserve(ctx, claim, c.get("gateway"));
+  const out = await withIdempotency(ctx, key, `POST ${c.req.path}`, {}, run);
+  return out ? c.json(out, 201) : c.json({ recommended: false }, 200);
 });
 
 /* ------------------------------------------------- claim money (§D.10) --- */

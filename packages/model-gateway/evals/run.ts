@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { checkInput, checkOutput, blocked } from "../src/guardrails.js";
 import { EXTRACTION_FIELDS, normalizeField, parseExtraction } from "../src/extract.js";
 import { parseTriage } from "../src/triage.js";
+import { parseReserve } from "../src/reserve.js";
 import { aggregateCxScore, localeGap } from "../src/cx-judge.js";
 import { verifyNumericClaims, verifyGroundedness, checkCompliance as checkSignalCompliance, type BriefingSnapshot } from "@lyra/core";
 import { loadCases, loadThresholds, metric, metricOk, type Metric } from "./harness.js";
@@ -175,6 +176,62 @@ async function scoreFnolTriage(dir: string): Promise<Metric[]> {
   return [metric("fieldAccuracy", total ? correct / total : 1, { min: thresholds.fieldAccuracyMin })];
 }
 
+interface ReserveCase {
+  id: string;
+  /** The model's structured reply — what `parseReserve` (src/reserve.ts) actually parses. */
+  text: string;
+  /** Ground truth the recommendation is scored against — what the claim actually settled for. */
+  actualSettledMinor: number;
+}
+
+interface ReserveThresholds {
+  medianAbsPctErrorMax: number;
+  bandCoverageMin: number;
+  overReserveBiasMax: number;
+}
+
+function median(values: number[]): number {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
+}
+
+// docs/specs/gap-axis-design.md §G.3. No live model call (deterministic/CI-safe,
+// docs/13 §4) — cases.jsonl bakes in canned model replies (clean, code-fenced,
+// missing band, inverted band, extra properties, wrong types) plus each case's
+// actual settled amount, scoring the exact `parseReserve` that
+// `recommendReserve` (apps/api/src/engines/axis-reserve-advisor.ts) runs in production.
+async function scoreReserve(dir: string): Promise<Metric[]> {
+  const cases = await loadCases<ReserveCase>(dir);
+  const thresholds = await loadThresholds<ReserveThresholds>(dir);
+
+  const pctErrors: number[] = [];
+  const biases: number[] = [];
+  let bandedCases = 0;
+  let covered = 0;
+
+  for (const c of cases) {
+    const rec = parseReserve(c.text);
+    if (rec.recommendedMinor !== null && c.actualSettledMinor > 0) {
+      pctErrors.push(Math.abs(rec.recommendedMinor - c.actualSettledMinor) / c.actualSettledMinor);
+      biases.push((rec.recommendedMinor - c.actualSettledMinor) / c.actualSettledMinor);
+    }
+    if (rec.band) {
+      bandedCases += 1;
+      if (c.actualSettledMinor >= rec.band[0] && c.actualSettledMinor <= rec.band[1]) covered += 1;
+    }
+  }
+
+  return [
+    metric("medianAbsPctError", pctErrors.length ? median(pctErrors) : 1, { max: thresholds.medianAbsPctErrorMax }),
+    metric("bandCoverage", bandedCases ? covered / bandedCases : 0, { min: thresholds.bandCoverageMin }),
+    metric("overReserveBias", biases.length ? biases.reduce((a, b) => a + b, 0) / biases.length : 0, {
+      max: thresholds.overReserveBiasMax
+    })
+  ];
+}
+
 interface CxQualityCase {
   id: string;
   locale: string;
@@ -326,6 +383,7 @@ const SCORERS: Record<string, (dir: string) => Promise<Metric[]>> = {
   axis: scoreAxis,
   "axis-copilot": scoreAxisCopilot,
   "axis-fnol-triage": scoreFnolTriage,
+  "axis-reserve": scoreReserve,
   "cx-quality": scoreCxQuality,
   north: scoreNorth,
   signal: scoreSignal
