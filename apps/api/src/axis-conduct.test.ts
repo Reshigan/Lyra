@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import { schema, id as newId, type Db } from "@lyra/db";
 import { seed, totpAt, TOTP_STEP_SEC, type SeedResult } from "@lyra/core";
@@ -50,10 +50,11 @@ async function login(local: string): Promise<string> {
   return issued;
 }
 
-async function insertComplaint(ref: string, dueAt: number, state: string) {
+async function insertComplaint(ref: string, dueAt: number, state: string): Promise<string> {
   const now = Date.now();
+  const id = newId("cmp", now);
   await database.insert(schema.axisComplaints).values({
-    id: newId("cmp", now),
+    id,
     tenantId: seeded.tenantId,
     ref,
     channel: "email",
@@ -65,6 +66,27 @@ async function insertComplaint(ref: string, dueAt: number, state: string) {
     createdAt: now,
     updatedAt: now
   } as typeof schema.axisComplaints.$inferInsert);
+  return id;
+}
+
+/** Grants an extra role to a seeded user so a test has a second, distinct
+ * actor to decide a dual-control approval (axis.claim_exgratia never
+ * auto-approves and never allows requester === decider). */
+async function grantRole(userId: string, roleKey: string): Promise<void> {
+  const now = Date.now();
+  const role = (
+    await database
+      .select()
+      .from(schema.roles)
+      .where(and(eq(schema.roles.tenantId, seeded.tenantId), eq(schema.roles.key, roleKey)))
+  )[0]!;
+  await database.insert(schema.userRoles).values({
+    id: newId("urr", now),
+    tenantId: seeded.tenantId,
+    userId,
+    roleId: role.id,
+    createdAt: now
+  } as typeof schema.userRoles.$inferInsert);
 }
 
 beforeAll(async () => {
@@ -97,5 +119,95 @@ describe("AXIS conduct — complaints register (docs/27 §D.8)", () => {
     expect(refs).toContain(`CMP-OVERDUE-${now}`);
     expect(refs).not.toContain(`CMP-FUTURE-${now}`);
     expect(refs).not.toContain(`CMP-CLOSED-${now}`);
+  });
+
+  it("a complaint can move through legal states", async () => {
+    const id = await insertComplaint(`CMP-FLOW-${Date.now()}`, Date.now() + DAY, "received");
+    ok(await call("PATCH", `/v1/axis/complaints/${id}`, { state: "investigating" }));
+    ok(await call("PATCH", `/v1/axis/complaints/${id}`, { state: "resolved" }));
+  });
+
+  it("rejects an illegal state transition", async () => {
+    const id = await insertComplaint(`CMP-ILLEGAL-${Date.now()}`, Date.now() + DAY, "received");
+    const res = await call("PATCH", `/v1/axis/complaints/${id}`, { state: "resolved" });
+    expect(res.status).toBe(400);
+  });
+
+  it("gates redress above zero on dual control (axis.claim_exgratia) and unblocks on decide", async () => {
+    await grantRole(seeded.users["axis.agent"]!, "axis.admin");
+    const deciderToken = await login("layla.hassan");
+
+    const id = await insertComplaint(`CMP-REDRESS-${Date.now()}`, Date.now() + DAY, "investigating");
+    const blocked = await call("PATCH", `/v1/axis/complaints/${id}`, { redressMinor: 50_000 });
+    expect(blocked.status).toBe(403);
+    expect(blocked.body.code).toBe("approval_required");
+    const approvalId = blocked.body.approval_id as string;
+    expect(approvalId).toBeTruthy();
+
+    ok(await call("POST", `/v1/me/approvals/${approvalId}/decide`, { decision: "approved" }, {}, () => deciderToken));
+
+    ok(await call("PATCH", `/v1/axis/complaints/${id}`, { redressMinor: 50_000 }));
+  });
+});
+
+async function insertClaim(claimNo: string): Promise<string> {
+  const now = Date.now();
+  const id = newId("clm", now);
+  await database.insert(schema.axisClaims).values({
+    id,
+    tenantId: seeded.tenantId,
+    policyId: newId("plc", now),
+    customerId: newId("cus", now),
+    claimNo,
+    reportedAt: now,
+    currency: "AED",
+    status: "reported",
+    siuState: "referred",
+    createdAt: now,
+    updatedAt: now
+  } as typeof schema.axisClaims.$inferInsert);
+  return id;
+}
+
+async function insertSiuReferral(claimId: string, state: string): Promise<string> {
+  const now = Date.now();
+  const id = newId("siu", now);
+  await database.insert(schema.axisSiuReferrals).values({
+    id,
+    tenantId: seeded.tenantId,
+    claimId,
+    score: 70,
+    reasonsJson: JSON.stringify(["velocity"]),
+    source: "model",
+    state,
+    openedAt: now,
+    createdAt: now,
+    updatedAt: now
+  } as typeof schema.axisSiuReferrals.$inferInsert);
+  return id;
+}
+
+describe("AXIS conduct — SIU referrals (docs/27 §D.8)", () => {
+  it("a referral can move through legal states", async () => {
+    const claimId = await insertClaim(`CLM-SIU-FLOW-${Date.now()}`);
+    const id = await insertSiuReferral(claimId, "open");
+    ok(await call("PATCH", `/v1/axis/siu-referrals/${id}`, { state: "investigating" }));
+    ok(await call("PATCH", `/v1/axis/siu-referrals/${id}`, { state: "unsubstantiated" }));
+  });
+
+  it("rejects an illegal state transition", async () => {
+    const claimId = await insertClaim(`CLM-SIU-ILLEGAL-${Date.now()}`);
+    const id = await insertSiuReferral(claimId, "open");
+    const res = await call("PATCH", `/v1/axis/siu-referrals/${id}`, { state: "substantiated" });
+    expect(res.status).toBe(400);
+  });
+
+  it("clearing a referral (unsubstantiated) nulls the linked claim's siuState", async () => {
+    const claimId = await insertClaim(`CLM-SIU-CLEAR-${Date.now()}`);
+    const id = await insertSiuReferral(claimId, "investigating");
+    ok(await call("PATCH", `/v1/axis/siu-referrals/${id}`, { state: "unsubstantiated" }));
+
+    const claim = (await database.select().from(schema.axisClaims).where(eq(schema.axisClaims.id, claimId)))[0]!;
+    expect(claim.siuState).toBeNull();
   });
 });

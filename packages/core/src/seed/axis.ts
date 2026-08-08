@@ -23,6 +23,24 @@ export async function seedAxis(ctx: SeedContext): Promise<void> {
   const agent = `user:${ctx.users["axis.agent"]!}`;
   const lead = `user:${ctx.users["axis.lead"]!}`;
 
+  // Delegated underwriting authority (docs/specs/gap-axis-design.md §A.4): no
+  // row means no delegated authority and everything above zero refers. The
+  // demo tenant writes the row so the seed can bind without every quote
+  // opening a referral — the same axis.lead limit the spec uses as its example.
+  await db.insert(schema.axisOpsPolicies).values({
+    id: id("opl", now - 240 * DAY),
+    tenantId,
+    key: "axis.authority",
+    kind: "authority",
+    valueJson: JSON.stringify({
+      underwriting: [{ role: "axis.lead", productLine: "*", maxPremiumMinor: 25_000_000 }]
+    }),
+    status: "active",
+    updatedBy: lead,
+    createdAt: now - 240 * DAY,
+    updatedAt: now - 240 * DAY
+  });
+
   /* --------------------------------------------------------------- claims */
   // Every claim sits on last year's cover (`renewalPolicyId`), not on the policy
   // just sold: that one only incepts at `issuedAt`, two days after the seed

@@ -118,7 +118,7 @@ beforeAll(async () => {
   env = { DB_CLIENT: database, ENVIRONMENT: "development", APP_ORIGIN: "http://localhost:5173" } as unknown as Env;
 
   await login("omar.farouk");
-  await autoApprove("axis.bind", "axis.endorse");
+  await autoApprove("axis.bind", "axis.underwriting_referral", "axis.endorse");
 
   productId = (await database.select().from(schema.products).where(eq(schema.products.line, "motor")))[0]!.id;
   const customer = (await database.select().from(schema.customers).limit(1))[0]!;

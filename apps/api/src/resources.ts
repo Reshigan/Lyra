@@ -1,6 +1,7 @@
+import { eq } from "drizzle-orm";
 import { id } from "@lyra/db";
 import { schema } from "@lyra/db";
-import { badRequest, can, checkKAnonymity, CUSTOMER_PII, DEFAULT_K_FLOOR, sealFields } from "@lyra/core";
+import { badRequest, can, checkKAnonymity, CUSTOMER_PII, DEFAULT_K_FLOOR, gate, scoped, sealFields } from "@lyra/core";
 import { SENSITIVE_EXTRACTION_FIELDS } from "@lyra/model-gateway";
 import { fieldKey } from "./env.js";
 import { register, type Resource } from "./crud.js";
@@ -244,6 +245,25 @@ export const DIST = register(
 
 /* -------------------------------------------------------------------- axis */
 
+/** Complaint lifecycle (docs/27 §D.8). closed is terminal. */
+const COMPLAINT_TRANSITIONS: Record<string, string[]> = {
+  received: ["investigating", "escalated", "closed"],
+  investigating: ["awaiting_customer", "resolved", "escalated", "closed"],
+  awaiting_customer: ["investigating", "resolved", "escalated", "closed"],
+  resolved: ["closed", "escalated"],
+  escalated: ["resolved", "closed"],
+  closed: []
+};
+
+/** SIU referral lifecycle (docs/27 §D.8). closed is terminal. */
+const SIU_TRANSITIONS: Record<string, string[]> = {
+  open: ["investigating", "closed"],
+  investigating: ["substantiated", "unsubstantiated", "closed"],
+  substantiated: ["closed"],
+  unsubstantiated: ["closed"],
+  closed: []
+};
+
 export const AXIS = register(
   r("cases", schema.axisCases, "cas", "axis", rcud("axis:cases"), { searchable: ["ref"] }),
   // docs/27 F13: `dist_quote_responses` is the single source of quote truth.
@@ -309,11 +329,51 @@ export const AXIS = register(
     read: "axis:complaints:read",
     create: "axis:complaints:write",
     update: "axis:complaints:write"
+  }, {
+    // Ex-gratia redress is consequential (docs/27 §D.8): dual control via
+    // axis.claim_exgratia, gated only when redressMinor actually changes —
+    // r.approval.update would gate every PATCH, including plain state moves.
+    beforeWrite: async (ctx, values, existing) => {
+      if (!existing) return values;
+      const from = existing.state as string;
+      const to = values.state as string | undefined;
+      if (typeof to === "string" && to !== from && !(COMPLAINT_TRANSITIONS[from] ?? []).includes(to)) {
+        throw badRequest(`a complaint cannot move ${from} -> ${to}`);
+      }
+      const redress = values.redressMinor as number | undefined;
+      if (typeof redress === "number" && redress > 0) {
+        await gate(ctx, {
+          policyKey: "axis.claim_exgratia",
+          subjectRef: `complaints:${existing.id}`,
+          amountMinor: redress
+        });
+      }
+      return values;
+    }
   }),
   r("siu-referrals", schema.axisSiuReferrals, "siu", "axis", {
     read: "axis:siu:read",
     create: "axis:siu:write",
     update: "axis:siu:write"
+  }, {
+    beforeWrite: (_ctx, values, existing) => {
+      if (!existing) return values;
+      const from = existing.state as string;
+      const to = values.state as string | undefined;
+      if (typeof to === "string" && to !== from && !(SIU_TRANSITIONS[from] ?? []).includes(to)) {
+        throw badRequest(`a SIU referral cannot move ${from} -> ${to}`);
+      }
+      return values;
+    },
+    // "unsubstantiated" is the referral's clear intent: the linked claim's
+    // siuState flag (set when the referral opened) comes back down with it.
+    afterWrite: async (ctx, row) => {
+      if (row.state !== "unsubstantiated") return;
+      await ctx.db
+        .update(schema.axisClaims)
+        .set({ siuState: null })
+        .where(scoped(ctx, schema.axisClaims, eq(schema.axisClaims.id, row.claimId as string)));
+    }
   }),
   r("referrals", schema.axisReferrals, "rfl", "axis", ro("axis:policies:decide_referral"))
 );

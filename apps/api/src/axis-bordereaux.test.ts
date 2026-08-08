@@ -99,7 +99,7 @@ beforeAll(async () => {
   const customer = (await database.select().from(schema.customers).limit(1))[0]!;
   customerId = customer.id;
   consentId = customer.consentId!;
-  await autoApprove("axis.bind", "dist.commission_accrue");
+  await autoApprove("axis.bind", "axis.underwriting_referral", "dist.commission_accrue");
 }, 120_000);
 
 describe("AXIS bordereaux (docs/27 §E)", () => {

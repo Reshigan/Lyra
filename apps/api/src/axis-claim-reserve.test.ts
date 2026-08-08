@@ -133,7 +133,7 @@ beforeAll(async () => {
   customerId = customer.id;
   consentId = customer.consentId!;
 
-  await autoApprove("axis.bind");
+  await autoApprove("axis.bind", "axis.underwriting_referral");
   const start = Date.now() - 30 * DAY;
   const shopped = ok(
     await call("POST", "/v1/dist/quote-requests/shop", {
@@ -262,7 +262,7 @@ describe("AXIS claim transitions (docs/specs/gap-axis-design.md §B.2)", () => {
   it("declining a claim always needs dual control", async () => {
     // `axis.claim_settlement` is neverAutoApprove (docs/19 §4.1): telling a
     // customer no is never a thing one person does alone, allowlist or not.
-    await autoApprove("axis.bind", "axis.claim_settlement");
+    await autoApprove("axis.bind", "axis.underwriting_referral", "axis.claim_settlement");
     const claimId = await openClaim("CLM-TRN-2", 12_000_00);
     ok(await call("POST", `/v1/axis/claims/${claimId}/transition`, { to: "triage" }));
 

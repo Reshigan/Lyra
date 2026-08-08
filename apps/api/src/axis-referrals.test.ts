@@ -76,7 +76,7 @@ async function setAuthority(valueJson: Record<string, unknown>): Promise<void> {
   } as typeof schema.axisOpsPolicies.$inferInsert);
 }
 
-async function shopAndSelect(policyNo: string) {
+async function shopAndSelect() {
   const shopped = ok(await call("POST", "/v1/dist/quote-requests/shop", { productId, channelId: seeded.channels.web, customerId, consentId, inputs: RISK, currency: "AED" }), 201);
   const quoted = (shopped.responses as any[]).filter((r) => r.state === "quoted");
   const best = quoted.slice().sort((a, b) => a.premiumMinor - b.premiumMinor)[0];
@@ -105,7 +105,7 @@ beforeAll(async () => {
 describe("AXIS underwriting referrals (docs/27 §A.4, §D.6)", () => {
   it("a bind above delegated authority creates a referral instead of a policy", async () => {
     await setAuthority({ underwriting: [{ role: "axis.lead", productLine: "*", maxPremiumMinor: 100_000 }] });
-    const best = await shopAndSelect(`AXIS-REF-${Date.now()}`);
+    const best = await shopAndSelect();
     expect(best.premiumMinor, "the panel's premium is too small to clear the authority limit").toBeGreaterThan(100_000);
 
     const res = await call("POST", `/v1/axis/quote-responses/${best.id}/bind`, {
@@ -127,7 +127,7 @@ describe("AXIS underwriting referrals (docs/27 §A.4, §D.6)", () => {
 
   it("a bind within delegated authority proceeds without a referral", async () => {
     await setAuthority({ underwriting: [{ role: "axis.lead", productLine: "*", maxPremiumMinor: 25_000_000 }] });
-    const best = await shopAndSelect(`AXIS-OK-${Date.now()}`);
+    const best = await shopAndSelect();
     expect(best.premiumMinor).toBeLessThan(25_000_000);
 
     const res = await call("POST", `/v1/axis/quote-responses/${best.id}/bind`, {
@@ -140,7 +140,7 @@ describe("AXIS underwriting referrals (docs/27 §A.4, §D.6)", () => {
 
   it("accepting the referral unblocks a retry of the same bind", async () => {
     await setAuthority({ underwriting: [{ role: "axis.lead", productLine: "*", maxPremiumMinor: 100_000 }] });
-    const best = await shopAndSelect(`AXIS-RETRY-${Date.now()}`);
+    const best = await shopAndSelect();
     const bindBody = { policyNo: `AXIS-RETRY-${Date.now()}`, startAt: Date.now(), endAt: Date.now() + 365 * DAY };
 
     const blocked = await call("POST", `/v1/axis/quote-responses/${best.id}/bind`, bindBody);

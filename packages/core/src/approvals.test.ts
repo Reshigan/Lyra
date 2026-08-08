@@ -86,6 +86,7 @@ describe("APPROVAL_POLICIES", () => {
       "axis.claim_payment": { key: "axis.claim_payment", module: "axis", decide: "axis:claims:pay_approve", dualControl: "always", neverAutoApprove: true },
       "axis.claim_exgratia": { key: "axis.claim_exgratia", module: "axis", decide: "axis:claims:pay_approve", dualControl: "always", neverAutoApprove: true },
       "axis.recovery_writeoff": { key: "axis.recovery_writeoff", module: "axis", decide: "axis:claims:recover", dualControl: "above_threshold", defaultThresholdMinor: 10_000_00 },
+      "axis.underwriting_referral": { key: "axis.underwriting_referral", module: "axis", decide: "axis:policies:decide_referral", dualControl: "above_threshold", defaultThresholdMinor: 500_000_00 },
       "dist.rate_change": { key: "dist.rate_change", module: "core", decide: "dist:rates:approve", dualControl: "always", neverAutoApprove: true },
       "dist.commission_adjust": { key: "dist.commission_adjust", module: "core", decide: "dist:commissions:adjust", dualControl: "above_threshold", defaultThresholdMinor: 1_000_00 },
       "dist.commission_accrue": { key: "dist.commission_accrue", module: "core", decide: "dist:commissions:adjust", dualControl: "above_threshold", defaultThresholdMinor: 1_000_00, singleUse: false },

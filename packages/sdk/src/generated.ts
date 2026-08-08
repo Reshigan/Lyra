@@ -404,6 +404,32 @@ export interface AxisClaims {
   updatedAt?: number;
 }
 
+export interface AxisComplaints {
+  id?: string;
+  tenantId?: string;
+  ref: string;
+  customerId?: string;
+  policyId?: string;
+  claimId?: string;
+  caseId?: string;
+  channel: string;
+  categoryCode: string;
+  summarySealed?: string;
+  receivedAt: number;
+  acknowledgedAt?: number;
+  dueAt: number;
+  resolvedAt?: number;
+  state?: string;
+  outcome?: string;
+  rootCauseCode?: string;
+  redressMinor?: number;
+  currency?: string;
+  regulatorRef?: string;
+  ownerRef?: string;
+  createdAt?: number;
+  updatedAt?: number;
+}
+
 export interface AxisDocuments {
   id?: string;
   tenantId?: string;
@@ -510,6 +536,46 @@ export interface AxisQuotes {
   winFlag?: boolean;
   declineReason?: string;
   source?: string;
+  createdAt?: number;
+  updatedAt?: number;
+}
+
+export interface AxisReferrals {
+  id?: string;
+  tenantId?: string;
+  caseId?: string;
+  policyId?: string;
+  quoteResponseId?: string;
+  kind: string;
+  triggerJson: string;
+  valueMinor?: number;
+  currency?: string;
+  state?: string;
+  decidedBy?: string;
+  decisionNote?: string;
+  counterTermsJson?: string;
+  approvalId?: string;
+  slaDueAt?: number;
+  createdAt?: number;
+  updatedAt?: number;
+}
+
+export interface AxisSiuReferrals {
+  id?: string;
+  tenantId?: string;
+  claimId: string;
+  policyId?: string;
+  score: number;
+  reasonsJson: string;
+  aiAuditId?: string;
+  source?: string;
+  state?: string;
+  assignedTo?: string;
+  outcome?: string;
+  savedMinor?: number;
+  currency?: string;
+  openedAt: number;
+  closedAt?: number;
   createdAt?: number;
   updatedAt?: number;
 }
@@ -2197,6 +2263,10 @@ export interface Operations {
   "GET /v1/axis/claims/{id}/reserves": Op<{ id: string }, never, never, Record<string, unknown>>;
   "POST /v1/axis/claims/{id}/reserves": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/axis/claims/{id}/transition": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
+  "GET /v1/axis/complaints": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<AxisComplaints>>;
+  "POST /v1/axis/complaints": Op<never, never, AxisComplaints, AxisComplaints>;
+  "GET /v1/axis/complaints/{id}": Op<{ id: string }, never, never, AxisComplaints>;
+  "PATCH /v1/axis/complaints/{id}": Op<{ id: string }, never, AxisComplaints, AxisComplaints>;
   "POST /v1/axis/dev/extract-sample": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/axis/documents": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<AxisDocuments>>;
   "POST /v1/axis/documents": Op<never, never, AxisDocuments, AxisDocuments>;
@@ -2237,6 +2307,13 @@ export interface Operations {
   "GET /v1/axis/quotes/{id}": Op<{ id: string }, never, never, AxisQuotes>;
   "POST /v1/axis/recoveries/{id}/receipt": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/axis/recoveries/{id}/writeoff": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
+  "GET /v1/axis/referrals": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<AxisReferrals>>;
+  "GET /v1/axis/referrals/{id}": Op<{ id: string }, never, never, AxisReferrals>;
+  "POST /v1/axis/referrals/{id}/decide": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
+  "GET /v1/axis/siu-referrals": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<AxisSiuReferrals>>;
+  "POST /v1/axis/siu-referrals": Op<never, never, AxisSiuReferrals, AxisSiuReferrals>;
+  "GET /v1/axis/siu-referrals/{id}": Op<{ id: string }, never, never, AxisSiuReferrals>;
+  "PATCH /v1/axis/siu-referrals/{id}": Op<{ id: string }, never, AxisSiuReferrals, AxisSiuReferrals>;
   "GET /v1/axis/sops": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<AxisSops>>;
   "POST /v1/axis/sops": Op<never, never, AxisSops, AxisSops>;
   "GET /v1/axis/sops/{id}": Op<{ id: string }, never, never, AxisSops>;
@@ -2827,6 +2904,10 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "GET /v1/axis/claims/{id}/reserves": { tag: "axis", summary: "The reserve history of this claim, newest first", permission: "axis:claims:read", public: false },
   "POST /v1/axis/claims/{id}/reserves": { tag: "axis", summary: "Append a reserve movement on one head", permission: "axis:claims:reserve", public: false },
   "POST /v1/axis/claims/{id}/transition": { tag: "axis", summary: "Move a claim through its state machine", permission: "axis:claims:update", public: false },
+  "GET /v1/axis/complaints": { tag: "axis", summary: "List complaints", permission: "axis:complaints:read", public: false },
+  "POST /v1/axis/complaints": { tag: "axis", summary: "Create a complaint", permission: "axis:complaints:write", public: false },
+  "GET /v1/axis/complaints/{id}": { tag: "axis", summary: "Fetch one complaint", permission: "axis:complaints:read", public: false },
+  "PATCH /v1/axis/complaints/{id}": { tag: "axis", summary: "Update a complaint", permission: "axis:complaints:write", public: false },
   "POST /v1/axis/dev/extract-sample": { tag: "axis", summary: "Developer console: run field extraction against pasted text, no document row created", permission: "dev:sandbox:use", public: false },
   "GET /v1/axis/documents": { tag: "axis", summary: "List documents", permission: "axis:documents:read", public: false },
   "POST /v1/axis/documents": { tag: "axis", summary: "Create a document", permission: "axis:documents:upload", public: false },
@@ -2867,6 +2948,13 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "GET /v1/axis/quotes/{id}": { tag: "axis", summary: "Fetch one quote", permission: "axis:quotes:read", public: false },
   "POST /v1/axis/recoveries/{id}/receipt": { tag: "axis", summary: "Record money recovered, net of the handling fee", permission: "axis:claims:recover", public: false },
   "POST /v1/axis/recoveries/{id}/writeoff": { tag: "axis", summary: "Abandon pursuit and write the outstanding recovery off", permission: "axis:claims:recover", public: false },
+  "GET /v1/axis/referrals": { tag: "axis", summary: "List referrals", permission: "axis:policies:decide_referral", public: false },
+  "GET /v1/axis/referrals/{id}": { tag: "axis", summary: "Fetch one referral", permission: "axis:policies:decide_referral", public: false },
+  "POST /v1/axis/referrals/{id}/decide": { tag: "axis", summary: "Accept, decline, or counter an open underwriting-authority referral", permission: "axis:policies:decide_referral", public: false },
+  "GET /v1/axis/siu-referrals": { tag: "axis", summary: "List siu-referrals", permission: "axis:siu:read", public: false },
+  "POST /v1/axis/siu-referrals": { tag: "axis", summary: "Create a siu referral", permission: "axis:siu:write", public: false },
+  "GET /v1/axis/siu-referrals/{id}": { tag: "axis", summary: "Fetch one siu referral", permission: "axis:siu:read", public: false },
+  "PATCH /v1/axis/siu-referrals/{id}": { tag: "axis", summary: "Update a siu referral", permission: "axis:siu:write", public: false },
   "GET /v1/axis/sops": { tag: "axis", summary: "List sops", permission: "axis:sops:read", public: false },
   "POST /v1/axis/sops": { tag: "axis", summary: "Create a sop", permission: "axis:sops:write", public: false },
   "GET /v1/axis/sops/{id}": { tag: "axis", summary: "Fetch one sop", permission: "axis:sops:read", public: false },

@@ -224,7 +224,7 @@ describe("AXIS claim payment (docs/27 F23)", () => {
     // The tenant asks for it explicitly. docs/19 §7 says no: a payout of client
     // money is dual-control always, and `neverAutoApprove` means the allowlist
     // is not even consulted.
-    await autoApprove("axis.bind", "axis.claim_payment", "ledger.claim_payment");
+    await autoApprove("axis.bind", "axis.underwriting_referral", "axis.claim_payment", "ledger.claim_payment");
     const policyId = await boundPolicy("POL-CLMPAY-1", Date.now() - 10 * DAY);
     const claimId = await openClaim(policyId, "CLM-PAY-1", 400_00);
     await fundFloat(policyId, claimId, 400_00);
@@ -261,7 +261,7 @@ describe("AXIS claim payment (docs/27 F23)", () => {
   });
 
   it("two payment requests with one idempotency key produce one ledger transaction", async () => {
-    await autoApprove("axis.bind");
+    await autoApprove("axis.bind", "axis.underwriting_referral");
     const policyId = await boundPolicy("POL-CLMPAY-2", Date.now() - 10 * DAY);
     const claimId = await openClaim(policyId, "CLM-PAY-2", 900_00);
     await fundFloat(policyId, claimId, 900_00);
@@ -299,7 +299,7 @@ describe("AXIS claim payment (docs/27 F23)", () => {
     // whatever sequence of payments is attempted, the paid total for a claim
     // never rises above what the insurer funded. Paying out client money we do
     // not hold is the failure that closes a broker.
-    await autoApprove("axis.bind");
+    await autoApprove("axis.bind", "axis.underwriting_referral");
     const policyId = await boundPolicy("POL-CLMPAY-3", Date.now() - 10 * DAY);
     const floatMinor = 1_000_00;
 
@@ -340,7 +340,7 @@ describe("AXIS claim payment (docs/27 F23)", () => {
 
 describe("AXIS claim recovery (docs/27 F23)", () => {
   it("recovery receipt splits the fee to 4090", async () => {
-    await autoApprove("axis.bind");
+    await autoApprove("axis.bind", "axis.underwriting_referral");
     const policyId = await boundPolicy("POL-CLMREC-1", Date.now() - 10 * DAY);
     const claimId = await openClaim(policyId, "CLM-REC-1", 500_00);
 
@@ -392,7 +392,7 @@ describe("AXIS claim money, read back (§D.3)", () => {
   it("a handler can read the payments and recoveries of one claim", async () => {
     // The claim screen shows what left and what is being chased. Without a read
     // side the desk can only see money by making more of it move.
-    await autoApprove("axis.bind");
+    await autoApprove("axis.bind", "axis.underwriting_referral");
     const policyId = await boundPolicy("POL-CLMLIST-1", Date.now() - 10 * DAY);
     const claimId = await openClaim(policyId, "CLM-LIST-1", 900_00);
     const otherId = await openClaim(policyId, "CLM-LIST-2", 100_00);

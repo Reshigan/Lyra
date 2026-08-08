@@ -101,7 +101,7 @@ beforeAll(async () => {
   const policy = JSON.parse(tenantRow.policyJson as string) as { autoApprove: string[] };
   await database
     .update(schema.tenants)
-    .set({ policyJson: JSON.stringify({ ...policy, autoApprove: [...policy.autoApprove, "axis.bind"] }) })
+    .set({ policyJson: JSON.stringify({ ...policy, autoApprove: [...policy.autoApprove, "axis.bind", "axis.underwriting_referral"] }) })
     .where(eq(schema.tenants.id, seeded.tenantId));
 
   tokens = {};

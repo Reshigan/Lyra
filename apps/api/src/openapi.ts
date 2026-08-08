@@ -99,6 +99,7 @@ const HAND_WRITTEN: Op[] = [
   // from the generic policies create, which writes a row and nothing else.
   { method: "post", path: "/v1/axis/quote-responses/{id}/bind", summary: "Bind an accepted quote response into a policy at version 1", permission: "axis:policies:bind", tag: "axis", requestBody: true },
   { method: "post", path: "/v1/axis/policies/{id}/bind", summary: "Bind a draft policy, issuing version 1", permission: "axis:policies:bind", tag: "axis", requestBody: true },
+  { method: "post", path: "/v1/axis/referrals/{id}/decide", summary: "Accept, decline, or counter an open underwriting-authority referral", permission: "axis:policies:decide_referral", tag: "axis", requestBody: true },
 
   // docs/27 F5. Mid-term change: the preview prices it and writes nothing, the
   // endorse appends a priced version and moves the pro-rated money.

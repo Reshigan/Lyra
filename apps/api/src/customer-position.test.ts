@@ -79,7 +79,7 @@ beforeAll(async () => {
   const tenantPolicy = JSON.parse(tenantRow.policyJson as string) as { autoApprove: string[] };
   await database
     .update(schema.tenants)
-    .set({ policyJson: JSON.stringify({ ...tenantPolicy, autoApprove: [...tenantPolicy.autoApprove, "axis.bind"] }) })
+    .set({ policyJson: JSON.stringify({ ...tenantPolicy, autoApprove: [...tenantPolicy.autoApprove, "axis.bind", "axis.underwriting_referral"] }) })
     .where(eq(schema.tenants.id, seeded.tenantId));
 
   // No seeded persona holds core:customers:read without also holding

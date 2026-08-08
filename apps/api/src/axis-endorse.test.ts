@@ -144,7 +144,7 @@ beforeAll(async () => {
 
 describe("AXIS endorsement (docs/27 F5)", () => {
   it("appends version 2 and leaves the policy number unchanged", async () => {
-    await autoApprove("axis.bind", "axis.endorse");
+    await autoApprove("axis.bind", "axis.underwriting_referral", "axis.endorse");
     const start = Date.now();
     const { id: policyId, premiumMinor } = await boundPolicy("POL-END-1", start);
     const effectiveFrom = start + 90 * DAY;
@@ -209,7 +209,7 @@ describe("AXIS endorsement (docs/27 F5)", () => {
   });
 
   it("prices a change without writing anything", async () => {
-    await autoApprove("axis.bind", "axis.endorse");
+    await autoApprove("axis.bind", "axis.underwriting_referral", "axis.endorse");
     const start = Date.now();
     const { id: policyId, premiumMinor } = await boundPolicy("POL-END-PREV", start);
 
@@ -237,7 +237,7 @@ describe("AXIS endorsement (docs/27 F5)", () => {
   it("a negative premium delta requires dual control", async () => {
     // Everything the endorsement touches is automated except the refund: what
     // is under test is that giving money back is a second pair of eyes.
-    await autoApprove("axis.bind", "axis.endorse");
+    await autoApprove("axis.bind", "axis.underwriting_referral", "axis.endorse");
     const start = Date.now();
     const { id: policyId, premiumMinor } = await boundPolicy("POL-END-2", start);
     expect(premiumMinor, "the panel's premium is too small to clear the refund threshold").toBeGreaterThan(120_000);
@@ -269,7 +269,7 @@ describe("AXIS endorsement (docs/27 F5)", () => {
   });
 
   it("an agent-raised and desk-raised endorsement of the same change-set share one approval", async () => {
-    await autoApprove("axis.bind");
+    await autoApprove("axis.bind", "axis.underwriting_referral");
     const start = Date.now();
     const { id: policyId, premiumMinor } = await boundPolicy("POL-END-3", start);
     const changes = { sumInsuredMinor: 31_000_000 };

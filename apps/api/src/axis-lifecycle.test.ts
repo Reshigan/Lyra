@@ -164,7 +164,7 @@ beforeAll(async () => {
 
 describe("AXIS policy lifecycle (docs/27 F5)", () => {
   it("cancellation with a pro-rata refund posts CANCEL and a child REFUND-ISSUE", async () => {
-    await autoApprove("axis.bind", "axis.cancel");
+    await autoApprove("axis.bind", "axis.underwriting_referral", "axis.cancel");
     const start = Date.now();
     const { id: policyId, commissionMinor } = await boundPolicy("POL-CAN-1", start);
     const effectiveAt = start + 30 * DAY;
@@ -231,7 +231,7 @@ describe("AXIS policy lifecycle (docs/27 F5)", () => {
   });
 
   it("cancellation with nil refund needs no second approver", async () => {
-    await autoApprove("axis.bind", "axis.cancel");
+    await autoApprove("axis.bind", "axis.underwriting_referral", "axis.cancel");
     const start = Date.now();
     const { id: policyId } = await boundPolicy("POL-CAN-2", start);
 
@@ -264,7 +264,7 @@ describe("AXIS policy lifecycle (docs/27 F5)", () => {
   });
 
   it("lapse fires after grace and emits orbit.renewal.lost", async () => {
-    await autoApprove("axis.bind");
+    await autoApprove("axis.bind", "axis.underwriting_referral");
     const now = Date.now();
     const start = now - 60 * DAY;
     const { id: policyId, premiumMinor } = await boundPolicy("POL-LAPSE-1", start);
@@ -321,7 +321,7 @@ describe("AXIS policy lifecycle (docs/27 F5)", () => {
   it("reinstatement always needs dual control", async () => {
     // `axis.reinstate` is on the allowlist and still gates: putting cover back
     // on risk after a lapse is never automatic (docs/19 §4.1).
-    await autoApprove("axis.bind", "axis.reinstate");
+    await autoApprove("axis.bind", "axis.underwriting_referral", "axis.reinstate");
     const start = Date.now() - 30 * DAY;
     const { id: policyId } = await boundPolicy("POL-REIN-1", start);
     await database
@@ -347,7 +347,7 @@ describe("AXIS policy lifecycle (docs/27 F5)", () => {
   });
 
   it("NTU before inception claws back commission", async () => {
-    await autoApprove("axis.bind", "axis.ntu");
+    await autoApprove("axis.bind", "axis.underwriting_referral", "axis.ntu");
     const start = Date.now() + 10 * DAY;
     const { id: policyId, commissionMinor } = await boundPolicy("POL-NTU-1", start);
     expect(commissionMinor).toBeGreaterThan(0);
@@ -381,7 +381,7 @@ describe("AXIS policy lifecycle (docs/27 F5)", () => {
   });
 
   it("renewal binds a successor term and closes the prior one", async () => {
-    await autoApprove("axis.bind", "axis.renew");
+    await autoApprove("axis.bind", "axis.underwriting_referral", "axis.renew");
     const start = Date.now() - 360 * DAY;
     const { id: priorId, premiumMinor, commissionMinor } = await boundPolicy("POL-REN-1", start);
     // Only cover that went on risk can be renewed — the state machine refuses
@@ -435,7 +435,7 @@ describe("AXIS policy lifecycle (docs/27 F5)", () => {
   });
 
   it("the version list is scoped to one policy", async () => {
-    await autoApprove("axis.bind", "axis.endorse");
+    await autoApprove("axis.bind", "axis.underwriting_referral", "axis.endorse");
     const start = Date.now() - 20 * DAY;
     const { id: mine } = await boundPolicy("POL-VER-1", start);
     const { id: theirs } = await boundPolicy("POL-VER-2", start);
