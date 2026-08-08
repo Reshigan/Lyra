@@ -286,7 +286,7 @@ export const AXIS = register(
     read: "axis:policies:read",
     create: "axis:policies:create",
     update: "axis:policies:update"
-  }, { approval: { create: "axis.bind", amountField: "premiumMinor" } }),
+  }, { searchable: ["policyNo"], approval: { create: "axis.bind", amountField: "premiumMinor" } }),
   r("escrow-batches", schema.axisEscrowBatches, "esc", "axis", {
     read: "axis:escrow:read",
     update: "axis:escrow:reconcile"

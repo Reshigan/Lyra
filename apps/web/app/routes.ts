@@ -68,6 +68,9 @@ export default [
     route("axis/admin", "routes/axis-admin.tsx"),
     route("axis/dev", "routes/axis-dev.tsx"),
     route("axis/process-map", "routes/axis-process-map.tsx"),
+    route("axis/claims/new", "routes/fnol-intake.tsx"),
+    route("axis/claims/desk", "routes/claims-desk.tsx"),
+    route("axis/renewals", "routes/renewal-desk.tsx"),
 
     route("signal/cockpit", "routes/signal-cockpit.tsx"),
     route("signal/studio", "routes/signal-studio.tsx"),
@@ -81,6 +84,8 @@ export default [
     route("admin/customers/:id/360", "routes/customer-360.tsx"),
     route("admin/products/:id/detail", "routes/product-detail.tsx"),
     route("axis/policies/:id/detail", "routes/policy-detail.tsx"),
+    route("axis/policies/:id/endorse", "routes/policy-endorse.tsx"),
+    route("axis/policies/:id/cancel", "routes/policy-cancel.tsx"),
     route("axis/claims/:id/detail", "routes/claim-detail.tsx"),
     route("axis/cases/:id/evidence-bundles/:bundleId/download", "routes/case-evidence-download.tsx"),
     route("axis/cases/:id/detail", "routes/case-detail.tsx"),

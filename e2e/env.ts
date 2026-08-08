@@ -10,7 +10,9 @@ export const DB_PATH = resolve(ROOT, "e2e.db");
 export const FILES_DIR = resolve(ROOT, "files");
 export const LIBSQL_URL = `file:${DB_PATH}`;
 
-export const API_PORT = 8787;
+// 8787 collides with other local wrangler-dev projects on this machine — picked
+// to avoid Playwright's reuseExistingServer silently attaching to a stray one.
+export const API_PORT = 8797;
 export const WEB_PORT = 5173;
 export const API_ORIGIN = `http://127.0.0.1:${API_PORT}`;
 export const WEB_ORIGIN = `http://127.0.0.1:${WEB_PORT}`;
