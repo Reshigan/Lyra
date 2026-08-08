@@ -399,7 +399,7 @@ describe("seed", () => {
         sensitivity: "internal",
         target: { value: 4_800, scale: "count" }
       },
-      renewal_retention_rate: {
+      renewal_retention: {
         unit: "percent",
         grain: "month",
         direction: "up",
@@ -470,6 +470,94 @@ describe("seed", () => {
         owner: "raed.samir",
         sensitivity: "public",
         target: { value: 2_500, scale: "ms" }
+      },
+      gross_written_premium: {
+        unit: "money",
+        grain: "day",
+        direction: "up",
+        owner: "faisal.omar",
+        sensitivity: "internal",
+        target: { value: 7_500_000, scale: "minor", currency: "AED" }
+      },
+      net_written_premium: {
+        unit: "money",
+        grain: "day",
+        direction: "up",
+        owner: "faisal.omar",
+        sensitivity: "internal",
+        target: { value: 6_800_000, scale: "minor", currency: "AED" }
+      },
+      expense_ratio: {
+        unit: "ratio",
+        grain: "month",
+        direction: "down",
+        owner: "faisal.omar",
+        sensitivity: "restricted",
+        target: { value: 1_500, scale: "bps" }
+      },
+      combined_ratio: {
+        unit: "ratio",
+        grain: "month",
+        direction: "down",
+        owner: "faisal.omar",
+        sensitivity: "restricted",
+        target: { value: 9_500, scale: "bps" }
+      },
+      quote_hit_rate: {
+        unit: "percent",
+        grain: "day",
+        direction: "up",
+        owner: "layla.hassan",
+        sensitivity: "internal",
+        target: { value: 2_400, scale: "bps" }
+      },
+      avg_handling_time_claims: {
+        unit: "duration_ms",
+        grain: "day",
+        direction: "down",
+        owner: "yusuf.karim",
+        sensitivity: "internal",
+        target: { value: 5 * 86_400_000, scale: "ms" }
+      },
+      avg_handling_time_cases: {
+        unit: "duration_ms",
+        grain: "day",
+        direction: "down",
+        owner: "raed.samir",
+        sensitivity: "internal",
+        target: { value: 2 * 86_400_000, scale: "ms" }
+      },
+      reserve_adequacy: {
+        unit: "ratio",
+        grain: "month",
+        direction: "up",
+        owner: "yusuf.karim",
+        sensitivity: "restricted",
+        target: { value: 10_000, scale: "bps" }
+      },
+      sla_breach_rate: {
+        unit: "percent",
+        grain: "day",
+        direction: "down",
+        owner: "raed.samir",
+        sensitivity: "internal",
+        target: { value: 500, scale: "bps" }
+      },
+      open_claim_count: {
+        unit: "count",
+        grain: "month",
+        direction: "down",
+        owner: "yusuf.karim",
+        sensitivity: "internal",
+        target: { value: 120, scale: "count" }
+      },
+      outstanding_reserve: {
+        unit: "money",
+        grain: "month",
+        direction: "down",
+        owner: "yusuf.karim",
+        sensitivity: "restricted",
+        target: { value: 12_000_000, scale: "minor", currency: "AED" }
       }
     };
 
@@ -498,7 +586,7 @@ describe("seed", () => {
     expect(totalsFor("gwp", "month")).toEqual([186_400_000, 201_750_000, 238_900_000, 74_300_000]);
     expect(totalsFor("net_commission", "month")).toEqual([17_708_000, 19_166_000, 22_695_000, 7_058_000]);
     expect(totalsFor("active_policies", "month")).toEqual([4_182, 4_361, 4_608, 4_690]);
-    expect(totalsFor("renewal_retention_rate", "month")).toEqual([7_920, 8_050, 8_310, 8_180]);
+    expect(totalsFor("renewal_retention", "month")).toEqual([7_920, 8_050, 8_310, 8_180]);
     expect(totalsFor("cac_per_policy", "month")).toEqual([21_400, 20_150, 18_900, 24_600]);
     expect(totalsFor("broker_channel_share", "month")).toEqual([3_120, 3_380, 3_611, 3_740]);
     expect(totalsFor("loss_ratio", "month")).toEqual([6_140, 5_980, 6_420, 6_050]);

@@ -1156,7 +1156,7 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
       target: { value: 4_800, scale: "count" }
     },
     {
-      key: "renewal_retention_rate",
+      key: "renewal_retention",
       en: "Renewal retention rate",
       ar: "معدل الاحتفاظ عند التجديد",
       def: "v_renewal_book: accepted / (accepted + lost)",
@@ -1257,6 +1257,132 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
       owner: "raed.samir",
       sensitivity: "public",
       target: { value: 2_500, scale: "ms" }
+    },
+    // AXIS task 15 (docs/specs/gap-axis-design.md §F); see ADR-0024/ADR-0034.
+    {
+      key: "gross_written_premium",
+      en: "Gross written premium",
+      ar: "إجمالي الأقساط المكتتبة",
+      def: "SUM(axis_policy_versions.premium_minor + tax_minor + fees_minor) WHERE effective_from in period AND state != 'voided'",
+      unit: "money",
+      grain: "day",
+      direction: "up",
+      owner: "faisal.omar",
+      target: { value: 7_500_000, scale: "minor", currency: "AED" }
+    },
+    {
+      key: "net_written_premium",
+      en: "Net written premium",
+      ar: "صافي الأقساط المكتتبة",
+      def: "SUM(axis_policy_versions.premium_minor) WHERE effective_from in period AND state != 'voided'",
+      unit: "money",
+      grain: "day",
+      direction: "up",
+      owner: "faisal.omar",
+      target: { value: 6_800_000, scale: "minor", currency: "AED" }
+    },
+    {
+      key: "expense_ratio",
+      en: "Expense ratio",
+      ar: "نسبة المصروفات",
+      def: "SUM(ledger_journal_lines WHERE account_code LIKE '5%') / earned_premium",
+      unit: "ratio",
+      grain: "month",
+      direction: "down",
+      owner: "faisal.omar",
+      sensitivity: "restricted",
+      target: { value: 1_500, scale: BPS }
+    },
+    {
+      key: "combined_ratio",
+      en: "Combined ratio",
+      ar: "النسبة المجمعة",
+      def: "loss_ratio + expense_ratio",
+      unit: "ratio",
+      grain: "month",
+      direction: "down",
+      owner: "faisal.omar",
+      sensitivity: "restricted",
+      target: { value: 9_500, scale: BPS }
+    },
+    {
+      key: "quote_hit_rate",
+      en: "Quote hit rate",
+      ar: "معدل تحويل العروض",
+      def: "COUNT(ledger_txns type='BIND' created) / COUNT(dist_quote_requests created)",
+      unit: "percent",
+      grain: "day",
+      direction: "up",
+      owner: "layla.hassan",
+      target: { value: 2_400, scale: BPS }
+    },
+    {
+      key: "avg_handling_time_claims",
+      en: "Avg handling time — claims",
+      ar: "متوسط زمن معالجة المطالبات",
+      def: "MEDIAN(axis_claims.closed_at - reported_at) WHERE closed_at in period",
+      unit: "duration_ms",
+      grain: "day",
+      direction: "down",
+      owner: "yusuf.karim",
+      target: { value: 5 * DAY, scale: "ms" }
+    },
+    {
+      key: "avg_handling_time_cases",
+      en: "Avg handling time — cases",
+      ar: "متوسط زمن معالجة الملفات",
+      def: "MEDIAN(axis_cases.closed_at - created_at) WHERE closed_at in period",
+      unit: "duration_ms",
+      grain: "day",
+      direction: "down",
+      owner: "raed.samir",
+      target: { value: 2 * DAY, scale: "ms" }
+    },
+    {
+      key: "reserve_adequacy",
+      en: "Reserve adequacy",
+      ar: "كفاية المخصصات",
+      def: "SUM(reserve at report+30d) / SUM(final paid) over axis_claims closed in period",
+      unit: "ratio",
+      grain: "month",
+      direction: "up",
+      owner: "yusuf.karim",
+      sensitivity: "restricted",
+      target: { value: 10_000, scale: BPS }
+    },
+    {
+      key: "sla_breach_rate",
+      en: "SLA breach rate",
+      ar: "معدل خرق اتفاقية مستوى الخدمة",
+      def: "COUNT(axis_cases + axis_claims closed past sla_due_at) / COUNT(closed)",
+      unit: "percent",
+      grain: "day",
+      direction: "down",
+      owner: "raed.samir",
+      target: { value: 500, scale: BPS }
+    },
+    {
+      key: "open_claim_count",
+      en: "Open claim count",
+      ar: "عدد المطالبات المفتوحة",
+      def: "COUNT(axis_claims WHERE closed_at IS NULL AND status NOT IN ('withdrawn', 'rejected'))",
+      unit: "count",
+      grain: "month",
+      direction: "down",
+      owner: "yusuf.karim",
+      target: { value: 120, scale: "count" }
+    },
+    {
+      key: "outstanding_reserve",
+      en: "Outstanding reserve",
+      ar: "المخصصات المستحقة",
+      def: "SUM(axis_claims.reserve_minor)",
+      unit: "money",
+      grain: "month",
+      direction: "down",
+      owner: "yusuf.karim",
+      sensitivity: "restricted",
+      target: { value: 12_000_000, scale: "minor", currency: "AED" }
     }
   ];
 
@@ -1297,7 +1423,7 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
     gwp: [186_400_000, 201_750_000, 238_900_000, 74_300_000],
     net_commission: [17_708_000, 19_166_000, 22_695_000, 7_058_000],
     active_policies: [4_182, 4_361, 4_608, 4_690],
-    renewal_retention_rate: [7_920, 8_050, 8_310, 8_180],
+    renewal_retention: [7_920, 8_050, 8_310, 8_180],
     cac_per_policy: [21_400, 20_150, 18_900, 24_600],
     broker_channel_share: [3_120, 3_380, 3_611, 3_740],
     loss_ratio: [6_140, 5_980, 6_420, 6_050],
@@ -1455,7 +1581,7 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
           note: "أغلق ديسمبر أعلى من كل الأشهر السابقة، بقيادة تأمين المركبات عبر الموقع والتطبيق."
         },
         {
-          metricKey: "renewal_retention_rate",
+          metricKey: "renewal_retention",
           period: "2025-12",
           value: 8_310,
           deltaBps: 323,
@@ -1774,7 +1900,7 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
       sectionsJson: JSON.stringify([
         { key: "growth", metricKeys: ["gwp", "policies_issued", "active_policies"] },
         { key: "distribution_mix", metricKeys: ["broker_channel_share"] },
-        { key: "retention", metricKeys: ["renewal_retention_rate"] },
+        { key: "retention", metricKeys: ["renewal_retention"] },
         { key: "acquisition_cost", metricKeys: ["cac_per_policy", "net_commission"] },
         { key: "own_paper", metricKeys: ["loss_ratio"] },
         { key: "decisions", decisionRefs: [decisionIds.campaign, decisionIds.ownPaper] }

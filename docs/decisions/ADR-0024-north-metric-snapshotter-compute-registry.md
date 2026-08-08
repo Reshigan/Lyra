@@ -2,7 +2,10 @@
 
 ## Status
 
-Accepted. Two metric formulas flagged to the user, unresolved (see below).
+Accepted. `loss_ratio` and `renewal_retention` (renamed from
+`renewal_retention_rate`) are now implemented — see ADR-0034 for the
+judgment calls made. `claims_leakage` remains unregistered; that flag still
+stands (see below).
 
 ## Context
 
@@ -54,6 +57,25 @@ seed's own "open month is rewritten every night" comment):
 | `broker_channel_share` | premium on policies sold through a `dist_channels.kind='b2b'` channel / total premium, period |
 | `ai_cost_per_case` | `SUM(ai_audit_log.cost_micro) / 10_000` (micro→minor) / `COUNT(axis_cases created)`, period |
 
+Extended for docs/specs/gap-axis-design.md §F (AXIS task 15); see ADR-0034
+for the formulas and judgment calls:
+
+| key | formula |
+|---|---|
+| `gross_written_premium` | `SUM(premium_minor + tax_minor + fees_minor)` over `axis_policy_versions` effective in period, non-voided |
+| `net_written_premium` | as above, `premium_minor` only |
+| `loss_ratio` | `(paid + reserve − recovered) / earned_premium`, bp |
+| `expense_ratio` | `SUM` of ledger `5xxx` account movements / earned premium, bp |
+| `combined_ratio` | `loss_ratio + expense_ratio`, read from the same run's snapshots |
+| `renewal_retention` | `COUNT(renewed)` / `COUNT(prior terms expiring)` in period, bp |
+| `quote_hit_rate` | `COUNT(ledger_txns type='BIND')` / `COUNT(dist_quote_requests created)`, bp |
+| `avg_handling_time_claims` | median `closed_at − reported_at` over `axis_claims` closed in period |
+| `avg_handling_time_cases` | median `closed_at − created_at` over `axis_cases` closed in period |
+| `reserve_adequacy` | `SUM(reserve at report+30d)` / `SUM(final paid)` over claims closed in period, bp |
+| `sla_breach_rate` | `COUNT(closed past sla_due_at)` / `COUNT(closed)` over cases + claims, bp |
+| `open_claim_count` | `COUNT(axis_claims WHERE closed_at IS NULL AND status NOT IN (withdrawn, rejected))`, point-in-time |
+| `outstanding_reserve` | `SUM(axis_claims.reserve_minor)`, point-in-time |
+
 Anomaly detection (`Anomaly Hunter`, post-snapshot per docs §3) is a
 same-file follow-on pass: each freshly written snapshot is compared to the
 immediately preceding period for the same metric/dims; a move past a
@@ -70,29 +92,23 @@ already use.
 
 ## Flagged, not resolved
 
-Two formulas above are judgment calls a domain owner should confirm, not
-facts derivable from the schema:
+`loss_ratio` and `renewal_retention_rate` (renamed `renewal_retention`) are
+now implemented; ADR-0034 records the judgment calls made picking a basis
+for each. One metric remains unresolved:
 
-1. **`loss_ratio`** is *not* implemented. Standard definition is claims
-   incurred / premium earned, but `axis_claims` has both `amount_minor`
-   (claimed) and `settled_minor` (paid out), and "premium earned" for a
-   period is actuarially distinct from "premium written" (`gwp` here uses
-   written, i.e. policy creation date, not an earned/unearned split). Picking
-   one silently would ship a regulatory-adjacent number with an
-   undocumented basis. Flagged for the docs/12-compliance owner.
-2. **`renewal_retention_rate`** is *not* implemented for the same reason:
-   `orbit_renewals` rows decide `accepted`/`lost` on `decidedAt`, but whether
-   the denominator should be "renewals decided in period" (cohort at
-   decision time) or "renewals whose expiry fell in period" (cohort at
-   expiry) changes the number, and docs/modules/orbit.md doesn't specify
-   which. Flagged for the ORBIT module owner.
+1. **`claims_leakage`** is *not* implemented. §F defines it as
+   `paid − assessed_should_have_paid`, but no schema field anywhere holds an
+   "assessed should have paid" figure — `axis_claims` has `paidMinor` and
+   `reserveMinor`, neither of which is that. Computing it would mean
+   inventing a number with no data source. Flagged for the domain owner: this
+   needs either a new field capturing assessor sign-off amount, or a
+   different formula.
 
-Both metric rows remain registered in `north_metrics` (so Metric Explorer
-still lists them) but simply accumulate no snapshots until a compute function
-is added — visible as a gap in the UI, not a silently wrong number, which is
-the safer failure mode under docs/modules/north.md §2.2's "never ship
-unverified numbers" principle applied one layer down from the Narrator to the
-metric layer itself.
+The metric row is not registered in `north_metrics` at all (unlike the two
+now-resolved items above, which stayed registered-but-empty while
+unimplemented) — there is no SQL basis to point a definition row at, so
+adding one would just be a broken Metric Explorer entry. It can be added once
+the schema gap is resolved.
 
 ## References
 

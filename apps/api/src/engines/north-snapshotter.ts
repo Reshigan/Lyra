@@ -1,6 +1,6 @@
-import { and, eq, gte, isNotNull, lt, sql } from "drizzle-orm";
+import { and, desc, eq, gt, gte, inArray, isNotNull, isNull, lte, lt, ne, notInArray, sql } from "drizzle-orm";
 import { id as newId, schema } from "@lyra/db";
-import { emit, type Ctx } from "@lyra/core";
+import { earnedBetween, emit, type Ctx } from "@lyra/core";
 
 // docs/modules/north.md §2.2/§3 — Snapshotter (nightly) + Anomaly Hunter
 // (post-snapshot). ADR-0024: a typed compute function per metric, not a
@@ -188,10 +188,310 @@ const aiCostPerCase: Compute = async (ctx, p) => {
   return cases > 0 ? Math.round(costMicro / MICRO_PER_MINOR / cases) : null;
 };
 
+function median(values: number[]): number | null {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid]! : Math.round((sorted[mid - 1]! + sorted[mid]!) / 2);
+}
+
+/** docs/specs/gap-axis-design.md §F: earned premium, pro-rata over each overlapping version's term. */
+async function earnedPremiumForPeriod(ctx: Ctx, p: Period): Promise<number> {
+  const rows = await ctx.db
+    .select({
+      effectiveFrom: schema.axisPolicyVersions.effectiveFrom,
+      effectiveTo: schema.axisPolicyVersions.effectiveTo,
+      premiumMinor: schema.axisPolicyVersions.premiumMinor
+    })
+    .from(schema.axisPolicyVersions)
+    .where(
+      and(
+        eq(schema.axisPolicyVersions.tenantId, ctx.tenantId),
+        ne(schema.axisPolicyVersions.state, "voided"),
+        lt(schema.axisPolicyVersions.effectiveFrom, p.until),
+        gt(schema.axisPolicyVersions.effectiveTo, p.since)
+      )
+    );
+  return rows.reduce((sum, v) => sum + earnedBetween(v, p.since, p.until), 0);
+}
+
+const grossWrittenPremium: Compute = async (ctx, p) => {
+  const [row] = await ctx.db
+    .select({
+      v: sql<number>`coalesce(sum(${schema.axisPolicyVersions.premiumMinor} + ${schema.axisPolicyVersions.taxMinor} + ${schema.axisPolicyVersions.feesMinor}), 0)`
+    })
+    .from(schema.axisPolicyVersions)
+    .where(
+      and(
+        eq(schema.axisPolicyVersions.tenantId, ctx.tenantId),
+        ne(schema.axisPolicyVersions.state, "voided"),
+        gte(schema.axisPolicyVersions.effectiveFrom, p.since),
+        lt(schema.axisPolicyVersions.effectiveFrom, p.until)
+      )
+    );
+  return row?.v ?? 0;
+};
+
+const netWrittenPremium: Compute = async (ctx, p) => {
+  const [row] = await ctx.db
+    .select({ v: sql<number>`coalesce(sum(${schema.axisPolicyVersions.premiumMinor}), 0)` })
+    .from(schema.axisPolicyVersions)
+    .where(
+      and(
+        eq(schema.axisPolicyVersions.tenantId, ctx.tenantId),
+        ne(schema.axisPolicyVersions.state, "voided"),
+        gte(schema.axisPolicyVersions.effectiveFrom, p.since),
+        lt(schema.axisPolicyVersions.effectiveFrom, p.until)
+      )
+    );
+  return row?.v ?? 0;
+};
+
+const lossRatio: Compute = async (ctx, p) => {
+  if (p.grain !== "month") return null;
+  const [claimsRow, earned] = await Promise.all([
+    ctx.db
+      .select({
+        v: sql<number>`coalesce(sum(${schema.axisClaims.paidMinor} + ${schema.axisClaims.reserveMinor} - ${schema.axisClaims.recoveredMinor}), 0)`
+      })
+      .from(schema.axisClaims)
+      .where(
+        and(
+          eq(schema.axisClaims.tenantId, ctx.tenantId),
+          isNotNull(schema.axisClaims.incidentAt),
+          gte(schema.axisClaims.incidentAt, p.since),
+          lt(schema.axisClaims.incidentAt, p.until)
+        )
+      )
+      .then((r) => r[0]?.v ?? 0),
+    earnedPremiumForPeriod(ctx, p)
+  ]);
+  return earned > 0 ? Math.round((claimsRow / earned) * 10_000) : null;
+};
+
+const expenseRatio: Compute = async (ctx, p) => {
+  const [expenseRow, earned] = await Promise.all([
+    ctx.db
+      .select({
+        v: sql<number>`coalesce(sum(case when ${schema.ledgerJournalLines.side} = 'debit' then ${schema.ledgerJournalLines.amountMinor} else -${schema.ledgerJournalLines.amountMinor} end), 0)`
+      })
+      .from(schema.ledgerJournalLines)
+      .where(
+        and(
+          eq(schema.ledgerJournalLines.tenantId, ctx.tenantId),
+          sql`${schema.ledgerJournalLines.accountCode} like '5%'`,
+          gte(schema.ledgerJournalLines.postedAt, p.since),
+          lt(schema.ledgerJournalLines.postedAt, p.until)
+        )
+      )
+      .then((r) => r[0]?.v ?? 0),
+    earnedPremiumForPeriod(ctx, p)
+  ]);
+  return earned > 0 ? Math.round((expenseRow / earned) * 10_000) : null;
+};
+
+/** §F: "computed from the two snapshots, not re-queried" — reads already-written rows, run after loss_ratio/expense_ratio (see sort in runSnapshotter). */
+const combinedRatio: Compute = async (ctx, p) => {
+  const rows = await ctx.db
+    .select({ metricKey: schema.northSnapshots.metricKey, value: schema.northSnapshots.value })
+    .from(schema.northSnapshots)
+    .where(
+      and(
+        eq(schema.northSnapshots.tenantId, ctx.tenantId),
+        eq(schema.northSnapshots.grain, p.grain),
+        eq(schema.northSnapshots.period, p.period),
+        eq(schema.northSnapshots.dimsHash, ""),
+        inArray(schema.northSnapshots.metricKey, ["loss_ratio", "expense_ratio"])
+      )
+    );
+  const loss = rows.find((r) => r.metricKey === "loss_ratio")?.value;
+  const expense = rows.find((r) => r.metricKey === "expense_ratio")?.value;
+  return loss !== undefined && expense !== undefined ? loss + expense : null;
+};
+
+const renewalRetention: Compute = async (ctx, p) => {
+  const [renewed, expiring] = await Promise.all([
+    ctx.db
+      .select({ n: sql<number>`count(*)` })
+      .from(schema.axisPolicies)
+      .where(
+        and(
+          eq(schema.axisPolicies.tenantId, ctx.tenantId),
+          isNotNull(schema.axisPolicies.renewedFromPolicyId),
+          gte(schema.axisPolicies.createdAt, p.since),
+          lt(schema.axisPolicies.createdAt, p.until)
+        )
+      )
+      .then((r) => r[0]?.n ?? 0),
+    ctx.db
+      .select({ n: sql<number>`count(*)` })
+      .from(schema.axisPolicies)
+      .where(
+        and(eq(schema.axisPolicies.tenantId, ctx.tenantId), gte(schema.axisPolicies.endAt, p.since), lt(schema.axisPolicies.endAt, p.until))
+      )
+      .then((r) => r[0]?.n ?? 0)
+  ]);
+  return expiring > 0 ? Math.round((renewed / expiring) * 10_000) : null;
+};
+
+const quoteHitRate: Compute = async (ctx, p) => {
+  const [bound, requested] = await Promise.all([
+    ctx.db
+      .select({ n: sql<number>`count(*)` })
+      .from(schema.ledgerTxns)
+      .where(
+        and(
+          eq(schema.ledgerTxns.tenantId, ctx.tenantId),
+          eq(schema.ledgerTxns.type, "BIND"),
+          gte(schema.ledgerTxns.createdAt, p.since),
+          lt(schema.ledgerTxns.createdAt, p.until)
+        )
+      )
+      .then((r) => r[0]?.n ?? 0),
+    ctx.db
+      .select({ n: sql<number>`count(*)` })
+      .from(schema.distQuoteRequests)
+      .where(
+        and(
+          eq(schema.distQuoteRequests.tenantId, ctx.tenantId),
+          gte(schema.distQuoteRequests.createdAt, p.since),
+          lt(schema.distQuoteRequests.createdAt, p.until)
+        )
+      )
+      .then((r) => r[0]?.n ?? 0)
+  ]);
+  return requested > 0 ? Math.round((bound / requested) * 10_000) : null;
+};
+
+const avgHandlingTimeClaims: Compute = async (ctx, p) => {
+  const rows = await ctx.db
+    .select({ reportedAt: schema.axisClaims.reportedAt, closedAt: schema.axisClaims.closedAt })
+    .from(schema.axisClaims)
+    .where(
+      and(
+        eq(schema.axisClaims.tenantId, ctx.tenantId),
+        isNotNull(schema.axisClaims.closedAt),
+        gte(schema.axisClaims.closedAt, p.since),
+        lt(schema.axisClaims.closedAt, p.until)
+      )
+    );
+  return median(rows.map((r) => r.closedAt! - r.reportedAt));
+};
+
+const avgHandlingTimeCases: Compute = async (ctx, p) => {
+  const rows = await ctx.db
+    .select({ createdAt: schema.axisCases.createdAt, closedAt: schema.axisCases.closedAt })
+    .from(schema.axisCases)
+    .where(
+      and(
+        eq(schema.axisCases.tenantId, ctx.tenantId),
+        isNotNull(schema.axisCases.closedAt),
+        gte(schema.axisCases.closedAt, p.since),
+        lt(schema.axisCases.closedAt, p.until)
+      )
+    );
+  return median(rows.map((r) => r.closedAt! - r.createdAt));
+};
+
+/** ponytail: one reserve-history lookup per closed claim (N+1) — fine at nightly-snapshot volumes, revisit if a tenant closes thousands of claims a day. */
+const reserveAdequacy: Compute = async (ctx, p) => {
+  if (p.grain !== "month") return null;
+  const claims = await ctx.db
+    .select({ id: schema.axisClaims.id, reportedAt: schema.axisClaims.reportedAt, paidMinor: schema.axisClaims.paidMinor })
+    .from(schema.axisClaims)
+    .where(
+      and(
+        eq(schema.axisClaims.tenantId, ctx.tenantId),
+        isNotNull(schema.axisClaims.closedAt),
+        gte(schema.axisClaims.closedAt, p.since),
+        lt(schema.axisClaims.closedAt, p.until)
+      )
+    );
+  if (!claims.length) return null;
+
+  let reserveAt30 = 0;
+  let finalPaid = 0;
+  for (const claim of claims) {
+    finalPaid += claim.paidMinor;
+    const [reserve] = await ctx.db
+      .select({ amountMinor: schema.axisClaimReserves.amountMinor })
+      .from(schema.axisClaimReserves)
+      .where(
+        and(
+          eq(schema.axisClaimReserves.tenantId, ctx.tenantId),
+          eq(schema.axisClaimReserves.claimId, claim.id),
+          eq(schema.axisClaimReserves.head, "indemnity"),
+          lte(schema.axisClaimReserves.setAt, claim.reportedAt + 30 * DAY_MS)
+        )
+      )
+      .orderBy(desc(schema.axisClaimReserves.setAt))
+      .limit(1);
+    reserveAt30 += reserve?.amountMinor ?? 0;
+  }
+  return finalPaid > 0 ? Math.round((reserveAt30 / finalPaid) * 10_000) : null;
+};
+
+const slaBreachRate: Compute = async (ctx, p) => {
+  const [cases, claims] = await Promise.all([
+    ctx.db
+      .select({ slaDueAt: schema.axisCases.slaDueAt, closedAt: schema.axisCases.closedAt })
+      .from(schema.axisCases)
+      .where(
+        and(
+          eq(schema.axisCases.tenantId, ctx.tenantId),
+          isNotNull(schema.axisCases.closedAt),
+          gte(schema.axisCases.closedAt, p.since),
+          lt(schema.axisCases.closedAt, p.until)
+        )
+      ),
+    ctx.db
+      .select({ slaDueAt: schema.axisClaims.slaDueAt, closedAt: schema.axisClaims.closedAt })
+      .from(schema.axisClaims)
+      .where(
+        and(
+          eq(schema.axisClaims.tenantId, ctx.tenantId),
+          isNotNull(schema.axisClaims.closedAt),
+          gte(schema.axisClaims.closedAt, p.since),
+          lt(schema.axisClaims.closedAt, p.until)
+        )
+      )
+  ]);
+  const closed = [...cases, ...claims];
+  if (!closed.length) return null;
+  const breached = closed.filter((c) => c.slaDueAt !== null && c.closedAt! > c.slaDueAt).length;
+  return Math.round((breached / closed.length) * 10_000);
+};
+
+/** Point-in-time gauge: "as of now", not scoped to the period window. */
+const openClaimCount: Compute = async (ctx, p) => {
+  if (p.grain !== "month") return null;
+  const [row] = await ctx.db
+    .select({ n: sql<number>`count(*)` })
+    .from(schema.axisClaims)
+    .where(
+      and(
+        eq(schema.axisClaims.tenantId, ctx.tenantId),
+        isNull(schema.axisClaims.closedAt),
+        notInArray(schema.axisClaims.status, ["withdrawn", "rejected"])
+      )
+    );
+  return row?.n ?? 0;
+};
+
+/** Point-in-time gauge: "as of now", not scoped to the period window. */
+const outstandingReserve: Compute = async (ctx, p) => {
+  if (p.grain !== "month") return null;
+  const [row] = await ctx.db
+    .select({ v: sql<number>`coalesce(sum(${schema.axisClaims.reserveMinor}), 0)` })
+    .from(schema.axisClaims)
+    .where(eq(schema.axisClaims.tenantId, ctx.tenantId));
+  return row?.v ?? 0;
+};
+
 /**
- * ADR-0024: registered metric keys only. `loss_ratio` and
- * `renewal_retention_rate` are deliberately absent — their formula basis is
- * an unresolved judgment call, flagged in the ADR, not guessed here.
+ * ADR-0024: registered metric keys only. `claims_leakage` is deliberately
+ * absent — its "assessed should have paid" side has no matching schema
+ * field anywhere, so there's nothing to compute without guessing.
  */
 const REGISTRY: Record<string, Compute> = {
   policies_issued: policiesIssued,
@@ -203,7 +503,20 @@ const REGISTRY: Record<string, Compute> = {
   active_policies: activePolicies,
   cac_per_policy: cacPerPolicy,
   broker_channel_share: brokerChannelShare,
-  ai_cost_per_case: aiCostPerCase
+  ai_cost_per_case: aiCostPerCase,
+  gross_written_premium: grossWrittenPremium,
+  net_written_premium: netWrittenPremium,
+  loss_ratio: lossRatio,
+  expense_ratio: expenseRatio,
+  combined_ratio: combinedRatio,
+  renewal_retention: renewalRetention,
+  quote_hit_rate: quoteHitRate,
+  avg_handling_time_claims: avgHandlingTimeClaims,
+  avg_handling_time_cases: avgHandlingTimeCases,
+  reserve_adequacy: reserveAdequacy,
+  sla_breach_rate: slaBreachRate,
+  open_claim_count: openClaimCount,
+  outstanding_reserve: outstandingReserve
 };
 
 /** Same move/threshold basis every unit family uses for a naive, seasonal-unaware anomaly flag (ADR-0024). */
@@ -235,10 +548,14 @@ function breaches(operator: string, value: number, threshold: number): boolean {
  * so a missed or repeated nightly tick costs nothing.
  */
 export async function runSnapshotter(ctx: Ctx): Promise<{ written: number; anomalies: number; alertsTriggered: number }> {
-  const metrics = await ctx.db
+  const unsortedMetrics = await ctx.db
     .select()
     .from(schema.northMetrics)
     .where(eq(schema.northMetrics.tenantId, ctx.tenantId));
+  // combined_ratio reads loss_ratio/expense_ratio's just-written rows (§F), so it must run last.
+  const metrics = unsortedMetrics
+    .slice()
+    .sort((a, b) => (a.key === "combined_ratio" ? 1 : 0) - (b.key === "combined_ratio" ? 1 : 0));
 
   const rules = await ctx.db
     .select()
