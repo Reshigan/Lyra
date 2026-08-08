@@ -5,6 +5,7 @@ import { checkInput, checkOutput, blocked } from "../src/guardrails.js";
 import { EXTRACTION_FIELDS, normalizeField, parseExtraction } from "../src/extract.js";
 import { parseTriage } from "../src/triage.js";
 import { parseReserve } from "../src/reserve.js";
+import { parseFraud } from "../src/fraud.js";
 import { aggregateCxScore, localeGap } from "../src/cx-judge.js";
 import { verifyNumericClaims, verifyGroundedness, checkCompliance as checkSignalCompliance, type BriefingSnapshot } from "@lyra/core";
 import { loadCases, loadThresholds, metric, metricOk, type Metric } from "./harness.js";
@@ -232,6 +233,78 @@ async function scoreReserve(dir: string): Promise<Metric[]> {
   ];
 }
 
+interface FraudCase {
+  id: string;
+  text: string;
+  expectFraud: boolean;
+  cohort: string;
+}
+
+interface FraudThresholds {
+  precisionAtTop10Min: number;
+  recallMin: number;
+  unexplainedIndicatorRateMax: number;
+  maxScoreDeltaByProtectedProxy: number;
+}
+
+// docs/specs/gap-axis-design.md §G.2. Mirrors apps/api/src/engines/axis-fraud-scorer.ts's
+// SIU_REFERRAL_THRESHOLD — recall is measured at the same cutoff production uses to
+// open a referral, not at some other cutoff that would score a different behaviour.
+const SIU_REFERRAL_THRESHOLD = 60;
+
+// No live model call (docs/13 §4) — cases.jsonl bakes in canned model replies plus
+// each case's ground truth, scoring the exact `parseFraud` that
+// scoreAndReferClaim (apps/api/src/engines/axis-fraud-scorer.ts) runs in production.
+async function scoreFraud(dir: string): Promise<Metric[]> {
+  const cases = await loadCases<FraudCase>(dir);
+  const thresholds = await loadThresholds<FraudThresholds>(dir);
+
+  const scored = cases.map((c) => ({ case: c, result: parseFraud(c.text) }));
+
+  const top10 = [...scored].sort((a, b) => b.result.score - a.result.score).slice(0, 10);
+  const precisionAtTop10 = top10.length ? top10.filter((s) => s.case.expectFraud).length / top10.length : 0;
+
+  const positives = scored.filter((s) => s.case.expectFraud);
+  const referred = positives.filter((s) => s.result.score >= SIU_REFERRAL_THRESHOLD).length;
+  const recall = positives.length ? referred / positives.length : 1;
+
+  // Rate is over raw indicator candidates, not the already-filtered `indicators`
+  // array — parseFraud can never leave an unlinked indicator in that array by
+  // construction, so measuring against it would report a permanent zero regardless
+  // of how often the drop actually fires.
+  let candidates = 0;
+  let dropped = 0;
+  for (const { result } of scored) {
+    dropped += result.droppedIndicatorCount;
+    candidates += result.indicators.length + result.droppedIndicatorCount;
+  }
+  const unexplainedIndicatorRate = candidates ? dropped / candidates : 0;
+
+  const metrics = [
+    metric("precisionAtTop10", precisionAtTop10, { min: thresholds.precisionAtTop10Min }),
+    metric("recall", recall, { min: thresholds.recallMin }),
+    metric("unexplainedIndicatorRate", unexplainedIndicatorRate, { max: thresholds.unexplainedIndicatorRateMax })
+  ];
+
+  // Fairness is a claim about equal treatment of otherwise-similar claims, not
+  // about whether genuinely fraudulent claims score high — so it's measured on
+  // the clean cohort only (mirrors scoreCxQuality's "only when >=2 groups" gate).
+  const byCohort = new Map<string, number[]>();
+  for (const { case: c, result } of scored) {
+    if (c.expectFraud) continue;
+    byCohort.set(c.cohort, [...(byCohort.get(c.cohort) ?? []), result.score]);
+  }
+  const cohorts = [...byCohort.entries()].sort(([a], [b]) => a.localeCompare(b));
+  if (cohorts.length >= 2) {
+    const mean = (xs: number[]): number => xs.reduce((a, b) => a + b, 0) / xs.length;
+    const means = cohorts.map(([, scores]) => mean(scores));
+    const delta = Math.max(...means) - Math.min(...means);
+    metrics.push(metric("maxScoreDeltaByProtectedProxy", delta, { max: thresholds.maxScoreDeltaByProtectedProxy }));
+  }
+
+  return metrics;
+}
+
 interface CxQualityCase {
   id: string;
   locale: string;
@@ -384,6 +457,7 @@ const SCORERS: Record<string, (dir: string) => Promise<Metric[]>> = {
   "axis-copilot": scoreAxisCopilot,
   "axis-fnol-triage": scoreFnolTriage,
   "axis-reserve": scoreReserve,
+  "axis-fraud": scoreFraud,
   "cx-quality": scoreCxQuality,
   north: scoreNorth,
   signal: scoreSignal

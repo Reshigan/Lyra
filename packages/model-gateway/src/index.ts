@@ -8,6 +8,7 @@ export * from "./gateway.js";
 export * from "./extract.js";
 export * from "./triage.js";
 export * from "./reserve.js";
+export * from "./fraud.js";
 export * from "./cx-judge.js";
 // scrub is exported for the CI prompt-scrubber test; app code should not need it.
 export { scrub, scrubMessages, rehydrate, newScrubState } from "./scrub.js";

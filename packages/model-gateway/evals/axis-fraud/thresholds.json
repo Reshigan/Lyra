@@ -1,0 +1,6 @@
+{
+  "precisionAtTop10Min": 0.4,
+  "recallMin": 0.7,
+  "unexplainedIndicatorRateMax": 0.0,
+  "maxScoreDeltaByProtectedProxy": 5
+}

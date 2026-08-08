@@ -33,6 +33,7 @@ export const PURPOSES: Record<string, PurposeDef> = {
   "axis.dev.extract_sample": { module: "axis", customerFacing: false },
   "axis.fnol.triage": { module: "axis", customerFacing: false },
   "axis.claim.reserve_recommend": { module: "axis", customerFacing: false },
+  "axis.claim.fraud_score": { module: "axis", customerFacing: false },
 
   // orbit — conversations. A draft reply is customer-facing the moment it is
   // sent, and the send path is the same row, so it is customer-facing here.

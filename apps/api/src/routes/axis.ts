@@ -58,6 +58,7 @@ import {
   transitionClaim
 } from "../engines/axis-claim-lifecycle.js";
 import { writeRecommendedReserve } from "../engines/axis-reserve-advisor.js";
+import { scoreAndReferClaim } from "../engines/axis-fraud-scorer.js";
 import {
   CaseTransitionBody,
   permissionForCaseTransition,
@@ -1142,6 +1143,24 @@ axisRoutes.post("/claims/:id/reserve-recommendation", async (c) => {
   const run = () => writeRecommendedReserve(ctx, claim, c.get("gateway"));
   const out = await withIdempotency(ctx, key, `POST ${c.req.path}`, {}, run);
   return out ? c.json(out, 201) : c.json({ recommended: false }, 200);
+});
+
+/**
+ * §G.2. Scores a claim for SIU referral from its peril/cause, incident-to-report
+ * gap, amount against limits, the holder's own claim history, and any document
+ * extraction results. Never consequential (CLAUDE.md §4): the model may only
+ * stamp claims.fraudScore and open an axis_siu_referrals queue entry for a human
+ * investigator — it cannot decline, reduce a reserve, or block a payment. No
+ * body: everything it needs already lives on the claim.
+ */
+axisRoutes.post("/claims/:id/fraud-score", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:siu:write", { tenantId: ctx.tenantId, module: "axis" });
+  const claim = await must(ctx, schema.axisClaims, c.req.param("id"), "claims");
+  const key = c.req.header("idempotency-key");
+  const run = () => scoreAndReferClaim(ctx, claim, c.get("gateway"));
+  const out = await withIdempotency(ctx, key, `POST ${c.req.path}`, {}, run);
+  return out ? c.json(out, 201) : c.json({ scored: false }, 200);
 });
 
 /* ------------------------------------------------- claim money (§D.10) --- */
