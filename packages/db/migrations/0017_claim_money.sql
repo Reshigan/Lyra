@@ -90,4 +90,4 @@ ALTER TABLE `axis_claims` ADD `closed_at` integer;--> statement-breakpoint
 ALTER TABLE `axis_claims` ADD `last_txn_id` text;--> statement-breakpoint
 CREATE INDEX `axis_claims_policy_idx` ON `axis_claims` (`tenant_id`,`policy_id`,`reported_at`);--> statement-breakpoint
 CREATE TRIGGER `axis_claim_reserves_no_update` BEFORE UPDATE ON `axis_claim_reserves` BEGIN SELECT RAISE(ABORT, 'axis_claim_reserves is append-only: post a correcting movement instead'); END;--> statement-breakpoint
-CREATE TRIGGER `axis_claim_reserves_no_delete` BEFORE DELETE ON `axis_claim_reserves` BEGIN SELECT RAISE(ABORT, 'axis_claim_reserves is append-only: post a correcting movement instead'); END
+CREATE TRIGGER `axis_claim_reserves_no_delete` BEFORE DELETE ON `axis_claim_reserves` BEGIN SELECT RAISE(ABORT, 'axis_claim_reserves is append-only: post a correcting movement instead'); END;
