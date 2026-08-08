@@ -375,7 +375,7 @@ axisRoutes.post("/cases/:id/copilot", async (c) => {
  * history, queue depth and owner load. Never consequential (CLAUDE.md §4):
  * generation only, writes nothing — no axis_sla_* table exists, and the
  * queue-reorder/chase-draft actions the spec's human boundary names belong
- * to the future Prioritiser/Chaser (§G.6, ADR-0035 pending), not this route.
+ * to the deferred Prioritiser/Chaser (§G.6, ADR-0035), not this route.
  * Reuses `axis:cases:read` — nothing is mutated, so no new permission.
  * No body: everything it needs already lives on the case.
  */

@@ -4,9 +4,8 @@
 //
 // Ambient, not consequential (CLAUDE.md §4): generation only. The model may
 // not reassign work (axis:cases:assign, human-only), extend an SLA, reorder a
-// queue, or draft a chase — those are the future Prioritiser/Chaser (§G.6,
-// ADR-0035 pending); this module only produces the estimate they would
-// consume. hoursToBreach itself is not asked of the model — axis_cases.slaDueAt
+// queue, or draft a chase — those are the deferred Prioritiser/Chaser (§G.6,
+// ADR-0035); this module only produces the estimate they would consume. hoursToBreach itself is not asked of the model — axis_cases.slaDueAt
 // is already an exact fact, so apps/api/src/engines/axis-sla-sentinel.ts
 // computes it deterministically rather than have the model guess a number we
 // already have.

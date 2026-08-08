@@ -9,8 +9,8 @@ import { parseSla, slaMessages, type Gateway, type SlaBreachDriver } from "@lyra
 // Ambient, not consequential (CLAUDE.md §4): generation only, never writes
 // anything — no axis_sla_* table exists, and the spec's human boundary
 // ("reprioritizes a queue and drafts a chase") names actions with no
-// infrastructure yet (queue order is the future Prioritiser, chase drafting
-// needs an outbox the Chaser will own — both §G.6, ADR-0035 pending). This
+// infrastructure yet (queue order is the deferred Prioritiser, chase drafting
+// needs an outbox the deferred Chaser will own — both §G.6, ADR-0035). This
 // engine only produces the estimate those agents will eventually consume.
 
 type CaseRow = typeof schema.axisCases.$inferSelect;
