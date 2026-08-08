@@ -304,7 +304,18 @@ export const AXIS = register(
     read: "axis:claims:read",
     create: "axis:claims:create",
     update: "axis:claims:update"
-  }, { approval: { update: "axis.claim_settlement", amountField: "settledMinor" } })
+  }, { approval: { update: "axis.claim_settlement", amountField: "settledMinor" } }),
+  r("complaints", schema.axisComplaints, "cmp", "axis", {
+    read: "axis:complaints:read",
+    create: "axis:complaints:write",
+    update: "axis:complaints:write"
+  }),
+  r("siu-referrals", schema.axisSiuReferrals, "siu", "axis", {
+    read: "axis:siu:read",
+    create: "axis:siu:write",
+    update: "axis:siu:write"
+  }),
+  r("referrals", schema.axisReferrals, "rfl", "axis", ro("axis:policies:decide_referral"))
 );
 
 /* ------------------------------------------------------------------- orbit */

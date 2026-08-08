@@ -79,6 +79,8 @@ export const APPROVAL_POLICIES: Record<string, ApprovalPolicy> = Object.fromEntr
     policy({ key: "axis.reinstate", module: "axis", decide: "axis:policies:reinstate", dualControl: "always", neverAutoApprove: true }),
     policy({ key: "axis.ntu", module: "axis", decide: "axis:policies:ntu", dualControl: "above_threshold", defaultThresholdMinor: 0 }),
     policy({ key: "axis.renew", module: "axis", decide: "axis:policies:renew", dualControl: "above_threshold", defaultThresholdMinor: 250_000_00 }),
+    // underwriting referral: risk outside delegated authority (§A.4) — the approval queue IS the escalation path
+    policy({ key: "axis.underwriting_referral", module: "axis", decide: "axis:policies:decide_referral", dualControl: "above_threshold", defaultThresholdMinor: 500_000_00 }),
     // distribution — commercial terms with a counterparty, so a second pair of eyes
     policy({ key: "dist.rate_change", module: "core", decide: "dist:rates:approve", dualControl: "always", neverAutoApprove: true }),
     policy({ key: "dist.commission_adjust", module: "core", decide: "dist:commissions:adjust", dualControl: "above_threshold", defaultThresholdMinor: 1_000_00 }),

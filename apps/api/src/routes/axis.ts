@@ -4,14 +4,17 @@ import { z } from "zod";
 import { id as newId, schema } from "@lyra/db";
 import {
   actorRef,
+  AppError,
   assertPolicyTransition,
   isPolicyState,
   audit,
   badRequest,
   canSeePii,
   conflict,
+  decide,
   emit,
   forbidden,
+  gate,
   notFound,
   openFields,
   require_,
@@ -439,6 +442,102 @@ const BindBody = z.object({
 });
 
 type PolicyRow = typeof schema.axisPolicies.$inferSelect;
+type AuthorityRule = { role: string; productLine: string; maxPremiumMinor: number };
+
+/**
+ * Delegated underwriting authority (docs/specs/gap-axis-design.md §A.4). Absence
+ * of a matching rule means no delegated authority: everything above zero refers.
+ */
+async function enforceUnderwritingAuthority(
+  ctx: Ctx,
+  policy: PolicyRow,
+  opts: { quoteResponseId?: string }
+): Promise<void> {
+  const opsPolicyRow = (
+    await ctx.db
+      .select()
+      .from(schema.axisOpsPolicies)
+      .where(
+        and(
+          eq(schema.axisOpsPolicies.tenantId, ctx.tenantId),
+          eq(schema.axisOpsPolicies.key, "axis.authority"),
+          eq(schema.axisOpsPolicies.status, "active")
+        )
+      )
+  )[0];
+  const rules = opsPolicyRow
+    ? ((JSON.parse(opsPolicyRow.valueJson) as { underwriting?: AuthorityRule[] }).underwriting ?? [])
+    : [];
+
+  const roleKeys = new Set(ctx.actor.grants.map((g) => g.roleKey));
+  const product = policy.productId
+    ? (await ctx.db.select().from(schema.products).where(eq(schema.products.id, policy.productId)))[0]
+    : undefined;
+
+  const limitMinor = rules
+    .filter((r) => roleKeys.has(r.role) && (r.productLine === "*" || r.productLine === product?.line))
+    .reduce((max, r) => Math.max(max, r.maxPremiumMinor), -1);
+
+  if (policy.grossMinor <= limitMinor) return;
+
+  // Keyed by the policy, not by a fresh referral each attempt: a retried bind
+  // after `/referrals/:id/decide` accepts must land on the same gate, so gate()
+  // can find the now-approved row and let the retry through instead of opening
+  // a new referral every time.
+  const subjectRef = `axis_policy_bind:${policy.id}`;
+  try {
+    await gate(ctx, { policyKey: "axis.underwriting_referral", subjectRef, amountMinor: policy.grossMinor });
+  } catch (err) {
+    if (!(err instanceof AppError) || err.code !== "approval_required") throw err;
+    const approvalId = err.extras.approval_id as string | undefined;
+
+    const openReferral = (
+      await ctx.db
+        .select()
+        .from(schema.axisReferrals)
+        .where(
+          and(
+            eq(schema.axisReferrals.tenantId, ctx.tenantId),
+            eq(schema.axisReferrals.policyId, policy.id),
+            eq(schema.axisReferrals.state, "open")
+          )
+        )
+        .limit(1)
+    )[0];
+
+    if (openReferral) {
+      if (approvalId && openReferral.approvalId !== approvalId) {
+        await ctx.db
+          .update(schema.axisReferrals)
+          .set({ approvalId })
+          .where(and(eq(schema.axisReferrals.tenantId, ctx.tenantId), eq(schema.axisReferrals.id, openReferral.id)));
+      }
+    } else {
+      const referral = {
+        id: newId("rfl", ctx.now),
+        tenantId: ctx.tenantId,
+        caseId: null,
+        policyId: policy.id,
+        quoteResponseId: opts.quoteResponseId ?? null,
+        kind: "authority_limit",
+        triggerJson: JSON.stringify({ rule: "maxPremiumMinor", limitMinor: Math.max(limitMinor, 0), valueMinor: policy.grossMinor }),
+        valueMinor: policy.grossMinor,
+        currency: policy.currency,
+        state: "open",
+        decidedBy: null,
+        decisionNote: null,
+        counterTermsJson: null,
+        approvalId: approvalId ?? null,
+        slaDueAt: null,
+        createdAt: ctx.now,
+        updatedAt: ctx.now
+      };
+      await ctx.db.insert(schema.axisReferrals).values(referral);
+      await audit(ctx, { action: "axis.policy.refer", subjectRef: policy.id, after: referral });
+    }
+    throw err;
+  }
+}
 
 /** The half both bind entrypoints share: transaction, version 1, head, audit, event. */
 async function bindPolicy(
@@ -449,6 +548,7 @@ async function bindPolicy(
   if (!isPolicyState(policy.status)) throw conflict(`policy is in unknown state ${policy.status}`);
   assertPolicyTransition(policy.status, "bound");
   if (policy.currentVersionId) throw conflict("policy already has a version history");
+  await enforceUnderwritingAuthority(ctx, policy, opts);
   // BIND is financial (docs/19 §4) and `buildRecipe` refuses a batch of fewer
   // than two lines, so a zero-commission bind would strand the transaction in
   // `failed`. A 400 naming the reason is more use than that.
@@ -629,6 +729,51 @@ axisRoutes.post("/quote-responses/:id/bind", async (c) => {
     });
   });
   return c.json(out, 201);
+});
+
+const ReferralDecideBody = z.object({
+  // ponytail: refer-up (next authority tier) needs tier ordering the ops-policy
+  // rule list doesn't have yet. Add when a tenant asks for a second tier.
+  intent: z.enum(["accept", "decline", "counter"]),
+  reason: z.string().max(2000).optional(),
+  counterTermsJson: z.record(z.string(), z.unknown()).optional()
+});
+
+/**
+ * Resolves the referral gate.ts opened on the bind path (§A.4). Acts on the
+ * referral's id, not the approval's: decide() there is plumbing the desk
+ * never sees directly.
+ */
+axisRoutes.post("/referrals/:id/decide", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:policies:decide_referral", { tenantId: ctx.tenantId, module: "axis" });
+  const input = await body(c, ReferralDecideBody);
+  const referral = await must(ctx, schema.axisReferrals, c.req.param("id"), "referral");
+  if (referral.state !== "open") throw conflict(`referral is ${referral.state}, not open`);
+  if (input.intent === "decline" && !input.reason) throw badRequest("decline requires a reason");
+  if (input.intent === "counter" && !input.counterTermsJson) throw badRequest("counter requires counterTermsJson");
+
+  const out = await withIdempotency(ctx, c.req.header("idempotency-key"), `POST ${c.req.path}`, input, async () => {
+    if (referral.approvalId) {
+      await decide(ctx, referral.approvalId, input.intent === "accept" ? "approved" : "rejected", input.reason);
+    }
+    const state = input.intent === "accept" ? "accepted" : input.intent === "decline" ? "declined" : "counter_offered";
+    const after = {
+      ...referral,
+      state,
+      decidedBy: actorRef(ctx),
+      decisionNote: input.reason ?? null,
+      counterTermsJson: input.counterTermsJson ? JSON.stringify(input.counterTermsJson) : referral.counterTermsJson,
+      updatedAt: ctx.now
+    };
+    await ctx.db
+      .update(schema.axisReferrals)
+      .set(after)
+      .where(and(eq(schema.axisReferrals.tenantId, ctx.tenantId), eq(schema.axisReferrals.id, referral.id)));
+    await audit(ctx, { action: "axis.referral.decide", subjectRef: referral.id, before: referral, after });
+    return after;
+  });
+  return c.json(out, 200);
 });
 
 const ManualQuoteBody = z.object({

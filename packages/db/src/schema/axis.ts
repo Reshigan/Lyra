@@ -534,3 +534,92 @@ export const bordereauLines = sqliteTable(
     index("axis_bordereau_lines_bordereau_idx").on(t.tenantId, t.bordereauId, t.matchState)
   ]
 );
+
+/** A regulated complaint (§A.1, §D.8). `dueAt` is the regulatory clock, not an SLA. */
+export const complaints = sqliteTable(
+  "axis_complaints",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    ref: text("ref").notNull(),
+    customerId: text("customer_id"),
+    policyId: text("policy_id"),
+    claimId: text("claim_id"),
+    caseId: text("case_id"),
+    channel: text("channel").notNull(), // web|phone|email|whatsapp|regulator|social
+    categoryCode: text("category_code").notNull(), // tenant taxonomy
+    summarySealed: text("summary_sealed"), // sealFields — may contain PII
+    receivedAt: integer("received_at").notNull(),
+    acknowledgedAt: integer("acknowledged_at"),
+    dueAt: integer("due_at").notNull(),
+    resolvedAt: integer("resolved_at"),
+    state: text("state").notNull().default("received"),
+    // received|investigating|awaiting_customer|resolved|escalated|closed
+    outcome: text("outcome"), // upheld|partly_upheld|not_upheld|withdrawn
+    rootCauseCode: text("root_cause_code"),
+    redressMinor: integer("redress_minor").notNull().default(0),
+    currency: text("currency"),
+    regulatorRef: text("regulator_ref"),
+    ownerRef: text("owner_ref"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull()
+  },
+  (t) => [
+    uniqueIndex("axis_complaints_ref_uq").on(t.tenantId, t.ref),
+    index("axis_complaints_due_idx").on(t.tenantId, t.state, t.dueAt)
+  ]
+);
+
+/** SIU investigation record — distinct from `claims.siuState`'s lightweight flag (§A.1, §D.8). */
+export const siuReferrals = sqliteTable(
+  "axis_siu_referrals",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    claimId: text("claim_id").notNull(),
+    policyId: text("policy_id"),
+    score: integer("score").notNull(), // 0-100
+    reasonsJson: text("reasons_json").notNull(), // [{ indicator, weight, evidenceRef }]
+    aiAuditId: text("ai_audit_id"),
+    source: text("source").notNull().default("model"), // model|handler|insurer|tip
+    state: text("state").notNull().default("open"),
+    // open|investigating|substantiated|unsubstantiated|closed
+    assignedTo: text("assigned_to"),
+    outcome: text("outcome"),
+    savedMinor: integer("saved_minor").notNull().default(0), // leakage prevented
+    currency: text("currency"),
+    openedAt: integer("opened_at").notNull(),
+    closedAt: integer("closed_at"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull()
+  },
+  (t) => [
+    uniqueIndex("axis_siu_claim_uq").on(t.tenantId, t.claimId),
+    index("axis_siu_state_idx").on(t.tenantId, t.state, t.score)
+  ]
+);
+
+/** Underwriting referral: a risk outside delegated authority (§A.4, §D.6). */
+export const referrals = sqliteTable(
+  "axis_referrals",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    caseId: text("case_id"),
+    policyId: text("policy_id"),
+    quoteResponseId: text("quote_response_id"),
+    kind: text("kind").notNull(), // authority_limit|eligibility|sanctions|manual
+    triggerJson: text("trigger_json").notNull(), // which rule fired, with values
+    valueMinor: integer("value_minor"),
+    currency: text("currency"),
+    state: text("state").notNull().default("open"), // open|accepted|declined|counter_offered|expired
+    decidedBy: text("decided_by"),
+    decisionNote: text("decision_note"),
+    counterTermsJson: text("counter_terms_json"),
+    approvalId: text("approval_id"),
+    slaDueAt: integer("sla_due_at"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull()
+  },
+  (t) => [index("axis_referrals_state_idx").on(t.tenantId, t.state, t.slaDueAt)]
+);
