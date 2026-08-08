@@ -128,6 +128,7 @@ export const PERMISSIONS = [
   "axis:claims:recover", "axis:claims:reopen", "axis:claims:close",
   "axis:metrics:read",
   "axis:ops_policies:read", "axis:ops_policies:write",
+  "axis:bordereaux:read", "axis:bordereaux:generate", "axis:bordereaux:reconcile",
 
   // ORBIT — customer experience
   "orbit:conversations:read", "orbit:conversations:reply", "orbit:conversations:assign",
@@ -340,6 +341,7 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     // payments — `pay_approve` stays with axis.admin (design §A.2).
     "axis:claims:register", "axis:claims:triage", "axis:claims:reserve",
     "axis:claims:pay", "axis:claims:recover", "axis:claims:reopen", "axis:claims:close",
+    "axis:bordereaux:generate", "axis:bordereaux:reconcile",
     "core:customers:read", "core:customers:create", "core:customers:update", "core:pii:view",
     "core:consents:read", "core:consents:create", "core:files:read", "core:files:create",
     "core:search:read", "core:approvals:read", "core:approvals:decide",

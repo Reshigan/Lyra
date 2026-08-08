@@ -345,6 +345,11 @@ const HAND_WRITTEN: Op[] = [
   { method: "post", path: "/v1/axis/dev/extract-sample", summary: "Developer console: run field extraction against pasted text, no document row created", permission: "dev:sandbox:use", tag: "axis", requestBody: true },
   { method: "get", path: "/v1/axis/documents/{id}/file", summary: "Stream a document's underlying file", permission: "axis:documents:read", tag: "axis" },
 
+  // Bordereaux (routes/axis.ts, docs/27 §E). Outbound totals our own ledger for
+  // the period; inbound stores a counterparty's raw lines for reconciliation.
+  { method: "post", path: "/v1/axis/bordereaux", summary: "Generate an outbound bordereau from ledger data, or store an inbound one's raw lines (idempotent per period)", permission: "axis:bordereaux:generate", tag: "axis", requestBody: true },
+  { method: "post", path: "/v1/axis/bordereaux/{id}/reconcile", summary: "Match an inbound bordereau's lines against our policies by policy number", permission: "axis:bordereaux:reconcile", tag: "axis" },
+
   // Platform console (routes/platform.ts, ADR-0028/ADR-0029). Cross-tenant,
   // gated on admin:* / core:impersonate:use rather than a tenant permission —
   // there is no tenant to scope most of these against.

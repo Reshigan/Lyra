@@ -448,3 +448,89 @@ export const claimRecoveries = sqliteTable(
   },
   (t) => [index("axis_claim_recoveries_idx").on(t.tenantId, t.state, t.nextActionAt)]
 );
+
+/**
+ * One period, one provider, one direction (§C.8). Header row for a
+ * bordereau — outbound generation totals its lines against
+ * `dist_commission_entries`; inbound reconciliation matches its lines
+ * against local policies/claims. `escrowBatchId` links the money side
+ * instead of reimplementing it (§E.3).
+ */
+export const bordereaux = sqliteTable(
+  "axis_bordereaux",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    direction: text("direction").notNull(), // inbound|outbound
+    counterpartyKind: text("counterparty_kind").notNull(), // provider|channel|partner
+    counterpartyId: text("counterparty_id").notNull(),
+    kind: text("kind").notNull(), // premium|claims|combined
+    period: text("period").notNull(), // YYYY-MM
+    currency: text("currency").notNull(),
+    lineCount: integer("line_count").notNull().default(0),
+    grossPremiumMinor: integer("gross_premium_minor").notNull().default(0),
+    commissionMinor: integer("commission_minor").notNull().default(0),
+    claimsPaidMinor: integer("claims_paid_minor").notNull().default(0),
+    reserveMinor: integer("reserve_minor").notNull().default(0),
+    varianceMinor: integer("variance_minor").notNull().default(0),
+    state: text("state").notNull().default("draft"), // draft|generated|sent|acknowledged|matched|variance|closed
+    fileId: text("file_id"), // -> core_files.id, the file we sent/rendered
+    sourceFileId: text("source_file_id"), // -> core_files.id, the inbound file we parsed
+    escrowBatchId: text("escrow_batch_id"), // -> axis_escrow_batches.id
+    generatedBy: text("generated_by"),
+    generatedAt: integer("generated_at"),
+    closedAt: integer("closed_at"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull()
+  },
+  (t) => [
+    uniqueIndex("axis_bordereaux_period_uq").on(
+      t.tenantId,
+      t.direction,
+      t.counterpartyId,
+      t.kind,
+      t.period
+    ),
+    index("axis_bordereaux_tenant_idx").on(t.tenantId, t.state, t.period)
+  ]
+);
+
+/**
+ * Per-row detail (§C.8). `rawJson` preserves the inbound row verbatim so a
+ * disputed match can be re-checked against exactly what the provider sent.
+ * `matchState` is set once by reconciliation and not revisited by
+ * regeneration — regenerating a period recomputes totals, it does not
+ * re-run matching on lines a human may have already actioned.
+ */
+export const bordereauLines = sqliteTable(
+  "axis_bordereau_lines",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    bordereauId: text("bordereau_id").notNull(),
+    lineNo: integer("line_no").notNull(),
+    policyId: text("policy_id"),
+    policyVersionId: text("policy_version_id"),
+    claimId: text("claim_id"),
+    externalRef: text("external_ref"),
+    riskRef: text("risk_ref"), // pack-neutral: VIN, plate, member no, ...
+    effectiveFrom: integer("effective_from"),
+    effectiveTo: integer("effective_to"),
+    grossPremiumMinor: integer("gross_premium_minor").notNull().default(0),
+    taxMinor: integer("tax_minor").notNull().default(0),
+    netPremiumMinor: integer("net_premium_minor").notNull().default(0),
+    commissionMinor: integer("commission_minor").notNull().default(0),
+    claimsPaidMinor: integer("claims_paid_minor").notNull().default(0),
+    reserveMinor: integer("reserve_minor").notNull().default(0),
+    currency: text("currency").notNull(),
+    matchState: text("match_state").notNull().default("unmatched"), // unmatched|matched|variance|missing_ours|missing_theirs
+    varianceMinor: integer("variance_minor").notNull().default(0),
+    rawJson: text("raw_json"), // the inbound row, verbatim
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull()
+  },
+  (t) => [
+    uniqueIndex("axis_bordereau_lines_line_uq").on(t.tenantId, t.bordereauId, t.lineNo),
+    index("axis_bordereau_lines_bordereau_idx").on(t.tenantId, t.bordereauId, t.matchState)
+  ]
+);

@@ -67,7 +67,9 @@ export {
   claims as axisClaims,
   claimReserves as axisClaimReserves,
   claimPayments as axisClaimPayments,
-  claimRecoveries as axisClaimRecoveries
+  claimRecoveries as axisClaimRecoveries,
+  bordereaux as axisBordereaux,
+  bordereauLines as axisBordereauLines
 } from "./schema/axis.js";
 
 export {

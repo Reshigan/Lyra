@@ -79,6 +79,7 @@ import {
   policyForCoverage,
   registerFnol
 } from "../engines/axis-fnol.js";
+import { GenerateBordereauBody, generateBordereaux, reconcileBordereaux } from "../engines/axis-bordereaux.js";
 import { embedUpsert } from "../engines/vectorize.js";
 import { meterEgress } from "../engines/egress.js";
 import { fieldKey, type App } from "../env.js";
@@ -1048,5 +1049,22 @@ axisRoutes.post("/recoveries/:id/writeoff", async (c) => {
   const out = await withIdempotency(ctx, key, `POST ${c.req.path}`, input, () =>
     writeOffRecovery(ctx, recovery, input)
   );
+  return c.json(out, 200);
+});
+
+/** docs/27 §E. Generate (or idempotently regenerate) a period bordereau. */
+axisRoutes.post("/bordereaux", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:bordereaux:generate", { tenantId: ctx.tenantId, module: "axis" });
+  const input = await body(c, GenerateBordereauBody);
+  const out = await generateBordereaux(ctx, input);
+  return c.json(out, 201);
+});
+
+axisRoutes.post("/bordereaux/:id/reconcile", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:bordereaux:reconcile", { tenantId: ctx.tenantId, module: "axis" });
+  const bordereau = await must(ctx, schema.axisBordereaux, c.req.param("id"), "bordereaux");
+  const out = await reconcileBordereaux(ctx, bordereau);
   return c.json(out, 200);
 });
