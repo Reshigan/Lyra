@@ -438,7 +438,7 @@ export default function AxisBoard() {
   const shell = useShellData();
   const navigation = useNavigation();
 
-  const l = labelsIn(shell?.locale ?? "en");
+  const l = labelsIn(shell?.locale ?? "en", shell?.domainPack);
   const held = new Set(shell?.permissions ?? []);
   const busy = navigation.state !== "idle";
   const now = loaded.now;

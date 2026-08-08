@@ -22,7 +22,7 @@ import {
 } from "@lyra/ui";
 import { ApiError, api } from "../api.server";
 import { cloudflare } from "../context";
-import { pseudoText } from "../i18n";
+import { labelsFrom, type Label } from "./detail-kit";
 import { Gate } from "./staff";
 import { useShellData } from "./workspace";
 
@@ -149,15 +149,7 @@ const LABELS: Record<string, Record<string, string>> = {
   }
 };
 
-export type Label = (key: string, vars?: Record<string, string>) => string;
-
-/** Locale first, English next, then the key — never a blank on screen. */
-export function labelsIn(locale: string): Label {
-  return (key, vars) => {
-    const raw = pseudoText(locale, LABELS[locale]?.[key] ?? LABELS["en"]?.[key] ?? key);
-    return vars ? raw.replace(/\{(\w+)\}/g, (whole, name: string) => vars[name] ?? whole) : raw;
-  };
-}
+export const labelsIn = labelsFrom(LABELS);
 
 /* ----------------------------------------------------------------- shapes */
 
@@ -390,7 +382,7 @@ export default function AxisExceptions() {
   const shell = useShellData();
   const navigation = useNavigation();
 
-  const l = labelsIn(shell?.locale ?? "en");
+  const l = labelsIn(shell?.locale ?? "en", shell?.domainPack);
   const held = new Set(shell?.permissions ?? []);
   const busy = navigation.state !== "idle";
   const now = loaded.now;
