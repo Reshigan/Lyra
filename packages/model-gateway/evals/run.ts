@@ -2,7 +2,7 @@ import { readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { checkInput, checkOutput, blocked } from "../src/guardrails.js";
-import { EXTRACTION_FIELDS, normalizeField, parseExtraction } from "../src/extract.js";
+import { EXTRACTION_FIELDS, normalizeField, parseExtraction, parseVisionExtraction } from "../src/extract.js";
 import { parseTriage } from "../src/triage.js";
 import { parseReserve } from "../src/reserve.js";
 import { parseFraud } from "../src/fraud.js";
@@ -142,6 +142,89 @@ async function scoreAxis(dir: string): Promise<Metric[]> {
         min: thresholds.fieldAccuracyMin
       })
     );
+}
+
+interface AxisVisionCase {
+  id: string;
+  docType: string;
+  /** The doc type actually on the rendered page — equal to docType except in the routing cases below. */
+  actualDocType: string;
+  locale: string;
+  /** The model's structured reply — what `parseVisionExtraction` (src/extract.ts) actually parses. */
+  text: string;
+  expected: Record<string, string | null>;
+}
+
+interface AxisVisionThresholds {
+  fieldAccuracyMin: number;
+  pageRoutingAccuracyMin: number;
+  hallucinatedFieldRateMax: number;
+}
+
+// docs/specs/gap-axis-design.md §G.5: fieldAccuracyMin carries over from
+// scoreAxis but is now measured through parseVisionExtraction end-to-end from
+// the image, not from supplied text. The route never asks the model to
+// classify the doc type (apps/api/src/routes/axis.ts picks `before.docType`
+// off the DB row before the call) — so pageRoutingAccuracy is scored as
+// correct abstention: when docType != actualDocType (an intake mis-tag), every
+// field must come back null rather than fabricate a match. hallucinatedFieldRate
+// covers the partial-evidence guard in parseVisionExtraction (a value missing
+// its page or bbox is forced null) — full-fabrication (a wrong value with
+// complete, self-consistent evidence) has no ground truth to check
+// deterministically and is left to the live eval (evals/live.ts).
+async function scoreAxisVision(dir: string): Promise<Metric[]> {
+  const cases = await loadCases<AxisVisionCase>(dir);
+  const thresholds = await loadThresholds<AxisVisionThresholds>(dir);
+
+  const tally = new Map<string, { correct: number; total: number }>();
+  let hallucinated = 0;
+  let nullOpportunities = 0;
+  let mismatched = 0;
+  let routedCorrectly = 0;
+
+  for (const c of cases) {
+    const fields = EXTRACTION_FIELDS[c.docType] ?? Object.keys(c.expected);
+    const { values } = parseVisionExtraction(c.text, fields);
+
+    if (c.docType === c.actualDocType) {
+      const t = tally.get(c.locale) ?? { correct: 0, total: 0 };
+      for (const field of fields) {
+        t.total += 1;
+        if (normalizeField(values[field]?.value ?? null) === normalizeField(c.expected[field] ?? null)) {
+          t.correct += 1;
+        }
+      }
+      tally.set(c.locale, t);
+    } else {
+      mismatched += 1;
+      if (fields.every((field) => values[field]?.value === null)) routedCorrectly += 1;
+    }
+
+    for (const field of fields) {
+      if (c.expected[field] !== null) continue;
+      nullOpportunities += 1;
+      if (values[field]?.value !== null) hallucinated += 1;
+    }
+  }
+
+  const metrics = [...tally.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([locale, t]) =>
+      metric(`fieldAccuracy.${locale}`, t.total ? t.correct / t.total : 1, { min: thresholds.fieldAccuracyMin })
+    );
+
+  metrics.push(
+    metric("pageRoutingAccuracy", mismatched ? routedCorrectly / mismatched : 1, {
+      min: thresholds.pageRoutingAccuracyMin
+    })
+  );
+  metrics.push(
+    metric("hallucinatedFieldRate", nullOpportunities ? hallucinated / nullOpportunities : 0, {
+      max: thresholds.hallucinatedFieldRateMax
+    })
+  );
+
+  return metrics;
 }
 
 interface FnolTriageCase {
@@ -517,6 +600,7 @@ const SCORERS: Record<string, (dir: string) => Promise<Metric[]>> = {
   injection: scoreInjection,
   compliance: scoreCompliance,
   axis: scoreAxis,
+  "axis-vision": scoreAxisVision,
   "axis-copilot": scoreAxisCopilot,
   "axis-fnol-triage": scoreFnolTriage,
   "axis-reserve": scoreReserve,
