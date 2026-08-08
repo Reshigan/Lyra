@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { checkInput, checkOutput, blocked } from "../src/guardrails.js";
 import { EXTRACTION_FIELDS, normalizeField, parseExtraction } from "../src/extract.js";
+import { parseTriage } from "../src/triage.js";
 import { aggregateCxScore, localeGap } from "../src/cx-judge.js";
 import { verifyNumericClaims, verifyGroundedness, checkCompliance as checkSignalCompliance, type BriefingSnapshot } from "@lyra/core";
 import { loadCases, loadThresholds, metric, metricOk, type Metric } from "./harness.js";
@@ -138,6 +139,40 @@ async function scoreAxis(dir: string): Promise<Metric[]> {
         min: thresholds.fieldAccuracyMin
       })
     );
+}
+
+interface FnolTriageCase {
+  id: string;
+  /** The model's structured reply — what `parseTriage` (src/triage.ts) actually parses. */
+  text: string;
+  expected: { perilCode: string | null; causeCode: string | null; complexity: string | null };
+}
+
+interface FnolTriageThresholds {
+  fieldAccuracyMin: number;
+}
+
+const TRIAGE_FIELDS = ["perilCode", "causeCode", "complexity"] as const;
+
+// docs/specs/gap-axis-design.md §G.1. No live model call (deterministic/CI-safe,
+// docs/13 §4) — cases.jsonl bakes in canned model replies (clean, code-fenced,
+// missing field, invalid enum value) and this scores the exact `parseTriage`
+// that `triageFnol` (apps/api/src/engines/axis-fnol.ts) runs in production.
+async function scoreFnolTriage(dir: string): Promise<Metric[]> {
+  const cases = await loadCases<FnolTriageCase>(dir);
+  const thresholds = await loadThresholds<FnolTriageThresholds>(dir);
+
+  let correct = 0;
+  let total = 0;
+  for (const c of cases) {
+    const triage = parseTriage(c.text);
+    for (const field of TRIAGE_FIELDS) {
+      total += 1;
+      if (normalizeField(triage[field]) === normalizeField(c.expected[field])) correct += 1;
+    }
+  }
+
+  return [metric("fieldAccuracy", total ? correct / total : 1, { min: thresholds.fieldAccuracyMin })];
 }
 
 interface CxQualityCase {
@@ -290,6 +325,7 @@ const SCORERS: Record<string, (dir: string) => Promise<Metric[]>> = {
   compliance: scoreCompliance,
   axis: scoreAxis,
   "axis-copilot": scoreAxisCopilot,
+  "axis-fnol-triage": scoreFnolTriage,
   "cx-quality": scoreCxQuality,
   north: scoreNorth,
   signal: scoreSignal

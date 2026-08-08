@@ -1076,7 +1076,7 @@ axisRoutes.post("/claims", async (c) => {
   require_(ctx.actor, "axis:claims:register", { tenantId: ctx.tenantId, module: "axis" });
   const input = await body(c, FnolBody);
   const key = c.req.header("idempotency-key");
-  const run = () => registerFnol(ctx, input);
+  const run = () => registerFnol(ctx, input, c.get("gateway"));
   const out = key ? await withIdempotency(ctx, key, `POST ${c.req.path}`, input, run) : await run();
   return c.json(out, 201);
 });

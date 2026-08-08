@@ -3,6 +3,7 @@ import { z } from "zod";
 import { id as newId, schema } from "@lyra/db";
 import { audit, emit, notFound, scoped, type Ctx } from "@lyra/core";
 import { runTxn } from "@lyra/ledger";
+import { parseTriage, triageMessages, type Gateway, type Triage } from "@lyra/model-gateway";
 
 // docs/27 F24 / docs/specs/gap-axis-design.md §D.1. Two rules, and everything
 // here follows from them. The cover that answers a loss is the cover that was
@@ -156,7 +157,31 @@ function claimNumber(claimId: string, now: number): string {
   return `CLM-${stamp}-${claimId.slice(-6).toUpperCase()}`;
 }
 
-export async function registerFnol(ctx: Ctx, input: FnolInput) {
+/**
+ * docs/specs/gap-axis-design.md §G.1. Ambient, non-consequential: only fills
+ * the fields a human left blank, never overwrites a typed value. Never
+ * throws to the caller — a triage failure is not a reason to fail the
+ * notification (§D.1, same principle `registerFnol` itself follows).
+ */
+export async function triageFnol(
+  ctx: Ctx,
+  gateway: Gateway,
+  description: string
+): Promise<{ triage: Triage; aiAuditId: string } | null> {
+  try {
+    const reply = await gateway.complete(ctx, {
+      module: "axis",
+      purpose: "axis.fnol.triage",
+      tier: "fast",
+      messages: triageMessages(description)
+    });
+    return { triage: parseTriage(reply.text), aiAuditId: reply.auditId };
+  } catch {
+    return null;
+  }
+}
+
+export async function registerFnol(ctx: Ctx, input: FnolInput, gateway?: Gateway) {
   const policy = await policyForCoverage(ctx, input.policyId);
   const reportedAt = input.reportedAt ?? ctx.now;
   // No incident date given: the notification date is the best evidence there
@@ -166,6 +191,14 @@ export async function registerFnol(ctx: Ctx, input: FnolInput) {
 
   const claimId = newId("clm", ctx.now);
   const currency = input.currency ?? policy.currency;
+
+  // §G.1: triage only when the human left both codes blank and gave enough
+  // text to classify. `gateway` is optional so pre-existing callers/tests
+  // that construct a claim with no model available keep working unchanged.
+  const triaged =
+    gateway && !input.perilCode && !input.causeCode && input.description
+      ? await triageFnol(ctx, gateway, input.description)
+      : null;
 
   // Non-financial: a notification moves no money, so `FNOL-REGISTER` carries no
   // recipe. It exists so the claim has a transaction to be reversed against and
@@ -181,7 +214,8 @@ export async function registerFnol(ctx: Ctx, input: FnolInput) {
     description: input.description ?? null,
     channel: input.channel ?? "api",
     contact: input.contact ?? null,
-    causeCode: input.causeCode ?? null
+    causeCode: input.causeCode ?? null,
+    ...(triaged ? { triage: { ...triaged.triage, aiAuditId: triaged.aiAuditId } } : {})
   };
   const claim: typeof schema.axisClaims.$inferSelect = {
     id: claimId,
@@ -209,8 +243,8 @@ export async function registerFnol(ctx: Ctx, input: FnolInput) {
       excessMinor: cover.excessMinor,
       warnings: cover.warnings
     }),
-    perilCode: input.perilCode ?? null,
-    causeCode: input.causeCode ?? null,
+    perilCode: input.perilCode ?? triaged?.triage.perilCode ?? null,
+    causeCode: input.causeCode ?? triaged?.triage.causeCode ?? null,
     catCode: input.catCode ?? null,
     reserveMinor: 0,
     paidMinor: 0,
@@ -220,7 +254,7 @@ export async function registerFnol(ctx: Ctx, input: FnolInput) {
     slaDueAt: null,
     fraudScore: null,
     siuState: null,
-    complexity: "standard",
+    complexity: triaged?.triage.complexity ?? "standard",
     reopenedAt: null,
     closedAt: null,
     lastTxnId: txn.id,
