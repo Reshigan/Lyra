@@ -132,6 +132,7 @@ const HAND_WRITTEN: Op[] = [
   { method: "get", path: "/v1/axis/claims/{id}/reserves", summary: "The reserve history of this claim, newest first", permission: "axis:claims:read", tag: "axis" },
   { method: "post", path: "/v1/axis/claims/{id}/reserve-recommendation", summary: "Suggest and write an AI-recommended reserve from comparable closed claims", permission: "axis:claims:reserve", tag: "axis" },
   { method: "post", path: "/v1/axis/claims/{id}/fraud-score", summary: "Score a claim for SIU referral and queue a referral above threshold", permission: "axis:siu:write", tag: "axis" },
+  { method: "post", path: "/v1/axis/cases/{id}/sla-predict", summary: "Estimate SLA breach probability and time-to-breach for a case", permission: "axis:cases:read", tag: "axis" },
   { method: "post", path: "/v1/axis/claims/{id}/payments", summary: "Pay a claim out of the funded float", permission: "axis:claims:pay", tag: "axis", requestBody: true },
   { method: "get", path: "/v1/axis/claims/{id}/payments", summary: "The payments made on this claim, newest first", permission: "axis:claims:read", tag: "axis" },
   { method: "post", path: "/v1/axis/claims/{id}/recoveries", summary: "Open a recovery against a settled claim", permission: "axis:claims:recover", tag: "axis", requestBody: true },

@@ -1,0 +1,5 @@
+{
+  "aucMin": 0.75,
+  "calibrationErrorMax": 0.1,
+  "leadTimeMedianHoursMin": 24
+}

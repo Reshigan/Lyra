@@ -6,6 +6,7 @@ import { EXTRACTION_FIELDS, normalizeField, parseExtraction } from "../src/extra
 import { parseTriage } from "../src/triage.js";
 import { parseReserve } from "../src/reserve.js";
 import { parseFraud } from "../src/fraud.js";
+import { parseSla } from "../src/sla.js";
 import { aggregateCxScore, localeGap } from "../src/cx-judge.js";
 import { verifyNumericClaims, verifyGroundedness, checkCompliance as checkSignalCompliance, type BriefingSnapshot } from "@lyra/core";
 import { loadCases, loadThresholds, metric, metricOk, type Metric } from "./harness.js";
@@ -305,6 +306,68 @@ async function scoreFraud(dir: string): Promise<Metric[]> {
   return metrics;
 }
 
+interface SlaCase {
+  id: string;
+  text: string;
+  expectBreach: boolean;
+  /** Hours remaining until the case's actual SLA deadline at the moment the prediction fired. */
+  hoursToBreachAtPrediction: number;
+}
+
+interface SlaThresholds {
+  aucMin: number;
+  calibrationErrorMax: number;
+  leadTimeMedianHoursMin: number;
+}
+
+// docs/specs/gap-axis-design.md §G.4 — same alert cutoff a Prioritiser/Chaser
+// would eventually key off of; scored here purely to compute lead time.
+const BREACH_ALERT_THRESHOLD = 50;
+
+// No live model call (docs/13 §4), same as scoreFraud/scoreReserve — cases.jsonl
+// bakes in canned model replies plus ground truth, scoring the exact `parseSla`
+// that predictSlaBreach (apps/api/src/engines/axis-sla-sentinel.ts) runs in production.
+async function scoreSla(dir: string): Promise<Metric[]> {
+  const cases = await loadCases<SlaCase>(dir);
+  const thresholds = await loadThresholds<SlaThresholds>(dir);
+
+  const scored = cases.map((c) => ({ case: c, result: parseSla(c.text) }));
+
+  const positives = scored.filter((s) => s.case.expectBreach);
+  const negatives = scored.filter((s) => !s.case.expectBreach);
+  let concordant = 0;
+  for (const p of positives) {
+    for (const n of negatives) {
+      if (p.result.breachProbability > n.result.breachProbability) concordant += 1;
+      else if (p.result.breachProbability === n.result.breachProbability) concordant += 0.5;
+    }
+  }
+  const total = positives.length * negatives.length;
+  const auc = total ? concordant / total : 1;
+
+  const byPrediction = [...scored].sort((a, b) => a.result.breachProbability - b.result.breachProbability);
+  const bucketSize = Math.max(1, Math.ceil(byPrediction.length / 10));
+  const bucketErrors: number[] = [];
+  for (let i = 0; i < byPrediction.length; i += bucketSize) {
+    const bucket = byPrediction.slice(i, i + bucketSize);
+    const meanPredicted = bucket.reduce((sum, s) => sum + s.result.breachProbability, 0) / bucket.length / 100;
+    const observedBreachRate = bucket.filter((s) => s.case.expectBreach).length / bucket.length;
+    bucketErrors.push(Math.abs(meanPredicted - observedBreachRate));
+  }
+  const calibrationError = bucketErrors.length ? bucketErrors.reduce((a, b) => a + b, 0) / bucketErrors.length : 0;
+
+  const leadTimes = positives
+    .filter((s) => s.result.breachProbability >= BREACH_ALERT_THRESHOLD)
+    .map((s) => s.case.hoursToBreachAtPrediction);
+  const leadTimeMedianHours = leadTimes.length ? median(leadTimes) : 0;
+
+  return [
+    metric("auc", auc, { min: thresholds.aucMin }),
+    metric("calibrationError", calibrationError, { max: thresholds.calibrationErrorMax }),
+    metric("leadTimeMedianHours", leadTimeMedianHours, { min: thresholds.leadTimeMedianHoursMin })
+  ];
+}
+
 interface CxQualityCase {
   id: string;
   locale: string;
@@ -458,6 +521,7 @@ const SCORERS: Record<string, (dir: string) => Promise<Metric[]>> = {
   "axis-fnol-triage": scoreFnolTriage,
   "axis-reserve": scoreReserve,
   "axis-fraud": scoreFraud,
+  "axis-sla": scoreSla,
   "cx-quality": scoreCxQuality,
   north: scoreNorth,
   signal: scoreSignal

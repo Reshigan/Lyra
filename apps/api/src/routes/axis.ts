@@ -59,6 +59,7 @@ import {
 } from "../engines/axis-claim-lifecycle.js";
 import { writeRecommendedReserve } from "../engines/axis-reserve-advisor.js";
 import { scoreAndReferClaim } from "../engines/axis-fraud-scorer.js";
+import { predictSlaBreach } from "../engines/axis-sla-sentinel.js";
 import {
   CaseTransitionBody,
   permissionForCaseTransition,
@@ -308,6 +309,25 @@ axisRoutes.post("/cases/:id/copilot", async (c) => {
     };
   });
   return c.json(reply);
+});
+
+/**
+ * §G.4. Estimates SLA-breach risk from the case's age, status, process-event
+ * history, queue depth and owner load. Never consequential (CLAUDE.md §4):
+ * generation only, writes nothing — no axis_sla_* table exists, and the
+ * queue-reorder/chase-draft actions the spec's human boundary names belong
+ * to the future Prioritiser/Chaser (§G.6, ADR-0035 pending), not this route.
+ * Reuses `axis:cases:read` — nothing is mutated, so no new permission.
+ * No body: everything it needs already lives on the case.
+ */
+axisRoutes.post("/cases/:id/sla-predict", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:cases:read", { tenantId: ctx.tenantId, module: "axis" });
+  const kase = await must(ctx, schema.axisCases, c.req.param("id"), "cases");
+  const key = c.req.header("idempotency-key");
+  const run = () => predictSlaBreach(ctx, kase, c.get("gateway"));
+  const out = await withIdempotency(ctx, key, `POST ${c.req.path}`, {}, run);
+  return out ? c.json(out, 200) : c.json({ predicted: false }, 200);
 });
 
 /**
