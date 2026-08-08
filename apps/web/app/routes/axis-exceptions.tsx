@@ -43,8 +43,12 @@ export const PERM = {
   documents: "axis:documents:read",
   tasks: "axis:tasks:read",
   taskWrite: "axis:tasks:write",
-  escrow: "axis:escrow:read"
+  escrow: "axis:escrow:read",
+  complaints: "axis:complaints:read"
 } as const;
+
+/** Complaints states still open for regulatory-clock purposes (docs/27 §D.6). */
+const OPEN_COMPLAINT_STATES = ["received", "investigating", "awaiting_customer", "escalated"] as const;
 
 /** Rows per bucket. A queue longer than this is a staffing problem, not a UI one. */
 const PER_BUCKET = 25;
@@ -69,6 +73,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "bucket.documents": "Documents rejected",
     "bucket.tasks": "Tasks blocked",
     "bucket.escrow": "Escrow batches with a variance",
+    "bucket.complaints": "Complaints past their regulatory deadline",
     "stat.total": "Open exceptions",
     "stat.breached": "Past their deadline",
     "stat.urgent": "Marked urgent",
@@ -110,6 +115,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "bucket.documents": "مستندات مرفوضة",
     "bucket.tasks": "مهام متعطلة",
     "bucket.escrow": "دفعات ضمان بها فرق",
+    "bucket.complaints": "شكاوى تجاوزت موعدها التنظيمي",
     "stat.total": "استثناءات مفتوحة",
     "stat.breached": "تجاوزت موعدها",
     "stat.urgent": "عاجلة",
@@ -193,6 +199,14 @@ export interface EscrowRow {
   currency: string;
 }
 
+export interface ComplaintRow {
+  id: string;
+  ref: string;
+  caseId: string | null;
+  ownerRef: string | null;
+  dueAt: number;
+}
+
 /* ---------------------------------------------------------------- helpers */
 
 /**
@@ -258,7 +272,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   // `a,b` is the API's own "either" filter grammar; sorting by the deadline
   // server-side means the rows that matter arrive inside the page limit.
-  const [cases, documents, tasks, escrow] = await Promise.all([
+  const now = Date.now();
+
+  const [cases, documents, tasks, escrow, complaints] = await Promise.all([
     safe(
       api<{ data: CaseRow[] }>(
         `/v1/axis/cases?status=${STUCK_CASE_STATUSES.join(",")}&sort=slaDueAt&order=asc&limit=${PER_BUCKET}`,
@@ -271,17 +287,28 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       api<{ data: TaskRow[] }>(`/v1/axis/tasks?state=blocked&sort=dueAt&order=asc&limit=${PER_BUCKET}`, opts),
       none
     ),
-    safe(api<{ data: EscrowRow[] }>(`/v1/axis/escrow-batches?status=variance&limit=${PER_BUCKET}`, opts), none)
+    safe(api<{ data: EscrowRow[] }>(`/v1/axis/escrow-batches?status=variance&limit=${PER_BUCKET}`, opts), none),
+    // `to=` bounds the sort column (crud.ts), which is `dueAt` here — every row
+    // returned is already past its regulatory deadline, so no client-side
+    // severity check is needed for this bucket.
+    safe(
+      api<{ data: ComplaintRow[] }>(
+        `/v1/axis/complaints?state=${OPEN_COMPLAINT_STATES.join(",")}&to=${now}&sort=dueAt&order=asc&limit=${PER_BUCKET}`,
+        opts
+      ),
+      none
+    )
   ]);
 
   return {
     // One server clock for the whole page: severity recomputed per component
     // would drift between a badge and the count printed beside it.
-    now: Date.now(),
+    now,
     cases: cases.data,
     documents: documents.data,
     tasks: tasks.data,
-    escrow: escrow.data
+    escrow: escrow.data,
+    complaints: complaints.data
   };
 }
 
@@ -369,13 +396,14 @@ export default function AxisExceptions() {
   const now = loaded.now;
 
   const cases = [...loaded.cases].sort(bySeverity(now));
-  const total = cases.length + loaded.documents.length + loaded.tasks.length + loaded.escrow.length;
-  const breached = cases.filter((row) => severityOf(row, now) === "breach").length;
+  const total = cases.length + loaded.documents.length + loaded.tasks.length + loaded.escrow.length + loaded.complaints.length;
+  // Every complaint row returned is already past its regulatory deadline (loader's `to=` filter).
+  const breached = cases.filter((row) => severityOf(row, now) === "breach").length + loaded.complaints.length;
   const urgent = cases.filter((row) => row.priority === "urgent").length;
   const oldest = cases.reduce((min, row) => Math.min(min, row.createdAt), now);
 
   // A queue the actor cannot fully see is stated, not silently short.
-  const hidden = [PERM.cases, PERM.documents, PERM.tasks, PERM.escrow].some((p) => !held.has(p));
+  const hidden = [PERM.cases, PERM.documents, PERM.tasks, PERM.escrow, PERM.complaints].some((p) => !held.has(p));
 
   return (
     <div className="flex flex-col gap-6">
@@ -504,6 +532,30 @@ export default function AxisExceptions() {
                 <span className="font-ui text-12 text-subtle">{row.providerId}</span>
                 <span className="ms-auto font-mono text-12 tabular-nums text-warning">
                   {(row.receivedMinor - row.expectedMinor) / 100} {row.currency}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      ) : null}
+
+      {loaded.complaints.length ? (
+        <Card title={l("bucket.complaints")}>
+          <ul className="flex flex-col divide-y divide-border">
+            {loaded.complaints.map((row) => (
+              <li key={row.id} className="flex flex-wrap items-center gap-3 py-2">
+                <span className="font-mono text-12 text-text">{row.ref}</span>
+                <Badge tone={TONE.breach} size="sm" dot>
+                  {l("sev.breach")}
+                </Badge>
+                {row.caseId ? (
+                  <Link to={`/axis/cases/${row.caseId}`} className="font-mono text-12 text-subtle">
+                    {shortRef(row.caseId)}
+                  </Link>
+                ) : null}
+                <span className="font-ui text-12 text-subtle">{row.ownerRef ?? l("unassigned")}</span>
+                <span className="ms-auto font-ui text-12 tabular-nums text-subtle">
+                  {ageIn(now - row.dueAt, l)}
                 </span>
               </li>
             ))}

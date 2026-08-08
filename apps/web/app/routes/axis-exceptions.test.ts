@@ -72,6 +72,7 @@ describe("labelsIn", () => {
       "bucket.documents",
       "bucket.tasks",
       "bucket.escrow",
+      "bucket.complaints",
       "stat.total",
       "stat.breached",
       "stat.urgent",
