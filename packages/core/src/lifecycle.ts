@@ -91,6 +91,51 @@ export function assertClaimTransition(from: ClaimState, to: ClaimState): void {
 }
 
 /**
+ * docs/specs/gap-axis-design.md §D.9: an AXIS case's board lane IS its
+ * status, so the board's assign-only reducer needs a real machine behind it
+ * before it can also move a card. Mirrors CASE_STATES's schema comment
+ * (packages/db/src/schema/axis.ts) and LANES's pipeline order in
+ * apps/web/app/routes/axis-board.tsx (cancelled is a valid state but not a
+ * lane, same as the board's own comment says).
+ */
+export const CASE_STATES = [
+  "intake",
+  "quoting",
+  "awaiting_docs",
+  "review",
+  "approval",
+  "issued",
+  "failed",
+  "cancelled"
+] as const;
+export type CaseState = (typeof CASE_STATES)[number];
+
+export const CASE_TRANSITIONS: Record<CaseState, readonly CaseState[]> = {
+  intake: ["quoting", "cancelled"],
+  quoting: ["awaiting_docs", "review", "cancelled"],
+  awaiting_docs: ["quoting", "review", "cancelled"],
+  review: ["approval", "awaiting_docs", "failed", "cancelled"],
+  approval: ["issued", "review", "failed", "cancelled"],
+  issued: [],
+  failed: ["intake"],
+  cancelled: []
+};
+
+export function canCaseTransition(from: CaseState, to: CaseState): boolean {
+  return CASE_TRANSITIONS[from].includes(to);
+}
+
+export function isCaseState(s: string): s is CaseState {
+  return (CASE_STATES as readonly string[]).includes(s);
+}
+
+export function assertCaseTransition(from: CaseState, to: CaseState): void {
+  if (!canCaseTransition(from, to)) {
+    throw conflict(`case cannot move from ${from} to ${to}`);
+  }
+}
+
+/**
  * A policy version has its own tiny machine: an endorsement is a version
  * append, not a status hop on the contract (design §B.1).
  */

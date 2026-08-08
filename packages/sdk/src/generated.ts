@@ -2182,6 +2182,7 @@ export interface Operations {
   "POST /v1/axis/cases/{id}/copilot": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/axis/cases/{id}/quotes": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/axis/cases/{id}/restore": Op<{ id: string }, never, never, AxisCases>;
+  "POST /v1/axis/cases/{id}/transition": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/axis/claims": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<AxisClaims>>;
   "POST /v1/axis/claims": Op<never, never, AxisClaims, AxisClaims>;
   "POST /v1/axis/claims/coverage-check": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
@@ -2809,6 +2810,7 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "POST /v1/axis/cases/{id}/copilot": { tag: "axis", summary: "Answer a question about a case, grounded only in its own documents, events and tasks", permission: "axis:cases:read", public: false },
   "POST /v1/axis/cases/{id}/quotes": { tag: "axis", summary: "Key a quote received off-panel onto the case, as a quote response", permission: "axis:quotes:create", public: false },
   "POST /v1/axis/cases/{id}/restore": { tag: "axis", summary: "Restore a soft-deleted cas", permission: "axis:cases:delete", public: false },
+  "POST /v1/axis/cases/{id}/transition": { tag: "axis", summary: "Move a case through its state machine", permission: "axis:cases:update", public: false },
   "GET /v1/axis/claims": { tag: "axis", summary: "List claims", permission: "axis:claims:read", public: false },
   "POST /v1/axis/claims": { tag: "axis", summary: "Create a claim", permission: "axis:claims:create", public: false },
   "POST /v1/axis/claims/coverage-check": { tag: "axis", summary: "Cover in force on the incident date, without writing anything", permission: "axis:claims:register", public: false },

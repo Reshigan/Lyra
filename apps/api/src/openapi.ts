@@ -138,6 +138,7 @@ const HAND_WRITTEN: Op[] = [
 
   // docs/27 F13. The manual capture path onto the one quote table, and the
   // desk's ruling-out of an answer it will not take forward.
+  { method: "post", path: "/v1/axis/cases/{id}/transition", summary: "Move a case through its state machine", permission: "axis:cases:update", tag: "axis", requestBody: true },
   { method: "post", path: "/v1/axis/cases/{id}/quotes", summary: "Key a quote received off-panel onto the case, as a quote response", permission: "axis:quotes:create", tag: "axis", requestBody: true },
   { method: "post", path: "/v1/axis/quote-responses/{id}/decline", summary: "Rule a quote out, recording why", permission: "axis:quotes:create", tag: "axis", requestBody: true },
 

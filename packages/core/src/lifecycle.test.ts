@@ -1,13 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
+  CASE_STATES,
+  CASE_TRANSITIONS,
   CLAIM_STATES,
   CLAIM_TRANSITIONS,
   POLICY_STATES,
   POLICY_TRANSITIONS,
+  assertCaseTransition,
   assertClaimTransition,
   assertPolicyTransition,
+  canCaseTransition,
   canClaimTransition,
   canPolicyTransition,
+  isCaseState,
   isClaimState,
   isPolicyState,
   quoteEndorsement
@@ -97,6 +102,49 @@ describe("claim lifecycle", () => {
   it("isClaimState rejects an unknown status", () => {
     expect(isClaimState("settled")).toBe(true);
     expect(isClaimState("paid")).toBe(false);
+  });
+});
+
+describe("case lifecycle", () => {
+  it("keeps intake as the initial state and lets it move to quoting", () => {
+    expect(CASE_STATES[0]).toBe("intake");
+    expect(canCaseTransition("intake", "quoting")).toBe(true);
+  });
+
+  it("refuses to issue a case that never reached approval", () => {
+    expect(canCaseTransition("review", "issued")).toBe(false);
+    expect(canCaseTransition("approval", "issued")).toBe(true);
+  });
+
+  it("lets a stalled case fall back for more documents from review or awaiting_docs", () => {
+    expect(canCaseTransition("review", "awaiting_docs")).toBe(true);
+    expect(canCaseTransition("approval", "review")).toBe(true);
+  });
+
+  it("keeps issued and cancelled terminal, and lets a failed case retry from intake", () => {
+    expect(CASE_TRANSITIONS.issued).toEqual([]);
+    expect(CASE_TRANSITIONS.cancelled).toEqual([]);
+    expect(canCaseTransition("failed", "intake")).toBe(true);
+  });
+
+  it("lists only known states as targets", () => {
+    for (const from of CASE_STATES) {
+      for (const to of CASE_TRANSITIONS[from]) {
+        expect(CASE_STATES).toContain(to);
+        expect(from).not.toBe(to);
+      }
+    }
+  });
+
+  it("assertCaseTransition throws conflict on an illegal hop", () => {
+    expect(() => assertCaseTransition("issued", "intake")).toThrowError(
+      expect.objectContaining({ status: 409, detail: "case cannot move from issued to intake" })
+    );
+  });
+
+  it("isCaseState rejects an unknown status", () => {
+    expect(isCaseState("review")).toBe(true);
+    expect(isCaseState("paid")).toBe(false);
   });
 });
 

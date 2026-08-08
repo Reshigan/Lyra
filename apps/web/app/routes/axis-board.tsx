@@ -23,7 +23,7 @@ import {
 } from "@lyra/ui";
 import { ApiError, api } from "../api.server";
 import { cloudflare } from "../context";
-import { pseudoText } from "../i18n";
+import { labelsFrom } from "./detail-kit";
 import { Gate } from "./staff";
 import { useShellData } from "./workspace";
 
@@ -31,13 +31,12 @@ import { useShellData } from "./workspace";
 // sort and filter but it cannot answer "is anything piling up before approval",
 // which is the only question a production board exists to answer.
 //
-// Deliberately NOT a drag-and-drop board. A case's status is workflow state, and
-// this API exposes no transition endpoint for it — only the generic
-// `PATCH /v1/axis/cases/:id`, which would let a column header choose its own
-// state with no state machine, no guard and no approval (CLAUDE.md §12). So the
-// board moves nothing: it shows the pile-ups, and a card opens the record where
-// the audited edit lives. When `POST /v1/axis/cases/:id/transition` exists, the
-// per-column move buttons belong here and nowhere else.
+// Deliberately NOT a drag-and-drop board for the lanes themselves: a card never
+// jumps to an arbitrary column by drag. It moves only through the per-card
+// transition control, which calls `POST /v1/axis/cases/:id/transition`
+// (axis-case-lifecycle.ts) — the same state machine and approval gate
+// (CLAUDE.md §12) the case detail screen uses. `ownerRef` is the one field this
+// board still writes directly, because ownership is not workflow state.
 
 /* --------------------------------------------------------------- contract */
 
@@ -62,6 +61,23 @@ export const LANES = [
 ] as const;
 
 export type Lane = (typeof LANES)[number];
+
+/**
+ * Mirrors `CASE_TRANSITIONS` in packages/core/src/lifecycle.ts. This app
+ * cannot import @lyra/core, so the state machine's shape is copied here for
+ * the transition control's legal-next-states menu; the server is still the
+ * one place that enforces it (axis-case-lifecycle.ts, docs/specs/gap-axis-design.md §D.9).
+ */
+const CASE_TRANSITIONS: Record<string, readonly string[]> = {
+  intake: ["quoting", "cancelled"],
+  quoting: ["awaiting_docs", "review", "cancelled"],
+  awaiting_docs: ["quoting", "review", "cancelled"],
+  review: ["approval", "awaiting_docs", "failed", "cancelled"],
+  approval: ["issued", "review", "failed", "cancelled"],
+  issued: [],
+  failed: ["intake"],
+  cancelled: []
+};
 
 /**
  * Cards fetched for the whole board. `MAX_PAGE` in apps/api/src/crud.ts is 200,
@@ -90,6 +106,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "lane.approval": "Approval",
     "lane.issued": "Issued",
     "lane.failed": "Failed",
+    "state.cancelled": "Cancelled",
     "wip.count": "{open} open",
     "wip.congested": "Holding {open}, above the {limit} this lane should carry",
     overflow: "and {more} more",
@@ -97,9 +114,9 @@ const LABELS: Record<string, Record<string, string>> = {
     "sev.breach": "Overdue",
     "sev.due": "Due soon",
     "sev.urgent": "Urgent",
-    "readonly.title": "Cards do not move from here",
+    "readonly.title": "Only two edits happen from this board",
     "readonly.reason":
-      "A case's status is workflow state, and changing it is an audited edit on the case itself. This board shows where work is sitting; the case record is where it moves.",
+      "Ownership can be set here, and a card can move to a legal next state through its own control — both are audited, guarded edits. There is no free drag between lanes and no way to set an arbitrary status.",
     "readonly.action": "Open the case list",
     "empty.title": "The board is empty",
     "empty.body": "No open case is in any pipeline lane right now.",
@@ -109,12 +126,16 @@ const LABELS: Record<string, Record<string, string>> = {
     "assign.owner": "Owner reference",
     "assign.submit": "Assign",
     "done.assign": "Ownership updated.",
+    "done.transition": "Case moved.",
+    "transition.to": "Move to",
+    "transition.submit": "Move",
     approvalTitle: "Waiting on an approval",
     approvalBody:
       "This change is gated by {policy}. The request is recorded and takes effect once someone else approves it.",
     approvalLink: "Open approvals",
     "problem.bad_intent": "The form did not carry an action this screen knows.",
-    "problem.missing_owner": "Name both the case and the owner before assigning it."
+    "problem.missing_owner": "Name both the case and the owner before assigning it.",
+    "problem.missing_target": "Choose the state to move this case to."
   },
   ar: {
     title: "لوحة الإنتاج",
@@ -127,6 +148,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "lane.approval": "الموافقة",
     "lane.issued": "أُصدرت",
     "lane.failed": "فشلت",
+    "state.cancelled": "ملغاة",
     "wip.count": "{open} مفتوحة",
     "wip.congested": "يحمل {open}، أكثر من {limit} المسموح لهذا المسار",
     overflow: "و{more} غيرها",
@@ -134,9 +156,9 @@ const LABELS: Record<string, Record<string, string>> = {
     "sev.breach": "متأخرة",
     "sev.due": "قريبة الاستحقاق",
     "sev.urgent": "عاجلة",
-    "readonly.title": "البطاقات لا تُنقل من هنا",
+    "readonly.title": "تعديلان فقط من هذه اللوحة",
     "readonly.reason":
-      "وضع الحالة هو حالة مسار عمل، وتغييره تعديل مُدقَّق على الحالة نفسها. هذه اللوحة تُظهر مكان تجمّع العمل، وسجل الحالة هو مكان تحريكه.",
+      "يمكن تحديد المسؤول من هنا، ويمكن نقل البطاقة إلى حالة تالية مسموحة عبر عنصر التحكم الخاص بها — كلاهما تعديل مُدقَّق ومحكوم. لا سحب حر بين المسارات ولا طريقة لتحديد حالة عشوائية.",
     "readonly.action": "فتح قائمة الحالات",
     "empty.title": "اللوحة فارغة",
     "empty.body": "لا توجد حالة مفتوحة في أي مسار الآن.",
@@ -146,22 +168,21 @@ const LABELS: Record<string, Record<string, string>> = {
     "assign.owner": "مرجع المسؤول",
     "assign.submit": "تعيين",
     "done.assign": "تم تحديث المسؤول.",
+    "done.transition": "تم نقل الحالة.",
+    "transition.to": "الانتقال إلى",
+    "transition.submit": "نقل",
     approvalTitle: "بانتظار موافقة",
     approvalBody: "هذا التغيير يمر بسياسة {policy}. سُجّل الطلب ويسري بعد موافقة شخص آخر.",
     approvalLink: "فتح الموافقات",
     "problem.bad_intent": "لم يحمل النموذج إجراءً تعرفه هذه الشاشة.",
-    "problem.missing_owner": "حدّد الحالة والمسؤول قبل التعيين."
+    "problem.missing_owner": "حدّد الحالة والمسؤول قبل التعيين.",
+    "problem.missing_target": "اختر الحالة التي تريد نقل هذه الحالة إليها."
   }
 };
 
 export type Label = (key: string, vars?: Record<string, string>) => string;
 
-export function labelsIn(locale: string): Label {
-  return (key, vars) => {
-    const raw = pseudoText(locale, LABELS[locale]?.[key] ?? LABELS["en"]?.[key] ?? key);
-    return vars ? raw.replace(/\{(\w+)\}/g, (whole, name: string) => vars[name] ?? whole) : raw;
-  };
-}
+export const labelsIn = labelsFrom(LABELS);
 
 /* ----------------------------------------------------------------- shapes */
 
@@ -173,6 +194,7 @@ export interface BoardCase {
   priority: string;
   ownerRef: string | null;
   valueMinor: number | null;
+  riskScore: number | null;
   currency: string | null;
   slaDueAt: number | null;
   createdAt: number;
@@ -185,6 +207,8 @@ export interface LaneView {
   /** The lane's true depth, which can exceed `cards.length`. */
   open: number;
   congested: boolean;
+  /** The WIP threshold that produced `congested`, tenant override or `WIP_WARN`. */
+  warnAt: number;
 }
 
 /* ---------------------------------------------------------------- helpers */
@@ -192,26 +216,43 @@ export interface LaneView {
 /**
  * Split one flat page of cases into lanes, worst-first inside each. `counts`
  * carries the API's own totals so a lane that overflowed the page still shows
- * its real depth instead of the truncated one.
+ * its real depth instead of the truncated one. `warnAt` is the tenant's
+ * per-lane override from `axis_ops_policies` key `axis.board` (§D.9); a lane
+ * missing from it falls back to `WIP_WARN`.
  */
 export function laneViews(
   cases: BoardCase[],
   now: number,
   counts: Partial<Record<Lane, number>> = {},
-  warnAt = WIP_WARN
+  warnAt: Partial<Record<Lane, number>> = {}
 ): LaneView[] {
   return LANES.map((lane) => {
     const cards = cases.filter((row) => row.status === lane).sort(byUrgency(now));
     const open = counts[lane] ?? cards.length;
-    return { lane, cards, open, congested: open > warnAt };
+    const limit = warnAt[lane] ?? WIP_WARN;
+    return { lane, cards, open, congested: open > limit, warnAt: limit };
   });
 }
 
-/** Overdue first, then the earliest deadline, then oldest — the order to work a lane in. */
+// value × risk × SLA, each normalized 0..1, weights in axis_ops_policies
+export function priorityScore(c: BoardCase, now: number, w = WEIGHTS): number {
+  const value = Math.min(1, (c.valueMinor ?? 0) / w.valueCapMinor);
+  const risk = (c.riskScore ?? 50) / 100;
+  const sla =
+    c.slaDueAt == null
+      ? 0.5
+      : c.slaDueAt <= now
+        ? 1
+        : Math.max(0, 1 - (c.slaDueAt - now) / w.slaHorizonMs);
+  return w.value * value + w.risk * risk + w.sla * sla;
+}
+export const WEIGHTS = { value: 0.4, risk: 0.2, sla: 0.4, valueCapMinor: 5_000_00, slaHorizonMs: 72 * 3_600_000 };
+
+/** Highest priority first; ties break on the earliest deadline, then oldest — the order to work a lane in. */
 export function byUrgency(now: number) {
   return (a: BoardCase, b: BoardCase): number => {
-    const late = Number(isLate(b, now)) - Number(isLate(a, now));
-    if (late !== 0) return late;
+    const score = priorityScore(b, now) - priorityScore(a, now);
+    if (score !== 0) return score;
     const due = (a.slaDueAt ?? Number.MAX_SAFE_INTEGER) - (b.slaDueAt ?? Number.MAX_SAFE_INTEGER);
     return due !== 0 ? due : a.createdAt - b.createdAt;
   };
@@ -242,6 +283,36 @@ async function safe<T>(call: Promise<T>, fallback: T): Promise<T> {
   }
 }
 
+/**
+ * The tenant's per-lane WIP override, `axis_ops_policies` key `axis.board`
+ * (docs/specs/gap-axis-design.md §D.9): `{ wipWarn: { quoting: 12, ... } }`.
+ * Absent row, a 403/404, or malformed JSON all resolve to `{}`, which leaves
+ * every lane on `WIP_WARN`.
+ */
+async function boardWipWarn(
+  opts: Parameters<typeof api>[1]
+): Promise<Partial<Record<Lane, number>>> {
+  const got = await safe(
+    api<{ data: Array<{ valueJson: string }> }>(`/v1/axis/ops-policies?key=axis.board&limit=1`, opts),
+    { data: [] as Array<{ valueJson: string }> }
+  );
+  const row = got.data[0];
+  if (!row) return {};
+  try {
+    const parsed = JSON.parse(row.valueJson) as { wipWarn?: unknown };
+    if (typeof parsed.wipWarn !== "object" || parsed.wipWarn === null) return {};
+    const wipWarn = parsed.wipWarn as Record<string, unknown>;
+    const out: Partial<Record<Lane, number>> = {};
+    for (const lane of LANES) {
+      const value = wipWarn[lane];
+      if (typeof value === "number" && Number.isFinite(value)) out[lane] = value;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
 /* ----------------------------------------------------------------- loader */
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
@@ -252,7 +323,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   // One list call for the cards and one for the true depths. `count=true`
   // returns the total behind the page, which is what a WIP number has to mean —
   // a count of the rows that fit on screen would always look healthy.
-  const [page, totals] = await Promise.all([
+  const [page, totals, wipWarn] = await Promise.all([
     safe(
       api<{ data: BoardCase[] }>(
         `/v1/axis/cases?status=${lanes}&sort=slaDueAt&order=asc&limit=${BOARD_PAGE}`,
@@ -268,13 +339,15 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
         );
         return [lane, got.total ?? 0] as const;
       })
-    )
+    ),
+    boardWipWarn(opts)
   ]);
 
   return {
     now: Date.now(),
     cases: page.data,
-    counts: Object.fromEntries(totals) as Partial<Record<Lane, number>>
+    counts: Object.fromEntries(totals) as Partial<Record<Lane, number>>,
+    wipWarn
   };
 }
 
@@ -300,30 +373,54 @@ const refuse = (code: string, status = 400): ActionResult => ({
 export async function action({ request, context }: ActionFunctionArgs): Promise<ActionResult> {
   const env = context.get(cloudflare).env;
   const form = await request.formData();
-
-  // `assign` is the only write this board offers, and on purpose: ownership is
-  // not workflow state. Anything that moves a case between lanes belongs behind
-  // a transition endpoint with a state machine, which does not exist yet.
-  if (String(form.get("intent") ?? "") !== "assign") return refuse("bad_intent");
-
+  const intent = String(form.get("intent") ?? "");
   const id = String(form.get("caseId") ?? "").trim();
-  const ownerRef = String(form.get("ownerRef") ?? "").trim();
-  if (!id || !ownerRef) return refuse("missing_owner");
 
-  try {
-    await api(`/v1/axis/cases/${encodeURIComponent(id)}`, {
-      env,
-      request,
-      method: "PATCH",
-      headers: { "idempotency-key": crypto.randomUUID() },
-      body: { ownerRef }
-    });
-  } catch (error) {
-    if (error instanceof ApiError) return { problem: error.problem, done: null };
-    throw error;
+  // The board offers exactly two writes: `assign` (owner) and `transition`
+  // (state machine + approval gate, axis-case-lifecycle.ts). Anything else —
+  // a free-form status drag included — has no state machine behind it and
+  // must stay refused.
+  if (intent === "assign") {
+    const ownerRef = String(form.get("ownerRef") ?? "").trim();
+    if (!id || !ownerRef) return refuse("missing_owner");
+
+    try {
+      await api(`/v1/axis/cases/${encodeURIComponent(id)}`, {
+        env,
+        request,
+        method: "PATCH",
+        headers: { "idempotency-key": crypto.randomUUID() },
+        body: { ownerRef }
+      });
+    } catch (error) {
+      if (error instanceof ApiError) return { problem: error.problem, done: null };
+      throw error;
+    }
+
+    return { problem: null, done: "assign" };
   }
 
-  return { problem: null, done: "assign" };
+  if (intent === "transition") {
+    const to = String(form.get("to") ?? "").trim();
+    if (!id || !to) return refuse("missing_target");
+
+    try {
+      await api(`/v1/axis/cases/${encodeURIComponent(id)}/transition`, {
+        env,
+        request,
+        method: "POST",
+        headers: { "idempotency-key": crypto.randomUUID() },
+        body: { to }
+      });
+    } catch (error) {
+      if (error instanceof ApiError) return { problem: error.problem, done: null };
+      throw error;
+    }
+
+    return { problem: null, done: "transition" };
+  }
+
+  return refuse("bad_intent");
 }
 
 /** Codes this screen can phrase; anything else keeps the API's own wording. */
@@ -346,7 +443,7 @@ export default function AxisBoard() {
   const busy = navigation.state !== "idle";
   const now = loaded.now;
 
-  const lanes = laneViews(loaded.cases, now, loaded.counts);
+  const lanes = laneViews(loaded.cases, now, loaded.counts, loaded.wipWarn);
   const total = lanes.reduce((sum, lane) => sum + lane.open, 0);
 
   return (
@@ -359,7 +456,7 @@ export default function AxisBoard() {
       {result?.problem ? <Gate problem={phrase(result.problem, l)} l={l} /> : null}
       {result?.done ? (
         <p role="status" className="font-ui text-13 text-success">
-          {l("done.assign")}
+          {l(`done.${result.done}`)}
         </p>
       ) : null}
 
@@ -392,15 +489,16 @@ export default function AxisBoard() {
               </header>
               <p className="font-ui text-12 text-subtle">
                 {lane.congested
-                  ? l("wip.congested", { open: String(lane.open), limit: String(WIP_WARN) })
+                  ? l("wip.congested", { open: String(lane.open), limit: String(lane.warnAt) })
                   : l("wip.count", { open: String(lane.open) })}
               </p>
 
               <ul className="flex flex-col gap-2">
                 {lane.cards.map((card) => {
                   const flag = flagOf(card, now);
+                  const nextStates = CASE_TRANSITIONS[card.status] ?? [];
                   return (
-                    <li key={card.id}>
+                    <li key={card.id} className="flex flex-col gap-1">
                       <Link
                         to={`/axis/cases/${card.id}`}
                         className="flex flex-col gap-1 rounded-md border border-border bg-surface-2 p-2 hover:border-accent-line"
@@ -425,6 +523,25 @@ export default function AxisBoard() {
                           ) : null}
                         </span>
                       </Link>
+                      {held.has(PERM.write) && nextStates.length ? (
+                        <Form method="post" className="flex items-center gap-2">
+                          <input type="hidden" name="intent" value="transition" />
+                          <input type="hidden" name="caseId" value={card.id} />
+                          <Select
+                            name="to"
+                            aria-label={l("transition.to")}
+                            options={nextStates.map((state) => ({
+                              value: state,
+                              label: (LANES as readonly string[]).includes(state)
+                                ? l(`lane.${state}`)
+                                : l("state.cancelled")
+                            }))}
+                          />
+                          <Button type="submit" size="sm" variant="ghost" loading={busy}>
+                            {l("transition.submit")}
+                          </Button>
+                        </Form>
+                      ) : null}
                     </li>
                   );
                 })}

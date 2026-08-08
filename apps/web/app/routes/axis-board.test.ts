@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ActionFunctionArgs } from "react-router";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import type { Env } from "../env";
 import {
   LANES,
@@ -10,7 +10,9 @@ import {
   isLate,
   labelsIn,
   laneViews,
+  loader,
   phrase,
+  priorityScore,
   type BoardCase
 } from "./axis-board";
 
@@ -47,6 +49,29 @@ function args(form: FormData): ActionFunctionArgs {
   } as unknown as ActionFunctionArgs;
 }
 
+function loaderArgs(): LoaderFunctionArgs {
+  return {
+    request: new Request("https://web.test/axis/board"),
+    context: { get: () => ({ env, ctx: null }) },
+    params: {}
+  } as unknown as LoaderFunctionArgs;
+}
+
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+}
+
+function stubFetchByUrl(replies: Array<[string, Response]>) {
+  const calls: Array<{ url: string; method: string }> = [];
+  vi.stubGlobal("fetch", (input: URL | string, init: RequestInit = {}) => {
+    const url = String(input);
+    calls.push({ url, method: init.method ?? "GET" });
+    const match = replies.find(([suffix]) => url.includes(suffix));
+    return Promise.resolve(match ? match[1].clone() : new Response(JSON.stringify({ data: [] }), { status: 200 }));
+  });
+  return calls;
+}
+
 const NOW = 1_770_000_000_000;
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -59,6 +84,7 @@ const card = (over: Partial<BoardCase> = {}): BoardCase => ({
   priority: "normal",
   ownerRef: null,
   valueMinor: 250_000,
+  riskScore: null,
   currency: "AED",
   slaDueAt: NOW + 7 * DAY,
   createdAt: NOW - DAY,
@@ -162,10 +188,41 @@ describe("laneViews", () => {
       "fresh"
     ]);
   });
+
+  it("uses a lane's own tenant override instead of WIP_WARN, and leaves other lanes on the default", () => {
+    const views = laneViews([], NOW, { quoting: WIP_WARN + 5, review: WIP_WARN + 5 }, { quoting: 3 });
+    expect(views.find((v) => v.lane === "quoting")).toMatchObject({ warnAt: 3, congested: true });
+    expect(views.find((v) => v.lane === "review")).toMatchObject({ warnAt: WIP_WARN, congested: true });
+  });
+
+  it("reports the resolved threshold on every lane even without an override", () => {
+    const views = laneViews([], NOW);
+    expect(views.every((v) => v.warnAt === WIP_WARN)).toBe(true);
+  });
+});
+
+describe("priorityScore", () => {
+  it("weights value, risk and SLA into one 0..1-ish score", () => {
+    const rich = card({ valueMinor: 5_000_00, riskScore: 100, slaDueAt: NOW - HOUR });
+    const poor = card({ valueMinor: 0, riskScore: 0, slaDueAt: NOW + 30 * DAY });
+    expect(priorityScore(rich, NOW)).toBeGreaterThan(priorityScore(poor, NOW));
+  });
+
+  it("scores an overdue case's SLA term as fully saturated", () => {
+    const barelyLate = card({ slaDueAt: NOW - 1 });
+    const veryLate = card({ slaDueAt: NOW - 30 * DAY });
+    expect(priorityScore(barelyLate, NOW)).toBe(priorityScore(veryLate, NOW));
+  });
+
+  it("treats a missing deadline as mid-urgency, not zero", () => {
+    const noDate = card({ slaDueAt: null });
+    const distant = card({ slaDueAt: NOW + 30 * DAY });
+    expect(priorityScore(noDate, NOW)).toBeGreaterThan(priorityScore(distant, NOW));
+  });
 });
 
 describe("byUrgency", () => {
-  it("sorts by lateness, then deadline, then age", () => {
+  it("sorts by priority score, then deadline, then age", () => {
     const rows = [
       card({ id: "no-date", slaDueAt: null, createdAt: NOW - 30 * DAY }),
       card({ id: "soon", slaDueAt: NOW + HOUR }),
@@ -178,6 +235,22 @@ describe("byUrgency", () => {
       "soon",
       "no-date"
     ]);
+  });
+
+  it("puts a higher-value, higher-risk case ahead of a merely-later one at equal SLA", () => {
+    const rows = [
+      card({ id: "low", valueMinor: 0, riskScore: 0, slaDueAt: NOW + DAY }),
+      card({ id: "high", valueMinor: 5_000_00, riskScore: 100, slaDueAt: NOW + DAY })
+    ];
+    expect([...rows].sort(byUrgency(NOW)).map((r) => r.id)).toEqual(["high", "low"]);
+  });
+
+  it("breaks an exact priority tie on the earlier deadline, then the older case", () => {
+    const rows = [
+      card({ id: "b", slaDueAt: NOW - HOUR, createdAt: NOW - DAY }),
+      card({ id: "a", slaDueAt: NOW - 2 * HOUR, createdAt: NOW - 2 * DAY })
+    ];
+    expect([...rows].sort(byUrgency(NOW)).map((r) => r.id)).toEqual(["a", "b"]);
   });
 });
 
@@ -192,6 +265,40 @@ describe("isLate / flagOf", () => {
     expect(flagOf(card({ priority: "urgent", slaDueAt: NOW + 30 * DAY }), NOW)?.key).toBe("sev.urgent");
     expect(flagOf(card({ slaDueAt: NOW + HOUR }), NOW)?.key).toBe("sev.due");
     expect(flagOf(card({ slaDueAt: NOW + 30 * DAY }), NOW)).toBeNull();
+  });
+});
+
+describe("loader", () => {
+  it("reads the tenant's per-lane WIP override from the axis.board ops policy", async () => {
+    stubFetchByUrl([
+      ["/v1/axis/ops-policies", json({ data: [{ valueJson: JSON.stringify({ wipWarn: { quoting: 3 } }) }] })]
+    ]);
+
+    const result = await loader(loaderArgs());
+
+    expect(result.wipWarn).toEqual({ quoting: 3 });
+  });
+
+  it("falls back to no overrides when the policy row is missing, a 403, or malformed JSON", async () => {
+    stubFetchByUrl([["/v1/axis/ops-policies", json({ data: [] })]]);
+    expect((await loader(loaderArgs())).wipWarn).toEqual({});
+
+    stubFetchByUrl([["/v1/axis/ops-policies", json({ title: "forbidden", status: 403 }, 403)]]);
+    expect((await loader(loaderArgs())).wipWarn).toEqual({});
+
+    stubFetchByUrl([["/v1/axis/ops-policies", json({ data: [{ valueJson: "not json" }] })]]);
+    expect((await loader(loaderArgs())).wipWarn).toEqual({});
+  });
+
+  it("ignores non-numeric or unknown-lane entries in the policy's wipWarn map", async () => {
+    stubFetchByUrl([
+      [
+        "/v1/axis/ops-policies",
+        json({ data: [{ valueJson: JSON.stringify({ wipWarn: { quoting: "twelve", not_a_lane: 5, review: 8 } }) }] })
+      ]
+    ]);
+
+    expect((await loader(loaderArgs())).wipWarn).toEqual({ review: 8 });
   });
 });
 
@@ -246,13 +353,65 @@ describe("assign", () => {
   });
 });
 
-describe("the board never writes workflow state", () => {
-  // The board deliberately has no transition intent: `PATCH status` from a
-  // column header would move a case with no state machine and no approval. If
-  // this test starts failing, a transition endpoint should have arrived first.
+describe("transition", () => {
+  it("posts to the case's transition endpoint with an idempotency key", async () => {
+    const calls = stubFetch(new Response(null, { status: 204 }));
+    const form = new FormData();
+    form.set("intent", "transition");
+    form.set("caseId", "case_4");
+    form.set("to", "review");
+
+    const result = await action(args(form));
+
+    expect(calls[0]?.url).toBe("https://api.test/v1/axis/cases/case_4/transition");
+    expect(calls[0]?.method).toBe("POST");
+    expect(calls[0]?.body).toBe(JSON.stringify({ to: "review" }));
+    expect(calls[0]?.key).toMatch(/^[0-9a-f-]{36}$/);
+    expect(result).toEqual({ problem: null, done: "transition" });
+  });
+
+  it("refuses a transition with no target state and issues no request", async () => {
+    const calls = stubFetch(new Response(null, { status: 204 }));
+    const form = new FormData();
+    form.set("intent", "transition");
+    form.set("caseId", "case_4");
+
+    expect((await action(args(form))).problem?.code).toBe("missing_target");
+    expect(calls).toHaveLength(0);
+  });
+
+  it("reports an approval gate instead of claiming the case moved", async () => {
+    stubFetch(
+      new Response(
+        JSON.stringify({
+          title: "approval required",
+          status: 403,
+          code: "approval_required",
+          policy_key: "axis.case_issue"
+        }),
+        { status: 403, headers: { "content-type": "application/json" } }
+      )
+    );
+    const form = new FormData();
+    form.set("intent", "transition");
+    form.set("caseId", "case_4");
+    form.set("to", "issued");
+
+    const result = await action(args(form));
+
+    expect(result.done).toBeNull();
+    expect(result.problem?.code).toBe("approval_required");
+  });
+});
+
+describe("the board never writes workflow state directly", () => {
+  // The board's only ways to change a case are `assign` (owner) and
+  // `transition` (state machine + approval gate, see axis-case-lifecycle.ts).
+  // A free-form `PATCH status` from a column header would move a case with no
+  // state machine and no approval — that path must stay refused.
   it("rejects a status move as an unknown intent and issues no request", async () => {
     const calls = stubFetch(new Response(null, { status: 204 }));
-    for (const intent of ["transition", "move", "set-status"]) {
+    for (const intent of ["move", "set-status"]) {
       const form = new FormData();
       form.set("intent", intent);
       form.set("caseId", "case_4");

@@ -54,6 +54,11 @@ import {
   permissionForClaimTransition,
   transitionClaim
 } from "../engines/axis-claim-lifecycle.js";
+import {
+  CaseTransitionBody,
+  permissionForCaseTransition,
+  transitionCase
+} from "../engines/axis-case-lifecycle.js";
 import { PolicyDocumentBody, issuePolicyDocument } from "../engines/axis-policy-document.js";
 import {
   ClaimPaymentBody,
@@ -297,6 +302,22 @@ axisRoutes.post("/cases/:id/copilot", async (c) => {
     };
   });
   return c.json(reply);
+});
+
+/**
+ * Moving a case through its machine (docs/specs/gap-axis-design.md §D.9).
+ * Mirrors /claims/:id/transition: the right you need depends on where you
+ * are going, and `issued` alone gates through axis.case_issue.
+ */
+axisRoutes.post("/cases/:id/transition", async (c) => {
+  const ctx = ctxOf(c);
+  const input = await body(c, CaseTransitionBody);
+  require_(ctx.actor, permissionForCaseTransition(input.to), { tenantId: ctx.tenantId, module: "axis" });
+  const kase = await must(ctx, schema.axisCases, c.req.param("id"), "cases");
+  const key = c.req.header("idempotency-key");
+  const run = () => transitionCase(ctx, kase, input);
+  const out = key ? await withIdempotency(ctx, key, `POST ${c.req.path}`, input, run) : await run();
+  return c.json(out, 200);
 });
 
 const SampleExtractBody = z.object({
