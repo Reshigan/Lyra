@@ -65,7 +65,11 @@ const STATUS_MAP: Record<string, DeliveryReceipt["status"] | undefined> = {
 function mediaOf(message: WhatsAppMessage) {
   const obj = message.image ?? message.video ?? message.audio ?? message.document;
   if (!obj) return undefined;
-  return { providerId: obj.id, mime: obj.mime_type, filename: obj.filename };
+  return {
+    providerId: obj.id,
+    mime: obj.mime_type,
+    ...(obj.filename !== undefined ? { filename: obj.filename } : {})
+  };
 }
 
 function parseMessage(message: WhatsAppMessage, displayName: string | undefined): InboundEvent {
@@ -77,7 +81,7 @@ function parseMessage(message: WhatsAppMessage, displayName: string | undefined)
     message: {
       externalRef: message.id,
       handle: message.from,
-      displayName,
+      ...(displayName !== undefined ? { displayName } : {}),
       text:
         message.text?.body ??
         message.image?.caption ??
@@ -85,7 +89,7 @@ function parseMessage(message: WhatsAppMessage, displayName: string | undefined)
         message.document?.caption ??
         "",
       modality,
-      media: media ? [media] : undefined,
+      ...(media ? { media: [media] } : {}),
       sentAt: Number(message.timestamp) * 1000
     }
   };
@@ -105,6 +109,7 @@ export const whatsappCloudAdapter: ChannelAdapter = {
   async verify(req: VerifiedRequest, secrets: ConnectorSecrets): Promise<void> {
     const signature = req.headers.get("x-hub-signature-256");
     if (!signature?.startsWith("sha256=")) throw unauthorized("missing whatsapp signature");
+    if (secrets.appSecret === undefined) throw unauthorized("missing whatsapp app secret");
     const expected = await hmacHex(secrets.appSecret, req.rawBody);
     if (!timingSafeEqual(expected, signature.slice(7))) throw unauthorized("bad whatsapp signature");
   },
@@ -122,13 +127,14 @@ export const whatsappCloudAdapter: ChannelAdapter = {
         for (const status of value.statuses ?? []) {
           const mapped = STATUS_MAP[status.status];
           if (!mapped) continue;
+          const errorTitle = status.errors?.[0]?.title;
           events.push({
             kind: "status",
             receipt: {
               externalRef: status.id,
               status: mapped,
               at: Number(status.timestamp) * 1000,
-              error: status.errors?.[0]?.title
+              ...(errorTitle !== undefined ? { error: errorTitle } : {})
             }
           });
         }

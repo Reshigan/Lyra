@@ -23,6 +23,7 @@ export const mailgunEmailAdapter: ChannelAdapter = {
 
   async verify(req: VerifiedRequest, secrets: ConnectorSecrets): Promise<void> {
     const fields = JSON.parse(req.rawBody) as MailgunFields;
+    if (secrets.signingKey === undefined) throw unauthorized("missing mailgun signing key");
     const expected = await hmacHex(secrets.signingKey, `${fields.timestamp}${fields.token}`);
     if (!timingSafeEqual(expected, fields.signature)) throw unauthorized("bad mailgun signature");
   },

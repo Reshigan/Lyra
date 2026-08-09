@@ -57,7 +57,8 @@ describe("mailgunEmailAdapter.parse", () => {
     const body = JSON.stringify(await fields({ from: "Amina <amina@example.com>", sender: "amina@example.com" }));
     const events = mailgunEmailAdapter.parse(req(body));
     const [event] = events;
-    expect(event!.kind === "message" && event.message.handle).toBe("amina@example.com");
+    if (!event) throw new Error("expected mailgunEmailAdapter.parse to return one event");
+    expect(event.kind === "message" && event.message.handle).toBe("amina@example.com");
   });
 });
 
