@@ -5,7 +5,7 @@ import { drizzle } from "drizzle-orm/libsql";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { seed, sealFields, totpAt, TOTP_STEP_SEC } from "@lyra/core";
-import { schema, type Db } from "@lyra/db";
+import { schema, ChannelOptinsJson, PurposesJson, type Db } from "@lyra/db";
 import { app } from "../index.js";
 import type { Env } from "../env.js";
 
@@ -109,10 +109,34 @@ beforeAll(async () => {
     createdAt: now,
     updatedAt: now
   });
+  // cnv_1 needs a consented customer — dispatchOutbound checks consent even
+  // when the conversation has no customerId (it resolves one via channel
+  // identity), so an unlinked externalRef refuses the send outright.
+  await database.insert(schema.customers).values({
+    id: "cus_1",
+    tenantId,
+    type: "person",
+    nameJson: JSON.stringify({ en: "Reply Customer" }),
+    createdAt: now,
+    updatedAt: now
+  });
+  await database.insert(schema.consents).values({
+    id: "cns_1",
+    tenantId,
+    customerId: "cus_1",
+    purposesJson: JSON.stringify(PurposesJson.parse({})),
+    channelOptinsJson: JSON.stringify(ChannelOptinsJson.parse({ whatsapp: true })),
+    source: "web",
+    evidenceRef: null,
+    ts: now,
+    expiry: null,
+    version: 1
+  });
   await database.insert(schema.orbitConversations).values([
     {
       id: "cnv_1",
       tenantId,
+      customerId: "cus_1",
       channel: "whatsapp",
       externalRef: "97150",
       connectorId: "ccn_1",

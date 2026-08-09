@@ -61,10 +61,34 @@ beforeEach(async () => {
   };
   await db.insert(schema.orbitChannelConnectors).values(connector);
 
+  // A real, consented customer — most tests here exercise the send path, not
+  // the consent gate itself, so the base fixture must not trip it. The two
+  // dedicated consent tests below override customerId with their own rows.
+  await db.insert(schema.customers).values({
+    id: "cus_base",
+    tenantId,
+    type: "person",
+    nameJson: JSON.stringify({ en: "Base Customer" }),
+    createdAt: now,
+    updatedAt: now
+  });
+  await db.insert(schema.consents).values({
+    id: "cns_base",
+    tenantId,
+    customerId: "cus_base",
+    purposesJson: JSON.stringify(PurposesJson.parse({})),
+    channelOptinsJson: JSON.stringify(ChannelOptinsJson.parse({ whatsapp: true })),
+    source: "web",
+    evidenceRef: null,
+    ts: now,
+    expiry: null,
+    version: 1
+  });
+
   conversation = {
     id: "cnv_1",
     tenantId,
-    customerId: null,
+    customerId: "cus_base",
     channel: "whatsapp",
     externalRef: "97150",
     connectorId: "ccn_1",
@@ -213,5 +237,56 @@ describe("dispatchOutbound", () => {
     await expect(dispatchOutbound(ctx, env, conversation, connector, "hi")).rejects.toThrow();
     const rows = await ctx.db.select().from(schema.orbitMessages);
     expect(rows).toHaveLength(0);
+  });
+
+  // A client can create a conversation row directly with an arbitrary
+  // externalRef and no customerId (e.g. via the generic conversations CRUD
+  // resource) — that must not be a way to skip the consent gate.
+  it("refuses to send when the conversation has no customerId and no matching channel identity", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ messages: [{ id: "wamid.nope" }] }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const noCustomer = { ...conversation, customerId: null, externalRef: "unlinked-number" };
+    await expect(dispatchOutbound(ctx, env, noCustomer, connector, "hi")).rejects.toThrow();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("resolves the customer via channel identity when the conversation has no customerId", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ messages: [{ id: "wamid.identity" }] }), { status: 200 }))
+    );
+    await ctx.db.insert(schema.customers).values({
+      id: "cus_3",
+      tenantId,
+      type: "person",
+      nameJson: JSON.stringify({ en: "Identity Customer" }),
+      createdAt: now,
+      updatedAt: now
+    });
+    await ctx.db.insert(schema.consents).values({
+      id: "cns_3",
+      tenantId,
+      customerId: "cus_3",
+      purposesJson: JSON.stringify(PurposesJson.parse({})),
+      channelOptinsJson: JSON.stringify(ChannelOptinsJson.parse({ whatsapp: true })),
+      source: "web",
+      evidenceRef: null,
+      ts: now,
+      expiry: null,
+      version: 1
+    });
+    await ctx.db.insert(schema.orbitChannelIdentities).values({
+      id: "cid_3",
+      tenantId,
+      connectorId: "ccn_1",
+      handle: "97150",
+      customerId: "cus_3",
+      createdAt: now
+    });
+
+    const noCustomer = { ...conversation, customerId: null };
+    const result = await dispatchOutbound(ctx, env, noCustomer, connector, "hi");
+    expect(result.externalRef).toBe("wamid.identity");
   });
 });

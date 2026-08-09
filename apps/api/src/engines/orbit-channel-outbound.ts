@@ -1,5 +1,6 @@
+import { and, eq } from "drizzle-orm";
 import { id, schema } from "@lyra/db";
-import { assertChannel, badRequest, openFields, type ConnectorSecrets, type Ctx } from "@lyra/core";
+import { assertChannel, badRequest, consentRequired, openFields, type ConnectorSecrets, type Ctx } from "@lyra/core";
 import { fieldKey, type Env } from "../env.js";
 import { adapterFor } from "./orbit-channel-adapters.js";
 
@@ -25,12 +26,30 @@ export async function dispatchOutbound(
   // docs/12 §2: every outbound send checks consent at runtime. `consentChannel`
   // is the seam that says which opt-in binds for this adapter (ADR-0038) —
   // `marketing: false` because a reply is a service message, so the channel
-  // opt-in alone is enough and the marketing purpose is not required. A
-  // conversation with no linked customer (a web widget before identification)
-  // has nobody to check, and an adapter with a null consentChannel is one the
-  // consent model has no channel for.
-  if (conversation.customerId && adapter.consentChannel) {
-    await assertChannel(ctx, conversation.customerId, adapter.consentChannel, { marketing: false });
+  // opt-in alone is enough and the marketing purpose is not required. An
+  // adapter with a null consentChannel is one the consent model has no
+  // channel for (nothing to check). A conversation with no linked customerId
+  // is NOT automatically exempt — a client can create a conversation row
+  // directly with an arbitrary externalRef and no customerId, which must not
+  // bypass consent. Resolve the customer via the channel identity the
+  // inbound path created instead; refuse the send if there is none.
+  if (adapter.consentChannel) {
+    let customerId = conversation.customerId;
+    if (!customerId) {
+      const [identity] = await ctx.db
+        .select()
+        .from(schema.orbitChannelIdentities)
+        .where(
+          and(
+            eq(schema.orbitChannelIdentities.tenantId, ctx.tenantId),
+            eq(schema.orbitChannelIdentities.connectorId, connector.id),
+            eq(schema.orbitChannelIdentities.handle, conversation.externalRef)
+          )
+        );
+      if (!identity) throw consentRequired(`channel:${adapter.consentChannel}`);
+      customerId = identity.customerId;
+    }
+    await assertChannel(ctx, customerId, adapter.consentChannel, { marketing: false });
   }
 
   const secrets = await openFields(fieldKey(env), JSON.parse(connector.secretsJson) as ConnectorSecrets);
