@@ -10,6 +10,7 @@ export const conversations = sqliteTable(
     customerId: text("customer_id"),
     channel: text("channel").notNull(), // whatsapp|web|voice|email|agent (H1 reserved)
     externalRef: text("external_ref"), // wa id, thread id
+    connectorId: text("connector_id"), // orbit_channel_connectors.id (null for internally-raised conversations)
     doId: text("do_id"), // UserChannel Durable Object
     state: text("state").notNull().default("bot"), // bot|human|closed
     assigneeRef: text("assignee_ref"),
@@ -51,6 +52,39 @@ export const messages = sqliteTable(
   (t) => [
     index("orbit_messages_conv_idx").on(t.tenantId, t.conversationId, t.ts),
     uniqueIndex("orbit_messages_ext_uq").on(t.tenantId, t.externalRef)
+  ]
+);
+
+export const channelConnectors = sqliteTable(
+  "orbit_channel_connectors",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    provider: text("provider").notNull(), // whatsapp-cloud-api|mailgun-email
+    transport: text("transport").notNull(), // whatsapp|email|web|voice|agent
+    label: text("label").notNull(),
+    secretsJson: text("secrets_json").notNull(), // sealed via packages/core field-crypto (beforeWrite)
+    configJson: text("config_json").notNull().default("{}"),
+    status: text("status").notNull().default("active"), // active|disabled
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull()
+  },
+  (t) => [index("orbit_channel_connectors_tenant_idx").on(t.tenantId)]
+);
+
+export const channelIdentities = sqliteTable(
+  "orbit_channel_identities",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    connectorId: text("connector_id").notNull(),
+    handle: text("handle").notNull(), // provider-side address: wa id, email
+    customerId: text("customer_id").notNull(),
+    createdAt: integer("created_at").notNull()
+  },
+  (t) => [
+    uniqueIndex("orbit_channel_identities_handle_uq").on(t.tenantId, t.connectorId, t.handle),
+    index("orbit_channel_identities_customer_idx").on(t.customerId)
   ]
 );
 

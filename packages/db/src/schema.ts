@@ -84,7 +84,9 @@ export {
   partners as orbitPartners,
   partnerTxns as orbitPartnerTxns,
   handoverNotes as orbitHandoverNotes,
-  qaScores as orbitQaScores
+  qaScores as orbitQaScores,
+  channelConnectors as orbitChannelConnectors,
+  channelIdentities as orbitChannelIdentities
 } from "./schema/orbit.js";
 
 export {

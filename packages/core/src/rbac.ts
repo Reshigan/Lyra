@@ -147,6 +147,7 @@ export const PERMISSIONS = [
   "orbit:partner_keys:issue_test", "orbit:partner_keys:issue_live",
   "orbit:qa:read", "orbit:qa:score",
   "orbit:handover:read", "orbit:handover:write",
+  "orbit:channels:read", "orbit:channels:write",
 
   // SIGNAL — growth
   "signal:campaigns:read", "signal:campaigns:create", "signal:campaigns:update",
