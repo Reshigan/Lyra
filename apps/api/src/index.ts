@@ -31,6 +31,7 @@ import { analyticsRoutes, runDueSchedules } from "./routes/analytics.js";
 import { complianceRoutes } from "./routes/compliance.js";
 import { onboardingRoutes } from "./routes/onboarding.js";
 import { portalRoutes } from "./routes/portal.js";
+import { channelsRoutes } from "./routes/channels.js";
 import { platformRoutes } from "./routes/platform.js";
 import { settlementRoutes } from "./routes/settlement.js";
 import { staffRoutes } from "./routes/staff.js";
@@ -86,6 +87,7 @@ app.route("/v1/compliance", complianceRoutes);
 // staff moves core users, roles and delegations at once.
 app.route("/v1/onboarding", onboardingRoutes);
 app.route("/v1/portal", portalRoutes);
+app.route("/v1/channels", channelsRoutes);
 app.route("/v1/settlement", settlementRoutes);
 app.route("/v1/staff", staffRoutes);
 app.route("/v1/platform", platformRoutes);

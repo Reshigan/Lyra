@@ -41,11 +41,18 @@ export const withContext: MiddlewareHandler<App> = async (c, next) => {
   const now = await simNow(c.env);
   c.set("startedAt", now);
 
-  // `/v1/auth/sso/*` and `/v1/portal/*` are public by shape rather than by
-  // name: both carry a dynamic id segment (provider / tenant slug) with no
-  // session to authenticate until the callback runs or the visitor is the
-  // point of the route (routes/portal.ts).
-  if (PUBLIC.has(c.req.path) || c.req.path.startsWith("/v1/auth/sso/") || c.req.path.startsWith("/v1/portal/")) {
+  // `/v1/auth/sso/*`, `/v1/portal/*` and `/v1/channels/*` are public by shape
+  // rather than by name: each carries a dynamic id segment (provider / tenant
+  // slug / connector id) with no session to authenticate until the callback
+  // runs, or the visitor is the point of the route (routes/portal.ts), or the
+  // caller is a messaging provider whose signature is the credential
+  // (routes/channels.ts).
+  if (
+    PUBLIC.has(c.req.path) ||
+    c.req.path.startsWith("/v1/auth/sso/") ||
+    c.req.path.startsWith("/v1/portal/") ||
+    c.req.path.startsWith("/v1/channels/")
+  ) {
     c.set("requestId", crypto.randomUUID());
     return next();
   }
