@@ -5,6 +5,7 @@
 // without a rebuild (docs/16 "Horizon governance").
 
 import { hashObject } from "./crypto.js";
+import type { Channel } from "./consent.js";
 
 // docs/02 §11 names `Channel` as a seam; it already lives in consent.ts
 // (`export type Channel = keyof ChannelOptinsJson`) — reused, not redefined.
@@ -87,4 +88,75 @@ export function validateExtensionManifest(m: ExtensionManifest): string[] {
   if (!/^\d+\.\d+\.\d+$/.test(m.version)) errors.push("version must be semver");
   if (m.capabilities.length === 0) errors.push("capabilities must not be empty");
   return errors;
+}
+
+/**
+ * ADR-0037 named this seam; ADR-0038 supersedes ADR-0037's original
+ * interface shape with this one, after the design doc
+ * (docs/specs/gap-orbit-design.md §1C) found the first shape had no room for
+ * a handshake, media, or delivery receipts. `Channel` (consent.ts) is which
+ * channel a tenant has opted into; `ChannelAdapter` is how a provider's wire
+ * format is verified/parsed/sent — linked via `consentChannel`, not merged.
+ */
+export interface InboundMessage {
+  readonly externalRef: string;
+  readonly handle: string;
+  readonly displayName?: string;
+  readonly text: string;
+  readonly modality: "text" | "voice" | "image" | "video" | "document";
+  readonly media?: readonly {
+    readonly providerId: string;
+    readonly mime: string;
+    readonly filename?: string;
+    readonly bytes?: number;
+  }[];
+  readonly sentAt: number;
+  readonly windowExpiresAt?: number;
+}
+
+export interface DeliveryReceipt {
+  readonly externalRef: string;
+  readonly status: "sent" | "delivered" | "read" | "failed";
+  readonly at: number;
+  readonly error?: string;
+}
+
+export type InboundEvent =
+  | { readonly kind: "message"; readonly message: InboundMessage }
+  | { readonly kind: "status"; readonly receipt: DeliveryReceipt }
+  | { readonly kind: "ignored"; readonly why: string };
+
+export interface VerifiedRequest {
+  readonly rawBody: string;
+  readonly headers: Headers;
+  readonly query: URLSearchParams;
+}
+
+/** Raw, unsealed provider credentials for one connector (opened via `openFields` before use). */
+export type ConnectorSecrets = Record<string, string>;
+
+export interface OutboundMessage {
+  readonly conversationId: string;
+  readonly to: string;
+  readonly text: string;
+  readonly replyToExternalRef?: string;
+}
+
+export interface ChannelAdapter {
+  readonly provider: string;
+  readonly transport: "whatsapp" | "email" | "web" | "voice" | "agent";
+  readonly consentChannel: Channel | null;
+  challenge?(req: VerifiedRequest, secrets: ConnectorSecrets): string | null;
+  verify(req: VerifiedRequest, secrets: ConnectorSecrets, now: number): Promise<void>;
+  parse(req: VerifiedRequest): InboundEvent[];
+  fetchMedia(
+    providerId: string,
+    secrets: ConnectorSecrets,
+    config: Record<string, unknown>
+  ): Promise<{ body: ArrayBuffer; mime: string; filename?: string }>;
+  send(
+    out: OutboundMessage,
+    secrets: ConnectorSecrets,
+    config: Record<string, unknown>
+  ): Promise<{ externalRef: string }>;
 }

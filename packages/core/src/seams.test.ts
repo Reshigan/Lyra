@@ -13,7 +13,10 @@ import {
   type AutonomyEnvelope,
   type SpeechProvider,
   type DataInConnector,
-  type TimeseriesIngest
+  type TimeseriesIngest,
+  type ChannelAdapter,
+  type DeliveryReceipt,
+  type InboundEvent
 } from "./seams.js";
 
 // ADR-0018: one @seam:Hx test per docs/16 horizon. Schema-only horizons get
@@ -204,6 +207,62 @@ it("@seam:H12 a rulepack is versioned per market with an effective date", async 
   const [row] = await db.select().from(schema.rulepacks).where(eq(schema.rulepacks.id, rulepackId));
   expect(row!.market).toBe("UAE");
   expect(row!.version).toBe("v1");
+});
+
+describe("SEAM-13: ChannelAdapter", () => {
+  it("accepts a full adapter implementation shape", () => {
+    const adapter: ChannelAdapter = {
+      provider: "test-provider",
+      transport: "whatsapp",
+      consentChannel: "whatsapp",
+      challenge(req, secrets) {
+        return req.query.get("hub.challenge") === secrets.token ? "ok" : null;
+      },
+      async verify() {
+        return;
+      },
+      parse(req) {
+        const body = JSON.parse(req.rawBody) as { text: string };
+        return [
+          {
+            kind: "message",
+            message: {
+              externalRef: "ext-1",
+              handle: "+15551234",
+              text: body.text,
+              modality: "text",
+              sentAt: 1
+            }
+          }
+        ];
+      },
+      async fetchMedia() {
+        return { body: new ArrayBuffer(0), mime: "application/octet-stream" };
+      },
+      async send(out) {
+        return { externalRef: `sent-${out.to}` };
+      }
+    };
+    const events = adapter.parse({
+      rawBody: JSON.stringify({ text: "hi" }),
+      headers: new Headers(),
+      query: new URLSearchParams()
+    });
+    expect(events).toEqual([
+      {
+        kind: "message",
+        message: { externalRef: "ext-1", handle: "+15551234", text: "hi", modality: "text", sentAt: 1 }
+      }
+    ]);
+  });
+
+  it("allows a status receipt and an ignored event as InboundEvent variants", () => {
+    const receipt: DeliveryReceipt = { externalRef: "ext-1", status: "delivered", at: 2 };
+    const statusEvent: InboundEvent = { kind: "status", receipt };
+    const ignoredEvent: InboundEvent = { kind: "ignored", why: "unsupported type" };
+    expect(statusEvent.kind).toBe("status");
+    expect(ignoredEvent.kind).toBe("ignored");
+  });
 });
 
 describe("SEAM-999", () => {
