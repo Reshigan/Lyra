@@ -178,7 +178,8 @@ describe("secret columns never reach a read response", () => {
     expect(declaring().map(({ module, r }) => `${module}/${r.path}`).sort()).toEqual([
       "core/api-keys",
       "core/users",
-      "core/webhooks"
+      "core/webhooks",
+      "orbit/channel-connectors"
     ]);
   });
 

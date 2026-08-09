@@ -4,9 +4,10 @@ import { createClient, type Client } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { schema, PolicyJson, EntitlementsJson } from "@lyra/db";
+import { schema, ChannelOptinsJson, PolicyJson, PurposesJson, EntitlementsJson } from "@lyra/db";
 import { sealFields, type Ctx } from "@lyra/core";
 import { dispatchOutbound } from "./orbit-channel-outbound.js";
+import { processChannelEvents } from "./orbit-channel-inbound.js";
 import type { Env } from "../env.js";
 
 const MIGRATIONS = join(import.meta.dirname, "..", "..", "..", "..", "packages", "db", "migrations");
@@ -119,6 +120,92 @@ describe("dispatchOutbound", () => {
   it("throws when the conversation has no external address", async () => {
     const bare = { ...conversation, externalRef: null };
     await expect(dispatchOutbound(ctx, env, bare, connector, "hi")).rejects.toThrow();
+  });
+
+  // docs/12 §2: every outbound send checks consent at runtime. The adapter's
+  // `consentChannel` is the seam that says which opt-in binds (ADR-0038).
+  it("refuses to send to a customer who revoked the channel", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ messages: [{ id: "wamid.nope" }] }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await ctx.db.insert(schema.customers).values({
+      id: "cus_1",
+      tenantId,
+      type: "person",
+      nameJson: JSON.stringify({ en: "Amina" }),
+      createdAt: now,
+      updatedAt: now
+    });
+    await ctx.db.insert(schema.consents).values({
+      id: "cns_1",
+      tenantId,
+      customerId: "cus_1",
+      purposesJson: JSON.stringify(PurposesJson.parse({})),
+      channelOptinsJson: JSON.stringify(ChannelOptinsJson.parse({ whatsapp: false })),
+      source: "web",
+      evidenceRef: null,
+      ts: now,
+      expiry: null,
+      version: 1
+    });
+
+    const withCustomer = { ...conversation, customerId: "cus_1" };
+    await expect(dispatchOutbound(ctx, env, withCustomer, connector, "hi")).rejects.toThrow();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(await ctx.db.select().from(schema.orbitMessages)).toHaveLength(0);
+  });
+
+  it("sends to a customer who opted the channel in", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ messages: [{ id: "wamid.ok" }] }), { status: 200 }))
+    );
+    await ctx.db.insert(schema.customers).values({
+      id: "cus_2",
+      tenantId,
+      type: "person",
+      nameJson: JSON.stringify({ en: "Yusuf" }),
+      createdAt: now,
+      updatedAt: now
+    });
+    await ctx.db.insert(schema.consents).values({
+      id: "cns_2",
+      tenantId,
+      customerId: "cus_2",
+      purposesJson: JSON.stringify(PurposesJson.parse({})),
+      channelOptinsJson: JSON.stringify(ChannelOptinsJson.parse({ whatsapp: true })),
+      source: "web",
+      evidenceRef: null,
+      ts: now,
+      expiry: null,
+      version: 1
+    });
+
+    // `marketing: false` — a reply is a service message, so the channel opt-in
+    // alone is enough and the marketing purpose stays off.
+    const result = await dispatchOutbound(ctx, env, { ...conversation, customerId: "cus_2" }, connector, "hi");
+    expect(result.externalRef).toBe("wamid.ok");
+  });
+
+  // The regression guard for the journey as a whole: a customer messages in,
+  // the reply must go out. Inbound records the channel opt-in the outbound gate
+  // then checks.
+  it("replies to a conversation created by a first-time inbound message", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ messages: [{ id: "wamid.reply" }] }), { status: 200 }))
+    );
+
+    await processChannelEvents(ctx, connector, [
+      { kind: "message", message: { externalRef: "wamid.in", handle: "97159", displayName: "Amina", text: "Hello", modality: "text", sentAt: now } }
+    ]);
+    const [inbound] = await ctx.db
+      .select()
+      .from(schema.orbitConversations)
+      .where(eq(schema.orbitConversations.externalRef, "97159"));
+
+    const result = await dispatchOutbound(ctx, env, inbound!, connector, "On our way!");
+    expect(result.externalRef).toBe("wamid.reply");
   });
 
   it("records no message when the provider send fails", async () => {

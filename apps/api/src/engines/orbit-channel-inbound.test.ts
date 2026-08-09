@@ -5,7 +5,7 @@ import { drizzle } from "drizzle-orm/libsql";
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import { schema, PolicyJson, EntitlementsJson } from "@lyra/db";
-import { type Ctx } from "@lyra/core";
+import { currentConsent, recordConsent, type Ctx } from "@lyra/core";
 import { processChannelEvents, type ChannelConnectorRow } from "./orbit-channel-inbound.js";
 
 const MIGRATIONS = join(import.meta.dirname, "..", "..", "..", "..", "packages", "db", "migrations");
@@ -110,6 +110,48 @@ describe("processChannelEvents", () => {
   it("skips an ignored event without touching the database", async () => {
     const result = await processChannelEvents(ctx, connector, [{ kind: "ignored", why: "unsupported" }]);
     expect(result).toEqual({ processed: 0, skipped: 1 });
+  });
+
+  // A customer who opens the conversation has, by that act, opted in to being
+  // replied to on that channel — otherwise the outbound consent gate 403s every
+  // reply to a first-time inbound handle.
+  it("grants the transport's channel opt-in for a first-time handle, and nothing else", async () => {
+    await processChannelEvents(ctx, connector, [
+      { kind: "message", message: { externalRef: "wamid.1", handle: "97150", text: "Hello", modality: "text", sentAt: now } }
+    ]);
+
+    const [identity] = await ctx.db
+      .select()
+      .from(schema.orbitChannelIdentities)
+      .where(eq(schema.orbitChannelIdentities.handle, "97150"));
+
+    const state = await currentConsent(ctx, identity!.customerId);
+    expect(state?.channels.whatsapp).toBe(true);
+    expect(state?.channels.email).toBe(false);
+    expect(state?.purposes.marketing).toBe(false);
+  });
+
+  // Consent rows are immutable and the latest row wins, so re-granting on every
+  // inbound message would silently resurrect a revoked opt-in.
+  it("does not re-grant the channel for a handle whose customer revoked it", async () => {
+    await processChannelEvents(ctx, connector, [
+      { kind: "message", message: { externalRef: "wamid.1", handle: "97150", text: "Hi", modality: "text", sentAt: now } }
+    ]);
+    const [identity] = await ctx.db
+      .select()
+      .from(schema.orbitChannelIdentities)
+      .where(eq(schema.orbitChannelIdentities.handle, "97150"));
+
+    const revoking: Ctx = { ...ctx, now: now + 1000 };
+    await recordConsent(revoking, { customerId: identity!.customerId, purposes: {}, channels: { whatsapp: false }, source: "portal" });
+
+    const later: Ctx = { ...ctx, now: now + 2000 };
+    await processChannelEvents(later, connector, [
+      { kind: "message", message: { externalRef: "wamid.2", handle: "97150", text: "Again", modality: "text", sentAt: now + 2000 } }
+    ]);
+
+    const state = await currentConsent(later, identity!.customerId);
+    expect(state?.channels.whatsapp).toBe(false);
   });
 
   it("updates a message's delivery status from a status receipt", async () => {

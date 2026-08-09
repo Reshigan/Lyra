@@ -1766,12 +1766,26 @@ export interface NorthSnapshots {
   ts: number;
 }
 
+export interface OrbitChannelConnectors {
+  id?: string;
+  tenantId?: string;
+  provider: string;
+  transport: string;
+  label: string;
+  secretsJson: string;
+  configJson?: string;
+  status?: string;
+  createdAt?: number;
+  updatedAt?: number;
+}
+
 export interface OrbitConversations {
   id?: string;
   tenantId?: string;
   customerId?: string;
   channel: string;
   externalRef?: string;
+  connectorId?: string;
   doId?: string;
   state?: string;
   assigneeRef?: string;
@@ -2328,6 +2342,8 @@ export interface Operations {
   "GET /v1/axis/tasks/{id}": Op<{ id: string }, never, never, AxisTasks>;
   "PATCH /v1/axis/tasks/{id}": Op<{ id: string }, never, AxisTasks, AxisTasks>;
   "DELETE /v1/axis/tasks/{id}": Op<{ id: string }, never, never, void>;
+  "GET /v1/channels/{connectorId}/webhook": Op<{ connectorId: string }, never, never, Record<string, unknown>>;
+  "POST /v1/channels/{connectorId}/webhook": Op<{ connectorId: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/compliance/disclosures": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<ComplianceDisclosures>>;
   "GET /v1/compliance/disclosures/{id}": Op<{ id: string }, never, never, ComplianceDisclosures>;
   "GET /v1/compliance/dsar-requests": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<ComplianceDsarRequests>>;
@@ -2653,10 +2669,16 @@ export interface Operations {
   "POST /v1/onboarding/steps/{id}/complete": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/onboarding/steps/{id}/fail": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/onboarding/steps/{id}/waive": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
+  "GET /v1/orbit/channel-connectors": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<OrbitChannelConnectors>>;
+  "POST /v1/orbit/channel-connectors": Op<never, never, OrbitChannelConnectors, OrbitChannelConnectors>;
+  "GET /v1/orbit/channel-connectors/{id}": Op<{ id: string }, never, never, OrbitChannelConnectors>;
+  "PATCH /v1/orbit/channel-connectors/{id}": Op<{ id: string }, never, OrbitChannelConnectors, OrbitChannelConnectors>;
+  "DELETE /v1/orbit/channel-connectors/{id}": Op<{ id: string }, never, never, void>;
   "GET /v1/orbit/conversations": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<OrbitConversations>>;
   "POST /v1/orbit/conversations": Op<never, never, OrbitConversations, OrbitConversations>;
   "GET /v1/orbit/conversations/{id}": Op<{ id: string }, never, never, OrbitConversations>;
   "PATCH /v1/orbit/conversations/{id}": Op<{ id: string }, never, OrbitConversations, OrbitConversations>;
+  "POST /v1/orbit/conversations/{id}/reply": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/orbit/conversations/{id}/turns": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/orbit/handover-notes": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<OrbitHandoverNotes>>;
   "POST /v1/orbit/handover-notes": Op<never, never, OrbitHandoverNotes, OrbitHandoverNotes>;
@@ -2972,6 +2994,8 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "GET /v1/axis/tasks/{id}": { tag: "axis", summary: "Fetch one task", permission: "axis:tasks:read", public: false },
   "PATCH /v1/axis/tasks/{id}": { tag: "axis", summary: "Update a task", permission: "axis:tasks:write", public: false },
   "DELETE /v1/axis/tasks/{id}": { tag: "axis", summary: "Soft-delete a task", permission: "axis:tasks:write", public: false },
+  "GET /v1/channels/{connectorId}/webhook": { tag: "orbit", summary: "Provider subscription handshake; echoes the challenge when the verify token matches", permission: null, public: true },
+  "POST /v1/channels/{connectorId}/webhook": { tag: "orbit", summary: "Provider webhook delivery: signature-verified inbound messages and delivery receipts", permission: null, public: true },
   "GET /v1/compliance/disclosures": { tag: "compliance", summary: "List disclosures", permission: "compliance:disclosures:read", public: false },
   "GET /v1/compliance/disclosures/{id}": { tag: "compliance", summary: "Fetch one disclosure", permission: "compliance:disclosures:read", public: false },
   "GET /v1/compliance/dsar-requests": { tag: "compliance", summary: "List dsar-requests", permission: "compliance:dsar:read", public: false },
@@ -3297,10 +3321,16 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "POST /v1/onboarding/steps/{id}/complete": { tag: "onboarding", summary: "Clear a step, attaching the evidence its kind requires", permission: "core:onboarding:write", public: false },
   "POST /v1/onboarding/steps/{id}/fail": { tag: "onboarding", summary: "Record that a step came back negative, with the reason", permission: "core:onboarding:write", public: false },
   "POST /v1/onboarding/steps/{id}/waive": { tag: "onboarding", summary: "Waive a required step (dual control; the waiver is recorded against it)", permission: "core:onboarding:waive", public: false },
+  "GET /v1/orbit/channel-connectors": { tag: "orbit", summary: "List channel-connectors", permission: "orbit:channels:read", public: false },
+  "POST /v1/orbit/channel-connectors": { tag: "orbit", summary: "Create a channel connector", permission: "orbit:channels:write", public: false },
+  "GET /v1/orbit/channel-connectors/{id}": { tag: "orbit", summary: "Fetch one channel connector", permission: "orbit:channels:read", public: false },
+  "PATCH /v1/orbit/channel-connectors/{id}": { tag: "orbit", summary: "Update a channel connector", permission: "orbit:channels:write", public: false },
+  "DELETE /v1/orbit/channel-connectors/{id}": { tag: "orbit", summary: "Soft-delete a channel connector", permission: "orbit:channels:write", public: false },
   "GET /v1/orbit/conversations": { tag: "orbit", summary: "List conversations", permission: "orbit:conversations:read", public: false },
   "POST /v1/orbit/conversations": { tag: "orbit", summary: "Create a conversation", permission: "orbit:conversations:reply", public: false },
   "GET /v1/orbit/conversations/{id}": { tag: "orbit", summary: "Fetch one conversation", permission: "orbit:conversations:read", public: false },
   "PATCH /v1/orbit/conversations/{id}": { tag: "orbit", summary: "Update a conversation", permission: "orbit:conversations:assign", public: false },
+  "POST /v1/orbit/conversations/{id}/reply": { tag: "orbit", summary: "Send a reply out over the conversation's channel connector", permission: "orbit:messages:send", public: false },
   "POST /v1/orbit/conversations/{id}/turns": { tag: "orbit", summary: "Append a turn to a conversation, checkpointed to orbit_messages", permission: "orbit:messages:send", public: false },
   "GET /v1/orbit/handover-notes": { tag: "orbit", summary: "List handover-notes", permission: "orbit:handover:read", public: false },
   "POST /v1/orbit/handover-notes": { tag: "orbit", summary: "Create a handover note", permission: "orbit:handover:write", public: false },

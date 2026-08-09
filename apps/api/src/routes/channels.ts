@@ -15,7 +15,12 @@ import type { App, Env } from "../env.js";
 
 export const channelsRoutes = new Hono<App>();
 
-/** Connector row + its adapter + opened secrets, or a 404 that says nothing about other tenants. */
+/**
+ * Connector row + its adapter, or a 404 that says nothing about other tenants.
+ * Secrets are left sealed: `open()` is a separate step so a request that is
+ * going to be refused (unknown provider, a provider with no challenge) never
+ * unseals a credential it will not use.
+ */
 async function connectorFor(env: Env, connectorId: string) {
   const [connector] = await rawDb(env)
     .select()
@@ -24,15 +29,19 @@ async function connectorFor(env: Env, connectorId: string) {
       and(eq(schema.orbitChannelConnectors.id, connectorId), eq(schema.orbitChannelConnectors.status, "active"))
     );
   if (!connector) throw notFound("connector");
-  const secrets = await openFields(fieldKey(env), JSON.parse(connector.secretsJson) as ConnectorSecrets);
-  return { connector, adapter: adapterFor(connector.provider), secrets };
+  return {
+    connector,
+    adapter: adapterFor(connector.provider),
+    open: () => openFields(fieldKey(env), JSON.parse(connector.secretsJson) as ConnectorSecrets)
+  };
 }
 
 // Subscription handshake (WhatsApp hub.challenge). Providers that don't do one
 // have no `challenge` and get the same 404 as an unknown connector.
 channelsRoutes.get("/:connectorId/webhook", async (c) => {
-  const { adapter, secrets } = await connectorFor(c.env, c.req.param("connectorId"));
+  const { adapter, open } = await connectorFor(c.env, c.req.param("connectorId"));
   if (!adapter.challenge) throw notFound("challenge");
+  const secrets = await open();
   const echo = adapter.challenge(
     { rawBody: "", headers: c.req.raw.headers, query: new URL(c.req.url).searchParams },
     secrets
@@ -42,7 +51,7 @@ channelsRoutes.get("/:connectorId/webhook", async (c) => {
 });
 
 channelsRoutes.post("/:connectorId/webhook", async (c) => {
-  const { connector, adapter, secrets } = await connectorFor(c.env, c.req.param("connectorId"));
+  const { connector, adapter, open } = await connectorFor(c.env, c.req.param("connectorId"));
 
   // Signature is computed over the bytes as sent, so the raw text is what the
   // adapter must see. Form-encoded providers (Mailgun) parse to fields first.
@@ -52,7 +61,7 @@ channelsRoutes.post("/:connectorId/webhook", async (c) => {
   const req = { rawBody, headers: c.req.raw.headers, query: new URL(c.req.url).searchParams };
 
   const now = Date.now();
-  await adapter.verify(req, secrets, now);
+  await adapter.verify(req, await open(), now);
   const events = adapter.parse(req);
 
   const ctx = await ctxFor(

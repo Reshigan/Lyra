@@ -81,6 +81,10 @@ describe("GET /v1/channels/:connectorId/webhook", () => {
       exec as never
     );
     expect(res.status).toBe(401);
+    // The detail matters: an unauthenticated 401 (mw.ts's public-path bypass
+    // removed) looks identical to a rejected challenge, so status alone would
+    // keep this test green for the wrong reason.
+    expect(((await res.json()) as { detail?: string }).detail).toBe("challenge verification failed");
   });
 });
 
@@ -127,6 +131,10 @@ describe("POST /v1/channels/:connectorId/webhook", () => {
       exec as never
     );
     expect(res.status).toBe(401);
+    // Same reasoning as the challenge case: only the adapter's HMAC check
+    // produces this detail, so the assertion pins the rejection to the
+    // signature rather than to a missing session.
+    expect(((await res.json()) as { detail?: string }).detail).toBe("bad whatsapp signature");
   });
 
   it("is 404 for an unknown connector", async () => {

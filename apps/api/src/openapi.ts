@@ -275,6 +275,16 @@ const HAND_WRITTEN: Op[] = [
   // Orbit. The AgentRoom Durable Object holds a conversation's in-memory turn
   // state and checkpoints it to orbit_messages/orbit_conversations (docs/02 §4).
   { method: "post", path: "/v1/orbit/conversations/{id}/turns", summary: "Append a turn to a conversation, checkpointed to orbit_messages", permission: "orbit:messages:send", tag: "orbit", requestBody: true },
+  { method: "post", path: "/v1/orbit/conversations/{id}/reply", summary: "Send a reply out over the conversation's channel connector", permission: "orbit:messages:send", tag: "orbit", requestBody: true },
+  // The inbound half of the same seam (routes/channels.ts, ADR-0037). Called by
+  // the provider, not by an integrator: the URL is pasted into Meta's or
+  // Mailgun's console, and the adapter's own HMAC check is the authentication —
+  // so both are public by shape (mw.ts `/v1/channels/*`), like /v1/portal/*.
+  // Documented rather than hidden because a tenant setting a connector up needs
+  // the callback URL, and the router-walk test in api.test.ts treats an
+  // undocumented /v1 route as an omission.
+  { method: "get", path: "/v1/channels/{connectorId}/webhook", summary: "Provider subscription handshake; echoes the challenge when the verify token matches", tag: "orbit", public: true },
+  { method: "post", path: "/v1/channels/{connectorId}/webhook", summary: "Provider webhook delivery: signature-verified inbound messages and delivery receipts", tag: "orbit", requestBody: true, public: true },
   { method: "post", path: "/v1/orbit/renewals/sweep", summary: "Force the renewal sweep now (also runs on the scheduled tick)", permission: "orbit:renewals:update", tag: "orbit" },
 
   // Signal. Brief in, N compliance-checked ar/en variants out — the

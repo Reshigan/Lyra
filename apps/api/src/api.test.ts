@@ -298,13 +298,17 @@ describe("openapi", () => {
     // session to authenticate against yet, which is the entire point of the
     // route (routes/onboarding.ts, mw.ts PUBLIC set). ADR-0030 adds a second:
     // the public comparison site has no session by design either
-    // (routes/portal.ts). Every other unauthenticated path here would be a
-    // real bug.
+    // (routes/portal.ts). ADR-0037 adds a third: a provider's webhook call
+    // carries no session and never will — the adapter's HMAC over the raw body
+    // is the authentication, and the connector id in the URL resolves the
+    // tenant (routes/channels.ts). Every other unauthenticated path here would
+    // be a real bug.
     const open = Object.entries(spec.paths)
       .filter(
         ([p]) =>
           !p.startsWith("/v1/auth") &&
           !p.startsWith("/v1/portal") &&
+          !p.startsWith("/v1/channels/") &&
           p !== "/health" &&
           p !== "/openapi.json" &&
           p !== "/v1/onboarding/partners/signup"

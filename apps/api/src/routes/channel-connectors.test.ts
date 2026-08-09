@@ -5,7 +5,7 @@ import { drizzle } from "drizzle-orm/libsql";
 import { eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import { seed } from "@lyra/core";
-import { id as newId, schema, type Db } from "@lyra/db";
+import { schema, type Db } from "@lyra/db";
 import { app } from "../index.js";
 import type { Env } from "../env.js";
 
@@ -47,26 +47,8 @@ beforeAll(async () => {
   await seed(database as never, {});
   env = { DB_CLIENT: database, FIELD_KEY, ENVIRONMENT: "development", APP_ORIGIN: "http://localhost:5173" } as unknown as Env;
 
-  // No seeded persona holds orbit:channels:write on its own: tenant.admin only
-  // gets `orbit:*:read` (packages/core/src/rbac.ts), and the three orbit
-  // personas seed.ts actually assigns (orbit.agent/orbit.retention/orbit.partners)
-  // don't include it either — only orbit.admin's `orbit:*:*` does, and no PEOPLE
-  // entry uses that role. seed.ts still provisions an `orbit.admin` roles row for
-  // the tenant (one per TENANT_ROLE_KEYS) even though nobody is assigned it, so
-  // grant it to the existing tenant.admin user directly, the same way sibling
-  // tests (channels.test.ts, axis-documents.test.ts) insert fixture rows
-  // straight into the schema rather than going through the seed/API surface.
-  const [orbitAdminRole] = await database.select().from(schema.roles).where(eq(schema.roles.key, "orbit.admin"));
-  const [tenantAdminUser] = await database.select().from(schema.users).where(eq(schema.users.email, "amina.saleh@gonxt.ae"));
-  await database.insert(schema.userRoles).values({
-    id: newId("ur", Date.now()),
-    tenantId: tenantAdminUser!.tenantId,
-    userId: tenantAdminUser!.id,
-    roleId: orbitAdminRole!.id,
-    scopeJson: null,
-    createdAt: Date.now()
-  });
-
+  // hind.saqr is seed.ts's orbit.admin persona — the only orbit role bundle
+  // carrying `orbit:*:*` (packages/core/src/rbac.ts), hence orbit:channels:write.
   // ENVIRONMENT is not "production", so the demo login door is open and this
   // resource-registration test doesn't need the full TOTP dance. Unlike
   // call(), this request carries no bearer token at all — /demo/login doesn't
@@ -75,7 +57,7 @@ beforeAll(async () => {
     new Request("http://api.test/v1/auth/demo/login", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: "amina.saleh@gonxt.ae" })
+      body: JSON.stringify({ email: "hind.saqr@gonxt.ae" })
     }),
     env as never,
     exec as never
@@ -106,6 +88,79 @@ describe("orbit.channel-connectors", () => {
 
     const read = await call(adminToken, "GET", `/v1/orbit/channel-connectors/${created.body.id}`);
     expect(read.body.secretsJson).toBeUndefined();
+  });
+
+  // crud.ts accepts every `*Json` column as an object as well as a string, so
+  // the object form is the idiomatic one — and the one that used to skip
+  // sealing entirely and store provider credentials in cleartext.
+  it("seals secretsJson posted as an object", async () => {
+    const created = await call(adminToken, "POST", "/v1/orbit/channel-connectors", {
+      provider: "whatsapp-cloud-api",
+      transport: "whatsapp",
+      label: "Object form",
+      secretsJson: { appSecret: "OBJECT_PLAINTEXT", accessToken: "OBJECT_TOKEN" },
+      configJson: { phoneNumberId: "pn_2" },
+      status: "active"
+    });
+    expect(created.status).toBe(201);
+
+    const [row] = await database
+      .select()
+      .from(schema.orbitChannelConnectors)
+      .where(eq(schema.orbitChannelConnectors.id, created.body.id));
+    expect(row!.secretsJson).not.toContain("OBJECT_PLAINTEXT");
+    expect(row!.secretsJson).not.toContain("OBJECT_TOKEN");
+    expect(row!.secretsJson).toContain("enc.v1.");
+  });
+
+  it("seals secretsJson patched as an object", async () => {
+    const created = await call(adminToken, "POST", "/v1/orbit/channel-connectors", {
+      provider: "whatsapp-cloud-api",
+      transport: "whatsapp",
+      label: "Patch target",
+      secretsJson: JSON.stringify({ appSecret: "initial" }),
+      configJson: "{}",
+      status: "active"
+    });
+    expect(created.status).toBe(201);
+
+    const patched = await call(adminToken, "PATCH", `/v1/orbit/channel-connectors/${created.body.id}`, {
+      secretsJson: { appSecret: "PATCH_OBJECT_PLAINTEXT" }
+    });
+    expect(patched.status).toBe(200);
+
+    const [row] = await database
+      .select()
+      .from(schema.orbitChannelConnectors)
+      .where(eq(schema.orbitChannelConnectors.id, created.body.id));
+    expect(row!.secretsJson).not.toContain("PATCH_OBJECT_PLAINTEXT");
+    expect(row!.secretsJson).toContain("enc.v1.");
+  });
+
+  it("rejects an array secretsJson", async () => {
+    const res = await call(adminToken, "POST", "/v1/orbit/channel-connectors", {
+      provider: "whatsapp-cloud-api",
+      transport: "whatsapp",
+      label: "Array",
+      secretsJson: ["ARRAY_PLAINTEXT"],
+      configJson: "{}",
+      status: "active"
+    });
+    expect(res.status).toBe(400);
+  });
+
+  // ConnectorSecrets is Record<string, string>; sealFields only seals strings,
+  // so a nested value would otherwise land in SQLite in the clear.
+  it("rejects a non-string secret value", async () => {
+    const res = await call(adminToken, "POST", "/v1/orbit/channel-connectors", {
+      provider: "whatsapp-cloud-api",
+      transport: "whatsapp",
+      label: "Nested",
+      secretsJson: { appSecret: "x", meta: { deep: "DEEP_PLAINTEXT" } },
+      configJson: "{}",
+      status: "active"
+    });
+    expect(res.status).toBe(400);
   });
 
   it("rejects malformed secretsJson", async () => {

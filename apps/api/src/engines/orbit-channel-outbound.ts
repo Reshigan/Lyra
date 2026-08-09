@@ -1,5 +1,5 @@
 import { id, schema } from "@lyra/db";
-import { badRequest, openFields, type ConnectorSecrets, type Ctx } from "@lyra/core";
+import { assertChannel, badRequest, openFields, type ConnectorSecrets, type Ctx } from "@lyra/core";
 import { fieldKey, type Env } from "../env.js";
 import { adapterFor } from "./orbit-channel-adapters.js";
 
@@ -21,6 +21,18 @@ export async function dispatchOutbound(
   if (!conversation.externalRef) throw badRequest("conversation has no channel address to reply to");
 
   const adapter = adapterFor(connector.provider);
+
+  // docs/12 §2: every outbound send checks consent at runtime. `consentChannel`
+  // is the seam that says which opt-in binds for this adapter (ADR-0038) —
+  // `marketing: false` because a reply is a service message, so the channel
+  // opt-in alone is enough and the marketing purpose is not required. A
+  // conversation with no linked customer (a web widget before identification)
+  // has nobody to check, and an adapter with a null consentChannel is one the
+  // consent model has no channel for.
+  if (conversation.customerId && adapter.consentChannel) {
+    await assertChannel(ctx, conversation.customerId, adapter.consentChannel, { marketing: false });
+  }
+
   const secrets = await openFields(fieldKey(env), JSON.parse(connector.secretsJson) as ConnectorSecrets);
   const config = JSON.parse(connector.configJson) as Record<string, unknown>;
 

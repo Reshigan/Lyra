@@ -99,6 +99,7 @@ const PEOPLE: ReadonlyArray<{ local: string; name: string; role: string; locale?
   { local: "sara.nasser", name: "Sara Al Nasser", role: "orbit.agent" },
   { local: "yusuf.karim", name: "Yusuf Karim", role: "orbit.retention" },
   { local: "dana.aziz", name: "Dana Aziz", role: "orbit.partners" },
+  { local: "hind.saqr", name: "Hind Saqr", role: "orbit.admin" },
   { local: "noor.jamal", name: "Noor Jamal", role: "signal.lead" },
   { local: "tariq.mansour", name: "Tariq Mansour", role: "scout.lead" },
   { local: "hala.zayed", name: "Hala Zayed", role: "north.exec" },

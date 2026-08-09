@@ -1,7 +1,8 @@
 import { eq, and } from "drizzle-orm";
 import { id, schema } from "@lyra/db";
-import type { Ctx, InboundEvent } from "@lyra/core";
+import { recordConsent, type Ctx, type InboundEvent } from "@lyra/core";
 import { isUniqueViolation } from "../crud.js";
+import { adapterFor } from "./orbit-channel-adapters.js";
 
 export type ChannelConnectorRow = typeof schema.orbitChannelConnectors.$inferSelect;
 
@@ -43,6 +44,26 @@ async function getOrCreateConversation(
       customerId,
       createdAt: ctx.now
     });
+
+    // docs/12 §2: a customer who opens the conversation has, by that act, opted
+    // in to being replied to on that channel — without this row the outbound
+    // gate 403s every reply. Only the channel the customer actually used, and no
+    // purposes: a reply is a service message, not marketing. New customers only,
+    // because consent rows are immutable and the latest wins, so re-granting on
+    // a returning handle would resurrect a revoked opt-in. `consentChannel` is
+    // the seam that binds a transport to a consent channel (ADR-0038) —
+    // `connector.transport` has values (`web`, `agent`) the consent model has no
+    // channel for.
+    const consentChannel = adapterFor(connector.provider).consentChannel;
+    if (consentChannel) {
+      await recordConsent(ctx, {
+        customerId,
+        purposes: {},
+        channels: { [consentChannel]: true },
+        source: "agent",
+        evidenceRef: `inbound:${connector.id}:${handle}`
+      });
+    }
   }
 
   const [conversation] = await ctx.db
