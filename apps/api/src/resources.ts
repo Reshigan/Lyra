@@ -442,7 +442,33 @@ export const ORBIT = register(
   r("qa-scores", schema.orbitQaScores, "qas", "orbit", {
     read: "orbit:qa:read",
     create: "orbit:qa:score"
-  }, { actorColumns: ["scoredBy"] })
+  }, { actorColumns: ["scoredBy"] }),
+  r("channel-connectors", schema.orbitChannelConnectors, "ccn", "orbit", {
+    read: "orbit:channels:read",
+    create: "orbit:channels:write",
+    update: "orbit:channels:write",
+    remove: "orbit:channels:write"
+  }, {
+    secretColumns: ["secretsJson"],
+    // Mirrors axis.documents' extractionJson precedent: the client posts
+    // plaintext secrets as a JSON string in the real secretsJson column
+    // (crud.ts's strict per-column schema has no room for a synthetic
+    // `secrets` field), beforeWrite seals every key before it lands in SQLite.
+    beforeWrite: async (_ctx, values, _existing, env) => {
+      if (typeof values.secretsJson !== "string") return values;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(values.secretsJson);
+      } catch {
+        throw badRequest("secretsJson is not valid JSON");
+      }
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw badRequest("secretsJson must be an object of provider secrets");
+      }
+      const sealed = await sealFields(fieldKey(env), parsed as Record<string, unknown>, Object.keys(parsed as object));
+      return { ...values, secretsJson: JSON.stringify(sealed) };
+    }
+  })
 );
 
 /* ------------------------------------------------------------------ signal */
