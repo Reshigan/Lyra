@@ -1,0 +1,133 @@
+import { eq, and } from "drizzle-orm";
+import { id, schema } from "@lyra/db";
+import type { Ctx, InboundEvent } from "@lyra/core";
+import { isUniqueViolation } from "../crud.js";
+
+export type ChannelConnectorRow = typeof schema.orbitChannelConnectors.$inferSelect;
+
+async function getOrCreateConversation(
+  ctx: Ctx,
+  connector: ChannelConnectorRow,
+  handle: string,
+  displayName: string | undefined
+): Promise<{ id: string; customerId: string }> {
+  const [identity] = await ctx.db
+    .select()
+    .from(schema.orbitChannelIdentities)
+    .where(
+      and(
+        eq(schema.orbitChannelIdentities.tenantId, ctx.tenantId),
+        eq(schema.orbitChannelIdentities.connectorId, connector.id),
+        eq(schema.orbitChannelIdentities.handle, handle)
+      )
+    );
+
+  let customerId: string;
+  if (identity) {
+    customerId = identity.customerId;
+  } else {
+    customerId = id("cus", ctx.now);
+    await ctx.db.insert(schema.customers).values({
+      id: customerId,
+      tenantId: ctx.tenantId,
+      type: "person",
+      nameJson: JSON.stringify({ en: displayName ?? handle }),
+      createdAt: ctx.now,
+      updatedAt: ctx.now
+    });
+    await ctx.db.insert(schema.orbitChannelIdentities).values({
+      id: id("cid", ctx.now),
+      tenantId: ctx.tenantId,
+      connectorId: connector.id,
+      handle,
+      customerId,
+      createdAt: ctx.now
+    });
+  }
+
+  const [conversation] = await ctx.db
+    .select()
+    .from(schema.orbitConversations)
+    .where(
+      and(
+        eq(schema.orbitConversations.tenantId, ctx.tenantId),
+        eq(schema.orbitConversations.customerId, customerId),
+        eq(schema.orbitConversations.connectorId, connector.id),
+        eq(schema.orbitConversations.state, "bot")
+      )
+    );
+  if (conversation) return { id: conversation.id, customerId };
+
+  const conversationId = id("cnv", ctx.now);
+  await ctx.db.insert(schema.orbitConversations).values({
+    id: conversationId,
+    tenantId: ctx.tenantId,
+    customerId,
+    channel: connector.transport,
+    externalRef: handle,
+    connectorId: connector.id,
+    state: "bot",
+    lastMessageAt: ctx.now,
+    createdAt: ctx.now,
+    updatedAt: ctx.now
+  });
+  return { id: conversationId, customerId };
+}
+
+/**
+ * Turns parsed `InboundEvent[]` (from any `ChannelAdapter`) into DB state:
+ * resolve/create a customer + channel identity for a handle, resolve/create
+ * a conversation, insert the message, or update delivery status on a
+ * receipt. Redelivered webhooks are de-duped by `externalRef` via the
+ * `orbit_messages_ext_uq` unique index — a violation on insert means "already
+ * processed", counted as skipped rather than an error.
+ */
+export async function processChannelEvents(
+  ctx: Ctx,
+  connector: ChannelConnectorRow,
+  events: InboundEvent[]
+): Promise<{ processed: number; skipped: number }> {
+  let processed = 0;
+  let skipped = 0;
+
+  for (const event of events) {
+    if (event.kind === "ignored") {
+      skipped++;
+      continue;
+    }
+
+    if (event.kind === "status") {
+      await ctx.db
+        .update(schema.orbitMessages)
+        .set({ deliveryStatus: event.receipt.status })
+        .where(and(eq(schema.orbitMessages.tenantId, ctx.tenantId), eq(schema.orbitMessages.externalRef, event.receipt.externalRef)));
+      processed++;
+      continue;
+    }
+
+    const conversation = await getOrCreateConversation(ctx, connector, event.message.handle, event.message.displayName);
+    try {
+      await ctx.db.insert(schema.orbitMessages).values({
+        id: id("msg", ctx.now),
+        tenantId: ctx.tenantId,
+        conversationId: conversation.id,
+        role: "customer",
+        modality: event.message.modality,
+        content: event.message.text,
+        attachmentsJson: event.message.media ? JSON.stringify(event.message.media) : null,
+        externalRef: event.message.externalRef,
+        ts: event.message.sentAt
+      });
+      await ctx.db
+        .update(schema.orbitConversations)
+        .set({ lastMessageAt: event.message.sentAt, updatedAt: ctx.now })
+        .where(eq(schema.orbitConversations.id, conversation.id));
+      processed++;
+    } catch (err) {
+      if (!isUniqueViolation(err)) throw err;
+      skipped++;
+    }
+  }
+
+  return { processed, skipped };
+}
