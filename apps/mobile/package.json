@@ -21,6 +21,7 @@
     "@expo/vector-icons": "^15.0.2",
     "expo": "~55.0.28",
     "expo-constants": "~55.0.17",
+    "expo-image-picker": "~55.0.0",
     "expo-linking": "~55.0.16",
     "expo-local-authentication": "~55.0.10",
     "expo-localization": "~55.0.17",

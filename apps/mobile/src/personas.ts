@@ -6,6 +6,9 @@ export interface TabConfig {
   icon: string;
   /** A `RESOURCE_BY_HREF` value from nav.ts — the tab's Redirect target is `/m/${screen}`. */
   screen: string;
+  /** A purpose-built journey screen under `app/j/`, used instead of the generic
+   *  list when one exists. `screen` stays as the fallback it replaces. */
+  route?: string;
 }
 
 const HOME_TAB: TabConfig = { labelKey: "nav.home", icon: "home", screen: "core/users" };
@@ -14,12 +17,12 @@ export const PERSONA_TABS: Record<Workspace, TabConfig[]> = {
   axis: [
     { labelKey: "tab.queue", icon: "list", screen: "axis/cases" },
     { labelKey: "tab.sla", icon: "time", screen: "axis/cases" },
-    { labelKey: "tab.cases", icon: "briefcase", screen: "axis/cases" }
+    { labelKey: "tab.capture", icon: "camera", screen: "axis/cases", route: "/j/capture" }
   ],
   orbit: [
-    { labelKey: "tab.inbox", icon: "chatbubbles", screen: "orbit/conversations" },
+    { labelKey: "tab.inbox", icon: "chatbubbles", screen: "orbit/conversations", route: "/j/threads" },
     { labelKey: "tab.renewals", icon: "refresh", screen: "orbit/conversations" },
-    { labelKey: "tab.approvals", icon: "checkmark-circle", screen: "orbit/conversations" }
+    { labelKey: "tab.approvals", icon: "checkmark-circle", screen: "orbit/conversations", route: "/j/approvals" }
   ],
   signal: [
     { labelKey: "tab.campaigns", icon: "megaphone", screen: "signal/campaigns" },
@@ -32,12 +35,12 @@ export const PERSONA_TABS: Record<Workspace, TabConfig[]> = {
     { labelKey: "tab.panel", icon: "people", screen: "scout/signals" }
   ],
   north: [
-    { labelKey: "tab.brief", icon: "sunny", screen: "north/metrics" },
+    { labelKey: "tab.brief", icon: "sunny", screen: "north/metrics", route: "/j/brief" },
     { labelKey: "tab.decisions", icon: "git-branch", screen: "north/metrics" },
     { labelKey: "tab.boardpack", icon: "bar-chart", screen: "north/metrics" }
   ],
   admin: [
-    { labelKey: "tab.approvals", icon: "checkmark-done", screen: "core/users" },
+    { labelKey: "tab.approvals", icon: "checkmark-done", screen: "core/users", route: "/j/approvals" },
     { labelKey: "tab.staff", icon: "people", screen: "core/users" },
     { labelKey: "nav.settings", icon: "settings", screen: "core/users" }
   ],

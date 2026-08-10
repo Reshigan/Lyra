@@ -296,6 +296,24 @@ export const listRows = (
     { token, ...(signal ? { signal } : {}) }
   );
 
+/** A sorted or filtered read of the same collection. The caller owns the query
+ *  because sort keys are per-resource (`date` for briefings, `detectedAt` for
+ *  anomalies); the shape of the answer is identical. */
+export const queryRows = (
+  token: string,
+  resource: string,
+  params: Record<string, string | number>,
+  signal?: AbortSignal
+): Promise<Page<Row>> => {
+  const query = Object.entries(params)
+    .map(([key, value]) => `${key}=${encodeURIComponent(String(value))}`)
+    .join("&");
+  return request<Page<Row>>(`/v1/${resource}${query ? `?${query}` : ""}`, {
+    token,
+    ...(signal ? { signal } : {})
+  });
+};
+
 export const getRow = (
   token: string,
   resource: string,
@@ -315,7 +333,7 @@ export const getRow = (
 // the permission, the approval gate and the audit row (CLAUDE.md rules 3, 4).
 
 /** One approval waiting on the signed-in user (apps/api/src/routes/me.ts). */
-export interface Approval {
+export interface Approval extends Row {
   id: string;
   policyKey: string;
   status: string;
@@ -325,7 +343,7 @@ export interface Approval {
   createdAt: number;
 }
 
-export interface Notification {
+export interface Notification extends Row {
   id: string;
   kind: string;
   title: string;

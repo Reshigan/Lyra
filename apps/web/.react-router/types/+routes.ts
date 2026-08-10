@@ -25,6 +25,17 @@ type Pages = {
       "tenantSlug": string;
     };
   };
+  "/portal/:tenantSlug/privacy": {
+    params: {
+      "tenantSlug": string;
+    };
+  };
+  "/portal/:tenantSlug/quotes/:id": {
+    params: {
+      "tenantSlug": string;
+      "id": string;
+    };
+  };
   "/settings": {
     params: {};
   };
@@ -300,7 +311,7 @@ type Pages = {
 type RouteFiles = {
   "root.tsx": {
     id: "root";
-    page: "/" | "/login" | "/logout" | "/portal/:tenantSlug" | "/settings" | "/approvals" | "/admin/ai/console" | "/admin/ai/budget" | "/admin/ai/runs/:id" | "/admin/cost-explorer" | "/ledger/reports/:report" | "/ledger/money-map" | "/ledger/transactions" | "/ledger/transactions/:id" | "/ledger/period-close" | "/ledger/statement" | "/ledger/recon" | "/analytics/report/:id" | "/analytics/dashboard/:id" | "/distribution/quote-requests/:id/compare" | "/orbit/conversations/:id/thread" | "/distribution/commission-entries/statement" | "/distribution/commission-entries/:id/clawback" | "/distribution/next-best-offers/suggest" | "/compliance/run/:kind" | "/ledger/settlement" | "/ledger/settlements/:id" | "/admin/permissions" | "/admin/developer" | "/admin/security" | "/admin/staff" | "/admin/staff/:id" | "/platform" | "/search" | "/search/results" | "/onboarding/:kind/:ref" | "/orbit/console" | "/orbit/save" | "/orbit/pipeline" | "/orbit/quality" | "/orbit/analytics" | "/north/brief" | "/scout/radar" | "/scout/panel" | "/axis/exceptions" | "/axis/board" | "/axis/quote-desk" | "/axis/doc-intelligence" | "/axis/documents/:id/file" | "/axis/analytics" | "/axis/admin" | "/axis/dev" | "/axis/process-map" | "/axis/claims/new" | "/axis/claims/desk" | "/axis/renewals" | "/signal/cockpit" | "/signal/studio" | "/signal/audience-value" | "/signal/answer-engines" | "/signal/budget" | "/signal/analytics" | "/admin/customers/:id/360" | "/admin/products/:id/detail" | "/axis/policies/:id/detail" | "/axis/policies/:id/endorse" | "/axis/policies/:id/cancel" | "/axis/claims/:id/detail" | "/axis/cases/:id/evidence-bundles/:bundleId/download" | "/axis/cases/:id/detail" | "/distribution/channels/:id/detail" | "/orbit/journeys/:id/builder" | "/:module" | "/:module/:resource" | "/:module/:resource/:id";
+    page: "/" | "/login" | "/logout" | "/portal/:tenantSlug" | "/portal/:tenantSlug/privacy" | "/portal/:tenantSlug/quotes/:id" | "/settings" | "/approvals" | "/admin/ai/console" | "/admin/ai/budget" | "/admin/ai/runs/:id" | "/admin/cost-explorer" | "/ledger/reports/:report" | "/ledger/money-map" | "/ledger/transactions" | "/ledger/transactions/:id" | "/ledger/period-close" | "/ledger/statement" | "/ledger/recon" | "/analytics/report/:id" | "/analytics/dashboard/:id" | "/distribution/quote-requests/:id/compare" | "/orbit/conversations/:id/thread" | "/distribution/commission-entries/statement" | "/distribution/commission-entries/:id/clawback" | "/distribution/next-best-offers/suggest" | "/compliance/run/:kind" | "/ledger/settlement" | "/ledger/settlements/:id" | "/admin/permissions" | "/admin/developer" | "/admin/security" | "/admin/staff" | "/admin/staff/:id" | "/platform" | "/search" | "/search/results" | "/onboarding/:kind/:ref" | "/orbit/console" | "/orbit/save" | "/orbit/pipeline" | "/orbit/quality" | "/orbit/analytics" | "/north/brief" | "/scout/radar" | "/scout/panel" | "/axis/exceptions" | "/axis/board" | "/axis/quote-desk" | "/axis/doc-intelligence" | "/axis/documents/:id/file" | "/axis/analytics" | "/axis/admin" | "/axis/dev" | "/axis/process-map" | "/axis/claims/new" | "/axis/claims/desk" | "/axis/renewals" | "/signal/cockpit" | "/signal/studio" | "/signal/audience-value" | "/signal/answer-engines" | "/signal/budget" | "/signal/analytics" | "/admin/customers/:id/360" | "/admin/products/:id/detail" | "/axis/policies/:id/detail" | "/axis/policies/:id/endorse" | "/axis/policies/:id/cancel" | "/axis/claims/:id/detail" | "/axis/cases/:id/evidence-bundles/:bundleId/download" | "/axis/cases/:id/detail" | "/distribution/channels/:id/detail" | "/orbit/journeys/:id/builder" | "/:module" | "/:module/:resource" | "/:module/:resource/:id";
   };
   "routes/login.tsx": {
     id: "routes/login";
@@ -313,6 +324,14 @@ type RouteFiles = {
   "routes/portal.$tenantSlug.tsx": {
     id: "routes/portal.$tenantSlug";
     page: "/portal/:tenantSlug";
+  };
+  "routes/portal.$tenantSlug.privacy.tsx": {
+    id: "routes/portal.$tenantSlug.privacy";
+    page: "/portal/:tenantSlug/privacy";
+  };
+  "routes/portal.$tenantSlug.quotes.$id.tsx": {
+    id: "routes/portal.$tenantSlug.quotes.$id";
+    page: "/portal/:tenantSlug/quotes/:id";
   };
   "routes/workspace.tsx": {
     id: "routes/workspace";
@@ -612,6 +631,8 @@ type RouteModules = {
   "routes/login": typeof import("./app/routes/login.tsx");
   "routes/logout": typeof import("./app/routes/logout.tsx");
   "routes/portal.$tenantSlug": typeof import("./app/routes/portal.$tenantSlug.tsx");
+  "routes/portal.$tenantSlug.privacy": typeof import("./app/routes/portal.$tenantSlug.privacy.tsx");
+  "routes/portal.$tenantSlug.quotes.$id": typeof import("./app/routes/portal.$tenantSlug.quotes.$id.tsx");
   "routes/workspace": typeof import("./app/routes/workspace.tsx");
   "routes/home": typeof import("./app/routes/home.tsx");
   "routes/settings": typeof import("./app/routes/settings.tsx");

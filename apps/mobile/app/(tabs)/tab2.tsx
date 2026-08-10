@@ -10,5 +10,5 @@ export default function Tab2() {
   if (session.status !== "signedIn") return <Redirect href="/login" />;
   const tab = tabsFor(session.persona.workspace, session.persona.variant)[1];
   if (!tab) return <Redirect href="/(tabs)/more" />;
-  return <Redirect href={`/m/${tab.screen}`} />;
+  return <Redirect href={tab.route ?? `/m/${tab.screen}`} />;
 }

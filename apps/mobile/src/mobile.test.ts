@@ -578,7 +578,7 @@ describe("persona tab config", () => {
     expect(tabsFor("axis", "default").map((tab) => tab.labelKey)).toEqual([
       "tab.queue",
       "tab.sla",
-      "tab.cases"
+      "tab.capture"
     ]);
   });
 
