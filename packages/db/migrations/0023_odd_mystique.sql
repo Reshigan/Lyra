@@ -1,0 +1,1 @@
+ALTER TABLE `compliance_dsar_requests` ADD `subject_note` text;

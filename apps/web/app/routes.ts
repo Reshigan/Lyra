@@ -10,6 +10,7 @@ export default [
   route("login", "routes/login.tsx"),
   route("logout", "routes/logout.tsx"),
   route("portal/:tenantSlug", "routes/portal.$tenantSlug.tsx"),
+  route("portal/:tenantSlug/privacy", "routes/portal.$tenantSlug.privacy.tsx"),
   layout("routes/workspace.tsx", [
     index("routes/home.tsx"),
 

@@ -15,6 +15,9 @@ export const dsarRequests = sqliteTable(
     type: text("type").notNull(), // access|erasure|rectification|portability|objection|restriction
     channel: text("channel").notNull(), // portal|email|whatsapp|regulator
     verificationRef: text("verification_ref"),
+    /** The subject's own words from the J-C4 portal intake — a rectification or
+     * objection is unusable without them. PII: treat as the request body it is. */
+    subjectNote: text("subject_note"),
     state: text("state").notNull().default("received"),
     // received|verifying|in_progress|awaiting_legal|fulfilled|refused|expired
     dueAt: integer("due_at").notNull(),

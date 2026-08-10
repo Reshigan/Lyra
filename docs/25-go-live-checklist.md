@@ -382,13 +382,21 @@ ledger nav gap; the other module rows need a real pass, not a memory recall.
       no `@accept:Mx` was invented for them. Verified via `npx playwright
       test --grep "@journey" --list` (29/29 tests matched, was 0) and the
       same per `@accept:M0` through `@accept:M6` (4/5/3/7/3/3/4, was 0 each).
-      J-C1 (public quick quote) and J-C4 (privacy/DSAR portal) stay without a
-      browser e2e spec **by decision, not oversight** — ADR-0041 ships both
-      journeys staff-mediated for v1, so the self-serve flows a spec would
-      drive (customer-side document upload, PSP payment, public DSAR intake)
-      do not exist to be driven. Integration coverage of the parts that do
-      exist is in `apps/api/src/journeys.test.ts`; the e2e specs land with the
-      self-serve steps, which are backlog.
+      **J-C4 CLOSED 2026-08-10**: ADR-0041's deferral conflated intake with
+      fulfilment. ADR-0042 supersedes it — `POST
+      /v1/portal/:tenantSlug/privacy-requests` plus
+      `/portal/:tenantSlug/privacy` (en+ar, linked from the storefront
+      footer) let the data subject lodge the request themselves; the row
+      lands `state: "received"`, `verificationRef: null` and every
+      fulfilment step stays behind `tenant.compliance` staff, because
+      `IdentityVerifier` is still unimplemented. Covered by
+      `e2e/privacy-portal.spec.ts` (`@journey:J-C4 @accept:M6`), including
+      the non-enumeration property, and by 4 cases in
+      `apps/api/src/portal.test.ts`. J-C1 remains the open one — its
+      self-serve half (public ranked offers, customer document upload) is in
+      build; the payment step stays behind the `Channel`-style seam with a
+      manual method, since no PSP merchant account is contracted (docs/02
+      §9) and that is a credential blocker, not a code one.
       **BLOCKER found 2026-07-31, FIXED same day**: `pnpm e2e` could not boot
       — Playwright's `webServer` step (`pnpm --filter @lyra/api start` → `tsx
       src/node.ts`) crashed with `ERR_UNSUPPORTED_ESM_URL_SCHEME` on

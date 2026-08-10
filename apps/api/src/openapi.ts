@@ -388,6 +388,7 @@ const HAND_WRITTEN: Op[] = [
   // both are public by shape (mw.ts `/v1/portal/*`).
   { method: "get", path: "/v1/portal/{tenantSlug}/site", summary: "A tenant's public storefront: brand and active products", tag: "portal", public: true },
   { method: "post", path: "/v1/portal/{tenantSlug}/leads", summary: "Submit a quote lead from the public storefront; rate-limited per email", tag: "portal", requestBody: true, public: true },
+  { method: "post", path: "/v1/portal/{tenantSlug}/privacy-requests", summary: "Data subject lodges an access/erasure/rectification request (J-C4); recorded unverified, staff verify before fulfilment", tag: "portal", requestBody: true, public: true },
 
   // Cross-resource search (routes/search.ts, docs/24 Phase 2 item 10). Fans out
   // over every registered resource's searchable columns, filtered again by the

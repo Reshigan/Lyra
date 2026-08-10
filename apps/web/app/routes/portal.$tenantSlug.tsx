@@ -37,6 +37,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "portal.form.error.validation": "Check the highlighted fields and try again.",
     "portal.form.error.throttled": "Too many requests from this email — try again later.",
     "portal.form.error.generic": "Something went wrong. Please try again.",
+    "portal.privacy": "Your privacy rights",
     "line.motor": "Motor",
     "line.health": "Health",
     "line.travel": "Travel",
@@ -62,6 +63,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "portal.form.error.validation": "تحقق من الحقول المحددة وحاول مرة أخرى.",
     "portal.form.error.throttled": "طلبات كثيرة من هذا البريد — حاول لاحقًا.",
     "portal.form.error.generic": "حدث خطأ ما. حاول مرة أخرى.",
+    "portal.privacy": "حقوقك في الخصوصية",
     "line.motor": "السيارات",
     "line.health": "الصحة",
     "line.travel": "السفر",
@@ -141,7 +143,7 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 }
 
 export default function Portal() {
-  const { locale, site } = useLoaderData<typeof loader>();
+  const { locale, tenantSlug, site } = useLoaderData<typeof loader>();
   const result = useActionData<ActionData>();
   const navigation = useNavigation();
   const l = labeller(locale);
@@ -218,6 +220,14 @@ export default function Portal() {
           })}
         </div>
       )}
+
+      {/* J-C4's door has to be findable from the public site, or the right is
+          theoretical. */}
+      <footer className="mt-10 border-t border-border pt-4 text-13">
+        <a className="text-accent underline" href={`/portal/${tenantSlug}/privacy`}>
+          {l("portal.privacy")}
+        </a>
+      </footer>
     </main>
   );
 }

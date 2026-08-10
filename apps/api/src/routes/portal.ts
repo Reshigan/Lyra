@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, eq } from "drizzle-orm";
+import { and, eq, like } from "drizzle-orm";
 import { z } from "zod";
 import { id as newId, schema, BrandJson, EntitlementsJson, PolicyJson } from "@lyra/db";
 import { audit, emit, notFound, recordConsent, sha256Hex } from "@lyra/core";
@@ -225,4 +225,119 @@ portalRoutes.post("/:tenantSlug/leads", async (c) => {
   });
 
   return c.json({ quoteRequestId: quoteRequestRow.id }, 201);
+});
+
+// ---------------------------------------------------------------------------
+// J-C4 privacy rights (docs/06 §J-C4, docs/12 §Rights). ADR-0042 supersedes
+// ADR-0041's staff-mediated intake: the data subject starts their own clock.
+//
+// What deliberately does NOT happen here: verification. docs/12 states no
+// verification method and `IdentityVerifier` (packages/core/src/seams.ts, H5)
+// has no implementation, so the row lands unverified — `verificationRef: null`,
+// state `received` — and `tenant.compliance` staff verify before anything is
+// packaged or erased. An intake that verified nothing but claimed it had would
+// be worse than one that is honest about the gap.
+
+const DSAR_MAX = 3;
+const DSAR_IP_MAX = 10;
+// The tenant's own service target, matching packages/core/src/seed/compliance.ts:
+// docs/12 does not state a statutory period, so this does not invent one.
+const DSAR_DUE_DAYS = 30;
+
+const PrivacyRequestBody = z
+  .object({
+    type: z.enum(["access", "erasure", "rectification", "portability", "objection", "restriction"]),
+    email: z.string().email(),
+    name: z.string().max(200).optional(),
+    details: z.string().max(2000).optional()
+  })
+  .strict();
+
+// Best-effort link to an existing record. A miss is not an error and not
+// disclosed: an unmatched request is still a request, and the response must
+// look identical either way or the portal becomes a customer-enumeration oracle.
+async function customerIdForEmail(
+  database: ReturnType<typeof rawDb>,
+  tenantId: string,
+  email: string
+): Promise<string | null> {
+  const candidates = await database
+    .select()
+    .from(schema.customers)
+    .where(and(eq(schema.customers.tenantId, tenantId), like(schema.customers.emailsJson, `%${email}%`)))
+    .limit(20);
+  // `_` is a legal email character and a LIKE wildcard, so the SQL narrows and
+  // this exact-matches.
+  const hit = candidates.find((row) => {
+    if (!row.emailsJson) return false;
+    const parsed: unknown = JSON.parse(row.emailsJson);
+    return Array.isArray(parsed) && parsed.some((e) => typeof e === "string" && e.toLowerCase() === email);
+  });
+  return hit?.id ?? null;
+}
+
+portalRoutes.post("/:tenantSlug/privacy-requests", async (c) => {
+  const now = Date.now();
+  const input = await body(c, PrivacyRequestBody);
+  const email = input.email.toLowerCase();
+  await throttle(c.env, `portal-dsar:${email}`, DSAR_MAX, LEAD_WINDOW_SEC);
+  const ip = c.req.header("cf-connecting-ip");
+  if (ip) await throttle(c.env, `portal-dsar-ip:${ip}`, DSAR_IP_MAX, LEAD_WINDOW_SEC);
+
+  const database = rawDb(c.env);
+  const tenant = await activeTenant(database, c.req.param("tenantSlug"));
+  const customerId = await customerIdForEmail(database, tenant.id, email);
+
+  const ctx = await ctxFor(
+    c.env,
+    {
+      tenantId: tenant.id,
+      locale: "en",
+      actor: { kind: "system", id: "portal-dsar", tenantId: tenant.id, grants: [] },
+      policy: PolicyJson.parse({}),
+      entitlements: EntitlementsJson.parse({})
+    },
+    now,
+    ip,
+    c.req.header("user-agent")
+  );
+
+  const dueAt = now + DSAR_DUE_DAYS * 24 * 60 * 60 * 1000;
+  const requestRow = {
+    id: newId("dsr", now),
+    tenantId: tenant.id,
+    customerId,
+    subjectIdentifier: email,
+    type: input.type,
+    channel: "portal" as const,
+    verificationRef: null as string | null,
+    subjectNote: [input.name ? `Name given: ${input.name}` : null, input.details ?? null]
+      .filter(Boolean)
+      .join("\n") || null,
+    state: "received" as const,
+    dueAt,
+    fulfilledAt: null as number | null,
+    refusalReason: null as string | null,
+    bundleFileId: null as string | null,
+    completenessProofJson: null as string | null,
+    handledBy: null as string | null,
+    createdAt: now,
+    updatedAt: now
+  };
+  await ctx.db.insert(schema.dsarRequests).values(requestRow);
+  await audit(ctx, {
+    action: "compliance.dsar-requests.create",
+    subjectRef: `dsar-requests:${requestRow.id}`,
+    after: requestRow
+  });
+  await emit(ctx, {
+    module: "compliance",
+    type: "compliance.dsar-requests.created",
+    subject: requestRow.id,
+    data: { id: requestRow.id, type: requestRow.type, via: "portal" }
+  });
+
+  // 202, not 201: what was accepted is the request, not the outcome — nothing
+  // is packaged or erased until a human verifies the subject.
+  return c.json({ reference: requestRow.id, dueAt }, 202);
 });

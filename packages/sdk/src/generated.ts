@@ -632,6 +632,7 @@ export interface ComplianceDsarRequests {
   type: string;
   channel: string;
   verificationRef?: string;
+  subjectNote?: string;
   state?: string;
   dueAt: number;
   fulfilledAt?: number;
@@ -2732,6 +2733,7 @@ export interface Operations {
   "GET /v1/platform/ops/overview": Op<never, never, never, Record<string, unknown>>;
   "GET /v1/platform/slo": Op<never, never, never, Record<string, unknown>>;
   "POST /v1/portal/{tenantSlug}/leads": Op<{ tenantSlug: string }, never, Record<string, unknown>, Record<string, unknown>>;
+  "POST /v1/portal/{tenantSlug}/privacy-requests": Op<{ tenantSlug: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/portal/{tenantSlug}/site": Op<{ tenantSlug: string }, never, never, Record<string, unknown>>;
   "GET /v1/realtime": Op<never, never, never, Record<string, unknown>>;
   "GET /v1/scout/clusters": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<ScoutClusters>>;
@@ -3385,6 +3387,7 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "GET /v1/platform/ops/overview": { tag: "platform", summary: "Outbox backlog, DLQ depth and pending approvals, per tenant", permission: "admin:diagnostics:read", public: false },
   "GET /v1/platform/slo": { tag: "platform", summary: "Every SLO definition with its actual and burn percent over its window", permission: "admin:diagnostics:read", public: false },
   "POST /v1/portal/{tenantSlug}/leads": { tag: "portal", summary: "Submit a quote lead from the public storefront; rate-limited per email", permission: null, public: true },
+  "POST /v1/portal/{tenantSlug}/privacy-requests": { tag: "portal", summary: "Data subject lodges an access/erasure/rectification request (J-C4); recorded unverified, staff verify before fulfilment", permission: null, public: true },
   "GET /v1/portal/{tenantSlug}/site": { tag: "portal", summary: "A tenant's public storefront: brand and active products", permission: null, public: true },
   "GET /v1/realtime": { tag: "realtime", summary: "Server-Sent Events stream of the caller's own live updates", permission: null, public: false },
   "GET /v1/scout/clusters": { tag: "scout", summary: "List clusters", permission: "scout:clusters:read", public: false },

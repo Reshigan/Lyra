@@ -248,3 +248,119 @@ describe("POST /v1/portal/:tenantSlug/leads", () => {
     expect(wrongProduct.status).toBe(404);
   });
 });
+
+// J-C4 "Exercise privacy rights: portal request (access/erasure) -> automated
+// package/erasure workflow -> confirmation" (docs/06). ADR-0041 shipped the
+// intake staff-mediated; ADR-0042 supersedes it with this public door. The
+// verification step stays where it was — staff, then `verificationRef` — because
+// docs/12 states no verification method and IdentityVerifier has no
+// implementation; what changes is that the subject can now start the clock
+// themselves.
+describe("POST /v1/portal/:tenantSlug/privacy-requests", () => {
+  const DAY = 24 * 60 * 60 * 1000;
+
+  it("records a received DSAR against the matching customer and starts the 30-day clock", async () => {
+    kv.store.clear();
+    const before = Date.now();
+    const res = await call("POST", "/v1/portal/gonxt/privacy-requests", {
+      type: "access",
+      email: "jamie.visitor@example.com",
+      name: "Jamie Visitor",
+      details: "Please send everything you hold."
+    });
+    expect(res.status).toBe(202);
+    expect(res.body.reference).toBeTruthy();
+
+    const [row] = await database
+      .select()
+      .from(schema.dsarRequests)
+      .where(eq(schema.dsarRequests.id, res.body.reference));
+    expect(row!.type).toBe("access");
+    expect(row!.state).toBe("received");
+    expect(row!.channel).toBe("portal");
+    // Nobody has proved who they are yet — that is the staff step, and leaving
+    // this null is what keeps the queue honest.
+    expect(row!.verificationRef).toBeNull();
+    expect(row!.subjectIdentifier).toBe("jamie.visitor@example.com");
+    expect(row!.dueAt).toBeGreaterThanOrEqual(before + 30 * DAY);
+    // What the subject actually wrote survives — a rectification or objection is
+    // unusable without it.
+    expect(row!.subjectNote).toContain("Please send everything you hold.");
+    expect(row!.subjectNote).toContain("Jamie Visitor");
+    // The lead tests above created this customer, so the request links to them.
+    expect(row!.customerId).toBeTruthy();
+
+    const auditRows = await database.select().from(schema.auditLog);
+    expect(auditRows.some((a) => a.subjectRef === `dsar-requests:${row!.id}`)).toBe(true);
+  });
+
+  it("answers an unknown subject exactly like a known one, so the portal cannot be used to enumerate customers", async () => {
+    kv.store.clear();
+    const known = await call("POST", "/v1/portal/gonxt/privacy-requests", {
+      type: "erasure",
+      email: "repeat.visitor@example.com"
+    });
+    kv.store.clear();
+    const unknown = await call("POST", "/v1/portal/gonxt/privacy-requests", {
+      type: "erasure",
+      email: "nobody-here@example.com"
+    });
+    expect(unknown.status).toBe(known.status);
+    expect(Object.keys(unknown.body).sort()).toEqual(Object.keys(known.body).sort());
+
+    const [row] = await database
+      .select()
+      .from(schema.dsarRequests)
+      .where(eq(schema.dsarRequests.id, unknown.body.reference));
+    // Still recorded — an unmatched identifier is a staff problem, not a reason
+    // to drop a rights request on the floor.
+    expect(row!.customerId).toBeNull();
+    expect(row!.state).toBe("received");
+  });
+
+  it("throttles by email and by IP", async () => {
+    kv.store.clear();
+    const payload = { type: "access" as const, email: "dsar-spam@example.com" };
+    for (let i = 0; i < 3; i++) await call("POST", "/v1/portal/gonxt/privacy-requests", payload);
+    expect((await call("POST", "/v1/portal/gonxt/privacy-requests", payload)).status).toBe(429);
+
+    kv.store.clear();
+    const ip = "203.0.113.44";
+    for (let i = 0; i < 10; i++) {
+      await call(
+        "POST",
+        "/v1/portal/gonxt/privacy-requests",
+        { type: "access", email: `dsar-rotating-${i}@example.com` },
+        { "cf-connecting-ip": ip }
+      );
+    }
+    const rotated = await call(
+      "POST",
+      "/v1/portal/gonxt/privacy-requests",
+      { type: "access", email: "dsar-rotating-final@example.com" },
+      { "cf-connecting-ip": ip }
+    );
+    expect(rotated.status).toBe(429);
+  });
+
+  it("rejects an unknown right or a malformed email, and 404s an unknown tenant", async () => {
+    kv.store.clear();
+    const badType = await call("POST", "/v1/portal/gonxt/privacy-requests", {
+      type: "delete-everything",
+      email: "someone@example.com"
+    });
+    expect(badType.status).toBe(400);
+
+    const badEmail = await call("POST", "/v1/portal/gonxt/privacy-requests", {
+      type: "access",
+      email: "not-an-email"
+    });
+    expect(badEmail.status).toBe(400);
+
+    const noTenant = await call("POST", "/v1/portal/does-not-exist/privacy-requests", {
+      type: "access",
+      email: "someone@example.com"
+    });
+    expect(noTenant.status).toBe(404);
+  });
+});
