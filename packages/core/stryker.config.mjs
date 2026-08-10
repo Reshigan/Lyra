@@ -37,7 +37,11 @@ export default {
     "packages/db/src",
     "docs",
     "infra",
-    "e2e"
+    "e2e",
+    // Playwright writes and deletes trace files here while a run is in flight;
+    // the sandbox copy races them and dies on ENOENT. Nothing here is mutated.
+    "test-results",
+    "reports"
   ],
   // A whole-tree run is 14,277 mutants — ~10h on a CI runner, past the job
   // ceiling, so the gate was killed every time and reported nothing. With
