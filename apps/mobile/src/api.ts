@@ -40,6 +40,7 @@ export class NetworkError extends Error {
 export interface RequestOptions {
   token?: string | null;
   method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
+  /** JSON unless it is a FormData, which goes over the wire as multipart. */
   body?: unknown;
   signal?: AbortSignal;
 }
@@ -68,7 +69,10 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   const { token, method = "GET", body, signal } = options;
   const headers: Record<string, string> = { accept: "application/json" };
   if (token) headers.authorization = `Bearer ${token}`;
-  if (body !== undefined) headers["content-type"] = "application/json";
+  // A FormData carries its own multipart boundary; naming a content-type here
+  // would produce a body the server cannot parse.
+  const multipart = typeof FormData !== "undefined" && body instanceof FormData;
+  if (body !== undefined && !multipart) headers["content-type"] = "application/json";
 
   // Manual timeout rather than AbortSignal.timeout/any: boring, and it works
   // on Hermes as well as in Node. The caller's own signal is followed too.
@@ -83,7 +87,9 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     response = await fetch(new URL(path, API_BASE).toString(), {
       method,
       headers,
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      ...(body === undefined
+        ? {}
+        : { body: multipart ? (body as FormData) : JSON.stringify(body) }),
       signal: controller.signal
     });
   } catch (cause) {
@@ -300,3 +306,99 @@ export const getRow = (
     token,
     ...(signal ? { signal } : {})
   });
+
+/* ------------------------------------------------------------ write calls */
+
+// Everything above this line reads. These six are the only calls that change
+// something on the server, and each is the transport half of one journey
+// screen. Nothing here decides *whether* an action is allowed: the API owns
+// the permission, the approval gate and the audit row (CLAUDE.md rules 3, 4).
+
+/** One approval waiting on the signed-in user (apps/api/src/routes/me.ts). */
+export interface Approval {
+  id: string;
+  policyKey: string;
+  status: string;
+  subjectRef: string;
+  requestedBy: string | null;
+  contextJson?: string | null;
+  createdAt: number;
+}
+
+export interface Notification {
+  id: string;
+  kind: string;
+  title: string;
+  bodyText?: string | null;
+  linkHref?: string | null;
+  createdAt: number;
+}
+
+export interface Inbox {
+  approvals: Approval[];
+  notifications: Notification[];
+  counts: { approvals: number; notifications: number };
+}
+
+/** The caller's work queue — the same one the web shell's inbox draws. */
+export const fetchInbox = (token: string, signal?: AbortSignal): Promise<Inbox> =>
+  request<Inbox>("/v1/me/inbox", { token, ...(signal ? { signal } : {}) });
+
+/**
+ * Decide one approval. A rejection with no reason is allowed by the API, so
+ * the reason is omitted rather than sent empty — an empty string would land in
+ * the audit row as a reason that was never given.
+ */
+export const decideApproval = (
+  token: string,
+  id: string,
+  decision: "approved" | "rejected",
+  reason?: string
+): Promise<Row> =>
+  request<Row>(`/v1/me/approvals/${encodeURIComponent(id)}/decide`, {
+    method: "POST",
+    token,
+    body: { decision, ...(reason ? { reason } : {}) }
+  });
+
+export const markNotificationRead = (token: string, id: string): Promise<void> =>
+  request<void>(`/v1/me/notifications/${encodeURIComponent(id)}/read`, {
+    method: "POST",
+    token
+  });
+
+/** Asks NORTH to narrate a day. 201 with the briefing row (J-E1). */
+export const generateBriefing = (
+  token: string,
+  input: { date: string; audience?: string; locale?: string }
+): Promise<Row> =>
+  request<Row>("/v1/north/briefings/generate", { method: "POST", token, body: input });
+
+/** Sends a human reply out over the conversation's bound channel (ADR-0038). */
+export const replyToConversation = (token: string, id: string, text: string): Promise<Row> =>
+  request<Row>(`/v1/orbit/conversations/${encodeURIComponent(id)}/reply`, {
+    method: "POST",
+    token,
+    body: { text }
+  });
+
+/**
+ * Files a captured photo or scan against an AXIS case. The camera hands back a
+ * `file://` uri, which React Native's FormData uploads by reference — the app
+ * never holds the bytes, so a 10MB scan does not become a 13MB base64 string
+ * in memory.
+ */
+export const uploadDocument = (
+  token: string,
+  capture: { caseId: string; docType: string; uri: string; contentType: string; name?: string }
+): Promise<Row> => {
+  const form = new FormData();
+  form.append("caseId", capture.caseId);
+  form.append("docType", capture.docType);
+  form.append("file", {
+    uri: capture.uri,
+    name: capture.name ?? capture.uri.split("/").pop() ?? "capture",
+    type: capture.contentType
+  } as unknown as Blob);
+  return request<Row>("/v1/axis/documents/upload", { method: "POST", token, body: form });
+};

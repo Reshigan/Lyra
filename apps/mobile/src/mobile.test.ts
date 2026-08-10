@@ -42,13 +42,19 @@ const {
   ApiError,
   NetworkError,
   REQUEST_TIMEOUT_MS,
+  decideApproval,
   endsSession,
+  fetchInbox,
+  generateBriefing,
   listRows,
+  markNotificationRead,
   mfaStepOf,
+  replyToConversation,
   request,
   setOnSessionEnd,
   stepAfterClearing,
   stepAfterLogin,
+  uploadDocument,
   verifyThenLoad
 } = await import("./api");
 
@@ -612,5 +618,100 @@ describe("biometric gate", () => {
     const authenticate = vi.fn(async () => true);
     await resolveGate({ hasHardware: async () => true, isEnrolled: async () => false, authenticate });
     expect(authenticate).not.toHaveBeenCalled();
+  });
+});
+
+describe("write calls", () => {
+  // These are the only calls in the app that change something on the server, so
+  // each one is pinned to its method, path and body shape: a screen that sends
+  // the right thing to the wrong path fails silently in a way no UI test sees.
+  const calls: { url: string; init: RequestInit }[] = [];
+
+  const stub = (body: unknown, status = 200) => {
+    calls.length = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init: RequestInit) => {
+        calls.push({ url: String(url), init });
+        return status === 204
+          ? new Response(null, { status })
+          : new Response(JSON.stringify(body), {
+              status,
+              headers: { "content-type": "application/json" }
+            });
+      })
+    );
+  };
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("reads the inbox as one call carrying both queues", async () => {
+    stub({ approvals: [{ id: "apr_1" }], notifications: [], counts: { approvals: 1, notifications: 0 } });
+    const inbox = await fetchInbox("t");
+    expect(calls[0]!.url).toContain("/v1/me/inbox");
+    expect(calls[0]!.init.method ?? "GET").toBe("GET");
+    expect(inbox.counts.approvals).toBe(1);
+  });
+
+  it("posts an approval decision with its reason", async () => {
+    stub({ id: "apr_1", status: "rejected" });
+    await decideApproval("t", "apr_1", "rejected", "over budget");
+    expect(calls[0]!.url).toContain("/v1/me/approvals/apr_1/decide");
+    expect(calls[0]!.init.method).toBe("POST");
+    expect(JSON.parse(String(calls[0]!.init.body))).toEqual({
+      decision: "rejected",
+      reason: "over budget"
+    });
+  });
+
+  it("omits the reason rather than sending an empty one", async () => {
+    stub({ id: "apr_1", status: "approved" });
+    await decideApproval("t", "apr_1", "approved");
+    expect(JSON.parse(String(calls[0]!.init.body))).toEqual({ decision: "approved" });
+  });
+
+  it("escapes an id into the path", async () => {
+    stub(null, 204);
+    await markNotificationRead("t", "ntf/1");
+    expect(calls[0]!.url).toContain("/v1/me/notifications/ntf%2F1/read");
+  });
+
+  it("asks north for a briefing on a given date", async () => {
+    stub({ id: "brf_1", date: "2026-08-10" }, 201);
+    await generateBriefing("t", { date: "2026-08-10", locale: "ar" });
+    expect(calls[0]!.url).toContain("/v1/north/briefings/generate");
+    expect(JSON.parse(String(calls[0]!.init.body))).toEqual({ date: "2026-08-10", locale: "ar" });
+  });
+
+  it("sends an agent reply to the conversation's reply route", async () => {
+    stub({ id: "msg_1" }, 201);
+    await replyToConversation("t", "cnv_1", "on its way");
+    expect(calls[0]!.url).toContain("/v1/orbit/conversations/cnv_1/reply");
+    expect(JSON.parse(String(calls[0]!.init.body))).toEqual({ text: "on its way" });
+  });
+
+  it("uploads a captured document as multipart, without a JSON content-type", async () => {
+    stub({ id: "doc_1", status: "received" }, 201);
+    await uploadDocument("t", {
+      caseId: "cas_1",
+      docType: "eid",
+      uri: "file:///tmp/capture.jpg",
+      contentType: "image/jpeg"
+    });
+    const { url, init } = calls[0]!;
+    expect(url).toContain("/v1/axis/documents/upload");
+    expect(init.method).toBe("POST");
+    // The platform sets the multipart boundary; setting it by hand produces a
+    // body the server cannot parse.
+    const headers = init.headers as Record<string, string>;
+    expect(headers["content-type"]).toBeUndefined();
+    expect(headers.authorization).toBe("Bearer t");
+    // React Native's FormData type has no `get` (it is append-only there); the
+    // parts are read back through the platform one this test runs on.
+    const form = init.body as unknown as { get(name: string): unknown };
+    expect(init.body).toBeInstanceOf(FormData);
+    expect(form.get("caseId")).toBe("cas_1");
+    expect(form.get("docType")).toBe("eid");
+    expect(form.get("file")).toBeTruthy();
   });
 });
