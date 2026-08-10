@@ -365,9 +365,25 @@ ledger nav gap; the other module rows need a real pass, not a memory recall.
 - [x] **e2e / Playwright** — infra built: `playwright.config.ts` + `e2e/`
       (env.ts, fixtures.ts, global-setup.ts) plus `login.spec.ts` and
       `staff.spec.ts`. Wired into CI as the `e2e` job (`.github/workflows/ci.yml`,
-      blocking). **AUDIT**: only 2 of 23 J-IDs (docs/06) have specs today —
-      login + one staff journey. Still open: one spec per remaining J-ID,
-      `@journey:J-XX` / `@accept:Mx` tagging per module as each ships.
+      blocking). **CLOSED 2026-08-10**: the "only 2 of 23 J-IDs have specs"
+      note above was stale — 18 of the 21 e2e spec files already carried real,
+      passing journey coverage (18 of 23 docs/06 J-IDs: all but J-C1, J-C4,
+      which have integration-level coverage only in
+      `apps/api/src/journeys.test.ts`, no browser e2e — a real, narrow gap,
+      not a tagging one), it just wasn't in the literal `@journey:J-XX` /
+      `@accept:Mx` string format §0's prescribed `pnpm e2e --grep "@journey"`
+      / `--grep "@accept:Px"` commands match on. Retrofitted both tags onto
+      every existing journey test title (no new specs needed) per the
+      docs/14 milestone→J-ID map: M0 (`@accept:M0`, `@accept:M0-rtl`), M1
+      (J-A1/J-A2/J-D1), M2 (J-O1/J-O2/J-O3), M3 (J-C2/J-C3/J-X1/J-X3), M4
+      (J-M1/J-M2), M5 (J-P1/J-P2), M6 (J-E1/J-E2/J-E3/J-CO1). J-A3, J-M3,
+      J-X2 are tagged `@journey:J-XX` only — real journeys with real e2e
+      coverage, but not named in any milestone's docs/14 `Accept:` line, so
+      no `@accept:Mx` was invented for them. Verified via `npx playwright
+      test --grep "@journey" --list` (29/29 tests matched, was 0) and the
+      same per `@accept:M0` through `@accept:M6` (4/5/3/7/3/3/4, was 0 each).
+      Still open: an e2e (not just integration) spec for J-C1 (public quick
+      quote) and J-C4 (privacy/DSAR portal).
       **BLOCKER found 2026-07-31, FIXED same day**: `pnpm e2e` could not boot
       — Playwright's `webServer` step (`pnpm --filter @lyra/api start` → `tsx
       src/node.ts`) crashed with `ERR_UNSUPPORTED_ESM_URL_SCHEME` on

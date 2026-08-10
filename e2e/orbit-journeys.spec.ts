@@ -20,7 +20,7 @@ import { goto, loginAsAxisLead, loginAsOrbitAgent, loginAsOrbitRetention } from 
 // cookies with the API origin (apps/web/app/api.server.ts's apiFetch forwards
 // the browser's cookie header itself; a direct API-origin request bypasses
 // that and 401s).
-test("J-C2 an agent approves the AI's suggested reply and it queues, not sends", async ({ page }) => {
+test("J-C2 an agent approves the AI's suggested reply and it queues, not sends @journey:J-C2 @accept:M3", async ({ page }) => {
   await loginAsOrbitAgent(page);
 
   const customerId = `cus-e2e-jc2-${Date.now()}`;
@@ -139,7 +139,7 @@ async function runRenewalsSweep(): Promise<void> {
 // closes in one update. Mirrors journeys.test.ts:325-375's actor split
 // exactly, through the retention queue (apps/web/app/modules/orbit.ts) and
 // the NBO UI (apps/web/app/routes/dist-offers.tsx).
-test("J-C3 retention proposes and closes a renewal; surfacing needs axis.lead", async ({ page }) => {
+test("J-C3 retention proposes and closes a renewal; surfacing needs axis.lead @journey:J-C3 @accept:M3", async ({ page }) => {
   // The seeded demo customer already carries a policy inside the renewal
   // window (packages/core/src/seed/context.ts's `renewalPolicyId`), so this is
   // idempotent and safe to call from a clean seed.

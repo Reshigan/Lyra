@@ -10,7 +10,7 @@ import { goto, loginAsComplianceOfficer } from "./fixtures.js";
 // table — this screen owns its strings rather than reading the shared en/ar
 // catalogues. Purpose defaults to "regulator" (طلب من الجهة الرقابية), which
 // is already the right scope for this journey, so the Select is left alone.
-test("J-CO1 compliance officer scopes and exports a signed evidence bundle", async ({ page }) => {
+test("J-CO1 compliance officer scopes and exports a signed evidence bundle @journey:J-CO1 @accept:M6", async ({ page }) => {
   await loginAsComplianceOfficer(page);
 
   await goto(page, "/compliance/run/evidence");

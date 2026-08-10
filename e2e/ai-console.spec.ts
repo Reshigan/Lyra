@@ -27,7 +27,7 @@ import { loginAsComplianceOfficer } from "./fixtures.js";
 // spec persists into every later run. Every other spec in this batch dodges
 // that by creating its own uniquely-timestamped row; this one can't, so it
 // self-heals to "active" first rather than assuming the seed's baseline.
-test("J-A3 compliance officer pauses an agent with a reason, admin resumes it", async ({ browser }) => {
+test("J-A3 compliance officer pauses an agent with a reason, admin resumes it @journey:J-A3", async ({ browser }) => {
   const reason = `J-A3-${Date.now()} runaway briefing spend, pausing pending investigation`;
 
   const admin = await browser.newContext();

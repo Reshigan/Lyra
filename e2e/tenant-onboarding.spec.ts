@@ -27,7 +27,7 @@ import { goto, loginAsTenantAdmin } from "./fixtures.js";
 // screens (apps/web/app/routes/module.tsx, record.tsx), driven by
 // apps/web/app/modules/admin.ts's tenants/roles/agents tabs — there is no
 // bespoke onboarding screen to visit instead.
-test("J-A1 the seeded tenant is complete enough to work in", async ({ page }) => {
+test("J-A1 the seeded tenant is complete enough to work in @journey:J-A1 @accept:M1", async ({ page }) => {
   await loginAsTenantAdmin(page);
 
   // roles.length > 10 and agents.length >= 8 — neither tab declares `search`
@@ -62,7 +62,7 @@ test("J-A1 the seeded tenant is complete enough to work in", async ({ page }) =>
   await expect(brandField).toHaveValue(/GONXT/);
 });
 
-test("J-A1 the tenants tab lists its own tenant row and nobody else's", async ({ page }) => {
+test("J-A1 the tenants tab lists its own tenant row and nobody else's @journey:J-A1 @accept:M1", async ({ page }) => {
   await loginAsTenantAdmin(page);
 
   // core_tenants has no tenant_id column — scoping it by its own id is the

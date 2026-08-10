@@ -17,7 +17,7 @@ import { goto, loginAsScoutLead } from "./fixtures.js";
 // /approvals.ts:118), single control — dualControl "never", so the same scout
 // lead decides it. The full round trip is: refused, self-approved via
 // /approvals, retried.
-test("J-P1 a whitespace candidate is validated and given an owner", async ({ page }) => {
+test("J-P1 a whitespace candidate is validated and given an owner @journey:J-P1 @accept:M5", async ({ page }) => {
   await loginAsScoutLead(page);
 
   // Seeded, unpromoted candidate with a uniquely-worded description

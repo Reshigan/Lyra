@@ -10,7 +10,7 @@ test.describe("sign-in", () => {
     await expectNoA11yViolations(page);
   });
 
-  test("demo persona one-click sign-in lands tenant.admin on the home workspace", async ({ page }) => {
+  test("demo persona one-click sign-in lands tenant.admin on the home workspace @accept:M0", async ({ page }) => {
     await goto(page, "/login");
     await page.getByRole("button", { name: new RegExp(PERSONAS.tenantAdmin.name) }).click();
     await page.waitForURL(/^http:\/\/[^/]+\/$/);
@@ -18,7 +18,7 @@ test.describe("sign-in", () => {
     await expectNoA11yViolations(page);
   });
 
-  test("password sign-in with tenant slug reaches the same workspace", async ({ page }) => {
+  test("password sign-in with tenant slug reaches the same workspace @accept:M0", async ({ page }) => {
     await goto(page, "/login");
     await page.getByLabel(/email/i).fill(PERSONAS.tenantAdmin.email);
     await page.getByLabel(/password/i).fill(SEED_PASSWORD);

@@ -6,7 +6,7 @@ import { PERSONAS } from "./env.js";
 // J-A2 "New teammate" (docs/06-roles-and-journeys.md §Admin & Dev): a
 // tenant.admin invites someone, assigns a role bundle, and that access is
 // visible immediately — no separate activation step.
-test("J-A2 admin invites a teammate and the role bundle is visible immediately", async ({ page }) => {
+test("J-A2 admin invites a teammate and the role bundle is visible immediately @journey:J-A2 @accept:M1", async ({ page }) => {
   await goto(page, "/login");
   await page.getByRole("button", { name: new RegExp(PERSONAS.tenantAdmin.name) }).click();
   await page.waitForURL(/^http:\/\/[^/]+\/$/);

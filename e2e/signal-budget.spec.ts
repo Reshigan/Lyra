@@ -12,7 +12,7 @@ import { goto, loginAsSignalLead } from "./fixtures.js";
 // signal lead decides it via /approvals (single control has no self-decide
 // gate — dualControl "never"), and the retry then succeeds. "From mobile"
 // and "2 min" are not testable properties of this stack and are not asserted.
-test("J-M2 signal lead reverses an autopilot budget move", async ({ page }) => {
+test("J-M2 signal lead reverses an autopilot budget move @journey:J-M2 @accept:M4", async ({ page }) => {
   await loginAsSignalLead(page);
 
   // Seeded, unreversed, uniquely-worded move (packages/core/src/seed/signal.ts).
