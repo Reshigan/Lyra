@@ -148,6 +148,13 @@
       "when": 1786257077246,
       "tag": "0020_skinny_tyrannus",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1786333928185,
+      "tag": "0021_right_odin",
+      "breakpoints": true
     }
   ]
 }

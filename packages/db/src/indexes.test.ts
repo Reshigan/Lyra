@@ -101,4 +101,44 @@ describe("uniqueness constraints survive the migrated schema", () => {
       rows.some((s) => /published_at\s+(IS|is)\s+(NULL|null)/i.test(s) && /created_at/.test(s))
     ).toBe(true);
   });
+
+  it("a tenant cannot register two routing rules at the same seq, but two tenants can reuse the same seq", async () => {
+    const rule = (id: string, tenant: string, seq: number) =>
+      db.execute({
+        sql: "INSERT INTO orbit_routing_rules (id, tenant_id, team_id, seq, created_at, updated_at) VALUES (?, ?, 'tm1', ?, 1, 1)",
+        args: [id, tenant, seq]
+      });
+    await rule("rr1", "t1", 10);
+    await rule("rr2", "t2", 10); // different tenant, same seq: fine
+    await expect(rule("rr3", "t1", 10)).rejects.toThrow(/UNIQUE/i);
+  });
+
+  it("a new conversation defaults to priority 2 with no SLA clock set", async () => {
+    await db.execute({
+      sql: "INSERT INTO orbit_conversations (id, tenant_id, channel, created_at, updated_at) VALUES ('cnv1', 't1', 'web', 1, 1)",
+      args: []
+    });
+    const row = (await db.execute("SELECT priority, first_response_due_at, reopen_count FROM orbit_conversations WHERE id = 'cnv1'")).rows[0]!;
+    expect(row.priority).toBe(2);
+    expect(row.first_response_due_at).toBeNull();
+    expect(row.reopen_count).toBe(0);
+  });
+
+  it("one tenant cannot register the same team key or agent presence row twice", async () => {
+    const team = (id: string, key: string) =>
+      db.execute({
+        sql: "INSERT INTO orbit_teams (id, tenant_id, key, name_json, created_at, updated_at) VALUES (?, 't1', ?, '{}', 1, 1)",
+        args: [id, key]
+      });
+    await team("otm1", "default");
+    await expect(team("otm2", "default")).rejects.toThrow(/UNIQUE/i);
+
+    const presence = (id: string, userId: string) =>
+      db.execute({
+        sql: "INSERT INTO orbit_agent_presence (id, tenant_id, user_id, updated_at) VALUES (?, 't1', ?, 1)",
+        args: [id, userId]
+      });
+    await presence("ap1", "u1");
+    await expect(presence("ap2", "u1")).rejects.toThrow(/UNIQUE/i);
+  });
 });

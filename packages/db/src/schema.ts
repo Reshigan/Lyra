@@ -86,7 +86,12 @@ export {
   handoverNotes as orbitHandoverNotes,
   qaScores as orbitQaScores,
   channelConnectors as orbitChannelConnectors,
-  channelIdentities as orbitChannelIdentities
+  channelIdentities as orbitChannelIdentities,
+  teams as orbitTeams,
+  teamMembers as orbitTeamMembers,
+  agentPresence as orbitAgentPresence,
+  routingRules as orbitRoutingRules,
+  slaPolicies as orbitSlaPolicies
 } from "./schema/orbit.js";
 
 export {

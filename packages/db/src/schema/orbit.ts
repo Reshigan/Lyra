@@ -23,13 +23,29 @@ export const conversations = sqliteTable(
     firstResponseMs: integer("first_response_ms"),
     lastMessageAt: integer("last_message_at"),
     closedAt: integer("closed_at"),
+    // Routing/SLA (gap-orbit-design.md §1B). Lower priority number = more
+    // urgent; 2 is the unrouted/default level, sweepRouting only ever moves
+    // it down (toward 0) on an FRT breach, never up.
+    priority: integer("priority").notNull().default(2),
+    slaPolicyKey: text("sla_policy_key"),
+    requireSkillsJson: text("require_skills_json"), // JSON string[]; null = no skill requirement
+    queuedAt: integer("queued_at"),
+    assignedAt: integer("assigned_at"),
+    firstResponseDueAt: integer("first_response_due_at"),
+    resolutionDueAt: integer("resolution_due_at"),
+    frtBreachedAt: integer("frt_breached_at"),
+    resolutionBreachedAt: integer("resolution_breached_at"),
+    reopenCount: integer("reopen_count").notNull().default(0),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull()
   },
   (t) => [
     index("orbit_conv_tenant_idx").on(t.tenantId, t.state, t.lastMessageAt),
     index("orbit_conv_customer_idx").on(t.tenantId, t.customerId),
-    index("orbit_conv_assignee_idx").on(t.tenantId, t.assigneeRef, t.state)
+    index("orbit_conv_assignee_idx").on(t.tenantId, t.assigneeRef, t.state),
+    // The sweep's own read pattern: "give me this team's open queue, most
+    // urgent and longest-waiting first."
+    index("orbit_conv_queue_idx").on(t.tenantId, t.teamId, t.state, t.priority, t.queuedAt)
   ]
 );
 
@@ -258,4 +274,89 @@ export const qaScores = sqliteTable(
     ts: integer("ts").notNull()
   },
   (t) => [index("orbit_qa_idx").on(t.tenantId, t.conversationId, t.ts)]
+);
+
+/**
+ * A routable unit of agents. `isDefault` marks the team new conversations
+ * fall into when no routing rule matches — at most one per tenant, enforced
+ * in `routeConversation`/application code, not the schema (SQLite has no
+ * partial-unique-boolean shorthand worth reaching for here).
+ */
+export const teams = sqliteTable(
+  "orbit_teams",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    key: text("key").notNull(),
+    nameJson: text("name_json").notNull(),
+    isDefault: integer("is_default", { mode: "boolean" }).notNull().default(false),
+    status: text("status").notNull().default("active"), // active|disabled
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull()
+  },
+  (t) => [uniqueIndex("orbit_teams_key_uq").on(t.tenantId, t.key)]
+);
+
+export const teamMembers = sqliteTable(
+  "orbit_team_members",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    teamId: text("team_id").notNull(),
+    userId: text("user_id").notNull(),
+    skillsJson: text("skills_json").notNull().default("[]"), // JSON string[]
+    maxConcurrent: integer("max_concurrent").notNull().default(5),
+    createdAt: integer("created_at").notNull()
+  },
+  (t) => [
+    uniqueIndex("orbit_team_members_uq").on(t.tenantId, t.teamId, t.userId),
+    index("orbit_team_members_user_idx").on(t.tenantId, t.userId)
+  ]
+);
+
+/** One row per agent per tenant — an agent has one presence, regardless of how many teams they're on. */
+export const agentPresence = sqliteTable(
+  "orbit_agent_presence",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    userId: text("user_id").notNull(),
+    status: text("status").notNull().default("offline"), // available|away|offline
+    activeCount: integer("active_count").notNull().default(0),
+    updatedAt: integer("updated_at").notNull()
+  },
+  (t) => [uniqueIndex("orbit_agent_presence_uq").on(t.tenantId, t.userId)]
+);
+
+/**
+ * First-matching-rule-wins, ordered by `seq` ascending. `conditionsJson` is
+ * `{ channel?, intent?, sentimentBelow? }` — an omitted field is a wildcard.
+ */
+export const routingRules = sqliteTable(
+  "orbit_routing_rules",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    teamId: text("team_id").notNull(),
+    seq: integer("seq").notNull(),
+    enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+    conditionsJson: text("conditions_json").notNull().default("{}"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull()
+  },
+  (t) => [uniqueIndex("orbit_routing_rules_seq_uq").on(t.tenantId, t.seq)]
+);
+
+export const slaPolicies = sqliteTable(
+  "orbit_sla_policies",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    key: text("key").notNull(),
+    frtMinutes: integer("frt_minutes").notNull(),
+    resolutionMinutes: integer("resolution_minutes").notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull()
+  },
+  (t) => [uniqueIndex("orbit_sla_policies_key_uq").on(t.tenantId, t.key)]
 );
