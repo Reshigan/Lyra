@@ -78,6 +78,8 @@ export const en = {
   "auth.error.locked": "This account cannot sign in. An administrator can restore it.",
   "auth.error.generic": "Sign-in could not be completed. Nothing was changed; you can try again.",
   "auth.error.code": "That code was not accepted. Codes expire quickly — try the current one.",
+  "auth.biometric.locked": "Verification did not succeed.",
+  "auth.biometric.retry": "Try again",
 
   "list.empty": "There is nothing here yet.",
   "list.count": "{n} shown",
@@ -169,6 +171,8 @@ export const ar: Messages = {
   "auth.error.locked": "هذا الحساب لا يمكنه تسجيل الدخول. يستطيع المسؤول إعادة تفعيله.",
   "auth.error.generic": "تعذّر إكمال تسجيل الدخول. لم يتغيّر شيء، ويمكنك المحاولة مرة أخرى.",
   "auth.error.code": "لم يُقبل هذا الرمز. الرموز تنتهي سريعًا — جرّب الرمز الحالي.",
+  "auth.biometric.locked": "تعذّر التحقق.",
+  "auth.biometric.retry": "أعد المحاولة",
 
   "list.empty": "لا يوجد شيء هنا بعد.",
   "list.count": "المعروض {n}",

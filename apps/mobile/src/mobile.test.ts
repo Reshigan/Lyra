@@ -37,6 +37,7 @@ const { CATALOGUES, en, dirFor, joinList, resolveLocale, translator } = await im
 const { fontFamilyFor, themeFor, productName } = await import("./theme");
 const { defaultWorkspaceForRoles, resolvePersona } = await import("./workspace");
 const { PERSONA_TABS, tabsFor } = await import("./personas");
+const { resolveGate } = await import("./biometric-gate");
 const {
   ApiError,
   NetworkError,
@@ -578,5 +579,38 @@ describe("persona tab config", () => {
       expect(tabs).toHaveLength(1);
       expect(tabs[0]?.labelKey).toBe("nav.home");
     }
+  });
+});
+
+describe("biometric gate", () => {
+  function probe(overrides: Partial<{ hardware: boolean; enrolled: boolean; success: boolean }> = {}) {
+    const { hardware = true, enrolled = true, success = true } = overrides;
+    return {
+      hasHardware: async () => hardware,
+      isEnrolled: async () => enrolled,
+      authenticate: async () => success
+    };
+  }
+
+  it("opens immediately when the device has no biometric hardware", async () => {
+    expect(await resolveGate(probe({ hardware: false }))).toBe("open");
+  });
+
+  it("opens immediately when hardware exists but nothing is enrolled", async () => {
+    expect(await resolveGate(probe({ enrolled: false }))).toBe("open");
+  });
+
+  it("opens after a successful challenge when enrolled", async () => {
+    expect(await resolveGate(probe({ success: true }))).toBe("open");
+  });
+
+  it("locks after a failed challenge when enrolled", async () => {
+    expect(await resolveGate(probe({ success: false }))).toBe("locked");
+  });
+
+  it("never calls authenticate when nothing is enrolled", async () => {
+    const authenticate = vi.fn(async () => true);
+    await resolveGate({ hasHardware: async () => true, isEnrolled: async () => false, authenticate });
+    expect(authenticate).not.toHaveBeenCalled();
   });
 });
