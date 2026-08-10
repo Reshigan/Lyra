@@ -104,6 +104,16 @@ beforeEach(async () => {
     firstResponseMs: null,
     lastMessageAt: now,
     closedAt: null,
+    priority: 2,
+    slaPolicyKey: null,
+    requireSkillsJson: null,
+    queuedAt: null,
+    assignedAt: null,
+    firstResponseDueAt: null,
+    resolutionDueAt: null,
+    frtBreachedAt: null,
+    resolutionBreachedAt: null,
+    reopenCount: 0,
     createdAt: now,
     updatedAt: now
   };
