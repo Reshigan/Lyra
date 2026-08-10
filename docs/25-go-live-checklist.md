@@ -769,13 +769,36 @@ These cannot be done by an assistant; they require the account owner directly.
       workers uploaded clean: `lyra-api-staging` (Version ID
       `193143d6-0d69-43be-9865-73fdfcd24f77`), `lyra-web-staging` (Version ID
       `7f5d5e91-324c-461d-b8fb-25222a3d6a7d`).
-- [~] `pnpm smoke:staging` — no such script exists (not built this session,
-      out of scope for this pass); ran a manual smoke check instead against
-      the deployed URLs: `GET /health` on the api worker → `200
-      {"ok":true,"environment":"staging",...}`; `GET /` on the web worker →
-      `302` to `/login?next=%2F` (expected, unauthenticated root redirect);
-      `GET /login` → `200`. Full per-module journey / approval-gate / export
-      smoke pass still needed before declaring live — not run this session.
+- [x] `pnpm smoke:staging` — **GREEN 2026-08-10**. Built the script
+      (`scripts/lyra-staging.ts`, wired into `scripts/lyra.ts` as `staging
+      smoke`, unit-tested in `scripts/lyra-staging.test.ts`): unauth
+      `api:health`/`web:root-redirect`/`web:login` checks, plus one
+      authenticated read per module (AXIS, ORBIT, SIGNAL, SCOUT, NORTH,
+      LEDGER, COMPLIANCE) and the approval-gate (`core:approvals`) and
+      export (`analytics:exports`) surfaces. First run surfaced a real
+      defect: `axis:cases` 403'd for the `axis.agent` persona
+      (`layla.hassan@gonxt.ae`) only. Root-caused by reproducing locally
+      against the real Hono app + `seed()` fixture (identical code, identical
+      seed → 200 OK, ruling out a code bug) then inspecting live staging D1
+      directly: `layla.hassan`'s `core_user_roles` row carried a stray
+      `scope_json: {"teamIds":[...]}` team-scope overlay that `seed.ts`
+      never sets for any persona (`seed.ts:227-239` deliberately keeps
+      `scopeJson: null` — axis.agent's bundle spans resources with no team
+      column, so scoping it would lock the agent out entirely, per
+      `rbac.ts`'s `scopeAllows`, which denies the whole grant when a
+      `subject.teamId` isn't supplied to match against, and the generic CRUD
+      list route never supplies one). This was live-data drift from a manual
+      edit, not a code defect — corrected with a one-off `UPDATE
+      core_user_roles SET scope_json = NULL WHERE id =
+      'ur_01KE953T03Y2AM5FZQ85D2W6GT'` against `lyra-staging` (remote), no
+      code change needed. Re-ran `pnpm smoke:staging` after the fix: all 12
+      checks `ok`, exit code 0.
+      **Follow-up, not yet actioned:** a second, unexpected row was found in
+      the same query — `layla.nasser@vantax.co.za` (off-domain, not a seeded
+      persona) holding an `axis.agent` grant with `scope_json:
+      {"teams":[...]}` (inert — wrong key, doesn't match `rbac.ts`'s
+      `teamIds`). Left untouched pending account-owner review; doesn't affect
+      this checklist item since it doesn't gate anything today.
 - [x] All Cloudflare bindings present per docs/10 §2 (D1, KV, R2, Queues, DO
       namespaces) for both staging and production environments —
       **VERIFIED 2026-08-01** via the staging deploy's own binding printout:

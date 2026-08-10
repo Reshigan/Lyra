@@ -1,12 +1,17 @@
 import { onpremInit, onpremMigrate, onpremSeed, onpremSmoke, type SmokeReport } from "./lyra-onprem.js";
+import { stagingSmoke, type StagingSmokeReport } from "./lyra-staging.js";
 
-const USAGE = `Usage: lyra onprem <init|migrate|seed|smoke>
+const USAGE = `Usage: lyra <onprem|staging> ...
 
   onprem init              Write ops/.env from .env.example, generating fresh secrets.
   onprem migrate           Run drizzle migrations against LIBSQL_URL.
   onprem seed              Seed the GONXT demo tenant.
     --password <pw>          Override the seeded demo password.
   onprem smoke             Check llm / llm-vllm / embed reachability + one chat round trip.
+
+  staging smoke            Hit live Cloudflare staging: unauth health/login checks,
+                            plus one authenticated read per module (AXIS, ORBIT,
+                            SIGNAL, SCOUT, NORTH, LEDGER, COMPLIANCE, approvals, exports).
 `;
 
 export interface DispatchResult {
@@ -33,8 +38,21 @@ function formatSmoke(report: SmokeReport): string {
   return lines.join("\n");
 }
 
+function formatStaging(report: StagingSmokeReport): string {
+  return report.checks
+    .map((c) => `  ${c.name}: ${c.ok ? "ok" : "FAIL"}${c.status ? ` (${c.status})` : ""}${c.detail ? ` — ${c.detail}` : ""}`)
+    .join("\n");
+}
+
 export async function dispatch(argv: string[]): Promise<DispatchResult> {
   const [group, sub, ...rest] = argv;
+
+  if (group === "staging") {
+    if (sub !== "smoke") return { code: 1, message: `unknown staging subcommand "${sub ?? ""}"\n\n${USAGE}` };
+    const report = await stagingSmoke();
+    return { code: report.checks.every((c) => c.ok) ? 0 : 1, message: formatStaging(report) };
+  }
+
   if (group !== "onprem") return { code: 1, message: `unknown command "${group ?? ""}"\n\n${USAGE}` };
 
   try {
