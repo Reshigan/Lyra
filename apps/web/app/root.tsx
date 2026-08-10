@@ -5,6 +5,7 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  useNavigation,
   useRouteError,
   useRouteLoaderData,
   type LinksFunction,
@@ -85,7 +86,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-  return <Outlet />;
+  // Every route already handles its own local pending state (busy buttons,
+  // disabled forms); this is the one cue that isn't per-screen — the shell
+  // notices the navigation itself, not what it's waiting on.
+  const navigation = useNavigation();
+  return (
+    <>
+      {navigation.state !== "idle" ? <div aria-hidden="true" className="lyra-nav-progress" /> : null}
+      <Outlet />
+    </>
+  );
 }
 
 /**

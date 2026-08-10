@@ -26,6 +26,8 @@ import {
   Select,
   Stat,
   Textarea,
+  cn,
+  focusRing,
   type BadgeTone
 } from "@lyra/ui";
 import { ApiError, api } from "../api.server";
@@ -558,9 +560,11 @@ export default function AxisDocIntel() {
                   type="button"
                   onClick={() => setIndex(i)}
                   aria-current={i === index ? "true" : undefined}
-                  className={`flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-start font-ui text-12 ${
+                  className={cn(
+                    "flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-start font-ui text-12",
+                    focusRing,
                     i === index ? "bg-surface-2 text-accent" : "text-muted"
-                  }`}
+                  )}
                 >
                   <span className="truncate">{doc.docType}</span>
                   <Badge tone={statusTone(doc.status)} size="sm">
