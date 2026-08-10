@@ -4,17 +4,27 @@ import type { EmbedRequest, ModelRequest, Provider, ProviderEnv, ProviderResult,
 // the Worker. Default provider for every tier (docs/02 §5).
 
 interface RunResult {
-  response?: string | { response?: string };
-  result?: { response?: string };
+  // Under `response_format: json_schema` the model's answer comes back already
+  // parsed — an object, not a string — so this is deliberately `unknown`.
+  response?: unknown;
+  result?: { response?: unknown };
   tool_calls?: { name: string; arguments?: Record<string, unknown> }[];
   usage?: { prompt_tokens?: number; completion_tokens?: number };
   data?: number[][];
 }
 
-function textOf(out: RunResult): string {
-  if (typeof out.response === "string") return out.response;
-  if (out.response && typeof out.response === "object") return out.response.response ?? "";
-  return out.result?.response ?? "";
+export function textOf(out: RunResult): string {
+  const raw =
+    out.response && typeof out.response === "object" && "response" in out.response
+      ? (out.response as { response?: unknown }).response
+      : (out.response ?? out.result?.response);
+  if (typeof raw === "string") return raw;
+  if (raw === undefined || raw === null) return "";
+  // Every caller of a schema'd completion parses the text back to JSON
+  // (extract.ts, fraud.ts, reserve.ts, sla.ts, triage.ts), and the guardrails
+  // in between are string checks — so re-serialise rather than hand an object
+  // downstream as if it were text.
+  return JSON.stringify(raw);
 }
 
 export const workersAi: Provider = {
