@@ -36,6 +36,7 @@ const { humanize, subtitleOf, titleOf, fieldsOf } = await import("./rows");
 const { CATALOGUES, en, dirFor, joinList, resolveLocale, translator } = await import("./i18n");
 const { fontFamilyFor, themeFor, productName } = await import("./theme");
 const { defaultWorkspaceForRoles, resolvePersona } = await import("./workspace");
+const { PERSONA_TABS, tabsFor } = await import("./personas");
 const {
   ApiError,
   NetworkError,
@@ -537,5 +538,45 @@ describe("resolvePersona", () => {
 
   it("never applies the board variant outside the north workspace", () => {
     expect(resolvePersona(["tenant.admin"])).toEqual({ workspace: "admin", variant: "default" });
+  });
+});
+
+describe("persona tab config", () => {
+  const workspaces = Object.keys(PERSONA_TABS) as Array<keyof typeof PERSONA_TABS>;
+
+  it("covers every workspace with 1 to 3 tabs", () => {
+    expect(workspaces.sort()).toEqual(
+      ["admin", "axis", "compliance", "distribution", "ledger", "north", "orbit", "scout", "settings", "signal"].sort()
+    );
+    for (const workspace of workspaces) {
+      expect(PERSONA_TABS[workspace].length).toBeGreaterThan(0);
+      expect(PERSONA_TABS[workspace].length).toBeLessThanOrEqual(3);
+    }
+  });
+
+  it("gives axis the docs/08 Ops tabs", () => {
+    expect(tabsFor("axis", "default").map((tab) => tab.labelKey)).toEqual([
+      "tab.queue",
+      "tab.sla",
+      "tab.cases"
+    ]);
+  });
+
+  it("swaps Decisions for Governance only for the north board variant", () => {
+    expect(tabsFor("north", "default").map((tab) => tab.labelKey)).toContain("tab.decisions");
+    expect(tabsFor("north", "board").map((tab) => tab.labelKey)).toContain("tab.governance");
+    expect(tabsFor("north", "board").map((tab) => tab.labelKey)).not.toContain("tab.decisions");
+  });
+
+  it("leaves every other workspace's tabs unaffected by variant", () => {
+    expect(tabsFor("axis", "board")).toEqual(tabsFor("axis", "default"));
+  });
+
+  it("gives every single-tab workspace a Home tab pointing at its own resource", () => {
+    for (const workspace of ["distribution", "ledger", "compliance", "settings"] as const) {
+      const tabs = tabsFor(workspace, "default");
+      expect(tabs).toHaveLength(1);
+      expect(tabs[0]?.labelKey).toBe("nav.home");
+    }
   });
 });
