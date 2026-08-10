@@ -139,40 +139,48 @@ export async function routeConversation(
     .select()
     .from(schema.orbitAgentPresence)
     .where(scoped(ctx, schema.orbitAgentPresence));
-  // ponytail: the presence.status column is plain `text` in the schema (no
-  // narrowed enum type), so the select comes back as `string`; cast to
-  // pickAssignee's union here rather than adding a schema-level enum for one call site.
-  const presence = new Map(
-    presenceRows.map((p) => [p.userId, { ...p, status: p.status as PresenceInput["status"] }])
-  );
+  const presence = new Map(presenceRows.map((p) => [p.userId, p]));
   const requireSkills = conversation.requireSkillsJson ? (JSON.parse(conversation.requireSkillsJson) as string[]) : [];
-  const assigneeRef = pickAssignee(members, presence, requireSkills);
 
-  let firstResponseDueAt: number | null = null;
-  let resolutionDueAt: number | null = null;
+  // C1/C3: this function is also called mid-flight by sweepRouting's
+  // FRT-breach loop to re-route a conversation that is already queued and
+  // may already have an owner. A re-route must only ever move `teamId` —
+  // the SLA clock and an existing assignee are stamped once, on first-ever
+  // routing, and never touched again here. Reassigning away from a live
+  // agent is reserved for sweepRouting's stale-presence path, which has its
+  // own explicit logic (and its own unassigned-event emit).
+  const isFirstAssignment = conversation.assigneeRef === null;
+  const assigneeRef = isFirstAssignment ? pickAssignee(members, presence, requireSkills) : conversation.assigneeRef;
+
+  let computedFrtDueAt: number | null = null;
+  let computedResolutionDueAt: number | null = null;
   if (conversation.slaPolicyKey) {
     const [policy] = await ctx.db
       .select()
       .from(schema.orbitSlaPolicies)
       .where(scoped(ctx, schema.orbitSlaPolicies, eq(schema.orbitSlaPolicies.key, conversation.slaPolicyKey)));
     if (policy) {
-      firstResponseDueAt = ctx.now + policy.frtMinutes * 60_000;
-      resolutionDueAt = ctx.now + policy.resolutionMinutes * 60_000;
+      computedFrtDueAt = ctx.now + policy.frtMinutes * 60_000;
+      computedResolutionDueAt = ctx.now + policy.resolutionMinutes * 60_000;
     }
   }
+  const queuedAt = conversation.queuedAt ?? ctx.now;
+  const firstResponseDueAt = conversation.firstResponseDueAt ?? computedFrtDueAt;
+  const resolutionDueAt = conversation.resolutionDueAt ?? computedResolutionDueAt;
+  const assignedAt = isFirstAssignment ? (assigneeRef ? ctx.now : null) : conversation.assignedAt;
 
   await ctx.db
     .update(schema.orbitConversations)
     .set({
       teamId,
       assigneeRef,
-      queuedAt: ctx.now,
-      assignedAt: assigneeRef ? ctx.now : null,
+      queuedAt,
+      assignedAt,
       firstResponseDueAt,
       resolutionDueAt,
       updatedAt: ctx.now
     })
-    .where(eq(schema.orbitConversations.id, conversationId));
+    .where(scoped(ctx, schema.orbitConversations, eq(schema.orbitConversations.id, conversationId)));
 
   return { teamId, assigneeRef };
 }
@@ -183,9 +191,16 @@ export async function routeConversation(
  * Order matters — breach escalation runs first so a conversation reassigned
  * for absence in the same tick already carries its bumped priority.
  */
-export async function sweepRouting(ctx: Ctx): Promise<{ frtBreaches: number; resolutionBreaches: number; reassigned: number }> {
+export async function sweepRouting(
+  ctx: Ctx
+): Promise<{ frtBreaches: number; resolutionBreaches: number; reassigned: number; unassigned: number }> {
   const frtDue = await ctx.db
-    .select({ id: schema.orbitConversations.id, priority: schema.orbitConversations.priority })
+    .select({
+      id: schema.orbitConversations.id,
+      priority: schema.orbitConversations.priority,
+      teamId: schema.orbitConversations.teamId,
+      firstResponseDueAt: schema.orbitConversations.firstResponseDueAt
+    })
     .from(schema.orbitConversations)
     .where(
       scoped(
@@ -201,13 +216,23 @@ export async function sweepRouting(ctx: Ctx): Promise<{ frtBreaches: number; res
     await ctx.db
       .update(schema.orbitConversations)
       .set({ priority, frtBreachedAt: ctx.now, updatedAt: ctx.now })
-      .where(eq(schema.orbitConversations.id, conv.id));
-    await routeConversation(ctx, conv.id);
-    await emit(ctx, { module: "orbit", type: "orbit.sla.breached", subject: conv.id, data: { conversationId: conv.id, kind: "frt", priority } });
+      .where(scoped(ctx, schema.orbitConversations, eq(schema.orbitConversations.id, conv.id)));
+    const routed = await routeConversation(ctx, conv.id);
+    await emit(ctx, {
+      module: "orbit",
+      type: "orbit.sla.breached",
+      subject: conv.id,
+      data: { conversationId: conv.id, kind: "frt", priority, teamId: routed.teamId, dueAt: conv.firstResponseDueAt }
+    });
   }
 
   const resolutionDue = await ctx.db
-    .select({ id: schema.orbitConversations.id, priority: schema.orbitConversations.priority })
+    .select({
+      id: schema.orbitConversations.id,
+      priority: schema.orbitConversations.priority,
+      teamId: schema.orbitConversations.teamId,
+      resolutionDueAt: schema.orbitConversations.resolutionDueAt
+    })
     .from(schema.orbitConversations)
     .where(
       scoped(
@@ -222,12 +247,12 @@ export async function sweepRouting(ctx: Ctx): Promise<{ frtBreaches: number; res
     await ctx.db
       .update(schema.orbitConversations)
       .set({ resolutionBreachedAt: ctx.now, updatedAt: ctx.now })
-      .where(eq(schema.orbitConversations.id, conv.id));
+      .where(scoped(ctx, schema.orbitConversations, eq(schema.orbitConversations.id, conv.id)));
     await emit(ctx, {
       module: "orbit",
       type: "orbit.sla.breached",
       subject: conv.id,
-      data: { conversationId: conv.id, kind: "resolution", priority: conv.priority }
+      data: { conversationId: conv.id, kind: "resolution", priority: conv.priority, teamId: conv.teamId, dueAt: conv.resolutionDueAt }
     });
   }
 
@@ -237,14 +262,19 @@ export async function sweepRouting(ctx: Ctx): Promise<{ frtBreaches: number; res
     .where(scoped(ctx, schema.orbitAgentPresence, eq(schema.orbitAgentPresence.status, "available"), lte(schema.orbitAgentPresence.updatedAt, ctx.now - PRESENCE_STALE_MS)));
 
   let reassigned = 0;
+  let unassigned = 0;
   for (const stale of stalePresence) {
     await ctx.db
       .update(schema.orbitAgentPresence)
       .set({ status: "offline", updatedAt: ctx.now })
-      .where(eq(schema.orbitAgentPresence.id, stale.id));
+      .where(scoped(ctx, schema.orbitAgentPresence, eq(schema.orbitAgentPresence.id, stale.id)));
 
     const held = await ctx.db
-      .select({ id: schema.orbitConversations.id, teamId: schema.orbitConversations.teamId })
+      .select({
+        id: schema.orbitConversations.id,
+        teamId: schema.orbitConversations.teamId,
+        requireSkillsJson: schema.orbitConversations.requireSkillsJson
+      })
       .from(schema.orbitConversations)
       .where(
         scoped(
@@ -261,22 +291,30 @@ export async function sweepRouting(ctx: Ctx): Promise<{ frtBreaches: number; res
         .from(schema.orbitTeamMembers)
         .where(scoped(ctx, schema.orbitTeamMembers, eq(schema.orbitTeamMembers.teamId, conv.teamId)));
       const presenceRows = await ctx.db.select().from(schema.orbitAgentPresence).where(scoped(ctx, schema.orbitAgentPresence));
-      const presence = new Map(presenceRows.map((p) => [p.userId, { ...p, status: p.status as PresenceInput["status"] }]));
+      const presence = new Map(presenceRows.map((p) => [p.userId, p]));
+      const requireSkills = conv.requireSkillsJson ? (JSON.parse(conv.requireSkillsJson) as string[]) : [];
       const nextAssignee = pickAssignee(
         members.filter((m) => m.userId !== stale.userId),
         presence,
-        []
+        requireSkills
       );
       await ctx.db
         .update(schema.orbitConversations)
         .set({ assigneeRef: nextAssignee, assignedAt: nextAssignee ? ctx.now : null, updatedAt: ctx.now })
-        .where(eq(schema.orbitConversations.id, conv.id));
-      reassigned++;
-      if (!nextAssignee) {
-        await emit(ctx, { module: "orbit", type: "orbit.conversation.unassigned", subject: conv.id, data: { conversationId: conv.id } });
+        .where(scoped(ctx, schema.orbitConversations, eq(schema.orbitConversations.id, conv.id)));
+      if (nextAssignee) {
+        reassigned++;
+      } else {
+        unassigned++;
+        await emit(ctx, {
+          module: "orbit",
+          type: "orbit.conversation.unassigned",
+          subject: conv.id,
+          data: { conversationId: conv.id, teamId: conv.teamId, previousAssigneeRef: stale.userId }
+        });
       }
     }
   }
 
-  return { frtBreaches: frtDue.length, resolutionBreaches: resolutionDue.length, reassigned };
+  return { frtBreaches: frtDue.length, resolutionBreaches: resolutionDue.length, reassigned, unassigned };
 }

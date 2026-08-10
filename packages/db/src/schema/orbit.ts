@@ -321,7 +321,7 @@ export const agentPresence = sqliteTable(
     id: text("id").primaryKey(),
     tenantId: text("tenant_id").notNull(),
     userId: text("user_id").notNull(),
-    status: text("status").notNull().default("offline"), // available|away|offline
+    status: text("status").$type<"available" | "away" | "offline">().notNull().default("offline"),
     activeCount: integer("active_count").notNull().default(0),
     updatedAt: integer("updated_at").notNull()
   },

@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { id, schema } from "@lyra/db";
-import { assertChannel, badRequest, consentRequired, openFields, type ConnectorSecrets, type Ctx } from "@lyra/core";
+import { assertChannel, badRequest, consentRequired, openFields, scoped, type ConnectorSecrets, type Ctx } from "@lyra/core";
 import { fieldKey, type Env } from "../env.js";
 import { adapterFor } from "./orbit-channel-adapters.js";
 
@@ -69,6 +69,25 @@ export async function dispatchOutbound(
     externalRef: sent.externalRef,
     ts: ctx.now
   });
+
+  // C2: this is the FRT clock's only stop condition. Without it, a human
+  // agent can reply within seconds and the SLA sweep still sees a null
+  // firstResponseMs plus a due date in the past, so it flags the
+  // conversation as breached, deprioritizes it, and re-routes it away from
+  // the agent who already answered. Only the first human reply counts —
+  // firstResponseMs is elapsed ms from queue entry to first response
+  // (docs/03 §ORBIT, apps/web's orbit-console reads it as a duration, not a
+  // timestamp), so once it is set, later replies must not touch it.
+  if (conversation.firstResponseMs === null) {
+    await ctx.db
+      .update(schema.orbitConversations)
+      .set({
+        firstResponseMs: ctx.now - (conversation.queuedAt ?? conversation.createdAt),
+        firstResponseDueAt: null,
+        updatedAt: ctx.now
+      })
+      .where(scoped(ctx, schema.orbitConversations, eq(schema.orbitConversations.id, conversation.id)));
+  }
 
   return { messageId, externalRef: sent.externalRef };
 }

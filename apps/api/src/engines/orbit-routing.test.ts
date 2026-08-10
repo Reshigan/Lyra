@@ -236,6 +236,76 @@ describe("routeConversation", () => {
     expect(row!.firstResponseDueAt).toBe(now + 15 * 60_000);
     expect(row!.resolutionDueAt).toBe(now + 240 * 60_000);
   });
+
+  // Regression test for C1: sweepRouting's FRT-breach loop calls
+  // routeConversation a second time on an already-queued conversation. That
+  // must never push the SLA clock forward or reset queue position.
+  it("preserves queuedAt, firstResponseDueAt and resolutionDueAt on a second, re-route call", async () => {
+    await ctx.db.insert(schema.orbitTeams).values({
+      id: "otm_default",
+      tenantId,
+      key: "default",
+      nameJson: "{}",
+      isDefault: true,
+      createdAt: now,
+      updatedAt: now
+    });
+    await ctx.db.insert(schema.orbitSlaPolicies).values({
+      id: "slp_1",
+      tenantId,
+      key: "default",
+      frtMinutes: 15,
+      resolutionMinutes: 240,
+      createdAt: now,
+      updatedAt: now
+    });
+    await ctx.db.update(schema.orbitConversations).set({ slaPolicyKey: "default" }).where(eq(schema.orbitConversations.id, "cnv_1"));
+    await ctx.db.insert(schema.orbitTeamMembers).values({ id: "tmm_1", tenantId, teamId: "otm_default", userId: "u_1", createdAt: now });
+    await ctx.db.insert(schema.orbitAgentPresence).values({ id: "ap_1", tenantId, userId: "u_1", status: "available", activeCount: 0, updatedAt: now });
+
+    await routeConversation(ctx, "cnv_1");
+    const [first] = await ctx.db.select().from(schema.orbitConversations).where(eq(schema.orbitConversations.id, "cnv_1"));
+    expect(first!.queuedAt).toBe(now);
+    expect(first!.firstResponseDueAt).toBe(now + 15 * 60_000);
+    expect(first!.resolutionDueAt).toBe(now + 240 * 60_000);
+
+    const later: Ctx = { ...ctx, now: now + 5 * 60_000 };
+    await routeConversation(later, "cnv_1");
+    const [second] = await ctx.db.select().from(schema.orbitConversations).where(eq(schema.orbitConversations.id, "cnv_1"));
+    expect(second!.queuedAt).toBe(first!.queuedAt);
+    expect(second!.firstResponseDueAt).toBe(first!.firstResponseDueAt);
+    expect(second!.resolutionDueAt).toBe(first!.resolutionDueAt);
+  });
+
+  // Regression test for C3: a routine re-route (not the stale-presence path)
+  // must not poach a conversation away from an agent who already owns it,
+  // even when a more attractive candidate becomes available in the interim.
+  it("keeps an existing assignee on a second re-route even when a less-loaded agent later becomes available", async () => {
+    await ctx.db.insert(schema.orbitTeams).values({
+      id: "otm_default",
+      tenantId,
+      key: "default",
+      nameJson: "{}",
+      isDefault: true,
+      createdAt: now,
+      updatedAt: now
+    });
+    await ctx.db.insert(schema.orbitTeamMembers).values({ id: "tmm_1", tenantId, teamId: "otm_default", userId: "u_1", createdAt: now });
+    await ctx.db.insert(schema.orbitAgentPresence).values({ id: "ap_1", tenantId, userId: "u_1", status: "available", activeCount: 1, updatedAt: now });
+
+    await routeConversation(ctx, "cnv_1");
+    const [first] = await ctx.db.select().from(schema.orbitConversations).where(eq(schema.orbitConversations.id, "cnv_1"));
+    expect(first!.assigneeRef).toBe("u_1");
+
+    // A less-loaded agent joins the team after first routing — a routine
+    // re-route must not hand the conversation to them.
+    await ctx.db.insert(schema.orbitTeamMembers).values({ id: "tmm_2", tenantId, teamId: "otm_default", userId: "u_0", createdAt: now });
+    await ctx.db.insert(schema.orbitAgentPresence).values({ id: "ap_2", tenantId, userId: "u_0", status: "available", activeCount: 0, updatedAt: now });
+
+    await routeConversation(ctx, "cnv_1");
+    const [second] = await ctx.db.select().from(schema.orbitConversations).where(eq(schema.orbitConversations.id, "cnv_1"));
+    expect(second!.assigneeRef).toBe("u_1");
+  });
 });
 
 describe("sweepRouting", () => {
@@ -292,7 +362,13 @@ describe("sweepRouting", () => {
 
     const events = await ctx.db.select().from(schema.eventOutbox);
     const breach = events.find((e) => JSON.parse(e.envelopeJson).type === "orbit.sla.breached");
-    expect(JSON.parse(breach!.envelopeJson).data).toEqual({ conversationId: "cnv_frt", kind: "frt", priority: 1 });
+    expect(JSON.parse(breach!.envelopeJson).data).toEqual({
+      conversationId: "cnv_frt",
+      kind: "frt",
+      priority: 1,
+      teamId: "otm_default",
+      dueAt: now - 1
+    });
   });
 
   it("does not bump priority for a resolution-SLA breach, and does not re-fire on a second sweep", async () => {
@@ -396,6 +472,96 @@ describe("sweepRouting", () => {
     expect(row!.assigneeRef).toBeNull();
 
     const events = await ctx.db.select().from(schema.eventOutbox);
-    expect(events.some((e) => JSON.parse(e.envelopeJson).type === "orbit.conversation.unassigned")).toBe(true);
+    const unassignedEvent = events.find((e) => JSON.parse(e.envelopeJson).type === "orbit.conversation.unassigned");
+    expect(unassignedEvent).toBeDefined();
+    expect(JSON.parse(unassignedEvent!.envelopeJson).data).toEqual({
+      conversationId: "cnv_alone",
+      teamId: "otm_default",
+      previousAssigneeRef: "u_stale"
+    });
+  });
+
+  // Regression test for I3: the stale-presence reassignment loop must honor
+  // the conversation's requireSkillsJson instead of hardcoding no requirement
+  // — otherwise it can hand a skill-gated conversation to an unqualified agent.
+  it("honors requireSkillsJson when reassigning a stale agent's conversation", async () => {
+    await ctx.db.insert(schema.orbitTeamMembers).values([
+      { id: "tmm_1", tenantId, teamId: "otm_default", userId: "u_stale", createdAt: now },
+      // more idle (would win the tiebreak) but lacks the required skill
+      { id: "tmm_2", tenantId, teamId: "otm_default", userId: "u_no_skill", skillsJson: JSON.stringify([]), createdAt: now },
+      { id: "tmm_3", tenantId, teamId: "otm_default", userId: "u_skilled", skillsJson: JSON.stringify(["claims"]), createdAt: now }
+    ]);
+    await ctx.db.insert(schema.orbitAgentPresence).values([
+      { id: "ap_1", tenantId, userId: "u_stale", status: "available", activeCount: 1, updatedAt: now - PRESENCE_STALE_MS - 1 },
+      { id: "ap_2", tenantId, userId: "u_no_skill", status: "available", activeCount: 0, updatedAt: now - 1000 },
+      { id: "ap_3", tenantId, userId: "u_skilled", status: "available", activeCount: 0, updatedAt: now }
+    ]);
+    await ctx.db.insert(schema.orbitConversations).values({
+      id: "cnv_skill_gated",
+      tenantId,
+      channel: "whatsapp",
+      state: "human",
+      teamId: "otm_default",
+      assigneeRef: "u_stale",
+      requireSkillsJson: JSON.stringify(["claims"]),
+      priority: 2,
+      createdAt: now - 1000,
+      updatedAt: now - 1000
+    });
+
+    const result = await sweepRouting(ctx);
+    expect(result.reassigned).toBe(1);
+
+    const [row] = await ctx.db.select().from(schema.orbitConversations).where(eq(schema.orbitConversations.id, "cnv_skill_gated"));
+    expect(row!.assigneeRef).toBe("u_skilled");
+  });
+
+  // Regression test for tenant isolation: a sweep run for one tenant must
+  // never touch, count, or reassign another tenant's conversations.
+  it("does not touch another tenant's breached or stale-agent conversations", async () => {
+    const otherTenantId = "t_2";
+    await ctx.db.insert(schema.orbitTeams).values({
+      id: "otm_other",
+      tenantId: otherTenantId,
+      key: "default",
+      nameJson: "{}",
+      isDefault: true,
+      createdAt: now,
+      updatedAt: now
+    });
+    await ctx.db.insert(schema.orbitTeamMembers).values({ id: "tmm_other", tenantId: otherTenantId, teamId: "otm_other", userId: "u_other", createdAt: now });
+    await ctx.db.insert(schema.orbitAgentPresence).values({
+      id: "ap_other",
+      tenantId: otherTenantId,
+      userId: "u_other_stale",
+      status: "available",
+      activeCount: 1,
+      updatedAt: now - PRESENCE_STALE_MS - 1
+    });
+    await ctx.db.insert(schema.orbitConversations).values({
+      id: "cnv_other_frt",
+      tenantId: otherTenantId,
+      channel: "whatsapp",
+      state: "bot",
+      teamId: "otm_other",
+      assigneeRef: "u_other_stale",
+      priority: 2,
+      firstResponseDueAt: now - 1,
+      createdAt: now - 1000,
+      updatedAt: now - 1000
+    });
+
+    const result = await sweepRouting(ctx);
+    expect(result.frtBreaches).toBe(0);
+    expect(result.reassigned).toBe(0);
+    expect(result.unassigned).toBe(0);
+
+    const [row] = await ctx.db.select().from(schema.orbitConversations).where(eq(schema.orbitConversations.id, "cnv_other_frt"));
+    expect(row!.priority).toBe(2);
+    expect(row!.frtBreachedAt).toBeNull();
+    expect(row!.assigneeRef).toBe("u_other_stale");
+
+    const [otherPresence] = await ctx.db.select().from(schema.orbitAgentPresence).where(eq(schema.orbitAgentPresence.userId, "u_other_stale"));
+    expect(otherPresence!.status).toBe("available");
   });
 });

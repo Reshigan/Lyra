@@ -34,9 +34,10 @@ let database: Db;
 let agentToken: string;
 /** A user with no `orbit:messages:send`. */
 let outsiderToken: string;
-/** hind.saqr — orbit.admin, the only orbit role bundle carrying `orbit:*:*`
- *  (rbac.ts), hence the only seeded persona with `orbit:conversations:assign`
- *  — `orbit.agent` (agentToken above) does not hold it. */
+/** hind.saqr — orbit.admin. `orbit.lead` also carries `orbit:conversations:assign`
+ *  explicitly (rbac.ts), but no `orbit.lead` persona is seeded (seed.ts), so
+ *  orbit.admin is the only seeded persona holding it — `orbit.agent`
+ *  (agentToken above) does not hold it. */
 let leadToken: string;
 
 interface Res<T = any> {
@@ -209,7 +210,12 @@ describe("POST /v1/orbit/routing/sweep", () => {
   it("runs the routing sweep and reports counts", async () => {
     const res = await call(leadToken, "POST", "/v1/orbit/routing/sweep");
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ frtBreaches: expect.any(Number), resolutionBreaches: expect.any(Number), reassigned: expect.any(Number) });
+    expect(res.body).toEqual({
+      frtBreaches: expect.any(Number),
+      resolutionBreaches: expect.any(Number),
+      reassigned: expect.any(Number),
+      unassigned: expect.any(Number)
+    });
   });
 
   it("is 403 without orbit:conversations:assign", async () => {

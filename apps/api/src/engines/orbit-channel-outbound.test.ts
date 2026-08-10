@@ -8,6 +8,7 @@ import { schema, ChannelOptinsJson, PolicyJson, PurposesJson, EntitlementsJson }
 import { sealFields, type Ctx } from "@lyra/core";
 import { dispatchOutbound } from "./orbit-channel-outbound.js";
 import { processChannelEvents } from "./orbit-channel-inbound.js";
+import { sweepRouting } from "./orbit-routing.js";
 import type { Env } from "../env.js";
 
 const MIGRATIONS = join(import.meta.dirname, "..", "..", "..", "..", "packages", "db", "migrations");
@@ -240,6 +241,46 @@ describe("dispatchOutbound", () => {
 
     const result = await dispatchOutbound(ctx, env, inbound!, connector, "On our way!");
     expect(result.externalRef).toBe("wamid.reply");
+  });
+
+  // Regression test for C2: the first human reply must stop the FRT clock, or
+  // sweepRouting keeps treating an already-answered conversation as breached.
+  it("stamps firstResponseMs and clears firstResponseDueAt on the first human reply, so a later sweep does not flag an FRT breach", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ messages: [{ id: "wamid.first-reply" }] }), { status: 200 }))
+    );
+    const queuedAt = now - 5_000;
+    const queued = { ...conversation, queuedAt, firstResponseDueAt: now - 1_000 };
+    await ctx.db.update(schema.orbitConversations).set({ queuedAt, firstResponseDueAt: now - 1_000 }).where(eq(schema.orbitConversations.id, "cnv_1"));
+
+    await dispatchOutbound(ctx, env, queued, connector, "On our way!");
+
+    const [row] = await ctx.db.select().from(schema.orbitConversations).where(eq(schema.orbitConversations.id, "cnv_1"));
+    expect(row!.firstResponseMs).toBe(now - queuedAt);
+    expect(row!.firstResponseDueAt).toBeNull();
+
+    const result = await sweepRouting(ctx);
+    expect(result.frtBreaches).toBe(0);
+
+    const [afterSweep] = await ctx.db.select().from(schema.orbitConversations).where(eq(schema.orbitConversations.id, "cnv_1"));
+    expect(afterSweep!.frtBreachedAt).toBeNull();
+    expect(afterSweep!.priority).toBe(2);
+  });
+
+  // A second human reply must not overwrite the first response time.
+  it("does not overwrite firstResponseMs on a second reply", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ messages: [{ id: "wamid.x" }] }), { status: 200 }))
+    );
+    const already = { ...conversation, firstResponseMs: 12_345, firstResponseDueAt: null };
+    await ctx.db.update(schema.orbitConversations).set({ firstResponseMs: 12_345, firstResponseDueAt: null }).where(eq(schema.orbitConversations.id, "cnv_1"));
+
+    await dispatchOutbound(ctx, env, already, connector, "Following up");
+
+    const [row] = await ctx.db.select().from(schema.orbitConversations).where(eq(schema.orbitConversations.id, "cnv_1"));
+    expect(row!.firstResponseMs).toBe(12_345);
   });
 
   it("records no message when the provider send fails", async () => {
