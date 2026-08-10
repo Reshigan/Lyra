@@ -662,7 +662,7 @@ These cannot be done by an assistant; they require the account owner directly.
       store. No live PSP connector is wired yet (credential-gated, tracked
       separately in Section 6); there is currently nothing that could persist
       card data even accidentally.
-- [ ] **Set the `FIELD_KEY` secret** for staging and production before the
+- [x] **Set the `FIELD_KEY` secret** for staging and production before the
       first document is uploaded — field-level encryption for national
       identifiers (docs/12 §1, [ADR-0032](decisions/ADR-0032-field-level-encryption.md)).
       A wrangler *secret*, never a `wrangler.jsonc` `vars` entry: the day it
@@ -678,6 +678,11 @@ These cannot be done by an assistant; they require the account owner directly.
       same variable in the Docker env. Rotation is not built (ADR-0032
       "Consequences") — changing the value makes existing envelopes unopenable,
       so set it once, before real data.
+      CLOSED 2026-08-10: set on both — `wrangler secret list --env staging`
+      and `wrangler secret list` (production) both show `FIELD_KEY`
+      (`secret_text`); random value generated fresh per environment via
+      `openssl rand -base64 32`, piped straight into `wrangler secret put`,
+      never printed or written to disk.
 - [ ] `claude.ai` and `Higgfield` MCP connectors need interactive OAuth from
       the user directly (cannot be completed non-interactively) — not a go-live
       blocker unless a shipped feature depends on either.
@@ -787,14 +792,20 @@ These cannot be done by an assistant; they require the account owner directly.
         create a gateway named `lyra` under Account Home → AI → AI Gateway
         in the Cloudflare dashboard, or reissue the API token with the
         "AI Gateway: Edit" permission so this can be automated next pass.
-- [ ] DNS + zone cutover for `lyra.vantax.co.za` production, per docs/10 §1/§4
+- [x] DNS + zone cutover for `lyra.vantax.co.za` production, per docs/10 §1/§4
       environment promotion path — staging validated *before* promoting.
       **Code side confirmed 2026-08-02:** `apps/web/wrangler.jsonc` and
       `apps/api/wrangler.jsonc` both declare the production `custom_domain`
       routes (`lyra.vantax.co.za`, `api.lyra.vantax.co.za`) and their staging
-      counterparts correctly — nothing left to fix in config. Actual zone
-      activation + DNS record cutover in the Cloudflare dashboard is the
-      remaining step and is inherently account-owner-only.
+      counterparts correctly.
+      **CLOSED 2026-08-10:** this box had been left unchecked after the
+      cutover actually happened. Verified directly: `curl
+      https://lyra.vantax.co.za/login` → `200` from a Cloudflare anycast IP
+      (`104.21.27.250`); `curl https://api.lyra.vantax.co.za/health` →
+      `{"ok":true,...}`; both hosts present a valid Google Trust Services cert
+      for `vantax.co.za` (`notBefore=2026-07-30`, `notAfter=2026-10-28`), which
+      only issues once a zone is active on Cloudflare and the hostname's DNS
+      resolves there. No remaining account-owner action for these two hosts.
 - [ ] `pnpm deploy:prod` run from CI only, never locally (CLAUDE.md command
       list), with `CLOUDFLARE_API_TOKEN` sourced from the rotated secret (§4
       above must be done first).
@@ -804,9 +815,25 @@ These cannot be done by an assistant; they require the account owner directly.
       push) and `environment: production`, whose required-reviewers/wait-timer
       protection rule lives in repo settings (a GitHub-account action, not
       code). Nothing in the repo grants a local shell the ability to deploy to
-      the production Worker — the only remaining gap is that this session's
-      `CLOUDFLARE_API_TOKEN` is the one flagged for rotation in §4, so the
-      item stays open until that rotation happens, not for any code reason.
+      the production Worker.
+      **Repo-settings side CLOSED 2026-08-10** (via `gh api`, confirmed with
+      `GET repos/Reshigan/Lyra/environments/production`): the `production`
+      environment now requires review from `Reshigan` and only deploys off
+      `main` (`deployment_branch_policy.custom_branch_policies`, branch
+      policy `main`) — previously `protection_rules: []`, i.e. `workflow_dispatch`
+      alone was the only gate. `can_admins_bypass` is still `true` (a
+      repo-admin override, not removable on this plan tier).
+      Item stays open only because `CLOUDFLARE_API_TOKEN` is still the
+      token flagged for rotation in §4 — not for any remaining code or
+      repo-settings reason.
+      Also fixed 2026-08-10: `deploy.yml`'s own `check` job used to run only
+      `lint`/`typecheck`/`test`, thinner than `ci.yml`'s
+      lint/typecheck/test/web-build/eval/e2e/mutation — a push to `main`
+      could deploy staging without ever running the build, eval, e2e or
+      mutation gates. `ci.yml` gained a `workflow_call` trigger (and dropped
+      its own `push` trigger, now redundant) and `deploy.yml`'s `checks` job
+      calls it with `secrets: inherit`; `staging`/`production` now `needs:
+      checks` instead of the old thin `check` job.
 - [~] Ops dashboards / alerting wired per docs/10 §6 before declaring live —
       a go-live with no observability is not actually live.
       - **Done:** Analytics Engine `TELEMETRY` dataset wired (item 8, this
