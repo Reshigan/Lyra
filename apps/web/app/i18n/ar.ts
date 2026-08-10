@@ -132,5 +132,6 @@ export const ar: Messages = {
   "error.unauthorized": "انتهت جلستك. سجّل الدخول للمتابعة.",
   "error.retry": "أعد المحاولة",
   "error.requestId": "المرجع {id}",
-  "error.detail": "التفاصيل"
+  "error.detail": "التفاصيل",
+  "error.unknownIntent": "هذا الإجراء غير متاح."
 };

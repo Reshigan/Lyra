@@ -23,6 +23,7 @@ import {
 import { ApiError, api } from "../api.server";
 import { cloudflare } from "../context";
 import { pseudoText } from "../i18n";
+import { optionLabel } from "../modules/spec";
 import { Gate } from "./staff";
 import { useShellData } from "./workspace";
 
@@ -82,6 +83,10 @@ const LABELS: Record<string, Record<string, string>> = {
     "count.settling": "Settling",
     "count.recovering": "Recovering",
     "count.reopened": "Reopened",
+    // Terminal states: never counted in the strip, but offered as outcomes.
+    "count.withdrawn": "Withdrawn",
+    "count.settled": "Settled",
+    "count.closed": "Closed",
     unassigned: "Nobody",
     "sev.breach": "Overdue",
     "sev.due": "Due soon",
@@ -132,6 +137,9 @@ const LABELS: Record<string, Record<string, string>> = {
     "count.settling": "قيد التسوية",
     "count.recovering": "قيد الاسترداد",
     "count.reopened": "أُعيد فتحها",
+    "count.withdrawn": "مسحوبة",
+    "count.settled": "مسوّاة",
+    "count.closed": "مغلقة",
     unassigned: "بلا معالج",
     "sev.breach": "متأخرة",
     "sev.due": "قريبة الاستحقاق",
@@ -479,7 +487,13 @@ export default function ClaimsDesk() {
                     <input type="hidden" name="claimId" value={row.id} />
                     <input type="hidden" name="from" value={row.status} />
                     <Field label={l("hop.outcome")}>
-                      <Select name="to" defaultValue={hops[0] ?? ""} options={hops.map((to) => ({ value: to, label: to }))} />
+                      <Select name="to" defaultValue={hops[0] ?? ""} options={hops.map((to) => ({
+                          value: to,
+                          // The desk already names every state under `count.*`;
+                          // reusing those keeps one wording for a state whether
+                          // it is a column heading or an outcome to pick.
+                          label: optionLabel(l, "count", to)
+                        }))} />
                     </Field>
                     <Field label={l("hop.reasonCode")}>
                       <Input name="reasonCode" />

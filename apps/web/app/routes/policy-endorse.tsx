@@ -10,7 +10,7 @@ import {
 import { Button, Card, Checkbox, DatePicker, EmptyState, Field, GuardrailNotice, Input, Money, Textarea } from "@lyra/ui";
 import { ApiError, api } from "../api.server";
 import { cloudflare } from "../context";
-import { pseudoText } from "../i18n";
+import { labelsFrom } from "./detail-kit";
 import type { Policy } from "./policy-detail";
 import { Gate } from "./staff";
 import { useShellData } from "./workspace";
@@ -26,9 +26,9 @@ export const PERM = { read: "axis:policies:read", endorse: "axis:policies:endors
 
 const LABELS: Record<string, Record<string, string>> = {
   en: {
-    title: "Endorse policy",
+    title: "Endorse {noun}",
     intro: "Price the change first. Nothing is written until you confirm what was priced.",
-    back: "Back to the policy",
+    back: "Back to the {noun}",
     "field.changes": "Changes (JSON)",
     "field.changesHint": "An object of the fields changing, e.g. {\"sumInsuredMinor\": 5000000}.",
     "field.effectiveFrom": "Effective from",
@@ -44,25 +44,25 @@ const LABELS: Record<string, Record<string, string>> = {
     referralNotice: "This change also needs a referral before it can be confirmed.",
     "confirm.confirm": "I have checked the figures above and want this change written.",
     "confirm.submit": "Confirm the endorsement",
-    blockedTitle: "This policy cannot be endorsed",
-    blockedReason: "Only a bound or active policy can be endorsed.",
-    deniedTitle: "You cannot read this policy",
-    missingTitle: "No such policy",
+    blockedTitle: "This {noun} cannot be endorsed",
+    blockedReason: "Only a bound or active {noun} can be endorsed.",
+    deniedTitle: "You cannot read this {noun}",
+    missingTitle: "No such {noun}",
     missingBody: "It may have been written under another tenant, or the link is stale.",
     approvalTitle: "This endorsement needs an approval first",
     approvalBody: "Policy {policy} holds this change for a second pair of eyes. It is written once someone approves it.",
     approvalLink: "Open approvals",
     doneTitle: "Endorsement written",
-    doneBody: "The policy is now at version {versionSeq}.",
-    doneLink: "Back to the policy",
+    doneBody: "The {noun} is now at version {versionSeq}.",
+    doneLink: "Back to the {noun}",
     "problem.missing_changes": "Describe at least one change first.",
     "problem.bad_changes": "Changes has to be a JSON object of the fields changing.",
     "problem.bad_intent": "The form did not carry an action this screen recognises."
   },
   ar: {
-    title: "تعديل الوثيقة",
+    title: "تعديل {noun}",
     intro: "سعّر التغيير أولًا. لا يُكتب شيء حتى تؤكد ما تم تسعيره.",
-    back: "العودة إلى الوثيقة",
+    back: "العودة إلى {noun}",
     "field.changes": "التغييرات (JSON)",
     "field.changesHint": "كائن بالحقول المتغيرة، مثل {\"sumInsuredMinor\": 5000000}.",
     "field.effectiveFrom": "سارٍ من",
@@ -78,17 +78,17 @@ const LABELS: Record<string, Record<string, string>> = {
     referralNotice: "يحتاج هذا التغيير أيضًا إلى إحالة قبل تأكيده.",
     "confirm.confirm": "راجعت الأرقام أعلاه وأريد كتابة هذا التغيير.",
     "confirm.submit": "تأكيد التعديل",
-    blockedTitle: "لا يمكن تعديل هذه الوثيقة",
-    blockedReason: "يمكن تعديل الوثيقة السارية أو الملزمة فقط.",
-    deniedTitle: "لا يمكنك قراءة هذه الوثيقة",
-    missingTitle: "لا توجد وثيقة بهذا المعرف",
+    blockedTitle: "لا يمكن تعديل {noun}",
+    blockedReason: "يمكن تعديل {noun} السارية أو الملزمة فقط.",
+    deniedTitle: "لا يمكنك قراءة {noun}",
+    missingTitle: "لا يوجد سجل بهذا المعرف ({noun})",
     missingBody: "قد تكون مكتوبة تحت مستأجر آخر، أو أن الرابط قديم.",
     approvalTitle: "يحتاج هذا التعديل إلى موافقة أولًا",
     approvalBody: "سياسة {policy} تحتجز هذا التغيير لمراجعة ثانية. يُكتب بعد موافقة صاحب الصلاحية.",
     approvalLink: "فتح الموافقات",
     doneTitle: "تمت كتابة التعديل",
-    doneBody: "أصبحت الوثيقة الآن عند الإصدار {versionSeq}.",
-    doneLink: "العودة إلى الوثيقة",
+    doneBody: "أصبح {noun} الآن عند الإصدار {versionSeq}.",
+    doneLink: "العودة إلى {noun}",
     "problem.missing_changes": "صف تغييرًا واحدًا على الأقل أولًا.",
     "problem.bad_changes": "يجب أن تكون التغييرات كائن JSON بالحقول المتغيرة.",
     "problem.bad_intent": "لم يحمل النموذج إجراءً تعرفه هذه الشاشة."
@@ -97,11 +97,18 @@ const LABELS: Record<string, Record<string, string>> = {
 
 export type Label = (key: string, vars?: Record<string, string>) => string;
 
-export function labelsIn(locale: string): Label {
-  return (key, vars) => {
-    const raw = pseudoText(locale, LABELS[locale]?.[key] ?? LABELS.en?.[key] ?? key);
-    return vars ? raw.replace(/\{(\w+)\}/g, (whole, name: string) => vars[name] ?? whole) : raw;
-  };
+const base = labelsFrom(LABELS);
+
+/**
+ * `{noun}` is the record's industry name, supplied by the active domain pack
+ * rather than written into the strings above (CLAUDE.md §14). `{policy}` in
+ * `approvalBody` stays the *governance* policy — a platform word the pack must
+ * not rename. Same shape as policy-cancel.tsx.
+ */
+export function labelsIn(locale: string, pack?: string): Label {
+  const l = base(locale, pack);
+  const noun = l("policyId").toLocaleLowerCase(locale);
+  return (key, vars) => l(key, { noun, ...vars });
 }
 
 /* ----------------------------------------------------------------- shapes */
@@ -273,7 +280,7 @@ export default function PolicyEndorse() {
   const navigation = useNavigation();
 
   const locale = shell?.locale ?? "en";
-  const l = labelsIn(locale);
+  const l = labelsIn(locale, shell?.domainPack);
   const busy = navigation.state !== "idle";
   const policy = loaded.policy;
 

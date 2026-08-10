@@ -108,7 +108,7 @@ export default function LedgerAccount() {
   const navigation = useNavigation();
   const locale = shell?.locale ?? "en";
   const t = translator(locale);
-  const l = labelIn(locale);
+  const l = labelIn(locale, shell?.domainPack);
   const busy = navigation.state !== "idle";
 
   if (loaded.denied) {

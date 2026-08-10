@@ -500,13 +500,27 @@ function CreatePanel({
   );
 }
 
+/**
+ * Titles the routes themselves raise, rather than the API. These are the one
+ * class of problem whose wording we own, so they are translated here — at the
+ * single place every route renders a refusal — instead of in each of the
+ * twenty-odd `action`s that can produce one.
+ */
+const LOCAL_PROBLEM_TITLES: Record<string, "error.unknownIntent"> = {
+  "unknown intent": "error.unknownIntent",
+  unknown_intent: "error.unknownIntent"
+};
+
 /** What the API objected to, in the actor's path rather than a toast. */
 export function Problem({ problem }: { problem: { title: string; detail?: string; requestId?: string } }) {
   const shell = useShellData();
   const t = translator(shell?.locale ?? "en");
+  const local = LOCAL_PROBLEM_TITLES[problem.title];
   return (
     <div role="alert" className="rounded-md border border-danger/40 bg-danger/10 p-3">
-      <p className="font-ui text-13 text-text">{problem.detail ?? problem.title}</p>
+      <p className="font-ui text-13 text-text">
+        {local ? t(local) : (problem.detail ?? problem.title)}
+      </p>
       {problem.requestId ? (
         <p className="font-mono text-12 text-muted">{t("error.requestId", { id: problem.requestId })}</p>
       ) : null}

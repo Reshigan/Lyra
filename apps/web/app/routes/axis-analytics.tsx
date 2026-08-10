@@ -79,6 +79,10 @@ export function windowDays(raw: string | null): number {
 const LABELS: Record<string, Record<string, string>> = {
   en: {
     title: "Operations analytics",
+    xlsx: "Excel (.xlsx)",
+    pdf: "PDF",
+    csv: "CSV",
+    json: "JSON",
     intro:
       "What came in, what went wrong, how long it took and whether the promised date held. Throughput and exceptions are queried; the two duration figures are sampled — the card says which.",
     window: "Window",
@@ -129,6 +133,10 @@ const LABELS: Record<string, Record<string, string>> = {
   },
   ar: {
     title: "تحليلات العمليات",
+    xlsx: "إكسل (.xlsx)",
+    pdf: "PDF",
+    csv: "CSV",
+    json: "JSON",
     intro:
       "ما وصل، وما تعطّل، وكم استغرق، وهل التُزم بالتاريخ الموعود. الإنتاجية والاستثناءات مستعلَمة، أما رقما المدة فمُعتمدان على عيّنة — والبطاقة تقول أيّهما.",
     window: "النطاق الزمني",
@@ -594,7 +602,7 @@ export default function AxisAnalytics() {
               <Select
                 name="format"
                 defaultValue="xlsx"
-                options={FORMATS.map((format) => ({ value: format, label: format.toUpperCase() }))}
+                options={FORMATS.map((format) => ({ value: format, label: l(format) }))}
               />
             </Field>
             <Button type="submit" variant="secondary" loading={busy}>

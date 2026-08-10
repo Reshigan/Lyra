@@ -21,6 +21,7 @@ import {
 import { ApiError, api } from "../api.server";
 import { cloudflare } from "../context";
 import { pseudoText } from "../i18n";
+import { vocabulary } from "../modules/vocabulary";
 import { Gate } from "./staff";
 import { useShellData } from "./workspace";
 
@@ -41,7 +42,7 @@ const LABELS: Record<string, Record<string, string>> = {
     title: "New claim (FNOL)",
     intro:
       "Check cover before writing anything. An out-of-cover answer still gets registered, flagged for review — refusing to record a notification is a conduct failure.",
-    "field.policy": "Policy",
+    "policyId": "Policy",
     "field.incidentAt": "Date of loss",
     "field.peril": "Peril",
     "field.cause": "Cause",
@@ -80,7 +81,7 @@ const LABELS: Record<string, Record<string, string>> = {
     title: "بلاغ حادث جديد",
     intro:
       "تحقّق من التغطية قبل تسجيل أي شيء. البلاغ خارج التغطية يُسجَّل أيضًا ويُوسَم للمراجعة — رفض تسجيل بلاغ هو إخلال بواجب السلوك.",
-    "field.policy": "الوثيقة",
+    "policyId": "الوثيقة",
     "field.incidentAt": "تاريخ الحادث",
     "field.peril": "الخطر",
     "field.cause": "السبب",
@@ -119,9 +120,11 @@ const LABELS: Record<string, Record<string, string>> = {
 
 export type Label = (key: string, vars?: Record<string, string>) => string;
 
-export function labelsIn(locale: string): Label {
+/** The pack answers first: `policyId` names an industry record (§14). */
+export function labelsIn(locale: string, pack?: string): Label {
+  const packed = vocabulary(pack, locale);
   return (key, vars) => {
-    const raw = pseudoText(locale, LABELS[locale]?.[key] ?? LABELS["en"]?.[key] ?? key);
+    const raw = pseudoText(locale, packed(key) ?? LABELS[locale]?.[key] ?? LABELS["en"]?.[key] ?? key);
     return vars ? raw.replace(/\{(\w+)\}/g, (whole, name: string) => vars[name] ?? whole) : raw;
   };
 }
@@ -312,7 +315,7 @@ export default function FnolIntake() {
   const navigation = useNavigation();
   const shell = useShellData();
   const locale = shell?.locale ?? "en";
-  const l = labelsIn(locale);
+  const l = labelsIn(locale, shell?.domainPack);
   const busy = navigation.state !== "idle";
 
   const coverage = result?.coverage;
@@ -331,7 +334,7 @@ export default function FnolIntake() {
       ) : null}
 
       <Form method="post" id="fnol-form" className="space-y-4">
-        <Field label={l("field.policy")}>
+        <Field label={l("policyId")}>
           <Input name="policyId" list="fnol-policies" required className="w-72" />
           <datalist id="fnol-policies">
             {policies.map((policy) => (

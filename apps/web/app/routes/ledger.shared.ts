@@ -1,4 +1,5 @@
 // What the four bespoke ledger screens agree on: the state machine they may
+import { vocabulary } from "../modules/vocabulary";
 import { pseudoText } from "../i18n";
 // offer, the invariant they must show, and the words they say it in.
 //
@@ -671,10 +672,17 @@ export const LABELS: Record<string, Record<string, string>> = {
 
 export type Label = (key: string, vars?: Record<string, string | number>) => string;
 
-export function labelIn(locale: string): Label {
+/**
+ * The pack answers first (CLAUDE.md §14): `process.insurer` is an industry noun
+ * and a tenant selling something else calls that counterparty a supplier. Every
+ * other key here is platform vocabulary, which no pack has an opinion on, so
+ * the consult costs one lookup and changes nothing for the default pack.
+ */
+export function labelIn(locale: string, pack?: string): Label {
   const table = LABELS[locale] ?? LABELS.en!;
+  const packed = vocabulary(pack, locale);
   return (key, vars) => {
-    const text = pseudoText(locale, table[key] ?? LABELS.en![key] ?? key);
+    const text = pseudoText(locale, packed(key) ?? table[key] ?? LABELS.en![key] ?? key);
     return vars
       ? text.replace(/\{(\w+)\}/g, (whole, name: string) => String(vars[name] ?? whole))
       : text;

@@ -121,7 +121,7 @@ export const LABELS: Labels = {
     settled: "Recently settled",
     settledBody: "Accepted or lost, newest decision first.",
     customer: "Customer",
-    policy: "Policy reference",
+    policyRef: "Policy reference",
     expires: "Expires",
     daysLeft: "Days left",
     risk: "Churn risk",
@@ -189,7 +189,7 @@ export const LABELS: Labels = {
     settled: "حُسمت مؤخرًا",
     settledBody: "مقبولة أو خسارة، الأحدث قرارًا أولًا.",
     customer: "العميل",
-    policy: "مرجع الوثيقة",
+    policyRef: "مرجع الوثيقة",
     expires: "تنتهي",
     daysLeft: "الأيام المتبقية",
     risk: "خطر التسرب",
@@ -425,7 +425,7 @@ export default function SaveDesk() {
             density="compact"
             columns={[
               { key: "customerId", header: l("customer"), render: (row) => row.customerId ?? "—" },
-              { key: "policyRef", header: l("policy"), render: (row) => row.policyRef ?? "—" },
+              { key: "policyRef", header: l("policyRef"), render: (row) => row.policyRef ?? "—" },
               {
                 key: "state",
                 header: l("state"),

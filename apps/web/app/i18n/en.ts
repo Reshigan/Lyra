@@ -137,7 +137,10 @@ export const en = {
   "error.unauthorized": "Your session has ended. Sign in to continue.",
   "error.retry": "Try again",
   "error.requestId": "Reference {id}",
-  "error.detail": "Details"
+  "error.detail": "Details",
+  /* Routes refuse an unrecognised form intent by title. Only reachable if a
+     request is made outside the UI, but a refusal is still read by a person. */
+  "error.unknownIntent": "That control is not available."
 } as const;
 
 export type MessageKey = keyof typeof en;

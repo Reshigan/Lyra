@@ -292,7 +292,7 @@ export default function LedgerTransaction() {
   const navigation = useNavigation();
   const locale = shell?.locale ?? "en";
   const t = translator(locale);
-  const l = labelIn(locale);
+  const l = labelIn(locale, shell?.domainPack);
   const busy = navigation.state !== "idle";
 
   if (loaded.denied) {
@@ -361,7 +361,11 @@ export default function LedgerTransaction() {
 
       <Announcement result={result} l={l} />
 
-      {result?.problem ? <Problem problem={result.problem} /> : null}
+      {/* A `reason` refusal is already shown on the field it belongs to, further
+          down — repeating it up here says the same thing twice in two wordings. */}
+      {result?.problem && result.problem.title !== "reason" ? (
+        <Problem problem={result.problem} />
+      ) : null}
 
       <Card title={t("common.details")} elevation="flat">
         <dl className="grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-5">

@@ -58,7 +58,7 @@ describe("labelsIn", () => {
     const keys = [
       "title",
       "intro",
-      "field.policy",
+      "policyId",
       "field.incidentAt",
       "field.peril",
       "field.cause",

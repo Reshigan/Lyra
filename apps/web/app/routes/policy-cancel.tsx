@@ -10,7 +10,7 @@ import {
 import { Button, Card, Checkbox, DatePicker, EmptyState, Field, Money, Select, Textarea } from "@lyra/ui";
 import { ApiError, api } from "../api.server";
 import { cloudflare } from "../context";
-import { pseudoText } from "../i18n";
+import { labelsFrom } from "./detail-kit";
 import type { Policy } from "./policy-detail";
 import { Gate } from "./staff";
 import { useShellData } from "./workspace";
@@ -26,9 +26,9 @@ export const PERM = { read: "axis:policies:read", cancel: "axis:policies:cancel"
 
 const LABELS: Record<string, Record<string, string>> = {
   en: {
-    title: "Cancel policy",
+    title: "Cancel {noun}",
     intro: "Price the cancellation first. Nothing is written until you confirm what was priced.",
-    back: "Back to the policy",
+    back: "Back to the {noun}",
     "field.reasonCode": "Reason",
     "field.refundMethod": "Refund method",
     "field.refundMethod.credit": "Credit note",
@@ -42,24 +42,24 @@ const LABELS: Record<string, Record<string, string>> = {
     "quote.clawbackMinor": "Commission clawback",
     "confirm.confirm": "I have checked the figures above and want this cancellation written.",
     "confirm.submit": "Confirm the cancellation",
-    blockedTitle: "This policy cannot be cancelled",
-    blockedReason: "Only a bound or active policy can be cancelled.",
-    deniedTitle: "You cannot read this policy",
-    missingTitle: "No such policy",
+    blockedTitle: "This {noun} cannot be cancelled",
+    blockedReason: "Only a bound or active {noun} can be cancelled.",
+    deniedTitle: "You cannot read this {noun}",
+    missingTitle: "No such {noun}",
     missingBody: "It may have been written under another tenant, or the link is stale.",
     approvalTitle: "This cancellation needs an approval first",
     approvalBody: "Policy {policy} holds this refund for a second pair of eyes. It is written once someone approves it.",
     approvalLink: "Open approvals",
     doneTitle: "Cancellation written",
-    doneBody: "The policy is now cancelled.",
-    doneLink: "Back to the policy",
+    doneBody: "The {noun} is now cancelled.",
+    doneLink: "Back to the {noun}",
     "problem.missing_reason": "Give a reason for the cancellation first.",
     "problem.bad_intent": "The form did not carry an action this screen recognises."
   },
   ar: {
-    title: "إلغاء الوثيقة",
+    title: "إلغاء {noun}",
     intro: "سعّر الإلغاء أولًا. لا يُكتب شيء حتى تؤكد ما تم تسعيره.",
-    back: "العودة إلى الوثيقة",
+    back: "العودة إلى {noun}",
     "field.reasonCode": "السبب",
     "field.refundMethod": "طريقة الاسترداد",
     "field.refundMethod.credit": "إشعار دائن",
@@ -73,17 +73,17 @@ const LABELS: Record<string, Record<string, string>> = {
     "quote.clawbackMinor": "استرجاع العمولة",
     "confirm.confirm": "راجعت الأرقام أعلاه وأريد كتابة هذا الإلغاء.",
     "confirm.submit": "تأكيد الإلغاء",
-    blockedTitle: "لا يمكن إلغاء هذه الوثيقة",
-    blockedReason: "يمكن إلغاء الوثيقة السارية أو الملزمة فقط.",
-    deniedTitle: "لا يمكنك قراءة هذه الوثيقة",
-    missingTitle: "لا توجد وثيقة بهذا المعرف",
+    blockedTitle: "لا يمكن إلغاء {noun}",
+    blockedReason: "يمكن إلغاء {noun} السارية أو الملزمة فقط.",
+    deniedTitle: "لا يمكنك قراءة {noun}",
+    missingTitle: "لا يوجد سجل بهذا المعرف ({noun})",
     missingBody: "قد تكون مكتوبة تحت مستأجر آخر، أو أن الرابط قديم.",
     approvalTitle: "يحتاج هذا الإلغاء إلى موافقة أولًا",
     approvalBody: "سياسة {policy} تحتجز هذا الاسترداد لمراجعة ثانية. يُكتب بعد موافقة صاحب الصلاحية.",
     approvalLink: "فتح الموافقات",
     doneTitle: "تمت كتابة الإلغاء",
-    doneBody: "الوثيقة الآن ملغاة.",
-    doneLink: "العودة إلى الوثيقة",
+    doneBody: "{noun} الآن ملغاة.",
+    doneLink: "العودة إلى {noun}",
     "problem.missing_reason": "أدخل سببًا للإلغاء أولًا.",
     "problem.bad_intent": "لم يحمل النموذج إجراءً تعرفه هذه الشاشة."
   }
@@ -91,11 +91,22 @@ const LABELS: Record<string, Record<string, string>> = {
 
 export type Label = (key: string, vars?: Record<string, string>) => string;
 
-export function labelsIn(locale: string): Label {
-  return (key, vars) => {
-    const raw = pseudoText(locale, LABELS[locale]?.[key] ?? LABELS.en?.[key] ?? key);
-    return vars ? raw.replace(/\{(\w+)\}/g, (whole, name: string) => vars[name] ?? whole) : raw;
-  };
+const base = labelsFrom(LABELS);
+
+/**
+ * `{noun}` is the record's industry name, supplied by the active domain pack
+ * rather than written into the strings above (CLAUDE.md §14) — the same screen
+ * cancels a policy for an insurer and an order for a retailer. English wants it
+ * lower-case mid-sentence and every use above is mid-sentence; Arabic has no
+ * case, so lowering is a no-op there.
+ *
+ * `{policy}` stays the *governance* policy in `approvalBody` — a platform word,
+ * not an industry one, which is why the pack must not touch it.
+ */
+export function labelsIn(locale: string, pack?: string): Label {
+  const l = base(locale, pack);
+  const noun = l("policyId").toLocaleLowerCase(locale);
+  return (key, vars) => l(key, { noun, ...vars });
 }
 
 /* ----------------------------------------------------------------- shapes */
@@ -259,7 +270,7 @@ export default function PolicyCancel() {
   const navigation = useNavigation();
 
   const locale = shell?.locale ?? "en";
-  const l = labelsIn(locale);
+  const l = labelsIn(locale, shell?.domainPack);
   const busy = navigation.state !== "idle";
   const policy = loaded.policy;
 

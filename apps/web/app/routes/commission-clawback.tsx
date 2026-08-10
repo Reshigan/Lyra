@@ -61,7 +61,6 @@ const LABELS: Record<string, Record<string, string>> = {
     back: "Back to the statement",
     entry: "The entry standing today",
     preview: "What will be written",
-    policyId: "Policy",
     providerId: "Provider",
     channelId: "Channel",
     kind: "Kind",
@@ -114,7 +113,6 @@ const LABELS: Record<string, Record<string, string>> = {
     back: "العودة إلى الكشف",
     entry: "القيد القائم حاليًا",
     preview: "ما سيتم كتابته",
-    policyId: "الوثيقة",
     providerId: "المزود",
     channelId: "القناة",
     kind: "النوع",
@@ -161,10 +159,18 @@ const LABELS: Record<string, Record<string, string>> = {
   }
 };
 
-function labelsIn(locale: string): (key: string, vars?: Record<string, string>) => string {
+/**
+ * The industry nouns are deliberately absent from LABELS above: they fall
+ * through to commission-statement's resolver, which consults the domain pack
+ * (CLAUDE.md §14). Keeping a copy of `policyId` here would have shadowed it.
+ */
+function labelsIn(
+  locale: string,
+  pack?: string
+): (key: string, vars?: Record<string, string>) => string {
   const table = LABELS[locale] ?? LABELS.en ?? {};
   const fallback = LABELS.en ?? {};
-  const shared = statementLabels(locale);
+  const shared = statementLabels(locale, pack);
   return (key, vars) => {
     // `shared` is commission-statement's own resolver and pseudoizes itself.
     const own = table[key] ?? fallback[key];
@@ -269,7 +275,7 @@ export default function CommissionClawback() {
 
   const locale = shell?.locale ?? "en";
   const t = translator(locale);
-  const l = labelsIn(locale);
+  const l = labelsIn(locale, shell?.domainPack);
   const busy = navigation.state !== "idle";
   const entry = loaded.entry;
 

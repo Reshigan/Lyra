@@ -25,6 +25,7 @@ import { ApiError, api, fetchMe } from "../api.server";
 import { Cell, FieldInput, toneFor } from "../components/fields";
 import { cloudflare } from "../context";
 import { pseudoText, translator } from "../i18n";
+import { vocabulary } from "../modules/vocabulary";
 import { bodyFrom, optionLabel, type FieldSpec, type Row } from "../modules/spec";
 import { Problem } from "./module";
 import { useShellData } from "./workspace";
@@ -252,13 +253,20 @@ const LABELS: Record<string, Record<string, string>> = {
   }
 };
 
-/** Local table first, then the shared `common.*` catalogue, then the raw key. */
-export function labelsIn(locale: string): (key: string, vars?: Record<string, string>) => string {
+/**
+ * The domain pack first (CLAUDE.md §14 — `policyId` is an industry noun), then
+ * the local table, then the shared `common.*` catalogue, then the raw key.
+ */
+export function labelsIn(
+  locale: string,
+  pack?: string
+): (key: string, vars?: Record<string, string>) => string {
   const table = LABELS[locale] ?? LABELS.en ?? {};
   const fallback = LABELS.en ?? {};
+  const packed = vocabulary(pack, locale);
   const t = translator(locale);
   return (key, vars) => {
-    const local = table[key] ?? fallback[key];
+    const local = packed(key) ?? table[key] ?? fallback[key];
     // `t()` pseudoizes on its own; only the route's own table needs the wrap.
     const shared = local === undefined ? t(`common.${key}`) : pseudoText(locale, local);
     const raw = shared === `common.${key}` ? key : shared;
@@ -370,7 +378,7 @@ export default function CommissionStatement() {
 
   const locale = shell?.locale ?? "en";
   const t = translator(locale);
-  const l = labelsIn(locale);
+  const l = labelsIn(locale, shell?.domainPack);
   const busy = navigation.state !== "idle";
 
   const statement = loaded.statement;
