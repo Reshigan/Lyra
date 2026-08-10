@@ -414,6 +414,7 @@ async function linkOrCreate(
     mfaSecret: null,
     mfaRecoveryJson: null,
     externalId: claims.sub,
+    providerId: null,
     lastSeenAt: null,
     createdAt: now,
     updatedAt: now,

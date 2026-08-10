@@ -17,3 +17,4 @@ test-results
 packages/core/packages
 e2e.db
 reports/
+graphify-out/

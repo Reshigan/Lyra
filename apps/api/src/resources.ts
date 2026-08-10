@@ -555,6 +555,27 @@ export const SIGNAL = register(
 
 /* ------------------------------------------------------------------- scout */
 
+// data-products.subscribersJson: array of { providerId, since, suspendedAt? }
+// (see packages/core/src/seed/scout.ts). Malformed/absent reads as "no active
+// subscribers" rather than throwing — this gates visibility, not data
+// integrity. A subscriber entry with suspendedAt set has had that provider's
+// access revoked, so it's excluded even while the product stays published.
+function activeSubscriberIds(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(
+        (x): x is { providerId: string; suspendedAt?: number } =>
+          typeof x === "object" && x !== null && typeof (x as { providerId?: unknown }).providerId === "string" && (x as { suspendedAt?: unknown }).suspendedAt == null
+      )
+      .map((x) => x.providerId);
+  } catch {
+    return [];
+  }
+}
+
 export const SCOUT = register(
   r(
     "signals",
@@ -609,19 +630,26 @@ export const SCOUT = register(
     create: "scout:data_products:create",
     update: "scout:data_products:publish"
   }, {
-    // ROLE-028: provider.viewer only has scout:data_products:read, so without
-    // this it sees every draft/suspended product tenant-wide, not just what's
-    // published. Publishers (scout:data_products:publish) still see drafts,
-    // they're the ones authoring them. This does NOT scope a provider.viewer
-    // down to only the products *their* org subscribed to — there is no
-    // actor-to-provider identity in the RBAC model to check that against
-    // (Scope has teamIds/productLines/modules, no providerIds); that gap needs
-    // an ADR, not a rowVisible predicate. See ADR-0025 (proposed, unresolved).
-    rowVisible: ((ctx, row) =>
-      row.status === "published" ||
-      can(ctx.actor, "scout:data_products:publish", { tenantId: ctx.tenantId, module: "scout" })) as NonNullable<
-      Resource["rowVisible"]
-    >
+    // ROLE-028 (ADR-0025): provider.viewer only has scout:data_products:read,
+    // so without this it sees every draft/suspended product tenant-wide, not
+    // just what's published. Publishers (scout:data_products:publish) still
+    // see drafts, they're the ones authoring them.
+    //
+    // A provider.viewer whose grant carries providerIds (core_users.providerId
+    // set — see grantsFor in @lyra/core) is further scoped to products their
+    // own provider subscribed to (subscribersJson). A provider.viewer with no
+    // providerId recorded falls back to the pre-existing published-only view
+    // rather than being locked out, since not every viewer has been assigned
+    // a provider yet.
+    rowVisible: ((ctx, row) => {
+      if (row.status !== "published") {
+        return can(ctx.actor, "scout:data_products:publish", { tenantId: ctx.tenantId, module: "scout" });
+      }
+      const providerIds = ctx.actor.grants.flatMap((g) => g.scope?.providerIds ?? []);
+      if (providerIds.length === 0) return true;
+      const subscribers = activeSubscriberIds(row.subscribersJson as string | null);
+      return subscribers.some((id) => providerIds.includes(id));
+    }) as NonNullable<Resource["rowVisible"]>
   })
 );
 

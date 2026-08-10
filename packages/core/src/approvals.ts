@@ -376,22 +376,32 @@ export interface ResolveInput {
  * role's bundle is written at provisioning time.
  */
 export async function grantsFor(db: CoreDb, tenantId: string, userId: string): Promise<Grant[]> {
-  const rows = await db
-    .select({
-      key: schema.roles.key,
-      permissionsJson: schema.roles.permissionsJson,
-      scopeJson: schema.userRoles.scopeJson
-    })
-    .from(schema.userRoles)
-    .innerJoin(schema.roles, eq(schema.roles.id, schema.userRoles.roleId))
-    .where(and(eq(schema.userRoles.tenantId, tenantId), eq(schema.userRoles.userId, userId)));
+  const [rows, [user]] = await Promise.all([
+    db
+      .select({
+        key: schema.roles.key,
+        permissionsJson: schema.roles.permissionsJson,
+        scopeJson: schema.userRoles.scopeJson
+      })
+      .from(schema.userRoles)
+      .innerJoin(schema.roles, eq(schema.roles.id, schema.userRoles.roleId))
+      .where(and(eq(schema.userRoles.tenantId, tenantId), eq(schema.userRoles.userId, userId))),
+    db.select({ providerId: schema.users.providerId }).from(schema.users).where(eq(schema.users.id, userId))
+  ]);
 
   return rows.map((row) => {
     // A stored '[]' is a decision to strip the role and must stay empty;
     // only an unreadable bundle falls back to the compiled table.
     const stored = safeJson<string[]>(row.permissionsJson);
     const permissions = Array.isArray(stored) ? stored : [...permissionsForRole(row.key)];
-    const scope = row.scopeJson ? (ScopeJson.parse(safeJson(row.scopeJson)) as Scope) : undefined;
+    const storedScope = row.scopeJson ? (ScopeJson.parse(safeJson(row.scopeJson)) as Scope) : undefined;
+    // ROLE-028: provider.viewer's row visibility is derived live from
+    // core_users.providerId, not authored per-invite like teamIds — a provider
+    // contact's identity doesn't change per role assignment. See ADR-0025.
+    const scope =
+      user?.providerId != null
+        ? { ...storedScope, providerIds: [user.providerId] }
+        : storedScope;
     return { roleKey: row.key, permissions, ...(scope ? { scope } : {}) };
   });
 }

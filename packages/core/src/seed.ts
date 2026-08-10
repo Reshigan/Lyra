@@ -109,7 +109,11 @@ const PEOPLE: ReadonlyArray<{ local: string; name: string; role: string; locale?
   // controller means no payout, refund or client-money transfer can ever clear.
   { local: "nadia.rahman", name: "Nadia Rahman", role: "finance.controller" },
   { local: "mona.idris", name: "Mona Idris", role: "finance.analyst" },
-  { local: "raed.samir", name: "Raed Samir", role: "dev.admin" }
+  { local: "raed.samir", name: "Raed Samir", role: "dev.admin" },
+  // ROLE-028 (ADR-0025): a real provider-side login, scoped after seeding to
+  // Falcon Insurance's own core_users.providerId below — parity with every
+  // other role having a persona for journey/e2e coverage.
+  { local: "yasmin.faris", name: "Yasmin Faris", role: "provider.viewer" }
 ];
 
 export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResult> {
@@ -346,6 +350,14 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
       updatedAt: now
     }
   ]);
+
+  // ROLE-028: Falcon subscribes to the two published data products seeded
+  // below (see scout.ts subscribersJson), so this persona's scoped view is
+  // exercised rather than trivially empty.
+  await db
+    .update(schema.users)
+    .set({ providerId: providers.falcon })
+    .where(eq(schema.users.id, users["provider.viewer"]!));
 
   /* --------------------------------------------------------- products */
   const products = {

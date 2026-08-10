@@ -39,6 +39,9 @@ export const users = sqliteTable(
     // Subject claim from the identity provider that owns this account. Matching
     // on email alone would let a renamed mailbox inherit a session.
     externalId: text("external_id"),
+    // Set only for provider-side staff (ROLE-028): scopes provider.viewer's
+    // reads to this provider's own rows. See ADR-0025.
+    providerId: text("provider_id").references(() => providers.id),
     lastSeenAt: integer("last_seen_at"),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),

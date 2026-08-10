@@ -121,7 +121,8 @@ export type ChannelOptinsJson = z.infer<typeof ChannelOptinsJson>;
 export const ScopeJson = z.object({
   teamIds: z.array(z.string()).optional(),
   modules: z.array(z.string()).optional(),
-  productLines: z.array(z.string()).optional()
+  productLines: z.array(z.string()).optional(),
+  providerIds: z.array(z.string()).optional()
 });
 export type ScopeJson = z.infer<typeof ScopeJson>;
 

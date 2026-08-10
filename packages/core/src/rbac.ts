@@ -12,6 +12,15 @@ export interface Scope {
   productLines?: readonly string[];
   /** modules the grant is limited to. */
   modules?: readonly string[];
+  /**
+   * core_providers ids the grant is limited to (ROLE-028: provider.viewer).
+   * Deliberately NOT read by scopeAllows()/can() — Subject has no providerId
+   * dimension, and wiring it into the generic fail-closed check would lock a
+   * provider.viewer out of every *other* permission it holds the moment this
+   * field is absent (the same class of bug axis.agent hit with teamIds).
+   * Consumed directly by the data-products resource's rowVisible instead.
+   */
+  providerIds?: readonly string[];
 }
 
 export interface Grant {

@@ -1,10 +1,36 @@
-# ADR-0025: Scoping `provider.viewer` (ROLE-028) to its own provider org — proposed, unresolved
+# ADR-0025: Scoping `provider.viewer` (ROLE-028) to its own provider org
 
 ## Status
 
-**Proposed.** Flagged for the module/product owner to decide. Not implemented
-autonomously — this changes the RBAC identity model, which is exactly the
-kind of judgment call CLAUDE.md's guardrails reserve for a human.
+**Accepted and implemented.** Option 1 (`core_users.providerId` +
+`Scope.providerIds`) was chosen: it matches the "one underwriter, one seat"
+framing in docs/06 and docs/ui.md, and needs no new join-table surface for a
+multi-provider-staff case nobody has asked for yet (Option 2's YAGNI). Option
+3 was rejected because it contradicts the interactive-dashboard-login framing
+in docs/06.
+
+Implemented in:
+- `packages/db/src/schema/core.ts` — `core_users.providerId` (nullable FK to
+  `core_providers.id`), migration `packages/db/migrations/0022_aberrant_doorman.sql`.
+- `packages/core/src/rbac.ts` — `Scope.providerIds`, deliberately **not**
+  read by `scopeAllows()`/`can()` (see the doc comment on the field) since
+  `Subject` carries no `providerId` dimension; wiring it into the generic
+  fail-closed check would lock a `provider.viewer` out of every other
+  permission it holds the moment the field is absent.
+- `packages/core/src/approvals.ts`'s `grantsFor()` — derives `providerIds`
+  live from `core_users.providerId` on every grant read, rather than
+  authoring it per-invite like `teamIds`, since a provider contact's identity
+  doesn't change per role assignment.
+- `apps/api/src/resources.ts`'s `data-products` `rowVisible` — intersects the
+  actor's `providerIds` against `subscribersJson`'s active (non-suspended)
+  subscriber ids. A `provider.viewer` with no `providerId` recorded (not yet
+  assigned) falls back to the pre-existing published-only view instead of
+  being locked out.
+- `packages/core/src/seed.ts` — a seeded `provider.viewer` persona
+  (`yasmin.faris@gonxt.ae`) assigned to Falcon Insurance, for journey/e2e
+  parity with every other role.
+
+Test coverage: `apps/api/src/resources.test.ts`, `packages/core/src/approvals.test.ts`.
 
 ## Context
 
@@ -61,15 +87,14 @@ No option above is obviously correct without knowing whether tenants expect
 one seat per provider org or shared staff across providers — a product
 decision, not a schema one.
 
-## Consequences of leaving this unresolved
+## Consequence for existing `provider.viewer` users
 
-`provider.viewer` remains scoped to "every published data product in the
-tenant" rather than "products my org bought" until this ADR is accepted and
-implemented. Not a security hole against other tenants (tenancy scoping is
-untouched) but a real over-exposure within a tenant: one provider org's
-`provider.viewer` seat can currently see every other subscribed provider's
-purchased product, published-status permitting. Tracked as the still-open
-half of ROLE-028 in docs/25-go-live-checklist.md.
+A `provider.viewer` seeded/invited before this change has `providerId: null`
+until an operator sets it. Until then, they keep the pre-existing
+tenant-wide published-product view rather than being locked out — this is
+the documented fallback in `rowVisible`, not a bug. Closing the gap
+per-tenant is an operational follow-up (setting `core_users.providerId` on
+existing provider seats), not further code.
 
 ## References
 

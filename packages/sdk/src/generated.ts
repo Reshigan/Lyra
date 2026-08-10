@@ -1104,6 +1104,7 @@ export interface CoreUsers {
   mfaSecret?: string;
   mfaRecoveryJson?: string;
   externalId?: string;
+  providerId?: string;
   lastSeenAt?: number;
   createdAt?: number;
   updatedAt?: number;

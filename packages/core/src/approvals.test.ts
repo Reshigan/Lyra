@@ -456,6 +456,51 @@ describe("grantsFor", () => {
     const grants = await grantsFor(makeCtx(actor("tenant.admin")).db, "t_1", "u_s");
     expect(grants[0]!.scope).toEqual({ teamIds: ["team_1"] });
   });
+
+  it("merges providerIds from core_users.provider_id (ROLE-028) even when scope_json is absent", async () => {
+    await client.execute({
+      sql: `INSERT INTO core_providers (id, tenant_id, name, kind, created_at, updated_at)
+            VALUES ('prv_falcon', 't_1', 'Falcon', 'insurer', ?, ?)`,
+      args: [now, now]
+    });
+    await client.execute({
+      sql: `INSERT INTO core_users (id, tenant_id, email, name, provider_id, created_at, updated_at)
+            VALUES ('u_provider', 't_1', 'p@falcon.example', 'Provider Contact', 'prv_falcon', ?, ?)`,
+      args: [now, now]
+    });
+    await client.execute({
+      sql: `INSERT INTO core_roles (id, tenant_id, key, name, permissions_json, system, created_at)
+            VALUES ('role_pv', 't_1', 'provider.viewer', 'Provider Viewer', '[]', 1, ?)`,
+      args: [now]
+    });
+    await client.execute({
+      sql: `INSERT INTO core_user_roles (id, tenant_id, user_id, role_id, created_at)
+            VALUES ('ur_pv', 't_1', 'u_provider', 'role_pv', ?)`,
+      args: [now]
+    });
+    const grants = await grantsFor(makeCtx(actor("tenant.admin")).db, "t_1", "u_provider");
+    expect(grants[0]!.scope).toEqual({ providerIds: ["prv_falcon"] });
+  });
+
+  it("leaves scope untouched for a user with no provider_id set", async () => {
+    await client.execute({
+      sql: `INSERT INTO core_users (id, tenant_id, email, name, created_at, updated_at)
+            VALUES ('u_no_provider', 't_1', 'x@example.com', 'No Provider', ?, ?)`,
+      args: [now, now]
+    });
+    await client.execute({
+      sql: `INSERT INTO core_roles (id, tenant_id, key, name, permissions_json, system, created_at)
+            VALUES ('role_np', 't_1', 'provider.viewer', 'Provider Viewer', '[]', 1, ?)`,
+      args: [now]
+    });
+    await client.execute({
+      sql: `INSERT INTO core_user_roles (id, tenant_id, user_id, role_id, created_at)
+            VALUES ('ur_np', 't_1', 'u_no_provider', 'role_np', ?)`,
+      args: [now]
+    });
+    const grants = await grantsFor(makeCtx(actor("tenant.admin")).db, "t_1", "u_no_provider");
+    expect(grants[0]!.scope).toBeUndefined();
+  });
 });
 
 describe("delegations", () => {

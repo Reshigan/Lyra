@@ -155,6 +155,13 @@
       "when": 1786333928185,
       "tag": "0021_right_odin",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "6",
+      "when": 1786372806955,
+      "tag": "0022_aberrant_doorman",
+      "breakpoints": true
     }
   ]
 }

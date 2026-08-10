@@ -506,6 +506,109 @@ describe("scout/data-products: ROLE-028 hides drafts and suspended products from
   });
 });
 
+describe("scout/data-products: ROLE-028 scopes provider.viewer to its own provider's subscriptions", () => {
+  const resource = () => {
+    const r = BY_MODULE.scout?.find((x) => x.path === "data-products");
+    if (!r) throw new Error("no scout/data-products resource");
+    return r;
+  };
+
+  beforeAll(async () => {
+    await ctx.db.insert(schema.scoutDataProducts).values([
+      {
+        id: "dtp_falcon_only",
+        tenantId: "t_test",
+        name: "falcon-only product",
+        definitionJson: "{}",
+        consentBasis: "contract",
+        status: "published",
+        subscribersJson: JSON.stringify([{ providerId: "prv_falcon", since: NOW - 1 }]),
+        createdAt: NOW,
+        updatedAt: NOW
+      },
+      {
+        id: "dtp_cedar_only",
+        tenantId: "t_test",
+        name: "cedar-only product",
+        definitionJson: "{}",
+        consentBasis: "contract",
+        status: "published",
+        subscribersJson: JSON.stringify([{ providerId: "prv_cedar", since: NOW - 1 }]),
+        createdAt: NOW,
+        updatedAt: NOW
+      },
+      {
+        id: "dtp_no_subscribers",
+        tenantId: "t_test",
+        name: "unassigned product",
+        definitionJson: "{}",
+        consentBasis: "contract",
+        status: "published",
+        createdAt: NOW,
+        updatedAt: NOW
+      },
+      {
+        id: "dtp_falcon_suspended",
+        tenantId: "t_test",
+        name: "falcon subscription suspended",
+        definitionJson: "{}",
+        consentBasis: "contract",
+        status: "published",
+        subscribersJson: JSON.stringify([{ providerId: "prv_falcon", since: NOW - 10, suspendedAt: NOW - 1 }]),
+        createdAt: NOW,
+        updatedAt: NOW
+      }
+    ]);
+  });
+
+  const falconViewer: Ctx["actor"] = {
+    kind: "user",
+    id: "u_falcon_viewer",
+    tenantId: "t_test",
+    grants: [
+      {
+        roleKey: "provider.viewer",
+        permissions: ["scout:data_products:read", "scout:panel_bench:read"],
+        scope: { providerIds: ["prv_falcon"] }
+      }
+    ]
+  };
+
+  it("only sees published products its own provider subscribed to", async () => {
+    const res = await send(router(resource(), { actor: falconViewer }), "GET", "/");
+    expect(res.status).toBe(200);
+    expect((res.body.data as { id: string }[]).map((p) => p.id)).toEqual(["dtp_falcon_only"]);
+  });
+
+  it("gets 404, not the row, for a published product another provider subscribed to", async () => {
+    const res = await send(router(resource(), { actor: falconViewer }), "GET", "/dtp_cedar_only");
+    expect(res.status).toBe(404);
+  });
+
+  it("gets 404 for a published product where its own subscription was suspended", async () => {
+    const res = await send(router(resource(), { actor: falconViewer }), "GET", "/dtp_falcon_suspended");
+    expect(res.status).toBe(404);
+  });
+
+  it("a provider.viewer with no providerId recorded keeps the pre-existing published-only view (no lockout)", async () => {
+    const unassignedViewer: Ctx["actor"] = {
+      kind: "user",
+      id: "u_provider_viewer",
+      tenantId: "t_test",
+      grants: [{ roleKey: "provider.viewer", permissions: ["scout:data_products:read", "scout:panel_bench:read"] }]
+    };
+    const res = await send(router(resource(), { actor: unassignedViewer }), "GET", "/");
+    expect(res.status).toBe(200);
+    expect((res.body.data as { id: string }[]).map((p) => p.id).sort()).toEqual([
+      "dtp_cedar_only",
+      "dtp_falcon_only",
+      "dtp_falcon_suspended",
+      "dtp_no_subscribers",
+      "dtp_published"
+    ]);
+  });
+});
+
 describe("scout negotiation pack: provider.viewer cannot download LYRA's own negotiation prep", () => {
   // scout:panel_bench:read is held by provider.viewer too (rbac.ts), and the
   // pack bakes every provider's price index/win-rate into one PDF — so the

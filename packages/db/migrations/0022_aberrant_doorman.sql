@@ -1,0 +1,1 @@
+ALTER TABLE `core_users` ADD `provider_id` text REFERENCES core_providers(id);
