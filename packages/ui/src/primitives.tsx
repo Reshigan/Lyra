@@ -377,7 +377,6 @@ export function Select({
         onValueChange?.(decoded);
       }}
       {...(disabled !== undefined ? { disabled } : {})}
-      {...(name !== undefined ? { name } : {})}
     >
       <RSelect.Trigger
         {...field}
@@ -417,6 +416,17 @@ export function Select({
           </RSelect.Viewport>
         </RSelect.Content>
       </RSelect.Portal>
+      {/* Radix's own hidden <select> (`name` on Root) cannot be trusted to
+          carry the value into a form submission: it is keyed by the set of
+          options its items register, those items live inside the portalled
+          Content, and closing the popup unmounts them — so the element
+          remounts around the moment a user clicks Save. J-O1 caught it on CI
+          posting `status=intake` while the trigger read "Failed" (run
+          31426014087): the screen agrees with the user, the database does not.
+          `current` is already the decoded truth this component renders from,
+          so submit that and nothing else — and, like the native control it
+          replaces, submit nothing at all while disabled. */}
+      {name !== undefined && !disabled ? <input type="hidden" name={name} value={current} /> : null}
     </RSelect.Root>
   );
 }

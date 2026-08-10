@@ -425,3 +425,21 @@ describe("package surface", () => {
     }
   });
 });
+
+/* -------------------------------------------------------------------------- */
+
+describe("Select submits what it shows", () => {
+  const primitives = read(join(SRC, "primitives.tsx"));
+
+  // Radix's own hidden <select> is keyed by the options its items register,
+  // and those items unmount with the portalled popup — so it can remount
+  // mid-interaction and carry the previous value into the submit. J-O1 caught
+  // a case saved as `status=intake` while its trigger read "Failed".
+  it("never delegates the form value to Radix's bubble select", () => {
+    expect(primitives).not.toMatch(/RSelect\.Root[\s\S]{0,400}?\{ name \}/);
+  });
+
+  it("submits the same state the trigger renders", () => {
+    expect(primitives).toMatch(/<input type="hidden" name=\{name\} value=\{current\} \/>/);
+  });
+});
