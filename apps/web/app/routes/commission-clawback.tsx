@@ -5,7 +5,7 @@ import {
   useLoaderData,
   useNavigation,
   type ActionFunctionArgs,
-  type LoaderFunctionArgs
+  type LoaderFunctionArgs,
 } from "react-router";
 import {
   Badge,
@@ -16,17 +16,26 @@ import {
   Field,
   GuardrailNotice,
   Money,
+  Panel,
   Ref,
   shortRef,
-  Textarea
+  Textarea,
 } from "@lyra/ui";
-import { ApiError, api, fetchMe, type Problem as ApiProblem } from "../api.server";
+import {
+  ApiError,
+  api,
+  fetchMe,
+  type Problem as ApiProblem,
+} from "../api.server";
 import { toneFor } from "../components/fields";
 import { cloudflare } from "../context";
 import { pseudoText, translator } from "../i18n";
 import { optionLabel } from "../modules/spec";
 import { Problem } from "./module";
-import { labelsIn as statementLabels, type CommissionEntry } from "./commission-statement";
+import {
+  labelsIn as statementLabels,
+  type CommissionEntry,
+} from "./commission-statement";
 import { useShellData } from "./workspace";
 
 // Reversing a commission entry. This is not an edit: the API writes a second,
@@ -36,7 +45,10 @@ import { useShellData } from "./workspace";
 // carry the reason the reversal needs.
 
 /** apps/api/src/routes/dist.ts, the clawback handler. */
-const PERM = { read: "dist:commissions:read", adjust: "dist:commissions:adjust" } as const;
+const PERM = {
+  read: "dist:commissions:read",
+  adjust: "dist:commissions:adjust",
+} as const;
 
 /** ClawbackBody: `reason: z.string().min(3).max(500)`. */
 const REASON_MIN = 3;
@@ -48,7 +60,7 @@ const AMOUNT_KEYS = [
   "grossCommissionMinor",
   "channelCommissionMinor",
   "netCommissionMinor",
-  "taxMinor"
+  "taxMinor",
 ] as const;
 
 /* ------------------------------------------------------------------ labels */
@@ -78,13 +90,16 @@ const LABELS: Record<string, Record<string, string>> = {
     confirm: "I have checked the figures above and want this reversal written.",
     submit: "Write the reversal",
     blockedTitle: "This entry cannot be reversed",
-    blockedReversal: "It is already a reversal of another entry, and the API refuses a reversal of a reversal.",
+    blockedReversal:
+      "It is already a reversal of another entry, and the API refuses a reversal of a reversal.",
     blockedClawedBack:
       "It has already been clawed back. Reversing it again would write the negative twice.",
-    blockedPermission: "Reversing commission needs the commission adjustment permission.",
+    blockedPermission:
+      "Reversing commission needs the commission adjustment permission.",
     deniedTitle: "You cannot read commission",
     missingTitle: "No such commission entry",
-    missingBody: "It may have been written under another tenant, or the link is stale.",
+    missingBody:
+      "It may have been written under another tenant, or the link is stale.",
     approvalTitle: "This reversal needs an approval first",
     approvalBody:
       "Policy {policy} holds commission adjustments for a second pair of eyes. The request has been raised — it is written once someone approves it.",
@@ -104,7 +119,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "state.paid": "Paid",
     "state.clawed_back": "Clawed back",
     "state.disputed": "Disputed",
-    "state.written_off": "Written off"
+    "state.written_off": "Written off",
   },
   ar: {
     title: "استرداد عمولة",
@@ -131,7 +146,8 @@ const LABELS: Record<string, Record<string, string>> = {
     submit: "كتابة القيد العكسي",
     blockedTitle: "لا يمكن عكس هذا القيد",
     blockedReversal: "هو أصلًا قيد عكسي لقيد آخر، والنظام يرفض عكس قيد عكسي.",
-    blockedClawedBack: "تم استرداده بالفعل. عكسه مرة أخرى سيكتب المبلغ السالب مرتين.",
+    blockedClawedBack:
+      "تم استرداده بالفعل. عكسه مرة أخرى سيكتب المبلغ السالب مرتين.",
     blockedPermission: "عكس العمولة يتطلب صلاحية تسوية العمولات.",
     deniedTitle: "لا يمكنك قراءة العمولات",
     missingTitle: "لا يوجد قيد عمولة بهذا المعرف",
@@ -155,8 +171,8 @@ const LABELS: Record<string, Record<string, string>> = {
     "state.paid": "مدفوع",
     "state.clawed_back": "تم استرداده",
     "state.disputed": "متنازع عليه",
-    "state.written_off": "مشطوب"
-  }
+    "state.written_off": "مشطوب",
+  },
 };
 
 /**
@@ -166,7 +182,7 @@ const LABELS: Record<string, Record<string, string>> = {
  */
 function labelsIn(
   locale: string,
-  pack?: string
+  pack?: string,
 ): (key: string, vars?: Record<string, string>) => string {
   const table = LABELS[locale] ?? LABELS.en ?? {};
   const fallback = LABELS.en ?? {};
@@ -175,14 +191,18 @@ function labelsIn(
     // `shared` is commission-statement's own resolver and pseudoizes itself.
     const own = table[key] ?? fallback[key];
     const raw = own === undefined ? shared(key) : pseudoText(locale, own);
-    return vars ? raw.replace(/\{(\w+)\}/g, (match, name: string) => vars[name] ?? match) : raw;
+    return vars
+      ? raw.replace(/\{(\w+)\}/g, (match, name: string) => vars[name] ?? match)
+      : raw;
   };
 }
 
 /* ------------------------------------------------------------------- rules */
 
 /** The mirror the API will insert: every amount negated, nothing else moved. */
-export function reversalPreview(entry: CommissionEntry): Record<string, number> {
+export function reversalPreview(
+  entry: CommissionEntry,
+): Record<string, number> {
   const out: Record<string, number> = {};
   for (const key of AMOUNT_KEYS) out[key] = -entry[key];
   return out;
@@ -191,7 +211,7 @@ export function reversalPreview(entry: CommissionEntry): Record<string, number> 
 /** Why this entry cannot be reversed, or null when it can. */
 export function blockedReason(
   entry: Pick<CommissionEntry, "reversalOf" | "state">,
-  mayAdjust: boolean
+  mayAdjust: boolean,
 ): string | null {
   if (!mayAdjust) return "blockedPermission";
   if (entry.reversalOf !== null) return "blockedReversal";
@@ -204,7 +224,7 @@ export function blockedReason(
  * not a refusal. Told apart from a real refusal by `code`.
  */
 export function approvalOf(
-  problem: ApiProblem | null | undefined
+  problem: ApiProblem | null | undefined,
 ): { policyKey: string; approvalId?: string } | null {
   if (!problem || problem.status !== 403) return null;
   const extras = problem as ApiProblem & {
@@ -215,7 +235,7 @@ export function approvalOf(
   if (extras.code !== "approval_required") return null;
   return {
     policyKey: extras.policy_key ?? problem.detail ?? problem.title,
-    ...(extras.approval_id ? { approvalId: extras.approval_id } : {})
+    ...(extras.approval_id ? { approvalId: extras.approval_id } : {}),
   };
 }
 
@@ -231,7 +251,10 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   if (!may.read) return { may, entry: null, notFound: false };
 
   try {
-    const entry = await api<CommissionEntry>(`/v1/dist/commission-entries/${id}`, { env, request });
+    const entry = await api<CommissionEntry>(
+      `/v1/dist/commission-entries/${id}`,
+      { env, request },
+    );
     return { may, entry, notFound: false };
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) {
@@ -254,13 +277,14 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
   try {
     const reversal = await api<CommissionEntry>(
       `/v1/dist/commission-entries/${params.id ?? ""}/clawback`,
-      { env, request, method: "POST", body: { reason } }
+      { env, request, method: "POST", body: { reason } },
     );
     return { problem: null, reversal };
   } catch (error) {
     // An approval gate answers 403 here. That is not a failure, so it is read
     // out of the problem below rather than shown as an error.
-    if (error instanceof ApiError) return { problem: error.problem, reversal: null };
+    if (error instanceof ApiError)
+      return { problem: error.problem, reversal: null };
     throw error;
   }
 }
@@ -299,7 +323,9 @@ export default function CommissionClawback() {
           body={l("doneBody", { id: reversal.id })}
           action={
             <Button asChild>
-              <Link to="/distribution/commission-entries/statement">{l("doneLink")}</Link>
+              <Link to="/distribution/commission-entries/statement">
+                {l("doneLink")}
+              </Link>
             </Button>
           }
         />
@@ -313,75 +339,101 @@ export default function CommissionClawback() {
 
   return (
     <Shell l={l}>
-      <dl className="flex flex-wrap items-baseline gap-x-8 gap-y-3">
-        <Facet term={l("policyId")}>
-          <Link
-            to={`/distribution/policies/${entry.policyId}`}
-            className="font-mono text-12 text-accent underline-offset-2 hover:underline"
-          >
-            {shortRef(entry.policyId)}
-          </Link>
-        </Facet>
-        <Facet term={l("providerId")}>
-          <Ref value={entry.providerId} className="text-12" />
-        </Facet>
-        <Facet term={l("channelId")}>
-          <Ref value={entry.channelId} className="text-12" />
-        </Facet>
-        <Facet term={l("kind")}>
-          <span>{optionLabel(l, "kind", entry.kind)}</span>
-        </Facet>
-        <Facet term={l("state")}>
-          <Badge tone={toneFor(entry.state)} size="sm" dot>
-            {optionLabel(l, "state", entry.state)}
-          </Badge>
-        </Facet>
-        <Facet term={l("earnedAt")}>
-          {entry.earnedAt === null ? (
-            <span className="text-subtle">{l("notEarned")}</span>
-          ) : (
-            <DateTime value={entry.earnedAt} locale={locale} precision="day" />
-          )}
-        </Facet>
-      </dl>
+      {/* The entry and its mirror are one thing to read, so they share one
+          surface: the facts above, the side-by-side reversal below. */}
+      <Panel>
+        <dl className="flex flex-wrap items-baseline gap-x-8 gap-y-3">
+          <Facet term={l("policyId")}>
+            <Link
+              to={`/distribution/policies/${entry.policyId}`}
+              className="font-mono text-12 text-accent underline-offset-2 hover:underline"
+            >
+              {shortRef(entry.policyId)}
+            </Link>
+          </Facet>
+          <Facet term={l("providerId")}>
+            <Ref value={entry.providerId} className="text-12" />
+          </Facet>
+          <Facet term={l("channelId")}>
+            <Ref value={entry.channelId} className="text-12" />
+          </Facet>
+          <Facet term={l("kind")}>
+            <span>{optionLabel(l, "kind", entry.kind)}</span>
+          </Facet>
+          <Facet term={l("state")}>
+            <Badge tone={toneFor(entry.state)} size="sm" dot>
+              {optionLabel(l, "state", entry.state)}
+            </Badge>
+          </Facet>
+          <Facet term={l("earnedAt")}>
+            {entry.earnedAt === null ? (
+              <span className="text-subtle">{l("notEarned")}</span>
+            ) : (
+              <DateTime
+                value={entry.earnedAt}
+                locale={locale}
+                precision="day"
+              />
+            )}
+          </Facet>
+        </dl>
 
-      {/* Standing beside proposed, on one row each, so the reversal is read as
+        {/* Standing beside proposed, on one row each, so the reversal is read as
           the mirror it is rather than as five separate new figures. */}
-      <table className="w-full max-w-2xl border-collapse text-start">
-        <caption className="pb-2 text-start font-ui text-12 text-subtle">{l("preview")}</caption>
-        <thead>
-          <tr className="border-b border-border">
-            <th scope="col" className="py-2 text-start font-ui text-12 font-medium text-subtle" />
-            <th scope="col" className="py-2 text-end font-ui text-12 font-medium text-subtle">
-              {l("entry")}
-            </th>
-            <th scope="col" className="py-2 text-end font-ui text-12 font-medium text-subtle">
-              {l("preview")}
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {AMOUNT_KEYS.map((key) => (
-            <tr key={key} className="border-b border-border/40">
-              <th scope="row" className="py-2 text-start font-ui text-13 font-normal text-muted">
-                {l(key)}
+        <table className="w-full max-w-2xl border-collapse text-start">
+          <caption className="pb-2 text-start font-ui text-12 text-subtle">
+            {l("preview")}
+          </caption>
+          <thead>
+            <tr className="border-b border-border">
+              <th
+                scope="col"
+                className="py-2 text-start font-ui text-12 font-medium text-subtle"
+              />
+              <th
+                scope="col"
+                className="py-2 text-end font-ui text-12 font-medium text-subtle"
+              >
+                {l("entry")}
               </th>
-              <td className="py-2 text-end font-ui text-13 tabular-nums text-text">
-                <Money amountMinor={entry[key]} currency={entry.currency} locale={locale} />
-              </td>
-              <td className="py-2 text-end font-ui text-13 tabular-nums">
-                <Money
-                  amountMinor={preview[key] ?? 0}
-                  currency={entry.currency}
-                  locale={locale}
-                  signed
-                  toned
-                />
-              </td>
+              <th
+                scope="col"
+                className="py-2 text-end font-ui text-12 font-medium text-subtle"
+              >
+                {l("preview")}
+              </th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {AMOUNT_KEYS.map((key) => (
+              <tr key={key} className="border-b border-border/40">
+                <th
+                  scope="row"
+                  className="py-2 text-start font-ui text-13 font-normal text-muted"
+                >
+                  {l(key)}
+                </th>
+                <td className="py-2 text-end font-ui text-13 tabular-nums text-text">
+                  <Money
+                    amountMinor={entry[key]}
+                    currency={entry.currency}
+                    locale={locale}
+                  />
+                </td>
+                <td className="py-2 text-end font-ui text-13 tabular-nums">
+                  <Money
+                    amountMinor={preview[key] ?? 0}
+                    currency={entry.currency}
+                    locale={locale}
+                    signed
+                    toned
+                  />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Panel>
 
       {blocked ? (
         <GuardrailNotice title={l("blockedTitle")} reason={l(blocked)} />
@@ -401,25 +453,34 @@ export default function CommissionClawback() {
             <Problem problem={result.problem} />
           ) : null}
 
-          <Form method="post" className="flex max-w-2xl flex-col gap-4">
-            <Field label={l("reason")} required hint={l("reasonHint", { min: String(REASON_MIN), max: String(REASON_MAX) })}>
-              <Textarea
-                name="reason"
-                rows={3}
+          <Panel className="max-w-2xl">
+            <Form method="post" className="flex flex-col gap-4">
+              <Field
+                label={l("reason")}
                 required
-                minLength={REASON_MIN}
-                maxLength={REASON_MAX}
-              />
-            </Field>
-            {/* A checkbox, not a modal: the figures stay on screen while the
-                actor confirms them (docs/15 — AI and money never interrupt). */}
-            <Checkbox name="confirm" required label={l("confirm")} />
-            <div>
-              <Button type="submit" variant="danger" loading={busy}>
-                {l("submit")}
-              </Button>
-            </div>
-          </Form>
+                hint={l("reasonHint", {
+                  min: String(REASON_MIN),
+                  max: String(REASON_MAX),
+                })}
+              >
+                <Textarea
+                  name="reason"
+                  rows={3}
+                  required
+                  minLength={REASON_MIN}
+                  maxLength={REASON_MAX}
+                />
+              </Field>
+              {/* A checkbox, not a modal: the figures stay on screen while the
+                  actor confirms them (docs/15 — AI and money never interrupt). */}
+              <Checkbox name="confirm" required label={l("confirm")} />
+              <div>
+                <Button type="submit" variant="danger" loading={busy}>
+                  {l("submit")}
+                </Button>
+              </div>
+            </Form>
+          </Panel>
         </>
       )}
     </Shell>
@@ -428,7 +489,7 @@ export default function CommissionClawback() {
 
 function Shell({
   l,
-  children
+  children,
 }: {
   l: (key: string, vars?: Record<string, string>) => string;
   children: React.ReactNode;
@@ -442,7 +503,9 @@ function Shell({
         >
           {l("back")}
         </Link>
-        <h1 className="font-serif text-24 leading-[1.2] text-text">{l("title")}</h1>
+        <h1 className="font-serif text-24 leading-[1.2] text-text">
+          {l("title")}
+        </h1>
         <p className="max-w-prose font-ui text-13 text-muted">{l("intro")}</p>
       </header>
       {children}
@@ -450,7 +513,13 @@ function Shell({
   );
 }
 
-function Facet({ term, children }: { term: string; children: React.ReactNode }) {
+function Facet({
+  term,
+  children,
+}: {
+  term: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="flex flex-col gap-0.5">
       <dt className="font-ui text-12 text-subtle">{term}</dt>

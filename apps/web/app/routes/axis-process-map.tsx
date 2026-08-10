@@ -1,5 +1,5 @@
 import { useLoaderData, type LoaderFunctionArgs } from "react-router";
-import { EmptyState } from "@lyra/ui";
+import { EmptyState, Panel } from "@lyra/ui";
 import { api, fetchMe } from "../api.server";
 import { cloudflare } from "../context";
 import { arrowFor, translator } from "../i18n";
@@ -77,10 +77,14 @@ export function flowFrom(events: readonly FlowEvent[]): Flow {
       if (previous) {
         const key = linkKey(previous.step, event.step);
         linkCount.set(key, (linkCount.get(key) ?? 0) + 1);
-        linkDuration.set(key, (linkDuration.get(key) ?? 0) + (event.durationMs ?? 0));
+        linkDuration.set(
+          key,
+          (linkDuration.get(key) ?? 0) + (event.durationMs ?? 0),
+        );
 
         // Track predecessors for rank calculation
-        if (!predecessors.has(event.step)) predecessors.set(event.step, new Set());
+        if (!predecessors.has(event.step))
+          predecessors.set(event.step, new Set());
         predecessors.get(event.step)!.add(previous.step);
       }
       previous = event;
@@ -166,15 +170,24 @@ export function layoutFlow(flow: Flow, width: number, height: number): Layout {
   for (const column of byColumn.values()) {
     let y = 0;
     for (const node of column) {
-      const nodeHeight = Math.max(4, (node.total / grandTotal) * height - NODE_GAP);
-      positioned.set(node.step, { ...node, x: node.rank * columnWidth, y, height: nodeHeight });
+      const nodeHeight = Math.max(
+        4,
+        (node.total / grandTotal) * height - NODE_GAP,
+      );
+      positioned.set(node.step, {
+        ...node,
+        x: node.rank * columnWidth,
+        y,
+        height: nodeHeight,
+      });
       y += nodeHeight + NODE_GAP;
     }
   }
 
   const outOffset = new Map<string, number>();
   const inOffset = new Map<string, number>();
-  const maxCount = flow.links.reduce((max, link) => Math.max(max, link.count), 0) || 1;
+  const maxCount =
+    flow.links.reduce((max, link) => Math.max(max, link.count), 0) || 1;
 
   const links = flow.links.map((link) => {
     const source = positioned.get(link.from);
@@ -193,7 +206,7 @@ export function layoutFlow(flow: Flow, width: number, height: number): Layout {
     return {
       ...link,
       path: `M ${x1} ${sourceY} C ${midX} ${sourceY}, ${midX} ${targetY}, ${x2} ${targetY}`,
-      width: linkWidth
+      width: linkWidth,
     };
   });
 
@@ -205,12 +218,12 @@ export function layoutFlow(flow: Flow, width: number, height: number): Layout {
 const LABELS: Record<string, Record<string, string>> = {
   en: {
     title: "Process map",
-    intro: `Where work actually flows across the last ${WINDOW} recorded steps, and where it pools.`
+    intro: `Where work actually flows across the last ${WINDOW} recorded steps, and where it pools.`,
   },
   ar: {
     title: "خريطة العملية",
-    intro: `مسار سير العمل الفعلي عبر آخر ${WINDOW} خطوة مسجّلة، ومواضع تراكمه.`
-  }
+    intro: `مسار سير العمل الفعلي عبر آخر ${WINDOW} خطوة مسجّلة، ومواضع تراكمه.`,
+  },
 };
 
 const labelsIn = labelsFrom(LABELS);
@@ -223,8 +236,12 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const may = me.permissions.includes(PERM.read);
   const page = may
     ? await safe(
-        () => api<Page<EventRow>>(`/v1/axis/process-events?sort=ts&order=asc&limit=${WINDOW}`, { env, request }),
-        null
+        () =>
+          api<Page<EventRow>>(
+            `/v1/axis/process-events?sort=ts&order=asc&limit=${WINDOW}`,
+            { env, request },
+          ),
+        null,
       )
     : null;
   return { may, flow: flowFrom(rowsOf(page)) };
@@ -252,28 +269,50 @@ export default function AxisProcessMap() {
       ) : laid.nodes.length === 0 ? (
         <EmptyState title={l("none")} />
       ) : (
-        <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} role="img" aria-label={l("title")} className="h-[420px] w-full">
-          {laid.links.map((link, i) => (
-            <path key={i} d={link.path} fill="none" stroke="var(--accent)" strokeOpacity={0.35} strokeWidth={link.width}>
-              <title>
-                {`${tag(l, "step", link.from)} ${arrowFor(locale)} ${tag(l, "step", link.to)}: ${link.count} (avg ${Math.round(link.avgMs)}ms)`}
-              </title>
-            </path>
-          ))}
-          {laid.nodes.map((node) => (
-            <g key={node.step}>
-              <rect x={node.x} y={node.y} width={NODE_WIDTH} height={node.height} fill="var(--accent)" />
-              <text
-                x={node.x + NODE_WIDTH + 6}
-                y={node.y + node.height / 2}
-                dominantBaseline="middle"
-                className="fill-text font-ui text-11"
+        // The diagram is the screen, so it gets the screen's container rather
+        // than floating on the page background like a debug render.
+        <Panel>
+          <svg
+            viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+            role="img"
+            aria-label={l("title")}
+            className="h-[420px] w-full"
+          >
+            {laid.links.map((link, i) => (
+              <path
+                key={i}
+                d={link.path}
+                fill="none"
+                stroke="var(--accent)"
+                strokeOpacity={0.35}
+                strokeWidth={link.width}
               >
-                {`${tag(l, "step", node.step)} (${node.total})`}
-              </text>
-            </g>
-          ))}
-        </svg>
+                <title>
+                  {`${tag(l, "step", link.from)} ${arrowFor(locale)} ${tag(l, "step", link.to)}: ${link.count} (avg ${Math.round(link.avgMs)}ms)`}
+                </title>
+              </path>
+            ))}
+            {laid.nodes.map((node) => (
+              <g key={node.step}>
+                <rect
+                  x={node.x}
+                  y={node.y}
+                  width={NODE_WIDTH}
+                  height={node.height}
+                  fill="var(--accent)"
+                />
+                <text
+                  x={node.x + NODE_WIDTH + 6}
+                  y={node.y + node.height / 2}
+                  dominantBaseline="middle"
+                  className="fill-text font-ui text-11"
+                >
+                  {`${tag(l, "step", node.step)} (${node.total})`}
+                </text>
+              </g>
+            ))}
+          </svg>
+        </Panel>
       )}
     </div>
   );
