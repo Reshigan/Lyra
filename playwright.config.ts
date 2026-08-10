@@ -14,9 +14,14 @@ export default defineConfig({
   // the first time any test reaches it — a first visit to a cold screen costs
   // seconds that a built bundle would not. Playwright's 30s default budgets
   // for the assertions, not for the compiler, so give the whole test twice
-  // that; the per-assertion timeout stays at its default, so a genuinely
-  // broken expectation still fails fast.
-  timeout: 60_000,
+  // that. A GitHub runner is two cores shared by both dev servers and two
+  // Playwright workers, and 60s was not enough for a cold compile there:
+  // J-M3 spent the whole budget in `goto`'s hydration wait without ever
+  // reaching an assertion, and J-O3 lost a form round trip to the default 5s
+  // assertion budget. Double both under CI only — locally the tighter numbers
+  // still fail a genuinely broken expectation fast.
+  timeout: process.env.CI ? 120_000 : 60_000,
+  expect: { timeout: process.env.CI ? 15_000 : 5_000 },
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   workers: process.env.CI ? 2 : undefined,
