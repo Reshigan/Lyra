@@ -501,10 +501,15 @@ function CreatePanel({
 }
 
 /** What the API objected to, in the actor's path rather than a toast. */
-export function Problem({ problem }: { problem: { title: string; detail?: string } }) {
+export function Problem({ problem }: { problem: { title: string; detail?: string; requestId?: string } }) {
+  const shell = useShellData();
+  const t = translator(shell?.locale ?? "en");
   return (
     <div role="alert" className="rounded-md border border-danger/40 bg-danger/10 p-3">
       <p className="font-ui text-13 text-text">{problem.detail ?? problem.title}</p>
+      {problem.requestId ? (
+        <p className="font-mono text-12 text-muted">{t("error.requestId", { id: problem.requestId })}</p>
+      ) : null}
     </div>
   );
 }
@@ -519,7 +524,7 @@ export function Gate({
   problem,
   l
 }: {
-  problem: { title: string; status: number; detail?: string };
+  problem: { title: string; status: number; detail?: string; requestId?: string };
   l: (key: string, vars?: Record<string, string>) => string;
 }) {
   const extras = problem as { code?: string; policy_key?: string };

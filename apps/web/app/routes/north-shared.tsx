@@ -47,7 +47,7 @@ export async function readable<T>(call: Promise<T>): Promise<T | null> {
 
 /** Every NORTH action answers in this shape; `saved` names what was written. */
 export interface ActionResult {
-  problem: { title: string; status: number; code?: string; detail?: string } | null;
+  problem: { title: string; status: number; code?: string; detail?: string; requestId?: string } | null;
   saved: string | null;
 }
 

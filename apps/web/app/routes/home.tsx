@@ -541,6 +541,9 @@ export default function Home() {
       {problem ? (
         <div role="alert" className="rounded-md border border-danger/40 bg-danger/10 p-3">
           <p className="font-ui text-13 text-text">{problem.detail ?? label("approvals.failed")}</p>
+          {problem.requestId ? (
+            <p className="font-mono text-12 text-muted">{t("error.requestId", { id: problem.requestId })}</p>
+          ) : null}
         </div>
       ) : null}
 

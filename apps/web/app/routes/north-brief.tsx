@@ -329,7 +329,8 @@ export default function NorthBrief() {
       ? {
           title: l(`problem.${result.problem.code ?? ""}`),
           status: result.problem.status,
-          ...(result.problem.detail === undefined ? {} : { detail: result.problem.detail })
+          ...(result.problem.detail === undefined ? {} : { detail: result.problem.detail }),
+          ...(result.problem.requestId === undefined ? {} : { requestId: result.problem.requestId })
         }
       : null;
 
