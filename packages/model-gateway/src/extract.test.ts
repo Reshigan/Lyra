@@ -39,7 +39,7 @@ describe("extractionMessages", () => {
       locale: "en",
       rawText: "ID No 784-2001-7654325-9 ... card no 1234567"
     });
-    expect(system!.content).toMatch(/idNumber:.*never the card serial/);
+    expect(system!.content).toMatch(/idNumber:.*never the short card serial/);
     expect(system!.content).toMatch(/exactly as printed/);
   });
 
@@ -162,7 +162,7 @@ describe("visionExtractionMessages", () => {
     expect(messages[0]!.role).toBe("system");
     expect(messages[0]!.content).toContain("attached eid document image");
     expect(messages[0]!.content).toContain("Locale: en");
-    expect(messages[0]!.content).toMatch(/idNumber:.*never the card serial/);
+    expect(messages[0]!.content).toMatch(/idNumber:.*never the short card serial/);
     expect(messages[0]!.content).toMatch(/never guess/);
     expect(messages[1]).toEqual({
       role: "user",
