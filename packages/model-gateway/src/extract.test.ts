@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { EXTRACTION_FIELDS, extractionSchema, normalizeField, parseExtraction } from "./extract.js";
+import {
+  EXTRACTION_FIELDS,
+  extractionMessages,
+  extractionSchema,
+  normalizeField,
+  parseExtraction
+} from "./extract.js";
 
 describe("EXTRACTION_FIELDS", () => {
   it("covers the two doc types docs/modules/axis.md §8 puts a threshold on", () => {
@@ -13,6 +19,30 @@ describe("extractionSchema", () => {
     const schema = extractionSchema(["a", "b"]) as { schema: { properties: object; required: string[] } };
     expect(schema.schema.properties).toEqual({ a: { type: "string" }, b: { type: "string" } });
     expect(schema.schema.required).toEqual(["a", "b"]);
+  });
+});
+
+describe("extractionMessages", () => {
+  // Regression: the live eval lost `idNumber` on both noisy Emirates ID cases
+  // because the card serial is the only other number on the page and a bare
+  // field name gives the model nothing to choose with (eval-live 2026-08-10,
+  // fieldAccuracy.en/.ar = 0.929 against a 0.95 floor).
+  it("tells the model which number is the ID number", () => {
+    const [system] = extractionMessages({
+      docType: "eid",
+      fields: EXTRACTION_FIELDS.eid!,
+      locale: "en",
+      rawText: "ID No 784-2001-7654325-9 ... card no 1234567"
+    });
+    expect(system!.content).toMatch(/idNumber:.*never the card serial/);
+    expect(system!.content).toMatch(/exactly as printed/);
+  });
+
+  it("carries the same field wording into the response schema, for providers that forward it", () => {
+    const schema = extractionSchema(["idNumber"]) as {
+      schema: { properties: { idNumber: { description?: string } } };
+    };
+    expect(schema.schema.properties.idNumber.description).toMatch(/card serial/);
   });
 });
 

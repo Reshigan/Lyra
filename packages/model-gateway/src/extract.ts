@@ -41,16 +41,45 @@ export interface Extraction {
   confidence: number;
 }
 
+/**
+ * What each field actually is, in the words of the document rather than the
+ * schema. A real card carries several numbers — the ID number, a card serial,
+ * a file number — and a bare field name gives the model nothing to choose
+ * between them with, which is precisely how the live eval's noisy Emirates ID
+ * cases were losing `idNumber` to the card serial. Descriptions ride along in
+ * the response schema and are repeated in the prompt, because not every
+ * provider forwards schema descriptions to the model.
+ */
+const FIELD_HINTS: Record<string, string> = {
+  fullName: "the holder's name as printed, in the same script and order",
+  idNumber:
+    "the national identity number printed under the ID/identity-number label — never the card serial, file or document number, even if it is the only other number on the page",
+  dateOfBirth: "date of birth, ISO 8601 (YYYY-MM-DD)",
+  expiryDate: "the card's own expiry date, ISO 8601 (YYYY-MM-DD) — not the issue date",
+  nationality: "the holder's nationality, not the issuing country",
+  plateNumber: "the vehicle plate as printed, including the emirate and category",
+  ownerName: "the registered owner's name as printed",
+  vehicleModel: "make, model and year as printed",
+  registrationExpiry: "the registration's expiry date, ISO 8601 (YYYY-MM-DD)"
+};
+
 /** JSON schema handed to `ModelRequest.responseSchema` (gateway.ts, docs/02 §5). */
 export function extractionSchema(fields: readonly string[]): Record<string, unknown> {
   return {
     name: "axis_document_fields",
     schema: {
       type: "object",
-      properties: Object.fromEntries(fields.map((f) => [f, { type: "string" }])),
+      properties: Object.fromEntries(
+        fields.map((f) => [f, { type: "string", ...(FIELD_HINTS[f] ? { description: FIELD_HINTS[f] } : {}) }])
+      ),
       required: [...fields]
     }
   };
+}
+
+/** `field — what it is`, one per line, for the fields we have wording for. */
+function fieldBrief(fields: readonly string[]): string {
+  return fields.map((f) => (FIELD_HINTS[f] ? `- ${f}: ${FIELD_HINTS[f]}` : `- ${f}`)).join("\n");
 }
 
 /**
@@ -69,7 +98,10 @@ export function extractionMessages(input: {
       role: "system",
       content:
         `Extract these fields from the ${input.docType} document text below and reply with ` +
-        `JSON only, matching the schema: ${input.fields.join(", ")}. Locale: ${input.locale}.`
+        `JSON only, matching the schema. Locale: ${input.locale}.\n${fieldBrief(input.fields)}\n` +
+        `Copy each value exactly as printed, including punctuation and hyphens. ` +
+        `Where several candidates appear, take the one under the matching label and ignore ` +
+        `unrelated numbers. Use an empty string for a field the document does not carry.`
     },
     { role: "user", content: input.rawText }
   ];
@@ -160,7 +192,8 @@ export function visionExtractionMessages(input: {
       role: "system",
       content:
         `Extract these fields from the attached ${input.docType} document image and reply with JSON only, ` +
-        `matching the schema: ${input.fields.join(", ")}. Locale: ${input.locale}. For each field return its ` +
+        `matching the schema. Locale: ${input.locale}.\n${fieldBrief(input.fields)}\n` +
+        `Copy each value exactly as printed. For each field return its ` +
         `value plus the page number and bounding box [x, y, width, height] as percentages of the page (0-100), ` +
         `where you read it. If a field is not visible or you are not certain, set value, page and bbox to ` +
         `null — never guess.`

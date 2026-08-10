@@ -30,6 +30,10 @@ export type WorkspacePath = (typeof WORKSPACE_PATHS)[number];
 export const HIDDEN_ROUTES: Record<string, string> = {
   "/login": "pre-session: renders outside the shell, so there is no nav to be in",
   "/portal/:tenantSlug": "public comparison site, no session and no shell — reached from a tenant's own marketing link (ADR-0030)",
+  "/portal/:tenantSlug/privacy":
+    "public DSAR intake, no session and no shell — linked from the storefront footer (ADR-0042)",
+  "/portal/:tenantSlug/quotes/:id":
+    "public quote comparison, no session and no shell — reached only with the one-time token in the link (ADR-0043)",
   "/logout": "action only, no UI",
   "/settings": "reached from the account menu in the header, not the module rail",
   "/approvals": "reached from the decisions-waiting panel on the home dashboard",
