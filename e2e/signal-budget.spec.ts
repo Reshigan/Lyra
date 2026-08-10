@@ -29,8 +29,13 @@ test("J-M2 signal lead reverses an autopilot budget move @journey:J-M2 @accept:M
   const recordUrl = page.url();
   const moveId = recordUrl.split("/").pop()!;
 
-  await page.getByLabel("Reversed by", { exact: true }).fill("noor.jamal@gonxt.ae");
-  await page.getByLabel("Reversed", { exact: true }).fill("2026-08-01T09:00");
+  // waitForURL resolves before the detail DOM commits (view transition + the
+  // record loader), so scope the fields to the edit form and let that wait —
+  // until it lands, the list screen behind it still owns the labels.
+  const editForm = page.locator("form").filter({ has: page.getByRole("button", { name: "Save changes" }) });
+  await expect(editForm).toBeVisible();
+  await editForm.getByLabel("Reversed by", { exact: true }).fill("noor.jamal@gonxt.ae");
+  await editForm.getByLabel("Reversed", { exact: true }).fill("2026-08-01T09:00");
   // Wait for the POST itself, not just the click: under a full parallel run the
   // action outlives an assertion's timeout, and the refusal only renders once
   // it lands (React Router posts to "<path>.data").
@@ -53,7 +58,14 @@ test("J-M2 signal lead reverses an autopilot budget move @journey:J-M2 @accept:M
   await goto(page, "/approvals");
   const request = page.getByRole("region", { name: "signal.budget_move" }).filter({ hasText: moveId });
   await expect(request).toBeVisible();
-  await request.getByRole("button", { name: "Approve", exact: true }).click();
+  // Wait for the decision POST, not just the click: the approvals list
+  // revalidates while the queue is on screen, and a click that lands on a row
+  // being replaced submits nothing at all — the status line then just stays
+  // empty until the assertion below times out (a J-M2 flake, docs/13 §7).
+  await Promise.all([
+    page.waitForResponse((res) => res.url().endsWith("/approvals.data") && res.request().method() === "POST"),
+    request.getByRole("button", { name: "Approve", exact: true }).click()
+  ]);
   // The decided row drops out of the pending list on revalidation
   // (approvals.tsx's loader re-fetches /v1/me/inbox); the outcome is the
   // page-level status announcement, not a badge inside a now-vanished region.
