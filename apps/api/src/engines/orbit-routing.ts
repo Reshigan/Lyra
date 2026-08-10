@@ -77,9 +77,9 @@ export function pickAssignee(
 /** An agent idle longer than this (no presence heartbeat) is treated as gone: sweepRouting reassigns their open conversations. */
 export const PRESENCE_STALE_MS = 15 * 60_000;
 
-import { eq } from "drizzle-orm";
+import { eq, isNull, lte, ne } from "drizzle-orm";
 import { schema } from "@lyra/db";
-import { scoped, type Ctx } from "@lyra/core";
+import { emit, scoped, type Ctx } from "@lyra/core";
 
 async function defaultTeamId(ctx: Ctx): Promise<string | null> {
   const [team] = await ctx.db
@@ -175,4 +175,108 @@ export async function routeConversation(
     .where(eq(schema.orbitConversations.id, conversationId));
 
   return { teamId, assigneeRef };
+}
+
+/**
+ * Cron tick (gap-orbit-design.md §1B): escalate conversations that missed
+ * their SLA clock, and reassign whoever a now-absent agent was holding.
+ * Order matters — breach escalation runs first so a conversation reassigned
+ * for absence in the same tick already carries its bumped priority.
+ */
+export async function sweepRouting(ctx: Ctx): Promise<{ frtBreaches: number; resolutionBreaches: number; reassigned: number }> {
+  const frtDue = await ctx.db
+    .select({ id: schema.orbitConversations.id, priority: schema.orbitConversations.priority })
+    .from(schema.orbitConversations)
+    .where(
+      scoped(
+        ctx,
+        schema.orbitConversations,
+        isNull(schema.orbitConversations.frtBreachedAt),
+        lte(schema.orbitConversations.firstResponseDueAt, ctx.now),
+        ne(schema.orbitConversations.state, "closed")
+      )
+    );
+  for (const conv of frtDue) {
+    const priority = Math.max(0, conv.priority - 1);
+    await ctx.db
+      .update(schema.orbitConversations)
+      .set({ priority, frtBreachedAt: ctx.now, updatedAt: ctx.now })
+      .where(eq(schema.orbitConversations.id, conv.id));
+    await routeConversation(ctx, conv.id);
+    await emit(ctx, { module: "orbit", type: "orbit.sla.breached", subject: conv.id, data: { conversationId: conv.id, kind: "frt", priority } });
+  }
+
+  const resolutionDue = await ctx.db
+    .select({ id: schema.orbitConversations.id, priority: schema.orbitConversations.priority })
+    .from(schema.orbitConversations)
+    .where(
+      scoped(
+        ctx,
+        schema.orbitConversations,
+        isNull(schema.orbitConversations.resolutionBreachedAt),
+        lte(schema.orbitConversations.resolutionDueAt, ctx.now),
+        ne(schema.orbitConversations.state, "closed")
+      )
+    );
+  for (const conv of resolutionDue) {
+    await ctx.db
+      .update(schema.orbitConversations)
+      .set({ resolutionBreachedAt: ctx.now, updatedAt: ctx.now })
+      .where(eq(schema.orbitConversations.id, conv.id));
+    await emit(ctx, {
+      module: "orbit",
+      type: "orbit.sla.breached",
+      subject: conv.id,
+      data: { conversationId: conv.id, kind: "resolution", priority: conv.priority }
+    });
+  }
+
+  const stalePresence = await ctx.db
+    .select()
+    .from(schema.orbitAgentPresence)
+    .where(scoped(ctx, schema.orbitAgentPresence, eq(schema.orbitAgentPresence.status, "available"), lte(schema.orbitAgentPresence.updatedAt, ctx.now - PRESENCE_STALE_MS)));
+
+  let reassigned = 0;
+  for (const stale of stalePresence) {
+    await ctx.db
+      .update(schema.orbitAgentPresence)
+      .set({ status: "offline", updatedAt: ctx.now })
+      .where(eq(schema.orbitAgentPresence.id, stale.id));
+
+    const held = await ctx.db
+      .select({ id: schema.orbitConversations.id, teamId: schema.orbitConversations.teamId })
+      .from(schema.orbitConversations)
+      .where(
+        scoped(
+          ctx,
+          schema.orbitConversations,
+          eq(schema.orbitConversations.assigneeRef, stale.userId),
+          ne(schema.orbitConversations.state, "closed")
+        )
+      );
+    for (const conv of held) {
+      if (!conv.teamId) continue;
+      const members = await ctx.db
+        .select({ userId: schema.orbitTeamMembers.userId, skillsJson: schema.orbitTeamMembers.skillsJson, maxConcurrent: schema.orbitTeamMembers.maxConcurrent })
+        .from(schema.orbitTeamMembers)
+        .where(scoped(ctx, schema.orbitTeamMembers, eq(schema.orbitTeamMembers.teamId, conv.teamId)));
+      const presenceRows = await ctx.db.select().from(schema.orbitAgentPresence).where(scoped(ctx, schema.orbitAgentPresence));
+      const presence = new Map(presenceRows.map((p) => [p.userId, { ...p, status: p.status as PresenceInput["status"] }]));
+      const nextAssignee = pickAssignee(
+        members.filter((m) => m.userId !== stale.userId),
+        presence,
+        []
+      );
+      await ctx.db
+        .update(schema.orbitConversations)
+        .set({ assigneeRef: nextAssignee, assignedAt: nextAssignee ? ctx.now : null, updatedAt: ctx.now })
+        .where(eq(schema.orbitConversations.id, conv.id));
+      reassigned++;
+      if (!nextAssignee) {
+        await emit(ctx, { module: "orbit", type: "orbit.conversation.unassigned", subject: conv.id, data: { conversationId: conv.id } });
+      }
+    }
+  }
+
+  return { frtBreaches: frtDue.length, resolutionBreaches: resolutionDue.length, reassigned };
 }

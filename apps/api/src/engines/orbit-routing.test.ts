@@ -7,7 +7,7 @@ import { eq } from "drizzle-orm";
 import { schema } from "@lyra/db";
 import type { Ctx } from "@lyra/core";
 import { PolicyJson, EntitlementsJson } from "@lyra/db";
-import { pickAssignee, pickRoute, routeConversation } from "./orbit-routing.js";
+import { pickAssignee, pickRoute, routeConversation, sweepRouting, PRESENCE_STALE_MS } from "./orbit-routing.js";
 
 describe("pickRoute", () => {
   const rule = (seq: number, teamId: string, conditions: object, enabled = true) => ({
@@ -235,5 +235,167 @@ describe("routeConversation", () => {
     const [row] = await ctx.db.select().from(schema.orbitConversations).where(eq(schema.orbitConversations.id, "cnv_1"));
     expect(row!.firstResponseDueAt).toBe(now + 15 * 60_000);
     expect(row!.resolutionDueAt).toBe(now + 240 * 60_000);
+  });
+});
+
+describe("sweepRouting", () => {
+  let client: Client;
+  let ctx: Ctx;
+
+  beforeEach(async () => {
+    client = createClient({ url: ":memory:" });
+    for (const sql of statements()) await client.execute(sql);
+    const db = drizzle(client) as unknown as Ctx["db"];
+    ctx = {
+      db,
+      tenantId,
+      actor: { kind: "system", id: "test", tenantId, grants: [] },
+      requestId: "req_1",
+      now,
+      locale: "en",
+      policy: PolicyJson.parse({}),
+      entitlements: EntitlementsJson.parse({})
+    };
+    await ctx.db.insert(schema.orbitTeams).values({
+      id: "otm_default",
+      tenantId,
+      key: "default",
+      nameJson: "{}",
+      isDefault: true,
+      createdAt: now,
+      updatedAt: now
+    });
+  });
+
+  it("bumps priority down by one and re-routes a conversation that missed its first-response SLA", async () => {
+    await ctx.db.insert(schema.orbitTeamMembers).values({ id: "tmm_1", tenantId, teamId: "otm_default", userId: "u_1", createdAt: now });
+    await ctx.db.insert(schema.orbitAgentPresence).values({ id: "ap_1", tenantId, userId: "u_1", status: "available", activeCount: 0, updatedAt: now });
+    await ctx.db.insert(schema.orbitConversations).values({
+      id: "cnv_frt",
+      tenantId,
+      channel: "whatsapp",
+      state: "bot",
+      priority: 2,
+      firstResponseDueAt: now - 1,
+      createdAt: now - 1000,
+      updatedAt: now - 1000
+    });
+
+    const result = await sweepRouting(ctx);
+    expect(result.frtBreaches).toBe(1);
+
+    const [row] = await ctx.db.select().from(schema.orbitConversations).where(eq(schema.orbitConversations.id, "cnv_frt"));
+    expect(row!.priority).toBe(1);
+    expect(row!.frtBreachedAt).toBe(now);
+    expect(row!.teamId).toBe("otm_default");
+    expect(row!.assigneeRef).toBe("u_1");
+
+    const events = await ctx.db.select().from(schema.eventOutbox);
+    const breach = events.find((e) => JSON.parse(e.envelopeJson).type === "orbit.sla.breached");
+    expect(JSON.parse(breach!.envelopeJson).data).toEqual({ conversationId: "cnv_frt", kind: "frt", priority: 1 });
+  });
+
+  it("does not bump priority for a resolution-SLA breach, and does not re-fire on a second sweep", async () => {
+    await ctx.db.insert(schema.orbitConversations).values({
+      id: "cnv_res",
+      tenantId,
+      channel: "whatsapp",
+      state: "human",
+      priority: 2,
+      resolutionDueAt: now - 1,
+      createdAt: now - 1000,
+      updatedAt: now - 1000
+    });
+
+    await sweepRouting(ctx);
+    const [row] = await ctx.db.select().from(schema.orbitConversations).where(eq(schema.orbitConversations.id, "cnv_res"));
+    expect(row!.priority).toBe(2);
+    expect(row!.resolutionBreachedAt).toBe(now);
+
+    const events = await ctx.db.select().from(schema.eventOutbox);
+    expect(events.filter((e) => JSON.parse(e.envelopeJson).type === "orbit.sla.breached")).toHaveLength(1);
+
+    await sweepRouting(ctx); // idempotent: already-breached rows are not touched again
+    const eventsAfter = await ctx.db.select().from(schema.eventOutbox);
+    expect(eventsAfter).toHaveLength(1);
+  });
+
+  it("does not touch a closed conversation even if its SLA timestamps are in the past", async () => {
+    await ctx.db.insert(schema.orbitConversations).values({
+      id: "cnv_closed",
+      tenantId,
+      channel: "whatsapp",
+      state: "closed",
+      priority: 2,
+      firstResponseDueAt: now - 1,
+      resolutionDueAt: now - 1,
+      createdAt: now - 1000,
+      updatedAt: now - 1000
+    });
+
+    const result = await sweepRouting(ctx);
+    expect(result.frtBreaches).toBe(0);
+    expect(result.resolutionBreaches).toBe(0);
+  });
+
+  it("reassigns an open conversation whose agent's presence has gone stale, marking them offline", async () => {
+    await ctx.db.insert(schema.orbitTeamMembers).values([
+      { id: "tmm_1", tenantId, teamId: "otm_default", userId: "u_stale", createdAt: now },
+      { id: "tmm_2", tenantId, teamId: "otm_default", userId: "u_fresh", createdAt: now }
+    ]);
+    await ctx.db.insert(schema.orbitAgentPresence).values([
+      { id: "ap_1", tenantId, userId: "u_stale", status: "available", activeCount: 1, updatedAt: now - PRESENCE_STALE_MS - 1 },
+      { id: "ap_2", tenantId, userId: "u_fresh", status: "available", activeCount: 0, updatedAt: now }
+    ]);
+    await ctx.db.insert(schema.orbitConversations).values({
+      id: "cnv_stale",
+      tenantId,
+      channel: "whatsapp",
+      state: "human",
+      teamId: "otm_default",
+      assigneeRef: "u_stale",
+      priority: 2,
+      createdAt: now - 1000,
+      updatedAt: now - 1000
+    });
+
+    const result = await sweepRouting(ctx);
+    expect(result.reassigned).toBe(1);
+
+    const [staleAgent] = await ctx.db.select().from(schema.orbitAgentPresence).where(eq(schema.orbitAgentPresence.userId, "u_stale"));
+    expect(staleAgent!.status).toBe("offline");
+
+    const [row] = await ctx.db.select().from(schema.orbitConversations).where(eq(schema.orbitConversations.id, "cnv_stale"));
+    expect(row!.assigneeRef).toBe("u_fresh");
+  });
+
+  it("unassigns (instead of throwing) and emits orbit.conversation.unassigned when nobody else is available", async () => {
+    await ctx.db.insert(schema.orbitTeamMembers).values({ id: "tmm_1", tenantId, teamId: "otm_default", userId: "u_stale", createdAt: now });
+    await ctx.db.insert(schema.orbitAgentPresence).values({
+      id: "ap_1",
+      tenantId,
+      userId: "u_stale",
+      status: "available",
+      activeCount: 1,
+      updatedAt: now - PRESENCE_STALE_MS - 1
+    });
+    await ctx.db.insert(schema.orbitConversations).values({
+      id: "cnv_alone",
+      tenantId,
+      channel: "whatsapp",
+      state: "human",
+      teamId: "otm_default",
+      assigneeRef: "u_stale",
+      priority: 2,
+      createdAt: now - 1000,
+      updatedAt: now - 1000
+    });
+
+    await sweepRouting(ctx);
+    const [row] = await ctx.db.select().from(schema.orbitConversations).where(eq(schema.orbitConversations.id, "cnv_alone"));
+    expect(row!.assigneeRef).toBeNull();
+
+    const events = await ctx.db.select().from(schema.eventOutbox);
+    expect(events.some((e) => JSON.parse(e.envelopeJson).type === "orbit.conversation.unassigned")).toBe(true);
   });
 });
