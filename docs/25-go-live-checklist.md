@@ -382,8 +382,13 @@ ledger nav gap; the other module rows need a real pass, not a memory recall.
       no `@accept:Mx` was invented for them. Verified via `npx playwright
       test --grep "@journey" --list` (29/29 tests matched, was 0) and the
       same per `@accept:M0` through `@accept:M6` (4/5/3/7/3/3/4, was 0 each).
-      Still open: an e2e (not just integration) spec for J-C1 (public quick
-      quote) and J-C4 (privacy/DSAR portal).
+      J-C1 (public quick quote) and J-C4 (privacy/DSAR portal) stay without a
+      browser e2e spec **by decision, not oversight** — ADR-0041 ships both
+      journeys staff-mediated for v1, so the self-serve flows a spec would
+      drive (customer-side document upload, PSP payment, public DSAR intake)
+      do not exist to be driven. Integration coverage of the parts that do
+      exist is in `apps/api/src/journeys.test.ts`; the e2e specs land with the
+      self-serve steps, which are backlog.
       **BLOCKER found 2026-07-31, FIXED same day**: `pnpm e2e` could not boot
       — Playwright's `webServer` step (`pnpm --filter @lyra/api start` → `tsx
       src/node.ts`) crashed with `ERR_UNSUPPORTED_ESM_URL_SCHEME` on
