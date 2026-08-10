@@ -11,6 +11,7 @@ export default [
   route("logout", "routes/logout.tsx"),
   route("portal/:tenantSlug", "routes/portal.$tenantSlug.tsx"),
   route("portal/:tenantSlug/privacy", "routes/portal.$tenantSlug.privacy.tsx"),
+  route("portal/:tenantSlug/quotes/:id", "routes/portal.$tenantSlug.quotes.$id.tsx"),
   layout("routes/workspace.tsx", [
     index("routes/home.tsx"),
 

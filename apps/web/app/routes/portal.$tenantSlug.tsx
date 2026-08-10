@@ -1,5 +1,6 @@
 import {
   Form,
+  redirect,
   useActionData,
   useLoaderData,
   useNavigation,
@@ -38,6 +39,12 @@ const LABELS: Record<string, Record<string, string>> = {
     "portal.form.error.throttled": "Too many requests from this email — try again later.",
     "portal.form.error.generic": "Something went wrong. Please try again.",
     "portal.privacy": "Your privacy rights",
+    "portal.quick": "Quick quote — three details, real prices.",
+    "portal.form.age": "Your age",
+    "portal.form.sumInsured": "Value to insure",
+    "portal.form.priorClaims": "I have claimed in the last 3 years.",
+    "portal.form.tripDays": "Trip length (days)",
+    "portal.form.winterSports": "Include winter sports.",
     "line.motor": "Motor",
     "line.health": "Health",
     "line.travel": "Travel",
@@ -64,6 +71,12 @@ const LABELS: Record<string, Record<string, string>> = {
     "portal.form.error.throttled": "طلبات كثيرة من هذا البريد — حاول لاحقًا.",
     "portal.form.error.generic": "حدث خطأ ما. حاول مرة أخرى.",
     "portal.privacy": "حقوقك في الخصوصية",
+    "portal.quick": "عرض سعر سريع — ثلاث معلومات وأسعار حقيقية.",
+    "portal.form.age": "عمرك",
+    "portal.form.sumInsured": "القيمة المراد تأمينها",
+    "portal.form.priorClaims": "قدمت مطالبة خلال آخر ٣ سنوات.",
+    "portal.form.tripDays": "مدة الرحلة (أيام)",
+    "portal.form.winterSports": "تضمين الرياضات الشتوية.",
     "line.motor": "السيارات",
     "line.health": "الصحة",
     "line.travel": "السفر",
@@ -80,6 +93,34 @@ function labeller(locale: string): (key: string) => string {
   const table = LABELS[locale] ?? LABELS[DEFAULT_LOCALE];
   return (key) => pseudoText(locale, table?.[key] ?? LABELS[DEFAULT_LOCALE]?.[key] ?? key);
 }
+
+/**
+ * J-C1's "3-field quick quote". The rating inputs a panel wants are per line
+ * (packages/core seed: motor bands on age, travel on trip length), and the
+ * public site is the one surface that has to ask for them in plain words. A
+ * line that isn't listed still captures a lead — a takaful or referral panel
+ * answers out of band, so there is nothing to ask for in the browser.
+ */
+type QuickField =
+  | { name: string; labelKey: string; kind: "number"; min: number; max: number }
+  | { name: string; labelKey: string; kind: "money" }
+  | { name: string; labelKey: string; kind: "bool" };
+
+const QUICK: Record<string, QuickField[]> = {
+  motor: [
+    { name: "age", labelKey: "portal.form.age", kind: "number", min: 18, max: 99 },
+    { name: "sumInsuredMinor", labelKey: "portal.form.sumInsured", kind: "money" },
+    { name: "priorClaims", labelKey: "portal.form.priorClaims", kind: "bool" }
+  ],
+  home: [
+    { name: "sumInsuredMinor", labelKey: "portal.form.sumInsured", kind: "money" },
+    { name: "priorClaims", labelKey: "portal.form.priorClaims", kind: "bool" }
+  ],
+  travel: [
+    { name: "tripDays", labelKey: "portal.form.tripDays", kind: "number", min: 1, max: 365 },
+    { name: "winterSports", labelKey: "portal.form.winterSports", kind: "bool" }
+  ]
+};
 
 interface Product {
   id: string;
@@ -115,9 +156,22 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
   const tenantSlug = params.tenantSlug!;
   const form = await request.formData();
   const productId = String(form.get("productId") ?? "");
+  const line = String(form.get("line") ?? "");
+
+  // Money is entered in major units — nobody types fils — so it is converted
+  // here rather than asking a member of the public to think in minor units.
+  const inputs: Record<string, unknown> = {};
+  for (const field of QUICK[line] ?? []) {
+    const raw = form.get(field.name);
+    if (field.kind === "bool") inputs[field.name] = raw === "on";
+    else if (raw !== null && String(raw) !== "") {
+      const value = Number(raw);
+      if (Number.isFinite(value)) inputs[field.name] = field.kind === "money" ? Math.round(value * 100) : value;
+    }
+  }
 
   try {
-    await api(`/v1/portal/${tenantSlug}/leads`, {
+    const created = await api<{ quoteRequestId: string; token?: string }>(`/v1/portal/${tenantSlug}/leads`, {
       env,
       method: "POST",
       body: {
@@ -126,9 +180,18 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
         email: String(form.get("email") ?? "").trim(),
         ...(form.get("phone") ? { phone: String(form.get("phone")).trim() } : {}),
         ...(form.get("message") ? { message: String(form.get("message")).trim() } : {}),
-        consent: form.get("consent") === "on"
+        consent: form.get("consent") === "on",
+        ...(Object.keys(inputs).length ? { inputs } : {})
       }
     });
+    // A token means the panel priced in-session: take the visitor straight to
+    // the comparison. Without one the answer is "a human will call", which is
+    // the older lead behaviour and stays on this page.
+    if (created.token) {
+      return redirect(
+        `/portal/${tenantSlug}/quotes/${created.quoteRequestId}?token=${encodeURIComponent(created.token)}`
+      );
+    }
     return { productId, ok: true } satisfies ActionData;
   } catch (error) {
     if (!(error instanceof ApiError)) throw error;
@@ -191,6 +254,31 @@ export default function Portal() {
                     </summary>
                     <Form method="post" className="mt-4 flex flex-col gap-3">
                       <input type="hidden" name="productId" value={product.id} />
+                      <input type="hidden" name="line" value={product.line} />
+                      {QUICK[product.line] ? (
+                        <>
+                          <p className="text-13 text-muted">{l("portal.quick")}</p>
+                          {QUICK[product.line]!.map((field) =>
+                            field.kind === "bool" ? (
+                              <Checkbox key={field.name} name={field.name} label={l(field.labelKey)} />
+                            ) : (
+                              <Field
+                                key={field.name}
+                                label={l(field.labelKey)}
+                                id={`${field.name}-${product.id}`}
+                              >
+                                <Input
+                                  name={field.name}
+                                  type="number"
+                                  inputMode="numeric"
+                                  required
+                                  {...(field.kind === "number" ? { min: field.min, max: field.max } : { min: 1 })}
+                                />
+                              </Field>
+                            )
+                          )}
+                        </>
+                      ) : null}
                       {submitted?.errorKey ? (
                         <p role="alert" className="text-13 text-danger">
                           {l(submitted.errorKey)}
