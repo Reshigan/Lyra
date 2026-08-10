@@ -99,6 +99,26 @@ describe("labelsIn", () => {
   it("falls back to English rather than showing a raw key", () => {
     expect(labelsIn("de")("title")).toBe(labelsIn("en")("title"));
   });
+
+  // CLAUDE.md §14: the same screen cancels a policy for an insurer and an
+  // order for a retailer. The noun comes from the pack, mid-sentence and
+  // lower-cased, so a pack swap must not leave "policy" anywhere on it.
+  it("takes the record's noun from the active domain pack", () => {
+    const retail = labelsIn("en", "retail-ecom");
+    expect(retail("title")).toBe("Cancel order");
+    expect(retail("blockedReason")).toBe("Only a bound or active order can be cancelled.");
+    expect(retail("doneBody")).toBe("The order is now cancelled.");
+
+    for (const key of ["title", "back", "blockedTitle", "blockedReason", "deniedTitle", "doneBody"]) {
+      expect(retail(key).toLowerCase(), key).not.toContain("policy");
+    }
+  });
+
+  // …but {policy} in the approval copy is the *governance* policy, a platform
+  // word. A pack renaming the record must not reach into it.
+  it("leaves the governance policy alone when the pack renames the record", () => {
+    expect(labelsIn("en", "retail-ecom")("approvalBody")).toBe(labelsIn("en")("approvalBody"));
+  });
 });
 
 describe("blockedReason", () => {

@@ -121,6 +121,17 @@ describe("labelsIn", () => {
   it("falls back to English rather than showing a raw key", () => {
     expect(labelsIn("de")("title")).toBe(labelsIn("en")("title"));
   });
+
+  // CLAUDE.md §14 — same screen, different industry noun (see policy-cancel).
+  it("takes the record's noun from the active domain pack", () => {
+    const retail = labelsIn("en", "retail-ecom");
+    expect(retail("title")).toBe("Endorse order");
+    expect(retail("blockedReason")).toBe("Only a bound or active order can be endorsed.");
+
+    for (const key of ["title", "back", "blockedTitle", "blockedReason", "deniedTitle"]) {
+      expect(retail(key).toLowerCase(), key).not.toContain("policy");
+    }
+  });
 });
 
 describe("blockedReason", () => {
