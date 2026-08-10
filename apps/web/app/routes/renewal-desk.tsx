@@ -77,14 +77,16 @@ export interface Row {
 const LABELS: Record<string, Record<string, string>> = {
   en: {
     title: "Renewal desk",
-    intro: "Terms expiring in the next 60 days, re-quoted best price, and the one-tap bind.",
+    // No requote engine writes orbit_renewals.requotes_json yet, so this desk
+    // shows the current gross and no re-quoted price — the intro must not
+    // promise a column that does not exist.
+    intro: "Terms expiring in the next 60 days, their churn risk, and the one-tap bind.",
     empty: "No terms expiring in the next 60 days.",
+    count: "Expiring",
     holder: "Holder",
     expires: "Expires",
     daysLeft: "Days left",
     currentGross: "Current gross",
-    requotedBest: "Requoted best",
-    delta: "Delta",
     risk: "Churn risk",
     strategy: "Strategy",
     owner: "Owner",
@@ -107,14 +109,13 @@ const LABELS: Record<string, Record<string, string>> = {
   },
   ar: {
     title: "مكتب التجديد",
-    intro: "الوثائق التي تنتهي خلال 60 يومًا القادمة، أفضل سعر لإعادة التسعير، والتجديد بلمسة واحدة.",
+    intro: "الوثائق التي تنتهي خلال 60 يومًا القادمة، وخطر تسربها، والتجديد بلمسة واحدة.",
     empty: "لا توجد وثائق تنتهي خلال 60 يومًا القادمة.",
+    count: "على وشك الانتهاء",
     holder: "حامل الوثيقة",
     expires: "تنتهي",
     daysLeft: "الأيام المتبقية",
     currentGross: "الإجمالي الحالي",
-    requotedBest: "أفضل إعادة تسعير",
-    delta: "الفرق",
     risk: "خطر التسرب",
     strategy: "الأسلوب",
     owner: "المسؤول",
@@ -266,7 +267,7 @@ export default function RenewalDesk() {
       ) : null}
 
       <KPIWall>
-        <Stat label={l("daysLeft")} value={String(loaded.rows.length)} />
+        <Stat label={l("count")} value={String(loaded.rows.length)} />
       </KPIWall>
 
       <Card title={l("title")} description={l("intro")}>
