@@ -310,7 +310,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 /* ------------------------------------------------------------------ action */
 
 interface ActionResult {
-  problem: { title: string; status: number; code?: string; detail?: string } | null;
+  problem: { title: string; status: number; code?: string; detail?: string; requestId?: string } | null;
   /** The module whose ceiling was just written, for the confirmation line. */
   saved: string | null;
 }
@@ -398,7 +398,8 @@ export default function AiBudget() {
     result?.problem && !approvalPending
       ? {
           title: L(`problem.${result.problem.code ?? ""}`, result.problem.title),
-          ...(result.problem.detail === undefined ? {} : { detail: result.problem.detail })
+          ...(result.problem.detail === undefined ? {} : { detail: result.problem.detail }),
+          ...(result.problem.requestId === undefined ? {} : { requestId: result.problem.requestId })
         }
       : null;
 

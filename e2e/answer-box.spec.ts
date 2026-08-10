@@ -28,7 +28,7 @@ import { goto, loginAsSignalLead } from "./fixtures.js";
 //
 // This spec covers what is real: authoring an AEO page end to end through the
 // list's create form and the record it lands on.
-test("J-M3 an AEO page is authored against a query cluster", async ({ page }) => {
+test("J-M3 an AEO page is authored against a query cluster @journey:J-M3", async ({ page }) => {
   await loginAsSignalLead(page);
 
   await goto(page, "/signal/aeo-pages");

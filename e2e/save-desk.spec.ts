@@ -15,7 +15,7 @@ import { goto, loginAsAxisLead, loginAsFinanceController } from "./fixtures.js";
 
 // axis.bind, dual control "above_threshold" @ 250_000_00 minor (packages/core
 // src/approvals.ts:53): only axis.lead holds axis:policies:create.
-test("J-X2 an above-threshold policy is refused for dual control (axis.bind)", async ({ page }) => {
+test("J-X2 an above-threshold policy is refused for dual control (axis.bind) @journey:J-X2", async ({ page }) => {
   await loginAsAxisLead(page);
 
   await goto(page, "/axis/policies");
@@ -53,7 +53,7 @@ test("J-X2 an above-threshold policy is refused for dual control (axis.bind)", a
 // packages/core/src/seed/settlement.ts's `stlDraft`, channel brokerAlpha,
 // period "2026-01" (the seed clock's `now`, not the real date) — so this
 // opens that row instead of drafting a fresh, entry-less one.
-test("J-X2 approving a settlement run is always refused for dual control (dist.settlement_run)", async ({
+test("J-X2 approving a settlement run is always refused for dual control (dist.settlement_run) @journey:J-X2", async ({
   page
 }) => {
   await loginAsFinanceController(page);

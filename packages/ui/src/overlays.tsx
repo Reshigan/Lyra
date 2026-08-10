@@ -17,8 +17,7 @@ import {
 import { cn, focusRing } from "./cn.js";
 import { Input } from "./primitives.js";
 
-const overlayScrim =
-  "fixed inset-0 z-40 bg-ink-900/70 data-[state=open]:animate-in data-[state=open]:fade-in";
+const overlayScrim = "fixed inset-0 z-40 bg-ink-900/70 data-[state=open]:animate-fade";
 
 /* -------------------------------------------------------------------------- */
 /* Dialog (Modal)                                                              */

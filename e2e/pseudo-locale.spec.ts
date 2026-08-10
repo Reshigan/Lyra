@@ -13,7 +13,7 @@ async function overflowOf(page: Page): Promise<number> {
 // pseudo-locale + RTL without layout break. Same lyra_locale cookie mechanism
 // settings.tsx writes on a real locale change (apps/web/app/i18n.ts).
 test.describe("pseudo-locale and RTL rendering", () => {
-  test("pseudo-locale expands every string without breaking the login layout", async ({ page, baseURL }) => {
+  test("pseudo-locale expands every string without breaking the login layout @accept:M0-rtl", async ({ page, baseURL }) => {
     await page.context().addCookies([
       { name: "lyra_locale", value: "pseudo", url: baseURL! }
     ]);
@@ -35,7 +35,7 @@ test.describe("pseudo-locale and RTL rendering", () => {
     await page.screenshot({ path: "test-results/pseudo-locale-login.png", fullPage: true });
   });
 
-  test("Arabic renders right-to-left without breaking the login layout", async ({ page, baseURL }) => {
+  test("Arabic renders right-to-left without breaking the login layout @accept:M0-rtl", async ({ page, baseURL }) => {
     await page.context().addCookies([{ name: "lyra_locale", value: "ar", url: baseURL! }]);
     await goto(page, "/login");
 

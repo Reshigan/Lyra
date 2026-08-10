@@ -11,7 +11,7 @@ import { goto, loginAsNorthExec } from "./fixtures.js";
 // north:anomalies:assign — so the read half of this journey is the seeded
 // jan05En briefing (packages/core/src/seed.ts) and the "tap anomaly, assign
 // action" half is the seeded cac_per_policy anomaly, still in state "new".
-test("J-E1 exec reads the morning briefing on a phone and assigns an action on the anomaly it flags", async ({
+test("J-E1 exec reads the morning briefing on a phone and assigns an action on the anomaly it flags @journey:J-E1 @accept:M6", async ({
   page
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -55,7 +55,7 @@ test("J-E1 exec reads the morning briefing on a phone and assigns an action on t
 // "revisit ... with actuals overlay" is modelled here as editing the saved
 // scenario's assumptions once results are in — the only write this journey's
 // persona can make against a scenario record.
-test("J-E3 exec saves a what-if scenario and revisits it with updated assumptions", async ({ page }) => {
+test("J-E3 exec saves a what-if scenario and revisits it with updated assumptions @journey:J-E3 @accept:M6", async ({ page }) => {
   await loginAsNorthExec(page);
 
   const question = `J-E3-${Date.now()} What if renewal retention drops 5pt next quarter?`;
@@ -104,7 +104,7 @@ test("J-E3 exec saves a what-if scenario and revisits it with updated assumption
 // mechanism the type comment shows has zero real users). There is no approve
 // button, no distribute button and no read-receipt UI to test — this spec
 // covers what exists, and the report notes the rest as a gap, not a fake pass.
-test("J-E2 exec assembles a board pack for Thursday", async ({ page }) => {
+test("J-E2 exec assembles a board pack for Thursday @journey:J-E2 @accept:M6", async ({ page }) => {
   await loginAsNorthExec(page);
 
   const title = `J-E2 Board pack ${Date.now()}`;

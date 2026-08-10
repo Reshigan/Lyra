@@ -710,6 +710,7 @@
   --animate-rise: rise 420ms var(--ease-out) both;
   --animate-draw: draw 900ms var(--ease-out) both;
   --animate-drift: drift 60s linear infinite;
+  --animate-fade: fade var(--duration-fast) var(--ease-out) both;
 }
 
 /* Motion — docs/01 §5. Reduced motion honoured. */
@@ -769,6 +770,15 @@
 @keyframes orbit-spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }
 

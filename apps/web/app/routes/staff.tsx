@@ -26,8 +26,14 @@ import {
 import { ApiError, api, fetchMe } from "../api.server";
 import { cloudflare } from "../context";
 import { pseudoText, translator } from "../i18n";
-import { Problem } from "./module";
+import { Gate } from "./module";
 import { useShellData } from "./workspace";
+
+// Gate is re-exported rather than duplicated: this file's version was byte-
+// identical to routes/module.tsx's (UX audit 2026-08-10, gap G6), so a fix to
+// one silently missed the other. One import, used below and by every screen
+// that does `import { Gate } from "./staff"`.
+export { Gate };
 
 // Who is staff, what they may do, and who is standing in for whom while they
 // are out (docs/06 §1). Invitation and delegation are consequential — they
@@ -755,35 +761,3 @@ function Header({ l }: { l: (key: string) => string }) {
   );
 }
 
-/** A refusal, and the gate behind it if there is one. Shared with staff-member.tsx. */
-export function Gate({
-  problem,
-  l
-}: {
-  problem: { title: string; status: number; detail?: string };
-  l: (key: string, vars?: Record<string, string>) => string;
-}) {
-  const extras = problem as { code?: string; policy_key?: string };
-  if (problem.status === 403 && extras.code === "approval_required") {
-    return (
-      <GateNotice
-        title={l("approvalTitle")}
-        body={l("approvalBody", { policy: extras.policy_key ?? problem.detail ?? problem.title })}
-        link={l("approvalLink")}
-      />
-    );
-  }
-  return <Problem problem={problem} />;
-}
-
-function GateNotice({ title, body, link }: { title: string; body: string; link: string }) {
-  return (
-    <div role="status" className="flex flex-col gap-2 rounded-md border border-warning/50 bg-warning/8 p-4">
-      <span className="font-ui text-14 font-medium text-warning">{title}</span>
-      <span className="font-ui text-13 text-muted">{body}</span>
-      <Link to="/approvals" className="font-ui text-13 text-accent underline underline-offset-2">
-        {link}
-      </Link>
-    </div>
-  );
-}

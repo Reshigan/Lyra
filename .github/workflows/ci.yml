@@ -1,9 +1,13 @@
 name: ci
 
 on:
-  push:
-    branches: [main]
   pull_request:
+  workflow_call:
+    secrets:
+      CF_ACCOUNT_ID:
+        required: false
+      CF_AI_TOKEN:
+        required: false
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}

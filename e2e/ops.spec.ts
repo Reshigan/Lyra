@@ -35,7 +35,7 @@ async function selectByTypeahead(page: Page, label: string, optionText: string) 
 // axis.agent opens the exceptions queue — AXIS cases filtered to
 // status=failed — and clears one by moving it off "failed". The queue drops
 // it immediately, no separate refresh step.
-test("J-O1 axis agent filters the exceptions queue and clears a failed case", async ({ page }) => {
+test("J-O1 axis agent filters the exceptions queue and clears a failed case @journey:J-O1 @accept:M2", async ({ page }) => {
   await loginAsAxisAgent(page);
 
   await goto(page, "/axis/cases");
@@ -93,7 +93,7 @@ test("J-O1 axis agent filters the exceptions queue and clears a failed case", as
 // finance.controller imports counterparty statement lines, the engine
 // auto-matches them against settled transactions, and what is left is an
 // exception a person decides — with a reason recorded against the decision.
-test("J-O3 finance controller runs a reconciliation and decides an exception with a reason", async ({
+test("J-O3 finance controller runs a reconciliation and decides an exception with a reason @journey:J-O3 @accept:M2", async ({
   page
 }) => {
   await loginAsFinanceController(page);
@@ -146,7 +146,7 @@ test("J-O3 finance controller runs a reconciliation and decides an exception wit
 // axis.lead shops a fresh risk to the panel and the comparison answers with
 // referrals, never silence (apps/api/src/journeys.test.ts covers the API
 // side; this proves the same path through the actual UI).
-test("J-O2 axis lead shops a new risk and the panel answers", async ({ page }) => {
+test("J-O2 axis lead shops a new risk and the panel answers @journey:J-O2 @accept:M2", async ({ page }) => {
   // Seed IDs are ULIDs assigned at run time (packages/db/src/ids.ts), so the
   // real productId/channelId can't be computed — look them up once. axis.lead
   // has no core:products:read, so tenant.admin (core:*:* + dist:*:read) does

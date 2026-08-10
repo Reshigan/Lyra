@@ -32,7 +32,7 @@ import { goto, loginAsOrbitAgent } from "./fixtures.js";
 //   the acceptance test's opposite case — a lead successfully scoring —
 //   cannot be demonstrated by any persona this fixture set provides.
 
-test("J-X1 the human console shows the AI's escalation summary and its QA score", async ({ page }) => {
+test("J-X1 the human console shows the AI's escalation summary and its QA score @journey:J-X1 @accept:M3", async ({ page }) => {
   await loginAsOrbitAgent(page);
 
   // Seeded conversation carrying a real AI handover note and two
@@ -64,7 +64,7 @@ test("J-X1 the human console shows the AI's escalation summary and its QA score"
   await expect(rubricRows.filter({ hasText: "Score: 61" })).toBeVisible();
 });
 
-test("J-X1 an agent hands a conversation to a teammate with a readable summary", async ({ page }) => {
+test("J-X1 an agent hands a conversation to a teammate with a readable summary @journey:J-X1 @accept:M3", async ({ page }) => {
   await loginAsOrbitAgent(page);
 
   const externalRef = `e2e-jx1-${Date.now()}`;
@@ -99,7 +99,7 @@ test("J-X1 an agent hands a conversation to a teammate with a readable summary",
   await expect(page.getByRole("region", { name: "Handover notes" }).getByText(summary)).toBeVisible();
 });
 
-test("J-X1 scoring the handover is the lead's job, not the agent's", async ({ page }) => {
+test("J-X1 scoring the handover is the lead's job, not the agent's @journey:J-X1 @accept:M3", async ({ page }) => {
   await loginAsOrbitAgent(page);
 
   // journeys.test.ts:622-641's shape is a runtime 403 on POST

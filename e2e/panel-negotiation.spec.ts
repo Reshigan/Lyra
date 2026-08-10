@@ -21,7 +21,7 @@ import { goto, loginAsFinanceController, loginAsScoutLead } from "./fixtures.js"
 // ("tenant.admin" attempts, "finance.controller" decides) — each in its own
 // browser context, as ai-console.spec.ts's J-A3 does for its own two-actor
 // journey.
-test("J-P2 a commission rate change is refused for dual control, then decided by the controller", async ({
+test("J-P2 a commission rate change is refused for dual control, then decided by the controller @journey:J-P2 @accept:M5", async ({
   browser
 }) => {
   const admin = await browser.newContext();
@@ -67,7 +67,7 @@ test("J-P2 a commission rate change is refused for dual control, then decided by
 // scout:panel_bench:read (rbac.ts) is the read behind "bench alert" — the
 // benchmark table the negotiation pack is quoted from
 // (packages/core/src/seed/scout.ts's seeded motor/health rows).
-test("J-P2 panel benchmarks are readable by the negotiator", async ({ page }) => {
+test("J-P2 panel benchmarks are readable by the negotiator @journey:J-P2 @accept:M5", async ({ page }) => {
   await loginAsScoutLead(page);
 
   await goto(page, "/scout/panel-bench");

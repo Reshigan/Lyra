@@ -12,6 +12,13 @@ export interface Problem {
   instance?: string;
   /** Field-level validation errors, keyed by dotted path. */
   errors?: Record<string, string>;
+  /**
+   * `x-request-id` from the response, copied here so every screen that
+   * narrows an ApiError down to just its problem still has it (docs/15
+   * checklist item 10 — an error state without this has nothing for support
+   * to look up). Not part of the wire format; set by `ApiError.from` below.
+   */
+  requestId?: string;
 }
 
 export class ApiError extends Error {
@@ -42,6 +49,7 @@ export class ApiError extends Error {
       /* keep the status-derived problem */
     }
     problem.instance ??= path;
+    if (requestId) problem.requestId = requestId;
     return new ApiError(problem, requestId);
   }
 }

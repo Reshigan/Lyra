@@ -7,7 +7,9 @@
   "main": "src/index.ts",
   "compatibility_date": "2025-01-15",
   "compatibility_flags": ["nodejs_compat"],
-  "workers_dev": true,
+  // DNS cutover for api.lyra.vantax.co.za confirmed live 2026-08-10 (valid
+  // cert, 200 on /health) — the *.workers.dev fallback route is dead surface.
+  "workers_dev": false,
   "observability": { "enabled": true },
   "vars": {
     // "demo", not "production": this deployment is the showcase and carries

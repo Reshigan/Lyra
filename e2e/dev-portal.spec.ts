@@ -34,7 +34,7 @@ import { confirmAction, goto, loginAsTenantAdmin } from "./fixtures.js";
 // `deletedAt`). It sets `revokedAt` instead, mirroring sessions' revoke in
 // routes/me.ts — the row survives, matching settings.tsx's own "Revoked"
 // badge/hidden-button rendering off `row.revokedAt`.
-test("J-D1 the OpenAPI document is public and the API refuses everything else without a credential", async ({
+test("J-D1 the OpenAPI document is public and the API refuses everything else without a credential @journey:J-D1 @accept:M1", async ({
   request
 }) => {
   const spec = await request.get(`${API_ORIGIN}/openapi.json`);
@@ -52,7 +52,7 @@ test("J-D1 the OpenAPI document is public and the API refuses everything else wi
   expect(badToken.status()).toBe(401);
 });
 
-test("J-D1 a tenant admin issues a test key from Settings, calls the API with it, then revokes it", async ({
+test("J-D1 a tenant admin issues a test key from Settings, calls the API with it, then revokes it @journey:J-D1 @accept:M1", async ({
   page,
   request
 }) => {

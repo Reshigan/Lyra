@@ -9,7 +9,7 @@ import { API_ORIGIN } from "./env.js";
 // against the real running API server (webServer in playwright.config.ts),
 // the one gap that vitest run can't close.
 
-test("J-X3 partner portal signup mints a sandbox key scoped to sandbox use", async ({ request }) => {
+test("J-X3 partner portal signup mints a sandbox key scoped to sandbox use @journey:J-X3 @accept:M3", async ({ request }) => {
   const email = `jx3-${Date.now()}@acme.example`;
   const res = await request.post(`${API_ORIGIN}/v1/onboarding/partners/signup`, {
     data: {
@@ -39,7 +39,7 @@ test("J-X3 partner portal signup mints a sandbox key scoped to sandbox use", asy
   expect(denied.status()).toBe(403);
 });
 
-test("J-X3 repeat signup from the same email is throttled", async ({ request }) => {
+test("J-X3 repeat signup from the same email is throttled @journey:J-X3 @accept:M3", async ({ request }) => {
   const payload = {
     tenantSlug: "gonxt",
     companyName: "J-X3 Repeat Co",

@@ -34,7 +34,7 @@ import { goto, loginAsComplianceOfficer, loginAsScoutLead, loginAsSignalLead } f
 //     visit to any `/signal/campaigns` URL is refused by the *read* permission
 //     before a launch is ever attempted, which is a superset of the API test's
 //     specific PATCH-is-403 assertion, not a narrower one.
-test("J-M1 a growth lead authors an audience and campaign, then launches it (auto-approved, audited)", async ({
+test("J-M1 a growth lead authors an audience and campaign, then launches it (auto-approved, audited) @journey:J-M1 @accept:M4", async ({
   page
 }) => {
   await loginAsSignalLead(page);
@@ -126,7 +126,7 @@ test("J-M1 a growth lead authors an audience and campaign, then launches it (aut
   ).toBeVisible();
 });
 
-test("J-M1 a marketer without the launch permission is refused the whole campaigns screen", async ({ page }) => {
+test("J-M1 a marketer without the launch permission is refused the whole campaigns screen @journey:J-M1 @accept:M4", async ({ page }) => {
   await loginAsScoutLead(page);
 
   await goto(page, "/signal/campaigns");
