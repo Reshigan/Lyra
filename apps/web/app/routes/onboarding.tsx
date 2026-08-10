@@ -17,6 +17,7 @@ import {
   Field,
   GuardrailNotice,
   Input,
+  PageHeader,
   Select,
   Textarea,
   type BadgeTone
@@ -614,19 +615,19 @@ export default function Onboarding() {
 
 function Header({ l, loaded }: { l: Label; loaded: Awaited<ReturnType<typeof loader>> }) {
   return (
-    <header className="flex flex-col gap-2">
-      <Link
-        to="/orbit/partners"
-        className="font-ui text-12 text-subtle underline-offset-2 hover:underline"
-      >
-        {l("onb.back")}
-      </Link>
-      <h1 className="font-serif text-24 leading-[1.2] text-text">
-        {loaded.partner?.name ?? l(`onb.subject.${loaded.subjectKind}`)}
-      </h1>
-      <p className="max-w-prose font-ui text-13 text-muted">{l("onb.intro")}</p>
-      <p className="font-mono text-11 text-subtle">{loaded.ref}</p>
-    </header>
+    <PageHeader
+      title={loaded.partner?.name ?? l(`onb.subject.${loaded.subjectKind}`)}
+      description={l("onb.intro")}
+      back={
+        <Link
+          to="/orbit/partners"
+          className="font-ui text-12 text-subtle underline-offset-2 hover:underline"
+        >
+          {l("onb.back")}
+        </Link>
+      }
+      meta={<p className="font-mono text-11 text-subtle">{loaded.ref}</p>}
+    />
   );
 }
 

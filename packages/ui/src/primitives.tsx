@@ -580,6 +580,27 @@ export function Card({
   );
 }
 
+export interface PageHeaderProps {
+  title: React.ReactNode;
+  description?: React.ReactNode;
+  /** Caller renders its own router `<Link>` — this package doesn't depend on react-router. */
+  back?: React.ReactNode;
+  /** Trailing row below the description, e.g. a reference/id line. */
+  meta?: React.ReactNode;
+  className?: string;
+}
+
+export function PageHeader({ title, description, back, meta, className }: PageHeaderProps) {
+  return (
+    <header className={cn("flex flex-col", back ? "gap-2" : "gap-1", className)}>
+      {back}
+      <h1 className="font-serif text-24 leading-[1.2] text-text">{title}</h1>
+      {description ? <p className="max-w-prose font-ui text-13 text-muted">{description}</p> : null}
+      {meta}
+    </header>
+  );
+}
+
 export type BadgeTone = "neutral" | "accent" | "success" | "danger" | "warning" | "info";
 
 const badgeTones: Record<BadgeTone, string> = {

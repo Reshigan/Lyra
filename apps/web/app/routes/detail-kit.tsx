@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { cn, focusRing } from "@lyra/ui";
+import { cn, focusRing, PageHeader } from "@lyra/ui";
 import { ApiError } from "../api-error";
 import { pseudoText } from "../i18n";
 import { optionLabel } from "../modules/spec";
@@ -383,12 +383,7 @@ export function Entry({ term, children }: { term: string; children: ReactNode })
 }
 
 export function Header({ title, intro }: { title: string; intro: string }) {
-  return (
-    <header className="flex flex-col gap-1">
-      <h1 className="font-serif text-24 leading-[1.2] text-text">{title}</h1>
-      <p className="max-w-prose font-ui text-13 text-muted">{intro}</p>
-    </header>
-  );
+  return <PageHeader title={title} description={intro} />;
 }
 
 /**

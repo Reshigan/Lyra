@@ -14,6 +14,7 @@ import {
   EmptyState,
   Input,
   Money,
+  PageHeader,
   Ref,
   Select,
   shortRef,
@@ -631,16 +632,18 @@ export default function CommissionStatement() {
 
 function Header({ l }: { l: (key: string, vars?: Record<string, string>) => string }) {
   return (
-    <header className="flex flex-col gap-2">
-      <Link
-        to="/distribution/commission-entries"
-        className="font-ui text-12 text-subtle underline-offset-2 hover:underline"
-      >
-        {l("backToEntries")}
-      </Link>
-      <h1 className="font-serif text-24 leading-[1.2] text-text">{l("title")}</h1>
-      <p className="max-w-prose font-ui text-13 text-muted">{l("intro")}</p>
-    </header>
+    <PageHeader
+      title={l("title")}
+      description={l("intro")}
+      back={
+        <Link
+          to="/distribution/commission-entries"
+          className="font-ui text-12 text-subtle underline-offset-2 hover:underline"
+        >
+          {l("backToEntries")}
+        </Link>
+      }
+    />
   );
 }
 

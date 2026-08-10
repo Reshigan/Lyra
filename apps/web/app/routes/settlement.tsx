@@ -16,6 +16,7 @@ import {
   Field,
   Input,
   Money,
+  PageHeader,
   Ref,
   Select,
   Table,
@@ -439,7 +440,7 @@ export default function SettlementPeriod() {
   if (!loaded.may.read) {
     return (
       <div className="flex flex-col gap-6">
-        <Header l={l} />
+        <PageHeader title={l("title")} description={l("intro")} />
         <EmptyState title={l("deniedTitle")} body={t("error.forbidden")} />
       </div>
     );
@@ -514,7 +515,7 @@ export default function SettlementPeriod() {
 
   return (
     <div className="flex flex-col gap-6">
-      <Header l={l} />
+      <PageHeader title={l("title")} description={l("intro")} />
 
       <Form method="get" className="flex flex-wrap items-end gap-3" aria-label={l("filters")}>
         <Field label={l("counterpartyKind")}>
@@ -655,15 +656,6 @@ export default function SettlementPeriod() {
         )}
       </div>
     </div>
-  );
-}
-
-function Header({ l }: { l: (key: string) => string }) {
-  return (
-    <header className="flex flex-col gap-1">
-      <h1 className="font-serif text-24 leading-[1.2] text-text">{l("title")}</h1>
-      <p className="max-w-prose font-ui text-13 text-muted">{l("intro")}</p>
-    </header>
   );
 }
 

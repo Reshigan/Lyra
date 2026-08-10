@@ -15,6 +15,7 @@ import {
   EmptyState,
   Field,
   Money,
+  PageHeader,
   Table,
   Textarea,
   type Column
@@ -300,7 +301,7 @@ export default function SettlementDetail() {
   if (!loaded.may.read || !loaded.lines) {
     return (
       <div className="flex flex-col gap-6">
-        <Header l={l} />
+        <PageHeader title={l("title")} description={l("intro")} />
         <EmptyState title={l("deniedTitle")} body={t("error.forbidden")} />
       </div>
     );
@@ -326,7 +327,7 @@ export default function SettlementDetail() {
 
   return (
     <div className="flex flex-col gap-6">
-      <Header l={l} />
+      <PageHeader title={l("title")} description={l("intro")} />
 
       <Link to="/ledger/settlement" className="font-ui text-12 text-accent underline-offset-2 hover:underline">
         {l("back")}
@@ -461,14 +462,5 @@ function TransitionForm({
         {l(transition.intent)}
       </Button>
     </Form>
-  );
-}
-
-function Header({ l }: { l: (key: string) => string }) {
-  return (
-    <header className="flex flex-col gap-1">
-      <h1 className="font-serif text-24 leading-[1.2] text-text">{l("title")}</h1>
-      <p className="max-w-prose font-ui text-13 text-muted">{l("intro")}</p>
-    </header>
   );
 }

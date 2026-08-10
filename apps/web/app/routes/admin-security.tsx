@@ -1,5 +1,5 @@
 import { Link, useLoaderData, type LoaderFunctionArgs } from "react-router";
-import { Badge, Card, DateTime, EmptyState, Stat, Table, type Column } from "@lyra/ui";
+import { Badge, Card, DateTime, EmptyState, PageHeader, Stat, Table, type Column } from "@lyra/ui";
 import { ApiError, api, fetchMe, type Problem } from "../api.server";
 import { cloudflare } from "../context";
 import { pseudoText, translator } from "../i18n";
@@ -265,7 +265,7 @@ export default function AdminSecurity() {
   if (!posture) {
     return (
       <div className="flex flex-col gap-6">
-        <Header l={l} />
+        <PageHeader title={l("title")} description={l("intro")} />
         <EmptyState title={l("deniedTitle")} body={t("error.forbidden")} />
       </div>
     );
@@ -325,7 +325,7 @@ export default function AdminSecurity() {
 
   return (
     <div className="flex flex-col gap-6">
-      <Header l={l} />
+      <PageHeader title={l("title")} description={l("intro")} />
 
       <Card title={l("mfaTitle")} description={l("mfaIntro")}>
         <div className="flex flex-col gap-4">
@@ -425,14 +425,5 @@ export default function AdminSecurity() {
         <p className="max-w-prose font-ui text-13 text-muted">{l("networkIntro")}</p>
       </Card>
     </div>
-  );
-}
-
-function Header({ l }: { l: (key: string) => string }) {
-  return (
-    <header className="flex flex-col gap-1">
-      <h1 className="font-serif text-24 leading-[1.2] text-text">{l("title")}</h1>
-      <p className="max-w-prose font-ui text-13 text-muted">{l("intro")}</p>
-    </header>
   );
 }
