@@ -11,7 +11,7 @@ import {
   type ActionFunctionArgs,
   type LoaderFunctionArgs
 } from "react-router";
-import { Button, EmptyState, Input, Select, Table, type Column } from "@lyra/ui";
+import { Button, EmptyState, Input, Panel, Select, Table, type Column } from "@lyra/ui";
 import { ApiError, api, asRouteError, fetchMe } from "../api.server";
 import { Cell, FieldInput } from "../components/fields";
 import { cloudflare } from "../context";
@@ -367,61 +367,68 @@ export default function ModuleList() {
         <CreatePanel tab={tab} label={label} t={t} busy={busy} defaultOpen={Boolean(problem)} />
       ) : null}
 
-      <Table
-        columns={columns}
-        rows={rows}
-        rowKey={(row) => String(row.id)}
-        caption={
-          deletedView
-            ? `${t(labelKeyFor(spec.path))} — ${label(tab.key)} — ${t("common.deleted.only")}`
-            : `${t(labelKeyFor(spec.path))} — ${label(tab.key)}`
-        }
-        density="compact"
-        stickyHeader
-        {...(sortKey
-          ? { sort: { key: sortKey, direction: (loaded.query.order ?? "desc") as "asc" | "desc" } }
-          : {})}
-        onSortChange={(next) => {
-          const params = new URLSearchParams(searchParams);
-          params.set("sort", next.key);
-          params.set("order", next.direction);
-          params.delete("cursor");
-          setSearchParams(params);
-        }}
-        empty={
-          <EmptyState
-            title={deletedView ? t("common.deleted.only") : t("common.empty.title")}
-            body={
-              deletedView
-                ? t("common.empty.deleted")
-                : filtered
-                  ? t("common.empty.filtered")
-                  : t("common.empty.body")
-            }
-          />
-        }
-        footer={
-          <div className="flex items-center justify-between gap-3 pt-3">
-            <span className="font-ui text-12 tabular-nums text-subtle">
-              {t("common.rows", { count: String(rows.length) })}
-            </span>
-            <div className="flex gap-2">
-              {searchParams.get("cursor") ? (
-                <Button asChild variant="secondary" size="sm">
-                  {/* Back to the top of *this* view: dropping the cursor alone
-                      keeps the filters and the deleted/live switch. */}
-                  <Link to={`?${firstPage(searchParams)}`}>{t("common.previous")}</Link>
-                </Button>
-              ) : null}
-              {loaded.cursor ? (
-                <Button asChild variant="secondary" size="sm">
-                  <Link to={`?${nextPage(searchParams, loaded.cursor)}`}>{t("common.next")}</Link>
-                </Button>
-              ) : null}
+      {/* The table is the screen, so it gets the screen's container: a Horizon
+          panel, unpadded because the table draws its own gutters. Every module
+          list without a bespoke route renders through here, so this one line
+          decides how the default list screen looks. No hue — the shell already
+          signs the module once, above the workspace. */}
+      <Panel padded={false}>
+        <Table
+          columns={columns}
+          rows={rows}
+          rowKey={(row) => String(row.id)}
+          caption={
+            deletedView
+              ? `${t(labelKeyFor(spec.path))} — ${label(tab.key)} — ${t("common.deleted.only")}`
+              : `${t(labelKeyFor(spec.path))} — ${label(tab.key)}`
+          }
+          density="compact"
+          stickyHeader
+          {...(sortKey
+            ? { sort: { key: sortKey, direction: (loaded.query.order ?? "desc") as "asc" | "desc" } }
+            : {})}
+          onSortChange={(next) => {
+            const params = new URLSearchParams(searchParams);
+            params.set("sort", next.key);
+            params.set("order", next.direction);
+            params.delete("cursor");
+            setSearchParams(params);
+          }}
+          empty={
+            <EmptyState
+              title={deletedView ? t("common.deleted.only") : t("common.empty.title")}
+              body={
+                deletedView
+                  ? t("common.empty.deleted")
+                  : filtered
+                    ? t("common.empty.filtered")
+                    : t("common.empty.body")
+              }
+            />
+          }
+          footer={
+            <div className="flex items-center justify-between gap-3 pt-3">
+              <span className="font-ui text-12 tabular-nums text-subtle">
+                {t("common.rows", { count: String(rows.length) })}
+              </span>
+              <div className="flex gap-2">
+                {searchParams.get("cursor") ? (
+                  <Button asChild variant="secondary" size="sm">
+                    {/* Back to the top of *this* view: dropping the cursor alone
+                        keeps the filters and the deleted/live switch. */}
+                    <Link to={`?${firstPage(searchParams)}`}>{t("common.previous")}</Link>
+                  </Button>
+                ) : null}
+                {loaded.cursor ? (
+                  <Button asChild variant="secondary" size="sm">
+                    <Link to={`?${nextPage(searchParams, loaded.cursor)}`}>{t("common.next")}</Link>
+                  </Button>
+                ) : null}
+              </div>
             </div>
-          </div>
-        }
-      />
+          }
+        />
+      </Panel>
     </div>
   );
 }

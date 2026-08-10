@@ -155,24 +155,24 @@ export default function Record() {
           micro-label is decoration that costs legibility, and these labels are
           read far more often than the heading. */}
       <dl className="grid gap-x-8 gap-y-4 rounded-lg border border-border bg-surface-1 p-4 sm:grid-cols-2 lg:grid-cols-3">
-        {tab.columns.map((column) => (
-          <div key={column.name} className="flex min-w-0 flex-col gap-1">
-            <dt className="font-ui text-12 text-subtle">{label(column.name)}</dt>
-            <dd className="font-ui text-13 text-text">
-              <Cell column={column} row={row} locale={locale} label={label} />
-            </dd>
-          </div>
-        ))}
-        {["createdAt", "updatedAt"].map((key) =>
-          row[key] ? (
-            <div key={key} className="flex min-w-0 flex-col gap-1">
-              <dt className="font-ui text-12 text-subtle">{t(`common.${key}`)}</dt>
+          {tab.columns.map((column) => (
+            <div key={column.name} className="flex min-w-0 flex-col gap-1">
+              <dt className="font-ui text-12 text-subtle">{label(column.name)}</dt>
               <dd className="font-ui text-13 text-text">
-                <DateTime value={Number(row[key])} locale={locale} precision="minute" />
+                <Cell column={column} row={row} locale={locale} label={label} />
               </dd>
             </div>
-          ) : null
-        )}
+          ))}
+          {["createdAt", "updatedAt"].map((key) =>
+            row[key] ? (
+              <div key={key} className="flex min-w-0 flex-col gap-1">
+                <dt className="font-ui text-12 text-subtle">{t(`common.${key}`)}</dt>
+                <dd className="font-ui text-13 text-text">
+                  <DateTime value={Number(row[key])} locale={locale} precision="minute" />
+                </dd>
+              </div>
+            ) : null
+          )}
       </dl>
 
       {/* State the API owns, not columns this screen may set. Withheld actions
@@ -180,7 +180,7 @@ export default function Record() {
       {actions.length ? (
         <section
           aria-labelledby="record-actions"
-          className="flex flex-col gap-4 rounded-lg border border-border p-4"
+          className="flex flex-col gap-4 rounded-lg border border-border bg-surface-1 p-4"
         >
           <h2 id="record-actions" className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">
             {t("common.actions")}
@@ -194,7 +194,7 @@ export default function Record() {
       ) : null}
 
       {canEdit ? (
-        <Form method="post" className="flex flex-col gap-4 rounded-lg border border-border p-4">
+        <Form method="post" className="flex flex-col gap-4 rounded-lg border border-border bg-surface-1 p-4">
           <h2 className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">{t("common.edit")}</h2>
           <input type="hidden" name="intent" value="update" />
           <div className="grid gap-4 sm:grid-cols-2">
