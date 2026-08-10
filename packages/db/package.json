@@ -23,11 +23,11 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241230.0",
-    "@libsql/client": "^0.14.0",
+    "@libsql/client": "^0.17.4",
     "@lyra/config": "workspace:*",
     "@types/node": "^22",
     "drizzle-kit": "^0.31.10",
-    "tsx": "^4.19.2",
+    "tsx": "^4.23.10",
     "typescript": "^5.7.2",
     "vitest": "^3.2.7"
   }
