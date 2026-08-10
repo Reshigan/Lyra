@@ -27,7 +27,7 @@ import { cloudflare } from "../context";
 import { CATALOGUES, LOCALES, pseudoText, translator } from "../i18n";
 import { ConfirmButton } from "../components/confirm";
 import { Problem } from "./module";
-import { CALENDARS, calendarFrom, useShellData } from "./workspace";
+import { CALENDARS, FALLBACK_CURRENCY, calendarFrom, useShellData } from "./workspace";
 import type { CalendarPreference } from "@lyra/ui";
 
 // The actor's own account, and — for whoever administers the tenant — the parts
@@ -637,7 +637,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     calendar: calendarFrom(me.policy?.calendarPreference),
     /** The other two tenant-wide regional settings, edited on the same panel. */
     defaultLocale: stringFrom(me.policy?.defaultLocale, "en"),
-    currency: stringFrom(me.policy?.currency, "AED"),
+    currency: stringFrom(me.policy?.currency, FALLBACK_CURRENCY),
     /** Which locales this tenant runs in — the only valid default locales. */
     locales: localesFrom(me.policy?.locales),
     dsar: dsar.value?.data ?? [],
@@ -969,7 +969,7 @@ export default function Settings() {
       </header>
 
       {/* ---------------------------------------------------------- profile */}
-      <Panel id="settings-profile" title={label("profile.title")}>
+      <Section id="settings-profile" title={label("profile.title")}>
         {failure("profile")}
         {params.get("saved") === "profile" ? (
           <p role="status" className="font-ui text-13 text-success">
@@ -1008,10 +1008,10 @@ export default function Settings() {
             </Button>
           </div>
         </Form>
-      </Panel>
+      </Section>
 
       {/* ------------------------------------------------------------ lens */}
-      <Panel id="settings-lens" title={label("lens.title")} lead={label("lens.intro")}>
+      <Section id="settings-lens" title={label("lens.title")} lead={label("lens.intro")}>
         {failure("lens-reset")}
         {done("lens-reset", "lens.ok")}
         {loaded.lensReadable && loaded.lens ? (
@@ -1034,10 +1034,10 @@ export default function Settings() {
         ) : (
           <p className="font-ui text-13 text-subtle">{label("lens.unavailable")}</p>
         )}
-      </Panel>
+      </Section>
 
       {/* --------------------------------------------------------- password */}
-      <Panel id="settings-password" title={label("password.title")} lead={label("password.intro")}>
+      <Section id="settings-password" title={label("password.title")} lead={label("password.intro")}>
         {failure("password")}
 
         <Form
@@ -1091,7 +1091,7 @@ export default function Settings() {
             </Button>
           </div>
         </Form>
-      </Panel>
+      </Section>
 
       {/* -------------------------------------------------------------- mfa */}
       <MfaPanel
@@ -1108,7 +1108,7 @@ export default function Settings() {
       <PermissionsPanel permissions={loaded.permissions} pii={loaded.can.pii} label={label} />
 
       {/* --------------------------------------------------------- sessions */}
-      <Panel id="settings-sessions" title={label("sessions.title")}>
+      <Section id="settings-sessions" title={label("sessions.title")}>
         {failure("revoke-session")}
         {done("revoke-session", "sessions.ok")}
 
@@ -1124,11 +1124,11 @@ export default function Settings() {
         ) : (
           <p className="font-ui text-13 text-subtle">{label("sessions.unavailable")}</p>
         )}
-      </Panel>
+      </Section>
 
       {/* ------------------------------------------------------------- keys */}
       {loaded.can.keysRead ? (
-        <Panel id="settings-keys" title={label("keys.title")} lead={label("keys.intro")}>
+        <Section id="settings-keys" title={label("keys.title")} lead={label("keys.intro")}>
           {failure("revoke-key")}
           {done("revoke-key", "keys.ok")}
 
@@ -1157,11 +1157,11 @@ export default function Settings() {
               failure={failure}
             />
           ) : null}
-        </Panel>
+        </Section>
       ) : null}
 
       {/* ---------------------------------------------------- notifications */}
-      <Panel
+      <Section
         id="settings-notifications"
         title={label("notifications.title")}
         lead={label("notifications.intro")}
@@ -1198,7 +1198,7 @@ export default function Settings() {
             ))}
           </ul>
         )}
-      </Panel>
+      </Section>
 
       {/* --------------------------------------------------- tenant panels */}
       {loaded.can.brand || loaded.can.dsarCreate ? (
@@ -1218,7 +1218,7 @@ export default function Settings() {
       ) : null}
 
       {loaded.can.brand ? (
-        <Panel id="settings-calendar" title={label("calendar.title")} lead={label("calendar.intro")}>
+        <Section id="settings-calendar" title={label("calendar.title")} lead={label("calendar.intro")}>
           {failure("calendar")}
           {done("calendar", "calendar.ok")}
           <Form method="post" className="flex flex-col gap-4">
@@ -1259,11 +1259,11 @@ export default function Settings() {
               </Button>
             </div>
           </Form>
-        </Panel>
+        </Section>
       ) : null}
 
       {loaded.can.dsarCreate ? (
-        <Panel id="settings-dsar" title={label("dsar.title")} lead={label("dsar.intro")}>
+        <Section id="settings-dsar" title={label("dsar.title")} lead={label("dsar.intro")}>
           {failure("dsar")}
           {result?.intent === "dsar" && result.ok ? (
             <p role="status" className="font-ui text-13 text-success">
@@ -1310,7 +1310,7 @@ export default function Settings() {
               <p className="font-ui text-13 text-subtle">{label("dsar.unavailable")}</p>
             )
           ) : null}
-        </Panel>
+        </Section>
       ) : null}
     </div>
   );
@@ -1318,7 +1318,7 @@ export default function Settings() {
 
 /* ------------------------------------------------------------------ panels */
 
-function Panel({
+function Section({
   id,
   title,
   lead,
@@ -1370,7 +1370,7 @@ function MfaPanel({
   const enrolling = Boolean(secret) || Boolean(result?.intent === "mfa-confirm" && result.problem);
 
   return (
-    <Panel id="settings-mfa" title={label("mfa.title")} lead={label("mfa.intro")}>
+    <Section id="settings-mfa" title={label("mfa.title")} lead={label("mfa.intro")}>
       <p className="font-ui text-13">
         {enrolled === true ? (
           <Badge tone="success" dot>
@@ -1476,7 +1476,7 @@ function MfaPanel({
           )}
         </div>
       )}
-    </Panel>
+    </Section>
   );
 }
 
@@ -1513,7 +1513,7 @@ function PermissionsPanel({
   const groups = byModule(permissions);
 
   return (
-    <Panel id="settings-perms" title={label("perms.title")} lead={label("perms.intro")}>
+    <Section id="settings-perms" title={label("perms.title")} lead={label("perms.intro")}>
       {permissions.length === 0 ? (
         <p className="font-ui text-13 text-subtle">{label("perms.none")}</p>
       ) : (
@@ -1545,7 +1545,7 @@ function PermissionsPanel({
       <p className="max-w-prose font-ui text-12 text-subtle">
         {label(pii ? "perms.pii" : "perms.masked")}
       </p>
-    </Panel>
+    </Section>
   );
 }
 
@@ -1678,7 +1678,7 @@ function BrandPanel({
   const fails = ratio !== null && ratio < AA_RATIO;
 
   return (
-    <Panel id="settings-brand" title={label("brand.title")} lead={label("brand.intro")}>
+    <Section id="settings-brand" title={label("brand.title")} lead={label("brand.intro")}>
       {failure("brand")}
       {done("brand", "brand.ok")}
 
@@ -1773,7 +1773,7 @@ function BrandPanel({
           </Button>
         </div>
       </Form>
-    </Panel>
+    </Section>
   );
 }
 

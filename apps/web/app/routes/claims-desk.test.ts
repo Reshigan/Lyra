@@ -67,6 +67,7 @@ const claim = (over: Partial<ClaimRow> = {}): ClaimRow => ({
   status: "assessing",
   perilCode: "fire",
   amountMinor: 100_000,
+  currency: "AED",
   reserveMinor: 200_000,
   paidMinor: 0,
   recoveredMinor: 0,

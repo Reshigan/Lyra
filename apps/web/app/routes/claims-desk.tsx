@@ -188,6 +188,8 @@ export interface ClaimRow {
   status: string;
   perilCode: string | null;
   amountMinor: number;
+  /** `axis_claims.currency` is NOT NULL — every claim carries its own. */
+  currency: string;
   reserveMinor: number | null;
   paidMinor: number;
   recoveredMinor: number;
@@ -465,8 +467,8 @@ export default function ClaimsDesk() {
                     {row.customerId}
                   </Link>
                   <span>{row.perilCode ?? "—"}</span>
-                  <Money amountMinor={incurredOf(row)} currency="AED" locale={locale} />
-                  <Money amountMinor={row.reserveMinor ?? row.amountMinor} currency="AED" locale={locale} />
+                  <Money amountMinor={incurredOf(row)} currency={row.currency} locale={locale} />
+                  <Money amountMinor={row.reserveMinor ?? row.amountMinor} currency={row.currency} locale={locale} />
                   <span>{daysOpen}</span>
                   {row.fraudScore !== null ? (
                     <Badge tone={FRAUD_TONE(row.fraudScore)} size="sm">

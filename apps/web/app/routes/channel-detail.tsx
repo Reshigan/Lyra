@@ -17,7 +17,7 @@ import {
   tag,
   type Page
 } from "./detail-kit";
-import { useShellData } from "./workspace";
+import { FALLBACK_CURRENCY, useShellData } from "./workspace";
 
 // One distribution channel: what it may sell, what it is paid, how much it is
 // actually asking for, and where its money stands. Read-only — rate changes and
@@ -305,7 +305,7 @@ export default function ChannelDetail() {
   }
 
   const channel = loaded.channel;
-  const currency = channel.currency ?? loaded.settlements[0]?.currency ?? "AED";
+  const currency = channel.currency ?? loaded.settlements[0]?.currency ?? shell?.currency ?? FALLBACK_CURRENCY;
   const open = loaded.quotes.filter((row) => row.state === "open" || row.state === "fanned_out").length;
   const unsettled = sumBy(
     loaded.settlements.filter((row) => row.state !== "paid"),

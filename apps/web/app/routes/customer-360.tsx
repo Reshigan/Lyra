@@ -43,7 +43,7 @@ import {
   type Page
 } from "./detail-kit";
 import { Gate } from "./staff";
-import { useShellData } from "./workspace";
+import { FALLBACK_CURRENCY, useShellData } from "./workspace";
 
 // One customer, everything the platform holds on them: what they bought, what
 // they claimed, who they talked to, what they consented to, what they are worth
@@ -480,6 +480,7 @@ export default function Customer360() {
   const locale = shell?.locale ?? "en";
   const t = translator(locale, shell?.overrides);
   const l = labelsIn(locale, shell?.domainPack);
+  const tenantCurrency = shell?.currency ?? FALLBACK_CURRENCY;
   const busy = navigation.state !== "idle";
   const chipList = (values: string[], tone?: "danger") =>
     values.length === 0 ? (
@@ -504,7 +505,7 @@ export default function Customer360() {
   }
 
   const customer = loaded.customer;
-  const currency = loaded.policies[0]?.currency ?? loaded.claims[0]?.currency ?? "AED";
+  const currency = loaded.policies[0]?.currency ?? loaded.claims[0]?.currency ?? tenantCurrency;
   const premium = sumBy(loaded.policies, (row) => row.premiumMinor);
   const commission = sumBy(loaded.policies, (row) => row.commissionMinor);
   const settled = sumBy(loaded.claims, (row) => row.settledMinor);
@@ -598,7 +599,7 @@ export default function Customer360() {
       numeric: true,
       render: (row) =>
         row.valueMinor != null ? (
-          <Money amountMinor={row.valueMinor} currency={row.currency ?? "AED"} locale={locale} />
+          <Money amountMinor={row.valueMinor} currency={row.currency ?? tenantCurrency} locale={locale} />
         ) : (
           <span>—</span>
         )
@@ -796,6 +797,7 @@ export default function Customer360() {
                 l={l}
                 may={loaded.may}
                 idempotencyKey={loaded.idempotencyKey}
+                tenantCurrency={tenantCurrency}
                 busy={busy}
               />
             ))}
@@ -810,7 +812,7 @@ export default function Customer360() {
         </Card>
       ) : null}
 
-      <Panel title={l("policies")} href="/axis/policies" open={l("open")}>
+      <LinkedCard title={l("policies")} href="/axis/policies" open={l("open")}>
         <Table
           caption={l("policiesCaption")}
           columns={policyColumns}
@@ -818,9 +820,9 @@ export default function Customer360() {
           rowKey={(row) => row.id}
           empty={<EmptyState title={l("none")} />}
         />
-      </Panel>
+      </LinkedCard>
 
-      <Panel title={l("claims")} href="/axis/claims" open={l("open")}>
+      <LinkedCard title={l("claims")} href="/axis/claims" open={l("open")}>
         <Table
           caption={l("claimsCaption")}
           columns={claimColumns}
@@ -828,9 +830,9 @@ export default function Customer360() {
           rowKey={(row) => row.id}
           empty={<EmptyState title={l("none")} />}
         />
-      </Panel>
+      </LinkedCard>
 
-      <Panel title={l("casesTitle")} href="/axis/cases" open={l("open")}>
+      <LinkedCard title={l("casesTitle")} href="/axis/cases" open={l("open")}>
         <Table
           caption={l("casesCaption")}
           columns={caseColumns}
@@ -838,7 +840,7 @@ export default function Customer360() {
           rowKey={(row) => row.id}
           empty={<EmptyState title={l("none")} />}
         />
-      </Panel>
+      </LinkedCard>
 
       {loaded.activity.length > 0 ? (
         <Card title={l("activityTitle")}>
@@ -858,7 +860,7 @@ export default function Customer360() {
         </Card>
       ) : null}
 
-      <Panel title={l("conversationsTitle")} href="/orbit/conversations" open={l("open")}>
+      <LinkedCard title={l("conversationsTitle")} href="/orbit/conversations" open={l("open")}>
         {csatPoints.length >= 2 ? (
           <div className="p-4">
             <Sparkline values={csatPoints} label={l("colCsat")} />
@@ -871,9 +873,9 @@ export default function Customer360() {
           rowKey={(row) => row.id}
           empty={<EmptyState title={l("none")} />}
         />
-      </Panel>
+      </LinkedCard>
 
-      <Panel title={l("quotesTitle")} href="/distribution/quote-requests" open={l("open")}>
+      <LinkedCard title={l("quotesTitle")} href="/distribution/quote-requests" open={l("open")}>
         <Table
           caption={l("quotesCaption")}
           columns={quoteColumns}
@@ -881,9 +883,9 @@ export default function Customer360() {
           rowKey={(row) => row.id}
           empty={<EmptyState title={l("none")} />}
         />
-      </Panel>
+      </LinkedCard>
 
-      <Panel title={l("consentsTitle")}>
+      <LinkedCard title={l("consentsTitle")}>
         <Table
           caption={l("consentsCaption")}
           columns={consentColumns}
@@ -891,9 +893,9 @@ export default function Customer360() {
           rowKey={(row) => row.id}
           empty={<EmptyState title={l("none")} />}
         />
-      </Panel>
+      </LinkedCard>
 
-      <Panel title={l("documentsTitle")}>
+      <LinkedCard title={l("documentsTitle")}>
         <Table
           caption={l("documentsCaption")}
           columns={fileColumns}
@@ -901,12 +903,12 @@ export default function Customer360() {
           rowKey={(row) => row.id}
           empty={<EmptyState title={l("none")} />}
         />
-      </Panel>
+      </LinkedCard>
     </div>
   );
 }
 
-function Panel({
+function LinkedCard({
   title,
   href,
   open,
@@ -915,7 +917,7 @@ function Panel({
   title: string;
   /** List route for "see all"; rendered in the Card's actions slot. */
   href?: string;
-  /** The shared `open` label — Panel sits outside the component, so it is passed in. */
+  /** The shared `open` label — LinkedCard sits outside the component, so it is passed in. */
   open?: string;
   children: React.ReactNode;
 }) {
@@ -946,6 +948,7 @@ function OfferCard({
   l,
   may,
   idempotencyKey,
+  tenantCurrency,
   busy
 }: {
   offer: OfferRow;
@@ -953,6 +956,7 @@ function OfferCard({
   l: Label;
   may: { surface: boolean; decide: boolean };
   idempotencyKey: string;
+  tenantCurrency: string;
   busy: boolean;
 }) {
   return (
@@ -969,7 +973,7 @@ function OfferCard({
         <Stat
           label={l("colValue")}
           value={
-            <Money amountMinor={offer.expectedValueMinor ?? 0} currency={offer.currency ?? "AED"} locale={locale} />
+            <Money amountMinor={offer.expectedValueMinor ?? 0} currency={offer.currency ?? tenantCurrency} locale={locale} />
           }
         />
         <Badge size="sm">{tag(l, "state", offer.state)}</Badge>

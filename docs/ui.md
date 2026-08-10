@@ -214,7 +214,7 @@ user-facing surface is a bug.**
 - Contrast of a tenant's chosen accent against `--accent-contrast` is validated
   live at ≥ 4.5:1 in the brand editor, and Save is disabled when it fails.
 
-Design implication: never draw a screen that only works with the default amber
+Design implication: never draw a screen that only works with the default lime
 accent. It must survive a tenant picking deep blue, and it must survive a wide
 wordmark logo replacing a short one.
 
@@ -245,9 +245,10 @@ Two locales ship today: **en** and **ar**. The document root is
 - Every interactive element is keyboard-reachable, in DOM order.
 - Focus is always visible: `outline outline-2 outline-offset-2 outline-accent`
   via `focus-visible`. Never `outline: none`.
-- Body text contrast ≥ 4.5:1. This is why the **light** theme's
-  `--accent-contrast` is ink (7.33:1) and not white — white on the light-theme
-  amber measured 2.68:1 and fails AA at every size.
+- Body text contrast ≥ 4.5:1. This is why the **light** theme darkens the accent
+  to `#3f6212` rather than reusing the dark theme's `--vega-500` lime: white on
+  that lime measures 1.7:1 and fails AA at every size, while white on `#3f6212`
+  measures 7.17:1.
 - A "Skip to content" link is the first focusable element on every page and
   jumps to `#workspace`, which is `tabIndex={-1}` so it can receive focus.
 - Every `Table` requires a `caption` prop — it is a TypeScript-required prop,
@@ -329,55 +330,68 @@ Three layers, in this order:
 
 | Token | Value | Role |
 |---|---|---|
-| `--ink-900` | `#070b14` | Deepest background |
-| `--ink-800` | `#0c1322` | Panel |
-| `--ink-700` | `#131c31` | Raised panel |
-| `--ink-600` | `#1c2842` | Border / floating panel |
-| `--star-100` | `#f4f7fc` | Brightest text |
-| `--star-300` | `#aeb9cf` | Muted text |
-| `--star-500` | `#5e6b87` | Subtle text |
-| `--vega-500` | `#ffb020` | Amber — the default accent |
-| `--vega-600` | `#d98e0b` | Amber, pressed / light-theme accent |
-| `--ion-500` | `#37d3b2` | Teal — success |
-| `--flare-500` | `#ff5d5d` | Red — danger |
-| `--photon-500` | `#6e9bff` | Blue — info |
-| `--comet-500` | `#ff7a45` | Orange — warning |
-| `--nebula-500` | `#c08bff` | Violet |
+| `--ink-900` | `#0b0e13` | Deepest background |
+| `--ink-800` | `#10141d` | Panel |
+| `--ink-700` | `#161c28` | Raised panel |
+| `--ink-600` | `#1c2432` | Border / floating panel |
+| `--star-100` | `#edf1f7` | Brightest text |
+| `--star-300` | `#aeb6c6` | Muted text |
+| `--star-500` | `#8a94a6` | Subtle text — 6.32:1 on `--ink-900` |
+| `--vega-500` | `#c8f163` | Lime — the default accent (dark) |
+| `--vega-600` | `#dbff85` | Accent hover (dark) |
+| `--vega-700` | `#4a6a0f` | Accent (light); `--vega-500` fails AA as text on light |
+| `--vega-800` | `#3b560c` | Accent hover (light) |
+| `--ion-500` | `#55d68c` | Green — success |
+| `--flare-500` | `#f08a80` | Red — danger |
+| `--photon-500` | `#6c9ef0` | Blue — info (same value as `--module-scout`, on purpose) |
+| `--solar-500` | `#e8c266` | Amber — warning |
+| `--comet-500` | `#f0764f` | Orange — SIGNAL identity |
+| `--nebula-500` | `#a98be8` | Violet — NORTH identity |
 
 #### Module identity accents (never tenant-overridable)
 
 | Token | Value | Module |
 |---|---|---|
-| `--module-axis` | `#ffb020` | Operations |
-| `--module-orbit` | `#37d3b2` | Conversations |
-| `--module-signal` | `#ff7a45` | Marketing |
-| `--module-scout` | `#6e9bff` | Market |
-| `--module-north` | `#c08bff` | Insight |
+| `--module-axis` | `#e8a33d` | Operations |
+| `--module-orbit` | `#3fc9b4` | Conversations |
+| `--module-signal` | `#f0764f` | Marketing |
+| `--module-scout` | `#6c9ef0` | Market |
+| `--module-north` | `#a98be8` | Insight |
 
 `--chart-1` … `--chart-5` are those five, in that order. There is no separate
 categorical chart palette.
+
+These five are the one part of the semantic layer the light theme *re-maps*
+rather than reuses, because the light mockup ships genuinely different hues:
+`--module-axis: #b45309`, `--module-orbit: #00786a`, `--module-signal: #c2410c`,
+`--module-scout: #1d4ed8`, `--module-north: #6d28d9`.
 
 #### Semantic tokens — dark (the base)
 
 | Token | Value |
 |---|---|
-| `--bg` | `--ink-900` |
-| `--surface-1` | `--ink-800` |
-| `--surface-2` | `--ink-700` |
-| `--surface-3` | `--ink-600` |
-| `--border` | `--ink-600` |
-| `--border-strong` | `#2a3a5e` |
-| `--text` | `--star-100` |
-| `--text-muted` | `--star-300` |
-| `--text-subtle` | `--star-500` |
+| `--bg` | `#06080b` |
+| `--surface-1` | `#080b10` |
+| `--surface-2` | `#0a0d13` (the card) |
+| `--surface-3` | `#161c28` |
+| `--border` | `#131926` |
+| `--border-strong` | `#1a2030` |
+| `--border-strongest` | `#232b38` |
+| `--text` | `#edf1f7` |
+| `--text-muted` | `#aeb6c6` |
+| `--text-subtle` | `#97a1b2` |
 | `--accent` | `--vega-500` |
 | `--accent-hover` | `--vega-600` |
-| `--accent-contrast` | `#412402` |
+| `--accent-contrast` | `#06080b` — **15.2:1** on `--vega-500` |
 | `--focus` | `--accent` |
-| `--success` / `--success-bg` | `--ion-500` / `#04342c` |
-| `--danger` / `--danger-bg` | `--flare-500` / `#4a0d0d` |
-| `--warning` / `--warning-bg` | `--comet-500` / `#4a1b0c` |
-| `--info` / `--info-bg` | `--photon-500` / `#042c53` |
+| `--success` / `--success-contrast` | `--ion-500` / `#06080b` |
+| `--danger` / `--danger-contrast` | `--flare-500` / `#06080b` |
+| `--warning` / `--warning-contrast` | `--solar-500` / `#06080b` |
+| `--info` / `--info-contrast` | `--photon-500` / `#06080b` |
+
+Every status fill in this palette is a bright pastel, so the app background
+clears AA as text on all four (7.44:1 on the tightest, info) — one universal
+dark-on-fill choice instead of four bespoke shades.
 
 #### Semantic tokens — light
 
@@ -386,24 +400,19 @@ Applied by `@media (prefers-color-scheme: light)` **and** by
 
 | Token | Value | Note |
 |---|---|---|
-| `--bg` | `--star-100` | |
-| `--surface-1` | `#ffffff` | |
-| `--surface-2` | `#eef2f9` | |
-| `--surface-3` | `#e2e8f4` | |
-| `--border` | `#d3dbe9` | |
-| `--border-strong` | `#b6c1d5` | |
-| `--text` | `--ink-900` | |
-| `--text-muted` | `#47536b` | |
-| `--text-subtle` | `#6a768c` | |
-| `--accent` | `--vega-600` | darker amber; `--vega-500` on white fails AA |
-| `--accent-hover` | `#b8760a` | |
-| `--accent-contrast` | `--ink-900` | **7.33:1.** White measured 2.68:1 and fails. |
-| `--success` | `#0f7f68` | |
-| `--danger` | `#c02626` | |
-| `--warning` | `#b8410f` | |
-| `--info` | `#2a55bf` | |
-| `--shadow-glow` | `0 8px 24px #0f172a14` | |
-| `--shadow-raised` | `0 16px 40px #0f172a1f` | |
+| `--bg` | `#ffffff` | |
+| `--text` | `#0e1116` | |
+| `--text-muted` | `#4e5866` | |
+| `--text-subtle` | `#5d6775` | 5.67:1 on `--bg` |
+| `--accent` | `#3f6212` | dark olive; `--vega-500` on white fails AA |
+| `--accent-hover` | `#33500e` | |
+| `--accent-contrast` | `#ffffff` | **7.17:1** on `--accent` |
+| `--success` | `#15803d` | |
+| `--danger` | `#b91c1c` | |
+| `--warning` | `#a16207` | white on it is 4.97:1 — the tightest margin |
+| `--info` | `#1d4ed8` | |
+| `--shadow-glow` | `0 0 0 1px #e6e9ee, 0 4px 14px #0f172a08` | |
+| `--shadow-raised` | `0 0 0 1px #e6e9ee, 0 14px 40px #0f172a14` | |
 
 #### Typography
 
@@ -539,7 +548,7 @@ bg-surface-2 px-3 py-1.5 font-ui text-13 text-subtle`, an actions slot and an
 | `AgentBadge` | `{agent, why, size}` → an accent `Badge` reading `✦ Drafted by {agent}`; with `why`, wrapped in a Popover labelled "Why this was drafted" |
 | `GhostText` | `{text, onAccept, onDiscard}` — an inline draft the user takes or dismisses |
 | `ConfidenceMeter` | `{value: 0–1, label = "Model confidence", floor = 0.7}`; success ≥ floor, warning ≥ floor − 0.2, danger below |
-| `EvidenceLink` | dotted-underline amber link to the evidence/run behind an artifact |
+| `EvidenceLink` | dotted-underline accent link to the evidence/run behind an artifact |
 | `GuardrailNotice` | `{title, reason, tone, action}`, `role="status"`, `rounded-md border p-4`, tone as `border-X/50 bg-X/8 text-X`. **Quotes the specific rule** |
 | `BudgetMeter` | `{used, limit, label = "AI budget", unit = "tokens", resetsAt, locale}` |
 | `ApprovalStrip` | `{summary, consequence, requestedBy, onApprove, onReject, blockedReason}`, `role="region" aria-label="Pending approval"`, `rounded-lg border border-accent/40 bg-accent/8 p-4` |
@@ -1265,8 +1274,11 @@ controller opening a transaction should not be writing JSON.
 ## Appendix — the visual quality bar
 
 `assets/Lyra_Brand_UI_Showcase.html` is the reference for how finished this
-should look. It is the same palette and the same type, rendered at a level the
-product has not reached. Sections: *01 The mark* (a Space Grotesk 500 60px
+should look. It is the same type and the same structure, rendered at a level the
+product has not reached. One thing in it is stale: its accent is the earlier
+amber generation (`#FFB020`), not the shipped `--vega-500` lime. Read every
+"amber" below as "whatever `--accent` currently resolves to" — the showcase is a
+composition reference, and the palette above is the palette of record. Sections: *01 The mark* (a Space Grotesk 500 60px
 wordmark, 0.03em tracking, with a 30×3.6px amber tick rotated −45°), *02 SIGNAL
 Social Studio*, *03 Launch Cockpit*, *04 Ledger Explorer & Money Map*, *05
 Mobile*, plus *The Brief* and *Approvals*.

@@ -22,6 +22,14 @@ export const ROUTE_ID = "routes/workspace";
 
 export const CALENDARS: readonly CalendarPreference[] = ["gregorian", "islamic-umalqura", "dual"];
 
+/**
+ * Last resort when neither the row nor the tenant's policy names a currency.
+ * One literal, in one place, so a tenant on a different currency is a policy
+ * edit rather than a grep. `Intl.NumberFormat` has no neutral code to fall back
+ * to — it throws on an empty one — so this cannot simply be absent.
+ */
+export const FALLBACK_CURRENCY = "AED";
+
 /** Tenant policy is loosely typed across the wire; an unknown value is Gregorian. */
 export function calendarFrom(value: unknown): CalendarPreference {
   return CALENDARS.find((known) => known === value) ?? "gregorian";
@@ -60,6 +68,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     // CLAUDE.md §14: the pack that renames every noun downstream of labelsFor.
     domainPack: typeof me.policy?.domainPack === "string" ? me.policy.domainPack : DEFAULT_PACK,
     calendar: calendarFrom(me.policy?.calendarPreference),
+    // What a money figure is denominated in when the row itself does not say.
+    // Same policy field the brand editor writes (settings.tsx).
+    currency: typeof me.policy?.currency === "string" ? me.policy.currency : FALLBACK_CURRENCY,
     // A tenant admin's i18n key relabels (core_locale_overrides), merged by
     // translator() over the static catalogue — see apps/web/app/i18n.ts.
     overrides: me.overrides ?? {}
