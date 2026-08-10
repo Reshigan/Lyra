@@ -2300,6 +2300,7 @@ export interface Operations {
   "POST /v1/axis/dev/extract-sample": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/axis/documents": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<AxisDocuments>>;
   "POST /v1/axis/documents": Op<never, never, AxisDocuments, AxisDocuments>;
+  "POST /v1/axis/documents/upload": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/axis/documents/{id}": Op<{ id: string }, never, never, AxisDocuments>;
   "PATCH /v1/axis/documents/{id}": Op<{ id: string }, never, AxisDocuments, AxisDocuments>;
   "POST /v1/axis/documents/{id}/extract": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
@@ -2957,6 +2958,7 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "POST /v1/axis/dev/extract-sample": { tag: "axis", summary: "Developer console: run field extraction against pasted text, no document row created", permission: "dev:sandbox:use", public: false },
   "GET /v1/axis/documents": { tag: "axis", summary: "List documents", permission: "axis:documents:read", public: false },
   "POST /v1/axis/documents": { tag: "axis", summary: "Create a document", permission: "axis:documents:upload", public: false },
+  "POST /v1/axis/documents/upload": { tag: "axis", summary: "Upload a captured document (multipart: caseId, docType, file) and file it against a case", permission: "axis:documents:upload", public: false },
   "GET /v1/axis/documents/{id}": { tag: "axis", summary: "Fetch one document", permission: "axis:documents:read", public: false },
   "PATCH /v1/axis/documents/{id}": { tag: "axis", summary: "Update a document", permission: "axis:documents:verify", public: false },
   "POST /v1/axis/documents/{id}/extract": { tag: "axis", summary: "Structure a document's raw text into named fields via the model gateway", permission: "axis:documents:extract", public: false },

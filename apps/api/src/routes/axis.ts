@@ -37,6 +37,7 @@ import {
   visionExtractionSchema
 } from "@lyra/model-gateway";
 import { body } from "../http.js";
+import { readUpload } from "../upload.js";
 import { must } from "../rows.js";
 import { EndorseBody, endorsePolicy, priceEndorsement } from "../engines/axis-endorse.js";
 import {
@@ -102,6 +103,70 @@ import { fieldKey, type App } from "../env.js";
 export const axisRoutes = new Hono<App>();
 
 const ctxOf = (c: { get(k: "ctx"): Ctx }): Ctx => c.get("ctx");
+
+/** The doc types the AXIS resource definition offers (apps/web/app/modules/axis.ts). */
+const DOC_TYPES = new Set(["eid", "mulkiya", "census", "medical", "tradelicense", "other"]);
+
+/**
+ * Capture: a multipart photo or scan becomes a stored file plus the
+ * `axis_documents` row that points at it, in one call. The generated CRUD
+ * create takes a `fileId` it has no way to produce, so before this the only
+ * door for bytes was the public portal — a field agent with a licence disc in
+ * front of them had nowhere to send it. Mounted before the generic
+ * `/documents/:id` handlers so "upload" is never read as an id.
+ */
+axisRoutes.post("/documents/upload", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:documents:upload", { tenantId: ctx.tenantId, module: "axis" });
+  const form = await c.req.formData();
+  const caseId = form.get("caseId");
+  const docType = form.get("docType");
+  if (typeof caseId !== "string" || !caseId) throw badRequest("caseId is required");
+  if (typeof docType !== "string" || !DOC_TYPES.has(docType)) throw badRequest("docType is not a known document type");
+  // 404 for another tenant's case, same as every other read.
+  const kase = await must(ctx, schema.axisCases, caseId, "case");
+
+  const bucket = c.env.FILES;
+  if (!bucket) throw conflict("document storage is not configured");
+  const { bytes, contentType } = await readUpload(form);
+
+  const fileId = newId("fil", ctx.now);
+  const r2Key = `axis/${ctx.tenantId}/${kase.id}/${fileId}`;
+  await bucket.put(r2Key, bytes, { httpMetadata: { contentType } });
+  await ctx.db.insert(schema.files).values({
+    id: fileId,
+    tenantId: ctx.tenantId,
+    r2Key,
+    kind: "axis_document",
+    subjectRef: `axis_case:${kase.id}`,
+    sha256: await sha256Hex(bytes),
+    sizeBytes: bytes.length,
+    contentType,
+    // An identity document or a licence disc is as sensitive as this platform holds.
+    piiLevel: "high",
+    createdAt: ctx.now,
+    deletedAt: null
+  });
+
+  const row = {
+    id: newId("doc", ctx.now),
+    tenantId: ctx.tenantId,
+    caseId: kase.id,
+    fileId,
+    docType,
+    // "received", never "extracted": extraction is a separate, audited call
+    // (`POST /documents/:id/extract`) and nothing has read these bytes yet.
+    status: "received" as const,
+    createdAt: ctx.now
+  };
+  await ctx.db.insert(schema.axisDocuments).values(row);
+  await audit(ctx, {
+    action: "axis.documents.upload",
+    subjectRef: `axis_document:${row.id}`,
+    after: { id: row.id, caseId: kase.id, docType, fileId, contentType, sizeBytes: bytes.length }
+  });
+  return c.json(row, 201);
+});
 
 axisRoutes.post("/documents/:id/verify", async (c) => {
   const ctx = ctxOf(c);

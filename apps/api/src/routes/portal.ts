@@ -2,8 +2,9 @@ import { Hono, type Context } from "hono";
 import { and, eq, inArray, like } from "drizzle-orm";
 import { z } from "zod";
 import { id as newId, schema, BrandJson, EntitlementsJson, PolicyJson } from "@lyra/db";
-import { audit, badRequest, conflict, emit, notFound, recordConsent, sha256Hex } from "@lyra/core";
+import { audit, conflict, emit, notFound, recordConsent, sha256Hex } from "@lyra/core";
 import { body } from "../http.js";
+import { readUpload } from "../upload.js";
 import { ctxFor, db as rawDb, throttle } from "../auth.js";
 import { panelFor } from "../engines/rating.js";
 import { runShop } from "../engines/shop.js";
@@ -292,15 +293,7 @@ portalRoutes.post("/:tenantSlug/leads", async (c) => {
 // issuance is `consequential` (CLAUDE.md §4) so a human approves it. ADR-0043.
 
 const QUOTE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
 const UPLOAD_IP_MAX = 20;
-const UPLOAD_TYPES = new Set(["image/jpeg", "image/png", "image/heic", "image/webp", "application/pdf"]);
-
-interface UploadedFile {
-  size: number;
-  type: string;
-  arrayBuffer(): Promise<ArrayBuffer>;
-}
 
 function portalToken(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(24));
@@ -493,18 +486,11 @@ portalRoutes.post("/:tenantSlug/quote-requests/:id/documents", async (c) => {
   const ip = c.req.header("cf-connecting-ip");
   if (ip) await throttle(c.env, `portal-upload-ip:${ip}`, UPLOAD_IP_MAX, LEAD_WINDOW_SEC);
 
-  // Hono types a form entry as `string | null` (the Workers `File` global is not
-  // in this project's lib), so the upload is narrowed structurally instead.
-  const file = form.get("file") as unknown as UploadedFile | string | null;
-  if (!file || typeof file === "string") throw badRequest("file is required");
-  if (file.size > UPLOAD_MAX_BYTES) throw badRequest("file is larger than 10MB");
-  const contentType = file.type || "application/octet-stream";
-  if (!UPLOAD_TYPES.has(contentType)) throw badRequest(`${contentType} is not an accepted document type`);
+  const { bytes, contentType } = await readUpload(form);
 
   const bucket = c.env.FILES;
   if (!bucket) throw conflict("document storage is not configured");
 
-  const bytes = new Uint8Array(await file.arrayBuffer());
   const ctx = await portalCtx(c, tenant.id, now, "portal-quote-documents");
   const fileId = newId("file", now);
   const r2Key = `portal/${tenant.id}/${request.id}/${fileId}`;

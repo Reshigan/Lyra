@@ -304,3 +304,94 @@ describe("GET /v1/axis/documents/:id/file", () => {
     expect(res.status).toBe(404);
   });
 });
+
+// The capture path. Before this route the only way a document row got a file
+// was the public portal (portal.ts) or a hand-written core_files insert — a
+// field agent photographing a licence disc on the mobile app had nowhere to
+// send the bytes. Multipart in, `core_files` + `axis_documents` out, one
+// permission (`axis:documents:upload`) in front.
+describe("POST /v1/axis/documents/upload", () => {
+  async function post(
+    who: string,
+    parts: { caseId?: string; docType?: string; file?: { bytes: Uint8Array; type: string; name?: string } }
+  ): Promise<Res> {
+    const form = new FormData();
+    if (parts.caseId !== undefined) form.append("caseId", parts.caseId);
+    if (parts.docType !== undefined) form.append("docType", parts.docType);
+    if (parts.file) {
+      form.append("file", new Blob([parts.file.bytes], { type: parts.file.type }), parts.file.name ?? "capture.jpg");
+    }
+    const res = await app.fetch(
+      new Request("http://api.test/v1/axis/documents/upload", {
+        method: "POST",
+        headers: { authorization: `Bearer ${tokens[who]}` },
+        body: form
+      }),
+      env as never,
+      exec as never
+    );
+    const text = res.headers.get("content-type")?.includes("json") ? await res.text() : "";
+    return { status: res.status, body: text ? JSON.parse(text) : null };
+  }
+
+  const jpeg = { bytes: new TextEncoder().encode("not really a jpeg"), type: "image/jpeg" };
+
+  /** The seeded case every upload here is filed against. */
+  async function seededCaseId(): Promise<string> {
+    const [row] = await database.select().from(schema.axisCases);
+    return row!.id;
+  }
+
+  it("stores the bytes and files the document against the case", async () => {
+    const caseId = await seededCaseId();
+    const res = await post("agent", { caseId, docType: "mulkiya", file: jpeg });
+
+    expect(res.status).toBe(201);
+    const [doc] = await database
+      .select()
+      .from(schema.axisDocuments)
+      .where(eq(schema.axisDocuments.id, res.body.id as string));
+    expect(doc!.caseId).toBe(caseId);
+    expect(doc!.docType).toBe("mulkiya");
+    expect(doc!.status).toBe("received");
+
+    const [file] = await database.select().from(schema.files).where(eq(schema.files.id, doc!.fileId));
+    expect(file!.contentType).toBe("image/jpeg");
+    expect(file!.kind).toBe("axis_document");
+    expect(file!.piiLevel).toBe("high");
+    expect(file!.sizeBytes).toBe(jpeg.bytes.byteLength);
+    // The bytes are readable back through the existing stream route.
+    const streamed = await raw("agent", `/v1/axis/documents/${res.body.id}/file`);
+    expect(new Uint8Array(await streamed.arrayBuffer())).toEqual(jpeg.bytes);
+  });
+
+  it("rejects a content type that is not a document or an image", async () => {
+    const caseId = await seededCaseId();
+    const res = await post("agent", {
+      caseId,
+      docType: "eid",
+      file: { bytes: new TextEncoder().encode("MZ"), type: "application/x-msdownload" }
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("refuses a case that belongs to another tenant", async () => {
+    const [foreign] = await database.select().from(schema.axisDocuments).where(eq(schema.axisDocuments.id, foreignDocId));
+    const res = await post("agent", { caseId: foreign!.caseId, docType: "eid", file: jpeg });
+    expect(res.status).toBe(404);
+  });
+
+  it("requires a file part", async () => {
+    const caseId = await seededCaseId();
+    expect((await post("agent", { caseId, docType: "eid" })).status).toBe(400);
+  });
+
+  it("writes an audit entry for the document it created", async () => {
+    const caseId = await seededCaseId();
+    const res = await post("agent", { caseId, docType: "eid", file: jpeg });
+    const rows = await database.select().from(schema.auditLog);
+    expect(
+      rows.some((a) => a.action === "axis.documents.upload" && a.subjectRef === `axis_document:${res.body.id}`)
+    ).toBe(true);
+  });
+});

@@ -76,6 +76,10 @@ const HAND_WRITTEN: Op[] = [
   // SQL aggregate for the 360 screen's Position card — never a paged read.
   { method: "get", path: "/v1/core/customers/{id}/position", summary: "Financial position: premium, commission and settled claims summed per currency", permission: "core:customers:read", tag: "core" },
 
+  // Capture: multipart in, stored file + document row out. The generated CRUD
+  // create takes a `fileId` a phone has no way to produce.
+  { method: "post", path: "/v1/axis/documents/upload", summary: "Upload a captured document (multipart: caseId, docType, file) and file it against a case", permission: "axis:documents:upload", tag: "axis", requestBody: true },
+
   // `verifiedBy` and `verifiedAt` are evidence that a named person looked at the
   // file at a known time, so they come from the session and the clock. No body.
   { method: "post", path: "/v1/axis/documents/{id}/verify", summary: "Mark a document verified; the verifier and the time are stamped server-side", permission: "axis:documents:verify", tag: "axis" },
