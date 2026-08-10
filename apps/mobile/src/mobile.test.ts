@@ -35,6 +35,7 @@ const { entriesFor, labelKeyFor, navKeyFor, navTitle, resourceFor, resourceForNa
 const { humanize, subtitleOf, titleOf, fieldsOf } = await import("./rows");
 const { CATALOGUES, en, dirFor, joinList, resolveLocale, translator } = await import("./i18n");
 const { fontFamilyFor, themeFor, productName } = await import("./theme");
+const { defaultWorkspaceForRoles, resolvePersona } = await import("./workspace");
 const {
   ApiError,
   NetworkError,
@@ -490,5 +491,51 @@ describe("i18n and brand", () => {
     // what `fontFamily: undefined` means to React Native.
     expect(themeFor(null).font).toBeUndefined();
     expect(themeFor({ name: "Northwind" }).font).toBeUndefined();
+  });
+});
+
+describe("defaultWorkspaceForRoles", () => {
+  it("matches an exact role before any prefix", () => {
+    expect(defaultWorkspaceForRoles(["tenant.compliance"])).toBe("compliance");
+  });
+
+  it("falls back to the role's prefix mapping", () => {
+    expect(defaultWorkspaceForRoles(["tenant.admin"])).toBe("admin");
+    expect(defaultWorkspaceForRoles(["platform.engineer"])).toBe("admin");
+    expect(defaultWorkspaceForRoles(["dev.developer"])).toBe("admin");
+    expect(defaultWorkspaceForRoles(["partner.manager"])).toBe("distribution");
+    expect(defaultWorkspaceForRoles(["provider.viewer"])).toBe("scout");
+    expect(defaultWorkspaceForRoles(["customer"])).toBe("settings");
+    expect(defaultWorkspaceForRoles(["finance.controller"])).toBe("ledger");
+  });
+
+  it("falls back to the bare prefix when it is itself a workspace", () => {
+    expect(defaultWorkspaceForRoles(["axis.agent"])).toBe("axis");
+    expect(defaultWorkspaceForRoles(["orbit.lead"])).toBe("orbit");
+    expect(defaultWorkspaceForRoles(["signal.marketer"])).toBe("signal");
+    expect(defaultWorkspaceForRoles(["scout.pm"])).toBe("scout");
+    expect(defaultWorkspaceForRoles(["north.exec"])).toBe("north");
+  });
+
+  it("tries every role in order until one resolves", () => {
+    expect(defaultWorkspaceForRoles(["unknown.role", "axis.lead"])).toBe("axis");
+  });
+
+  it("returns north for a roleless actor", () => {
+    expect(defaultWorkspaceForRoles([])).toBe("north");
+  });
+});
+
+describe("resolvePersona", () => {
+  it("resolves the default variant for a plain north role", () => {
+    expect(resolvePersona(["north.exec"])).toEqual({ workspace: "north", variant: "default" });
+  });
+
+  it("resolves the board variant only for north.board", () => {
+    expect(resolvePersona(["north.board"])).toEqual({ workspace: "north", variant: "board" });
+  });
+
+  it("never applies the board variant outside the north workspace", () => {
+    expect(resolvePersona(["tenant.admin"])).toEqual({ workspace: "admin", variant: "default" });
   });
 });
