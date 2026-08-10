@@ -152,8 +152,13 @@ export async function scoreLiveExtraction(dir: string): Promise<Metric[]> {
         (f) => normalizeField(values[f] ?? null) === normalizeField(c.expected[f] ?? null)
       ).length;
       if (correct < fields.length) {
-        const wrong = fields.filter((f) => normalizeField(values[f] ?? null) !== normalizeField(c.expected[f] ?? null));
-        console.log(`  ${c.id}: missed ${wrong.join(", ")} (model ${res.model})`);
+        // Print what came back, not only which field lost. A bare "missed
+        // idNumber" cannot tell a model that returned the card serial from one
+        // that returned nothing, and those two want opposite prompt fixes.
+        const wrong = fields
+          .filter((f) => normalizeField(values[f] ?? null) !== normalizeField(c.expected[f] ?? null))
+          .map((f) => `${f} (got ${JSON.stringify(values[f])}, want ${JSON.stringify(c.expected[f] ?? null)})`);
+        console.log(`  ${c.id}: missed ${wrong.join("; ")} (model ${res.model})`);
       }
       return { locale: c.locale, correct, total: fields.length };
     })

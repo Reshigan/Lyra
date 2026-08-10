@@ -53,7 +53,7 @@ export interface Extraction {
 const FIELD_HINTS: Record<string, string> = {
   fullName: "the holder's name as printed, in the same script and order",
   idNumber:
-    "the national identity number printed under the ID/identity-number label — never the card serial, file or document number, even if it is the only other number on the page",
+    "the national identity number printed under the ID/identity-number label (`ID No`, `ID Number`, `رقم الهوية`) — it is the long grouped number, e.g. 784-1990-1234563-1, never the short card serial, file or document number (`card no`, `رقم البطاقة`), even if that is the only other number on the page",
   dateOfBirth: "date of birth, ISO 8601 (YYYY-MM-DD)",
   expiryDate: "the card's own expiry date, ISO 8601 (YYYY-MM-DD) — not the issue date",
   nationality: "the holder's nationality, not the issuing country",
