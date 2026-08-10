@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted.
+Superseded — ADR-0042 (J-C4 public intake) and ADR-0043 (J-C1 self-serve
+comparison) replace both halves of this decision. Kept for the record.
 
 ## Context
 

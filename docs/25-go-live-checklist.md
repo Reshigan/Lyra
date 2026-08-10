@@ -392,11 +392,24 @@ ledger nav gap; the other module rows need a real pass, not a memory recall.
       `IdentityVerifier` is still unimplemented. Covered by
       `e2e/privacy-portal.spec.ts` (`@journey:J-C4 @accept:M6`), including
       the non-enumeration property, and by 4 cases in
-      `apps/api/src/portal.test.ts`. J-C1 remains the open one — its
-      self-serve half (public ranked offers, customer document upload) is in
-      build; the payment step stays behind the `Channel`-style seam with a
-      manual method, since no PSP merchant account is contracted (docs/02
-      §9) and that is a credential blocker, not a code one.
+      `apps/api/src/portal.test.ts`.
+      **J-C1 CLOSED 2026-08-10**: ADR-0043 supersedes ADR-0041's J-C1 half.
+      The panel fan-out was extracted to `apps/api/src/engines/shop.ts`
+      (`runShop`) and is now called by both the operator route and the
+      public portal, so there is one pricing path, not two. The storefront
+      collects the three risk answers per line, prices in session, and hands
+      back a 48-hex one-time token (only its SHA-256 is stored, in
+      `dist_quote_requests.portal_token_hash`); that token gates re-opening
+      the comparison, accepting an offer and uploading documents, and an
+      unknown id 404s identically to a wrong token. Accept converts the
+      request without binding cover, creating a case or touching money.
+      Covered by `e2e/self-serve-quote.spec.ts` (`@journey:J-C1 @accept:M6`,
+      2 tests) and 5 cases in `apps/api/src/portal.test.ts`, one of which
+      asserts the public projection carries no commission, value score or
+      decline reason. The payment step is the one part still absent, and it
+      is a credential blocker, not a code one: no PSP merchant account is
+      contracted (docs/02 §9), and binding cover is `consequential: true`,
+      so issuance stays with a human either way.
       **BLOCKER found 2026-07-31, FIXED same day**: `pnpm e2e` could not boot
       — Playwright's `webServer` step (`pnpm --filter @lyra/api start` → `tsx
       src/node.ts`) crashed with `ERR_UNSUPPORTED_ESM_URL_SCHEME` on

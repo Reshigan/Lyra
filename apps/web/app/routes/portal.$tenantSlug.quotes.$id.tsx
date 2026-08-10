@@ -300,6 +300,7 @@ export default function PortalQuotes() {
             <input type="hidden" name="token" value={token} />
             <Field label={l("quote.upload")} id="quote-file">
               <input
+                id="quote-file"
                 type="file"
                 name="file"
                 required
