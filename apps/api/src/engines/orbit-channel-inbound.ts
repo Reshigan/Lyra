@@ -3,6 +3,7 @@ import { id, schema } from "@lyra/db";
 import { recordConsent, type Ctx, type InboundEvent } from "@lyra/core";
 import { isUniqueViolation } from "../crud.js";
 import { adapterFor } from "./orbit-channel-adapters.js";
+import { routeConversation } from "./orbit-routing.js";
 
 export type ChannelConnectorRow = typeof schema.orbitChannelConnectors.$inferSelect;
 
@@ -92,6 +93,7 @@ async function getOrCreateConversation(
     createdAt: ctx.now,
     updatedAt: ctx.now
   });
+  await routeConversation(ctx, conversationId);
   return { id: conversationId, customerId };
 }
 

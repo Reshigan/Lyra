@@ -164,3 +164,36 @@ describe("processChannelEvents", () => {
     expect(message!.deliveryStatus).toBe("delivered");
   });
 });
+
+describe("processChannelEvents routing", () => {
+  it("routes and assigns a new conversation when the tenant has a default team and an available agent", async () => {
+    await ctx.db.insert(schema.orbitTeams).values({
+      id: "otm_default",
+      tenantId,
+      key: "default",
+      nameJson: "{}",
+      isDefault: true,
+      createdAt: now,
+      updatedAt: now
+    });
+    await ctx.db.insert(schema.orbitTeamMembers).values({ id: "tmm_1", tenantId, teamId: "otm_default", userId: "u_1", createdAt: now });
+    await ctx.db.insert(schema.orbitAgentPresence).values({ id: "ap_1", tenantId, userId: "u_1", status: "available", activeCount: 0, updatedAt: now });
+
+    await processChannelEvents(ctx, connector, [
+      { kind: "message", message: { externalRef: "wamid.1", handle: "97150", text: "Hello", modality: "text", sentAt: now } }
+    ]);
+
+    const [conversation] = await ctx.db.select().from(schema.orbitConversations).where(eq(schema.orbitConversations.tenantId, tenantId));
+    expect(conversation!.teamId).toBe("otm_default");
+    expect(conversation!.assigneeRef).toBe("u_1");
+  });
+
+  it("leaves a conversation unrouted when the tenant has no team configured yet", async () => {
+    await processChannelEvents(ctx, connector, [
+      { kind: "message", message: { externalRef: "wamid.1", handle: "97150", text: "Hello", modality: "text", sentAt: now } }
+    ]);
+    const [conversation] = await ctx.db.select().from(schema.orbitConversations).where(eq(schema.orbitConversations.tenantId, tenantId));
+    expect(conversation!.teamId).toBeNull();
+    expect(conversation!.assigneeRef).toBeNull();
+  });
+});
