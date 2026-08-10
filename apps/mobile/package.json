@@ -28,19 +28,19 @@
     "expo-router": "~55.0.17",
     "expo-secure-store": "~55.0.16",
     "expo-status-bar": "~55.0.6",
-    "react": "19.2.0",
-    "react-native": "0.83.10",
-    "react-native-safe-area-context": "~5.6.2",
-    "react-native-screens": "~4.23.0"
+    "react": "19.2.8",
+    "react-native": "0.86.2",
+    "react-native-safe-area-context": "~5.8.1",
+    "react-native-screens": "~4.27.0"
   },
   "devDependencies": {
     "@jest/globals": "^30.4.1",
     "@lyra/core": "workspace:*",
-    "@types/react": "~19.2.10",
+    "@types/react": "~19.2.18",
     "detox": "^20.51.4",
     "jest": "^30.4.2",
     "ts-jest": "^29.4.12",
-    "tsx": "^4.19.2",
+    "tsx": "^4.23.11",
     "typescript": "~5.9.2",
     "vitest": "^3.2.7"
   }
