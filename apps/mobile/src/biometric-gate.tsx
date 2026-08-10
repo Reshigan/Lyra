@@ -47,7 +47,6 @@ export function BiometricGate({ chrome, children }: { chrome: Chrome; children: 
       if (next === "active") void challenge();
     });
     return () => sub.remove();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (state === "checking") return <Loading chrome={chrome} />;
