@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 import { PERSONAS } from "./env.js";
 
 /**
@@ -125,8 +125,14 @@ export async function confirmAction(page: Page): Promise<void> {
  * typeahead selects from the keyboard, which has no actionability check to
  * lose, and exercises the same code path a keyboard user takes (docs/13 §8).
  */
-export async function chooseOption(page: Page, label: string, optionText: string): Promise<void> {
-  const trigger = page.getByLabel(label, { exact: true });
+export async function chooseOption(scope: Page | Locator, label: string, optionText: string): Promise<void> {
+  // A Locator scope narrows the *trigger* lookup only — Radix renders the open
+  // menu in a portal at <body>, outside any form, so options always resolve
+  // from the page. Pass a form/section locator whenever the same field label
+  // exists twice on a screen (a list's filter and the record's edit form both
+  // label a control "Status").
+  const page = "page" in scope ? scope.page() : scope;
+  const trigger = scope.getByLabel(label, { exact: true });
   const option = page.getByRole("option", { name: optionText, exact: true });
   // Re-opening a Select shortly after a form submit can race a stray event
   // that closes the popup again — mid-typeahead the Enter then lands on the

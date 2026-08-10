@@ -258,7 +258,12 @@ export function Shell({ t, nav, brand, tenantName, actorName, children }: ShellP
           className="lyra-vt-rail hidden md:sticky md:top-[50px] md:flex md:h-[calc(100vh-50px)] md:w-60 md:shrink-0 md:flex-col md:gap-0.5 md:overflow-y-auto md:border-e md:border-border md:p-3"
         >
           {groups.map((group, i) => (
-            <div key={group.heading?.href ?? group.items[0]?.href ?? i} className="mb-1">
+            // Keyed by position: a heading's own `href` is "" (apps/api/src
+            // /routes/me.ts) and `??` does not fall back on "", so every
+            // heading group used to share the key "" — React then reused the
+            // wrong group's DOM. Groups are derived fresh from `nav` on each
+            // render, so index is stable for as long as the list is.
+            <div key={i} className="mb-1">
               {group.heading ? (
                 <h2 className="mb-1 mt-4 px-3 font-ui text-11 font-medium uppercase tracking-[0.14em] text-subtle first:mt-0">
                   {t(group.heading.labelKey)}

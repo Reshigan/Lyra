@@ -34,9 +34,19 @@ test("J-O1 axis agent filters the exceptions queue and clears a failed case @jou
   await row.getByRole("link", { name: ref }).click();
   await page.waitForURL(/\/axis\/cases\//);
 
+  // The URL changes before React Router commits the detail DOM (a view
+  // transition plus the detail loader), and the *list* screen behind it has
+  // its own "Status" control — the queue filter. An unscoped chooseOption
+  // therefore set the filter and left the edit form on "intake", which then
+  // saved unchanged: J-O1's real failure in runs 31423750071/31426014087.
+  // Scoping to the edit form both picks the right control and waits for the
+  // navigation to actually land.
+  const editForm = page.locator("form").filter({ has: page.getByRole("button", { name: "Save changes" }) });
+  await expect(editForm).toBeVisible();
+
   // Push the fresh case into the exception state.
-  await chooseOption(page, "Status", "Failed");
-  await page.getByRole("button", { name: "Save changes" }).click();
+  await chooseOption(editForm, "Status", "Failed");
+  await editForm.getByRole("button", { name: "Save changes" }).click();
   // The record view has no separate "saved" toast for a plain field edit
   // (record.tsx's `done` banner only fires for declared actions) — the
   // read-only definition list re-rendering with the new value is the
@@ -50,8 +60,10 @@ test("J-O1 axis agent filters the exceptions queue and clears a failed case @jou
 
   // Clear it — move the status off "failed" — and the queue drops it.
   await page.getByRole("row", { name: new RegExp(ref) }).getByRole("link", { name: ref }).click();
-  await chooseOption(page, "Status", "Quoting");
-  await page.getByRole("button", { name: "Save changes" }).click();
+  await page.waitForURL(/\/axis\/cases\//);
+  await expect(editForm).toBeVisible();
+  await chooseOption(editForm, "Status", "Quoting");
+  await editForm.getByRole("button", { name: "Save changes" }).click();
   await expect(page.locator("dl").getByText("Quoting", { exact: true })).toBeVisible();
 
   await goto(page, `/axis/cases?status=failed&q=${encodeURIComponent(ref)}`);

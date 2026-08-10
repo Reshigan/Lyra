@@ -526,7 +526,17 @@ export default function LedgerRecon() {
             </div>
 
             <Field label={l("recon.lines")} hint={l("recon.linesHint")} required>
-              <Textarea name="lines" rows={8} defaultValue="[]" className="font-mono text-12" required />
+              {/* No defaultValue: a pre-filled "[]" both lets `required` pass on
+                  an empty import and survives a programmatic fill as trailing
+                  text ("[{…}][]" — an invalid body the action 400s on). The
+                  hint carries the shape instead. */}
+              <Textarea
+                name="lines"
+                rows={8}
+                placeholder='[{ "ref": "…", "amountMinor": 0, "currency": "AED" }]'
+                className="font-mono text-12"
+                required
+              />
             </Field>
 
             <Checkbox name="propose" label={l("recon.propose")} />
