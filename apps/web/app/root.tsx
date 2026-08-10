@@ -44,12 +44,13 @@ export const links: LinksFunction = () => [
  * Horizon is two palettes, not one behind a filter (tokens.css): daylight is a
  * white page with no starfield, night is the deep field. Resolving the choice on
  * the server is the whole point — a client-side flip flashes the wrong palette
- * on every navigation. No cookie means no override, and `prefers-color-scheme`
- * decides.
+ * on every navigation. Dark is the product default (docs/01-brand.md: "dark-
+ * first"): absent a cookie, every visitor gets dark regardless of OS
+ * preference, until they opt into light via the toggle.
  */
-function themeFrom(request: Request): "dark" | "light" | undefined {
+function themeFrom(request: Request): "dark" | "light" {
   const theme = readCookie(request.headers.get("cookie"), "lyra_theme");
-  return theme === "dark" || theme === "light" ? theme : undefined;
+  return theme === "light" ? "light" : "dark";
 }
 
 export function loader({ request }: LoaderFunctionArgs) {
