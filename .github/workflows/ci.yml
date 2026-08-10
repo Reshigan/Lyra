@@ -70,8 +70,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @lyra/model-gateway eval:live
         env:
-          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-          CF_AI_TOKEN: ${{ secrets.CF_AI_TOKEN }}
+          # The deploy workflow passes `secrets: inherit`, so the deploy
+          # credentials are here too — fall back to them rather than fail the
+          # whole gate for want of a second copy of the same account id.
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CF_AI_TOKEN: ${{ secrets.CF_AI_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
 
   e2e:
     runs-on: ubuntu-latest

@@ -23,7 +23,14 @@ export default defineConfig({
   reporter: process.env.CI ? "github" : "list",
   use: {
     baseURL: WEB_ORIGIN,
-    trace: "retain-on-failure"
+    trace: "retain-on-failure",
+    // Entrances rise, figures tick, the workspace crossfades (docs/15 §3) —
+    // all of which move an element Playwright is waiting to become "stable".
+    // On a loaded CI runner J-E1's open Select menu never settled inside the
+    // 60s budget. The tokens already switch every one of those off under
+    // `prefers-reduced-motion` (tokens.css, app.css), so asking for it here
+    // tests the same DOM without racing the animation.
+    reducedMotion: "reduce"
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: [
