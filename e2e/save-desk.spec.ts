@@ -31,7 +31,9 @@ test("J-X2 an above-threshold policy is refused for dual control (axis.bind) @jo
   await page.getByLabel("Currency*", { exact: true }).fill("AED");
   await page.getByRole("button", { name: "Create", exact: true }).click();
 
-  await expect(page.getByRole("alert")).toHaveText("axis.bind");
+  // toContainText, not toHaveText: the alert also carries a requestId line
+  // (module.tsx's Problem component) alongside the policy key.
+  await expect(page.getByRole("alert")).toContainText("axis.bind");
   // Nothing was written: the refused policy number never appears.
   await goto(page, `/axis/policies?q=${encodeURIComponent(policyNo)}`);
   await expect(page.getByRole("row", { name: new RegExp(policyNo) })).toHaveCount(0);

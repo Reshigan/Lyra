@@ -1,17 +1,17 @@
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Redirect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { entriesFor, type NavEntry } from "../src/nav";
-import { useSession } from "../src/session";
-import { RADIUS, SPACE, TEXT, TOUCH_TARGET } from "../src/theme";
-import { Body, Button, Loading, Muted, Title, textOf, type Chrome } from "../src/ui";
+import { entriesFor, type NavEntry } from "../../src/nav";
+import { useSession } from "../../src/session";
+import { RADIUS, SPACE, TEXT, TOUCH_TARGET } from "../../src/theme";
+import { Body, Button, Loading, Muted, Title, textOf, type Chrome } from "../../src/ui";
 
 // The menu is the `nav` array from /v1/me, filtered server-side by the actor's
 // permissions — never a list in this file. A role change therefore lands on the
 // next launch with no app update, and no screen can offer something the API
 // would refuse.
 
-export default function Home() {
+export default function More() {
   const session = useSession();
   const chrome: Chrome = { theme: session.theme, t: session.t, dir: session.dir };
   const { t, theme, me } = session;
@@ -35,9 +35,6 @@ export default function Home() {
       <View style={{ gap: SPACE.sm }}>
         {theme.logo ? (
           <Image
-            // The brand payload names the tenant; the alt text is the same
-            // tenant-configured string, never a literal. `accessible` is not the
-            // default for Image — without it the label is never announced.
             accessible
             accessibilityRole="image"
             accessibilityLabel={session.brandName}
@@ -46,8 +43,6 @@ export default function Home() {
             style={{
               width: 160,
               height: 40,
-              // Explicit rather than `flex-start`: natural alignment follows
-              // I18nManager.isRTL, which lags a locale change by one launch.
               alignSelf: session.dir === "rtl" ? "flex-end" : "flex-start"
             }}
           />

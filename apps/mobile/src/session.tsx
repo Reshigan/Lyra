@@ -19,6 +19,7 @@ import {
   type Me
 } from "./api";
 import { dirFor, resolveLocale, translator, type Translate } from "./i18n";
+import { resolvePersona, type Persona } from "./workspace";
 import {
   clearPendingRecoveryCodes,
   clearToken,
@@ -48,6 +49,9 @@ interface Session {
   mfaStep: AuthStep | null;
   token: string | null;
   me: Me | null;
+  /** Resolved once per session bootstrap from `me.roles`; fixed for the
+   *  session's lifetime, same staleness contract as the web lens. */
+  persona: Persona;
   locale: string;
   dir: "ltr" | "rtl";
   t: Translate;
@@ -279,6 +283,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       mfaStep,
       token,
       me,
+      persona: resolvePersona(me?.roles ?? []),
       locale,
       dir: dirFor(locale),
       t: translator(locale),

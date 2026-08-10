@@ -42,7 +42,9 @@ test("J-P2 a commission rate change is refused for dual control, then decided by
   // (packages/core/src/approvals.ts:59), so the first attempt is always a
   // refusal — the shared Problem box renders the policy key as the detail
   // (packages/core/src/errors.ts's approvalRequired).
-  await expect(adminPage.getByRole("alert")).toHaveText("dist.rate_change");
+  // toContainText, not toHaveText: the alert also carries a requestId line
+  // (module.tsx's Problem component) alongside the policy key.
+  await expect(adminPage.getByRole("alert")).toContainText("dist.rate_change");
   // Nothing was written: the refused channel id never appears as a row.
   await expect(adminPage.getByRole("row", { name: new RegExp(channelId) })).toHaveCount(0);
 
