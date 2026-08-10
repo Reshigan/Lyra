@@ -39,6 +39,19 @@ const { defaultWorkspaceForRoles, resolvePersona } = await import("./workspace")
 const { PERSONA_TABS, tabsFor } = await import("./personas");
 const { resolveGate } = await import("./biometric-gate");
 const {
+  DOC_TYPES,
+  approvalAmountMinor,
+  approvalTitle,
+  bps,
+  chosenBriefing,
+  contentTypeOf,
+  highlightsOf,
+  isInbound,
+  threadOrder,
+  todayIso,
+  unownedAnomaly
+} = await import("./journeys");
+const {
   ApiError,
   NetworkError,
   REQUEST_TIMEOUT_MS,
@@ -713,5 +726,93 @@ describe("write calls", () => {
     expect(form.get("caseId")).toBe("cas_1");
     expect(form.get("docType")).toBe("eid");
     expect(form.get("file")).toBeTruthy();
+  });
+});
+
+describe("journey helpers", () => {
+  it("reads the asked-for briefing, else the most recent", () => {
+    const rows = [{ id: "brf_2" }, { id: "brf_1" }];
+    expect(chosenBriefing(rows)?.id).toBe("brf_2");
+    expect(chosenBriefing(rows, "brf_1")?.id).toBe("brf_1");
+    expect(chosenBriefing(rows, "brf_9")?.id).toBe("brf_2");
+    expect(chosenBriefing([])).toBeNull();
+    expect(chosenBriefing(null)).toBeNull();
+  });
+
+  it("shows no highlights rather than crashing on a bad column", () => {
+    expect(highlightsOf(null)).toEqual([]);
+    expect(highlightsOf("not json")).toEqual([]);
+    expect(highlightsOf('{"nope":1}')).toEqual([]);
+    expect(highlightsOf('[{"metricKey":"gwp"},{"value":1}]')).toEqual([]);
+    expect(
+      highlightsOf('[{"metricKey":"gwp","period":"2026-08","value":42,"deltaBps":250}]')
+    ).toEqual([{ metricKey: "gwp", period: "2026-08", value: 42, deltaBps: 250 }]);
+  });
+
+  it("picks the largest unowned anomaly and ignores owned ones", () => {
+    const rows = [
+      { id: "an_1", state: "new", magnitude: -300 },
+      { id: "an_2", state: "new", magnitude: 120 },
+      { id: "an_3", state: "new", magnitude: 900, explainedBy: "usr_1" },
+      { id: "an_4", state: "explained", magnitude: 5000 }
+    ];
+    expect(unownedAnomaly(rows)?.id).toBe("an_1");
+    expect(unownedAnomaly([{ id: "an_4", state: "dismissed" }])).toBeNull();
+    expect(unownedAnomaly(null)).toBeNull();
+  });
+
+  it("renders basis points as a signed percentage", () => {
+    expect(bps(250)).toBe("+2.5%");
+    expect(bps(-125)).toBe("-1.3%");
+    expect(bps(0)).toBe("0.0%");
+    expect(bps(null)).toBeNull();
+  });
+
+  it("dates today in the device's timezone, not UTC's", () => {
+    expect(todayIso(new Date(2026, 7, 9, 23, 30))).toBe("2026-08-09");
+    expect(todayIso(new Date(2026, 0, 1, 0, 5))).toBe("2026-01-01");
+  });
+
+  it("turns an approval policy key into words", () => {
+    expect(approvalTitle({ id: "apr_1", policyKey: "signal.budget.move" })).toBe(
+      "Signal · Budget · Move"
+    );
+    expect(approvalTitle({ id: "apr_1" })).toBe("Apr 1");
+  });
+
+  it("reads the amount an approval turns on, when it has one", () => {
+    expect(approvalAmountMinor({ id: "a", contextJson: '{"amountMinor":125000}' })).toBe(125000);
+    expect(approvalAmountMinor({ id: "a", contextJson: "{}" })).toBeNull();
+    expect(approvalAmountMinor({ id: "a", contextJson: "broken" })).toBeNull();
+    expect(approvalAmountMinor({ id: "a" })).toBeNull();
+  });
+
+  it("reads a thread oldest-first regardless of the order it arrived in", () => {
+    const rows = [
+      { id: "m3", ts: 300 },
+      { id: "m1", ts: 100 },
+      { id: "m2", ts: 200 }
+    ];
+    expect(threadOrder(rows).map((r) => r.id)).toEqual(["m1", "m2", "m3"]);
+    // The input is not mutated: the list it came from is still rendering.
+    expect(rows[0]!.id).toBe("m3");
+  });
+
+  it("puts only the customer's messages on the inbound side", () => {
+    expect(isInbound({ id: "m", role: "customer" })).toBe(true);
+    expect(isInbound({ id: "m", role: "agent_human" })).toBe(false);
+    expect(isInbound({ id: "m", role: "agent_ai" })).toBe(false);
+  });
+
+  it("offers exactly the document types AXIS accepts", () => {
+    expect([...DOC_TYPES]).toEqual(["eid", "mulkiya", "census", "medical", "tradelicense", "other"]);
+  });
+
+  it("names a capture's content type from its uri, defaulting to JPEG", () => {
+    expect(contentTypeOf("file:///tmp/a.png")).toBe("image/png");
+    expect(contentTypeOf("file:///tmp/a.HEIC")).toBe("image/heic");
+    expect(contentTypeOf("file:///tmp/scan.pdf")).toBe("application/pdf");
+    expect(contentTypeOf("file:///tmp/a.jpg?x=1")).toBe("image/jpeg");
+    expect(contentTypeOf("file:///tmp/nodots")).toBe("image/jpeg");
   });
 });
