@@ -11,6 +11,7 @@ import {
   Badge,
   Button,
   Card,
+  EmptyState,
   Field,
   GuardrailNotice,
   KPIWall,
@@ -544,7 +545,7 @@ export default function AxisAnalytics() {
           rowKey={(row) => row.status}
           caption={l("byStatus.caption")}
           captionHidden
-          empty={l("empty.body")}
+          empty={<EmptyState title={l("empty.title")} body={l("empty.body")} />}
         />
       </Card>
 
@@ -556,7 +557,7 @@ export default function AxisAnalytics() {
           caption={l("byPeriod.caption")}
           captionHidden
           density="compact"
-          empty={l("empty.body")}
+          empty={<EmptyState title={l("empty.title")} body={l("empty.body")} />}
         />
       </Card>
 

@@ -436,16 +436,16 @@ export default function LedgerRecon() {
         <EmptyState title={l("recon.pick")} body={l("recon.pickBody")} />
       )}
 
-      {loaded.runs.length > 0 ? (
-        <section className="flex flex-col gap-3">
-          <h2 className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">{l("recon.runs")}</h2>
-          <Table<ReconRun>
-            caption={l("recon.runsCaption")}
-            captionHidden
-            density="compact"
-            rows={loaded.runs}
-            rowKey={(row) => row.id}
-            columns={[
+      <section className="flex flex-col gap-3">
+        <h2 className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">{l("recon.runs")}</h2>
+        <Table<ReconRun>
+          caption={l("recon.runsCaption")}
+          captionHidden
+          density="compact"
+          rows={loaded.runs}
+          rowKey={(row) => row.id}
+          empty={<EmptyState title={l("recon.noRuns")} />}
+          columns={[
               {
                 key: "process",
                 header: l("recon.process"),
@@ -493,10 +493,9 @@ export default function LedgerRecon() {
                 header: l("when"),
                 render: (row) => <DateTime value={row.createdAt} locale={locale} precision="minute" />
               }
-            ]}
-          />
-        </section>
-      ) : null}
+          ]}
+        />
+      </section>
 
       {loaded.canRun ? (
         <Card title={l("recon.start")} elevation="flat">

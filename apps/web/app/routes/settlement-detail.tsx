@@ -153,6 +153,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     termsNone: "No agreement on file — the platform default terms priced this run.",
     linesTitle: "Remittance lines",
     linesCaption: "Every entry this settlement was drafted from.",
+    linesEmpty: "No entries were drafted into this settlement.",
     colShare: "Channel share",
     actionsTitle: "Decide",
     approve: "Approve",
@@ -194,6 +195,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     termsNone: "لا توجد اتفاقية مسجّلة — سعّرت هذه الدورة بالشروط الافتراضية للمنصة.",
     linesTitle: "بنود الحوالة",
     linesCaption: "كل قيد صيغت منه هذه التسوية.",
+    linesEmpty: "لم يُدرج أي قيد في هذه التسوية.",
     colShare: "حصة القناة",
     actionsTitle: "القرار",
     approve: "موافقة",
@@ -431,7 +433,13 @@ export default function SettlementDetail() {
       </Card>
 
       <Card title={l("linesTitle")} padded={false}>
-        <Table caption={l("linesCaption")} columns={columns} rows={table.rows} rowKey={(row) => String(row.policyId ?? "")} />
+        <Table
+          caption={l("linesCaption")}
+          columns={columns}
+          rows={table.rows}
+          rowKey={(row) => String(row.policyId ?? "")}
+          empty={<EmptyState title={l("linesEmpty")} />}
+        />
       </Card>
     </div>
   );

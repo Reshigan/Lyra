@@ -614,30 +614,34 @@ export default function CampaignStudio() {
             )}
           </Card>
 
-          {loaded.spend.length > 0 ? (
-            <Card title={l("studio.performance")}>
-              <dl className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
-                <Stat
-                  label={l("spend")}
-                  value={
-                    <Money amountMinor={totalSpendMinor(loaded.spend)} currency={currency} locale={locale} />
-                  }
+          <Card title={l("studio.performance")}>
+            {loaded.spend.length > 0 ? (
+              <>
+                <dl className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
+                  <Stat
+                    label={l("spend")}
+                    value={
+                      <Money amountMinor={totalSpendMinor(loaded.spend)} currency={currency} locale={locale} />
+                    }
+                  />
+                  <Stat
+                    label={l("binds")}
+                    value={loaded.touches.filter((touch) => touch.touchType === "bind").length}
+                  />
+                  <Stat label={l("clicks")} value={rolls.reduce((sum, roll) => sum + roll.clicks, 0)} />
+                </dl>
+                <Table<ChannelRoll>
+                  caption={l("studio.performanceCaption")}
+                  captionHidden
+                  rowKey={(roll) => roll.channel}
+                  rows={rolls}
+                  columns={channelColumns(l, locale, currency)}
                 />
-                <Stat
-                  label={l("binds")}
-                  value={loaded.touches.filter((touch) => touch.touchType === "bind").length}
-                />
-                <Stat label={l("clicks")} value={rolls.reduce((sum, roll) => sum + roll.clicks, 0)} />
-              </dl>
-              <Table<ChannelRoll>
-                caption={l("studio.performanceCaption")}
-                captionHidden
-                rowKey={(roll) => roll.channel}
-                rows={rolls}
-                columns={channelColumns(l, locale, currency)}
-              />
-            </Card>
-          ) : null}
+              </>
+            ) : (
+              <EmptyState title={l("studio.noSpend")} />
+            )}
+          </Card>
         </>
       ) : null}
     </div>

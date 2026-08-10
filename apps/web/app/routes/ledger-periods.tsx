@@ -348,16 +348,16 @@ export default function LedgerPeriods() {
         <EmptyState title={l("denied")} body={l("deniedBody", { permission: PERM.periodsRead })} />
       )}
 
-      {loaded.recent.length > 0 ? (
-        <section className="flex flex-col gap-3">
-          <h2 className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">{l("period.recent")}</h2>
-          <Table<Period>
-            caption={l("period.recentCaption")}
-            captionHidden
-            density="compact"
-            rows={loaded.recent}
-            rowKey={(row) => row.id}
-            columns={[
+      <section className="flex flex-col gap-3">
+        <h2 className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">{l("period.recent")}</h2>
+        <Table<Period>
+          caption={l("period.recentCaption")}
+          captionHidden
+          density="compact"
+          rows={loaded.recent}
+          rowKey={(row) => row.id}
+          empty={<EmptyState title={l("period.noneRecent")} />}
+          columns={[
               {
                 key: "code",
                 header: l("period.code"),
@@ -391,9 +391,8 @@ export default function LedgerPeriods() {
                   )
               }
             ]}
-          />
-        </section>
-      ) : null}
+        />
+      </section>
 
       {/* Maintenance, not money: the journal is the truth and this only reports
           where the cache disagrees with it. Gated on ledger:journals:post

@@ -10,7 +10,18 @@ import {
   type ActionFunctionArgs,
   type LoaderFunctionArgs
 } from "react-router";
-import { Badge, Button, Checkbox, DateTime, Field, Input, Select, Table, type Column } from "@lyra/ui";
+import {
+  Badge,
+  Button,
+  Checkbox,
+  DateTime,
+  EmptyState,
+  Field,
+  Input,
+  Select,
+  Table,
+  type Column
+} from "@lyra/ui";
 import { ApiError, api, fetchMe, type Problem as ProblemBody } from "../api.server";
 import { cloudflare } from "../context";
 import { CATALOGUES, LOCALES, pseudoText, translator } from "../i18n";
@@ -1108,7 +1119,7 @@ export default function Settings() {
             rowKey={(row) => row.id}
             caption={label("sessions.caption")}
             density="compact"
-            empty={<span className="font-ui text-13 text-subtle">{label("sessions.none")}</span>}
+            empty={<EmptyState title={label("sessions.none")} />}
           />
         ) : (
           <p className="font-ui text-13 text-subtle">{label("sessions.unavailable")}</p>
@@ -1128,7 +1139,7 @@ export default function Settings() {
               rowKey={(row) => row.id}
               caption={label("keys.caption")}
               density="compact"
-              empty={<span className="font-ui text-13 text-subtle">{label("keys.none")}</span>}
+              empty={<EmptyState title={label("keys.none")} />}
             />
           ) : (
             <p className="font-ui text-13 text-subtle">{label("keys.unavailable")}</p>
@@ -1293,7 +1304,7 @@ export default function Settings() {
                 rowKey={(row) => row.id}
                 caption={label("dsar.caption")}
                 density="compact"
-                empty={<span className="font-ui text-13 text-subtle">{label("dsar.none")}</span>}
+                empty={<EmptyState title={label("dsar.none")} />}
               />
             ) : (
               <p className="font-ui text-13 text-subtle">{label("dsar.unavailable")}</p>

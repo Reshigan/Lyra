@@ -600,9 +600,9 @@ export default function LedgerTransaction() {
         )}
       </section>
 
-      {loaded.audit.length > 0 ? (
-        <section className="flex flex-col gap-3">
-          <h2 className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">{l("txn.audit")}</h2>
+      <section className="flex flex-col gap-3">
+        <h2 className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">{l("txn.audit")}</h2>
+        {loaded.audit.length > 0 ? (
           <Table<AuditRow>
             caption={l("txn.audit")}
             captionHidden
@@ -624,8 +624,10 @@ export default function LedgerTransaction() {
               }
             ]}
           />
-        </section>
-      ) : null}
+        ) : (
+          <EmptyState title={l("txn.auditEmpty")} />
+        )}
+      </section>
     </div>
   );
 }

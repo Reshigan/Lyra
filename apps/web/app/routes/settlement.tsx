@@ -255,6 +255,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     openDrafted: "Open this settlement",
     queueTitle: "Settlement queue",
     queueCaption: "Settlements by state, with the net each state holds",
+    queueEmpty: "Nothing waiting to settle.",
     listCaption: "Settlements matching this counterparty and period",
     colCounterparty: "Counterparty",
     colPeriod: "Period",
@@ -308,6 +309,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     openDrafted: "افتح هذه التسوية",
     queueTitle: "قائمة التسويات",
     queueCaption: "التسويات بحسب الحالة، مع صافي كل حالة",
+    queueEmpty: "لا يوجد شيء بانتظار التسوية.",
     listCaption: "التسويات المطابقة لهذا الطرف المقابل وهذه الفترة",
     colCounterparty: "الطرف المقابل",
     colPeriod: "الفترة",
@@ -608,40 +610,39 @@ export default function SettlementPeriod() {
       ) : null}
 
       <div aria-busy={busy} className="flex flex-col gap-4">
-        {groups.length > 0 ? (
-          <Card title={l("queueTitle")} padded={false}>
-            <Table
-              caption={l("queueCaption")}
-              density="compact"
-              rowKey={(group) => `${group.state}|${group.currency}`}
-              rows={groups}
-              columns={[
-                {
-                  key: "state",
-                  header: l("colState"),
-                  render: (group) => (
-                    <Badge tone={settlementTone(group.state)} size="sm" dot>
-                      {l(`state.${group.state}`)}
-                    </Badge>
-                  )
-                },
-                {
-                  key: "count",
-                  header: t("common.rows"),
-                  render: (group) => l("groupCount", { count: String(group.count) })
-                },
-                {
-                  key: "netMinor",
-                  header: l("colNet"),
-                  numeric: true,
-                  render: (group) => (
-                    <Money amountMinor={group.netMinor} currency={group.currency} locale={locale} />
-                  )
-                }
-              ]}
-            />
-          </Card>
-        ) : null}
+        <Card title={l("queueTitle")} padded={false}>
+          <Table
+            caption={l("queueCaption")}
+            density="compact"
+            rowKey={(group) => `${group.state}|${group.currency}`}
+            rows={groups}
+            empty={<EmptyState title={l("queueEmpty")} />}
+            columns={[
+              {
+                key: "state",
+                header: l("colState"),
+                render: (group) => (
+                  <Badge tone={settlementTone(group.state)} size="sm" dot>
+                    {l(`state.${group.state}`)}
+                  </Badge>
+                )
+              },
+              {
+                key: "count",
+                header: t("common.rows"),
+                render: (group) => l("groupCount", { count: String(group.count) })
+              },
+              {
+                key: "netMinor",
+                header: l("colNet"),
+                numeric: true,
+                render: (group) => (
+                  <Money amountMinor={group.netMinor} currency={group.currency} locale={locale} />
+                )
+              }
+            ]}
+          />
+        </Card>
 
         {loaded.settlements.length === 0 ? (
           <EmptyState title={l("emptyTitle")} body={l("emptyBody")} />

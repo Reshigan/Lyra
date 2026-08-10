@@ -175,6 +175,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "col.matchPct": "Match",
     "col.note": "Note",
     "result.evidence": "Bundle",
+    "result.evidenceEmpty": "No files were captured in this run.",
     bundleHash: "Bundle hash",
     "bundleHash.hint": "sha256 of the archive, manifest included. Quote it with the bundle.",
     "col.path": "File",
@@ -261,6 +262,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "col.matchPct": "نسبة التطابق",
     "col.note": "ملاحظة",
     "result.evidence": "الحزمة",
+    "result.evidenceEmpty": "لم يتم التقاط أي ملفات في هذا التشغيل.",
     bundleHash: "بصمة الحزمة",
     "bundleHash.hint": "بصمة sha256 للأرشيف بما فيه قائمة المحتويات. اذكرها مع الحزمة.",
     "col.path": "الملف",
@@ -677,6 +679,7 @@ function BundleResult({
         rowKey={(file) => file.path}
         caption={l("result.evidence")}
         density="compact"
+        empty={<EmptyState title={l("result.evidenceEmpty")} />}
       />
     </section>
   );
