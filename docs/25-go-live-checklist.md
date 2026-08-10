@@ -543,18 +543,19 @@ each — session memory, not a fresh read — before treating any as still true.
       client-side role checks), 403s are first-class UI denial states, no
       dangling routes (`placeholder.tsx` removal confirmed clean). No open
       issues found — closing this item.
-- [ ] **ROLE-028 `provider.viewer` scoping — genuinely open, ADR not code.**
-      `apps/api/src/resources.ts`'s `data-products` `rowVisible` hides
-      unpublished products from `provider.viewer` but does not scope it down
-      to only the products *their own* provider org subscribed to (data for
-      this exists in `scout_data_products.subscribersJson`; what's missing is
-      any actor-to-provider identity link — `Scope` has no `providerIds`,
-      `core_users` has no `providerId`). Not a cross-tenant hole, but a
-      real over-exposure within a tenant. **This is a product/identity-model
-      decision, not something to guess-implement** — written up with concrete
-      options as `docs/decisions/ADR-0025-rbac-scope-provider-identity-for-role-028.md`
-      (Status: Proposed). Stays open until the module/product owner picks an
-      option.
+- [x] **ROLE-028 `provider.viewer` scoping — closed.**
+      `docs/decisions/ADR-0025-rbac-scope-provider-identity-for-role-028.md`
+      Option 1 implemented: `core_users.providerId` (nullable FK) +
+      `Scope.providerIds`, derived live in `packages/core/src/approvals.ts`'s
+      `grantsFor()` and consumed by `apps/api/src/resources.ts`'s
+      `data-products` `rowVisible`, which now intersects the actor's
+      `providerIds` against `scout_data_products.subscribersJson`'s active
+      (non-suspended) subscribers. A `provider.viewer` with no `providerId`
+      recorded keeps the prior published-only view rather than being locked
+      out. Seeded persona `yasmin.faris@gonxt.ae` (Falcon Insurance) added for
+      journey/e2e parity. Evidence: `apps/api/src/resources.test.ts`,
+      `packages/core/src/approvals.test.ts` (both green), migration
+      `packages/db/migrations/0022_aberrant_doorman.sql`.
 
 ### Go-live remediation pass (2026-08-05/06)
 
@@ -620,7 +621,7 @@ than from the vanished finding texts.
       info" before any repo code ran; none were code failures, and all passed on
       re-run once GitHub recovered.
 
-Still open from this pass: ROLE-028 above.
+ROLE-028 above is now closed as of the 2026-08-10 pass.
 
 ---
 
@@ -631,8 +632,16 @@ These cannot be done by an assistant; they require the account owner directly.
 - [ ] **Rotate the Cloudflare API token** that was pasted into chat earlier in
       this build (chat-history exposure — treat as compromised regardless of
       whether it was ever misused).
-- [ ] **Retire the seed password `Gonxt-Live-2026!Kx7`** — treat as burned,
-      change it, and confirm no seed/fixture data still references it.
+- [ ] **Retire the seed override password used for the live staging/production
+      seed run** — treat as burned (redacted here 2026-08-10; the literal was
+      committed to this file in plaintext, which is itself the kind of
+      exposure this item exists to close). Account owner must change it on
+      the live deployment; code-side check confirmed clean — grepped every
+      `.ts`/`.tsx`/`.json`/`.jsonc` file in the repo for the literal, zero
+      hits outside this checklist. `packages/core/src/seed.ts`'s
+      `DEFAULT_PASSWORD` (`"Gonxt-Demo-2026!"`, dev/e2e only, refused outright
+      for `environment: "production"` without an explicit override) is a
+      different, unrelated value and does not need rotation.
 - [x] Confirm `.env.local` is populated from `.env.example` and never committed
       (already gitignored — verify no stray `.env*` got added since).
       **CLOSED 2026-08-02** — `.gitignore` has `.env` / `.env.*` /
@@ -794,11 +803,19 @@ These cannot be done by an assistant; they require the account owner directly.
       code change needed. Re-ran `pnpm smoke:staging` after the fix: all 12
       checks `ok`, exit code 0.
       **Follow-up, not yet actioned:** a second, unexpected row was found in
-      the same query — `layla.nasser@vantax.co.za` (off-domain, not a seeded
-      persona) holding an `axis.agent` grant with `scope_json:
-      {"teams":[...]}` (inert — wrong key, doesn't match `rbac.ts`'s
-      `teamIds`). Left untouched pending account-owner review; doesn't affect
-      this checklist item since it doesn't gate anything today.
+      the same query — `layla.nasser@vantax.co.za` (`status: invited`, never
+      logged in, `core_users` row created in the same seed batch as every
+      other persona; not itself suspicious, just off the seeded persona
+      list) holding an `axis.agent` grant with `scope_json: {"teams":[...]}`
+      (inert — wrong key, doesn't match `rbac.ts`'s `teamIds`). **Attempted
+      2026-08-10:** the same one-off `UPDATE ... SET scope_json = NULL WHERE
+      id = 'url_01KE953T02K8D0NXM37R35MW1H'` used for the `layla.hassan` row
+      above — blocked by this session's own auto-mode guardrail (live
+      remote-database write against `lyra-staging`), which is the right call
+      for an unattended write to a shared, live database regardless of how
+      low-risk the row looks. Still untouched, pending the account owner
+      running that `UPDATE` (or approving it) directly; doesn't gate this
+      checklist item since it doesn't affect any permission check today.
 - [x] All Cloudflare bindings present per docs/10 §2 (D1, KV, R2, Queues, DO
       namespaces) for both staging and production environments —
       **VERIFIED 2026-08-01** via the staging deploy's own binding printout:
@@ -885,14 +902,14 @@ These cannot be done by an assistant; they require the account owner directly.
         docs/10 §6) needs a Sentry account + DSN — no such credential exists
         in this environment. Logpush→R2 (Parquet) needs Logpush enabled on
         the zone via the Cloudflare dashboard or an API token with the
-        `logs:edit` scope, which this session's token does not carry
-        (same gap pattern as the AI Gateway item above); `infra/cloudflare/`
-        (CLAUDE.md's target layout for this kind of config-as-code) was
-        never created, so there is also no Terraform to point at — this is
-        an unprovisioned dashboard setting, not a missing line of app code.
-        Analytics Engine's own GraphQL read API (for querying `TELEMETRY`
-        outside the Workers runtime, e.g. from an external dashboard tool)
-        is likewise unconfigured; the in-app reads above don't need it.
+        `logs:edit` scope, which no token available in this environment
+        carries — an unprovisioned dashboard setting, not a missing line of
+        app code, and not something Terraform can declare (Logpush job
+        config isn't in scope of `infra/cloudflare/`, drafted 2026-08-10 —
+        see below). Analytics Engine's own GraphQL read API (for querying
+        `TELEMETRY` outside the Workers runtime, e.g. from an external
+        dashboard tool) is likewise unconfigured; the in-app reads above
+        don't need it.
 - [~] Cost guards (docs/10 §7) confirmed in place — budget ceilings, not just
       documented intentions.
       - **Done:** per-tenant AI budget hard-stop + 80% admin alert
@@ -913,18 +930,19 @@ These cannot be done by an assistant; they require the account owner directly.
       - **Blocked, needs the user:** Logpush sampling on verbose categories —
         same Logpush-not-enabled gap as above. R2 lifecycle rules (exports
         90d, logs 400d, docs/10 §7) have never been applied to the
-        `lyra-exports`/`lyra-exports-staging` buckets — no `infra/cloudflare/`
-        Terraform exists to declare them. **Confirmed 2026-08-02, same gap
-        pattern as AI Gateway/Logpush above:** `wrangler r2 bucket lifecycle
-        set` exists and would do this, but `npx wrangler whoami` shows this
-        session's `CLOUDFLARE_API_TOKEN` carries no `r2` scope at all (only
-        `workers`/`d1`/`queues`/`ai`/etc.) — a lifecycle-rule call would 403,
-        and this is exactly the kind of shared-infra mutation (risks
-        silently deleting real export/log data if the JSON is wrong) that
-        needs a deliberate go-ahead even with scope, not a blind autonomous
-        run. **User action needed:** either reissue the token with R2 edit
-        scope so this can be applied and verified next pass, or set the two
-        lifecycle rules by hand in the dashboard.
+        `lyra-exports`/`lyra-exports-staging` or `lyra-logs`/`lyra-logs-staging`
+        buckets. **Drafted, not applied, 2026-08-10:** `infra/cloudflare/`
+        now exists with `r2_lifecycle.tf` declaring both rules via the
+        `cloudflare/cloudflare` Terraform provider — see
+        `infra/cloudflare/README.md` for prerequisites. Not run against a
+        real account: no token available in this environment carries R2 or
+        zone-firewall edit scope, and this is exactly the kind of
+        shared-infra mutation (risks silently deleting real export/log data
+        if the config is wrong) that needs a deliberate human go-ahead even
+        with scope, not a blind autonomous run. **User action needed:**
+        reissue a Terraform-scoped token per the README and run
+        `terraform plan`/`apply` (staging first), or set the two lifecycle
+        rules by hand in the dashboard.
 - [x] Nightly D1→R2 tenant backup export (docs/10 §6, docs/17 DEP-007) —
       **BUILT 2026-08-01**: `apps/api/src/engines/backup.ts` `backupTenant()`,
       one JSON blob per tenant per day (`backups/<tenantId>/<day>.json` in
@@ -957,12 +975,17 @@ These cannot be done by an assistant; they require the account owner directly.
       on the `FILES` bucket (docs/10 §6) has not been confirmed enabled via
       the dashboard/API in this session — flagging rather than assuming.
 - [ ] WAF managed rules, Turnstile on public forms, bot fight mode (docs/10
-      §6) — **NOT CONFIGURED, USER/DASHBOARD ACTION**: these are
-      zone-level Cloudflare dashboard settings (or Terraform, if
-      `infra/cloudflare/` is ever built out per CLAUDE.md's target layout);
-      nothing in `apps/api`/`apps/web` code enables or depends on them, so
-      there is no code-side gap to close, only a dashboard toggle the
-      account owner needs to flip before go-live.
+      §6) — **NOT APPLIED, USER ACTION**: these are zone-level Cloudflare
+      settings. **Drafted, not applied, 2026-08-10:** `infra/cloudflare/waf.tf`
+      declares the Cloudflare Managed Ruleset + Bot Fight Mode,
+      `turnstile.tf` provisions a Turnstile widget (sitekey/secret only —
+      wiring the sitekey into an actual `apps/web` form is a separate,
+      not-yet-scoped follow-up; no public form currently embeds Turnstile,
+      confirmed via `grep -rl turnstile apps/`). Nothing in `apps/api`/
+      `apps/web` code enables or depends on the zone-level settings, so
+      there is no other code-side gap — only running `terraform apply`
+      (see `infra/cloudflare/README.md`) or the dashboard-toggle equivalent,
+      which the account owner needs to do before go-live.
 
 ---
 
