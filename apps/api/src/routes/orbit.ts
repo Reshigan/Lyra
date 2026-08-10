@@ -6,6 +6,7 @@ import { body } from "../http.js";
 import { must } from "../rows.js";
 import { dispatchOutbound } from "../engines/orbit-channel-outbound.js";
 import { sweepRenewals } from "../engines/renewals.js";
+import { sweepRouting } from "../engines/orbit-routing.js";
 import type { App } from "../env.js";
 
 // docs/16 H3: the AgentRoom Durable Object seam. One room per conversation,
@@ -74,4 +75,18 @@ orbitRoutes.post("/renewals/sweep", async (c) => {
   const ctx = ctxOf(c);
   require_(ctx.actor, "orbit:renewals:update", { tenantId: ctx.tenantId, module: "orbit" });
   return c.json({ raised: await sweepRenewals(ctx, c.env.WF) });
+});
+
+/**
+ * Force the routing sweep now (SLA breach escalation + absence reassignment).
+ * Same idiom as `/renewals/sweep` above: this otherwise only runs off the
+ * Workers cron tick, so without this an operator (or an e2e test) has no way
+ * to force it. Reuses `orbit:conversations:assign` — this endpoint changes
+ * exactly the fields that permission already governs (team/assignee),
+ * so a new permission would be a distinction without a difference.
+ */
+orbitRoutes.post("/routing/sweep", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "orbit:conversations:assign", { tenantId: ctx.tenantId, module: "orbit" });
+  return c.json(await sweepRouting(ctx));
 });

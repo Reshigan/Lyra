@@ -4,6 +4,7 @@ import { notFound, pruneIdempotency, type Envelope } from "@lyra/core";
 import { drainOutbox, deliverQueued } from "./dispatch.js";
 import { sweepPolicyLifecycle } from "./engines/axis-lifecycle.js";
 import { sweepRenewals } from "./engines/renewals.js";
+import { sweepRouting } from "./engines/orbit-routing.js";
 import { runSnapshotter } from "./engines/north-snapshotter.js";
 import { backupTenant } from "./engines/backup.js";
 import { anchorAudit } from "./engines/anchor.js";
@@ -182,6 +183,10 @@ export default {
             // the right state when renewals look at it.
             await sweepPolicyLifecycle(ctx);
             await sweepRenewals(ctx, env.WF);
+            // Conversations that missed their SLA clock get escalated and, if their
+            // agent went quiet, requeued — before anything else touches assignment
+            // state this tick.
+            await sweepRouting(ctx);
             await runBudgetAutopilot(ctx);
             await runDueSchedules(ctx, env.FILES, env.BROWSER);
             // A delegation that has run out must stop showing as active, or every

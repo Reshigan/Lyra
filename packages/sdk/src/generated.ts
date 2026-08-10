@@ -1798,6 +1798,16 @@ export interface OrbitConversations {
   firstResponseMs?: number;
   lastMessageAt?: number;
   closedAt?: number;
+  priority?: number;
+  slaPolicyKey?: string;
+  requireSkillsJson?: string;
+  queuedAt?: number;
+  assignedAt?: number;
+  firstResponseDueAt?: number;
+  resolutionDueAt?: number;
+  frtBreachedAt?: number;
+  resolutionBreachedAt?: number;
+  reopenCount?: number;
   createdAt?: number;
   updatedAt?: number;
 }
@@ -2707,6 +2717,7 @@ export interface Operations {
   "POST /v1/orbit/renewals/sweep": Op<never, never, never, Record<string, unknown>>;
   "GET /v1/orbit/renewals/{id}": Op<{ id: string }, never, never, OrbitRenewals>;
   "PATCH /v1/orbit/renewals/{id}": Op<{ id: string }, never, OrbitRenewals, OrbitRenewals>;
+  "POST /v1/orbit/routing/sweep": Op<never, never, never, Record<string, unknown>>;
   "POST /v1/platform/ai/kill": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/platform/ai/release": Op<never, never, never, Record<string, unknown>>;
   "GET /v1/platform/deployments": Op<never, never, never, Record<string, unknown>>;
@@ -3359,6 +3370,7 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "POST /v1/orbit/renewals/sweep": { tag: "orbit", summary: "Force the renewal sweep now (also runs on the scheduled tick)", permission: "orbit:renewals:update", public: false },
   "GET /v1/orbit/renewals/{id}": { tag: "orbit", summary: "Fetch one renewal", permission: "orbit:renewals:read", public: false },
   "PATCH /v1/orbit/renewals/{id}": { tag: "orbit", summary: "Update a renewal", permission: "orbit:renewals:update", public: false },
+  "POST /v1/orbit/routing/sweep": { tag: "orbit", summary: "Force the routing sweep now — SLA breach escalation and absence reassignment (also runs on the scheduled tick)", permission: "orbit:conversations:assign", public: false },
   "POST /v1/platform/ai/kill": { tag: "platform", summary: "Throw the global AI kill switch — one click, no approval (docs/12 §4)", permission: "admin:flags:write", public: false },
   "POST /v1/platform/ai/release": { tag: "platform", summary: "Release the global AI kill switch (gates on the core.flag_toggle approval)", permission: "admin:flags:write", public: false },
   "GET /v1/platform/deployments": { tag: "platform", summary: "Deployment history, newest first", permission: "admin:diagnostics:read", public: false },

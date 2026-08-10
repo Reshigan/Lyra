@@ -34,6 +34,10 @@ let database: Db;
 let agentToken: string;
 /** A user with no `orbit:messages:send`. */
 let outsiderToken: string;
+/** hind.saqr — orbit.admin, the only orbit role bundle carrying `orbit:*:*`
+ *  (rbac.ts), hence the only seeded persona with `orbit:conversations:assign`
+ *  — `orbit.agent` (agentToken above) does not hold it. */
+let leadToken: string;
 
 interface Res<T = any> {
   status: number;
@@ -91,6 +95,7 @@ beforeAll(async () => {
   } as unknown as Env;
   agentToken = await login("sara.nasser"); // orbit.agent — holds orbit:messages:send
   outsiderToken = await login("layla.hassan"); // axis.agent — does not
+  leadToken = await login("hind.saqr"); // orbit.admin — holds orbit:conversations:assign
 
   const [tenant] = await database.select().from(schema.tenants).where(eq(schema.tenants.slug, "gonxt"));
   const tenantId = tenant!.id;
@@ -197,5 +202,18 @@ describe("POST /v1/orbit/conversations/:id/reply", () => {
     const res = await call(outsiderToken, "POST", "/v1/orbit/conversations/cnv_1/reply", { text: "hi" });
     expect(res.status).toBe(403);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /v1/orbit/routing/sweep", () => {
+  it("runs the routing sweep and reports counts", async () => {
+    const res = await call(leadToken, "POST", "/v1/orbit/routing/sweep");
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ frtBreaches: expect.any(Number), resolutionBreaches: expect.any(Number), reassigned: expect.any(Number) });
+  });
+
+  it("is 403 without orbit:conversations:assign", async () => {
+    const res = await call(outsiderToken, "POST", "/v1/orbit/routing/sweep");
+    expect(res.status).toBe(403);
   });
 });
