@@ -19,6 +19,15 @@ targetRules = ["generic-api-key"]
 description = "Requirements and spec prose"
 paths = ['''^docs/''']
 
+# `queryRows(token, "north/briefings", …)` — a variable named `token` beside a
+# slashed API path is enough for `generic-api-key`'s heuristic. The path is the
+# endpoint; the token is a runtime session value (apps/mobile/src/session.tsx).
+[[allowlists]]
+targetRules = ["generic-api-key"]
+description = "Mobile API calls that pass the session token as a variable"
+regexTarget = "line"
+regexes = ['''queryRows\(\s*token,''']
+
 # .env.example ships placeholders on purpose — that is what makes it an example.
 [[allowlists]]
 targetRules = ["generic-api-key"]

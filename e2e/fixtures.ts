@@ -127,12 +127,22 @@ export async function confirmAction(page: Page): Promise<void> {
  */
 export async function chooseOption(page: Page, label: string, optionText: string): Promise<void> {
   const trigger = page.getByLabel(label, { exact: true });
-  await trigger.click();
-  await expect(page.getByRole("option", { name: optionText, exact: true })).toBeVisible();
-  // Radix's typeahead reads one keydown at a time; typed with no delay the
-  // whole string lands in a single tick and nothing gets highlighted, so Enter
-  // would close the menu on the already-selected row.
-  await page.keyboard.type(optionText, { delay: 30 });
-  await page.keyboard.press("Enter");
+  const option = page.getByRole("option", { name: optionText, exact: true });
+  // Re-opening a Select shortly after a form submit can race a stray event
+  // that closes the popup again — mid-typeahead the Enter then lands on the
+  // trigger instead of an option, which submits the surrounding form with the
+  // old value and no error anywhere. J-O1 failed exactly that way in run
+  // 31423750071 (saved, still "Failed"). Retry the whole open-type-commit
+  // sequence against the only signal that means it worked: the trigger's text.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (((await trigger.textContent()) ?? "").includes(optionText)) return;
+    await trigger.click({ timeout: 10_000 }).catch(() => {});
+    if (!(await option.isVisible({ timeout: 5_000 }).catch(() => false))) continue;
+    // Radix's typeahead reads one keydown at a time; typed with no delay the
+    // whole string lands in a single tick and nothing gets highlighted, so
+    // Enter would close the menu on the already-selected row.
+    await page.keyboard.type(optionText, { delay: 30 });
+    await page.keyboard.press("Enter");
+  }
   await expect(trigger).toContainText(optionText);
 }

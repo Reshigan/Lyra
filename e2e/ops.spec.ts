@@ -1,35 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { chooseOption, confirmAction, goto, loginAsAxisAgent, loginAsAxisLead, loginAsFinanceController, loginAsTenantAdmin } from "./fixtures.js";
-
-// packages/ui/src/primitives.tsx's Select has no scroll-button affordance, so
-// any option outside the current viewport (a long catalogue, or one on the
-// far side of the popup's auto-scroll-to-current-value on open) can't be
-// reached by a plain click. Radix's own keyboard typeahead jumps straight to
-// it instead — but only once the popup has actually mounted; typing before
-// then loses keystrokes, so wait for the listbox before typing, and confirm
-// the highlighted option before committing with Enter rather than trust a
-// fixed number of keystrokes to land correctly.
-async function selectByTypeahead(page: Page, label: string, optionText: string) {
-  const trigger = page.getByLabel(label, { exact: true });
-  const listbox = page.getByRole("listbox");
-  const highlighted = page.locator('[role="option"][data-highlighted]');
-  // Re-opening a Select shortly after the previous form's "Save changes"
-  // click/navigation can race a stray event that closes the popup again —
-  // sometimes right after opening, sometimes mid-typeahead (confirmed
-  // empirically: the listbox can toggle visible → hidden on its own on a
-  // fraction of runs, at either point). Retry the whole open-type-confirm
-  // sequence until the option is actually highlighted and stays put, rather
-  // than trust any single attempt.
-  for (let attempt = 0; attempt < 5; attempt++) {
-    await trigger.click({ timeout: 3000 }).catch(() => {});
-    await listbox.waitFor({ state: "visible", timeout: 3000 }).catch(() => {});
-    if (!(await listbox.isVisible().catch(() => false))) continue;
-    await page.keyboard.type(optionText, { delay: 30 });
-    if (await highlighted.filter({ hasText: optionText }).isVisible({ timeout: 1000 }).catch(() => false)) break;
-  }
-  await expect(highlighted).toHaveText(optionText);
-  await page.keyboard.press("Enter");
-}
 
 // J-O1 "Exception clearing" (docs/06-roles-and-journeys.md §Ops (AXIS)): an
 // axis.agent opens the exceptions queue — AXIS cases filtered to
@@ -65,7 +35,7 @@ test("J-O1 axis agent filters the exceptions queue and clears a failed case @jou
   await page.waitForURL(/\/axis\/cases\//);
 
   // Push the fresh case into the exception state.
-  await selectByTypeahead(page, "Status", "Failed");
+  await chooseOption(page, "Status", "Failed");
   await page.getByRole("button", { name: "Save changes" }).click();
   // The record view has no separate "saved" toast for a plain field edit
   // (record.tsx's `done` banner only fires for declared actions) — the
@@ -80,7 +50,7 @@ test("J-O1 axis agent filters the exceptions queue and clears a failed case @jou
 
   // Clear it — move the status off "failed" — and the queue drops it.
   await page.getByRole("row", { name: new RegExp(ref) }).getByRole("link", { name: ref }).click();
-  await selectByTypeahead(page, "Status", "Quoting");
+  await chooseOption(page, "Status", "Quoting");
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page.locator("dl").getByText("Quoting", { exact: true })).toBeVisible();
 
@@ -100,7 +70,7 @@ test("J-O3 finance controller runs a reconciliation and decides an exception wit
   // Settle one transaction so the recon engine has something to match against.
   const naturalKey = `j-o3-${Date.now()}`;
   await goto(page, "/ledger/transactions");
-  await selectByTypeahead(page, "Transaction type*", "CM-RECEIPT");
+  await chooseOption(page, "Transaction type*", "CM-RECEIPT");
   await page.getByLabel("Transaction key*", { exact: true }).fill(naturalKey);
   await page.getByLabel("Currency", { exact: true }).fill("AED");
   await page.getByLabel("Gross amount, in minor units", { exact: true }).fill("500000");
