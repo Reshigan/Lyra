@@ -1,10 +1,12 @@
-import { Hono } from "hono";
-import { and, eq, like } from "drizzle-orm";
+import { Hono, type Context } from "hono";
+import { and, eq, inArray, like } from "drizzle-orm";
 import { z } from "zod";
 import { id as newId, schema, BrandJson, EntitlementsJson, PolicyJson } from "@lyra/db";
-import { audit, emit, notFound, recordConsent, sha256Hex } from "@lyra/core";
+import { audit, badRequest, conflict, emit, notFound, recordConsent, sha256Hex } from "@lyra/core";
 import { body } from "../http.js";
 import { ctxFor, db as rawDb, throttle } from "../auth.js";
+import { panelFor } from "../engines/rating.js";
+import { runShop } from "../engines/shop.js";
 import type { App } from "../env.js";
 
 // The public comparison site (yallacompare-style). No session exists at all —
@@ -65,7 +67,14 @@ const LeadBody = z
     email: z.string().email(),
     phone: z.string().max(40).optional(),
     message: z.string().max(2000).optional(),
-    consent: z.literal(true)
+    consent: z.literal(true),
+    /**
+     * The risk, in the product's rating inputs (J-C1's "3-field quick quote").
+     * Absent means the visitor only asked to be contacted, which is the older
+     * lead-capture behaviour and still valid — a product whose panel prices by
+     * referral has nothing to show in the browser.
+     */
+    inputs: z.record(z.string(), z.unknown()).optional()
   })
   .strict();
 
@@ -191,40 +200,337 @@ portalRoutes.post("/:tenantSlug/leads", async (c) => {
     evidenceRef: `quote-request-lead:${tenant.slug}`
   });
 
-  const quoteRequestRow = {
+  // The contact details are what the customer typed; the risk (if any) is what
+  // gets priced. Both belong on the request — staff working the lead need the
+  // former, the panel needs the latter.
+  const contact = { name: input.name, email, phone: input.phone ?? null, message: input.message ?? null };
+  const inputs = input.inputs ?? null;
+
+  // A shop only makes sense if something on the panel can answer in-session.
+  // An empty panel is not an error for a lead — it means "a human will call" —
+  // so it falls back rather than 409ing a member of the public.
+  const panel = inputs
+    ? await panelFor(ctx, { productId: input.productId, channelKey: DIRECT_WEB_CHANNEL_KEY, at: now })
+    : [];
+
+  const baseRow = {
     id: newId("qrq", now),
     tenantId: tenant.id,
     caseId: null as string | null,
     customerId,
     channelId,
     productId: input.productId,
-    inputsJson: JSON.stringify({ name: input.name, email, phone: input.phone ?? null, message: input.message ?? null }),
+    inputsJson: JSON.stringify(inputs ? { ...contact, ...inputs } : contact),
     consentId: consent.id as string | null,
-    fanoutCount: 0,
-    respondedCount: 0,
-    bestOfferingId: null as string | null,
-    bestPremiumMinor: null as number | null,
     currency: DEFAULT_CURRENCY,
     sharedWithCustomerAt: null as number | null,
-    state: "open" as const,
-    expiresAt: null as number | null,
+    expiresAt: inputs && panel.length ? now + QUOTE_TTL_MS : null,
     createdAt: now,
     updatedAt: now
   };
-  await ctx.db.insert(schema.distQuoteRequests).values(quoteRequestRow);
+
+  if (!inputs || !panel.length) {
+    const leadRow = {
+      ...baseRow,
+      fanoutCount: 0,
+      respondedCount: 0,
+      bestOfferingId: null as string | null,
+      bestPremiumMinor: null as number | null,
+      portalTokenHash: null as string | null,
+      state: "open" as const
+    };
+    await ctx.db.insert(schema.distQuoteRequests).values(leadRow);
+    await audit(ctx, {
+      action: "dist.quote_requests.create",
+      subjectRef: `quote-requests:${leadRow.id}`,
+      after: leadRow
+    });
+    await emit(ctx, {
+      module: "dist",
+      type: "dist.quote_requests.created",
+      subject: leadRow.id,
+      data: { id: leadRow.id, via: "portal" }
+    });
+    return c.json({ quoteRequestId: leadRow.id }, 201);
+  }
+
+  // The visitor has no session, so the token in the response is the only thing
+  // that will let them come back to this comparison. Stored as a hash: a leaked
+  // database row must not re-open somebody's quote.
+  const token = portalToken();
+  const shopped = await runShop(ctx, {
+    request: { ...baseRow, portalTokenHash: await sha256Hex(token) },
+    channelKey: DIRECT_WEB_CHANNEL_KEY,
+    inputs
+  });
   await audit(ctx, {
     action: "dist.quote_requests.create",
-    subjectRef: `quote-requests:${quoteRequestRow.id}`,
-    after: quoteRequestRow
+    subjectRef: `quote-requests:${shopped.request.id}`,
+    after: { ...shopped.request, portalTokenHash: "[redacted]" }
   });
   await emit(ctx, {
     module: "dist",
     type: "dist.quote_requests.created",
-    subject: quoteRequestRow.id,
-    data: { id: quoteRequestRow.id, via: "portal" }
+    subject: shopped.request.id,
+    data: { id: shopped.request.id, via: "portal", fanout: shopped.request.fanoutCount }
   });
 
-  return c.json({ quoteRequestId: quoteRequestRow.id }, 201);
+  return c.json(
+    {
+      quoteRequestId: shopped.request.id,
+      token,
+      ...(await comparison(ctx, shopped.request, shopped.responses))
+    },
+    201
+  );
+});
+
+// ---------------------------------------------------------------------------
+// J-C1 "Get covered" (docs/06 §J-C1): quick quote -> ranked offers -> docs ->
+// pay -> policy. Everything up to `pay` is here. Payment is not: no PSP
+// connector exists in the repo (engines/settlement.ts says the same), and
+// issuance is `consequential` (CLAUDE.md §4) so a human approves it. ADR-0043.
+
+const QUOTE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
+const UPLOAD_IP_MAX = 20;
+const UPLOAD_TYPES = new Set(["image/jpeg", "image/png", "image/heic", "image/webp", "application/pdf"]);
+
+interface UploadedFile {
+  size: number;
+  type: string;
+  arrayBuffer(): Promise<ArrayBuffer>;
+}
+
+function portalToken(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * The request behind a portal link, or 404. Wrong token and unknown id answer
+ * identically on purpose: the id is in the visitor's own URL, so a distinct
+ * "token invalid" would confirm that someone else's quote exists.
+ */
+async function requestForToken(
+  database: ReturnType<typeof rawDb>,
+  tenantId: string,
+  requestId: string,
+  token: string | undefined
+): Promise<typeof schema.distQuoteRequests.$inferSelect> {
+  const rows = await database
+    .select()
+    .from(schema.distQuoteRequests)
+    .where(and(eq(schema.distQuoteRequests.tenantId, tenantId), eq(schema.distQuoteRequests.id, requestId)))
+    .limit(1);
+  const row = rows[0];
+  if (!row?.portalTokenHash || !token || row.portalTokenHash !== (await sha256Hex(token))) {
+    throw notFound("quote request");
+  }
+  return row;
+}
+
+/**
+ * The comparison as a member of the public may see it: quotes only, ranked, with
+ * the ranking criterion stated (docs/12 — the customer is told what "best" means
+ * here). Commission, provider scores and decline reasons stay internal.
+ */
+async function comparison(
+  ctx: Awaited<ReturnType<typeof ctxFor>>,
+  request: typeof schema.distQuoteRequests.$inferSelect,
+  responses?: (typeof schema.distQuoteResponses.$inferSelect)[]
+) {
+  const rows =
+    responses ??
+    (await ctx.db
+      .select()
+      .from(schema.distQuoteResponses)
+      .where(
+        and(
+          eq(schema.distQuoteResponses.tenantId, ctx.tenantId),
+          eq(schema.distQuoteResponses.requestId, request.id)
+        )
+      ));
+
+  const quoted = rows.filter((r) => r.state === "quoted" && r.premiumMinor !== null);
+  const offeringIds = quoted.map((r) => r.offeringId);
+  const offerings = offeringIds.length
+    ? await ctx.db
+        .select()
+        .from(schema.distOfferings)
+        .where(
+          and(eq(schema.distOfferings.tenantId, ctx.tenantId), inArray(schema.distOfferings.id, offeringIds))
+        )
+    : [];
+  const offeringById = new Map(offerings.map((o) => [o.id, o]));
+  const providers = offerings.length
+    ? await ctx.db.select().from(schema.providers).where(eq(schema.providers.tenantId, ctx.tenantId))
+    : [];
+  const providerNameById = new Map(providers.map((p) => [p.id, p.name]));
+
+  return {
+    state: request.state,
+    currency: request.currency,
+    // Declared ranking criteria: J-C1 says "ranked offers (declared criteria
+    // visible)", and a comparison that hides how it sorted is the thing the
+    // journey is written against.
+    rankedBy: "total_price" as const,
+    acceptedOfferingId: request.state === "converted" ? request.bestOfferingId : null,
+    referredCount: rows.filter((r) => r.state === "referred").length,
+    offers: quoted
+      .sort((a, b) => (a.priceRank ?? 99) - (b.priceRank ?? 99))
+      .map((r) => {
+        const offering = offeringById.get(r.offeringId);
+        return {
+          offeringId: r.offeringId,
+          name: offering ? (JSON.parse(offering.nameJson).en as string) : r.offeringId,
+          providerName: providerNameById.get(r.providerId) ?? null,
+          premiumMinor: r.premiumMinor as number,
+          taxMinor: r.taxMinor,
+          feesMinor: r.feesMinor,
+          totalMinor: (r.premiumMinor as number) + r.taxMinor + r.feesMinor,
+          currency: r.currency,
+          coverage: r.coverageJson ? (JSON.parse(r.coverageJson) as Record<string, unknown>) : null,
+          rank: r.priceRank,
+          validUntil: r.validUntil
+        };
+      })
+  };
+}
+
+async function portalCtx(c: Context<App>, tenantId: string, now: number, who: string) {
+  return ctxFor(
+    c.env,
+    {
+      tenantId,
+      locale: "en",
+      actor: { kind: "system", id: who, tenantId, grants: [] },
+      policy: PolicyJson.parse({}),
+      entitlements: EntitlementsJson.parse({})
+    },
+    now,
+    c.req.header("cf-connecting-ip"),
+    c.req.header("user-agent")
+  );
+}
+
+portalRoutes.get("/:tenantSlug/quote-requests/:id", async (c) => {
+  const now = Date.now();
+  const database = rawDb(c.env);
+  const tenant = await activeTenant(database, c.req.param("tenantSlug"));
+  const request = await requestForToken(database, tenant.id, c.req.param("id"), c.req.query("token"));
+  const ctx = await portalCtx(c, tenant.id, now, "portal-quote");
+  return c.json(await comparison(ctx, request));
+});
+
+const AcceptBody = z.object({ token: z.string().min(1), offeringId: z.string().min(1) }).strict();
+
+portalRoutes.post("/:tenantSlug/quote-requests/:id/accept", async (c) => {
+  const now = Date.now();
+  const input = await body(c, AcceptBody);
+  const database = rawDb(c.env);
+  const tenant = await activeTenant(database, c.req.param("tenantSlug"));
+  const request = await requestForToken(database, tenant.id, c.req.param("id"), input.token);
+  if (request.expiresAt !== null && request.expiresAt < now) throw conflict("quote has expired");
+
+  const ctx = await portalCtx(c, tenant.id, now, "portal-quote-accept");
+  const responses = await ctx.db
+    .select()
+    .from(schema.distQuoteResponses)
+    .where(
+      and(eq(schema.distQuoteResponses.tenantId, tenant.id), eq(schema.distQuoteResponses.requestId, request.id))
+    );
+  const chosen = responses.find((r) => r.offeringId === input.offeringId && r.state === "quoted");
+  if (!chosen) throw notFound("offer");
+
+  // Accepting is the customer saying which quote they want. It is not issuance:
+  // binding cover is `consequential: true` (CLAUDE.md §4), so a human approves
+  // it from the case this converts into. Re-accepting a different offer before
+  // that happens is allowed — nothing has been bound yet.
+  await ctx.db
+    .update(schema.distQuoteRequests)
+    .set({
+      bestOfferingId: chosen.offeringId,
+      bestPremiumMinor: chosen.premiumMinor,
+      state: "converted",
+      sharedWithCustomerAt: request.sharedWithCustomerAt ?? now,
+      updatedAt: now
+    })
+    .where(and(eq(schema.distQuoteRequests.tenantId, tenant.id), eq(schema.distQuoteRequests.id, request.id)));
+
+  await audit(ctx, {
+    action: "dist.quote_requests.accept",
+    subjectRef: `quote-requests:${request.id}`,
+    before: { bestOfferingId: request.bestOfferingId, state: request.state },
+    after: { bestOfferingId: chosen.offeringId, state: "converted", via: "portal" }
+  });
+  await emit(ctx, {
+    module: "dist",
+    type: "dist.quote_requests.accepted",
+    subject: request.id,
+    data: { id: request.id, offeringId: chosen.offeringId, premiumMinor: chosen.premiumMinor, via: "portal" }
+  });
+
+  // No payment step: no PSP connector exists (engines/settlement.ts §7), so what
+  // the customer is told next is "send your documents", and a human takes it
+  // from there. ADR-0043.
+  return c.json({ acceptedOfferingId: chosen.offeringId, nextStep: "documents" });
+});
+
+portalRoutes.post("/:tenantSlug/quote-requests/:id/documents", async (c) => {
+  const now = Date.now();
+  const database = rawDb(c.env);
+  const tenant = await activeTenant(database, c.req.param("tenantSlug"));
+  const form = await c.req.formData();
+  const token = form.get("token");
+  const request = await requestForToken(
+    database,
+    tenant.id,
+    c.req.param("id"),
+    typeof token === "string" ? token : undefined
+  );
+
+  const ip = c.req.header("cf-connecting-ip");
+  if (ip) await throttle(c.env, `portal-upload-ip:${ip}`, UPLOAD_IP_MAX, LEAD_WINDOW_SEC);
+
+  // Hono types a form entry as `string | null` (the Workers `File` global is not
+  // in this project's lib), so the upload is narrowed structurally instead.
+  const file = form.get("file") as unknown as UploadedFile | string | null;
+  if (!file || typeof file === "string") throw badRequest("file is required");
+  if (file.size > UPLOAD_MAX_BYTES) throw badRequest("file is larger than 10MB");
+  const contentType = file.type || "application/octet-stream";
+  if (!UPLOAD_TYPES.has(contentType)) throw badRequest(`${contentType} is not an accepted document type`);
+
+  const bucket = c.env.FILES;
+  if (!bucket) throw conflict("document storage is not configured");
+
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const ctx = await portalCtx(c, tenant.id, now, "portal-quote-documents");
+  const fileId = newId("file", now);
+  const r2Key = `portal/${tenant.id}/${request.id}/${fileId}`;
+  await bucket.put(r2Key, bytes, { httpMetadata: { contentType } });
+  await ctx.db.insert(schema.files).values({
+    id: fileId,
+    tenantId: tenant.id,
+    r2Key,
+    kind: "customer_document",
+    subjectRef: `quote-requests:${request.id}`,
+    sha256: await sha256Hex(bytes),
+    sizeBytes: bytes.length,
+    contentType,
+    // An ID photo or a licence disc is as sensitive as the platform holds, and
+    // nobody verified who uploaded it.
+    piiLevel: "high",
+    createdAt: now,
+    deletedAt: null
+  });
+  await audit(ctx, {
+    action: "core.files.create",
+    subjectRef: `files:${fileId}`,
+    after: { id: fileId, kind: "customer_document", subjectRef: `quote-requests:${request.id}`, via: "portal" }
+  });
+
+  return c.json({ fileId }, 201);
 });
 
 // ---------------------------------------------------------------------------

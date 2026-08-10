@@ -1,0 +1,1 @@
+ALTER TABLE `dist_quote_requests` ADD `portal_token_hash` text;

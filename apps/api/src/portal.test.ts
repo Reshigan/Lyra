@@ -41,8 +41,16 @@ class FakeKv {
   }
 }
 
+class FakeBucket {
+  readonly store = new Map<string, Uint8Array>();
+  async put(key: string, value: Uint8Array): Promise<void> {
+    this.store.set(key, value);
+  }
+}
+
 let env: Env;
 let kv: FakeKv;
+let files: FakeBucket;
 let database: Db;
 
 interface Res<T = any> {
@@ -75,11 +83,13 @@ beforeAll(async () => {
   database = drizzle(client) as unknown as Db;
   await seed(database as never, { mfaSecret: DEMO_TOTP_SECRET });
   kv = new FakeKv();
+  files = new FakeBucket();
   env = {
     DB_CLIENT: database,
     ENVIRONMENT: "development",
     APP_ORIGIN: "http://localhost:5173",
-    KV: kv as unknown as Env["KV"]
+    KV: kv as unknown as Env["KV"],
+    FILES: files as unknown as Env["FILES"]
   } as unknown as Env;
 }, 120_000);
 
@@ -246,6 +256,158 @@ describe("POST /v1/portal/:tenantSlug/leads", () => {
       consent: true
     });
     expect(wrongProduct.status).toBe(404);
+  });
+});
+
+// J-C1 "Get covered" self-serve (docs/06). The operator half already existed
+// (/v1/dist/quote-requests/shop, journeys.test.ts); this is the same shop run by
+// a stranger with no session, so the tests that matter are the ones about who
+// may see the comparison and what the public shape leaves out.
+describe("J-C1 self-serve quote", () => {
+  const RISK = { age: 34, sumInsuredMinor: 28_000_000, priorClaims: false, vehicleUse: "private" };
+  let motorId: string;
+  let requestId: string;
+  let token: string;
+  let offers: any[];
+
+  async function upload(path: string, fields: Record<string, string>, file?: Blob, name = "id.png"): Promise<Res> {
+    const form = new FormData();
+    for (const [k, v] of Object.entries(fields)) form.append(k, v);
+    if (file) form.append("file", file, name);
+    const res = await app.fetch(
+      new Request(`http://api.test${path}`, { method: "POST", body: form }),
+      env as never,
+      exec as never
+    );
+    const text = await res.text();
+    return { status: res.status, body: text ? JSON.parse(text) : null };
+  }
+
+  it("prices the whole panel from the public lead form and hands back a one-time link", async () => {
+    const [motor] = await database.select().from(schema.products).where(eq(schema.products.line, "motor"));
+    motorId = motor!.id;
+
+    const res = await call("POST", "/v1/portal/gonxt/leads", {
+      productId: motorId,
+      name: "Self Serve",
+      email: "self.serve@example.com",
+      consent: true,
+      inputs: RISK
+    });
+    expect(res.status).toBe(201);
+    requestId = res.body.quoteRequestId;
+    token = res.body.token;
+    offers = res.body.offers;
+
+    expect(token).toMatch(/^[0-9a-f]{48}$/);
+    expect(res.body.rankedBy).toBe("total_price");
+    expect(offers.length).toBeGreaterThan(1);
+    const totals = offers.map((o) => o.totalMinor);
+    expect(totals).toEqual([...totals].sort((a, b) => a - b));
+    expect(offers.every((o) => o.premiumMinor > 0 && o.providerName)).toBe(true);
+
+    // Margin, provider scoring and why an underwriter said no are staff-only
+    // (docs/12): the public comparison must not carry them at all.
+    expect(JSON.stringify(res.body)).not.toMatch(/commission|valueScore|declineReason/i);
+
+    // The plaintext token is shown once and never stored.
+    const [qr] = await database
+      .select()
+      .from(schema.distQuoteRequests)
+      .where(eq(schema.distQuoteRequests.id, requestId));
+    // A referral offering (ORX-MOT-TKF) answers out of band, so the request
+    // stays open for it while the priced offers are already comparable.
+    expect(qr!.state).toBe("fanned_out");
+    expect(res.body.referredCount).toBeGreaterThan(0);
+    expect(qr!.portalTokenHash).toBeTruthy();
+    expect(qr!.portalTokenHash).not.toBe(token);
+    expect(qr!.bestPremiumMinor).toBe(Math.min(...offers.map((o) => o.premiumMinor)));
+  });
+
+  it("re-opens the comparison with the token and 404s without it", async () => {
+    const ok = await call("GET", `/v1/portal/gonxt/quote-requests/${requestId}?token=${token}`);
+    expect(ok.status).toBe(200);
+    expect(ok.body.offers.length).toBe(offers.length);
+
+    expect((await call("GET", `/v1/portal/gonxt/quote-requests/${requestId}`)).status).toBe(404);
+    expect((await call("GET", `/v1/portal/gonxt/quote-requests/${requestId}?token=${"0".repeat(48)}`)).status).toBe(404);
+  });
+
+  it("accepts a chosen offer without binding cover, and refuses one that was never quoted", async () => {
+    const unknown = await call("POST", `/v1/portal/gonxt/quote-requests/${requestId}/accept`, {
+      token,
+      offeringId: "off_not_on_this_request"
+    });
+    expect(unknown.status).toBe(404);
+
+    const chosen = offers[0].offeringId;
+    const res = await call("POST", `/v1/portal/gonxt/quote-requests/${requestId}/accept`, {
+      token,
+      offeringId: chosen
+    });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ acceptedOfferingId: chosen, nextStep: "documents" });
+
+    const [qr] = await database
+      .select()
+      .from(schema.distQuoteRequests)
+      .where(eq(schema.distQuoteRequests.id, requestId));
+    expect(qr!.state).toBe("converted");
+    expect(qr!.bestOfferingId).toBe(chosen);
+
+    // Acceptance is consequential-adjacent but not issuance (CLAUDE.md §4): no
+    // case and no cover exist until a human picks it up.
+    const cases = await database.select().from(schema.axisCases);
+    expect(cases.some((x) => x.quoteRequestId === requestId)).toBe(false);
+
+    const auditRows = await database.select().from(schema.auditLog);
+    expect(auditRows.some((a) => a.action === "dist.quote_requests.accept")).toBe(true);
+  });
+
+  it("takes a supporting document and rejects anything that is not one", async () => {
+    const bad = await upload(
+      `/v1/portal/gonxt/quote-requests/${requestId}/documents`,
+      { token },
+      new Blob(["#!/bin/sh"], { type: "application/x-sh" }),
+      "run.sh"
+    );
+    expect(bad.status).toBe(400);
+
+    const res = await upload(`/v1/portal/gonxt/quote-requests/${requestId}/documents`, { token }, new Blob(
+      [new Uint8Array([1, 2, 3, 4])],
+      { type: "image/png" }
+    ));
+    expect(res.status).toBe(201);
+
+    const [row] = await database.select().from(schema.files).where(eq(schema.files.id, res.body.fileId));
+    expect(row!.kind).toBe("customer_document");
+    expect(row!.subjectRef).toBe(`quote-requests:${requestId}`);
+    expect(row!.piiLevel).toBe("high");
+    expect(files.store.get(row!.r2Key)).toBeTruthy();
+
+    // A stranger with the id but not the token cannot post documents onto
+    // somebody else's quote.
+    const noToken = await upload(
+      `/v1/portal/gonxt/quote-requests/${requestId}/documents`,
+      { token: "0".repeat(48) },
+      new Blob([new Uint8Array([1])], { type: "image/png" })
+    );
+    expect(noToken.status).toBe(404);
+  });
+
+  it("still captures a plain lead when the panel cannot price in-session", async () => {
+    const [life] = await database.select().from(schema.products).where(eq(schema.products.line, "life"));
+    const res = await call("POST", "/v1/portal/gonxt/leads", {
+      productId: life!.id,
+      name: "Manual Panel",
+      email: "manual.panel@example.com",
+      consent: true,
+      inputs: { age: 40 }
+    });
+    expect(res.status).toBe(201);
+    // Manual/referral panels answer out of band, so there is nothing to show and
+    // nothing to protect with a token.
+    expect(res.body.offers?.length ?? 0).toBe(0);
   });
 });
 

@@ -143,6 +143,13 @@ export const quoteRequests = sqliteTable(
     bestPremiumMinor: integer("best_premium_minor"),
     currency: text("currency").notNull(),
     sharedWithCustomerAt: integer("shared_with_customer_at"),
+    /**
+     * SHA-256 of the one-time link the public portal hands an anonymous visitor
+     * (J-C1). No session exists there, so this is the only thing standing
+     * between a stranger and someone else's comparison; the plaintext is shown
+     * once, in the response that created the request, and never stored.
+     */
+    portalTokenHash: text("portal_token_hash"),
     state: text("state").notNull().default("open"), // open|fanned_out|complete|expired|converted|abandoned
     expiresAt: integer("expires_at"),
     createdAt: integer("created_at").notNull(),

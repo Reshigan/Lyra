@@ -20,14 +20,8 @@ import {
 import { body, created, listParams } from "../http.js";
 import { isUniqueViolation } from "../crud.js";
 import { one } from "../rows.js";
-import {
-  assertInputs,
-  panelFor,
-  quoteOne,
-  rankOutcomes,
-  type ProviderQuoter,
-  type QuoteOutcome
-} from "../engines/rating.js";
+import type { ProviderQuoter, QuoteOutcome } from "../engines/rating.js";
+import { runShop } from "../engines/shop.js";
 import { decideOffer, markSurfaced, proposeOffers } from "../engines/nbo.js";
 import type { App } from "../env.js";
 
@@ -80,108 +74,39 @@ distRoutes.post("/quote-requests/shop", async (c) => {
         if (!purposes.dataSharing) throw badRequest("consent does not permit sharing with providers");
       }
 
-      const panel = await panelFor(ctx, {
-        productId: input.productId,
-        channelKey: channel.key,
-        at: ctx.now
-      });
-      if (!panel.length) throw conflict("no active offerings on the panel for this product");
-      assertInputs(panel, input.inputs);
-
-      const request: typeof schema.distQuoteRequests.$inferInsert = {
-        id: newId("qr", ctx.now),
-        tenantId: ctx.tenantId,
-        caseId: input.caseId ?? null,
-        customerId: input.customerId ?? null,
-        channelId: input.channelId,
-        productId: input.productId,
-        inputsJson: JSON.stringify(input.inputs),
-        consentId: input.consentId ?? null,
-        fanoutCount: panel.length,
-        respondedCount: 0,
-        currency: input.currency,
-        state: "fanned_out",
-        expiresAt: ctx.now + 7 * 86_400_000,
-        createdAt: ctx.now,
-        updatedAt: ctx.now
-      };
-      await ctx.db.insert(schema.distQuoteRequests).values(request);
-
-      // Providers are independent, so the shop is as slow as the slowest one,
-      // not the sum. quoteOne never rejects, so no allSettled is needed.
-      const outcomes = await Promise.all(
-        panel.map((entry) => quoteOne(ctx, entry, input.inputs, quoterFor(c)))
-      );
-      const ranked = await rankOutcomes(ctx, outcomes, { channelId: input.channelId });
-
-      const rows: (typeof schema.distQuoteResponses.$inferSelect)[] = [];
-      for (const o of ranked) {
-        const row: typeof schema.distQuoteResponses.$inferInsert = {
-          id: newId("qs", ctx.now),
+      const { request, responses } = await runShop(ctx, {
+        request: {
+          id: newId("qr", ctx.now),
           tenantId: ctx.tenantId,
-          requestId: request.id,
-          offeringId: o.offeringId,
-          providerId: o.providerId,
-          state: o.state,
-          premiumMinor: o.premiumMinor ?? null,
-          taxMinor: o.taxMinor,
-          feesMinor: o.feesMinor,
-          currency: o.currency,
-          commissionPpm: o.commission?.basePpm ?? null,
-          commissionMinor: o.commission?.grossMinor ?? null,
-          channelCommissionMinor: o.commission?.channelMinor ?? null,
-          coverageJson: o.coverage ? JSON.stringify(o.coverage) : null,
-          priceRank: o.priceRank ?? null,
-          valueScore: o.valueScore ?? null,
-          rationaleKey: o.priceRank === 1 ? "quote.rationale.cheapest" : null,
-          declineReason: o.declineReason ?? null,
-          latencyMs: o.latencyMs,
-          validUntil: o.validUntil ?? null,
+          caseId: input.caseId ?? null,
+          customerId: input.customerId ?? null,
+          channelId: input.channelId,
+          productId: input.productId,
+          inputsJson: JSON.stringify(input.inputs),
+          consentId: input.consentId ?? null,
+          currency: input.currency,
+          expiresAt: ctx.now + 7 * 86_400_000,
           createdAt: ctx.now,
           updatedAt: ctx.now
-        };
-        await ctx.db.insert(schema.distQuoteResponses).values(row);
-        rows.push(row as typeof schema.distQuoteResponses.$inferSelect);
-      }
-
-      const best = rows
-        .filter((r) => r.state === "quoted")
-        .sort((a, b) => (a.priceRank ?? 99) - (b.priceRank ?? 99))[0];
-      const responded = rows.filter((r) => r.state === "quoted" || r.state === "declined").length;
-
-      await ctx.db
-        .update(schema.distQuoteRequests)
-        .set({
-          respondedCount: responded,
-          bestOfferingId: best?.offeringId ?? null,
-          bestPremiumMinor: best?.premiumMinor ?? null,
-          state: responded === panel.length ? "complete" : "fanned_out",
-          updatedAt: ctx.now
-        })
-        .where(and(eq(schema.distQuoteRequests.tenantId, ctx.tenantId), eq(schema.distQuoteRequests.id, request.id)));
+        },
+        channelKey: channel.key,
+        inputs: input.inputs,
+        quoter: quoterFor(c)
+      });
 
       await audit(ctx, {
         action: "dist.quote_request.shop",
         subjectRef: request.id,
-        after: { fanout: panel.length, quoted: rows.filter((r) => r.state === "quoted").length }
+        after: { fanout: request.fanoutCount, quoted: responses.filter((r) => r.state === "quoted").length }
       });
       await emit(ctx, {
         module: "dist",
         type: "dist.quote_request.fanned_out",
         subject: request.id,
-        data: { productId: input.productId, channelId: input.channelId, fanout: panel.length }
+        data: { productId: input.productId, channelId: input.channelId, fanout: request.fanoutCount }
       });
 
-      return {
-        request: {
-          ...request,
-          respondedCount: responded,
-          bestOfferingId: best?.offeringId ?? null,
-          bestPremiumMinor: best?.premiumMinor ?? null,
-          state: responded === panel.length ? "complete" : "fanned_out"
-        },
-        responses: rows
-      };
+      return { request, responses };
     }),
     201
   );
