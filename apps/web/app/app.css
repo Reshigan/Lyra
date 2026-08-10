@@ -86,27 +86,36 @@
     animation: var(--animate-rise);
   }
 
-  /* Six is the whole effect: past that a page reads as slow, not cinematic. */
+  /* docs/15 §3: "entrance stagger 20ms per item, max 8, then group". Eight
+     items at 20ms is 160ms of lead — the whole page still lands inside one
+     `--duration-slow`, so it reads as one arrival rather than a queue. */
   .lyra-stagger > * {
     animation: var(--animate-rise);
   }
   .lyra-stagger > *:nth-child(1) {
-    animation-delay: 40ms;
+    animation-delay: 20ms;
   }
   .lyra-stagger > *:nth-child(2) {
-    animation-delay: 80ms;
+    animation-delay: 40ms;
   }
   .lyra-stagger > *:nth-child(3) {
-    animation-delay: 120ms;
+    animation-delay: 60ms;
   }
   .lyra-stagger > *:nth-child(4) {
-    animation-delay: 160ms;
+    animation-delay: 80ms;
   }
   .lyra-stagger > *:nth-child(5) {
-    animation-delay: 200ms;
+    animation-delay: 100ms;
   }
-  .lyra-stagger > *:nth-child(n + 6) {
-    animation-delay: 240ms;
+  .lyra-stagger > *:nth-child(6) {
+    animation-delay: 120ms;
+  }
+  .lyra-stagger > *:nth-child(7) {
+    animation-delay: 140ms;
+  }
+  /* Item 8 onward arrive together — the "then group" half of the rule. */
+  .lyra-stagger > *:nth-child(n + 8) {
+    animation-delay: 160ms;
   }
 
   /* Route-transition cue: a slim accent bar sweeps across the viewport top
@@ -130,6 +139,58 @@
     width: 33%;
     background-color: var(--accent);
     animation: nav-sweep 1.1s var(--ease-out) infinite;
+  }
+}
+
+/* ---- View transitions (docs/15 §3) ------------------------------------
+   The spec asks for shared-element transitions between list and detail. The
+   shared elements here are the frame, not a single flying thumbnail: the
+   header, rail and status strip are named so the browser holds them fixed
+   while only the workspace under them changes. Naming them is what stops the
+   default whole-page crossfade from dissolving the chrome too — a frame that
+   blinks on every click is the thing that makes an app feel cheap.
+
+   Nothing fires unless a navigation opts in with React Router's
+   `viewTransition` prop, so this block is inert on links that don't. */
+::view-transition-group(lyra-chrome),
+::view-transition-group(lyra-rail),
+::view-transition-group(lyra-status) {
+  animation: none;
+}
+
+::view-transition-old(lyra-workspace) {
+  animation: fade var(--duration-fast) var(--ease-settle) reverse;
+}
+
+/* The incoming workspace only fades: `.lyra-stagger` on the same element
+   already supplies the rise, and running both turns one arrival into two. */
+::view-transition-new(lyra-workspace) {
+  animation: var(--animate-fade);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* docs/15 §3: "reduced-motion full parity — motion is garnish, never
+     information". A view transition carries no information, so it is simply
+     not run; the new page is already correct without it. */
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
+
+@layer components {
+  .lyra-vt-chrome {
+    view-transition-name: lyra-chrome;
+  }
+  .lyra-vt-rail {
+    view-transition-name: lyra-rail;
+  }
+  .lyra-vt-status {
+    view-transition-name: lyra-status;
+  }
+  .lyra-vt-workspace {
+    view-transition-name: lyra-workspace;
   }
 }
 

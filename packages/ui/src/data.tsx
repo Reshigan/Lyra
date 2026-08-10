@@ -440,7 +440,23 @@ export function Sparkline({ values, label, tone = "accent", className }: Sparkli
       aria-label={label}
       className={cn("h-7 w-full", className)}
     >
-      <polyline points={points} fill="none" stroke={stroke} strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+      {/* docs/15 §3: "charts draw in 400ms once per mount, never on data
+          refresh". A CSS animation runs when the element mounts; React reuses
+          this same <polyline> when `values` changes, so a refresh updates the
+          points without replaying the draw — the rule falls out of the DOM
+          rather than needing a guard. `pathLength` normalises every shape to
+          100 units so one dash length fits any series. */}
+      <polyline
+        points={points}
+        fill="none"
+        stroke={stroke}
+        strokeWidth="1.5"
+        vectorEffect="non-scaling-stroke"
+        pathLength={100}
+        strokeDasharray={100}
+        className="motion-safe:animate-chart-draw"
+        style={{ "--draw-length": 100 } as React.CSSProperties}
+      />
     </svg>
   );
 }

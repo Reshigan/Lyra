@@ -261,9 +261,17 @@
   --shadow-glow: 0 0 0 1px var(--ink-600), 0 8px 24px #000c;
   --shadow-raised: 0 0 0 1px var(--ink-600), 0 24px 80px #000c;
 
-  --duration-fast: 150ms;
-  --duration-slow: 250ms;
+  /* docs/15 §3: 120ms small state change, 180ms medium, 240ms orchestrated. */
+  --duration-fast: 120ms;
+  --duration-medium: 180ms;
+  --duration-slow: 240ms;
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* docs/15 §3 names two curves. `--ease-observatory` is the entrance curve
+     and is the same shape as `--ease-out` — kept as its own name because the
+     spec refers to it by name and the two could diverge. `--ease-settle` is
+     for layout shifts: slower to leave, decisive on arrival. */
+  --ease-observatory: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-settle: cubic-bezier(0.3, 0.7, 0, 1);
 
   /* Density (docs/07 §1): comfortable default, compact for ops screens */
   --control-height: 40px; /* hit target ≥ 40px (docs/07 §5) */
@@ -704,13 +712,21 @@
   --shadow-elev2: var(--elev2);
 
   --ease-out: var(--ease-out);
+  --ease-observatory: var(--ease-observatory);
+  --ease-settle: var(--ease-settle);
   --animate-twinkle: twinkle 2.6s var(--ease-out) infinite;
   --animate-pulse: pulse 2.6s var(--ease-out) infinite;
   --animate-orbit-spin: orbit-spin 1.1s linear infinite;
-  --animate-rise: rise 420ms var(--ease-out) both;
+  --animate-rise: rise var(--duration-slow) var(--ease-observatory) both;
+  /* Hero artwork (the login ring) draws slowly enough to be watched. Charts
+     use `--animate-chart-draw` — docs/15 §3 fixes those at 400ms. */
   --animate-draw: draw 900ms var(--ease-out) both;
+  --animate-chart-draw: draw 400ms var(--ease-observatory) both;
   --animate-drift: drift 60s linear infinite;
   --animate-fade: fade var(--duration-fast) var(--ease-out) both;
+  /* A changed figure pulses once and stops. docs/15 §3: "deltas pulse once,
+     never loop" — hence no `infinite` here, unlike `--animate-pulse`. */
+  --animate-tick: tick var(--duration-slow) var(--ease-settle) 1;
 }
 
 /* Motion — docs/01 §5. Reduced motion honoured. */
@@ -779,6 +795,18 @@
   }
   to {
     opacity: 1;
+  }
+}
+
+/* A figure that just changed lifts a hair and brightens, once. Deliberately
+   tiny: at this size it reads as "that number moved", not as an animation. */
+@keyframes tick {
+  0% {
+    transform: translate3d(0, 2px, 0);
+    color: var(--vega-500);
+  }
+  100% {
+    transform: none;
   }
 }
 

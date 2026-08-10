@@ -149,7 +149,11 @@ export function Shell({ t, nav, brand, tenantName, actorName, children }: ShellP
         {t("app.skipToContent")}
       </a>
 
-      <header className="sticky top-0 z-30 flex h-[50px] items-center gap-2 border-b border-border bg-surface-1/95 px-3 backdrop-blur-sm sm:gap-3 sm:px-4">
+      {/* Opaque, not glass: docs/15 §3 bans blur outright — depth here comes
+          from the surface being a step lighter than the field behind it, plus
+          the hairline. `lyra-vt-chrome` holds the bar still while the workspace
+          under it transitions, so navigation moves the content, not the frame. */}
+      <header className="lyra-vt-chrome sticky top-0 z-30 flex h-[50px] items-center gap-2 border-b border-border bg-surface-1 px-3 sm:gap-3 sm:px-4">
         <div className="flex shrink-0 items-center gap-2">
           <NavLink
             to="/"
@@ -251,7 +255,7 @@ export function Shell({ t, nav, brand, tenantName, actorName, children }: ShellP
 
         <nav
           aria-label={t("nav.primary")}
-          className="hidden md:sticky md:top-[50px] md:flex md:h-[calc(100vh-50px)] md:w-60 md:shrink-0 md:flex-col md:gap-0.5 md:overflow-y-auto md:border-e md:border-border md:p-3"
+          className="lyra-vt-rail hidden md:sticky md:top-[50px] md:flex md:h-[calc(100vh-50px)] md:w-60 md:shrink-0 md:flex-col md:gap-0.5 md:overflow-y-auto md:border-e md:border-border md:p-3"
         >
           {groups.map((group, i) => (
             <div key={group.heading?.href ?? group.items[0]?.href ?? i} className="mb-1">
@@ -275,7 +279,7 @@ export function Shell({ t, nav, brand, tenantName, actorName, children }: ShellP
           key={pathname}
           id="workspace"
           tabIndex={-1}
-          className="lyra-stagger mx-auto flex min-w-0 w-full max-w-[100rem] flex-1 flex-col gap-4 p-4 sm:p-6"
+          className="lyra-vt-workspace lyra-stagger mx-auto flex min-w-0 w-full max-w-[100rem] flex-1 flex-col gap-4 p-4 sm:p-6"
         >
           {/* Every screen carries the hue of the workspace it belongs to — the
               same 2px the rail draws beside the current item. Drawn once, here,
@@ -295,7 +299,7 @@ export function Shell({ t, nav, brand, tenantName, actorName, children }: ShellP
           is already announced by the lockup and the nav's current item. */}
       <footer
         aria-hidden="true"
-        className="sticky bottom-0 z-20 hidden h-7 items-center gap-2 border-t border-border bg-surface-1/95 px-4 font-mono text-11 text-subtle backdrop-blur-sm sm:flex"
+        className="lyra-vt-status sticky bottom-0 z-20 hidden h-7 items-center gap-2 border-t border-border bg-surface-1 px-4 font-mono text-11 text-subtle sm:flex"
       >
         <span className="truncate">{productName}</span>
         <span className="text-border-strong">/</span>
@@ -332,6 +336,10 @@ function NavItemLink({ item, t, nested }: { item: NavItem; t: Translate; nested?
     <NavLink
       to={item.href}
       end={item.href === "/"}
+      // docs/15 §3: navigation runs through a view transition, so the frame
+      // holds still and only the workspace changes. Browsers without the API
+      // ignore this and navigate normally.
+      viewTransition
       data-icon={item.icon}
       className={({ isActive }) =>
         [

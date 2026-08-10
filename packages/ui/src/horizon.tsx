@@ -142,6 +142,34 @@ export interface FigureProps extends Omit<React.ComponentPropsWithRef<"p">, "chi
  * Every number in Horizon is mono and tabular, so a column of them aligns
  * without a table and a changing value does not shift its neighbours.
  */
+/**
+ * Replays a one-shot animation whenever the rendered value changes.
+ *
+ * docs/15 §3: "deltas pulse once, never loop". A CSS animation only fires on
+ * mount, and React keeps this node across a re-render, so the animation has to
+ * be removed and re-added to play again — hence the two-pass ref dance rather
+ * than a class toggle, which the browser would coalesce into no change at all.
+ *
+ * ponytail: no count-up interpolation. Every figure on screen comes from a
+ * route loader, so values arrive in one step, not as a stream — there is
+ * nothing to count through. Add the interpolation when a live socket exists.
+ */
+function useTickOnChange(value: React.ReactNode) {
+  const ref = React.useRef<HTMLSpanElement>(null);
+  const previous = React.useRef(value);
+  React.useEffect(() => {
+    const node = ref.current;
+    if (!node || Object.is(previous.current, value)) return;
+    previous.current = value;
+    node.classList.remove("motion-safe:animate-tick");
+    // Reading layout between the two writes is what makes the browser treat
+    // this as a restart instead of collapsing it to a no-op.
+    void node.offsetWidth;
+    node.classList.add("motion-safe:animate-tick");
+  }, [value]);
+  return ref;
+}
+
 export function Figure({
   value,
   unit,
@@ -151,9 +179,13 @@ export function Figure({
   className,
   ...props
 }: FigureProps) {
+  const ref = useTickOnChange(value);
   return (
     <p className={cn("flex items-baseline gap-1.5 text-start", className)} {...props}>
-      <span className={cn("font-mono font-medium tabular-nums text-text", figureSizes[size])}>
+      <span
+        ref={ref}
+        className={cn("font-mono font-medium tabular-nums text-text", figureSizes[size])}
+      >
         {value}
       </span>
       {unit ? <span className="font-ui text-13 text-subtle">{unit}</span> : null}
