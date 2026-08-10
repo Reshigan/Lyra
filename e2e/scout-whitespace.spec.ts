@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { goto, loginAsScoutLead } from "./fixtures.js";
+import { chooseOption, goto, loginAsScoutLead } from "./fixtures.js";
 
 // J-P1 "the pivot" (docs/06-roles-and-journeys.md): a whitespace candidate
 // moves toward promotion as evidence firms up. Whitespace has no create (it's
@@ -36,15 +36,9 @@ test("J-P1 a whitespace candidate is validated and given an owner @journey:J-P1 
   const whitespaceId = recordUrl.split("/").pop()!;
 
   // Status renders as a Radix combobox (packages/ui/src/primitives.tsx Select),
-  // not a native <select> — selectOption doesn't apply.
-  // Radix Select's listbox repositions itself after Playwright's pre-click
-  // stability check — under CPU contention (parallel workers) the click can
-  // land on stale coordinates, register as an outside click, and close the
-  // listbox before landing on the option. Retry the open+select as a unit.
-  await expect(async () => {
-    await page.getByLabel("Status", { exact: true }).click();
-    await page.getByRole("option", { name: "Validated", exact: true }).click({ timeout: 2000 });
-  }).toPass({ timeout: 15000 });
+  // not a native <select> — selectOption doesn't apply; chooseOption picks it
+  // from the keyboard rather than racing the popper (e2e/fixtures.ts).
+  await chooseOption(page, "Status", "Validated");
   await page.getByLabel("Owner", { exact: true }).fill("tariq.mansour");
   await page.getByLabel("Promoted", { exact: true }).fill("2026-08-01T09:00");
   // Wait for the POST itself, not just the click: under a full parallel run the
@@ -72,10 +66,7 @@ test("J-P1 a whitespace candidate is validated and given an owner @journey:J-P1 
 
   // Retry the same edit; it now goes through.
   await goto(page, recordUrl);
-  await expect(async () => {
-    await page.getByLabel("Status", { exact: true }).click();
-    await page.getByRole("option", { name: "Validated", exact: true }).click({ timeout: 2000 });
-  }).toPass({ timeout: 15000 });
+  await chooseOption(page, "Status", "Validated");
   await page.getByLabel("Owner", { exact: true }).fill("tariq.mansour");
   await page.getByLabel("Promoted", { exact: true }).fill("2026-08-01T09:00");
   // .click() only waits for the click event, not the Form's async action and

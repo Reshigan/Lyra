@@ -5,7 +5,7 @@ import { makeLibsqlDb } from "@lyra/db/libsql";
 import type { Ctx } from "@lyra/core";
 import { sweepRenewals } from "../apps/api/src/engines/renewals.js";
 import { LIBSQL_URL, TENANT_SLUG } from "./env.js";
-import { goto, loginAsAxisLead, loginAsOrbitAgent, loginAsOrbitRetention } from "./fixtures.js";
+import { chooseOption, goto, loginAsAxisLead, loginAsOrbitAgent, loginAsOrbitRetention } from "./fixtures.js";
 
 // J-C2 "help on WhatsApp" (docs/06-roles-and-journeys.md): a customer message
 // lands, the AI drafts a reply as ghost text, the agent approves it in one
@@ -26,13 +26,9 @@ test("J-C2 an agent approves the AI's suggested reply and it queues, not sends @
   const customerId = `cus-e2e-jc2-${Date.now()}`;
   await goto(page, "/orbit/conversations");
   await page.getByText("New — Conversations").click();
-  // Radix combobox, not a native <select> — its listbox can reposition after
-  // Playwright's pre-click stability check, so retry the open+select as a unit
-  // (same flake fix as handover.spec.ts).
-  await expect(async () => {
-    await page.getByLabel("Channel*", { exact: true }).click();
-    await page.getByRole("option", { name: "WhatsApp", exact: true }).click({ timeout: 2000 });
-  }).toPass({ timeout: 15000 });
+  // Radix combobox, not a native <select> — chooseOption picks it from the
+  // keyboard rather than racing the popper (e2e/fixtures.ts).
+  await chooseOption(page, "Channel*", "WhatsApp");
   await page.getByLabel("Customer", { exact: true }).fill(customerId);
   await page.getByRole("button", { name: "Create", exact: true }).click();
 
@@ -45,10 +41,7 @@ test("J-C2 an agent approves the AI's suggested reply and it queues, not sends @
   await goto(page, "/orbit/messages");
   await page.getByText("New — Messages").click();
   await page.getByLabel("Conversation*", { exact: true }).fill(conversationId);
-  await expect(async () => {
-    await page.getByLabel("Sender*", { exact: true }).click();
-    await page.getByRole("option", { name: "Customer", exact: true }).click({ timeout: 2000 });
-  }).toPass({ timeout: 15000 });
+  await chooseOption(page, "Sender*", "Customer");
   await page.getByLabel("Message*", { exact: true }).fill("Is my windscreen covered?");
   await page.getByRole("button", { name: "Create", exact: true }).click();
   // Message content is PII-masked in this list view ("[redacted]"), so match
@@ -65,10 +58,7 @@ test("J-C2 an agent approves the AI's suggested reply and it queues, not sends @
   // (apps/web/app/routes/conversation.tsx:175-207).
   const conversationInput = page.getByLabel("Conversation*", { exact: true });
   await conversationInput.fill(conversationId);
-  await expect(async () => {
-    await page.getByLabel("Sender*", { exact: true }).click();
-    await page.getByRole("option", { name: "AI agent", exact: true }).click({ timeout: 2000 });
-  }).toPass({ timeout: 15000 });
+  await chooseOption(page, "Sender*", "AI agent");
   await page.getByLabel("Message*", { exact: true }).fill(draftContent);
   await page.getByRole("button", { name: "Create", exact: true }).click();
   // Unlike the first create, nothing here waits on the result before this test
@@ -185,10 +175,7 @@ test("J-C3 retention proposes and closes a renewal; surfacing needs axis.lead @j
   // validation. "Accepted" is the real one-tap close this UI offers.
   await loginAsOrbitRetention(page);
   await goto(page, `/orbit/renewals/${renewalId}`);
-  await expect(async () => {
-    await page.getByLabel("State", { exact: true }).click();
-    await page.getByRole("option", { name: "Accepted", exact: true }).click({ timeout: 2000 });
-  }).toPass({ timeout: 15000 });
+  await chooseOption(page, "State", "Accepted");
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
 
   await expect(page.getByText("Accepted", { exact: true }).first()).toBeVisible();

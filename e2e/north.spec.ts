@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { expectNoA11yViolations } from "./a11y.js";
-import { goto, loginAsNorthExec } from "./fixtures.js";
+import { chooseOption, goto, loginAsNorthExec } from "./fixtures.js";
 
 // J-E1 "The 7am read (mobile)" (docs/06-roles-and-journeys.md §Executive): a
 // north.exec opens the already-published briefing on a phone, reads it in
@@ -34,8 +34,7 @@ test("J-E1 exec reads the morning briefing on a phone and assigns an action on t
   await expect(anomalyRow).toBeVisible();
   await anomalyRow.getByRole("link", { name: "cac_per_policy" }).click();
 
-  await page.getByLabel("State", { exact: true }).click();
-  await page.getByRole("option", { name: "Action created", exact: true }).click();
+  await chooseOption(page, "State", "Action created");
   await page.getByLabel("Linked action", { exact: true }).fill("J-E1-follow-up");
   await page.getByRole("button", { name: "Save changes" }).click();
   // A plain field edit (as opposed to a declared action, record.tsx line 141)

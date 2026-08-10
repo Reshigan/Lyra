@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { goto, loginAsOrbitAgent } from "./fixtures.js";
+import { chooseOption, goto, loginAsOrbitAgent } from "./fixtures.js";
 
 // J-X1 "handover catch" (docs/06-roles-and-journeys.md:57): "AI escalates
 // mid-chat -> human console opens with summary + suggested action -> resolve
@@ -70,15 +70,10 @@ test("J-X1 an agent hands a conversation to a teammate with a readable summary @
   const externalRef = `e2e-jx1-${Date.now()}`;
   await goto(page, "/orbit/conversations");
   await page.getByText("New — Conversations").click();
-  // Channel renders as a Radix combobox (packages/ui/src/primitives.tsx
-  // Select), not a native <select> — selectOption doesn't apply. Its listbox
-  // repositions itself after Playwright's pre-click stability check — under
-  // parallel load the click can land on stale coordinates and close the
-  // listbox before landing on the option. Retry the open+select as a unit.
-  await expect(async () => {
-    await page.getByLabel("Channel*", { exact: true }).click();
-    await page.getByRole("option", { name: "Web", exact: true }).click({ timeout: 2000 });
-  }).toPass({ timeout: 15000 });
+  // A Radix combobox (packages/ui/src/primitives.tsx Select), not a native
+  // <select> — selectOption doesn't apply; chooseOption picks it the keyboard
+  // way, which does not race the popper (e2e/fixtures.ts).
+  await chooseOption(page, "Channel*", "Web");
   await page.getByLabel("External reference", { exact: true }).fill(externalRef);
   await page.getByRole("button", { name: "Create", exact: true }).click();
 

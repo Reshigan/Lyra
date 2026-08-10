@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { confirmAction, goto, loginAsAxisAgent, loginAsAxisLead, loginAsFinanceController, loginAsTenantAdmin } from "./fixtures.js";
+import { chooseOption, confirmAction, goto, loginAsAxisAgent, loginAsAxisLead, loginAsFinanceController, loginAsTenantAdmin } from "./fixtures.js";
 
 // packages/ui/src/primitives.tsx's Select has no scroll-button affordance, so
 // any option outside the current viewport (a long catalogue, or one on the
@@ -42,8 +42,7 @@ test("J-O1 axis agent filters the exceptions queue and clears a failed case @jou
   const ref = `J-O1-${Date.now()}`;
   await page.getByText("New — Cases").click();
   await page.getByLabel("Reference*", { exact: true }).fill(ref);
-  await page.getByLabel("Kind*", { exact: true }).click();
-  await page.getByRole("option", { name: "Quote", exact: true }).click();
+  await chooseOption(page, "Kind*", "Quote");
   // The click resolves as soon as the event fires, not once the submission
   // completes; navigating away immediately (below) cancels the in-flight
   // request. `waitForLoadState("networkidle")` cannot cover this — a hydrated
@@ -123,9 +122,15 @@ test("J-O3 finance controller runs a reconciliation and decides an exception wit
   await page.getByLabel("Statement lines*", { exact: true }).fill(lines);
   await page.getByRole("button", { name: "Start run" }).click();
   await confirmAction(page);
+  // The run itself matches every statement line against the ledger inside the
+  // POST, so on a two-core CI runner this one form round trip can outlast the
+  // 15s assertion budget — it did, twice, in run 31419046722. Wait on the
+  // outcome, not on the budget: a genuinely broken run still fails here.
+  const runLink = page.getByRole("link", { name: "Run", exact: true });
+  await expect(runLink).toBeVisible({ timeout: 60_000 });
   await expect(page.getByText(/started/)).toBeVisible();
 
-  await page.getByRole("link", { name: "Run", exact: true }).click();
+  await runLink.click();
 
   // A tolerance match is auto-proposed, never auto-confirmed — it is the
   // exception a person still has to decide, with a reason recorded.

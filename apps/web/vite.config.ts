@@ -14,7 +14,12 @@ export default defineConfig({
   // "localhost" resolves to ::1 first on this box, so the dev server only ever
   // binds IPv6 — Playwright's webServer health check hits 127.0.0.1 explicitly
   // (e2e/env.ts) and times out against a port nothing IPv4 is listening on.
-  server: { host: "127.0.0.1" },
+  // Vite compiles a route's module graph on first request, so the first visit
+  // to a cold screen costs seconds — which on a two-core CI runner is what
+  // pushed J-M2/J-M3 past their budgets inside `goto` (playwright.config.ts).
+  // Warming the route files at server start moves that cost off the clock of
+  // whichever test happened to arrive first.
+  server: { host: "127.0.0.1", warmup: { clientFiles: ["./app/routes/*.tsx", "./app/root.tsx"] } },
   environments: {
     client: { build: { outDir: "build/client" } },
     ssr: { build: { outDir: "build/server" } }

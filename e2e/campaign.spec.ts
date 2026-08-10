@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { goto, loginAsComplianceOfficer, loginAsScoutLead, loginAsSignalLead } from "./fixtures.js";
+import { chooseOption, goto, loginAsComplianceOfficer, loginAsScoutLead, loginAsSignalLead } from "./fixtures.js";
 
 // J-M1 "campaign in a day" (docs/06-roles-and-journeys.md:66-67): "brief -> 20
 // ar/en variants -> compliance lane -> publish -> cockpit shows CAC by
@@ -69,14 +69,10 @@ test("J-M1 a growth lead authors an audience and campaign, then launches it (aut
   await goto(page, "/signal/campaigns");
   await page.getByText("New — Campaigns").click();
   await page.getByLabel("Name*", { exact: true }).fill(campaignName);
-  // Objective is a Radix combobox (packages/ui/src/primitives.tsx Select), not
-  // a native <select> — selectOption doesn't apply. Its listbox repositions
-  // after Playwright's pre-click stability check, so open+select is retried as
-  // a unit under load (same idiom as scout-whitespace.spec.ts).
-  await expect(async () => {
-    await page.getByLabel("Objective*", { exact: true }).click();
-    await page.getByRole("option", { name: "Renewal", exact: true }).click({ timeout: 2000 });
-  }).toPass({ timeout: 15000 });
+  // A Radix combobox (packages/ui/src/primitives.tsx Select), not a native
+  // <select> — selectOption doesn't apply; chooseOption picks it the keyboard
+  // way, which does not race the popper (e2e/fixtures.ts).
+  await chooseOption(page, "Objective*", "Renewal");
   await page.getByLabel("Audience", { exact: true }).fill(audienceId);
   await page.getByLabel("Channels*", { exact: true }).fill(JSON.stringify(["email", "whatsapp"]));
   await page.getByLabel("Budget*", { exact: true }).fill(JSON.stringify({ dailyMinor: 50_000 }));
@@ -97,10 +93,7 @@ test("J-M1 a growth lead authors an audience and campaign, then launches it (aut
   // Going live: signal.campaign_launch sits on this tenant's auto_approve
   // allowlist, so gate() clears the write immediately — no trip through
   // /approvals — but crud.ts's update handler audits every write regardless.
-  await expect(async () => {
-    await page.getByLabel("State", { exact: true }).click();
-    await page.getByRole("option", { name: "Live", exact: true }).click({ timeout: 2000 });
-  }).toPass({ timeout: 15000 });
+  await chooseOption(page, "State", "Live");
   // record.tsx's edit <Form> submit only waits for the click event, not the
   // async action/revalidation — React Router v7's client fetcher posts to
   // "<path>.data" (not the bare path); wait for that response before reading

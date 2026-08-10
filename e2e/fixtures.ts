@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import { PERSONAS } from "./env.js";
 
 /**
@@ -114,4 +114,25 @@ export async function loginAsOrbitRetention(page: Page): Promise<void> {
  */
 export async function confirmAction(page: Page): Promise<void> {
   await page.getByRole("dialog").getByRole("button", { name: "Continue", exact: true }).click();
+}
+
+/**
+ * Pick a value in a `Select` (packages/ui/src/primitives.tsx) by its field
+ * label. Radix renders the menu in a portal that its popper keeps
+ * re-positioning while the page settles, and on a loaded CI runner Playwright
+ * can spend a whole test budget waiting for an option to be "stable" — J-E1
+ * died that way (`element is not stable` / `element was detached`). Radix's own
+ * typeahead selects from the keyboard, which has no actionability check to
+ * lose, and exercises the same code path a keyboard user takes (docs/13 §8).
+ */
+export async function chooseOption(page: Page, label: string, optionText: string): Promise<void> {
+  const trigger = page.getByLabel(label, { exact: true });
+  await trigger.click();
+  await expect(page.getByRole("option", { name: optionText, exact: true })).toBeVisible();
+  // Radix's typeahead reads one keydown at a time; typed with no delay the
+  // whole string lands in a single tick and nothing gets highlighted, so Enter
+  // would close the menu on the already-selected row.
+  await page.keyboard.type(optionText, { delay: 30 });
+  await page.keyboard.press("Enter");
+  await expect(trigger).toContainText(optionText);
 }
