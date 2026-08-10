@@ -257,7 +257,7 @@ interface AiRun {
  * is a failure, and the difference has to survive to the screen: an empty panel
  * and a broken one look identical to a reader unless one of them says so.
  */
-type Panel<T> = { state: "ok"; data: T } | { state: "denied" } | { state: "error" };
+type Panel<T> = { state: "ok"; data: T } | { state: "denied" } | { state: "error"; requestId?: string };
 
 /* ------------------------------------------------------------------ loader */
 
@@ -316,7 +316,8 @@ async function panel<T>(permitted: boolean, fetch: () => Promise<T>): Promise<Pa
     return { state: "ok", data: await fetch() };
   } catch (error) {
     if (!(error instanceof ApiError)) throw error;
-    return error.status === 403 || error.status === 404 ? { state: "denied" } : { state: "error" };
+    if (error.status === 403 || error.status === 404) return { state: "denied" };
+    return error.requestId ? { state: "error", requestId: error.requestId } : { state: "error" };
   }
 }
 
@@ -554,7 +555,11 @@ export default function Home() {
           {label("approvals.title")}
         </h2>
         {loaded.approvals.state === "error" ? (
-          <PanelFailure label={label} />
+          <PanelFailure
+            label={label}
+            t={t}
+            {...(loaded.approvals.requestId ? { requestId: loaded.approvals.requestId } : {})}
+          />
         ) : loaded.approvals.state === "ok" && loaded.approvals.data.length ? (
           loaded.approvals.data.map((approval) => (
             <ApprovalStrip
@@ -608,6 +613,7 @@ export default function Home() {
           title={label("activity.title")}
           panel={loaded.activity}
           label={label}
+          t={t}
           className="lg:col-span-2"
           empty={label("activity.empty")}
           render={(rows) => (
@@ -632,6 +638,7 @@ export default function Home() {
           title={label("notifications.title")}
           panel={loaded.notifications}
           label={label}
+          t={t}
           empty={label("notifications.empty")}
           render={(notes) => (
             <ul aria-label={label("notifications.label")} className="flex flex-col gap-4">
@@ -675,6 +682,7 @@ export default function Home() {
           title={label("areas.title")}
           panel={loaded.areas}
           label={label}
+          t={t}
           className="lg:col-span-2"
           empty={label("areas.empty")}
           render={(rows) => (
@@ -725,6 +733,7 @@ export default function Home() {
           title={label("runs.title")}
           panel={loaded.runs}
           label={label}
+          t={t}
           empty={label("runs.empty")}
           {...(offered.has("/admin")
             ? {
@@ -820,6 +829,7 @@ function PanelCard<T>({
   title,
   panel,
   label,
+  t,
   empty,
   render,
   className,
@@ -828,6 +838,7 @@ function PanelCard<T>({
   title: string;
   panel: Panel<T[]>;
   label: Label;
+  t: (key: string, vars?: Record<string, string>) => string;
   empty: string;
   render: (rows: T[]) => React.ReactNode;
   className?: string;
@@ -837,7 +848,11 @@ function PanelCard<T>({
   return (
     <Card title={title} {...(className ? { className } : {})} {...(actions ? { actions } : {})}>
       {panel.state === "error" ? (
-        <PanelFailure label={label} />
+        <PanelFailure
+          label={label}
+          t={t}
+          {...(panel.requestId ? { requestId: panel.requestId } : {})}
+        />
       ) : panel.data.length ? (
         render(panel.data)
       ) : (
@@ -848,10 +863,19 @@ function PanelCard<T>({
 }
 
 /** A panel that broke says so, and offers the one action that can fix it. */
-function PanelFailure({ label }: { label: Label }) {
+function PanelFailure({
+  label,
+  t,
+  requestId
+}: {
+  label: Label;
+  t: (key: string, vars?: Record<string, string>) => string;
+  requestId?: string;
+}) {
   return (
     <div role="alert" className="flex flex-col items-start gap-2">
       <p className="font-ui text-13 text-muted">{label("panel.failed")}</p>
+      {requestId ? <p className="font-mono text-12 text-muted">{t("error.requestId", { id: requestId })}</p> : null}
       <Link to="/" reloadDocument className="font-ui text-12 text-accent underline">
         {label("panel.retry")}
       </Link>
