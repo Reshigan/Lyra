@@ -76,3 +76,103 @@ export function pickAssignee(
 
 /** An agent idle longer than this (no presence heartbeat) is treated as gone: sweepRouting reassigns their open conversations. */
 export const PRESENCE_STALE_MS = 15 * 60_000;
+
+import { eq } from "drizzle-orm";
+import { schema } from "@lyra/db";
+import { scoped, type Ctx } from "@lyra/core";
+
+async function defaultTeamId(ctx: Ctx): Promise<string | null> {
+  const [team] = await ctx.db
+    .select({ id: schema.orbitTeams.id })
+    .from(schema.orbitTeams)
+    .where(scoped(ctx, schema.orbitTeams, eq(schema.orbitTeams.isDefault, true)));
+  return team?.id ?? null;
+}
+
+/**
+ * Route and assign one conversation, stamping its SLA clock. Called right
+ * after a conversation is created (there is no bot->human handover step in
+ * this codebase to hook into instead) and again by sweepRouting when a
+ * breach or an absent agent forces a re-route.
+ *
+ * ponytail: a tenant with no default team configured yet gets a no-op, not a
+ * throw — every existing inbound-webhook test seeds zero orbit_teams rows,
+ * and this must not break inbound processing for a tenant that hasn't set
+ * ORBIT teams up yet. Upgrade path: once onboarding always seeds a default
+ * team, this branch can go back to throwing on a genuinely misconfigured tenant.
+ */
+export async function routeConversation(
+  ctx: Ctx,
+  conversationId: string
+): Promise<{ teamId: string | null; assigneeRef: string | null }> {
+  const [conversation] = await ctx.db
+    .select()
+    .from(schema.orbitConversations)
+    .where(scoped(ctx, schema.orbitConversations, eq(schema.orbitConversations.id, conversationId)));
+  if (!conversation) throw new Error(`conversation not found: ${conversationId}`);
+
+  const rules = await ctx.db
+    .select({
+      seq: schema.orbitRoutingRules.seq,
+      teamId: schema.orbitRoutingRules.teamId,
+      enabled: schema.orbitRoutingRules.enabled,
+      conditionsJson: schema.orbitRoutingRules.conditionsJson
+    })
+    .from(schema.orbitRoutingRules)
+    .where(scoped(ctx, schema.orbitRoutingRules));
+
+  const teamId =
+    pickRoute(rules, { channel: conversation.channel, intent: conversation.intent, sentiment: conversation.sentiment }) ??
+    (await defaultTeamId(ctx));
+
+  if (!teamId) return { teamId: null, assigneeRef: null };
+
+  const members = await ctx.db
+    .select({
+      userId: schema.orbitTeamMembers.userId,
+      skillsJson: schema.orbitTeamMembers.skillsJson,
+      maxConcurrent: schema.orbitTeamMembers.maxConcurrent
+    })
+    .from(schema.orbitTeamMembers)
+    .where(scoped(ctx, schema.orbitTeamMembers, eq(schema.orbitTeamMembers.teamId, teamId)));
+  const presenceRows = await ctx.db
+    .select()
+    .from(schema.orbitAgentPresence)
+    .where(scoped(ctx, schema.orbitAgentPresence));
+  // ponytail: the presence.status column is plain `text` in the schema (no
+  // narrowed enum type), so the select comes back as `string`; cast to
+  // pickAssignee's union here rather than adding a schema-level enum for one call site.
+  const presence = new Map(
+    presenceRows.map((p) => [p.userId, { ...p, status: p.status as PresenceInput["status"] }])
+  );
+  const requireSkills = conversation.requireSkillsJson ? (JSON.parse(conversation.requireSkillsJson) as string[]) : [];
+  const assigneeRef = pickAssignee(members, presence, requireSkills);
+
+  let firstResponseDueAt: number | null = null;
+  let resolutionDueAt: number | null = null;
+  if (conversation.slaPolicyKey) {
+    const [policy] = await ctx.db
+      .select()
+      .from(schema.orbitSlaPolicies)
+      .where(scoped(ctx, schema.orbitSlaPolicies, eq(schema.orbitSlaPolicies.key, conversation.slaPolicyKey)));
+    if (policy) {
+      firstResponseDueAt = ctx.now + policy.frtMinutes * 60_000;
+      resolutionDueAt = ctx.now + policy.resolutionMinutes * 60_000;
+    }
+  }
+
+  await ctx.db
+    .update(schema.orbitConversations)
+    .set({
+      teamId,
+      assigneeRef,
+      queuedAt: ctx.now,
+      assignedAt: assigneeRef ? ctx.now : null,
+      firstResponseDueAt,
+      resolutionDueAt,
+      updatedAt: ctx.now
+    })
+    .where(eq(schema.orbitConversations.id, conversationId));
+
+  return { teamId, assigneeRef };
+}

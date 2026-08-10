@@ -1,5 +1,13 @@
-import { describe, expect, it } from "vitest";
-import { pickAssignee, pickRoute } from "./orbit-routing.js";
+import { beforeEach, describe, expect, it } from "vitest";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { createClient, type Client } from "@libsql/client";
+import { drizzle } from "drizzle-orm/libsql";
+import { eq } from "drizzle-orm";
+import { schema } from "@lyra/db";
+import type { Ctx } from "@lyra/core";
+import { PolicyJson, EntitlementsJson } from "@lyra/db";
+import { pickAssignee, pickRoute, routeConversation } from "./orbit-routing.js";
 
 describe("pickRoute", () => {
   const rule = (seq: number, teamId: string, conditions: object, enabled = true) => ({
@@ -89,5 +97,143 @@ describe("pickAssignee", () => {
   it("returns null when a member has no presence row at all", () => {
     const members = [member("u1")];
     expect(pickAssignee(members, new Map(), [])).toBeNull();
+  });
+});
+
+const MIGRATIONS = join(import.meta.dirname, "..", "..", "..", "..", "packages", "db", "migrations");
+const tenantId = "t_1";
+const now = 1_700_000_000_000;
+
+function statements(): string[] {
+  return readdirSync(MIGRATIONS)
+    .filter((f) => f.endsWith(".sql"))
+    .sort()
+    .flatMap((f) => readFileSync(join(MIGRATIONS, f), "utf8").split("--> statement-breakpoint"))
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+describe("routeConversation", () => {
+  let client: Client;
+  let ctx: Ctx;
+
+  beforeEach(async () => {
+    client = createClient({ url: ":memory:" });
+    for (const sql of statements()) await client.execute(sql);
+    const db = drizzle(client) as unknown as Ctx["db"];
+    ctx = {
+      db,
+      tenantId,
+      actor: { kind: "system", id: "test", tenantId, grants: [] },
+      requestId: "req_1",
+      now,
+      locale: "en",
+      policy: PolicyJson.parse({}),
+      entitlements: EntitlementsJson.parse({})
+    };
+    await db.insert(schema.orbitConversations).values({
+      id: "cnv_1",
+      tenantId,
+      channel: "whatsapp",
+      state: "bot",
+      createdAt: now,
+      updatedAt: now
+    });
+  });
+
+  it("routes to the default team and assigns the least-loaded available agent", async () => {
+    await ctx.db.insert(schema.orbitTeams).values({
+      id: "otm_default",
+      tenantId,
+      key: "default",
+      nameJson: "{}",
+      isDefault: true,
+      createdAt: now,
+      updatedAt: now
+    });
+    await ctx.db.insert(schema.orbitTeamMembers).values({
+      id: "tmm_1",
+      tenantId,
+      teamId: "otm_default",
+      userId: "u_1",
+      createdAt: now
+    });
+    await ctx.db.insert(schema.orbitAgentPresence).values({
+      id: "ap_1",
+      tenantId,
+      userId: "u_1",
+      status: "available",
+      activeCount: 0,
+      updatedAt: now
+    });
+
+    const result = await routeConversation(ctx, "cnv_1");
+    expect(result).toEqual({ teamId: "otm_default", assigneeRef: "u_1" });
+
+    const [row] = await ctx.db.select().from(schema.orbitConversations).where(eq(schema.orbitConversations.id, "cnv_1"));
+    expect(row!.teamId).toBe("otm_default");
+    expect(row!.assigneeRef).toBe("u_1");
+    expect(row!.queuedAt).toBe(now);
+    expect(row!.assignedAt).toBe(now);
+  });
+
+  it("routes via a matching rule instead of the default team when one matches", async () => {
+    await ctx.db.insert(schema.orbitTeams).values([
+      { id: "otm_default", tenantId, key: "default", nameJson: "{}", isDefault: true, createdAt: now, updatedAt: now },
+      { id: "otm_claims", tenantId, key: "claims", nameJson: "{}", isDefault: false, createdAt: now, updatedAt: now }
+    ]);
+    await ctx.db.insert(schema.orbitRoutingRules).values({
+      id: "rr_1",
+      tenantId,
+      teamId: "otm_claims",
+      seq: 1,
+      enabled: true,
+      conditionsJson: JSON.stringify({ channel: "whatsapp" }),
+      createdAt: now,
+      updatedAt: now
+    });
+
+    const result = await routeConversation(ctx, "cnv_1");
+    expect(result.teamId).toBe("otm_claims");
+  });
+
+  it("leaves the conversation unrouted, without throwing, when the tenant has no team configured yet", async () => {
+    const result = await routeConversation(ctx, "cnv_1");
+    expect(result).toEqual({ teamId: null, assigneeRef: null });
+
+    const [row] = await ctx.db.select().from(schema.orbitConversations).where(eq(schema.orbitConversations.id, "cnv_1"));
+    expect(row!.teamId).toBeNull();
+    expect(row!.assigneeRef).toBeNull();
+    expect(row!.queuedAt).toBeNull();
+  });
+
+  it("stamps SLA due timestamps from the conversation's SLA policy, and leaves them null when none is configured", async () => {
+    await ctx.db.insert(schema.orbitTeams).values({
+      id: "otm_default",
+      tenantId,
+      key: "default",
+      nameJson: "{}",
+      isDefault: true,
+      createdAt: now,
+      updatedAt: now
+    });
+    await ctx.db.insert(schema.orbitSlaPolicies).values({
+      id: "slp_1",
+      tenantId,
+      key: "default",
+      frtMinutes: 15,
+      resolutionMinutes: 240,
+      createdAt: now,
+      updatedAt: now
+    });
+    await ctx.db
+      .update(schema.orbitConversations)
+      .set({ slaPolicyKey: "default" })
+      .where(eq(schema.orbitConversations.id, "cnv_1"));
+
+    await routeConversation(ctx, "cnv_1");
+    const [row] = await ctx.db.select().from(schema.orbitConversations).where(eq(schema.orbitConversations.id, "cnv_1"));
+    expect(row!.firstResponseDueAt).toBe(now + 15 * 60_000);
+    expect(row!.resolutionDueAt).toBe(now + 240 * 60_000);
   });
 });
