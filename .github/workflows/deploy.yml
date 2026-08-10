@@ -69,8 +69,12 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
     needs: check
     runs-on: ubuntu-latest
-    # Required reviewers / wait timer are configured on this Environment in
-    # repo settings — that is the approval gate, not anything in this file.
+    # Approval gate for prod lives on the `production` GitHub Environment
+    # (repo Settings > Environments > production > required reviewers), not
+    # in this file. As of 2026-08-10 that Environment has no protection
+    # rules configured — set required reviewers there before relying on this
+    # job as a human approval gate; until then, workflow_dispatch alone is
+    # the only gate.
     environment: production
     steps:
       - uses: actions/checkout@v4
