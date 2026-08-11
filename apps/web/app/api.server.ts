@@ -74,6 +74,31 @@ export async function api<T>(path: string, options: ApiOptions): Promise<T> {
   return (await response.json()) as T;
 }
 
+/* ---------------------------------------------------------------- /v1/names */
+
+/** Ref → display name. A ref that resolved to nothing is absent, not null. */
+export type Names = Readonly<Record<string, string>>;
+
+/**
+ * Display names for the refs a list of rows carries, in one round trip. Rows
+ * cross the API as ids (`customerId`, `assigneeRef`, `teamId`), so a screen that
+ * renders them raw shows a person a ULID — call this in the loader and fall back
+ * to `shortRef` for whatever comes back unresolved.
+ *
+ * Never throws: a name is decoration on a page that already loaded, and the API
+ * omits any ref the actor may not read anyway. A failure means short refs, not
+ * an error boundary.
+ */
+export async function names(refs: ReadonlyArray<string | null | undefined>, options: ApiOptions): Promise<Names> {
+  const wanted = [...new Set(refs.filter((ref): ref is string => Boolean(ref)))].slice(0, 200);
+  if (!wanted.length) return {};
+  const body = await api<{ names: Record<string, string> }>(
+    `/v1/names?refs=${encodeURIComponent(wanted.join(","))}`,
+    options
+  ).catch(() => null);
+  return body?.names ?? {};
+}
+
 /* ------------------------------------------------------------------- /v1/me */
 
 export interface NavItem {

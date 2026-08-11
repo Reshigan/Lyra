@@ -402,7 +402,12 @@ const HAND_WRITTEN: Op[] = [
   // Cross-resource search (routes/search.ts, docs/24 Phase 2 item 10). Fans out
   // over every registered resource's searchable columns, filtered again by the
   // searcher's own read permission on each hit.
-  { method: "get", path: "/v1/search", summary: "Search across every resource the caller may read", permission: "core:search:read", tag: "search" }
+  { method: "get", path: "/v1/search", summary: "Search across every resource the caller may read", permission: "core:search:read", tag: "search" },
+
+  // Batch ref resolution (routes/names.ts). No permission of its own: each ref
+  // is gated by the caller's read permission on the resource it points at, and
+  // a ref that resolves to nothing is simply absent from the response.
+  { method: "get", path: "/v1/names", summary: "Resolve up to 200 record refs (`cu_…`, `user:us_…`) to display names, per resource read permission", tag: "search" }
 ];
 
 export function openapi(): Record<string, unknown> {

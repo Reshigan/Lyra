@@ -15,12 +15,13 @@ import {
   DateTime,
   EmptyState,
   KPIWall,
+  shortRef,
   Stat,
   Table,
   type BadgeTone,
   type Column
 } from "@lyra/ui";
-import { api, asRouteError, fetchMe, type Problem as ProblemShape } from "../api.server";
+import { api, asRouteError, fetchMe, names, type Names, type Problem as ProblemShape } from "../api.server";
 import { cloudflare } from "../context";
 import { Gate } from "./staff";
 import { ORBIT, labelsFrom, refusal, safe, type Label, type Labels, type Page } from "./orbit-shared";
@@ -139,6 +140,7 @@ export const LABELS: Labels = {
     waitHours: "{n} h",
     waitDays: "{n} d",
     unassigned: "Unassigned",
+    unnamedCustomer: "Unnamed customer",
     whatsapp: "WhatsApp",
     web: "Web",
     voice: "Voice",
@@ -193,6 +195,7 @@ export const LABELS: Labels = {
     waitHours: "{n} ساعة",
     waitDays: "{n} يوم",
     unassigned: "غير مُسند",
+    unnamedCustomer: "عميل بلا اسم",
     whatsapp: "واتساب",
     web: "الويب",
     voice: "صوت",
@@ -236,6 +239,18 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       : Promise.resolve({ data: [] } as Page<HandoverNote>)
   ]);
 
+  // Rows carry refs and no display text, so a triage screen would otherwise
+  // list ULIDs where the customer's name belongs. One batch call for every ref
+  // on the page; anything the API leaves unresolved falls back to a short ref.
+  const live = [...bot.data, ...human.data];
+  const resolved = await names(
+    [
+      ...live.flatMap((row) => [row.customerId, row.assigneeRef, row.teamId]),
+      ...handovers.data.flatMap((note) => [note.fromRef, note.toRef])
+    ],
+    opts
+  );
+
   return {
     locale: me.locale,
     now: Date.now(),
@@ -243,8 +258,18 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     may: { read: held.has(ORBIT.conversations), take: held.has(ORBIT.assign) },
     bot,
     human,
-    handovers: handovers.data
+    handovers: handovers.data,
+    names: resolved,
+    // A handover names a conversation, and a conversation has no name of its own
+    // — the customer on it is what an operator is looking for.
+    customerOf: Object.fromEntries(live.map((row) => [row.id, row.customerId])) as Record<string, string | null>
   };
+}
+
+/** Ref → the name a person expects, or the shortest honest thing we have. */
+function who(ref: string | null | undefined, resolved: Names): string | null {
+  if (!ref) return null;
+  return resolved[ref] ?? shortRef(ref);
 }
 
 /* ------------------------------------------------------------------ action */
@@ -341,6 +366,7 @@ export default function OrbitConsole() {
       <Card title={l("agentQueue")} description={l("agentQueueBody")}>
         <Queue
           rows={loaded.bot.data}
+          resolved={loaded.names}
           l={l}
           locale={loaded.locale}
           now={loaded.now}
@@ -354,6 +380,7 @@ export default function OrbitConsole() {
       <Card title={l("humanQueue")} description={l("humanQueueBody")}>
         <Queue
           rows={loaded.human.data}
+          resolved={loaded.names}
           l={l}
           locale={loaded.locale}
           now={loaded.now}
@@ -381,16 +408,16 @@ export default function OrbitConsole() {
                   row.conversationId ? (
                     <Link
                       to={`/orbit/conversations/${row.conversationId}/thread`}
-                      className="font-mono text-12 text-accent underline underline-offset-2"
+                      className="font-ui text-12 text-accent underline underline-offset-2"
                     >
-                      {row.conversationId}
+                      {who(loaded.customerOf[row.conversationId], loaded.names) ?? l("unnamedCustomer")}
                     </Link>
                   ) : (
                     <span className="text-subtle">{l("unassigned")}</span>
                   )
               },
-              { key: "fromRef", header: l("from"), render: (row) => row.fromRef ?? "—" },
-              { key: "toRef", header: l("to"), render: (row) => row.toRef ?? "—" },
+              { key: "fromRef", header: l("from"), render: (row) => who(row.fromRef, loaded.names) ?? "—" },
+              { key: "toRef", header: l("to"), render: (row) => who(row.toRef, loaded.names) ?? "—" },
               {
                 key: "generatedBy",
                 header: l("written"),
@@ -418,6 +445,7 @@ export default function OrbitConsole() {
 
 function Queue({
   rows,
+  resolved,
   l,
   locale,
   now,
@@ -427,6 +455,7 @@ function Queue({
   emptyTitle
 }: {
   rows: LiveConversation[];
+  resolved: Names;
   l: Label;
   locale: string;
   now: number;
@@ -447,7 +476,7 @@ function Queue({
             to={`/orbit/conversations/${row.id}/thread`}
             className="font-ui text-13 text-accent underline underline-offset-2"
           >
-            {row.customerId ?? row.id}
+            {who(row.customerId, resolved) ?? l("unnamedCustomer")}
           </Link>
           {row.summary ? <span className="font-ui text-11 text-subtle">{row.summary}</span> : null}
         </div>
@@ -477,7 +506,7 @@ function Queue({
       key: "assigneeRef",
       header: l("assignee"),
       render: (row) =>
-        row.assigneeRef ?? <span className="font-ui text-12 text-subtle">{l("unassigned")}</span>
+        who(row.assigneeRef, resolved) ?? <span className="font-ui text-12 text-subtle">{l("unassigned")}</span>
     },
     {
       key: "lastMessageAt",
