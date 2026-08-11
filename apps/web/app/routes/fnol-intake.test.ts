@@ -6,8 +6,10 @@ import {
   action,
   epochOf,
   fnolFrom,
+  LABELS,
   labelsIn,
   phrase,
+  policyChoices,
   type Coverage
 } from "./fnol-intake";
 
@@ -341,5 +343,40 @@ describe("phrase", () => {
     expect(phrase({ title: "duplicate claim number", status: 409, code: "conflict" }, l).title).toBe(
       "duplicate claim number"
     );
+  });
+});
+
+// The picker asked a desk to type a ULID, and offered
+// `POL-000123 — cu_01KE953T…` to choose from.
+describe("policyChoices", () => {
+  const policy = {
+    id: "pol_01KE953T02YKYY5RK6BEA6R2YQZ",
+    policyNo: "POL-000123",
+    customerId: "cu_01KE953T02YKYY5RK6BEA6R2YQA",
+    status: "active",
+    startAt: 0,
+    endAt: 0
+  };
+
+  it("reads as the policy number and the person it belongs to", () => {
+    expect(policyChoices([policy], { [policy.customerId]: "Amina Saleh" })).toEqual([
+      { value: policy.id, label: "POL-000123 — Amina Saleh" }
+    ]);
+  });
+
+  it("submits the id the API takes, not the number a person reads", () => {
+    expect(policyChoices([policy], {})[0]!.value).toBe(policy.id);
+  });
+
+  it("never prints a whole customer ULID at somebody", () => {
+    const label = policyChoices([policy], {})[0]!.label;
+    expect(label).not.toContain(policy.customerId);
+  });
+});
+
+describe("fnol labels", () => {
+  it("translates every English key into Arabic", () => {
+    const missing = Object.keys(LABELS.en!).filter((key) => !(key in LABELS.ar!));
+    expect(missing).toEqual([]);
   });
 });

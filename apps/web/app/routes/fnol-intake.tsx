@@ -19,7 +19,8 @@ import {
   Textarea,
   type BadgeTone
 } from "@lyra/ui";
-import { ApiError, api } from "../api.server";
+import { ApiError, api, names } from "../api.server";
+import { who, type Names } from "../names";
 import { cloudflare } from "../context";
 import { pseudoText } from "../i18n";
 import { vocabulary } from "../modules/vocabulary";
@@ -38,7 +39,7 @@ const PAGE = 200;
 
 /* ----------------------------------------------------------------- labels */
 
-const LABELS: Record<string, Record<string, string>> = {
+export const LABELS: Record<string, Record<string, string>> = {
   en: {
     title: "New claim (FNOL)",
     intro:
@@ -51,6 +52,17 @@ const LABELS: Record<string, Record<string, string>> = {
     "field.amount": "Estimated amount",
     "field.contact": "Contact",
     "field.channel": "Reported via",
+    choose: "Choose…",
+    "hint.policy": "The policy the loss happened under.",
+    "hint.cause": "How it happened, in a few words — burst geyser, rear-ended, storm damage.",
+    "hint.amount": "What the claimant says it is worth. Not a reserve.",
+    "hint.contact": "Phone number or email for whoever reported it.",
+    "channel.phone": "Phone",
+    "channel.email": "Email",
+    "channel.whatsapp": "WhatsApp",
+    "channel.web": "Web form",
+    "channel.branch": "In person",
+    "channel.broker": "Intermediary",
     "checkCover.submit": "Check cover",
     "register.submit": "Register claim",
     "guardrail.title": "No cover found for that date",
@@ -90,6 +102,17 @@ const LABELS: Record<string, Record<string, string>> = {
     "field.amount": "المبلغ التقديري",
     "field.contact": "جهة الاتصال",
     "field.channel": "قناة البلاغ",
+    choose: "اختر…",
+    "hint.policy": "الوثيقة التي وقع الحادث تحتها.",
+    "hint.cause": "كيف وقع الحادث بكلمات قليلة — انفجار سخّان، اصطدام خلفي، ضرر عاصفة.",
+    "hint.amount": "ما يقدّره المطالِب. ليس احتياطيًا.",
+    "hint.contact": "رقم هاتف أو بريد لمن أبلغ.",
+    "channel.phone": "هاتف",
+    "channel.email": "بريد إلكتروني",
+    "channel.whatsapp": "واتساب",
+    "channel.web": "نموذج الويب",
+    "channel.branch": "حضور شخصي",
+    "channel.broker": "وسيط",
     "checkCover.submit": "تحقّق من التغطية",
     "register.submit": "سجّل المطالبة",
     "guardrail.title": "لا توجد تغطية لهذا التاريخ",
@@ -133,6 +156,11 @@ export function labelsIn(locale: string, pack?: string): Label {
 /** Static: no peril catalogue exists in the schema, and the domain pack does
  * not rename these (checked against modules/vocabulary.ts). */
 const PERILS = ["fire", "theft", "collision", "weather", "liability", "other"] as const;
+
+/** `FnolBody.channel` is a free string; these are the ones a desk actually
+ * types, and a person picking "Phone" beats a person typing "phone " (§14 keeps
+ * the words in the label table, not here). */
+const CHANNELS = ["phone", "email", "whatsapp", "web", "branch", "broker"] as const;
 
 /* ----------------------------------------------------------------- shapes */
 
@@ -191,7 +219,11 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     ),
     { data: [] as PolicyOption[] }
   );
-  return { policies: policies.data };
+  const named = await names(
+    policies.data.map((policy) => policy.customerId),
+    { env, request }
+  );
+  return { policies: policies.data, named };
 }
 
 /* ----------------------------------------------------------------- action */
@@ -299,6 +331,22 @@ export function phrase(problem: Refusal, l: Label): Refusal {
   return text === key ? problem : { ...problem, title: text };
 }
 
+/**
+ * The picker used to submit a ULID a person had to type, and offered
+ * `POL-000123 — cu_01KE953T…` to read. A policy is chosen by its number and
+ * the person it belongs to; the id stays the value because that is what the
+ * API takes.
+ */
+export function policyChoices(
+  policies: readonly PolicyOption[],
+  named: Names
+): Array<{ value: string; label: string }> {
+  return policies.map((policy) => {
+    const customer = who(policy.customerId, named);
+    return { value: policy.id, label: customer ? `${policy.policyNo} — ${customer}` : policy.policyNo };
+  });
+}
+
 /* ---------------------------------------------------------------- render */
 
 const COVERAGE_TONE: Record<CoverageState, BadgeTone> = {
@@ -311,7 +359,7 @@ const COVERAGE_TONE: Record<CoverageState, BadgeTone> = {
 };
 
 export default function FnolIntake() {
-  const { policies } = useLoaderData<typeof loader>();
+  const { policies, named } = useLoaderData<typeof loader>();
   const result = useActionData<typeof action>();
   const navigation = useNavigation();
   const shell = useShellData();
@@ -335,46 +383,51 @@ export default function FnolIntake() {
       ) : null}
 
       <Form method="post" id="fnol-form" className="space-y-4">
-        <Field label={l("policyId")}>
-          <Input name="policyId" list="fnol-policies" required className="w-72" />
-          <datalist id="fnol-policies">
-            {policies.map((policy) => (
-              <option key={policy.id} value={policy.id} label={`${policy.policyNo} — ${policy.customerId}`} />
-            ))}
-          </datalist>
-        </Field>
+        <div className="flex flex-wrap gap-4">
+          <Field label={l("policyId")} hint={l("hint.policy")} required className="min-w-72 flex-1">
+            <Select name="policyId" options={policyChoices(policies, named)} placeholder={l("choose")} />
+          </Field>
 
-        <Field label={l("field.incidentAt")}>
-          <DatePicker name="incidentAt" required />
-        </Field>
+          <Field label={l("field.incidentAt")} required className="min-w-56 flex-1">
+            <DatePicker name="incidentAt" required />
+          </Field>
+        </div>
 
-        <Field label={l("field.peril")}>
-          <Select
-            name="perilCode"
-            options={PERILS.map((code) => ({ value: code, label: l(`peril.${code}`) }))}
-            placeholder={l("field.peril")}
-          />
-        </Field>
+        <div className="flex flex-wrap gap-4">
+          <Field label={l("field.peril")} className="min-w-56 flex-1">
+            <Select
+              name="perilCode"
+              options={PERILS.map((code) => ({ value: code, label: l(`peril.${code}`) }))}
+              placeholder={l("choose")}
+            />
+          </Field>
 
-        <Field label={l("field.cause")}>
-          <Input name="causeCode" />
-        </Field>
+          <Field label={l("field.cause")} hint={l("hint.cause")} className="min-w-72 flex-1">
+            <Input name="causeCode" />
+          </Field>
+        </div>
 
         <Field label={l("field.description")}>
           <Textarea name="description" />
         </Field>
 
-        <Field label={l("field.amount")}>
-          <MoneyField name="amountMinor" currency={shell?.currency ?? "ZAR"} locale={locale} />
-        </Field>
+        <div className="flex flex-wrap gap-4">
+          <Field label={l("field.amount")} hint={l("hint.amount")} className="min-w-56 flex-1">
+            <MoneyField name="amountMinor" currency={shell?.currency ?? "ZAR"} locale={locale} />
+          </Field>
 
-        <Field label={l("field.contact")}>
-          <Input name="contact" />
-        </Field>
+          <Field label={l("field.contact")} hint={l("hint.contact")} className="min-w-56 flex-1">
+            <Input name="contact" />
+          </Field>
 
-        <Field label={l("field.channel")}>
-          <Input name="channel" />
-        </Field>
+          <Field label={l("field.channel")} className="min-w-56 flex-1">
+            <Select
+              name="channel"
+              options={CHANNELS.map((code) => ({ value: code, label: l(`channel.${code}`) }))}
+              placeholder={l("choose")}
+            />
+          </Field>
+        </div>
 
         <Button type="submit" name="intent" value="check-cover" loading={busy}>
           {l("checkCover.submit")}
