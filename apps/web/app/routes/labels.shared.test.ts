@@ -35,6 +35,18 @@ describe("route label tables", () => {
     }
     expect(restated).toEqual([]);
   });
+
+  // <Gate> (module.tsx) says three shared words — approvalTitle, approvalBody,
+  // approvalLink — through whatever resolver the screen hands it. A screen that
+  // hand-rolls `LABELS[locale] ?? LABELS.en` never sees SHARED, so those words
+  // reach the user as bare keys: J-X2 caught "approvalTitle" printed on a
+  // settlement, and staff-member.tsx had the same hole.
+  it("resolves the approval notice's words on every screen that shows one", () => {
+    const handRolled = files.filter(
+      (file) => read(file).includes("<Gate") && /LABELS\[locale\]\s*\?\?/.test(read(file))
+    );
+    expect(handRolled).toEqual([]);
+  });
 });
 
 function read(file: string): string {

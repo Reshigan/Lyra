@@ -23,7 +23,8 @@ import {
 } from "@lyra/ui";
 import { ApiError, api, fetchMe } from "../api.server";
 import { cloudflare } from "../context";
-import { pseudoText, translator } from "../i18n";
+import { translator } from "../i18n";
+import { labelsFrom } from "./detail-kit";
 import { PERM, Gate, userTone, type Role, type StaffOption, type StaffUser } from "./staff";
 import { useShellData } from "./workspace";
 
@@ -124,14 +125,10 @@ const LABELS: Record<string, Record<string, string>> = {
   }
 };
 
-function memberLabelsIn(locale: string): (key: string, vars?: Record<string, string>) => string {
-  const table = LABELS[locale] ?? LABELS.en ?? {};
-  const fallback = LABELS.en ?? {};
-  return (key, vars) => {
-    const raw = pseudoText(locale, table[key] ?? fallback[key] ?? key);
-    return vars ? raw.replace(/\{(\w+)\}/g, (match, name: string) => vars[name] ?? match) : raw;
-  };
-}
+// Resolved through detail-kit (docs/ui.md §7 P3-14) so the shared words behind
+// the <Gate> notice — approvalTitle, approvalBody — are said rather than
+// printed as their keys. A hand-rolled lookup here skipped SHARED entirely.
+export const memberLabelsIn = labelsFrom(LABELS);
 
 async function safe<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
   try {
