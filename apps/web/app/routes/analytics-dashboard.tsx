@@ -1,5 +1,15 @@
 import { useLoaderData, type LoaderFunctionArgs } from "react-router";
-import { DateTime, EmptyState, ProgressBar, Sparkline, Stat, Table, type Column } from "@lyra/ui";
+import {
+  DateTime,
+  DonutChart,
+  EmptyState,
+  LineChart,
+  ProgressBar,
+  Stat,
+  Table,
+  formatMoney,
+  type Column
+} from "@lyra/ui";
 import { ApiError, api, fetchMe } from "../api.server";
 import { humanise } from "../modules/spec";
 import { Cell } from "../components/fields";
@@ -17,9 +27,11 @@ import { labelsFrom, type Label } from "./detail-kit";
 // A tile that failed comes back as `{ key, error }` instead of a table, which is
 // how one denied dataset shows as one dead tile rather than a blank page.
 //
-// ponytail: no charting library — none is installed. A sparkline is a polyline
-// (@lyra/ui), a bar is a ProgressBar and everything else is the table the report
-// engine already returns. Add a real chart package when a tile needs axes.
+// ponytail: no charting library, by decision (ADR-0053). A line tile is
+// @lyra/ui's LineChart — SVG with a scale beside it — a donut is its ring and
+// legend, a bar stays one labelled meter per row because a horizontal bar reads
+// its own name in a narrow tile where a vertical one cannot, and everything else
+// is the table the report engine already returns.
 
 const PERM = { read: "analytics:dashboards:read" } as const;
 
@@ -292,9 +304,18 @@ function Tile({
   if (spec.viz === "line" && first) {
     const values = rows.map((row) => Number(row[first.key] ?? 0)).filter(Number.isFinite);
     const last = rows[rows.length - 1];
+    const axis = (value: number) =>
+      first.kind === "money" && currency
+        ? formatMoney(value, currency, locale)
+        : new Intl.NumberFormat(locale).format(value);
     return values.length ? (
       <div className="flex flex-col gap-2">
-        <Sparkline values={values} label={`${table.title} — ${first.label}`} />
+        <LineChart
+          values={values}
+          label={`${table.title} — ${first.label}`}
+          xLabels={dimension ? rows.map((row) => String(row[dimension.key] ?? "")) : undefined}
+          format={axis}
+        />
         <div className="flex items-baseline justify-between gap-3">
           <span className="font-ui text-12 text-subtle">{first.label}</span>
           {last ? (
@@ -314,18 +335,38 @@ function Tile({
     );
   }
 
-  // Bars and donuts are both "this slice against the rest": a bar reads against
-  // the largest row, a donut against the sum, and both are one meter per row.
-  if ((spec.viz === "bar" || spec.viz === "donut") && first && dimension) {
+  // A donut is share of the whole, so it is drawn as the whole: the ring says
+  // how much of it each slice holds, which is the one thing a row of meters
+  // against the largest row cannot say.
+  if (spec.viz === "donut" && first && dimension) {
+    const slices = rows.slice(0, MAX_BARS).map((row) => ({
+      name: String(row[dimension.key] ?? ""),
+      value: Math.max(0, Number(row[first.key] ?? 0)),
+      display: (
+        <Cell
+          column={{ name: first.key, type: first.kind, currencyFrom: "__currency" }}
+          row={row}
+          locale={locale}
+          label={l}
+        />
+      )
+    }));
+    return slices.some((slice) => slice.value > 0) ? (
+      <DonutChart slices={slices} label={`${table.title} — ${first.label}`} />
+    ) : (
+      <p className="font-ui text-13 text-subtle">{l("noRows")}</p>
+    );
+  }
+
+  // A bar is this row against the largest one: one labelled meter per row, so
+  // the name sits beside its own figure however narrow the tile gets.
+  if (spec.viz === "bar" && first && dimension) {
     const values = rows.slice(0, MAX_BARS).map((row) => ({
       row,
       name: String(row[dimension.key] ?? ""),
       value: Number(row[first.key] ?? 0)
     }));
-    const basis =
-      spec.viz === "donut"
-        ? values.reduce((sum, entry) => sum + Math.max(0, entry.value), 0)
-        : Math.max(...values.map((entry) => Math.abs(entry.value)));
+    const basis = Math.max(...values.map((entry) => Math.abs(entry.value)));
     return (
       <ul className="flex flex-col gap-3">
         {values.map((entry) => (

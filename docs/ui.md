@@ -1286,7 +1286,18 @@ right to reach the fourth provider loses the row labels entirely, so the user is
 reading a column of numbers with no idea what they measure. This is the core
 commercial screen in the product.
 
-**12. There is no charting.** `/analytics/dashboard/:id` degrades every tile
+**12. ~~There is no charting.~~** *Closed* (ADR-0053). Not by adding a library:
+`packages/ui` draws the two shapes a tile actually needs. `LineChart` is the
+series with a scale a reader can name — the high and the low as formatted
+figures, gridlines, the first and last x label, and a y floor at zero so a
+series is as tall as it is. `DonutChart` is share of a whole, a ring with a
+named legend, which is the question a row of meters against the largest row
+cannot answer. A bar tile stays one labelled meter per row on purpose: a
+horizontal bar carries its own name in a tile narrow enough to sit
+three-across. The ceiling is written down — zoom, brushing, multi-series and
+dual axes are where a library would earn its place.
+
+**The defect as found:** `/analytics/dashboard/:id` degrades every tile
 type by hand: a number becomes a `Stat`, a line becomes a 100×28 `Sparkline`, a
 bar or donut becomes a list of `ProgressBar`s capped at 8 rows, and anything else
 becomes a table. The code says so plainly: *"no charting library — none is

@@ -461,6 +461,211 @@ export function Sparkline({ values, label, tone = "accent", className }: Sparkli
   );
 }
 
+/* -------------------------------------------------------------------------- */
+/* LineChart / DonutChart                                                      */
+/* -------------------------------------------------------------------------- */
+
+// ponytail: still no charting library (ADR-0053). A sparkline answers "which
+// way is it going" in a table row; a dashboard tile is asked "how much, when,
+// and against what", which needs a scale a reader can name. That is two shapes
+// and a legend, drawn in the SVG this file already draws — not a dependency, a
+// bundle, and a second theming system. Anything past this (zoom, brushing,
+// stacked series, axes on both sides) is where a library earns its place.
+
+export interface LineChartProps {
+  /** Y in row order — the series as the report engine returned it. */
+  values: number[];
+  /** Required: the plot is an image and needs a text alternative. */
+  label: string;
+  /** One per value; only the first and last are drawn, the rest position them. */
+  xLabels?: string[] | undefined;
+  /** How a y-axis figure reads — money, percent, plain. Defaults to the locale's number. */
+  format?: (value: number) => string;
+  tone?: "accent" | "success" | "danger" | "info";
+  className?: string;
+}
+
+/**
+ * A time series with a scale on it: two gridlines the reader can name (the low
+ * and the high), the first and last x label, and the line between them. The
+ * axis words are HTML beside the plot rather than `<text>` inside it, so a
+ * stretched viewBox never stretches the type.
+ */
+export function LineChart({
+  values,
+  label,
+  xLabels,
+  format = (value) => String(value),
+  tone = "accent",
+  className
+}: LineChartProps) {
+  const finite = values.filter(Number.isFinite);
+  const w = 100;
+  const h = 40;
+  const min = Math.min(...finite, 0);
+  const max = Math.max(...finite, 0);
+  const span = max - min || 1;
+  const points = finite
+    .map((value, index) => {
+      const x = finite.length === 1 ? w / 2 : (index / (finite.length - 1)) * w;
+      const y = h - ((value - min) / span) * h;
+      return `${x.toFixed(2)},${y.toFixed(2)}`;
+    })
+    .join(" ");
+  const stroke = TONE_STROKE[tone];
+  const first = xLabels?.[0];
+  const last = xLabels?.[xLabels.length - 1];
+
+  return (
+    <figure className={cn("flex flex-col gap-2", className)}>
+      <div className="flex items-stretch gap-2">
+        {/* The scale, in the mono every other figure uses. High at the top,
+            low at the bottom — the same order the plot draws them. */}
+        <div
+          aria-hidden="true"
+          className="flex shrink-0 flex-col justify-between py-0.5 font-mono text-12 tabular-nums text-subtle"
+        >
+          <span>{format(max)}</span>
+          <span>{format(min)}</span>
+        </div>
+        <svg
+          viewBox={`0 0 ${w} ${h}`}
+          preserveAspectRatio="none"
+          role="img"
+          aria-label={label}
+          className="h-32 w-full min-w-0"
+        >
+          {[0, h / 2, h].map((y) => (
+            <line
+              key={y}
+              x1={0}
+              x2={w}
+              y1={y}
+              y2={y}
+              stroke="var(--border)"
+              strokeWidth="1"
+              vectorEffect="non-scaling-stroke"
+            />
+          ))}
+          {/* Same draw-once rule as the sparkline: the animation runs on mount,
+              and a data refresh moves the points without replaying it. */}
+          <polyline
+            points={points}
+            fill="none"
+            stroke={stroke}
+            strokeWidth="2"
+            strokeLinejoin="round"
+            vectorEffect="non-scaling-stroke"
+            pathLength={100}
+            strokeDasharray={100}
+            className="motion-safe:animate-chart-draw"
+            style={{ "--draw-length": 100 } as React.CSSProperties}
+          />
+        </svg>
+      </div>
+      {first || last ? (
+        <figcaption
+          aria-hidden="true"
+          className="flex justify-between gap-3 font-ui text-12 text-subtle"
+        >
+          <span className="truncate">{first}</span>
+          {last && last !== first ? <span className="truncate">{last}</span> : null}
+        </figcaption>
+      ) : null}
+    </figure>
+  );
+}
+
+export interface DonutSlice {
+  name: string;
+  value: number;
+  /** What the figure reads as beside the name — already formatted. */
+  display?: React.ReactNode;
+}
+
+export interface DonutChartProps {
+  slices: DonutSlice[];
+  /** Required: the ring is an image and needs a text alternative. */
+  label: string;
+  className?: string;
+}
+
+/**
+ * Share of a whole, as a ring with a named legend. A bar chart cannot say
+ * "share": it says "against the biggest one", which is a different question and
+ * the reason a donut tile used to read wrong.
+ */
+export function DonutChart({ slices, label, className }: DonutChartProps) {
+  const shown = slices.filter((slice) => slice.value > 0);
+  const total = shown.reduce((sum, slice) => sum + slice.value, 0);
+  // The ring is one circle per slice, each dashed to its own share and rotated
+  // past the ones before it — no arc paths, no trigonometry.
+  const r = 15.9155; // circumference 100, so a dash length IS a percentage
+  let offset = 0;
+  const arcs = shown.map((slice, index) => {
+    const pct = total > 0 ? (slice.value / total) * 100 : 0;
+    const arc = { slice, pct, offset, colour: SLICE_COLOURS[index % SLICE_COLOURS.length]! };
+    offset += pct;
+    return arc;
+  });
+
+  return (
+    <figure className={cn("flex flex-wrap items-center gap-4", className)}>
+      <svg viewBox="0 0 42 42" role="img" aria-label={label} className="h-28 w-28 shrink-0 -rotate-90">
+        <circle cx="21" cy="21" r={r} fill="none" stroke="var(--border)" strokeWidth="4" />
+        {arcs.map((arc) => (
+          <circle
+            key={arc.slice.name}
+            cx="21"
+            cy="21"
+            r={r}
+            fill="none"
+            stroke={arc.colour}
+            strokeWidth="4"
+            strokeDasharray={`${arc.pct.toFixed(2)} ${(100 - arc.pct).toFixed(2)}`}
+            strokeDashoffset={(-arc.offset).toFixed(2)}
+          />
+        ))}
+      </svg>
+      <figcaption className="flex min-w-0 flex-1 flex-col gap-1.5">
+        {arcs.map((arc) => (
+          <span key={arc.slice.name} className="flex min-w-0 items-baseline gap-2">
+            <span
+              aria-hidden="true"
+              className="size-2 shrink-0 rounded-full"
+              style={{ background: arc.colour }}
+            />
+            <span className="min-w-0 flex-1 truncate font-ui text-13 text-text">{arc.slice.name}</span>
+            <span className="font-mono text-12 tabular-nums text-subtle">
+              {arc.slice.display ?? arc.slice.value}
+            </span>
+            <span className="w-10 shrink-0 text-end font-mono text-12 tabular-nums text-subtle">
+              {arc.pct.toFixed(0)}%
+            </span>
+          </span>
+        ))}
+      </figcaption>
+    </figure>
+  );
+}
+
+const TONE_STROKE = {
+  accent: "var(--accent)",
+  success: "var(--success)",
+  danger: "var(--danger)",
+  info: "var(--info)"
+} as const;
+
+/** Categorical, not semantic: a slice is not good or bad, it is one of several. */
+const SLICE_COLOURS = [
+  "var(--accent)",
+  "var(--info)",
+  "var(--success)",
+  "var(--warning)",
+  "var(--danger)",
+  "var(--text-subtle)"
+];
+
 export function KPIWall({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
     <div
