@@ -101,10 +101,6 @@ const LABELS: Record<string, Record<string, string>> = {
     days: "d",
     hours: "h",
     minutes: "m",
-    approvalTitle: "Waiting on an approval",
-    approvalBody:
-      "This change is gated by {policy}. The request is recorded and takes effect once someone else approves it.",
-    approvalLink: "Open approvals",
     "problem.bad_intent": "The form did not carry an action this screen knows.",
     "problem.missing_case": "Name both the case and the owner before assigning it.",
     "problem.missing_task": "No task was named."
@@ -143,9 +139,6 @@ const LABELS: Record<string, Record<string, string>> = {
     days: "ي",
     hours: "س",
     minutes: "د",
-    approvalTitle: "بانتظار موافقة",
-    approvalBody: "هذا التغيير يمر بسياسة {policy}. سُجّل الطلب ويسري بعد موافقة شخص آخر.",
-    approvalLink: "فتح الموافقات",
     "problem.bad_intent": "لم يحمل النموذج إجراءً تعرفه هذه الشاشة.",
     "problem.missing_case": "حدّد الحالة والمسؤول قبل التعيين.",
     "problem.missing_task": "لم تُحدَّد أي مهمة."

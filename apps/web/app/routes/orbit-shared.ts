@@ -1,6 +1,6 @@
 import { ApiError } from "../api-error";
-import { pseudoText, translator } from "../i18n";
 import type { Problem } from "../api-error";
+import { labelsFrom as kitLabelsFrom } from "./detail-kit";
 
 // Six ORBIT screens share the same eight lines of plumbing: a bilingual label
 // table, a read that survives a withheld permission, and a page envelope from
@@ -41,21 +41,11 @@ export type Labels = Record<string, Record<string, string>>;
 export type Label = (key: string, vars?: Record<string, string>) => string;
 
 /**
- * Same resolution order as staff.tsx: the route's own table, then English, then
- * the shared catalogue under `common.`, then the key itself. `{name}` slots are
- * filled from `vars`.
+ * The one resolver, taken uncurried for the ORBIT screens that were written
+ * before there was a shared one (docs/ui.md §7 P3-14).
  */
 export function labelsFrom(table: Labels, locale: string): Label {
-  const own = table[locale] ?? table.en ?? {};
-  const fallback = table.en ?? {};
-  const t = translator(locale);
-  return (key, vars) => {
-    const local = own[key] ?? fallback[key];
-    // `t()` pseudoizes on its own; only the route's own table needs the wrap.
-    const shared = local === undefined ? t(`common.${key}`) : pseudoText(locale, local);
-    const raw = shared === `common.${key}` ? key : shared;
-    return vars ? raw.replace(/\{(\w+)\}/g, (match, name: string) => vars[name] ?? match) : raw;
-  };
+  return kitLabelsFrom(table)(locale);
 }
 
 /** A withheld read is an empty panel, not a blank screen. */

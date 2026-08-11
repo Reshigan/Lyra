@@ -59,7 +59,6 @@ const STEP_TONES: Record<string, "neutral" | "info" | "success" | "warning" | "d
 
 const LABELS: Record<string, Record<string, string>> = {
   en: {
-    deniedTitle: "You cannot read this record",
     back: "Back to staff",
     rolesTitle: "Roles",
     rolesIntro: "Adding a role you do not hold yourself is refused by the server, not by this form.",
@@ -89,12 +88,9 @@ const LABELS: Record<string, Record<string, string>> = {
     reasonRequired: "Explain why in a few words.",
     reassignRequired: "Choose who inherits this person's open work.",
     confirmRequired: "Confirm before submitting.",
-    approvalTitle: "This needs an approval first",
-    approvalBody: "Your workspace requires a second person to sign this off before it can run ({policy}).",
     approvalLink: "Open approvals"
   },
   ar: {
-    deniedTitle: "لا يمكنك عرض هذا السجل",
     back: "العودة إلى الموظفين",
     rolesTitle: "الأدوار",
     rolesIntro: "إضافة دور لا تملكه أنت يرفضه الخادم، وليس هذا النموذج.",
@@ -124,8 +120,6 @@ const LABELS: Record<string, Record<string, string>> = {
     reasonRequired: "اشرح السبب بإيجاز.",
     reassignRequired: "اختر من يرث العمل المفتوح لهذا الشخص.",
     confirmRequired: "أكّد قبل الإرسال.",
-    approvalTitle: "يحتاج هذا إلى موافقة أولًا",
-    approvalBody: "تشترط مساحة عملك توقيع شخص ثانٍ قبل تنفيذ هذا الإجراء ({policy}).",
     approvalLink: "افتح الموافقات"
   }
 };

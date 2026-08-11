@@ -148,8 +148,6 @@ export const LABELS: Labels = {
     agent: "Agent channel",
     unknownIntent: "That control is not available.",
     missingConversation: "Pick a conversation first.",
-    approvalTitle: "This needs an approval",
-    approvalBody: "Policy {policy} holds this action until somebody approves it.",
     approvalLink: "Open approvals"
   },
   ar: {
@@ -203,8 +201,6 @@ export const LABELS: Labels = {
     agent: "قناة الوكيل",
     unknownIntent: "هذا الإجراء غير متاح.",
     missingConversation: "اختر محادثة أولًا.",
-    approvalTitle: "هذا الإجراء يحتاج موافقة",
-    approvalBody: "السياسة {policy} تحتجز هذا الإجراء حتى يوافق عليه شخص مسؤول.",
     approvalLink: "افتح الموافقات"
   }
 };

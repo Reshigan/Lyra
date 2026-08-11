@@ -145,8 +145,6 @@ export const LABELS: Labels = {
     resolution: "Result",
     reason: "Reason",
     setStrategy: "Change strategy",
-    apply: "Apply",
-    working: "Working",
     saved: "Recorded.",
     unknownIntent: "That control is not available.",
     missingRenewal: "Pick a renewal first.",
@@ -174,8 +172,6 @@ export const LABELS: Labels = {
     do_not_contact: "Do not contact",
     accepted: "Renewed",
     lost: "Lost",
-    approvalTitle: "This needs an approval",
-    approvalBody: "Policy {policy} holds this offer until somebody approves it.",
     approvalLink: "Open approvals"
   },
   ar: {
@@ -213,8 +209,6 @@ export const LABELS: Labels = {
     resolution: "النتيجة",
     reason: "السبب",
     setStrategy: "تغيير الأسلوب",
-    apply: "تطبيق",
-    working: "جارٍ التنفيذ",
     saved: "تم التسجيل.",
     unknownIntent: "هذا الإجراء غير متاح.",
     missingRenewal: "اختر تجديدًا أولًا.",
@@ -242,8 +236,6 @@ export const LABELS: Labels = {
     do_not_contact: "عدم التواصل",
     accepted: "مُجدَّد",
     lost: "خسارة",
-    approvalTitle: "هذا الإجراء يحتاج موافقة",
-    approvalBody: "السياسة {policy} تحتجز هذا العرض حتى يوافق عليه شخص مسؤول.",
     approvalLink: "افتح الموافقات"
   }
 };

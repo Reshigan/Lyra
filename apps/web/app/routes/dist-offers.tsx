@@ -24,10 +24,11 @@ import {
 import { ApiError, api, fetchMe } from "../api.server";
 import { FieldInput, toneFor } from "../components/fields";
 import { cloudflare } from "../context";
-import { pseudoText, translator } from "../i18n";
+import { translator } from "../i18n";
 import { bodyFrom, humanise, optionLabel, type FieldSpec, type Row } from "../modules/spec";
 import { Problem } from "./module";
 import { useShellData } from "./workspace";
+import { labelsFrom } from "./detail-kit";
 
 // Next best offers for one customer: ask the model for them, read what it
 // proposed and why, then decide which of them a person is allowed to see.
@@ -131,12 +132,8 @@ const LABELS: Record<string, Record<string, string>> = {
     "kind.renewal": "Renewal",
     "kind.bundle": "Bundle",
     "kind.top_up": "Top-up",
-    "state.proposed": "Proposed",
     "state.surfaced": "Surfaced",
-    "state.accepted": "Accepted",
-    "state.dismissed": "Dismissed",
     "state.suppressed": "Suppressed",
-    "state.expired": "Expired",
     "state.converted": "Converted",
     "suppress.no_consent": "The customer has not consented to being offered this.",
     "suppress.frequency_cap": "They have been offered enough for now.",
@@ -188,12 +185,8 @@ const LABELS: Record<string, Record<string, string>> = {
     "kind.renewal": "تجديد",
     "kind.bundle": "باقة",
     "kind.top_up": "تعزيز",
-    "state.proposed": "مقترح",
     "state.surfaced": "معروض",
-    "state.accepted": "مقبول",
-    "state.dismissed": "مرفوض",
     "state.suppressed": "محجوب",
-    "state.expired": "منتهٍ",
     "state.converted": "محوَّل",
     "suppress.no_consent": "لم يوافق العميل على تلقي هذا العرض.",
     "suppress.frequency_cap": "تلقى ما يكفي من العروض حاليًا.",
@@ -202,18 +195,9 @@ const LABELS: Record<string, Record<string, string>> = {
   }
 };
 
-export function labelsIn(locale: string): (key: string, vars?: Record<string, string>) => string {
-  const table = LABELS[locale] ?? LABELS.en ?? {};
-  const fallback = LABELS.en ?? {};
-  const t = translator(locale);
-  return (key, vars) => {
-    const local = table[key] ?? fallback[key];
-    // `t()` pseudoizes on its own; only the route's own table needs the wrap.
-    const shared = local === undefined ? t(`common.${key}`) : pseudoText(locale, local);
-    const raw = shared === `common.${key}` ? key : shared;
-    return vars ? raw.replace(/\{(\w+)\}/g, (match, name: string) => vars[name] ?? match) : raw;
-  };
-}
+/** The shared resolver: the route's own table, then the shared catalogue, then
+ *  the platform's `common.*` words (docs/ui.md §7 P3-14). */
+export const labelsIn = labelsFrom(LABELS);
 
 /* ------------------------------------------------------------------- rules */
 

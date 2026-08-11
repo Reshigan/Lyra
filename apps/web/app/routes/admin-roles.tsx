@@ -22,9 +22,10 @@ import {
 } from "@lyra/ui";
 import { ApiError, api, fetchMe, type Problem } from "../api.server";
 import { cloudflare } from "../context";
-import { pseudoText, translator } from "../i18n";
+import { translator } from "../i18n";
 import { Gate } from "./staff";
 import { useShellData } from "./workspace";
+import { labelsFrom } from "./detail-kit";
 
 // The roles editor (docs/06 §1). The generated `roles` tab in modules/admin.ts
 // can list roles and can hand an operator a `json` field to type two hundred
@@ -139,11 +140,9 @@ export const LABELS: Record<string, Record<string, string>> = {
     listCaption: "Roles defined for this organisation",
     colRole: "Role",
     colKey: "Key",
-    colKind: "Kind",
     colGrants: "Grants",
     kindSystem: "Built in",
     kindCustom: "Custom",
-    open: "Open",
     openFor: "Open the permissions of {name}",
     emptyRoles: "No roles yet.",
     pickPrompt: "Choose a role to see what it may do.",
@@ -173,8 +172,6 @@ export const LABELS: Record<string, Record<string, string>> = {
     keyRequired: "A role key starts with a letter and uses lower case letters, digits, dots, dashes or underscores.",
     notYours: "That list includes a permission you do not hold, so it was refused.",
     systemLocked: "This role is provisioned by the platform and cannot be edited here.",
-    approvalTitle: "This needs an approval",
-    approvalBody: "Policy {policy} sends this change to an approver before it takes effect.",
     approvalLink: "Open approvals"
   },
   ar: {
@@ -186,11 +183,9 @@ export const LABELS: Record<string, Record<string, string>> = {
     listCaption: "الأدوار المعرّفة لهذه المؤسسة",
     colRole: "الدور",
     colKey: "المفتاح",
-    colKind: "النوع",
     colGrants: "الأذونات الممنوحة",
     kindSystem: "مضمَّن",
     kindCustom: "مخصص",
-    open: "افتح",
     openFor: "افتح أذونات {name}",
     emptyRoles: "لا توجد أدوار بعد.",
     pickPrompt: "اختر دورًا لترى ما يمكنه فعله.",
@@ -219,24 +214,13 @@ export const LABELS: Record<string, Record<string, string>> = {
     keyRequired: "مفتاح الدور يبدأ بحرف ويستخدم حروفًا لاتينية صغيرة وأرقامًا ونقاطًا وشرطات أو شرطات سفلية.",
     notYours: "القائمة تضم إذنًا لا تملكه، فتم رفضها.",
     systemLocked: "هذا الدور مُهيَّأ من المنصة ولا يمكن تعديله هنا.",
-    approvalTitle: "هذا الإجراء يحتاج موافقة",
-    approvalBody: "السياسة {policy} تُحوّل هذا التغيير إلى مُعتمِد قبل أن يسري.",
     approvalLink: "افتح الموافقات"
   }
 };
 
-export function labelsIn(locale: string): (key: string, vars?: Record<string, string>) => string {
-  const table = LABELS[locale] ?? LABELS.en ?? {};
-  const fallback = LABELS.en ?? {};
-  const t = translator(locale);
-  return (key, vars) => {
-    const local = table[key] ?? fallback[key];
-    // `t()` pseudoizes on its own; only the route's own table needs the wrap.
-    const shared = local === undefined ? t(`common.${key}`) : pseudoText(locale, local);
-    const raw = shared === `common.${key}` ? key : shared;
-    return vars ? raw.replace(/\{(\w+)\}/g, (match, name: string) => vars[name] ?? match) : raw;
-  };
-}
+/** The shared resolver: the route's own table, then the shared catalogue, then
+ *  the platform's `common.*` words (docs/ui.md §7 P3-14). */
+export const labelsIn = labelsFrom(LABELS);
 
 /* ------------------------------------------------------------------ loader */
 

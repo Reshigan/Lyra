@@ -2,7 +2,7 @@ import { Money } from "@lyra/ui";
 // ../api-error, never ../api.server: this module is not a route, so the client
 // bundle takes it whole and a `.server` import here is a build error.
 import { ApiError } from "../api-error";
-import { pseudoText, translator } from "../i18n";
+import { labelsFrom as kitLabelsFrom } from "./detail-kit";
 
 // The half-dozen things every bespoke NORTH screen needs and none of them owns:
 // the label resolver, the 403-swallowing read, the action envelope, and the one
@@ -14,21 +14,15 @@ import { pseudoText, translator } from "../i18n";
 
 export type Labels = Record<string, Record<string, string>>;
 
-/** Locale, then English, then the shell's `common.*` catalogue, then the key. */
+/**
+ * The one resolver, taken uncurried for the NORTH screens that were written
+ * before there was a shared one (docs/ui.md §7 P3-14).
+ */
 export function labelsFrom(
   labels: Labels,
   locale: string
 ): (key: string, vars?: Record<string, string>) => string {
-  const table = labels[locale] ?? labels.en ?? {};
-  const fallback = labels.en ?? {};
-  const t = translator(locale);
-  return (key, vars) => {
-    const local = table[key] ?? fallback[key];
-    // `t()` pseudoizes on its own; only the route's own table needs the wrap.
-    const shared = local === undefined ? t(`common.${key}`) : pseudoText(locale, local);
-    const raw = shared === `common.${key}` ? key : shared;
-    return vars ? raw.replace(/\{(\w+)\}/g, (match, name: string) => vars[name] ?? match) : raw;
-  };
+  return kitLabelsFrom(labels)(locale);
 }
 
 /**

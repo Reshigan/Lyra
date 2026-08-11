@@ -2,9 +2,10 @@ import { Link, useLoaderData, type LoaderFunctionArgs } from "react-router";
 import { Badge, Card, DateTime, EmptyState, PageHeader, Stat, Table, type Column } from "@lyra/ui";
 import { ApiError, api, fetchMe, type Problem } from "../api.server";
 import { cloudflare } from "../context";
-import { pseudoText, translator } from "../i18n";
+import { translator } from "../i18n";
 import { humanise } from "../modules/spec";
 import { useShellData } from "./workspace";
+import { labelsFrom } from "./detail-kit";
 
 // docs/25 admin_security — "SSO, sessions, network and rate limits".
 //
@@ -217,18 +218,9 @@ export const LABELS: Record<string, Record<string, string>> = {
   }
 };
 
-export function labelsIn(locale: string): (key: string, vars?: Record<string, string>) => string {
-  const t = translator(locale);
-  const table = LABELS[locale] ?? LABELS.en!;
-  const fallback = LABELS.en!;
-  return (key, vars) => {
-    const local = table[key] ?? fallback[key];
-    // `t()` pseudoizes on its own; only the route's own table needs the wrap.
-    const shared = local === undefined ? t(`common.${key}`) : pseudoText(locale, local);
-    const raw = shared === `common.${key}` ? key : shared;
-    return vars ? raw.replace(/\{(\w+)\}/g, (match, name: string) => vars[name] ?? match) : raw;
-  };
-}
+/** The shared resolver: the route's own table, then the shared catalogue, then
+ *  the platform's `common.*` words (docs/ui.md §7 P3-14). */
+export const labelsIn = labelsFrom(LABELS);
 
 
 /**

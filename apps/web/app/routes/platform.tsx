@@ -26,10 +26,11 @@ import {
 import { ApiError, api, fetchMe } from "../api.server";
 import { RefPicker, type RefOption } from "../components/ref-picker";
 import { cloudflare } from "../context";
-import { pseudoText, translator } from "../i18n";
+import { translator } from "../i18n";
 import { Problem } from "./module";
 import { Gate } from "./staff";
 import { useShellData } from "./workspace";
+import { labelsFrom } from "./detail-kit";
 
 // The one workspace that is not tenant-scoped (ADR-0029): how every tenant is
 // doing, which capability flags are live, and who is standing in a customer's
@@ -147,7 +148,6 @@ export const LABELS: Record<string, Record<string, string>> = {
     colEnv: "Environment",
     colWorker: "Worker",
     colVersion: "Version",
-    colStatus: "Status",
     colDeployed: "Deployed",
     colBy: "By",
     deploysEmpty: "No deployments recorded",
@@ -188,9 +188,6 @@ export const LABELS: Record<string, Record<string, string>> = {
     confirmImpersonate: "I understand this is recorded against my name",
     startImpersonation: "Request session",
 
-    approvalTitle: "A second operator has to agree",
-    approvalBody: "This is held for approval under {policy}. It goes ahead once someone else decides.",
-    approvalLink: "Open decisions waiting",
 
     errKeyRequired: "Give the flag a key",
     errDescriptionRequired: "Say what the flag does",
@@ -247,7 +244,6 @@ export const LABELS: Record<string, Record<string, string>> = {
     colEnv: "البيئة",
     colWorker: "الخدمة",
     colVersion: "الإصدار",
-    colStatus: "الحالة",
     colDeployed: "نُشر",
     colBy: "بواسطة",
     deploysEmpty: "لا إصدارات مسجلة",
@@ -288,9 +284,6 @@ export const LABELS: Record<string, Record<string, string>> = {
     confirmImpersonate: "أفهم أن هذا يُسجل باسمي",
     startImpersonation: "طلب جلسة",
 
-    approvalTitle: "يلزم موافقة مشغّل ثانٍ",
-    approvalBody: "هذا محفوظ للموافقة تحت {policy}. يمضي بعد أن يقرر شخص آخر.",
-    approvalLink: "فتح القرارات المنتظرة",
 
     errKeyRequired: "أعطِ المفتاح اسمًا",
     errDescriptionRequired: "اذكر ما يفعله المفتاح",
@@ -308,18 +301,9 @@ export const LABELS: Record<string, Record<string, string>> = {
 
 type Label = (key: string, vars?: Record<string, string>) => string;
 
-export function labelsIn(locale: string): Label {
-  const table = LABELS[locale] ?? LABELS.en ?? {};
-  const fallback = LABELS.en ?? {};
-  const t = translator(locale);
-  return (key, vars) => {
-    const local = table[key] ?? fallback[key];
-    // `t()` pseudoizes on its own; only the route's own table needs the wrap.
-    const shared = local === undefined ? t(`common.${key}`) : pseudoText(locale, local);
-    const raw = shared === `common.${key}` ? key : shared;
-    return vars ? raw.replace(/\{(\w+)\}/g, (match, name: string) => vars[name] ?? match) : raw;
-  };
-}
+/** The shared resolver: the route's own table, then the shared catalogue, then
+ *  the platform's `common.*` words (docs/ui.md §7 P3-14). */
+export const labelsIn = labelsFrom(LABELS);
 
 /* ------------------------------------------------------------------ loader */
 

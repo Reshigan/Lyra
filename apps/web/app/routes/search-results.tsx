@@ -2,11 +2,12 @@ import { Form, Link, useLoaderData, useNavigation, type LoaderFunctionArgs } fro
 import { Button, Card, EmptyState, Input, Ref } from "@lyra/ui";
 import { ApiError, api } from "../api.server";
 import { cloudflare } from "../context";
-import { pseudoText, translator } from "../i18n";
+import { translator } from "../i18n";
 import { WORKSPACES } from "../modules";
 import { labelsFor } from "../modules/spec";
 import { hitToItem, type SearchHit, type SearchItem } from "./search";
 import { useShellData } from "./workspace";
+import { labelsFrom } from "./detail-kit";
 
 // The full page behind the command palette. `routes/search.ts` answers the
 // palette with JSON and stays exactly that; this is the screen you land on when
@@ -91,14 +92,9 @@ const LABELS: Record<string, Record<string, string>> = {
   }
 };
 
-export function labelsIn(locale: string): (key: string, vars?: Record<string, string>) => string {
-  const table = LABELS[locale] ?? LABELS.en!;
-  return (key, vars) =>
-    pseudoText(locale, table[key] ?? LABELS.en![key] ?? key).replace(
-      /\{(\w+)\}/g,
-      (whole, name: string) => vars?.[name] ?? whole
-    );
-}
+/** The shared resolver: the route's own table, then the shared catalogue, then
+ *  the platform's `common.*` words (docs/ui.md §7 P3-14). */
+export const labelsIn = labelsFrom(LABELS);
 
 export default function SearchResults() {
   const loaded = useLoaderData<typeof loader>();

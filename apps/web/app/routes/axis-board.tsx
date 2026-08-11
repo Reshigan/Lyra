@@ -129,10 +129,6 @@ const LABELS: Record<string, Record<string, string>> = {
     "done.transition": "Case moved.",
     "transition.to": "Move to",
     "transition.submit": "Move",
-    approvalTitle: "Waiting on an approval",
-    approvalBody:
-      "This change is gated by {policy}. The request is recorded and takes effect once someone else approves it.",
-    approvalLink: "Open approvals",
     "problem.bad_intent": "The form did not carry an action this screen knows.",
     "problem.missing_owner": "Name both the case and the owner before assigning it.",
     "problem.missing_target": "Choose the state to move this case to."
@@ -172,9 +168,6 @@ const LABELS: Record<string, Record<string, string>> = {
     "done.transition": "تم نقل الحالة.",
     "transition.to": "الانتقال إلى",
     "transition.submit": "نقل",
-    approvalTitle: "بانتظار موافقة",
-    approvalBody: "هذا التغيير يمر بسياسة {policy}. سُجّل الطلب ويسري بعد موافقة شخص آخر.",
-    approvalLink: "فتح الموافقات",
     "problem.bad_intent": "لم يحمل النموذج إجراءً تعرفه هذه الشاشة.",
     "problem.missing_owner": "حدّد الحالة والمسؤول قبل التعيين.",
     "problem.missing_target": "اختر الحالة التي تريد نقل هذه الحالة إليها."

@@ -10,10 +10,10 @@ import {
 import { Badge, Button, Card, EmptyState, PageHeader, Stat, Table, type BadgeTone, type Column } from "@lyra/ui";
 import { ApiError, api, fetchMe, type Problem } from "../api.server";
 import { cloudflare } from "../context";
-import { pseudoText, translator } from "../i18n";
+import { translator } from "../i18n";
 import { axis } from "../modules/axis";
 import { labelsFor, optionLabel } from "../modules/spec";
-import { tag } from "./detail-kit";
+import { labelsFrom, tag } from "./detail-kit";
 import { Gate } from "./staff";
 import { useShellData } from "./workspace";
 
@@ -100,11 +100,8 @@ export const LABELS: Record<string, Record<string, string>> = {
     sopsEmpty: "No procedures yet.",
     colKey: "Procedure",
     colVersion: "Version",
-    colStatus: "Status",
     colApplies: "Applies to",
     publish: "Publish",
-    "status.draft": "Draft",
-    "status.active": "Active",
     "status.retired": "Retired",
     opsTitle: "Operating policy",
     opsIntro: "SLA, routing and queue policy for this tenant.",
@@ -130,11 +127,8 @@ export const LABELS: Record<string, Record<string, string>> = {
     sopsEmpty: "لا توجد إجراءات بعد.",
     colKey: "الإجراء",
     colVersion: "النسخة",
-    colStatus: "الحالة",
     colApplies: "ينطبق على",
     publish: "نشر",
-    "status.draft": "مسودة",
-    "status.active": "نشطة",
     "status.retired": "مسحوبة",
     opsTitle: "سياسة التشغيل",
     opsIntro: "سياسات الخدمة والتوجيه وقائمة الانتظار لهذه المؤسسة.",
@@ -162,18 +156,9 @@ export function caseKind(kind: string, locale: string, pack?: string): string {
   return optionLabel(labelsFor(axis, locale, pack), "kind", kind);
 }
 
-export function labelsIn(locale: string): (key: string, vars?: Record<string, string>) => string {
-  const t = translator(locale);
-  const table = LABELS[locale] ?? LABELS.en!;
-  const fallback = LABELS.en!;
-  return (key, vars) => {
-    const local = table[key] ?? fallback[key];
-    // `t()` pseudoizes on its own; only the route's own table needs the wrap.
-    const shared = local === undefined ? t(`common.${key}`) : pseudoText(locale, local);
-    const raw = shared === `common.${key}` ? key : shared;
-    return vars ? raw.replace(/\{(\w+)\}/g, (match, name: string) => vars[name] ?? match) : raw;
-  };
-}
+/** The shared resolver: the route's own table, then the shared catalogue, then
+ *  the platform's `common.*` words (docs/ui.md §7 P3-14). */
+export const labelsIn = labelsFrom(LABELS);
 
 /* ------------------------------------------------------------------ loader */
 

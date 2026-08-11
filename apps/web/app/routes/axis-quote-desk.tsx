@@ -24,10 +24,10 @@ import {
 } from "@lyra/ui";
 import { ApiError, api, names } from "../api.server";
 import { cloudflare } from "../context";
-import { pseudoText } from "../i18n";
 import { RefPicker, type RefOption } from "../components/ref-picker";
 import { Gate } from "./staff";
 import { useShellData } from "./workspace";
+import { labelsFrom } from "./detail-kit";
 
 // One case, several providers, one decision. The quotes tab lists rows; a desk
 // has to group them by the case they answer, mark the cheapest, say what expires
@@ -105,10 +105,6 @@ const LABELS: Record<string, Record<string, string>> = {
     "done.issue": "Contract issued.",
     "empty.title": "The desk is clear",
     "empty.body": "No case is out with a provider right now.",
-    approvalTitle: "Waiting on an approval",
-    approvalBody:
-      "This is gated by {policy}. The request is recorded and takes effect once someone with the authority approves it.",
-    approvalLink: "Open approvals",
     "problem.bad_intent": "The form did not carry an action this screen knows.",
     "problem.missing_quote": "No quote was named.",
     "problem.missing_reason": "A decline has to say why — it is what the provider is told.",
@@ -156,9 +152,6 @@ const LABELS: Record<string, Record<string, string>> = {
     "done.issue": "أُصدر العقد.",
     "empty.title": "المكتب خالٍ",
     "empty.body": "لا توجد حالة مطروحة على مزوّد الآن.",
-    approvalTitle: "بانتظار موافقة",
-    approvalBody: "هذا الإجراء يمر بسياسة {policy}. سُجّل الطلب ويسري بعد موافقة صاحب الصلاحية.",
-    approvalLink: "فتح الموافقات",
     "problem.bad_intent": "لم يحمل النموذج إجراءً تعرفه هذه الشاشة.",
     "problem.missing_quote": "لم يُحدَّد أي عرض.",
     "problem.missing_reason": "الرفض يجب أن يذكر سببه — فهو ما يُبلَّغ به المزوّد.",
@@ -169,12 +162,9 @@ const LABELS: Record<string, Record<string, string>> = {
 
 export type Label = (key: string, vars?: Record<string, string>) => string;
 
-export function labelsIn(locale: string): Label {
-  return (key, vars) => {
-    const raw = pseudoText(locale, LABELS[locale]?.[key] ?? LABELS["en"]?.[key] ?? key);
-    return vars ? raw.replace(/\{(\w+)\}/g, (whole, name: string) => vars[name] ?? whole) : raw;
-  };
-}
+/** The shared resolver: the route's own table, then the shared catalogue, then
+ *  the platform's `common.*` words (docs/ui.md §7 P3-14). */
+export const labelsIn = labelsFrom(LABELS);
 
 /* ----------------------------------------------------------------- shapes */
 

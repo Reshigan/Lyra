@@ -103,8 +103,6 @@ export const LABELS: Labels = {
     human: "Handled by a person",
     do_not_contact: "Do not contact",
     unknownIntent: "That control is not available.",
-    approvalTitle: "This needs an approval",
-    approvalBody: "Policy {policy} holds this action until somebody approves it.",
     approvalLink: "Open approvals"
   },
   ar: {
@@ -135,8 +133,6 @@ export const LABELS: Labels = {
     human: "يتولاها موظف",
     do_not_contact: "عدم التواصل",
     unknownIntent: "هذا الإجراء غير متاح.",
-    approvalTitle: "هذا الإجراء يحتاج موافقة",
-    approvalBody: "السياسة {policy} تحتجز هذا الإجراء حتى يوافق عليه شخص مسؤول.",
     approvalLink: "افتح الموافقات"
   }
 };

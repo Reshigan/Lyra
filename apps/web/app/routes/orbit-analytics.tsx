@@ -168,8 +168,6 @@ export const LABELS: Labels = {
     badDimension: "Pick a grouping the dataset knows.",
     badGrain: "Pick a period the dataset knows.",
     badFormat: "Pick an export format.",
-    approvalTitle: "This needs an approval",
-    approvalBody: "Policy {policy} holds this action until somebody approves it.",
     approvalLink: "Open approvals"
   },
   ar: {
@@ -234,8 +232,6 @@ export const LABELS: Labels = {
     badDimension: "اختر تجميعًا يعرفه المصدر.",
     badGrain: "اختر فترة يعرفها المصدر.",
     badFormat: "اختر صيغة التصدير.",
-    approvalTitle: "هذا الإجراء يحتاج موافقة",
-    approvalBody: "السياسة {policy} تحتجز هذا الإجراء حتى يوافق عليه شخص مسؤول.",
     approvalLink: "افتح الموافقات"
   }
 };

@@ -23,9 +23,9 @@ import {
 } from "@lyra/ui";
 import { ApiError, api, fetchMe } from "../api.server";
 import { cloudflare } from "../context";
-import { pseudoText } from "../i18n";
 import { Gate } from "./staff";
 import { ORBIT, daysUntil, safe, type Page } from "./orbit-shared";
+import { labelsFrom } from "./detail-kit";
 
 // D.7: the AXIS operator view of orbit_renewals — a read of the same table
 // orbit-save.tsx writes, joined to the policy head it renews. Two of its four
@@ -95,7 +95,6 @@ const LABELS: Record<string, Record<string, string>> = {
     offer: "Open in save desk",
     bindRenewal: "Bind renewal",
     lapse: "Do not contact",
-    working: "Working",
     saved: "Recorded.",
     auto_requote: "Auto re-quote",
     human: "Handled by a person",
@@ -124,7 +123,6 @@ const LABELS: Record<string, Record<string, string>> = {
     offer: "افتح في مكتب الاستبقاء",
     bindRenewal: "تجديد الوثيقة",
     lapse: "عدم التواصل",
-    working: "جارٍ التنفيذ",
     saved: "تم التسجيل.",
     auto_requote: "إعادة تسعير تلقائية",
     human: "يتولاها موظف",
@@ -139,12 +137,9 @@ const LABELS: Record<string, Record<string, string>> = {
 
 export type Label = (key: string, vars?: Record<string, string>) => string;
 
-export function labelsIn(locale: string): Label {
-  return (key, vars) => {
-    const raw = pseudoText(locale, LABELS[locale]?.[key] ?? LABELS.en?.[key] ?? key);
-    return vars ? raw.replace(/\{(\w+)\}/g, (whole, name: string) => vars[name] ?? whole) : raw;
-  };
-}
+/** The shared resolver: the route's own table, then the shared catalogue, then
+ *  the platform's `common.*` words (docs/ui.md §7 P3-14). */
+export const labelsIn = labelsFrom(LABELS);
 
 /* ------------------------------------------------------------------ loader */
 

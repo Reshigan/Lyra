@@ -177,8 +177,6 @@ export const LABELS: Labels = {
     voice: "Voice",
     email: "Email",
     agent: "Agent channel",
-    approvalTitle: "This needs an approval",
-    approvalBody: "Policy {policy} holds this action until somebody approves it.",
     approvalLink: "Open approvals"
   },
   ar: {
@@ -234,8 +232,6 @@ export const LABELS: Labels = {
     voice: "صوت",
     email: "البريد الإلكتروني",
     agent: "قناة الوكيل",
-    approvalTitle: "هذا الإجراء يحتاج موافقة",
-    approvalBody: "السياسة {policy} تحتجز هذا الإجراء حتى يوافق عليه شخص مسؤول.",
     approvalLink: "افتح الموافقات"
   }
 };

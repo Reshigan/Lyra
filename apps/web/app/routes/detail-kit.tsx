@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { cn, focusRing, PageHeader } from "@lyra/ui";
 import { ApiError } from "../api-error";
-import { pseudoText } from "../i18n";
+import { pseudoText, translator } from "../i18n";
 import { optionLabel } from "../modules/spec";
 import { vocabulary } from "../modules/vocabulary";
 
@@ -289,9 +289,12 @@ export const SHARED: Record<string, Record<string, string>> = {
 
 /**
  * `labelsIn` for a route's in-file bilingual table, with `{var}` interpolation.
- * Resolution is pack → route table → shared table → the key itself, so a tenant
- * selling something other than insurance renames the nouns (CLAUDE.md §14)
- * without any of these screens carrying an industry word of its own.
+ * Resolution is pack → route table → shared table → the platform catalogue's
+ * `common.<key>` → the key itself, so a tenant selling something other than
+ * insurance renames the nouns (CLAUDE.md §14) without any of these screens
+ * carrying an industry word of its own, and a word the whole platform already
+ * says — Save, Cancel, Status — is said the same way everywhere it is said
+ * (docs/ui.md §7 P3-14).
  */
 export function labelsFrom(labels: Record<string, Record<string, string>>) {
   return (locale: string, pack?: string): Label => {
@@ -299,11 +302,13 @@ export function labelsFrom(labels: Record<string, Record<string, string>>) {
     const own = labels[locale] ?? labels.en ?? {};
     const ownEn = labels.en ?? {};
     const shared = SHARED[locale] ?? SHARED.en!;
+    const t = translator(locale);
     return (key, vars) => {
-      const raw = pseudoText(
-        locale,
-        packed(key) ?? own[key] ?? ownEn[key] ?? shared[key] ?? SHARED.en![key] ?? key
-      );
+      const mine = packed(key) ?? own[key] ?? ownEn[key] ?? shared[key] ?? SHARED.en![key];
+      // `t()` pseudoizes on its own, and answers with the key it was handed when
+      // the catalogue has no such word — which is the signal to fall through.
+      const common = mine === undefined ? t(`common.${key}`) : pseudoText(locale, mine);
+      const raw = common === `common.${key}` ? key : common;
       return vars ? raw.replace(/\{(\w+)\}/g, (match, name: string) => vars[name] ?? match) : raw;
     };
   };

@@ -1258,11 +1258,17 @@ falling back to a bare blank; the transaction approvals section uses a raw
 `<p>`; and `/ledger/period-close` reuses the **denied** copy for the "no period
 selected" case, telling a permitted user they lack access.
 
-**14. Bespoke screens do not share the label catalogue.** Every one of the 20
-bespoke routes ships its own local `en`/`ar` label table rather than extending
-the shared one. "Approve", "Reject", "Reason" and "Download" are written out
-separately in a dozen files. They will drift, and the Arabic ones already read
-differently from screen to screen.
+**14. ~~Bespoke screens do not share the label catalogue.~~** *Closed.* There
+is one resolver — `labelsFrom` in `detail-kit.tsx` — and every bespoke route
+now goes through it: its own table first, then the shared table, then the
+platform's `common.*` words, then the key. The seventeen hand-rolled copies of
+that chain are gone, and with them 136 local labels that only restated a word
+the platform already said (`approvalTitle` in fourteen files, the settlement
+and commission state names, the document types). `labels.shared.test.ts` fails
+the build if a route writes one of them down again, so the Arabic can no longer
+drift screen by screen. A local entry still wins where a screen genuinely means
+something else — "Back to the register", "You cannot read roles", a desk's own
+empty-state — which is what the override chain is for.
 
 **15. `ActionSpec` is fully built and used by nothing.** The declarative spec
 supports per-resource actions with their own fields, permission and confirm

@@ -32,8 +32,7 @@ import {
 } from "@lyra/ui";
 import { ApiError, api } from "../api.server";
 import { cloudflare } from "../context";
-import { pseudoText } from "../i18n";
-import { tag } from "./detail-kit";
+import { labelsFrom, tag } from "./detail-kit";
 import { Gate } from "./staff";
 import { useShellData } from "./workspace";
 
@@ -117,10 +116,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "extract.submit": "Read",
     "locale.en": "English",
     "locale.ar": "Arabic",
-    "status.received": "Received",
     "status.extracting": "Being read",
-    "status.extracted": "Read",
-    "status.rejected": "Rejected",
     "status.verified": "Confirmed",
     "done.correct": "Corrections saved.",
     "done.reveal": "Identity numbers shown. This was recorded against your name.",
@@ -129,19 +125,9 @@ const LABELS: Record<string, Record<string, string>> = {
     "empty.title": "Nothing waiting",
     "empty.body": "Every document has been read and confirmed.",
     "nav.label": "Documents",
-    "docType.eid": "Identity card",
-    "docType.mulkiya": "Vehicle registration",
-    "docType.census": "Member list",
-    "docType.medical": "Medical report",
-    "docType.tradelicense": "Trade licence",
-    "docType.other": "Other",
     "preview.none": "No preview",
     "preview.nonePlus": "This file is not an image the browser can draw — a PDF, or a scan the store has not kept. Open it to read it.",
     "preview.open": "Open the file",
-    approvalTitle: "Waiting on an approval",
-    approvalBody:
-      "This is gated by {policy}. The request is recorded and takes effect once someone with the authority approves it.",
-    approvalLink: "Open approvals",
     "problem.bad_intent": "The form did not carry an action this screen knows.",
     "problem.missing_doc": "No document was named.",
     "problem.missing_text": "Reading a file needs its text.",
@@ -191,10 +177,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "extract.submit": "قراءة",
     "locale.en": "الإنجليزية",
     "locale.ar": "العربية",
-    "status.received": "مستلَم",
     "status.extracting": "قيد القراءة",
-    "status.extracted": "مقروء",
-    "status.rejected": "مرفوض",
     "status.verified": "مؤكَّد",
     "done.correct": "حُفظت التصحيحات.",
     "done.reveal": "أُظهرت أرقام الهوية، وسُجّل ذلك باسمك.",
@@ -203,18 +186,9 @@ const LABELS: Record<string, Record<string, string>> = {
     "empty.title": "لا شيء بالانتظار",
     "empty.body": "كل المستندات قُرئت وأُكّدت.",
     "nav.label": "المستندات",
-    "docType.eid": "بطاقة الهوية",
-    "docType.mulkiya": "ملكية المركبة",
-    "docType.census": "كشف الأعضاء",
-    "docType.medical": "تقرير طبي",
-    "docType.tradelicense": "رخصة تجارية",
-    "docType.other": "أخرى",
     "preview.none": "لا توجد معاينة",
     "preview.nonePlus": "هذا الملف ليس صورة يمكن للمتصفح رسمها — ملف PDF أو نسخة لم يحتفظ بها المخزن. افتحه لقراءته.",
     "preview.open": "فتح الملف",
-    approvalTitle: "بانتظار موافقة",
-    approvalBody: "هذا الإجراء يمر بسياسة {policy}. سُجّل الطلب ويسري بعد موافقة صاحب الصلاحية.",
-    approvalLink: "فتح الموافقات",
     "problem.bad_intent": "لم يحمل النموذج إجراءً تعرفه هذه الشاشة.",
     "problem.missing_doc": "لم يُحدَّد أي مستند.",
     "problem.missing_text": "قراءة الملف تحتاج نصه.",
@@ -225,12 +199,9 @@ const LABELS: Record<string, Record<string, string>> = {
 
 export type Label = (key: string, vars?: Record<string, string>) => string;
 
-export function labelsIn(locale: string): Label {
-  return (key, vars) => {
-    const raw = pseudoText(locale, LABELS[locale]?.[key] ?? LABELS["en"]?.[key] ?? key);
-    return vars ? raw.replace(/\{(\w+)\}/g, (whole, name: string) => vars[name] ?? whole) : raw;
-  };
-}
+/** The shared resolver: the route's own table, then the shared catalogue, then
+ *  the platform's `common.*` words (docs/ui.md §7 P3-14). */
+export const labelsIn = labelsFrom(LABELS);
 
 /* ----------------------------------------------------------------- shapes */
 

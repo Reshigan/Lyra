@@ -26,10 +26,11 @@ import { ApiError, api, fetchMe, names } from "../api.server";
 import { refOptions } from "../refs.server";
 import { RefPicker, type RefOption } from "../components/ref-picker";
 import { cloudflare } from "../context";
-import { pseudoText, translator } from "../i18n";
+import { translator } from "../i18n";
 import { who } from "../names";
 import { Gate } from "./module";
 import { useShellData } from "./workspace";
+import { labelsFrom } from "./detail-kit";
 
 // Running a payout period, docs/19 §5. Drafting is arithmetic: it prices the
 // entries a period earned and writes a settlement row, and that is all — no
@@ -250,10 +251,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     // Not draftable here (PAYABLE_KINDS) but rows carry it: money in from a
     // carrier is settled the same way and shows up in this queue.
     "kind.insurer": "Insurer",
-    "state.draft": "Draft",
     "state.approved": "Approved, awaiting payment",
-    "state.paid": "Paid",
-    "state.disputed": "Disputed",
     draftedTitle: "Drafted",
     draftedBody: "{count} commission entries priced. Nothing has posted yet.",
     draftedNet: "Net for this period",
@@ -269,14 +267,10 @@ export const LABELS: Record<string, Record<string, string>> = {
     colNet: "Net",
     colState: "State",
     colCreated: "Drafted",
-    open: "Open",
     openFor: "Open the {period} settlement for {counterparty}",
     groupCount: "{count} settlements",
     emptyTitle: "No settlement here yet",
     emptyBody: "Nothing has been drafted for this counterparty and period. Draft it above.",
-    approvalTitle: "This needs an approval first",
-    approvalBody: "Your workspace requires a second person to sign this off before it can run ({policy}).",
-    approvalLink: "Open approvals",
     periodInvalid: "Enter the month as YYYY-MM, for example 2026-06.",
     channelRequired: "Name the channel this settlement is for.",
     awaitingSecond: "Waiting for a second signature",
@@ -305,10 +299,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     "kind.creator": "صانع محتوى",
     "kind.publisher": "ناشر",
     "kind.insurer": "شركة تأمين",
-    "state.draft": "مسودة",
     "state.approved": "موافَق عليها، بانتظار الصرف",
-    "state.paid": "مدفوعة",
-    "state.disputed": "متنازع عليها",
     draftedTitle: "تم الحساب",
     draftedBody: "تم تسعير {count} قيد عمولة. لم يُرحّل شيء بعد.",
     draftedNet: "الصافي لهذه الفترة",
@@ -324,14 +315,10 @@ export const LABELS: Record<string, Record<string, string>> = {
     colNet: "الصافي",
     colState: "الحالة",
     colCreated: "تاريخ الحساب",
-    open: "افتح",
     openFor: "افتح تسوية {period} للطرف {counterparty}",
     groupCount: "{count} تسوية",
     emptyTitle: "لا توجد تسوية هنا بعد",
     emptyBody: "لم تُحسب أي فترة لهذا الطرف المقابل. احسبها من الأعلى.",
-    approvalTitle: "يحتاج هذا إلى موافقة أولًا",
-    approvalBody: "تشترط مساحة عملك توقيع شخص ثانٍ قبل تنفيذ هذا الإجراء ({policy}).",
-    approvalLink: "افتح الموافقات",
     periodInvalid: "أدخل الشهر بالصيغة YYYY-MM، مثل 2026-06.",
     channelRequired: "حدّد القناة التي تخصها هذه التسوية.",
     awaitingSecond: "في انتظار توقيع ثانٍ",
@@ -339,19 +326,9 @@ export const LABELS: Record<string, Record<string, string>> = {
   }
 };
 
-/** This screen's words, then the shared `common.*`, then the raw key. */
-export function labelsIn(locale: string): (key: string, vars?: Record<string, string>) => string {
-  const table = LABELS[locale] ?? LABELS.en ?? {};
-  const fallback = LABELS.en ?? {};
-  const t = translator(locale);
-  return (key, vars) => {
-    const local = table[key] ?? fallback[key];
-    // `t()` pseudoizes on its own; only the route's own table needs the wrap.
-    const shared = local === undefined ? t(`common.${key}`) : pseudoText(locale, local);
-    const raw = shared === `common.${key}` ? key : shared;
-    return vars ? raw.replace(/\{(\w+)\}/g, (match, name: string) => vars[name] ?? match) : raw;
-  };
-}
+/** The shared resolver: the route's own table, then the shared catalogue, then
+ *  the platform's `common.*` words (docs/ui.md §7 P3-14). */
+export const labelsIn = labelsFrom(LABELS);
 
 /* ------------------------------------------------------------------ loader */
 

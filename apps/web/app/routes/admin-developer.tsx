@@ -22,9 +22,10 @@ import {
 } from "@lyra/ui";
 import { ApiError, api, fetchMe, type Problem } from "../api.server";
 import { cloudflare } from "../context";
-import { pseudoText, translator } from "../i18n";
+import { translator } from "../i18n";
 import { Gate } from "./staff";
 import { useShellData } from "./workspace";
+import { labelsFrom } from "./detail-kit";
 
 // The developer portal (docs/10 §6). Three things an integrator needs that no
 // generated list can give them:
@@ -171,7 +172,6 @@ export const LABELS: Record<string, Record<string, string>> = {
     hooksManage: "Add or edit endpoints in the integrations tab",
     colUrl: "Endpoint",
     colEvents: "Events",
-    colStatus: "Status",
     signingTitle: "Verifying a delivery",
     signingIntro:
       "The signature is HMAC-SHA256 over the timestamp, a dot, and the raw body, using the endpoint's secret. Compare it in constant time and refuse a timestamp that is far from now.",
@@ -189,8 +189,6 @@ export const LABELS: Record<string, Record<string, string>> = {
     sandboxIntro:
       "Test-mode API keys are the sandbox for API calls. For AI extraction, the developer console has a scratch space that runs the real prompt without a document row.",
     sandboxLink: "Open the extraction playground",
-    approvalTitle: "This needs an approval",
-    approvalBody: "Policy {policy} sends this change to an approver before it takes effect.",
     approvalLink: "Open approvals"
   },
   ar: {
@@ -226,7 +224,6 @@ export const LABELS: Record<string, Record<string, string>> = {
     hooksManage: "أضف النقاط أو عدّلها من تبويب التكاملات",
     colUrl: "النقطة",
     colEvents: "الأحداث",
-    colStatus: "الحالة",
     signingTitle: "التحقق من التسليم",
     signingIntro:
       "التوقيع هو HMAC-SHA256 على الطابع الزمني ثم نقطة ثم المحتوى الخام، باستخدام سر النقطة. قارنه بزمن ثابت، وارفض أي طابع زمني بعيد عن الآن.",
@@ -244,24 +241,13 @@ export const LABELS: Record<string, Record<string, string>> = {
     sandboxIntro:
       "مفاتيح وضع الاختبار هي بيئة التجربة لاستدعاءات الواجهة البرمجية. لاستخراج الذكاء الاصطناعي، توجد في وحدة المطوّرين بيئة تجربة تُشغّل الطلب الحقيقي دون سجل مستند.",
     sandboxLink: "افتح بيئة تجربة الاستخراج",
-    approvalTitle: "هذا الإجراء يحتاج موافقة",
-    approvalBody: "السياسة {policy} تُحوّل هذا التغيير إلى مُعتمِد قبل أن يسري.",
     approvalLink: "افتح الموافقات"
   }
 };
 
-export function labelsIn(locale: string): (key: string, vars?: Record<string, string>) => string {
-  const table = LABELS[locale] ?? LABELS.en ?? {};
-  const fallback = LABELS.en ?? {};
-  const t = translator(locale);
-  return (key, vars) => {
-    const local = table[key] ?? fallback[key];
-    // `t()` pseudoizes on its own; only the route's own table needs the wrap.
-    const shared = local === undefined ? t(`common.${key}`) : pseudoText(locale, local);
-    const raw = shared === `common.${key}` ? key : shared;
-    return vars ? raw.replace(/\{(\w+)\}/g, (match, name: string) => vars[name] ?? match) : raw;
-  };
-}
+/** The shared resolver: the route's own table, then the shared catalogue, then
+ *  the platform's `common.*` words (docs/ui.md §7 P3-14). */
+export const labelsIn = labelsFrom(LABELS);
 
 /* ------------------------------------------------------------------ loader */
 

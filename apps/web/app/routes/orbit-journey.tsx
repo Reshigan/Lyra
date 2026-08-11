@@ -258,8 +258,6 @@ export const LABELS: Labels = {
     needsSteps: "Add at least one step.",
     needsTrigger: "Add a trigger step so a run knows where to start.",
     hasOrphan: "One or more steps have no branch into or out of them.",
-    saved: "Saved.",
-    working: "Saving",
     backToList: "All journeys",
     bad_key: "A step name uses lowercase letters, digits, dashes or underscores.",
     bad_type: "Pick a step kind from the list.",
@@ -272,8 +270,6 @@ export const LABELS: Labels = {
     bad_status: "Pick a status from the list.",
     cannot_activate: "Clear what is listed under the readiness notice before activating.",
     unknown_intent: "That control is not available.",
-    approvalTitle: "This needs an approval",
-    approvalBody: "Policy {policy} holds this change until somebody approves it.",
     approvalLink: "Open approvals"
   },
   ar: {
@@ -334,8 +330,6 @@ export const LABELS: Labels = {
     needsSteps: "أضف خطوة واحدة على الأقل.",
     needsTrigger: "أضف خطوة مُشغِّل ليعرف النظام نقطة البداية.",
     hasOrphan: "خطوة أو أكثر بلا تفرّع داخل إليها أو خارج منها.",
-    saved: "تم الحفظ.",
-    working: "جارٍ الحفظ",
     backToList: "كل الرحلات",
     bad_key: "اسم الخطوة يستخدم حروفًا صغيرة أو أرقامًا أو شرطات.",
     bad_type: "اختر نوع الخطوة من القائمة.",
@@ -348,8 +342,6 @@ export const LABELS: Labels = {
     bad_status: "اختر حالة من القائمة.",
     cannot_activate: "عالج ما ورد في تنبيه الجاهزية قبل التنشيط.",
     unknown_intent: "هذا الإجراء غير متاح.",
-    approvalTitle: "هذا التغيير يحتاج موافقة",
-    approvalBody: "السياسة {policy} تحتجز هذا التغيير حتى يوافق عليه شخص مسؤول.",
     approvalLink: "افتح الموافقات"
   }
 };

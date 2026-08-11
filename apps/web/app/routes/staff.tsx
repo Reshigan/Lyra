@@ -30,9 +30,10 @@ import { ApiError, api, fetchMe, names } from "../api.server";
 import { RefPicker, type RefOption } from "../components/ref-picker";
 import { cloudflare } from "../context";
 import { who, type Names } from "../names";
-import { pseudoText, translator } from "../i18n";
+import { translator } from "../i18n";
 import { Gate } from "./module";
 import { useShellData } from "./workspace";
+import { labelsFrom } from "./detail-kit";
 
 // Gate is re-exported rather than duplicated: this file's version was byte-
 // identical to routes/module.tsx's (UX audit 2026-08-10, gap G6), so a fix to
@@ -127,17 +128,13 @@ export const LABELS: Record<string, Record<string, string>> = {
     deniedTitle: "You cannot read staff",
     directoryTitle: "Directory",
     directoryCaption: "People with access to this workspace",
-    search: "Search",
     apply: "Search",
     colName: "Name",
     colEmail: "Email",
-    colStatus: "Status",
     colJoined: "Joined",
-    open: "Open",
     openFor: "Open {name}'s record",
     emptyDirectory: "No one matches this search.",
     "status.invited": "Invited",
-    "status.active": "Active",
     "status.suspended": "Suspended",
     inviteTitle: "Invite someone",
     inviteIntro: "They receive an invitation and start in the onboarding checklist.",
@@ -197,8 +194,6 @@ export const LABELS: Record<string, Record<string, string>> = {
     reasonRequired: "Choose a reason.",
     currencyRequired: "A ceiling needs a currency.",
     confirmRequired: "Confirm before submitting.",
-    approvalTitle: "This needs an approval first",
-    approvalBody: "Your workspace requires a second person to sign this off before it can run ({policy}).",
     approvalLink: "Open approvals"
   },
   ar: {
@@ -207,17 +202,13 @@ export const LABELS: Record<string, Record<string, string>> = {
     deniedTitle: "لا يمكنك عرض الموظفين",
     directoryTitle: "الدليل",
     directoryCaption: "الأشخاص الذين لديهم وصول إلى مساحة العمل هذه",
-    search: "بحث",
     apply: "بحث",
     colName: "الاسم",
     colEmail: "البريد الإلكتروني",
-    colStatus: "الحالة",
     colJoined: "تاريخ الانضمام",
-    open: "افتح",
     openFor: "افتح سجل {name}",
     emptyDirectory: "لا توجد مطابقة لهذا البحث.",
     "status.invited": "مدعو",
-    "status.active": "نشط",
     "status.suspended": "موقوف",
     inviteTitle: "دعوة شخص",
     inviteIntro: "سيتلقى دعوة ويبدأ في قائمة التأهيل.",
@@ -277,24 +268,13 @@ export const LABELS: Record<string, Record<string, string>> = {
     reasonRequired: "اختر سببًا.",
     currencyRequired: "السقف يحتاج إلى عملة.",
     confirmRequired: "أكّد قبل الإرسال.",
-    approvalTitle: "يحتاج هذا إلى موافقة أولًا",
-    approvalBody: "تشترط مساحة عملك توقيع شخص ثانٍ قبل تنفيذ هذا الإجراء ({policy}).",
     approvalLink: "افتح الموافقات"
   }
 };
 
-export function labelsIn(locale: string): (key: string, vars?: Record<string, string>) => string {
-  const table = LABELS[locale] ?? LABELS.en ?? {};
-  const fallback = LABELS.en ?? {};
-  const t = translator(locale);
-  return (key, vars) => {
-    const local = table[key] ?? fallback[key];
-    // `t()` pseudoizes on its own; only the route's own table needs the wrap.
-    const shared = local === undefined ? t(`common.${key}`) : pseudoText(locale, local);
-    const raw = shared === `common.${key}` ? key : shared;
-    return vars ? raw.replace(/\{(\w+)\}/g, (match, name: string) => vars[name] ?? match) : raw;
-  };
-}
+/** The shared resolver: the route's own table, then the shared catalogue, then
+ *  the platform's `common.*` words (docs/ui.md §7 P3-14). */
+export const labelsIn = labelsFrom(LABELS);
 
 /* ------------------------------------------------------------------ loader */
 

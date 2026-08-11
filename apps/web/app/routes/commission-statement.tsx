@@ -25,11 +25,11 @@ import { RefPicker } from "../components/ref-picker";
 import { who } from "../names";
 import { Cell, FieldInput, toneFor } from "../components/fields";
 import { cloudflare } from "../context";
-import { pseudoText, translator } from "../i18n";
-import { vocabulary } from "../modules/vocabulary";
+import { translator } from "../i18n";
 import { bodyFrom, optionLabel, type FieldSpec, type Row } from "../modules/spec";
 import { Problem } from "./module";
 import { useShellData } from "./workspace";
+import { labelsFrom } from "./detail-kit";
 
 // The commission position, from the entries themselves: what was written, what
 // each counterparty owes, and what is left after the channel is paid. The
@@ -134,7 +134,6 @@ const LABELS: Record<string, Record<string, string>> = {
     intro:
       "Every commission entry that matches these filters, and the position they add up to. Figures are the entries themselves — nothing here is an estimate.",
     backToEntries: "Back to commission entries",
-    filters: "Filters",
     providerId: "Provider",
     channelId: "Channel",
     state: "State",
@@ -148,7 +147,6 @@ const LABELS: Record<string, Record<string, string>> = {
     taxMinor: "Tax",
     netMinor: "Net commission",
     netHint: "Receivable less channel payable and tax.",
-    policyId: "Policy",
     kind: "Kind",
     earnedOn: "Earned on",
     premium: "Premium",
@@ -178,18 +176,9 @@ const LABELS: Record<string, Record<string, string>> = {
     reversal: "Reversal",
     "kind.new_business": "New business",
     "kind.renewal": "Renewal",
-    "kind.endorsement": "Endorsement",
-    "kind.clawback": "Clawback",
-    "kind.adjustment": "Adjustment",
     "earnedOn.issue": "On issue",
     "earnedOn.collection": "On collection",
     "state.accrued": "Accrued",
-    "state.invoiced": "Invoiced",
-    "state.received": "Received",
-    "state.payable": "Payable",
-    "state.paid": "Paid",
-    "state.clawed_back": "Clawed back",
-    "state.disputed": "Disputed",
     "state.written_off": "Written off"
   },
   ar: {
@@ -197,7 +186,6 @@ const LABELS: Record<string, Record<string, string>> = {
     intro:
       "كل قيود العمولة المطابقة لهذه المرشحات، والمركز الذي تصل إليه. الأرقام هي القيود نفسها — لا شيء هنا تقديري.",
     backToEntries: "العودة إلى قيود العمولة",
-    filters: "المرشحات",
     providerId: "المزود",
     channelId: "القناة",
     state: "الوضع",
@@ -211,7 +199,6 @@ const LABELS: Record<string, Record<string, string>> = {
     taxMinor: "الضريبة",
     netMinor: "صافي العمولة",
     netHint: "المستحق ناقص حصة القناة والضريبة.",
-    policyId: "الوثيقة",
     kind: "النوع",
     earnedOn: "الاستحقاق",
     premium: "القسط",
@@ -240,42 +227,16 @@ const LABELS: Record<string, Record<string, string>> = {
     reversal: "قيد عكسي",
     "kind.new_business": "أعمال جديدة",
     "kind.renewal": "تجديد",
-    "kind.endorsement": "ملحق",
-    "kind.clawback": "استرداد",
-    "kind.adjustment": "تسوية",
     "earnedOn.issue": "عند الإصدار",
     "earnedOn.collection": "عند التحصيل",
     "state.accrued": "مستحق",
-    "state.invoiced": "مفوتر",
-    "state.received": "مستلم",
-    "state.payable": "واجب الدفع",
-    "state.paid": "مدفوع",
-    "state.clawed_back": "تم استرداده",
-    "state.disputed": "متنازع عليه",
     "state.written_off": "مشطوب"
   }
 };
 
-/**
- * The domain pack first (CLAUDE.md §14 — `policyId` is an industry noun), then
- * the local table, then the shared `common.*` catalogue, then the raw key.
- */
-export function labelsIn(
-  locale: string,
-  pack?: string
-): (key: string, vars?: Record<string, string>) => string {
-  const table = LABELS[locale] ?? LABELS.en ?? {};
-  const fallback = LABELS.en ?? {};
-  const packed = vocabulary(pack, locale);
-  const t = translator(locale);
-  return (key, vars) => {
-    const local = packed(key) ?? table[key] ?? fallback[key];
-    // `t()` pseudoizes on its own; only the route's own table needs the wrap.
-    const shared = local === undefined ? t(`common.${key}`) : pseudoText(locale, local);
-    const raw = shared === `common.${key}` ? key : shared;
-    return vars ? raw.replace(/\{(\w+)\}/g, (match, name: string) => vars[name] ?? match) : raw;
-  };
-}
+/** The shared resolver: the route's own table, then the shared catalogue, then
+ *  the platform's `common.*` words (docs/ui.md §7 P3-14). */
+export const labelsIn = labelsFrom(LABELS);
 
 /* ------------------------------------------------------------------- rules */
 

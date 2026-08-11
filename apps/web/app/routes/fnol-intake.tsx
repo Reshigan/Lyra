@@ -22,10 +22,9 @@ import {
 import { ApiError, api, names } from "../api.server";
 import { who, type Names } from "../names";
 import { cloudflare } from "../context";
-import { pseudoText } from "../i18n";
-import { vocabulary } from "../modules/vocabulary";
 import { Gate } from "./staff";
 import { useShellData } from "./workspace";
+import { labelsFrom } from "./detail-kit";
 
 // FNOL taken from a third party has no customer file to open yet — so this
 // screen deliberately prefetches nothing about the claimant, only the caller's
@@ -44,7 +43,6 @@ export const LABELS: Record<string, Record<string, string>> = {
     title: "New claim (FNOL)",
     intro:
       "Check cover before writing anything. An out-of-cover answer still gets registered, flagged for review — refusing to record a notification is a conduct failure.",
-    "policyId": "Policy",
     "field.incidentAt": "Date of loss",
     "field.peril": "Peril",
     "field.cause": "Cause",
@@ -82,9 +80,6 @@ export const LABELS: Record<string, Record<string, string>> = {
     "peril.other": "Other",
     "done.check-cover": "Cover checked.",
     "done.register": "Claim {claimNo} registered.",
-    approvalTitle: "Waiting on an approval",
-    approvalBody: "This needs sign-off under {policy} before it can go through.",
-    approvalLink: "Open approvals",
     "problem.missing_policy": "Pick a policy first.",
     "problem.missing_date": "Date of loss is required.",
     "problem.bad_amount": "Estimated amount has to be a number.",
@@ -94,7 +89,6 @@ export const LABELS: Record<string, Record<string, string>> = {
     title: "بلاغ حادث جديد",
     intro:
       "تحقّق من التغطية قبل تسجيل أي شيء. البلاغ خارج التغطية يُسجَّل أيضًا ويُوسَم للمراجعة — رفض تسجيل بلاغ هو إخلال بواجب السلوك.",
-    "policyId": "الوثيقة",
     "field.incidentAt": "تاريخ الحادث",
     "field.peril": "الخطر",
     "field.cause": "السبب",
@@ -132,9 +126,6 @@ export const LABELS: Record<string, Record<string, string>> = {
     "peril.other": "أخرى",
     "done.check-cover": "تم التحقّق من التغطية.",
     "done.register": "سُجِّلت المطالبة {claimNo}.",
-    approvalTitle: "بانتظار موافقة",
-    approvalBody: "هذا الإجراء يمر بسياسة {policy}. سُجّل الطلب ويسري بعد موافقة صاحب الصلاحية.",
-    approvalLink: "فتح الموافقات",
     "problem.missing_policy": "اختر وثيقة أولًا.",
     "problem.missing_date": "تاريخ الحادث مطلوب.",
     "problem.bad_amount": "المبلغ التقديري يجب أن يكون رقمًا.",
@@ -144,14 +135,9 @@ export const LABELS: Record<string, Record<string, string>> = {
 
 export type Label = (key: string, vars?: Record<string, string>) => string;
 
-/** The pack answers first: `policyId` names an industry record (§14). */
-export function labelsIn(locale: string, pack?: string): Label {
-  const packed = vocabulary(pack, locale);
-  return (key, vars) => {
-    const raw = pseudoText(locale, packed(key) ?? LABELS[locale]?.[key] ?? LABELS["en"]?.[key] ?? key);
-    return vars ? raw.replace(/\{(\w+)\}/g, (whole, name: string) => vars[name] ?? whole) : raw;
-  };
-}
+/** The shared resolver: the route's own table, then the shared catalogue, then
+ *  the platform's `common.*` words (docs/ui.md §7 P3-14). */
+export const labelsIn = labelsFrom(LABELS);
 
 /** Static: no peril catalogue exists in the schema, and the domain pack does
  * not rename these (checked against modules/vocabulary.ts). */

@@ -22,10 +22,10 @@ import {
 import { ApiError, api, directory, names } from "../api.server";
 import { who } from "../names";
 import { cloudflare } from "../context";
-import { pseudoText } from "../i18n";
 import { optionLabel } from "../modules/spec";
 import { Gate } from "./staff";
 import { useShellData } from "./workspace";
+import { labelsFrom } from "./detail-kit";
 
 // The board (axis-board.tsx) reports pile-ups because cases have no transition
 // endpoint. Claims do — `POST /v1/axis/claims/:id/transition` — so this screen
@@ -108,9 +108,6 @@ const LABELS: Record<string, Record<string, string>> = {
     "hop.reason": "Note",
     "hop.submit": "Advance",
     "hop.none": "No hop from here — settling and settled follow a payment.",
-    approvalTitle: "Waiting on an approval",
-    approvalBody: "This change is gated by {policy}. The request is recorded and takes effect once someone else approves it.",
-    approvalLink: "Open approvals",
     "problem.missing_claim": "Pick a claim first.",
     "problem.missing_handler": "Name a handler before assigning.",
     "problem.bad_transition": "That outcome is not open from this claim's current state.",
@@ -162,9 +159,6 @@ const LABELS: Record<string, Record<string, string>> = {
     "hop.reason": "ملاحظة",
     "hop.submit": "تقديم",
     "hop.none": "لا انتقال متاح من هنا — التسوية الجارية والنهائية تأتيان بعد طلب دفع.",
-    approvalTitle: "بانتظار موافقة",
-    approvalBody: "هذا التغيير يمر بسياسة {policy}. سُجّل الطلب ويسري بعد موافقة شخص آخر.",
-    approvalLink: "فتح الموافقات",
     "problem.missing_claim": "اختر مطالبة أولًا.",
     "problem.missing_handler": "حدّد معالجًا قبل التعيين.",
     "problem.bad_transition": "تلك النتيجة غير متاحة من حالة المطالبة الحالية.",
@@ -174,12 +168,9 @@ const LABELS: Record<string, Record<string, string>> = {
 
 export type Label = (key: string, vars?: Record<string, string>) => string;
 
-export function labelsIn(locale: string): Label {
-  return (key, vars) => {
-    const raw = pseudoText(locale, LABELS[locale]?.[key] ?? LABELS["en"]?.[key] ?? key);
-    return vars ? raw.replace(/\{(\w+)\}/g, (whole, name: string) => vars[name] ?? whole) : raw;
-  };
-}
+/** The shared resolver: the route's own table, then the shared catalogue, then
+ *  the platform's `common.*` words (docs/ui.md §7 P3-14). */
+export const labelsIn = labelsFrom(LABELS);
 
 /* ----------------------------------------------------------------- shapes */
 
