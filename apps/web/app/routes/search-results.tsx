@@ -113,7 +113,7 @@ export default function SearchResults() {
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-2">
-        <h1 className="font-serif text-24 leading-[1.2] text-text">{l("title")}</h1>
+        <h1 className="font-serif text-22 leading-[1.2] text-text">{l("title")}</h1>
         <p className="max-w-prose font-ui text-13 text-subtle">{l("intro")}</p>
       </header>
 
@@ -178,7 +178,7 @@ function Group({
 
   return (
     <section className="flex flex-col gap-2">
-      <h2 className="font-ui text-11 tracking-[0.14em] uppercase tracking-[0.14em] text-subtle">
+      <h2 className="font-ui text-12 tracking-[0.14em] uppercase tracking-[0.14em] text-subtle">
         {l("group", { area, count: String(group.items.length) })}
       </h2>
       <Card elevation="flat" padded={false}>
@@ -191,7 +191,7 @@ function Group({
               >
                 <span className="min-w-0">
                   <span className="block font-ui text-13 break-words text-text">{item.label}</span>
-                  <Ref value={item.id} className="block text-11 text-subtle" />
+                  <Ref value={item.id} className="block text-12 text-subtle" />
                 </span>
                 <span className="font-ui text-12 text-accent">{t("common.open")}</span>
               </Link>

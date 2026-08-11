@@ -142,7 +142,7 @@ export default function ScoutRadar() {
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-1">
-        <h1 className="font-serif text-24 leading-[1.2] text-text">{l("radar.title")}</h1>
+        <h1 className="font-serif text-22 leading-[1.2] text-text">{l("radar.title")}</h1>
         <p className="max-w-prose font-ui text-13 text-muted">{l("radar.lede")}</p>
       </header>
 
@@ -168,9 +168,9 @@ export default function ScoutRadar() {
           ) : (
             <Quadrant dots={loaded.dots} l={l} />
           )}
-          <p className="mt-8 font-ui text-11 text-subtle">{l("radar.axisY")}</p>
+          <p className="mt-8 font-ui text-12 text-subtle">{l("radar.axisY")}</p>
           {loaded.unplotted > 0 ? (
-            <p className="mt-2 font-ui text-11 text-subtle">
+            <p className="mt-2 font-ui text-12 text-subtle">
               <EvidenceLink source={l("radar.unplottedWhy")} sourceLabel={l("why")}>
                 {l("radar.unplotted", { n: number(loaded.unplotted) })}
               </EvidenceLink>
@@ -223,7 +223,7 @@ export default function ScoutRadar() {
                   {l(`status.${chosen.status}`)}
                 </Badge>
                 {chosen.promotedAt === null ? null : (
-                  <span className="font-ui text-11 text-subtle">
+                  <span className="font-ui text-12 text-subtle">
                     <DateTime value={chosen.promotedAt} locale={locale} />
                   </span>
                 )}
@@ -242,7 +242,7 @@ export default function ScoutRadar() {
               {loaded.evidence?.refs?.length ? (
                 <ul className="flex flex-wrap gap-2">
                   {loaded.evidence.refs.map((ref) => (
-                    <li key={ref} className="rounded-sm border border-line px-2 py-1 font-mono text-11 text-subtle">
+                    <li key={ref} className="rounded-sm border border-line px-2 py-1 font-mono text-12 text-subtle">
                       {ref}
                     </li>
                   ))}
@@ -257,7 +257,7 @@ export default function ScoutRadar() {
                   <Button type="submit" disabled={busy}>
                     {l("radar.experiment")}
                   </Button>
-                  <span className="font-ui text-11 text-subtle">{l("radar.experimentHint")}</span>
+                  <span className="font-ui text-12 text-subtle">{l("radar.experimentHint")}</span>
                 </Form>
               ) : null}
             </div>
@@ -302,10 +302,10 @@ function Quadrant({ dots: plotted, l }: { dots: Dot[]; l: Label }) {
       <div className="relative h-[370px] border-b border-s border-line">
         <div className="absolute end-0 start-0 top-1/2 border-t border-dashed border-line" />
         <div className="absolute bottom-0 start-1/2 top-0 border-s border-dashed border-line" />
-        <span className="absolute end-2 top-2 font-ui text-11 uppercase tracking-widest text-subtle">
+        <span className="absolute end-2 top-2 font-ui text-12 uppercase tracking-widest text-subtle">
           {l("radar.pursue")}
         </span>
-        <span className="absolute bottom-2 start-2 font-ui text-11 uppercase tracking-widest text-subtle">
+        <span className="absolute bottom-2 start-2 font-ui text-12 uppercase tracking-widest text-subtle">
           {l("radar.park")}
         </span>
         {plotted.map((dot) => (
@@ -323,13 +323,13 @@ function Quadrant({ dots: plotted, l }: { dots: Dot[]; l: Label }) {
               className={`block rounded-full border-2 border-module-scout ${dot.selected ? "bg-module-scout" : ""}`}
               style={{ width: dotSize(dot.evidence), height: dotSize(dot.evidence) }}
             />
-            <span className={`whitespace-nowrap font-ui text-11 ${dot.selected ? "text-text" : "text-subtle"}`}>
+            <span className={`whitespace-nowrap font-ui text-12 ${dot.selected ? "text-text" : "text-subtle"}`}>
               {dot.label}
             </span>
           </Link>
         ))}
       </div>
-      <p className="mt-2 text-center font-ui text-11 text-subtle">{l("radar.axisX")}</p>
+      <p className="mt-2 text-center font-ui text-12 text-subtle">{l("radar.axisX")}</p>
     </div>
   );
 }
@@ -337,7 +337,7 @@ function Quadrant({ dots: plotted, l }: { dots: Dot[]; l: Label }) {
 function Metric({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
     <div className="rounded-md border border-line px-3 py-2">
-      <dt className="font-ui text-11 text-subtle">{label}</dt>
+      <dt className="font-ui text-12 text-subtle">{label}</dt>
       <dd className={`mt-1 font-mono text-16 ${tone ?? "text-text"}`}>{value}</dd>
     </div>
   );

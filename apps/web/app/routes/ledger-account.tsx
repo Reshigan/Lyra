@@ -173,7 +173,7 @@ export default function LedgerAccount() {
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-2">
-        <h1 className="font-serif text-24 leading-[1.2] text-text">{l("account.title")}</h1>
+        <h1 className="font-serif text-22 leading-[1.2] text-text">{l("account.title")}</h1>
         <p className="max-w-prose font-ui text-13 text-subtle">{l("account.intro")}</p>
       </header>
 
@@ -206,7 +206,7 @@ export default function LedgerAccount() {
             <dl className="grid grid-cols-[repeat(auto-fit,minmax(10rem,1fr))] gap-5">
               <div className="flex flex-col gap-1">
                 <dt className="font-ui text-12 text-subtle">{l("account.opening")}</dt>
-                <dd className="font-mono text-20 tabular-nums text-text">
+                <dd className="font-mono text-22 tabular-nums text-text">
                   <Money
                     amountMinor={statement.openingMinor}
                     currency={balance?.currency ?? currency}
@@ -217,7 +217,7 @@ export default function LedgerAccount() {
               </div>
               <div className="flex flex-col gap-1">
                 <dt className="font-ui text-12 text-subtle">{l("account.closing")}</dt>
-                <dd className="font-mono text-20 tabular-nums text-text">
+                <dd className="font-mono text-22 tabular-nums text-text">
                   <Money
                     amountMinor={statement.closingMinor}
                     currency={balance?.currency ?? currency}

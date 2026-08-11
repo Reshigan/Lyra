@@ -413,7 +413,7 @@ export default function CommissionStatement() {
           >
             {who(row.policyId, loaded.names)}
           </Link>
-          <Ref value={row.providerId} className="text-11 text-subtle" />
+          <Ref value={row.providerId} className="text-12 text-subtle" />
         </span>
       )
     },
@@ -554,7 +554,7 @@ export default function CommissionStatement() {
                     {/* Each currency stands alone: a statement that adds AED to
                         USD is a number nobody can act on (docs/22 §5.1). */}
                     {statement.totals.length > 1 ? (
-                      <h3 className="font-mono text-11 tracking-wide text-subtle">
+                      <h3 className="font-mono text-12 tracking-wide text-subtle">
                         {totals.currency}
                       </h3>
                     ) : null}
@@ -576,7 +576,7 @@ export default function CommissionStatement() {
                           carries the weight rather than sitting fourth among equals. */}
                       <div className="flex flex-col gap-0.5">
                         <dt className="font-ui text-12 text-subtle">{l("netMinor")}</dt>
-                        <dd className="font-mono text-20 tabular-nums text-text">
+                        <dd className="font-mono text-22 tabular-nums text-text">
                           <Money
                             amountMinor={totals.netMinor}
                             currency={totals.currency}
@@ -584,7 +584,7 @@ export default function CommissionStatement() {
                             toned
                           />
                         </dd>
-                        <dd className="font-ui text-11 text-subtle">{l("netHint")}</dd>
+                        <dd className="font-ui text-12 text-subtle">{l("netHint")}</dd>
                       </div>
                     </dl>
                   </section>

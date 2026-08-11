@@ -422,12 +422,12 @@ export default function CaseDetail() {
       header: l("colOutcome"),
       render: (row) => (row.outcome ? <Badge size="sm">{tag(l, "outcome", row.outcome)}</Badge> : <span>—</span>)
     },
-    { key: "actorRef", header: l("colWho"), render: (row) => <Ref value={row.actorRef} className="text-11" /> },
+    { key: "actorRef", header: l("colWho"), render: (row) => <Ref value={row.actorRef} className="text-12" /> },
     {
       key: "durationMs",
       header: l("colDuration"),
       numeric: true,
-      render: (row) => <span className="font-mono text-11">{row.durationMs ?? "—"}</span>
+      render: (row) => <span className="font-mono text-12">{row.durationMs ?? "—"}</span>
     },
     { key: "ts", header: l("colWhen"), render: (row) => <DateTime value={row.ts} locale={locale} precision="minute" /> }
   ];
@@ -467,20 +467,20 @@ export default function CaseDetail() {
   ];
 
   const approvalColumns: Array<Column<CaseApprovalRow>> = [
-    { key: "policyKey", header: l("colPolicyKey"), render: (row) => <span className="font-mono text-11">{row.policyKey}</span> },
+    { key: "policyKey", header: l("colPolicyKey"), render: (row) => <span className="font-mono text-12">{row.policyKey}</span> },
     {
       key: "decision",
       header: l("colOutcome"),
       render: (row) => <Badge size="sm">{tag(l, "decision", row.decision)}</Badge>
     },
-    { key: "subjectRef", header: l("colSubject"), render: (row) => <Ref value={row.subjectRef} className="text-11" /> },
+    { key: "subjectRef", header: l("colSubject"), render: (row) => <Ref value={row.subjectRef} className="text-12" /> },
     { key: "ts", header: l("colWhen"), render: (row) => <DateTime value={row.ts} locale={locale} precision="minute" /> }
   ];
 
   const taskColumns: Array<Column<TaskRow>> = [
     { key: "titleKey", header: l("colTask"), render: (row) => <span className="font-ui text-12">{tag(l, "titleKey", row.titleKey)}</span> },
     { key: "state", header: l("colStatus"), render: (row) => <Badge size="sm">{tag(l, "state", row.state)}</Badge> },
-    { key: "assigneeRef", header: l("colAssignee"), render: (row) => <Ref value={row.assigneeRef} className="text-11" /> },
+    { key: "assigneeRef", header: l("colAssignee"), render: (row) => <Ref value={row.assigneeRef} className="text-12" /> },
     {
       key: "dueAt",
       header: l("colDue"),

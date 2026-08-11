@@ -121,7 +121,7 @@ export default function Record() {
         >
           {t("common.back")}
         </Link>
-        <h1 className="font-serif text-24 leading-[1.2] text-text">{heading}</h1>
+        <h1 className="font-serif text-22 leading-[1.2] text-text">{heading}</h1>
         <p className="font-ui text-12 text-subtle">
           {label(tab.key)} · <span className="font-mono">{String(row.id ?? "")}</span>
         </p>

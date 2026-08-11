@@ -68,12 +68,12 @@ export function GhostText({ text, onAccept, onDiscard, className }: GhostTextPro
         <span className="ms-2 inline-flex items-center gap-1 align-middle">
           {onAccept ? (
             <Button size="sm" variant="ghost" onClick={onAccept}>
-              {t("accept")} <kbd className="font-mono text-11">Tab</kbd>
+              {t("accept")} <kbd className="font-mono text-12">Tab</kbd>
             </Button>
           ) : null}
           {onDiscard ? (
             <Button size="sm" variant="ghost" onClick={onDiscard}>
-              {t("discard")} <kbd className="font-mono text-11">Esc</kbd>
+              {t("discard")} <kbd className="font-mono text-12">Esc</kbd>
             </Button>
           ) : null}
         </span>
@@ -137,7 +137,7 @@ export function EvidenceLink({ children, source, sourceLabel, className, ...prop
       }
     >
       <div className="flex flex-col gap-2">
-        <span className="font-ui text-11 uppercase tracking-[0.14em] text-subtle">{name}</span>
+        <span className="font-ui text-12 uppercase tracking-[0.14em] text-subtle">{name}</span>
         {source}
       </div>
     </Popover>
@@ -228,7 +228,7 @@ export function BudgetMeter({
         label={t("budgetUsage", { label: name, value: pct, limit: nf.format(limit), unit: units })}
       />
       {resetsAt ? (
-        <span className="font-ui text-11 text-subtle">
+        <span className="font-ui text-12 text-subtle">
           {t("resets")} {resetsAt}
         </span>
       ) : null}
@@ -290,7 +290,7 @@ export function ApprovalStrip({
           <p className="mt-1 font-ui text-12 text-muted">{consequence}</p>
         ) : null}
         {requestedBy ? (
-          <p className="mt-1 font-ui text-11 text-subtle">{t("requestedBy", { who: requestedBy })}</p>
+          <p className="mt-1 font-ui text-12 text-subtle">{t("requestedBy", { who: requestedBy })}</p>
         ) : null}
       </div>
       {blockedReason ? (

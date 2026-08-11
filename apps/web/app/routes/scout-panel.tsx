@@ -102,7 +102,7 @@ export default function ScoutPanel() {
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-1">
-        <h1 className="font-serif text-24 leading-[1.2] text-text">{l("panel.title")}</h1>
+        <h1 className="font-serif text-22 leading-[1.2] text-text">{l("panel.title")}</h1>
         <p className="max-w-prose font-ui text-13 text-muted">
           {l("panel.lede", { period: loaded.period ?? l("none") })}
         </p>
@@ -193,7 +193,7 @@ export function panelColumns(l: Label, locale: string): Array<Column<ProviderRol
             <Badge tone={tone.tone === "neutral" ? "neutral" : tone.tone} size="sm">
               {l(tone.key)}
             </Badge>
-            <span className="font-mono text-11 text-subtle">{roll.lines.join(" · ")}</span>
+            <span className="font-mono text-12 text-subtle">{roll.lines.join(" · ")}</span>
           </span>
         );
       }

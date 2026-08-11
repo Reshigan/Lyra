@@ -504,7 +504,7 @@ export default function QuoteCompare() {
         <Link to={listPath} className="font-ui text-12 text-subtle underline-offset-2 hover:underline">
           {t("common.back")}
         </Link>
-        <h1 className="font-serif text-24 leading-[1.2] text-text">{L("title")}</h1>
+        <h1 className="font-serif text-22 leading-[1.2] text-text">{L("title")}</h1>
         <p className="flex flex-wrap items-center gap-2 font-ui text-12 text-subtle">
           <Ref value={request.id} />
           <Badge tone={toneFor(request.state)} size="sm" dot>
@@ -614,7 +614,7 @@ export default function QuoteCompare() {
                     <th key={quote.id} scope="col" className="min-w-52 p-3 text-start align-top">
                       <span className="flex flex-col gap-1">
                         <span className="font-ui text-14 text-text">{offeringName(quote, locale)}</span>
-                        <Ref value={quote.providerId} className="text-11 text-subtle" />
+                        <Ref value={quote.providerId} className="text-12 text-subtle" />
                         <span className="flex flex-wrap gap-1">
                           <Badge tone={toneFor(quote.state)} size="sm" dot>
                             {L(`state.${quote.state}`)}
@@ -796,7 +796,7 @@ function PanelSection({
                     key={`${entry.offeringId}:${index}`}
                     className="flex flex-wrap items-baseline gap-x-2 font-ui text-13 text-text"
                   >
-                    <Ref value={entry.providerId} className="text-11 text-subtle" />
+                    <Ref value={entry.providerId} className="text-12 text-subtle" />
                     {entry.reason ? (
                       <span className="min-w-0 break-words text-subtle">
                         {L("reason")}: {entry.reason}
@@ -849,13 +849,13 @@ function OfferCard({
                 {Object.entries(evidence).map(([key, value]) => (
                   <Fragment key={key}>
                     <dt>{humanize(key)}</dt>
-                    <dd className="font-mono text-11 text-text">{String(value)}</dd>
+                    <dd className="font-mono text-12 text-text">{String(value)}</dd>
                   </Fragment>
                 ))}
                 {offer.offeringId ? (
                   <Fragment>
                     <dt>{L("detail")}</dt>
-                    <dd className="font-mono text-11 text-text">{shortRef(offer.offeringId)}</dd>
+                    <dd className="font-mono text-12 text-text">{shortRef(offer.offeringId)}</dd>
                   </Fragment>
                 ) : null}
               </dl>
@@ -1061,7 +1061,7 @@ function coverageCell(
       <span className="tabular-nums">{value}</span>
     );
   }
-  if (typeof value === "object") return <span className="font-mono text-11">{JSON.stringify(value)}</span>;
+  if (typeof value === "object") return <span className="font-mono text-12">{JSON.stringify(value)}</span>;
   return String(value);
 }
 

@@ -187,7 +187,7 @@ export default function AnalyticsDashboard() {
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-2">
         <p className="font-ui text-12 text-subtle">{l("dashboard")}</p>
-        <h1 className="font-serif text-24 leading-[1.2] text-text">{loaded.name}</h1>
+        <h1 className="font-serif text-22 leading-[1.2] text-text">{loaded.name}</h1>
         {data ? (
           <p className="font-ui text-12 text-subtle">
             {l("generated")}{" "}

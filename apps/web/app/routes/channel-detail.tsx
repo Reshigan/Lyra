@@ -323,7 +323,7 @@ export default function ChannelDetail() {
       render: (row) => (
         <span className="flex flex-col">
           <span className="font-ui text-12 text-text">{nameOf(row.nameJson, locale, l("unnamed"))}</span>
-          <span className="font-mono text-11 text-subtle">{row.code}</span>
+          <span className="font-mono text-12 text-subtle">{row.code}</span>
         </span>
       )
     },
@@ -331,7 +331,7 @@ export default function ChannelDetail() {
       key: "productId",
       header: l("colScope"),
       render: (row) => (
-        <Link to={`/admin/products/${row.productId}/detail`} className="font-mono text-11 text-accent hover:underline">
+        <Link to={`/admin/products/${row.productId}/detail`} className="font-mono text-12 text-accent hover:underline">
           {row.productId}
         </Link>
       )
@@ -350,7 +350,7 @@ export default function ChannelDetail() {
       key: "offeringId",
       header: l("colScope"),
       render: (row) => (
-        <Ref value={row.offeringId ?? row.productId ?? row.line} className="text-11" fallback={l("scopeAll")} />
+        <Ref value={row.offeringId ?? row.productId ?? row.line} className="text-12" fallback={l("scopeAll")} />
       )
     },
     {
@@ -388,7 +388,7 @@ export default function ChannelDetail() {
       key: "productId",
       header: l("colScope"),
       render: (row) => (
-        <Link to={`/admin/products/${row.productId}/detail`} className="font-mono text-11 text-accent hover:underline">
+        <Link to={`/admin/products/${row.productId}/detail`} className="font-mono text-12 text-accent hover:underline">
           {row.productId}
         </Link>
       )

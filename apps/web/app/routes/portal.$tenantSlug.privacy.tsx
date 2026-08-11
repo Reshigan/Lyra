@@ -161,7 +161,7 @@ export default function PortalPrivacy() {
           />
         ) : null}
         <div>
-          <h1 className="font-serif text-24 leading-[1.2]">{l("privacy.title")}</h1>
+          <h1 className="font-serif text-22 leading-[1.2]">{l("privacy.title")}</h1>
           <p className="mt-1 text-13 text-muted">{l("privacy.intro")}</p>
         </div>
       </header>

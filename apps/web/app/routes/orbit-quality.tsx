@@ -350,7 +350,7 @@ export default function ConversationQuality() {
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-1">
-        <h1 className="font-serif text-24 leading-[1.2] text-text">
+        <h1 className="font-serif text-22 leading-[1.2] text-text">
           <span aria-hidden="true">{AGENT_MARK}</span> {l("title")}
         </h1>
         <p className="font-ui text-13 text-muted">{l("lede")}</p>
@@ -425,7 +425,7 @@ export default function ConversationQuality() {
                             <dl className="flex flex-col gap-1">
                               {pairs.map(([key, value]) => (
                                 <div key={key} className="flex items-baseline justify-between gap-4">
-                                  <dt className="font-mono text-11 text-subtle">{key}</dt>
+                                  <dt className="font-mono text-12 text-subtle">{key}</dt>
                                   <dd className="font-ui text-12 text-text">{value}</dd>
                                 </div>
                               ))}

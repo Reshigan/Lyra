@@ -459,7 +459,7 @@ export default function SettlementPeriod() {
       render: (row) => (
         <span className="flex flex-col gap-0.5">
           <Ref value={row.counterpartyRef} className="text-12" />
-          <span className="font-ui text-11 text-subtle">{l(`kind.${row.counterpartyKind}`)}</span>
+          <span className="font-ui text-12 text-subtle">{l(`kind.${row.counterpartyKind}`)}</span>
         </span>
       )
     },
@@ -493,7 +493,7 @@ export default function SettlementPeriod() {
             {l(`state.${row.state}`)}
           </Badge>
           {row.state === "approved" ? (
-            <span className="font-ui text-11 text-subtle">{l("awaitingSecond")}</span>
+            <span className="font-ui text-12 text-subtle">{l("awaitingSecond")}</span>
           ) : null}
         </span>
       )
@@ -600,7 +600,7 @@ export default function SettlementPeriod() {
               amountMinor={drafted.settlement.netMinor}
               currency={drafted.settlement.currency}
               locale={locale}
-              className="font-ui text-20"
+              className="font-ui text-22"
             />
           </p>
           <Button asChild variant="secondary" size="sm" className="mt-3">

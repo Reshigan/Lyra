@@ -682,7 +682,7 @@ export default function Customer360() {
 
   const fileColumns: Array<Column<FileRow>> = [
     { key: "kind", header: l("colKind"), render: (row) => <span className="font-ui text-12">{tag(l, "kind", row.kind)}</span> },
-    { key: "contentType", header: l("colFormat"), render: (row) => <span className="font-mono text-11">{row.contentType ?? "—"}</span> },
+    { key: "contentType", header: l("colFormat"), render: (row) => <span className="font-mono text-12">{row.contentType ?? "—"}</span> },
     {
       key: "piiLevel",
       header: l("colSensitivity"),
@@ -770,7 +770,7 @@ export default function Customer360() {
                 }
               />
             </div>
-            <p className="mt-3 font-ui text-11 text-subtle">{l("positionHintLedger")}</p>
+            <p className="mt-3 font-ui text-12 text-subtle">{l("positionHintLedger")}</p>
           </>
         ) : (
           <>
@@ -786,7 +786,7 @@ export default function Customer360() {
                 value={<Money amountMinor={customer.ltvCached ?? 0} currency={currency} locale={locale} />}
               />
             </div>
-            <p className="mt-3 font-ui text-11 text-subtle">{l("positionHint")}</p>
+            <p className="mt-3 font-ui text-12 text-subtle">{l("positionHint")}</p>
           </>
         )}
       </Card>
@@ -972,7 +972,7 @@ function OfferCard({
           {tag(l, "kind", offer.kind)} {AGENT_MARK}
         </span>
         <span className="font-ui text-12 text-muted">{tag(l, "reason", offer.reasonKey)}</span>
-        <Ref value={offer.offeringId} className="text-11 text-subtle" />
+        <Ref value={offer.offeringId} className="text-12 text-subtle" />
       </div>
       <div className="flex items-center gap-4">
         <ConfidenceMeter value={offer.score / 100} label={l("colScore")} className="w-32" />

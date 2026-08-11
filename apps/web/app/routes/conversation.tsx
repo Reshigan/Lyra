@@ -600,7 +600,7 @@ export default function ConversationThread() {
         >
           {t("common.back")}
         </Link>
-        <h1 className="font-serif text-24 leading-[1.2] text-text">
+        <h1 className="font-serif text-22 leading-[1.2] text-text">
           {loaded.customerName ?? l("conversation")}
         </h1>
         <p className="flex flex-wrap items-center gap-2 font-ui text-12 text-subtle">
@@ -772,7 +772,7 @@ export default function ConversationThread() {
                   <pre
                     tabIndex={0}
                     className={cn(
-                      "max-w-xs overflow-x-auto font-mono text-11 text-muted",
+                      "max-w-xs overflow-x-auto font-mono text-12 text-muted",
                       focusRing
                     )}
                   >
@@ -855,7 +855,7 @@ export default function ConversationThread() {
               {loaded.handovers.map((note) => (
                 <li key={note.id} className="flex flex-col gap-1 border-s border-border ps-3">
                   <span className="font-ui text-13 text-text">{note.summary ?? ""}</span>
-                  <span className="font-ui text-11 text-subtle">
+                  <span className="font-ui text-12 text-subtle">
                     {l("generatedBy")}: {l(`role.agent_${note.generatedBy}`)}
                     {note.acceptedBy ? ` · ${l("accepted")}: ${note.acceptedBy}` : ""} ·{" "}
                     <DateTime value={note.ts} locale={locale} precision="minute" />
@@ -898,7 +898,7 @@ export default function ConversationThread() {
                     {l("score")}: {score.score}
                   </Badge>
                   {score.disputedBy ? <Badge tone="danger">{l("disputed")}</Badge> : null}
-                  <span className="font-ui text-11 text-subtle">
+                  <span className="font-ui text-12 text-subtle">
                     <DateTime value={score.ts} locale={locale} precision="minute" />
                   </span>
                 </li>
@@ -964,7 +964,7 @@ function MessageRow({
           : "ms-auto max-w-prose rounded-lg border border-accent/40 bg-surface-2 p-3 text-start"
       }
     >
-      <p className="flex flex-wrap items-center gap-2 font-ui text-11 text-subtle">
+      <p className="flex flex-wrap items-center gap-2 font-ui text-12 text-subtle">
         <span>{direction}</span>
         <Badge tone={inbound ? "neutral" : "accent"} size="sm">
           {/* A role this build has not shipped a word for still names itself. */}

@@ -351,7 +351,7 @@ export default function LedgerTransaction() {
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="font-serif text-24 leading-[1.2] text-text">
+          <h1 className="font-serif text-22 leading-[1.2] text-text">
             {l("txn.title")} <span className="font-mono text-16 text-muted">{txn.type}</span>
           </h1>
           <Badge tone={txnTone(txn.state)}>{l(`state.${txn.state}`)}</Badge>

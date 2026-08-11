@@ -305,7 +305,7 @@ export default function AxisProcessMap() {
                   x={node.x + NODE_WIDTH + 6}
                   y={node.y + node.height / 2}
                   dominantBaseline="middle"
-                  className="fill-text font-ui text-11"
+                  className="fill-text font-ui text-12"
                 >
                   {`${tag(l, "step", node.step)} (${node.total})`}
                 </text>

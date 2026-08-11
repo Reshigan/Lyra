@@ -674,13 +674,13 @@ export default function ClaimDetail() {
   ];
 
   const approvalColumns: Array<Column<ApprovalRow>> = [
-    { key: "policyKey", header: l("colPolicyKey"), render: (row) => <span className="font-mono text-11">{row.policyKey}</span> },
+    { key: "policyKey", header: l("colPolicyKey"), render: (row) => <span className="font-mono text-12">{row.policyKey}</span> },
     {
       key: "decision",
       header: l("colOutcome"),
       render: (row) => <Badge size="sm">{tag(l, "decision", row.decision)}</Badge>
     },
-    { key: "requestedBy", header: l("colWho"), render: (row) => <Ref value={row.requestedBy} className="text-11" /> },
+    { key: "requestedBy", header: l("colWho"), render: (row) => <Ref value={row.requestedBy} className="text-12" /> },
     {
       key: "requestedAt",
       header: l("colWhen"),
@@ -704,7 +704,7 @@ export default function ClaimDetail() {
   const hops = hopsFor(claim.status);
 
   const reserveColumns: Array<Column<ReserveRow>> = [
-    { key: "seq", header: l("colSeq"), numeric: true, render: (row) => <span className="font-mono text-11">{row.seq}</span> },
+    { key: "seq", header: l("colSeq"), numeric: true, render: (row) => <span className="font-mono text-12">{row.seq}</span> },
     { key: "setAt", header: l("colWhen"), render: (row) => <DateTime value={row.setAt} locale={locale} precision="minute" /> },
     { key: "head", header: l("colHead"), render: (row) => tag(l, "head", row.head) },
     {
@@ -719,7 +719,7 @@ export default function ClaimDetail() {
     },
     { key: "basis", header: l("colBasis"), render: (row) => <Badge size="sm">{tag(l, "basis", row.basis)}</Badge> },
     { key: "rationale", header: l("colReason"), render: (row) => <span className="font-ui text-12">{row.rationale ?? "—"}</span> },
-    { key: "setBy", header: l("colWho"), render: (row) => <Ref value={row.setBy} className="text-11" /> }
+    { key: "setBy", header: l("colWho"), render: (row) => <Ref value={row.setBy} className="text-12" /> }
   ];
 
   const paymentColumns: Array<Column<PaymentRow>> = [
@@ -730,7 +730,7 @@ export default function ClaimDetail() {
       header: l("colPayee"),
       render: (row) => (
         <span className="font-ui text-12">
-          {tag(l, "payee", row.payeeKind)} · <Ref value={row.payeeRef} className="text-11" />
+          {tag(l, "payee", row.payeeKind)} · <Ref value={row.payeeRef} className="text-12" />
         </span>
       )
     },
@@ -745,7 +745,7 @@ export default function ClaimDetail() {
     {
       key: "counterpartyRef",
       header: l("colPayee"),
-      render: (row) => (row.counterpartyRef ? <Ref value={row.counterpartyRef} className="text-11" /> : <span>—</span>)
+      render: (row) => (row.counterpartyRef ? <Ref value={row.counterpartyRef} className="text-12" /> : <span>—</span>)
     },
     { key: "expectedMinor", header: l("colExpected"), numeric: true, render: (row) => money(row.expectedMinor) },
     { key: "recoveredMinor", header: l("colRecovered"), numeric: true, render: (row) => money(row.recoveredMinor) },
@@ -754,7 +754,7 @@ export default function ClaimDetail() {
 
   const trailColumns: Array<Column<AuditRow>> = [
     { key: "action", header: l("colAction"), render: (row) => humanise(row.action) },
-    { key: "actorRef", header: l("colWho"), render: (row) => <Ref value={row.actorRef} className="text-11" /> },
+    { key: "actorRef", header: l("colWho"), render: (row) => <Ref value={row.actorRef} className="text-12" /> },
     { key: "ts", header: l("colWhen"), render: (row) => <DateTime value={row.ts} locale={locale} precision="minute" /> }
   ];
 
@@ -826,7 +826,7 @@ export default function ClaimDetail() {
           <Entry term={l("coverageVersion")}>
             {claim.policyVersionId ? (
               <Link to={`/axis/policies/${claim.policyId}/detail`} className="text-accent hover:underline">
-                <Ref value={claim.policyVersionId} className="text-11" />
+                <Ref value={claim.policyVersionId} className="text-12" />
               </Link>
             ) : (
               "—"

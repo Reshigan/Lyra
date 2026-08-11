@@ -264,11 +264,11 @@ export default function ProductDetail() {
       render: (row) => (
         <span className="flex flex-col">
           <span className="font-ui text-12 text-text">{nameOf(row.nameJson, locale, l("unnamed"))}</span>
-          <span className="font-mono text-11 text-subtle">{row.code}</span>
+          <span className="font-mono text-12 text-subtle">{row.code}</span>
         </span>
       )
     },
-    { key: "providerId", header: l("colProvider"), render: (row) => <span className="font-mono text-11">{row.providerId}</span> },
+    { key: "providerId", header: l("colProvider"), render: (row) => <span className="font-mono text-12">{row.providerId}</span> },
     { key: "status", header: l("colStatus"), render: (row) => <Badge size="sm">{tag(l, "status", row.status)}</Badge> },
     {
       key: "pricingMode",

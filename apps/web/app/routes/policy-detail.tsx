@@ -362,7 +362,7 @@ export default function PolicyDetail() {
     {
       key: "contentType",
       header: l("colFormat"),
-      render: (row) => <span className="font-mono text-11">{row.contentType ?? "—"}</span>
+      render: (row) => <span className="font-mono text-12">{row.contentType ?? "—"}</span>
     },
     {
       key: "piiLevel",

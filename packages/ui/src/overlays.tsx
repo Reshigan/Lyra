@@ -69,7 +69,7 @@ export function Dialog({
             dialogSizes[size]
           )}
         >
-          <RDialog.Title className="font-serif text-20 leading-[1.25] text-text">
+          <RDialog.Title className="font-serif text-22 leading-[1.25] text-text">
             {title}
           </RDialog.Title>
           {description ? (
@@ -290,7 +290,7 @@ export function Menu({ trigger, items, label }: MenuProps) {
               {item.icon ? <span aria-hidden="true">{item.icon}</span> : null}
               <span className="flex-1">{item.label}</span>
               {item.shortcut ? (
-                <kbd className="font-mono text-11 text-subtle">{item.shortcut}</kbd>
+                <kbd className="font-mono text-12 text-subtle">{item.shortcut}</kbd>
               ) : null}
             </RMenu.Item>
           ))}
@@ -375,7 +375,7 @@ export function ToastProvider({
               </RToast.Description>
             ) : null}
             {m.traceId ? (
-              <p className="mt-2 font-mono text-11 text-subtle">
+              <p className="mt-2 font-mono text-12 text-subtle">
                 trace <span>{m.traceId}</span>
               </p>
             ) : null}
@@ -513,7 +513,7 @@ export function CommandBar({
                     record" are told apart without either row having to explain
                     itself. */}
                 {block.name ? (
-                  <span className="block px-3 pb-1 pt-3 font-ui text-11 font-medium uppercase tracking-[0.14em] text-subtle">
+                  <span className="block px-3 pb-1 pt-3 font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">
                     {block.name}
                   </span>
                 ) : null}
@@ -538,7 +538,7 @@ export function CommandBar({
                     )}
                   >
                     <span>{item.label}</span>
-                    {item.hint ? <span className="font-mono text-11 text-subtle">{item.hint}</span> : null}
+                    {item.hint ? <span className="font-mono text-12 text-subtle">{item.hint}</span> : null}
                   </button>
                 ))}
               </li>

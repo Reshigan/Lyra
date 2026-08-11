@@ -93,7 +93,7 @@ export function Cell({ column, row, locale, label }: CellProps) {
       return <span>{label(value ? "yes" : "no")}</span>;
     case "json":
       return (
-        <span className="font-mono text-11 text-subtle">
+        <span className="font-mono text-12 text-subtle">
           {truncate(JSON.stringify(value), 60)}
         </span>
       );

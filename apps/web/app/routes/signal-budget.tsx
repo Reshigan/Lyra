@@ -197,7 +197,7 @@ export default function BudgetAndBounds() {
     <div className="flex flex-col gap-6">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-col gap-1">
-          <h1 className="font-serif text-24 leading-[1.2] text-text">{l("budget.title")}</h1>
+          <h1 className="font-serif text-22 leading-[1.2] text-text">{l("budget.title")}</h1>
           <p className="max-w-prose font-ui text-13 text-muted">{l("budget.lede")}</p>
         </div>
         <nav aria-label={l("growth.window")} className="flex items-center gap-2">
@@ -425,7 +425,7 @@ function Undo({
         {l("budget.reverse")}
       </Button>
       {move.reversibleUntil ? (
-        <span className="font-ui text-11 text-subtle">
+        <span className="font-ui text-12 text-subtle">
           {l("budget.reverseWindow")} <DateTime value={move.reversibleUntil} locale={locale} precision="day" />
         </span>
       ) : null}

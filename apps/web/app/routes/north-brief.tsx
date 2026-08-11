@@ -372,7 +372,7 @@ export default function NorthBrief() {
       {/* A reading column, capped where prose stops being readable (docs/07). */}
       <div className="mx-auto flex w-full max-w-[68ch] flex-col gap-5">
         <header className="flex flex-wrap items-baseline justify-between gap-3">
-          <span className="font-mono text-11 uppercase tracking-[0.14em] text-subtle">
+          <span className="font-mono text-12 uppercase tracking-[0.14em] text-subtle">
             {l("title")}
             {brief ? ` · ${brief.date} · ${l(brief.audience)}` : null}
           </span>
@@ -396,7 +396,7 @@ export default function NorthBrief() {
         </header>
 
         <div className="flex flex-col gap-2">
-          <h1 className="font-serif text-24 leading-[1.2] text-text">{l("title")}</h1>
+          <h1 className="font-serif text-22 leading-[1.2] text-text">{l("title")}</h1>
           {/* docs/15: one ✦ per AI artifact, and the "why" one interaction away. */}
           <p className="font-ui text-13 text-subtle">
             <EvidenceLink
@@ -404,7 +404,7 @@ export default function NorthBrief() {
               source={
                 <p className="max-w-xs font-ui text-12 text-muted">
                   {l("brief.auditBody")}
-                  {brief?.aiAuditId ? <Ref value={brief.aiAuditId} className="block text-11" /> : null}
+                  {brief?.aiAuditId ? <Ref value={brief.aiAuditId} className="block text-12" /> : null}
                 </p>
               }
             >
@@ -440,7 +440,7 @@ export default function NorthBrief() {
             ) : null}
 
             {paragraphs(brief.narrativeRef).map((text, index) => (
-              <p key={index} className="font-ui text-15 leading-relaxed text-muted">
+              <p key={index} className="font-ui text-16 leading-relaxed text-muted">
                 {text}
               </p>
             ))}
@@ -508,7 +508,7 @@ export default function NorthBrief() {
                         {name(highlight.metricKey)}
                       </Link>
                       <span className="flex items-baseline gap-3 font-ui text-13 text-text">
-                        <span className="font-mono text-11 text-subtle">{highlight.period}</span>
+                        <span className="font-mono text-12 text-subtle">{highlight.period}</span>
                         {value(highlight.metricKey, highlight.value)}
                         {pct(highlight.deltaBps, locale) ? (
                           <Badge tone={(highlight.deltaBps ?? 0) >= 0 ? "success" : "danger"} size="sm">
@@ -575,7 +575,7 @@ export default function NorthBrief() {
                     <Badge tone={row.status === "published" ? "success" : "neutral"} size="sm">
                       {l(row.status)}
                     </Badge>
-                    <span className="font-ui text-11 text-subtle">
+                    <span className="font-ui text-12 text-subtle">
                       <DateTime value={row.createdAt} locale={locale} precision="day" />
                     </span>
                   </span>

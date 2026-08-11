@@ -491,7 +491,7 @@ export default function AnalyticsReport() {
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-2">
         <p className="font-ui text-12 text-subtle">{l("report")}</p>
-        <h1 className="font-serif text-24 leading-[1.2] text-text">{name}</h1>
+        <h1 className="font-serif text-22 leading-[1.2] text-text">{name}</h1>
         {description ? <p className="font-ui text-13 text-muted">{description}</p> : null}
       </header>
 

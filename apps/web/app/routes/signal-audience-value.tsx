@@ -78,7 +78,7 @@ export default function AudienceValueScreen() {
     <div className="flex flex-col gap-6">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-col gap-1">
-          <h1 className="font-serif text-24 leading-[1.2] text-text">{l("aud.title")}</h1>
+          <h1 className="font-serif text-22 leading-[1.2] text-text">{l("aud.title")}</h1>
           <p className="max-w-prose font-ui text-13 text-muted">{l("aud.lede")}</p>
         </div>
         <nav aria-label={l("growth.window")} className="flex items-center gap-2">

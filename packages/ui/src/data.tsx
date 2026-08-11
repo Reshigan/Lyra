@@ -113,7 +113,7 @@ export function Table<T>({
                     {...(ariaSort ? { "aria-sort": ariaSort } : {})}
                     style={col.width ? { inlineSize: col.width } : undefined}
                     className={cn(
-                      "border-b border-border bg-surface-1 font-medium uppercase tracking-[0.14em] text-11 text-subtle",
+                      "border-b border-border bg-surface-1 font-medium uppercase tracking-[0.14em] text-12 text-subtle",
                       cellPad,
                       col.numeric ? "text-end" : "text-start"
                     )}

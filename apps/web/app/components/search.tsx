@@ -81,7 +81,7 @@ export function SearchPalette({ t, destinations }: { t: Translate; destinations:
         <span className="truncate">{t("search.open")}</span>
         {/* The scope chip. Not its own button — everything here opens the same
             palette, and a button inside a button is invalid anyway. */}
-        <span className="ms-auto hidden shrink-0 items-center gap-1.5 rounded-[3px] border border-border px-2 py-[3px] text-11 text-subtle transition-colors duration-150 group-hover:border-border-strong group-hover:text-text md:flex">
+        <span className="ms-auto hidden shrink-0 items-center gap-1.5 rounded-[3px] border border-border px-2 py-[3px] text-12 text-subtle transition-colors duration-150 group-hover:border-border-strong group-hover:text-text md:flex">
           <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" focusable="false">
             <rect x="0.5" y="0.5" width="4" height="4" fill="none" stroke="currentColor" strokeWidth="0.8" />
             <rect x="5.5" y="0.5" width="4" height="4" fill="currentColor" opacity="0.5" />
@@ -90,7 +90,7 @@ export function SearchPalette({ t, destinations }: { t: Translate; destinations:
           </svg>
           {t("search.allSurfaces")}
           {/* A key cap, not a word: the same two glyphs in every locale. */}
-          <kbd className="font-mono text-11 text-muted">⌘K</kbd>
+          <kbd className="font-mono text-12 text-muted">⌘K</kbd>
         </span>
       </button>
       <CommandBar

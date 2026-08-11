@@ -626,7 +626,7 @@ function Header({ l, loaded }: { l: Label; loaded: Awaited<ReturnType<typeof loa
           {l("onb.back")}
         </Link>
       }
-      meta={<p className="font-mono text-11 text-subtle">{loaded.ref}</p>}
+      meta={<p className="font-mono text-12 text-subtle">{loaded.ref}</p>}
     />
   );
 }
@@ -709,7 +709,7 @@ function StepCard({
   return (
     <li className="flex flex-col gap-2 rounded-lg border border-border p-4">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-mono text-11 text-subtle tabular-nums">{step.seq}</span>
+        <span className="font-mono text-12 text-subtle tabular-nums">{step.seq}</span>
         <span className="font-ui text-14 text-text">{stepLabel(step, l, locale)}</span>
         <Badge tone={stepTone(step.state)} size="sm" dot>
           {optionLabel(l, "state", step.state)}
@@ -737,7 +737,7 @@ function StepCard({
             <dd className="text-text">
               {optionLabel(l, "evidenceKind", step.evidenceKind)}
               {step.evidenceRef ? (
-                <span className="ms-1.5 font-mono text-11 text-subtle">{step.evidenceRef}</span>
+                <span className="ms-1.5 font-mono text-12 text-subtle">{step.evidenceRef}</span>
               ) : null}
             </dd>
           </div>
@@ -745,7 +745,7 @@ function StepCard({
         {step.ownerRef ? (
           <div className="flex gap-1.5">
             <dt className="text-subtle">{l("ownerRef")}</dt>
-            <dd className="font-mono text-11 text-text">{step.ownerRef}</dd>
+            <dd className="font-mono text-12 text-text">{step.ownerRef}</dd>
           </div>
         ) : null}
         {step.dueAt ? (
@@ -762,7 +762,7 @@ function StepCard({
             <dd className="text-text">
               <DateTime value={step.decidedAt} locale={locale} precision="minute" />
               {step.decidedBy ? (
-                <span className="ms-1.5 font-mono text-11 text-subtle">{step.decidedBy}</span>
+                <span className="ms-1.5 font-mono text-12 text-subtle">{step.decidedBy}</span>
               ) : null}
             </dd>
           </div>
@@ -770,7 +770,7 @@ function StepCard({
         {step.waivedApprovalId ? (
           <div className="flex gap-1.5">
             <dt className="text-subtle">{l("onb.waivedBy")}</dt>
-            <dd className="font-mono text-11 text-text">{step.waivedApprovalId}</dd>
+            <dd className="font-mono text-12 text-text">{step.waivedApprovalId}</dd>
           </div>
         ) : null}
       </dl>
@@ -1040,7 +1040,7 @@ function Agreements({
                 ) : null}
                 <div className="flex gap-1.5">
                   <dt className="text-subtle">{l("onb.agreementId")}</dt>
-                  <dd className="font-mono text-11 text-text">{agreement.id}</dd>
+                  <dd className="font-mono text-12 text-text">{agreement.id}</dd>
                 </div>
               </dl>
 

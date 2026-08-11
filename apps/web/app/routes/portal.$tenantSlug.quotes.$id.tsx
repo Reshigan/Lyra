@@ -216,7 +216,7 @@ export default function PortalQuotes() {
   return (
     <main style={brandStyle(tenant.brand)} className="mx-auto max-w-3xl p-6">
       <header className="lyra-enter mb-8">
-        <h1 className="font-serif text-24 leading-[1.2]">{l("quote.title")}</h1>
+        <h1 className="font-serif text-22 leading-[1.2]">{l("quote.title")}</h1>
         <p className="mt-1 text-13 text-muted">{l("quote.intro")}</p>
         {/* Declared criteria, visible — J-C1's own wording. */}
         <p className="mt-1 text-13 text-muted">{l("quote.rankedBy")}</p>
@@ -242,7 +242,7 @@ export default function PortalQuotes() {
                 }
               >
                 <p className="text-13 text-muted">{l("quote.total")}</p>
-                <p className="font-serif text-24 leading-[1.2]">
+                <p className="font-serif text-22 leading-[1.2]">
                   <Money amountMinor={offer.totalMinor} currency={offer.currency} locale={locale} />
                 </p>
                 <p className="mt-1 text-13 text-muted">

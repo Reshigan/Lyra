@@ -323,7 +323,7 @@ export default function NextBestOffers() {
         >
           {l("backToOffers")}
         </Link>
-        <h1 className="font-serif text-24 leading-[1.2] text-text">{l("title")}</h1>
+        <h1 className="font-serif text-22 leading-[1.2] text-text">{l("title")}</h1>
         <p className="max-w-prose font-ui text-13 text-muted">{l("intro")}</p>
       </header>
 
@@ -437,18 +437,18 @@ function OfferRow({
                 <dl className="grid grid-cols-2 gap-x-3 gap-y-1 font-ui text-12 text-subtle">
                   <Fragment>
                     <dt>{l("offering")}</dt>
-                    <dd className="font-mono text-11 text-text">{shortRef(offer.offeringId)}</dd>
+                    <dd className="font-mono text-12 text-text">{shortRef(offer.offeringId)}</dd>
                   </Fragment>
                   {offer.runId ? (
                     <Fragment>
                       <dt>{l("run")}</dt>
-                      <dd className="font-mono text-11 text-text">{offer.runId}</dd>
+                      <dd className="font-mono text-12 text-text">{offer.runId}</dd>
                     </Fragment>
                   ) : null}
                   {Object.entries(evidence).map(([key, value]) => (
                     <Fragment key={key}>
                       <dt>{humanise(key)}</dt>
-                      <dd className="font-mono text-11 text-text">{String(value)}</dd>
+                      <dd className="font-mono text-12 text-text">{String(value)}</dd>
                     </Fragment>
                   ))}
                 </dl>
@@ -463,7 +463,7 @@ function OfferRow({
               source={
                 <span className="flex flex-col gap-1 font-ui text-12">
                   <span className="text-subtle">{l("anchor")}</span>
-                  <Ref value={offer.anchorRef} className="text-11 text-text" />
+                  <Ref value={offer.anchorRef} className="text-12 text-text" />
                 </span>
               }
               sourceLabel={l("evidence")}

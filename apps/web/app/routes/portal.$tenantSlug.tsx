@@ -236,7 +236,7 @@ export default function Portal() {
           />
         ) : null}
         <div>
-          <h1 className="font-serif text-24 leading-[1.2]">{site.tenant.name}</h1>
+          <h1 className="font-serif text-22 leading-[1.2]">{site.tenant.name}</h1>
           <p className="mt-1 text-13 text-muted">{l("portal.intro")}</p>
         </div>
       </header>

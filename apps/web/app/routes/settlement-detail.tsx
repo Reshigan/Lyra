@@ -343,19 +343,19 @@ export default function SettlementDetail() {
       >
         <dl className="flex flex-wrap gap-6">
           <div className="flex flex-col gap-1">
-            <dt className="font-ui text-11 text-subtle">{l("summaryGross")}</dt>
+            <dt className="font-ui text-12 text-subtle">{l("summaryGross")}</dt>
             <dd>
               <Money amountMinor={totals.grossMinor} currency={table.currency} locale={locale} />
             </dd>
           </div>
           <div className="flex flex-col gap-1">
-            <dt className="font-ui text-11 text-subtle">{l("summaryAdjustments")}</dt>
+            <dt className="font-ui text-12 text-subtle">{l("summaryAdjustments")}</dt>
             <dd>
               <Money amountMinor={totals.adjustmentsMinor} currency={table.currency} locale={locale} signed toned />
             </dd>
           </div>
           <div className="flex flex-col gap-1">
-            <dt className="font-ui text-11 text-subtle">{l("summaryNet")}</dt>
+            <dt className="font-ui text-12 text-subtle">{l("summaryNet")}</dt>
             <dd>
               <Money amountMinor={totals.netMinor} currency={table.currency} locale={locale} className="font-ui text-16" />
             </dd>

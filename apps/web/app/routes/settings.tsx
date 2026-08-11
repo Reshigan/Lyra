@@ -964,7 +964,7 @@ export default function Settings() {
   return (
     <div className="flex flex-col gap-8">
       <header className="flex flex-col gap-1">
-        <h1 className="font-serif text-24 leading-[1.2] text-text">{label("settings.title")}</h1>
+        <h1 className="font-serif text-22 leading-[1.2] text-text">{label("settings.title")}</h1>
         <p className="font-ui text-13 text-subtle">{label("settings.intro")}</p>
       </header>
 
@@ -1529,7 +1529,7 @@ function PermissionsPanel({
                 {held.map((permission) => (
                   <li
                     key={permission}
-                    className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-11 text-muted"
+                    className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-12 text-muted"
                   >
                     {permission}
                   </li>

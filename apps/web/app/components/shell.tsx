@@ -229,7 +229,7 @@ export function Shell({ t, nav, brand, tenantName, actorName, children }: ShellP
                   landed at 4.24:1; --accent-contrast is AA-validated on save. */}
               <span
                 aria-hidden="true"
-                className="grid size-6 shrink-0 place-items-center rounded-orbit bg-accent font-mono text-11 font-medium text-accent-contrast"
+                className="grid size-6 shrink-0 place-items-center rounded-orbit bg-accent font-mono text-12 font-medium text-accent-contrast"
               >
                 {initialsOf(actorName)}
               </span>
@@ -265,7 +265,7 @@ export function Shell({ t, nav, brand, tenantName, actorName, children }: ShellP
             // render, so index is stable for as long as the list is.
             <div key={i} className="mb-1">
               {group.heading ? (
-                <h2 className="mb-1 mt-4 px-3 font-ui text-11 font-medium uppercase tracking-[0.14em] text-subtle first:mt-0">
+                <h2 className="mb-1 mt-4 px-3 font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle first:mt-0">
                   {t(group.heading.labelKey)}
                 </h2>
               ) : null}
@@ -304,7 +304,7 @@ export function Shell({ t, nav, brand, tenantName, actorName, children }: ShellP
           is already announced by the lockup and the nav's current item. */}
       <footer
         aria-hidden="true"
-        className="lyra-vt-status sticky bottom-0 z-20 hidden h-7 items-center gap-2 border-t border-border bg-surface-1 px-4 font-mono text-11 text-subtle sm:flex"
+        className="lyra-vt-status sticky bottom-0 z-20 hidden h-7 items-center gap-2 border-t border-border bg-surface-1 px-4 font-mono text-12 text-subtle sm:flex"
       >
         <span className="truncate">{productName}</span>
         <span className="text-border-strong">/</span>

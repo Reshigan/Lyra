@@ -405,13 +405,13 @@ export default function LedgerMoneyMap() {
                     rx={2}
                     fill={fillFor(node.key)}
                   />
-                  <text x={node.x + NODE_WIDTH + 8} y={node.y + 12} className="fill-text font-ui text-11">
+                  <text x={node.x + NODE_WIDTH + 8} y={node.y + 12} className="fill-text font-ui text-12">
                     {l(`node.${node.key}`)}
                   </text>
                   <text
                     x={node.x + NODE_WIDTH + 8}
                     y={node.y + 26}
-                    className="fill-subtle font-mono text-11 tabular-nums"
+                    className="fill-subtle font-mono text-12 tabular-nums"
                   >
                     {new Intl.NumberFormat(locale).format(node.amountMinor / 100)}
                   </text>

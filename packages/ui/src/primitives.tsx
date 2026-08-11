@@ -604,7 +604,7 @@ export function PageHeader({ title, description, back, meta, className }: PageHe
   return (
     <header className={cn("flex flex-col", back ? "gap-2" : "gap-1", className)}>
       {back}
-      <h1 className="font-serif text-24 leading-[1.2] text-text">{title}</h1>
+      <h1 className="font-serif text-22 leading-[1.2] text-text">{title}</h1>
       {description ? <p className="max-w-prose font-ui text-13 text-muted">{description}</p> : null}
       {meta}
     </header>
@@ -635,7 +635,7 @@ export function Badge({ tone = "neutral", size = "md", dot = false, className, c
       {...props}
       className={cn(
         "inline-flex items-center gap-1.5 rounded-orbit border font-ui font-medium",
-        size === "sm" ? "px-2 py-0.5 text-11" : "px-2.5 py-1 text-12",
+        size === "sm" ? "px-2 py-0.5 text-12" : "px-2.5 py-1 text-12",
         badgeTones[tone],
         className
       )}
@@ -656,7 +656,7 @@ export interface AvatarProps {
   className?: string;
 }
 
-const avatarSizes: Record<ControlSize, string> = { sm: "size-6 text-11", md: "size-8 text-12", lg: "size-10 text-14" };
+const avatarSizes: Record<ControlSize, string> = { sm: "size-6 text-12", md: "size-8 text-12", lg: "size-10 text-14" };
 
 export function Avatar({ name, src, size = "md", className }: AvatarProps) {
   const initials = name

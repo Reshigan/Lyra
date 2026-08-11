@@ -376,7 +376,7 @@ export function Facts({ children }: { children: ReactNode }) {
 export function Entry({ term, children }: { term: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-1">
-      <dt className="font-ui text-11 uppercase tracking-[0.14em] text-subtle">{term}</dt>
+      <dt className="font-ui text-12 uppercase tracking-[0.14em] text-subtle">{term}</dt>
       <dd className="font-ui text-13 text-text">{children}</dd>
     </div>
   );
@@ -397,7 +397,7 @@ export function Payload({ value }: { value: unknown }) {
     <pre
       tabIndex={0}
       className={cn(
-        "overflow-x-auto rounded-md bg-surface-2 p-3 font-mono text-11 text-muted",
+        "overflow-x-auto rounded-md bg-surface-2 p-3 font-mono text-12 text-muted",
         focusRing
       )}
     >
