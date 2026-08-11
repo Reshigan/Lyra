@@ -37,7 +37,7 @@ const { CATALOGUES, en, dirFor, joinList, resolveLocale, translator } = await im
 const { fontFamilyFor, themeFor, productName } = await import("./theme");
 const { defaultWorkspaceForRoles, resolvePersona } = await import("./workspace");
 const { PERSONA_TABS, tabsFor } = await import("./personas");
-const { resolveGate } = await import("./biometric-gate");
+const { confirmConsequential, resolveGate } = await import("./biometric-gate");
 const { fetchNames, shortRef, who } = await import("./names");
 const {
   DOC_TYPES,
@@ -697,6 +697,20 @@ describe("biometric gate", () => {
       authenticate: async () => success
     };
   }
+
+  it("lets a consequential approve through only when the challenge passes", async () => {
+    const probe = (hardware: boolean, enrolled: boolean, ok: boolean) => ({
+      hasHardware: async () => hardware,
+      isEnrolled: async () => enrolled,
+      authenticate: async () => ok
+    });
+    // No hardware, or none enrolled, must not lock an approver out.
+    expect(await confirmConsequential(probe(false, false, false))).toBe(true);
+    expect(await confirmConsequential(probe(true, false, false))).toBe(true);
+    expect(await confirmConsequential(probe(true, true, true))).toBe(true);
+    // But a device that has it must pass it.
+    expect(await confirmConsequential(probe(true, true, false))).toBe(false);
+  });
 
   it("opens immediately when the device has no biometric hardware", async () => {
     expect(await resolveGate(probe({ hardware: false }))).toBe("open");

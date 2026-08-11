@@ -8,6 +8,7 @@ import {
   markNotificationRead,
   type Inbox
 } from "../../src/api";
+import { confirmConsequential } from "../../src/biometric-gate";
 import { approvalAmountMinor, approvalTitle } from "../../src/journeys";
 import { fetchNames, who, type Names } from "../../src/names";
 import { useSession } from "../../src/session";
@@ -44,6 +45,8 @@ export default function Approvals() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [decided, setDecided] = useState(false);
   const [writeError, setWriteError] = useState<unknown>(null);
+  /** Set when the phone refused the challenge in front of an approve. */
+  const [blocked, setBlocked] = useState(false);
 
   const inbox = useLoad(
     (signal) => (token ? fetchInbox(token, signal) : Promise.resolve(EMPTY)),
@@ -76,7 +79,15 @@ export default function Approvals() {
     if (!token || busyId) return;
     setBusyId(id);
     setWriteError(null);
+    setBlocked(false);
     try {
+      // An approve is consequential (CLAUDE.md rule 4, docs/08 §3): the phone
+      // proves who is holding it before the API is told to act. A rejection is
+      // not — refusing it is the safe direction.
+      if (decision === "approved" && !(await confirmConsequential())) {
+        setBlocked(true);
+        return;
+      }
       await decideApproval(token, id, decision, decision === "rejected" ? reason.trim() : undefined);
       setDecided(true);
       setRejecting(null);
@@ -134,6 +145,8 @@ export default function Approvals() {
           requestId={requestIdOf(writeError)}
         />
       ) : null}
+
+      {blocked ? <Notice chrome={chrome} message={t("approvals.blocked")} /> : null}
 
       {decided ? <Muted chrome={chrome}>{t("approvals.decided")}</Muted> : null}
 

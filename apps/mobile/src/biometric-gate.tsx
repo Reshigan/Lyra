@@ -29,6 +29,16 @@ export async function resolveGate(probe: BiometricProbe): Promise<GateState> {
   return (await probe.authenticate()) ? "open" : "locked";
 }
 
+/**
+ * A one-off challenge in front of a consequential action (docs/08 §3: biometric
+ * confirm on consequential approve). Same rules as the unlock gate: a device
+ * with no hardware, or none enrolled, is not blocked from approving — but a
+ * device that has it must pass it.
+ */
+export async function confirmConsequential(probe: BiometricProbe = liveProbe): Promise<boolean> {
+  return (await resolveGate(probe)) === "open";
+}
+
 export function BiometricGate({ chrome, children }: { chrome: Chrome; children: ReactNode }) {
   const [state, setState] = useState<GateState>("checking");
   const checking = useRef(false);
