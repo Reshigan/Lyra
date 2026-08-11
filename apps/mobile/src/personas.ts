@@ -46,7 +46,9 @@ export const PERSONA_TABS: Record<Workspace, TabConfig[]> = {
   admin: [
     { labelKey: "tab.approvals", icon: "checkmark-done", screen: "core/users", route: "/j/approvals" },
     { labelKey: "tab.staff", icon: "people", screen: "core/users" },
-    { labelKey: "nav.settings", icon: "settings", screen: "core/users" }
+    // Not settings: a phone admin checks what happened, and a settings tab
+    // pointed at the same user list as tab.staff was a tab that said nothing.
+    { labelKey: "tab.audit", icon: "shield-checkmark", screen: "core/users", route: "/j/audit" }
   ],
   distribution: [{ ...HOME_TAB, screen: "dist/quote-requests" }],
   ledger: [{ ...HOME_TAB, screen: "ledger/txns" }],

@@ -37,7 +37,10 @@ const RESOURCE_BY_HREF: Record<string, string> = {
   // And NORTH: a decision and a board pack are neither of them the metrics the
   // "/north" nav entry points at (app/j/decisions.tsx, app/j/boardpack.tsx).
   "/north-decisions": "north/decisions",
-  "/north-boardpacks": "north/boardpacks"
+  "/north-boardpacks": "north/boardpacks",
+  // And admin: the audit log is not the users the "/admin" nav entry points at
+  // (app/j/audit.tsx).
+  "/admin-audit": "core/audit-log"
 };
 
 /** `/v1/{module}/{resource}` for a nav href, or `undefined` if mobile has no

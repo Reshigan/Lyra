@@ -643,6 +643,18 @@ export function sectionCount(row: Row): number {
   return Array.isArray(sections) ? sections.length : 0;
 }
 
+/* ------------------------------------------------------------------- audit */
+
+/** Whole hours since an audit row was written (`core_audit_log.ts`, epoch ms),
+ *  or `null` when the row carries no usable timestamp. A row written in the
+ *  future — clock skew between a worker and a phone — reads as 0 rather than
+ *  as a negative age nobody can act on. */
+export function hoursSince(ts: unknown, now: number): number | null {
+  const at = typeof ts === "number" ? ts : Number(ts);
+  if (!Number.isFinite(at) || at <= 0) return null;
+  return Math.max(0, Math.floor((now - at) / 3_600_000));
+}
+
 /* ----------------------------------------------------------------- capture */
 
 /** The document types AXIS accepts (apps/api/src/routes/axis.ts DOC_TYPES).

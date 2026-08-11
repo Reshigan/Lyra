@@ -59,6 +59,7 @@ const {
   deltaPct,
   dueIn,
   highlightsOf,
+  hoursSince,
   indexText,
   isInbound,
   latestPeriod,
@@ -661,6 +662,13 @@ describe("persona tab config", () => {
     expect(resourceForNavKey("north-boardpacks")).toBe("north/boardpacks");
   });
 
+  it("gives the admin a distinct third tab instead of a second user list", () => {
+    const tabs = tabsFor("admin", "default");
+    expect(tabs.map((tab) => tab.labelKey)).toEqual(["tab.approvals", "tab.staff", "tab.audit"]);
+    expect(tabs[2]?.route).toBe("/j/audit");
+    expect(resourceForNavKey("admin-audit")).toBe("core/audit-log");
+  });
+
   it("swaps Decisions for Governance only for the north board variant", () => {
     expect(tabsFor("north", "default").map((tab) => tab.labelKey)).toContain("tab.decisions");
     expect(tabsFor("north", "board").map((tab) => tab.labelKey)).toContain("tab.governance");
@@ -1204,6 +1212,16 @@ describe("journey helpers", () => {
     expect(ltvToCac(null, 50)).toBeNull();
     expect(ltvToCac(120, 50)).toBe(2.4);
     expect(multipleText("en", 2.4)).toBe("2.4×");
+  });
+
+  it("ages an audit row in whole hours, never negative", () => {
+    const now = 1_800_000_000_000;
+    expect(hoursSince(now - 90 * 60_000, now)).toBe(1);
+    expect(hoursSince(now - 3 * 86_400_000, now)).toBe(72);
+    // Clock skew between a worker and a phone must not read as a negative age.
+    expect(hoursSince(now + 60_000, now)).toBe(0);
+    expect(hoursSince(null, now)).toBeNull();
+    expect(hoursSince(0, now)).toBeNull();
   });
 
   it("names known channels and titles the ones it has never heard of", () => {

@@ -42,6 +42,7 @@ export const en = {
   "tab.boardpack": "Boardpack",
   "tab.governance": "Governance",
   "tab.staff": "Staff",
+  "tab.audit": "Activity",
   "tab.capture": "Capture",
 
   "home.signedInAs": "Signed in as {name}",
@@ -229,6 +230,16 @@ export const en = {
   "boardpack.sections": "{count} sections",
   "boardpack.noSections": "No sections",
 
+  "audit.title": "Activity",
+  "audit.intro": "Every change on record, newest first.",
+  "audit.empty": "Nothing has been recorded yet.",
+  "audit.by": "by {name}",
+  "audit.subject": "On {subject}",
+  "audit.justNow": "just now",
+  "audit.hoursAgo": "{hours}h ago",
+  "audit.daysAgo": "{days}d ago",
+  "audit.noTime": "undated",
+
   "capture.title": "Add a document",
   "capture.case": "Case reference",
   "capture.caseHint": "The case this document belongs to.",
@@ -291,6 +302,7 @@ export const ar: Messages = {
   "tab.boardpack": "حزمة مجلس الإدارة",
   "tab.governance": "الحوكمة",
   "tab.staff": "الموظفون",
+  "tab.audit": "النشاط",
   "tab.capture": "التقاط",
 
   "home.signedInAs": "تسجيل الدخول باسم {name}",
@@ -475,6 +487,16 @@ export const ar: Messages = {
   "boardpack.approvedBy": "{status} · اعتمدها {who}",
   "boardpack.sections": "{count} أقسام",
   "boardpack.noSections": "لا توجد أقسام",
+
+  "audit.title": "النشاط",
+  "audit.intro": "كل تغيير مسجَّل، الأحدث أولًا.",
+  "audit.empty": "لم يُسجَّل أي شيء بعد.",
+  "audit.by": "بواسطة {name}",
+  "audit.subject": "على {subject}",
+  "audit.justNow": "الآن",
+  "audit.hoursAgo": "قبل {hours} ساعة",
+  "audit.daysAgo": "قبل {days} يوم",
+  "audit.noTime": "بدون تاريخ",
 
   "capture.title": "أضف مستندًا",
   "capture.case": "مرجع الحالة",
