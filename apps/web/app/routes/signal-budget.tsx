@@ -234,7 +234,7 @@ export default function BudgetAndBounds() {
         used={loaded.spentMinor}
         limit={loaded.ceilingMinor}
         label={l("budget.ceiling")}
-        unit={currency}
+        currency={currency}
         locale={locale}
       />
 

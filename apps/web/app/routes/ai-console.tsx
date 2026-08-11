@@ -960,7 +960,7 @@ export default function AiConsole() {
                 label={L("budget.cost")}
                 used={minorOf(budget.state.costMicroUsed)}
                 limit={minorOf(budget.state.costMicroLimit)}
-                unit={COST_CURRENCY}
+                currency={COST_CURRENCY}
                 locale={locale}
               />
             </div>

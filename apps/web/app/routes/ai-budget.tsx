@@ -540,7 +540,7 @@ export default function AiBudget() {
                         label={L("ledger.cost")}
                         used={minorOf(row.costMicroUsed)}
                         limit={minorOf(row.costMicroLimit)}
-                        unit={COST_CURRENCY}
+                        currency={COST_CURRENCY}
                         locale={locale}
                       />
                       {/* The meter is the shape of the number; money is read as money. */}

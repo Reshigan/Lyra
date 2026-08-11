@@ -9,6 +9,7 @@ import * as React from "react";
 import { cn, focusRing } from "./cn.js";
 import { Badge, Button, ProgressBar, type BadgeTone } from "./primitives.js";
 import { Popover } from "./overlays.js";
+import { formatMoney } from "./format.js";
 import { useUiLocale, useUiText } from "./text.js";
 
 /** The one and only ✦. */
@@ -189,7 +190,14 @@ export interface BudgetMeterProps {
   used: number;
   limit: number;
   label?: string;
-  /** e.g. "tokens", "AED". */
+  /**
+   * Set when `used`/`limit` are money in minor units, e.g. "USD". The readout
+   * then renders as money. Callers used to pass the currency code as `unit`
+   * instead, which printed a $50.00 ceiling as "5,000 USD" — the minor number
+   * labelled with the major unit, wrong by a factor of 100.
+   */
+  currency?: string;
+  /** e.g. "tokens". Ignored when `currency` is set. */
   unit?: string;
   /** When the window rolls over. */
   resetsAt?: React.ReactNode;
@@ -202,6 +210,7 @@ export function BudgetMeter({
   used,
   limit,
   label,
+  currency,
   unit,
   resetsAt,
   locale,
@@ -210,22 +219,26 @@ export function BudgetMeter({
   const t = useUiText();
   const inherited = useUiLocale();
   const name = label ?? t("aiBudget");
-  const units = unit ?? t("tokens");
+  const units = currency ? "" : (unit ?? t("tokens"));
   const pct = limit > 0 ? Math.round((used / limit) * 100) : 0;
   const tone: BadgeTone = pct >= 100 ? "danger" : pct >= 80 ? "warning" : "accent";
   const nf = new Intl.NumberFormat(locale ?? inherited);
+  // Money carries its own currency; a bare number never renders next to one
+  // (docs/22 §5.1).
+  const amount = (value: number) =>
+    currency ? formatMoney(value, currency, locale ?? inherited) : nf.format(value);
   return (
     <div className={cn("flex flex-col gap-1.5 text-start", className)}>
       <div className="flex items-baseline justify-between gap-2">
         <span className="font-ui text-12 uppercase tracking-[0.14em] text-subtle">{name}</span>
         <span className="font-ui text-12 tabular-nums text-muted">
-          {nf.format(used)} / {nf.format(limit)} {units}
+          {amount(used)} / {amount(limit)} {units}
         </span>
       </div>
       <ProgressBar
         value={Math.min(pct, 100)}
         tone={tone}
-        label={t("budgetUsage", { label: name, value: pct, limit: nf.format(limit), unit: units })}
+        label={t("budgetUsage", { label: name, value: pct, limit: amount(limit), unit: units })}
       />
       {resetsAt ? (
         <span className="font-ui text-12 text-subtle">
