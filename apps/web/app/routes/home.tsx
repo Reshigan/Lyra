@@ -25,6 +25,7 @@ import {
 } from "@lyra/ui";
 import { ApiError, api, fetchMe, names, type Problem } from "../api.server";
 import { who } from "../names";
+import { routedLeaves } from "../components/shell";
 import { cloudflare } from "../context";
 import { DEFAULT_LOCALE, pseudoText, translator } from "../i18n";
 import { humanise } from "../modules/spec";
@@ -477,7 +478,10 @@ export default function Home() {
   const brand = shell?.brand?.name ?? shell?.tenantName ?? "";
   const actorName = shell?.actorName;
   const econ = loaded.economics;
-  const links = (shell?.nav ?? []).filter((item) => item.href !== "/");
+  // Nav is grouped now: a heading carries no href of its own (""), so filtering
+  // on `href !== "/"` kept every heading — six links to nowhere, all sharing the
+  // React key "". Same flattening the rail does, from the same helper.
+  const links = (shell?.nav ?? []).flatMap(routedLeaves).filter((item) => item.href !== "/");
   const offered = new Set(links.map((item) => item.href));
   const problem = fetcher.data?.problem ?? null;
   // Which row the in-flight submission belongs to, so one busy control does not

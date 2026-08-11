@@ -109,7 +109,7 @@ const MODULE_ACCENT: Record<string, string> = {
 /** Nav is grouped: a heading item carries no link of its own, only labelled
  *  children. Leaves (all in real, non-routed order) drop unrouted destinations
  *  the same way flat items always did. */
-function routedLeaves(item: NavItem): NavItem[] {
+export function routedLeaves(item: NavItem): NavItem[] {
   if (item.heading) return (item.children ?? []).flatMap(routedLeaves);
   return isRouted(item.href) || item.href === "/" ? [item] : [];
 }
