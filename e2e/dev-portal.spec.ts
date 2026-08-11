@@ -58,7 +58,8 @@ test("J-D1 a tenant admin issues a test key from Settings, calls the API with it
 }) => {
   await loginAsTenantAdmin(page);
 
-  await goto(page, "/settings");
+  // The keys panel lives on the sign-in & access tab (docs/ui.md §7 P3-10).
+  await goto(page, "/settings/security");
   const keyName = `J-D1 e2e ${Date.now()}`;
   // Zero scopes ticked: "a key with no permissions can sign in and nothing
   // else" (settings.tsx "keys.scopesHint") — the point here is authentication,
@@ -98,7 +99,7 @@ test("J-D1 a tenant admin issues a test key from Settings, calls the API with it
   // fetcher posts to "<path>.data", not the bare path — signal-budget.spec.ts).
   await row.getByRole("button", { name: "Revoke", exact: true }).click();
   await Promise.all([
-    page.waitForResponse((res) => res.url().endsWith("/settings.data") && res.request().method() === "POST"),
+    page.waitForResponse((res) => res.url().endsWith("/settings/security.data") && res.request().method() === "POST"),
     confirmAction(page)
   ]);
   await expect(page.getByRole("status").getByText("That key has been revoked.")).toBeVisible();

@@ -36,6 +36,7 @@ export const HIDDEN_ROUTES: Record<string, string> = {
     "public quote comparison, no session and no shell — reached only with the one-time token in the link (ADR-0043)",
   "/logout": "action only, no UI",
   "/settings": "reached from the account menu in the header, not the module rail",
+  "/settings/:tab": "one settings section — profile, sign-in, brand, regional, data — reached from the tabs on /settings",
   "/approvals": "reached from the decisions-waiting panel on the home dashboard",
   "/search": "no UI of its own: the loader that feeds the command palette in the header",
   "/admin/ai/console": "a screen inside the admin workspace, reached from its AI tabs",

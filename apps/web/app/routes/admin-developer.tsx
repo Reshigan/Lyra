@@ -38,7 +38,7 @@ import { useShellData } from "./workspace";
 //     a generic action would rotate the secret and silently discard it, which
 //     breaks every receiver.
 //
-// Minting keys stays in /settings, which already owns the one-time reveal for
+// Minting keys stays in /settings/security, which already owns the one-time reveal for
 // creates; this screen links there rather than growing a second mint.
 
 /* --------------------------------------------------------------- contract */
@@ -511,7 +511,7 @@ export default function AdminDeveloper() {
               rowState={(row) => (row.revokedAt ? "sealed" : undefined)}
               empty={<EmptyState title={l("keysEmpty")} />}
             />
-            <Link to="/settings" className="font-ui text-13 text-accent underline underline-offset-2">
+            <Link to="/settings/security" className="font-ui text-13 text-accent underline underline-offset-2">
               {l("keysMint")}
             </Link>
           </div>

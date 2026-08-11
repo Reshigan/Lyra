@@ -16,6 +16,7 @@ export default [
     index("routes/home.tsx"),
 
     route("settings", "routes/settings.tsx"),
+    route("settings/:tab", "routes/settings.tsx", { id: "settings-tab" }),
     route("approvals", "routes/approvals.tsx"),
     route("admin/ai/console", "routes/ai-console.tsx"),
     route("admin/ai/budget", "routes/ai-budget.tsx"),

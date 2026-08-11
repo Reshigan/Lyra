@@ -1227,12 +1227,13 @@ thing.
 
 ### P3 — screens that are structurally weak
 
-**10. `/settings` is nine unrelated panels on one 1,726-line page.** Profile,
-password, two-factor, sessions, API keys, notifications, tenant intro, brand
-editor and "Your data" (DSAR) all stack vertically with no navigation between
-them. The brand editor — which is where a tenant expresses its identity, and
-which contains a live 4.5:1 contrast check — is buried seven panels down. It
-deserves its own screen.
+**10. ~~`/settings` is nine unrelated panels on one 1,726-line page.~~**
+*Closed.* Settings is five addressable screens behind a tab bar — profile,
+sign-in & access, brand, regional, your data — served by `/settings/:tab`
+(`/settings` still lands on profile). The brand editor is its own screen at
+`/settings/brand` rather than the seventh panel down, and a tab the actor
+lacks the permission for is not shown at all: `/settings/brand` without
+`core:tenants:update` falls back to profile instead of 404ing.
 
 **11. `/distribution/quote-requests/:id/compare` cannot be read on a laptop.**
 It is a transposed table (records are columns) inside a `tabIndex={0}` sideways

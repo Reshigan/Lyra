@@ -6,6 +6,7 @@ import {
   useActionData,
   useLoaderData,
   useNavigation,
+  useParams,
   useSearchParams,
   type ActionFunctionArgs,
   type LoaderFunctionArgs
@@ -110,6 +111,20 @@ const CAN = {
   pii: "core:pii:view"
 } as const;
 
+/**
+ * Settings is five screens, not one stack. An account is not a tenant's brand,
+ * and the brand editor — where a tenant expresses its identity — is a
+ * destination of its own rather than the seventh panel down the page
+ * (docs/ui.md §7 P3-10). Each tab is an address, so it can be linked to.
+ */
+const TABS = [
+  { id: "account", can: null },
+  { id: "security", can: null },
+  { id: "brand", can: "brand" },
+  { id: "tenant", can: "brand" },
+  { id: "data", can: "dsarCreate" }
+] as const;
+
 /** BrandJson.font — the approved set, and the only values --font-display and
  *  --font-ui may be re-mapped to (packages/ui/src/tokens.css §whitelabel). */
 const FONTS = ["space-grotesk", "inter", "ibm-plex-sans-arabic"] as const;
@@ -137,6 +152,12 @@ const AA_RATIO = 4.5;
  */
 const LABELS: Record<string, Record<string, string>> = {
   en: {
+    "tabs.label": "Settings sections",
+    "tabs.account": "Profile",
+    "tabs.security": "Sign-in & access",
+    "tabs.brand": "Brand",
+    "tabs.tenant": "Regional",
+    "tabs.data": "Your data",
     "settings.title": "Account",
     "settings.intro": "Your profile, sign-in and sessions.",
     "settings.tenantIntro": "Settings for the whole tenant, because you administer it.",
@@ -325,6 +346,12 @@ const LABELS: Record<string, Record<string, string>> = {
     "problem.unknown": "That action is not one this screen offers."
   },
   ar: {
+    "tabs.label": "أقسام الإعدادات",
+    "tabs.account": "الملف الشخصي",
+    "tabs.security": "تسجيل الدخول والوصول",
+    "tabs.brand": "الهوية",
+    "tabs.tenant": "الإقليمية",
+    "tabs.data": "بياناتك",
     "settings.title": "الحساب",
     "settings.intro": "ملفك الشخصي وتسجيل الدخول والجلسات.",
     "settings.tenantIntro": "إعدادات تخص المؤسسة بأكملها، لأنك تديرها.",
@@ -930,6 +957,11 @@ export default function Settings() {
   const shell = useShellData();
   const navigation = useNavigation();
   const [params] = useSearchParams();
+  // A tab the actor may not see is not a tab: /settings/brand without
+  // core:tenants:update falls back to the account screen rather than 404ing.
+  const tabs = TABS.filter((entry) => !entry.can || loaded.can[entry.can]);
+  const asked = useParams().tab;
+  const tab = tabs.some((entry) => entry.id === asked) ? asked : "account";
   const [mismatch, setMismatch] = React.useState(false);
 
   const locale = shell?.locale ?? "en";
@@ -970,351 +1002,385 @@ export default function Settings() {
         <p className="font-ui text-13 text-subtle">{label("settings.intro")}</p>
       </header>
 
-      {/* ---------------------------------------------------------- profile */}
-      <Section id="settings-profile" title={label("profile.title")}>
-        {failure("profile")}
-        {params.get("saved") === "profile" ? (
-          <p role="status" className="font-ui text-13 text-success">
-            {t("common.saved")}
-          </p>
-        ) : null}
+      <nav aria-label={label("tabs.label")} className="flex flex-wrap gap-1 border-b border-border">
+        {tabs.map((entry) => (
+          <Link
+            key={entry.id}
+            to={`/settings/${entry.id}`}
+            aria-current={entry.id === tab ? "page" : undefined}
+            className={`-mb-px border-b-2 px-3 py-2 font-ui text-13 transition-colors ${
+              entry.id === tab
+                ? "border-accent text-text"
+                : "border-transparent text-subtle hover:text-text"
+            }`}
+          >
+            {label(`tabs.${entry.id}`)}
+          </Link>
+        ))}
+      </nav>
 
-        <Form method="post" className="flex flex-col gap-4">
-          <input type="hidden" name="intent" value="profile" />
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label={label("profile.name")}>
-              <Input
-                name="name"
-                defaultValue={shell?.actorName ?? ""}
-                autoComplete="name"
-                maxLength={120}
-                required
-              />
-            </Field>
-            <Field label={label("profile.locale")} hint={label("profile.localeHint")}>
-              <Select
-                name="locale"
-                defaultValue={locale}
-                options={LOCALES.map((code) => ({ value: code, label: nameOfLocale(code) }))}
-              />
-            </Field>
-            {/* Read-only rather than hidden: knowing which address the account
-                answers to is half of what this panel is for. */}
-            <Field label={label("profile.email")} hint={label("profile.emailHint")}>
-              <Input value={loaded.email} readOnly disabled autoComplete="email" />
-            </Field>
-          </div>
-          <div>
-            <Button type="submit" variant="primary" loading={pending === "profile"}>
-              {pending === "profile" ? t("common.working") : t("common.save")}
-            </Button>
-          </div>
-        </Form>
-      </Section>
-
-      {/* ------------------------------------------------------------ lens */}
-      <Section id="settings-lens" title={label("lens.title")} lead={label("lens.intro")}>
-        {failure("lens-reset")}
-        {done("lens-reset", "lens.ok")}
-        {loaded.lensReadable && loaded.lens ? (
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <p className="font-ui text-13 text-text">
-              {label("lens.current")}:{" "}
-              <span className="font-medium">{t(`nav.${loaded.lens.workspace}`)}</span>
-              {" — "}
-              {loaded.lens.isDefault ? label("lens.default") : label("lens.custom")}
+      {tab === "account" ? (
+        <>
+        {/* ---------------------------------------------------------- profile */}
+        <Section id="settings-profile" title={label("profile.title")}>
+          {failure("profile")}
+          {params.get("saved") === "profile" ? (
+            <p role="status" className="font-ui text-13 text-success">
+              {t("common.saved")}
             </p>
-            {loaded.lens.isDefault ? null : (
-              <Form method="post">
-                <input type="hidden" name="intent" value="lens-reset" />
-                <Button type="submit" variant="secondary" loading={pending === "lens-reset"}>
-                  {pending === "lens-reset" ? t("common.working") : label("lens.reset")}
-                </Button>
-              </Form>
-            )}
-          </div>
-        ) : (
-          <p className="font-ui text-13 text-subtle">{label("lens.unavailable")}</p>
-        )}
-      </Section>
-
-      {/* --------------------------------------------------------- password */}
-      <Section id="settings-password" title={label("password.title")} lead={label("password.intro")}>
-        {failure("password")}
-
-        <Form
-          method="post"
-          className="flex flex-col gap-4"
-          onSubmit={(event) => {
-            // Reading the values, never storing them: the check is a comparison
-            // and the strings die with the handler.
-            const entries = new FormData(event.currentTarget);
-            const bad = entries.get("next") !== entries.get("confirm");
-            setMismatch(bad);
-            if (bad) event.preventDefault();
-          }}
-        >
-          <input type="hidden" name="intent" value="password" />
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label={label("password.current")}>
-              <Input name="current" type="password" autoComplete="current-password" required />
-            </Field>
-            {/* The two new-password boxes stay empty on every render, success or
-                failure: a value attribute is a credential in the DOM. */}
-            <Field label={label("password.new")} hint={label("password.hint")}>
-              <Input
-                name="next"
-                type="password"
-                autoComplete="new-password"
-                minLength={12}
-                maxLength={200}
-                required
-              />
-            </Field>
-            {/* One place says "these do not match": the field that is wrong.
-                Both the browser check and the no-script one land here. */}
-            <Field
-              label={label("password.confirm")}
-              {...(mismatched ? { error: label("password.mismatch") } : {})}
-            >
-              <Input
-                name="confirm"
-                type="password"
-                autoComplete="new-password"
-                minLength={12}
-                maxLength={200}
-                required
-              />
-            </Field>
-          </div>
-          <div>
-            <Button type="submit" variant="primary" loading={pending === "password"}>
-              {pending === "password" ? t("common.working") : label("password.submit")}
-            </Button>
-          </div>
-        </Form>
-      </Section>
-
-      {/* -------------------------------------------------------------- mfa */}
-      <MfaPanel
-        enrolled={loaded.mfaEnrolled}
-        showDisable={params.get("mfa") === "off"}
-        result={result}
-        pending={pending}
-        label={label}
-        t={t}
-        failure={failure}
-      />
-
-      {/* ------------------------------------------------------ permissions */}
-      <PermissionsPanel permissions={loaded.permissions} pii={loaded.can.pii} label={label} t={t} />
-
-      {/* --------------------------------------------------------- sessions */}
-      <Section id="settings-sessions" title={label("sessions.title")}>
-        {failure("revoke-session")}
-        {done("revoke-session", "sessions.ok")}
-
-        {loaded.sessionsReadable ? (
-          <Table<SessionRow>
-            columns={sessionColumns(label, locale, pending)}
-            rows={loaded.sessions}
-            rowKey={(row) => row.id}
-            caption={label("sessions.caption")}
-            density="compact"
-            empty={<EmptyState title={label("sessions.none")} />}
-          />
-        ) : (
-          <p className="font-ui text-13 text-subtle">{label("sessions.unavailable")}</p>
-        )}
-      </Section>
-
-      {/* ------------------------------------------------------------- keys */}
-      {loaded.can.keysRead ? (
-        <Section id="settings-keys" title={label("keys.title")} lead={label("keys.intro")}>
-          {failure("revoke-key")}
-          {done("revoke-key", "keys.ok")}
-
-          {loaded.keysReadable ? (
-            <Table<ApiKeyRow>
-              columns={keyColumns(label, locale, pending, loaded.can.keysRevoke)}
-              rows={loaded.keys}
-              rowKey={(row) => row.id}
-              caption={label("keys.caption")}
-              density="compact"
-              empty={<EmptyState title={label("keys.none")} />}
-            />
-          ) : (
-            <p className="font-ui text-13 text-subtle">{label("keys.unavailable")}</p>
-          )}
-
-          {/* Absent, not disabled, when the actor cannot mint — same rule the
-              revoke column follows. */}
-          {loaded.can.keysCreate ? (
-            <NewKeyForm
-              grantable={loaded.grantable}
-              result={result}
-              pending={pending}
-              label={label}
-              t={t}
-              failure={failure}
-            />
           ) : null}
+
+          <Form method="post" className="flex flex-col gap-4">
+            <input type="hidden" name="intent" value="profile" />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label={label("profile.name")}>
+                <Input
+                  name="name"
+                  defaultValue={shell?.actorName ?? ""}
+                  autoComplete="name"
+                  maxLength={120}
+                  required
+                />
+              </Field>
+              <Field label={label("profile.locale")} hint={label("profile.localeHint")}>
+                <Select
+                  name="locale"
+                  defaultValue={locale}
+                  options={LOCALES.map((code) => ({ value: code, label: nameOfLocale(code) }))}
+                />
+              </Field>
+              {/* Read-only rather than hidden: knowing which address the account
+                  answers to is half of what this panel is for. */}
+              <Field label={label("profile.email")} hint={label("profile.emailHint")}>
+                <Input value={loaded.email} readOnly disabled autoComplete="email" />
+              </Field>
+            </div>
+            <div>
+              <Button type="submit" variant="primary" loading={pending === "profile"}>
+                {pending === "profile" ? t("common.working") : t("common.save")}
+              </Button>
+            </div>
+          </Form>
         </Section>
-      ) : null}
 
-      {/* ---------------------------------------------------- notifications */}
-      <Section
-        id="settings-notifications"
-        title={label("notifications.title")}
-        lead={label("notifications.intro")}
-      >
-        {failure("read-notification")}
-        {done("read-notification", "notifications.ok")}
-
-        {!loaded.inboxReadable ? (
-          <p className="font-ui text-13 text-subtle">{label("notifications.unavailable")}</p>
-        ) : loaded.notifications.length === 0 ? (
-          <p className="font-ui text-13 text-subtle">{label("notifications.none")}</p>
-        ) : (
-          <ul className="flex flex-col divide-y divide-border">
-            {loaded.notifications.map((note) => (
-              <li key={note.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
-                <div className="min-w-0">
-                  {/* titleKey is a shared-catalogue key; an unknown one reads
-                      as words rather than as a dotted key (modules/spec.ts). */}
-                  <p className="font-ui text-14 break-words text-text">
-                    {titleText(t(note.titleKey, note.vars), note.titleKey)}
-                  </p>
-                  <p className="font-ui text-12 text-subtle">
-                    <DateTime value={note.createdAt} locale={locale} precision="minute" relative />
-                  </p>
-                </div>
+        {/* ------------------------------------------------------------ lens */}
+        <Section id="settings-lens" title={label("lens.title")} lead={label("lens.intro")}>
+          {failure("lens-reset")}
+          {done("lens-reset", "lens.ok")}
+          {loaded.lensReadable && loaded.lens ? (
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <p className="font-ui text-13 text-text">
+                {label("lens.current")}:{" "}
+                <span className="font-medium">{t(`nav.${loaded.lens.workspace}`)}</span>
+                {" — "}
+                {loaded.lens.isDefault ? label("lens.default") : label("lens.custom")}
+              </p>
+              {loaded.lens.isDefault ? null : (
                 <Form method="post">
-                  <input type="hidden" name="intent" value="read-notification" />
-                  <input type="hidden" name="id" value={note.id} />
-                  {/* No aria-label: an accessible name that does not contain the
-                      visible one fails WCAG 2.5.3, and the row is the context. */}
-                  <Button type="submit" size="sm" loading={pending === "read-notification"}>
-                    {label("notifications.read")}
+                  <input type="hidden" name="intent" value="lens-reset" />
+                  <Button type="submit" variant="secondary" loading={pending === "lens-reset"}>
+                    {pending === "lens-reset" ? t("common.working") : label("lens.reset")}
                   </Button>
                 </Form>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Section>
+              )}
+            </div>
+          ) : (
+            <p className="font-ui text-13 text-subtle">{label("lens.unavailable")}</p>
+          )}
+        </Section>
 
-      {/* --------------------------------------------------- tenant panels */}
-      {loaded.can.brand || loaded.can.dsarCreate ? (
-        <p className="font-ui text-13 text-subtle">{label("settings.tenantIntro")}</p>
+        {/* ---------------------------------------------------- notifications */}
+        <Section
+          id="settings-notifications"
+          title={label("notifications.title")}
+          lead={label("notifications.intro")}
+        >
+          {failure("read-notification")}
+          {done("read-notification", "notifications.ok")}
+
+          {!loaded.inboxReadable ? (
+            <p className="font-ui text-13 text-subtle">{label("notifications.unavailable")}</p>
+          ) : loaded.notifications.length === 0 ? (
+            <p className="font-ui text-13 text-subtle">{label("notifications.none")}</p>
+          ) : (
+            <ul className="flex flex-col divide-y divide-border">
+              {loaded.notifications.map((note) => (
+                <li key={note.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                  <div className="min-w-0">
+                    {/* titleKey is a shared-catalogue key; an unknown one reads
+                        as words rather than as a dotted key (modules/spec.ts). */}
+                    <p className="font-ui text-14 break-words text-text">
+                      {titleText(t(note.titleKey, note.vars), note.titleKey)}
+                    </p>
+                    <p className="font-ui text-12 text-subtle">
+                      <DateTime value={note.createdAt} locale={locale} precision="minute" relative />
+                    </p>
+                  </div>
+                  <Form method="post">
+                    <input type="hidden" name="intent" value="read-notification" />
+                    <input type="hidden" name="id" value={note.id} />
+                    {/* No aria-label: an accessible name that does not contain the
+                        visible one fails WCAG 2.5.3, and the row is the context. */}
+                    <Button type="submit" size="sm" loading={pending === "read-notification"}>
+                      {label("notifications.read")}
+                    </Button>
+                  </Form>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Section>
+        </>
       ) : null}
 
-      {loaded.can.brand ? (
-        <BrandPanel
-          brand={loaded.brand}
-          tenantName={loaded.tenantName}
+      {tab === "security" ? (
+        <>
+        {/* --------------------------------------------------------- password */}
+        <Section id="settings-password" title={label("password.title")} lead={label("password.intro")}>
+          {failure("password")}
+
+          <Form
+            method="post"
+            className="flex flex-col gap-4"
+            onSubmit={(event) => {
+              // Reading the values, never storing them: the check is a comparison
+              // and the strings die with the handler.
+              const entries = new FormData(event.currentTarget);
+              const bad = entries.get("next") !== entries.get("confirm");
+              setMismatch(bad);
+              if (bad) event.preventDefault();
+            }}
+          >
+            <input type="hidden" name="intent" value="password" />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label={label("password.current")}>
+                <Input name="current" type="password" autoComplete="current-password" required />
+              </Field>
+              {/* The two new-password boxes stay empty on every render, success or
+                  failure: a value attribute is a credential in the DOM. */}
+              <Field label={label("password.new")} hint={label("password.hint")}>
+                <Input
+                  name="next"
+                  type="password"
+                  autoComplete="new-password"
+                  minLength={12}
+                  maxLength={200}
+                  required
+                />
+              </Field>
+              {/* One place says "these do not match": the field that is wrong.
+                  Both the browser check and the no-script one land here. */}
+              <Field
+                label={label("password.confirm")}
+                {...(mismatched ? { error: label("password.mismatch") } : {})}
+              >
+                <Input
+                  name="confirm"
+                  type="password"
+                  autoComplete="new-password"
+                  minLength={12}
+                  maxLength={200}
+                  required
+                />
+              </Field>
+            </div>
+            <div>
+              <Button type="submit" variant="primary" loading={pending === "password"}>
+                {pending === "password" ? t("common.working") : label("password.submit")}
+              </Button>
+            </div>
+          </Form>
+        </Section>
+
+        {/* -------------------------------------------------------------- mfa */}
+        <MfaPanel
+          enrolled={loaded.mfaEnrolled}
+          showDisable={params.get("mfa") === "off"}
+          result={result}
           pending={pending}
           label={label}
           t={t}
           failure={failure}
-          done={done}
         />
-      ) : null}
 
-      {loaded.can.brand ? (
-        <Section id="settings-calendar" title={label("calendar.title")} lead={label("calendar.intro")}>
-          {failure("calendar")}
-          {done("calendar", "calendar.ok")}
-          <Form method="post" className="flex flex-col gap-4">
-            <input type="hidden" name="intent" value="calendar" />
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label={label("calendar.field")} hint={label("calendar.hint")}>
-                <Select
-                  name="calendar"
-                  defaultValue={loaded.calendar}
-                  options={CALENDARS.map((value) => ({ value, label: label(`calendar.${value}`) }))}
-                />
-              </Field>
-              {/* Only the locales the tenant actually runs in: a default the
-                  app has no catalogue for would leave every screen in a
-                  language nobody picked. */}
-              <Field label={label("calendar.locale")} hint={label("calendar.localeHint")}>
-                <Select
-                  name="defaultLocale"
-                  defaultValue={loaded.defaultLocale}
-                  options={loaded.locales.map((code) => ({ value: code, label: nameOfLocale(code) }))}
-                />
-              </Field>
-              <Field label={label("calendar.currency")} hint={label("calendar.currencyHint")}>
-                <Input
-                  name="currency"
-                  defaultValue={loaded.currency}
-                  maxLength={3}
-                  minLength={3}
-                  pattern="[A-Za-z]{3}"
-                  autoComplete="off"
-                  className="uppercase"
-                />
-              </Field>
-            </div>
-            <div>
-              <Button type="submit" variant="primary" loading={pending === "calendar"}>
-                {pending === "calendar" ? t("common.working") : label("calendar.submit")}
-              </Button>
-            </div>
-          </Form>
+        {/* ------------------------------------------------------ permissions */}
+        <PermissionsPanel permissions={loaded.permissions} pii={loaded.can.pii} label={label} t={t} />
+
+        {/* --------------------------------------------------------- sessions */}
+        <Section id="settings-sessions" title={label("sessions.title")}>
+          {failure("revoke-session")}
+          {done("revoke-session", "sessions.ok")}
+
+          {loaded.sessionsReadable ? (
+            <Table<SessionRow>
+              columns={sessionColumns(label, locale, pending)}
+              rows={loaded.sessions}
+              rowKey={(row) => row.id}
+              caption={label("sessions.caption")}
+              density="compact"
+              empty={<EmptyState title={label("sessions.none")} />}
+            />
+          ) : (
+            <p className="font-ui text-13 text-subtle">{label("sessions.unavailable")}</p>
+          )}
         </Section>
-      ) : null}
 
-      {loaded.can.dsarCreate ? (
-        <Section id="settings-dsar" title={label("dsar.title")} lead={label("dsar.intro")}>
-          {failure("dsar")}
-          {result?.intent === "dsar" && result.ok ? (
-            <p role="status" className="font-ui text-13 text-success">
-              {label("dsar.ok")}
-            </p>
-          ) : null}
+        {/* ------------------------------------------------------------- keys */}
+        {loaded.can.keysRead ? (
+          <Section id="settings-keys" title={label("keys.title")} lead={label("keys.intro")}>
+            {failure("revoke-key")}
+            {done("revoke-key", "keys.ok")}
 
-          <Form method="post" className="flex flex-col gap-4">
-            <input type="hidden" name="intent" value="dsar" />
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label={label("dsar.subject")}>
-                <Input value={loaded.email} readOnly disabled />
-              </Field>
-              <Field label={label("dsar.type")}>
-                <Select
-                  name="type"
-                  defaultValue="access"
-                  options={DSAR_TYPES.map((type) => ({
-                    value: type,
-                    label: label(`dsar.type.${type}`)
-                  }))}
-                />
-              </Field>
-            </div>
-            <p className="max-w-prose font-ui text-12 text-subtle">{label("dsar.erasureNote")}</p>
-            <div>
-              <Button type="submit" variant="primary" loading={pending === "dsar"}>
-                {pending === "dsar" ? t("common.working") : label("dsar.submit")}
-              </Button>
-            </div>
-          </Form>
-
-          {loaded.can.dsarRead ? (
-            loaded.dsarReadable ? (
-              <Table<DsarRow>
-                columns={dsarColumns(label, locale)}
-                rows={loaded.dsar}
+            {loaded.keysReadable ? (
+              <Table<ApiKeyRow>
+                columns={keyColumns(label, locale, pending, loaded.can.keysRevoke)}
+                rows={loaded.keys}
                 rowKey={(row) => row.id}
-                caption={label("dsar.caption")}
+                caption={label("keys.caption")}
                 density="compact"
-                empty={<EmptyState title={label("dsar.none")} />}
+                empty={<EmptyState title={label("keys.none")} />}
               />
             ) : (
-              <p className="font-ui text-13 text-subtle">{label("dsar.unavailable")}</p>
-            )
-          ) : null}
-        </Section>
+              <p className="font-ui text-13 text-subtle">{label("keys.unavailable")}</p>
+            )}
+
+            {/* Absent, not disabled, when the actor cannot mint — same rule the
+                revoke column follows. */}
+            {loaded.can.keysCreate ? (
+              <NewKeyForm
+                grantable={loaded.grantable}
+                result={result}
+                pending={pending}
+                label={label}
+                t={t}
+                failure={failure}
+              />
+            ) : null}
+          </Section>
+        ) : null}
+        </>
+      ) : null}
+
+      {tab === "brand" ? (
+        <>
+        <p className="font-ui text-13 text-subtle">{label("settings.tenantIntro")}</p>
+
+        {loaded.can.brand ? (
+          <BrandPanel
+            brand={loaded.brand}
+            tenantName={loaded.tenantName}
+            pending={pending}
+            label={label}
+            t={t}
+            failure={failure}
+            done={done}
+          />
+        ) : null}
+        </>
+      ) : null}
+
+      {tab === "tenant" ? (
+        <>
+        {loaded.can.brand ? (
+          <Section id="settings-calendar" title={label("calendar.title")} lead={label("calendar.intro")}>
+            {failure("calendar")}
+            {done("calendar", "calendar.ok")}
+            <Form method="post" className="flex flex-col gap-4">
+              <input type="hidden" name="intent" value="calendar" />
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label={label("calendar.field")} hint={label("calendar.hint")}>
+                  <Select
+                    name="calendar"
+                    defaultValue={loaded.calendar}
+                    options={CALENDARS.map((value) => ({ value, label: label(`calendar.${value}`) }))}
+                  />
+                </Field>
+                {/* Only the locales the tenant actually runs in: a default the
+                    app has no catalogue for would leave every screen in a
+                    language nobody picked. */}
+                <Field label={label("calendar.locale")} hint={label("calendar.localeHint")}>
+                  <Select
+                    name="defaultLocale"
+                    defaultValue={loaded.defaultLocale}
+                    options={loaded.locales.map((code) => ({ value: code, label: nameOfLocale(code) }))}
+                  />
+                </Field>
+                <Field label={label("calendar.currency")} hint={label("calendar.currencyHint")}>
+                  <Input
+                    name="currency"
+                    defaultValue={loaded.currency}
+                    maxLength={3}
+                    minLength={3}
+                    pattern="[A-Za-z]{3}"
+                    autoComplete="off"
+                    className="uppercase"
+                  />
+                </Field>
+              </div>
+              <div>
+                <Button type="submit" variant="primary" loading={pending === "calendar"}>
+                  {pending === "calendar" ? t("common.working") : label("calendar.submit")}
+                </Button>
+              </div>
+            </Form>
+          </Section>
+        ) : null}
+        </>
+      ) : null}
+
+      {tab === "data" ? (
+        <>
+        {loaded.can.dsarCreate ? (
+          <Section id="settings-dsar" title={label("dsar.title")} lead={label("dsar.intro")}>
+            {failure("dsar")}
+            {result?.intent === "dsar" && result.ok ? (
+              <p role="status" className="font-ui text-13 text-success">
+                {label("dsar.ok")}
+              </p>
+            ) : null}
+
+            <Form method="post" className="flex flex-col gap-4">
+              <input type="hidden" name="intent" value="dsar" />
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label={label("dsar.subject")}>
+                  <Input value={loaded.email} readOnly disabled />
+                </Field>
+                <Field label={label("dsar.type")}>
+                  <Select
+                    name="type"
+                    defaultValue="access"
+                    options={DSAR_TYPES.map((type) => ({
+                      value: type,
+                      label: label(`dsar.type.${type}`)
+                    }))}
+                  />
+                </Field>
+              </div>
+              <p className="max-w-prose font-ui text-12 text-subtle">{label("dsar.erasureNote")}</p>
+              <div>
+                <Button type="submit" variant="primary" loading={pending === "dsar"}>
+                  {pending === "dsar" ? t("common.working") : label("dsar.submit")}
+                </Button>
+              </div>
+            </Form>
+
+            {loaded.can.dsarRead ? (
+              loaded.dsarReadable ? (
+                <Table<DsarRow>
+                  columns={dsarColumns(label, locale)}
+                  rows={loaded.dsar}
+                  rowKey={(row) => row.id}
+                  caption={label("dsar.caption")}
+                  density="compact"
+                  empty={<EmptyState title={label("dsar.none")} />}
+                />
+              ) : (
+                <p className="font-ui text-13 text-subtle">{label("dsar.unavailable")}</p>
+              )
+            ) : null}
+          </Section>
+        ) : null}
+        </>
       ) : null}
     </div>
   );
