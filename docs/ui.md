@@ -1270,13 +1270,17 @@ drift screen by screen. A local entry still wins where a screen genuinely means
 something else — "Back to the register", "You cannot read roles", a desk's own
 empty-state — which is what the override chain is for.
 
-**15. `ActionSpec` is fully built and used by nothing.** The declarative spec
-supports per-resource actions with their own fields, permission and confirm
-prompt, and `record.tsx` renders an "Actions" section for them — but **zero**
-resources across all ten module spec files declare one. Every state change is
-therefore either a raw editable column or a bespoke route. Either wire the
-existing mechanism up or delete it; a designed-but-dead affordance is why
-nothing on a record screen looks like a verb.
+**15. ~~`ActionSpec` is fully built and used by nothing.~~** *Closed.* The
+mechanism is wired: AXIS documents verify and extract, AXIS policies do the
+three lifecycle hops the API owns (not taken up, lapse, reinstate), and an
+analytics schedule pauses and resumes. Policies lost `status` from `editable`
+in the same change — every hop out of `active` moves money, and a PATCH wrote
+the word without the journal lines behind it (docs/19). `spec.actions.test.ts`
+holds the line: every declared action names a real permission, posts to a
+`{id}` path, and says its button, its confirm prompt, its fields and their
+hints in both locales. The remaining state changes still belong to their
+bespoke desks — a claim's transition is a screen, not a button — which is what
+the seam is for.
 
 **16. ~~Two secondary money surfaces expose raw JSON to finance users.~~**
 *Closed.* `/ledger/transactions` now renders one input per recipe argument —

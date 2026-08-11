@@ -179,6 +179,24 @@ export const axis: WorkspaceSpec = {
       "documents.verify.confirm":
         "Verification is stamped with your name and cannot be undone. Verify this document?",
       "documents.extract": "Read with the model",
+      "policies.ntu": "Not taken up",
+      "policies.ntu.confirm":
+        "The contract never went on risk: the whole premium goes back and the whole commission is clawed back. Record it as not taken up?",
+      "policies.ntu.collected": "Premium already banked, if any. It comes straight back.",
+      "policies.lapse": "Lapse for non-payment",
+      "policies.lapse.confirm":
+        "Cover stops and the commission stops accruing from this instalment. Lapse this contract?",
+      "policies.lapse.missedSeq": "Which instalment went unpaid — the first one is 0.",
+      "policies.reinstate": "Reinstate",
+      "policies.reinstate.confirm":
+        "Cover resumes and commission re-earns against the arrears paid. Reinstate this contract?",
+      "policies.reinstate.arrears": "Amount collected to clear the arrears.",
+      reasonCode: "Reason code",
+      reason: "Reason",
+      note: "Note",
+      missedSeq: "Missed instalment",
+      collectedMinor: "Collected",
+      arrearsMinor: "Arrears paid",
 
       // Bespoke screens this workspace links out to.
       "link.exceptions": "Exception queue",
@@ -357,6 +375,22 @@ export const axis: WorkspaceSpec = {
       "documents.verify.confirm":
         "يُسجَّل التحقق باسمك ولا يمكن الرجوع عنه. هل تريد التحقق من هذا المستند؟",
       "documents.extract": "القراءة بالنموذج",
+      "policies.ntu": "لم يُفعَّل",
+      "policies.ntu.confirm":
+        "لم يبدأ الغطاء إطلاقًا: يُعاد القسط بالكامل وتُسترد العمولة بالكامل. هل تسجّله كعقد لم يُفعَّل؟",
+      "policies.ntu.collected": "القسط المحصَّل إن وُجد. يُعاد كاملًا.",
+      "policies.lapse": "الإسقاط لعدم السداد",
+      "policies.lapse.confirm": "يتوقف الغطاء وتتوقف العمولة من هذا القسط. هل تسقط هذا العقد؟",
+      "policies.lapse.missedSeq": "القسط غير المسدَّد — الأول هو 0.",
+      "policies.reinstate": "إعادة السريان",
+      "policies.reinstate.confirm": "يعود الغطاء وتُحتسب العمولة مقابل المتأخرات المسدَّدة. هل تعيد سريان العقد؟",
+      "policies.reinstate.arrears": "المبلغ المحصَّل لسداد المتأخرات.",
+      reasonCode: "رمز السبب",
+      reason: "السبب",
+      note: "ملاحظة",
+      missedSeq: "القسط غير المسدَّد",
+      collectedMinor: "المحصَّل",
+      arrearsMinor: "المتأخرات المسدَّدة",
 
       "link.exceptions": "قائمة انتظار الاستثناءات",
       "link.board": "لوحة الإنتاج",
@@ -663,9 +697,51 @@ export const axis: WorkspaceSpec = {
         { name: "commissionMinor", type: "money" }
       ],
       editable: [
-        { name: "status", type: "select", options: ["active", "lapsed", "cancelled", "renewed"] },
+        // `status` is deliberately absent: every hop out of `active` moves money
+        // — NTU refunds the premium, LAPSE stops the accrual, REINSTATE re-earns
+        // it against the arrears — and a PATCH would write the word without any
+        // of the journal lines (docs/19). The hops are the actions below.
         { name: "endAt", type: "date" },
         { name: "commissionMinor", type: "money" }
+      ],
+      actions: [
+        {
+          intent: "ntu",
+          method: "POST",
+          path: "/{id}/ntu",
+          labelKey: "policies.ntu",
+          permission: "axis:policies:ntu",
+          confirm: true,
+          fields: [
+            { name: "reasonCode", type: "text", required: true },
+            { name: "collectedMinor", type: "money", hintKey: "policies.ntu.collected" },
+            { name: "note", type: "textarea" }
+          ]
+        },
+        {
+          intent: "lapse",
+          method: "POST",
+          path: "/{id}/lapse",
+          labelKey: "policies.lapse",
+          permission: "axis:policies:lapse",
+          confirm: true,
+          fields: [
+            { name: "missedSeq", type: "number", hintKey: "policies.lapse.missedSeq" },
+            { name: "reason", type: "text" }
+          ]
+        },
+        {
+          intent: "reinstate",
+          method: "POST",
+          path: "/{id}/reinstate",
+          labelKey: "policies.reinstate",
+          permission: "axis:policies:reinstate",
+          confirm: true,
+          fields: [
+            { name: "arrearsMinor", type: "money", hintKey: "policies.reinstate.arrears" },
+            { name: "note", type: "textarea" }
+          ]
+        }
       ]
     },
     {

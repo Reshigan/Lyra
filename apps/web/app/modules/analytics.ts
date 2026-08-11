@@ -26,6 +26,10 @@ export const analytics: WorkspaceSpec = {
       reportBuilder: "Report builder",
       openDashboard: "Open dashboard",
 
+      // Record actions the API owns (apps/api/src/routes/analytics.ts).
+      "schedules.pause": "Pause this schedule",
+      "schedules.resume": "Resume this schedule",
+
       key: "Key",
       module: "Module",
       scope: "Scope",
@@ -135,6 +139,9 @@ export const analytics: WorkspaceSpec = {
       "journey-events": "أحداث الرحلة",
       reportBuilder: "منشئ التقارير",
       openDashboard: "فتح اللوحة",
+
+      "schedules.pause": "إيقاف هذا الجدول مؤقتًا",
+      "schedules.resume": "استئناف هذا الجدول",
 
       key: "المفتاح",
       module: "الوحدة",
@@ -409,6 +416,24 @@ export const analytics: WorkspaceSpec = {
         { name: "format", type: "select", options: ["xlsx", "pdf", "csv", "json"] },
         { name: "recipientsJson", type: "json" },
         { name: "paramsJson", type: "json" }
+      ],
+      // Which is what these two are for: the API recomputes `nextRunAt` on the
+      // way through, so pausing is a verb the record offers, not a column.
+      actions: [
+        {
+          intent: "pause",
+          method: "POST",
+          path: "/{id}/pause",
+          labelKey: "schedules.pause",
+          permission: "analytics:schedules:write"
+        },
+        {
+          intent: "resume",
+          method: "POST",
+          path: "/{id}/resume",
+          labelKey: "schedules.resume",
+          permission: "analytics:schedules:write"
+        }
       ]
     },
     {
