@@ -108,7 +108,9 @@ const NORTH_PAGES: Array<[string, string]> = [
 
 const COMPLIANCE_PAGES: Array<[string, string]> = [
   ["/compliance/dsar-requests", "compliance-dsar-list"],
-  ["/compliance/run/dsar", "compliance-run-dsar"]
+  // compliance-run takes screening|evidence|retention — "dsar" 404s, and a 404
+  // shot tells you nothing about how the run screen looks.
+  ["/compliance/run/screening", "compliance-run-screening"]
 ];
 
 // Public surfaces — no session at all, which is how a stranger meets the brand.

@@ -98,7 +98,8 @@ const LABELS: Record<string, Record<string, string>> = {
     "empty.action": "Register a claim",
     "assign.title": "Assign a handler",
     "assign.claim": "Claim",
-    "assign.handler": "Handler reference",
+    "assign.handler": "Handler",
+    "assign.pick": "Choose a colleague or team",
     "assign.submit": "Assign",
     "done.assign": "Handler updated.",
     "hop.title": "Advance",
@@ -151,7 +152,8 @@ const LABELS: Record<string, Record<string, string>> = {
     "empty.action": "سجّل مطالبة",
     "assign.title": "تعيين معالج",
     "assign.claim": "المطالبة",
-    "assign.handler": "مرجع المعالج",
+    "assign.handler": "المعالج",
+    "assign.pick": "اختر زميلاً أو فريقاً",
     "assign.submit": "تعيين",
     "done.assign": "تم تحديث المعالج.",
     "hop.title": "تقديم",
@@ -595,6 +597,7 @@ export default function ClaimsDesk() {
             <Field label={l("assign.handler")} className="w-64">
               <Select
                 name="handlerRef"
+                placeholder={l("assign.pick")}
                 options={loaded.assignees.map((one) => ({ value: one.ref, label: one.name }))}
               />
             </Field>

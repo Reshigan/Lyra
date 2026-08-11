@@ -401,6 +401,7 @@ export default function CampaignStudio() {
               <Field label={l("studio.owner")} required>
                 <Select
                   name="ownerRef"
+                  placeholder={l("studio.ownerPick")}
                   options={loaded.assignees.map((one) => ({ value: one.ref, label: one.name }))}
                 />
               </Field>

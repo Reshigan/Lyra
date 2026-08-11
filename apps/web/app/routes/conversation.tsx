@@ -426,6 +426,7 @@ const LABELS: Record<string, Record<string, string>> = {
     reopen: "Reopen conversation",
     handoverAdd: "Hand this over",
     handoverTo: "Hand to",
+    handoverPick: "Choose a colleague or team",
     handoverSummary: "What the next person needs to know",
     handoverSave: "Save handover note",
     "done.assign": "This conversation is now assigned to you and taken off the bot.",
@@ -508,6 +509,7 @@ const LABELS: Record<string, Record<string, string>> = {
     reopen: "إعادة فتح المحادثة",
     handoverAdd: "تسليم المحادثة",
     handoverTo: "التسليم إلى",
+    handoverPick: "اختر زميلاً أو فريقاً",
     handoverSummary: "ما يحتاج الشخص التالي معرفته",
     handoverSave: "حفظ ملاحظة التسليم",
     "done.assign": "أُسندت إليك هذه المحادثة وخرجت من وضع الرد الآلي.",
@@ -875,6 +877,7 @@ export default function ConversationThread() {
               <Field label={l("handoverTo")}>
                 <Select
                   name="toRef"
+                  placeholder={l("handoverPick")}
                   options={loaded.assignees.map((one) => ({ value: one.ref, label: one.name }))}
                 />
               </Field>

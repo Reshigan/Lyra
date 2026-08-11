@@ -147,6 +147,40 @@ export function useUiCalendar(): CalendarPreference {
   return React.useContext(CalendarContext);
 }
 
+const TimeZoneContext = React.createContext<string>("UTC");
+
+/**
+ * Which zone every `<DateTime>` below renders in. The default is UTC and that
+ * is load-bearing, not a placeholder: the server pass and the browser's first
+ * pass have to produce the same characters, and a Worker runs in UTC while its
+ * reader does not. An unpinned formatter puts "07:07" in the HTML and "05:07"
+ * in the hydration, which React 19 treats as a mismatch and answers by
+ * throwing the whole route to the error boundary.
+ *
+ * So: UTC on both first passes, then the reader's own zone once mounted. The
+ * swap is a state change, not a hydration, so React re-renders it happily.
+ * `timeZone` overrides both — that is the seam for a tenant-configured zone.
+ */
+export function UiTimeZoneProvider({
+  timeZone,
+  children
+}: {
+  timeZone?: string | undefined;
+  children: React.ReactNode;
+}) {
+  const [local, setLocal] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    setLocal(Intl.DateTimeFormat().resolvedOptions().timeZone || null);
+  }, []);
+  return (
+    <TimeZoneContext.Provider value={timeZone ?? local ?? "UTC"}>{children}</TimeZoneContext.Provider>
+  );
+}
+
+export function useUiTimeZone(): string {
+  return React.useContext(TimeZoneContext);
+}
+
 export function useUiText(): KitText {
   return uiText(React.useContext(LocaleContext));
 }

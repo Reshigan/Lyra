@@ -122,7 +122,8 @@ const LABELS: Record<string, Record<string, string>> = {
     "assign.title": "Assign a case",
     "assign.intro": "Ownership is not workflow state, so it can be set from here.",
     "assign.case": "Case",
-    "assign.owner": "Owner reference",
+    "assign.owner": "Owner",
+    "assign.pick": "Choose a colleague or team",
     "assign.submit": "Assign",
     "done.assign": "Ownership updated.",
     "done.transition": "Case moved.",
@@ -164,7 +165,8 @@ const LABELS: Record<string, Record<string, string>> = {
     "assign.title": "تعيين حالة",
     "assign.intro": "المسؤولية ليست حالة مسار عمل، لذا يمكن تحديدها من هنا.",
     "assign.case": "الحالة",
-    "assign.owner": "مرجع المسؤول",
+    "assign.owner": "المسؤول",
+    "assign.pick": "اختر زميلاً أو فريقاً",
     "assign.submit": "تعيين",
     "done.assign": "تم تحديث المسؤول.",
     "done.transition": "تم نقل الحالة.",
@@ -577,6 +579,7 @@ export default function AxisBoard() {
             <Field label={l("assign.owner")} hint={l("assign.intro")} className="w-64">
               <Select
                 name="ownerRef"
+                placeholder={l("assign.pick")}
                 options={loaded.assignees.map((one) => ({ value: one.ref, label: one.name }))}
               />
             </Field>

@@ -90,7 +90,8 @@ const LABELS: Record<string, Record<string, string>> = {
     "claim.title": "Take ownership",
     "claim.intro": "Put a reference on a stuck case so it stops being nobody's.",
     "claim.case": "Case",
-    "claim.owner": "Owner reference",
+    "claim.owner": "Owner",
+    "claim.pick": "Choose a colleague or team",
     "claim.submit": "Assign",
     "done.claim": "Ownership updated.",
     "done.unblock": "Task reopened.",
@@ -131,7 +132,8 @@ const LABELS: Record<string, Record<string, string>> = {
     "claim.title": "تولّي المسؤولية",
     "claim.intro": "اربط مرجعًا بحالة متعطلة حتى تتوقف عن كونها بلا مسؤول.",
     "claim.case": "الحالة",
-    "claim.owner": "مرجع المسؤول",
+    "claim.owner": "المسؤول",
+    "claim.pick": "اختر زميلاً أو فريقاً",
     "claim.submit": "تعيين",
     "done.claim": "تم تحديث المسؤول.",
     "done.unblock": "أُعيد فتح المهمة.",
@@ -581,6 +583,7 @@ export default function AxisExceptions() {
             <Field label={l("claim.owner")} hint={l("claim.intro")} className="w-64">
               <Select
                 name="ownerRef"
+                placeholder={l("claim.pick")}
                 options={loaded.assignees.map((one) => ({ value: one.ref, label: one.name }))}
               />
             </Field>

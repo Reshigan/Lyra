@@ -11,7 +11,7 @@ import {
   type LinksFunction,
   type LoaderFunctionArgs
 } from "react-router";
-import { UiTextProvider } from "@lyra/ui";
+import { UiTextProvider, UiTimeZoneProvider } from "@lyra/ui";
 import "./app.css";
 import { DEFAULT_LOCALE, dirFor, langFor, localeFrom, readCookie, translator } from "./i18n";
 
@@ -77,7 +77,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
         {/* One locale for every @lyra/ui surface below: kit chrome, <Money>,
             <DateTime>. Without it the kit formats in English under an Arabic
             document, and 98 Table call sites each have to remember a prop. */}
-        <UiTextProvider locale={locale}>{children}</UiTextProvider>
+        <UiTextProvider locale={locale}>
+          {/* Timestamps render UTC on the server and on the first client pass,
+              then the reader's own zone once mounted. Unpinned, the two passes
+              disagree and React drops the route to the error boundary. */}
+          <UiTimeZoneProvider>{children}</UiTimeZoneProvider>
+        </UiTextProvider>
         <ScrollRestoration />
         <Scripts />
       </body>

@@ -4,7 +4,7 @@
  */
 import * as React from "react";
 import { cn } from "./cn.js";
-import { useUiCalendar, useUiLocale, type CalendarPreference } from "./text.js";
+import { useUiCalendar, useUiLocale, useUiTimeZone, type CalendarPreference } from "./text.js";
 
 /** Minor-unit exponent for a currency (AED/USD → 2, JPY → 0, KWD → 3). */
 function minorUnits(currency: string, locale: string): number {
@@ -196,11 +196,16 @@ export function DateTime({
 }: DateTimeProps) {
   const inherited = useUiLocale();
   const inheritedCalendar = useUiCalendar();
+  const inheritedZone = useUiTimeZone();
   const locale = explicitLocale ?? inherited;
   const preference = explicitCalendar ?? inheritedCalendar;
+  // Never unpinned: an unpinned formatter reads the host's zone, and the host
+  // is a UTC Worker on one pass and a reader's laptop on the next. See
+  // UiTimeZoneProvider — that mismatch error-boundaries the entire route.
+  const zone = timeZone ?? inheritedZone;
   const date = value instanceof Date ? value : new Date(value);
   const format = (calendar?: "islamic-umalqura") =>
-    formatDate(date, { locale, precision, calendar, timeZone });
+    formatDate(date, { locale, precision, calendar, timeZone: zone });
 
   // "dual" reads Gregorian, with the Hijri date one hover away: Gulf contracts
   // cite both, but a table of two calendars per cell is unreadable.
@@ -211,6 +216,11 @@ export function DateTime({
   return (
     <time
       {...props}
+      // The zone is pinned above, but `relative` also reads the clock, and the
+      // server's clock is a network hop older than the browser's — "6 seconds
+      // ago" against "8 seconds ago" is a mismatch too. Suppressing it keeps
+      // the server's wording for one paint instead of losing the page.
+      suppressHydrationWarning={relative}
       dateTime={date.toISOString()}
       title={relative && hijri ? `${absolute} · ${hijri}` : title}
       className={cn("tabular-nums", className)}

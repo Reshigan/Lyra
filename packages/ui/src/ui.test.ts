@@ -25,7 +25,7 @@ const tokens = read(join(SRC, "tokens.css"));
 const brandDoc = read(join(REPO, "docs", "01-brand.md"));
 
 const componentFiles = readdirSync(SRC)
-  .filter((f) => (f.endsWith(".tsx") || f.endsWith(".ts")) && !f.endsWith(".test.ts"))
+  .filter((f) => (f.endsWith(".tsx") || f.endsWith(".ts")) && !/\.test\.tsx?$/.test(f))
   .map((f) => [f, read(join(SRC, f))] as const);
 
 function section(doc: string, from: string, to: string): string {
