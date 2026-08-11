@@ -7,9 +7,20 @@ import {
   type ActionFunctionArgs,
   type LoaderFunctionArgs
 } from "react-router";
-import { Badge, Button, Card, DateTime, EmptyState, KPIWall, Stat, type BadgeTone } from "@lyra/ui";
-import { api, asRouteError, fetchMe, type Problem as ProblemShape } from "../api.server";
+import {
+  Badge,
+  Button,
+  Card,
+  DateTime,
+  EmptyState,
+  KPIWall,
+  Stat,
+  shortRef,
+  type BadgeTone
+} from "@lyra/ui";
+import { api, asRouteError, fetchMe, names, type Problem as ProblemShape } from "../api.server";
 import { cloudflare } from "../context";
+import { who } from "../names";
 import { Gate } from "./staff";
 import {
   ORBIT,
@@ -163,12 +174,20 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     Page<Renewal>
   >;
 
+  // A renewal card carries a customer id and a policy id and no text at all, so
+  // the board rendered four columns of ULIDs. One batch call names them.
+  const resolved = await names(
+    Object.values(board).flatMap((page) => page.data.flatMap((row) => [row.customerId, row.policyRef])),
+    opts
+  );
+
   return {
     locale: me.locale,
     now: Date.now(),
     nonce: crypto.randomUUID(),
     may: { read: held.has(ORBIT.renewals), sweep: held.has(ORBIT.renewalsWrite) },
-    board
+    board,
+    resolved
   };
 }
 
@@ -289,10 +308,12 @@ export default function RenewalPipeline() {
                           to={`/orbit/renewals/${row.id}`}
                           className="font-ui text-13 text-accent underline underline-offset-2"
                         >
-                          {row.customerId ?? row.id}
+                          {who(row.customerId, loaded.resolved) ?? shortRef(row.id)}
                         </Link>
                         {row.policyRef ? (
-                          <p className="font-mono text-12 text-subtle">{row.policyRef}</p>
+                          <p className="font-ui text-12 text-subtle">
+                            {who(row.policyRef, loaded.resolved)}
+                          </p>
                         ) : null}
                         <p className="font-ui text-12 text-muted">
                           {days === null
