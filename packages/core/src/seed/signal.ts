@@ -218,10 +218,10 @@ export async function seedSignal(ctx: SeedContext): Promise<void> {
       budgetJson: JSON.stringify({
         currency: "AED",
         period: "2026-01",
-        dailyCapMinor: 350_000,
-        periodCapMinor: 10_850_000,
+        dailyMinor: 350_000,
+        capMinor: 10_850_000,
         // The uplift is the December brand money the growth lead approved into
-        // January; it is inside `periodCapMinor`, not on top of it.
+        // January; it is inside `capMinor`, not on top of it.
         upliftMinor: 1_500_000,
         autopilotBoundMinor: 1_000_000
       }),
@@ -250,8 +250,8 @@ export async function seedSignal(ctx: SeedContext): Promise<void> {
       budgetJson: JSON.stringify({
         currency: "AED",
         period: "2025-12",
-        dailyCapMinor: 420_000,
-        periodCapMinor: 13_020_000,
+        dailyMinor: 420_000,
+        capMinor: 13_020_000,
         // What the moves below have already taken out. The 2,400,000 still
         // awaiting approval is not counted here, because a requested move is
         // not a released one.
@@ -277,8 +277,8 @@ export async function seedSignal(ctx: SeedContext): Promise<void> {
       budgetJson: JSON.stringify({
         currency: "AED",
         period: "2026-01",
-        dailyCapMinor: 20_000,
-        periodCapMinor: 620_000,
+        dailyMinor: 20_000,
+        capMinor: 620_000,
         autopilotBoundMinor: 100_000
       }),
       state: "live",
@@ -300,8 +300,8 @@ export async function seedSignal(ctx: SeedContext): Promise<void> {
       budgetJson: JSON.stringify({
         currency: "AED",
         period: "2026-01",
-        dailyCapMinor: 15_000,
-        periodCapMinor: 465_000,
+        dailyMinor: 15_000,
+        capMinor: 465_000,
         autopilotBoundMinor: 100_000
       }),
       // Scheduled rather than live: the Arabic email creative has not cleared
@@ -329,8 +329,8 @@ export async function seedSignal(ctx: SeedContext): Promise<void> {
       budgetJson: JSON.stringify({
         currency: "AED",
         period: "2026-02",
-        dailyCapMinor: 12_000,
-        periodCapMinor: 372_000,
+        dailyMinor: 12_000,
+        capMinor: 372_000,
         autopilotBoundMinor: 100_000
       }),
       state: "review",
@@ -354,8 +354,8 @@ export async function seedSignal(ctx: SeedContext): Promise<void> {
       budgetJson: JSON.stringify({
         currency: "AED",
         period: "2025-12",
-        dailyCapMinor: 180_000,
-        periodCapMinor: 7_200_000,
+        dailyMinor: 180_000,
+        capMinor: 7_200_000,
         unspentMinor: 250_000
       }),
       state: "ended",
@@ -379,8 +379,8 @@ export async function seedSignal(ctx: SeedContext): Promise<void> {
       budgetJson: JSON.stringify({
         currency: "AED",
         period: "2026-06",
-        dailyCapMinor: 200_000,
-        periodCapMinor: 6_000_000,
+        dailyMinor: 200_000,
+        capMinor: 6_000_000,
         autopilotBoundMinor: 1_000_000
       }),
       state: "draft",
@@ -819,7 +819,7 @@ export async function seedSignal(ctx: SeedContext): Promise<void> {
       reason: "The winter travel flight closed on 24 December with this much unspent, and budget sitting in an ended campaign buys nothing.",
       evidenceJson: JSON.stringify({
         campaignEndedAt: day(now - 13 * DAY),
-        periodCapMinor: 7_200_000,
+        capMinor: 7_200_000,
         spentMinor: 6_950_000,
         boundMinor: 1_000_000
       }),

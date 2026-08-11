@@ -208,8 +208,8 @@ describe("seedSignal: campaigns", () => {
     expect(JSON.parse(motorSearch.budgetJson)).toEqual({
       currency: "AED",
       period: "2026-01",
-      dailyCapMinor: 350_000,
-      periodCapMinor: 10_850_000,
+      dailyMinor: 350_000,
+      capMinor: 10_850_000,
       upliftMinor: 1_500_000,
       autopilotBoundMinor: 1_000_000
     });
@@ -235,8 +235,8 @@ describe("seedSignal: campaigns", () => {
     expect(JSON.parse(brandDec.budgetJson)).toEqual({
       currency: "AED",
       period: "2025-12",
-      dailyCapMinor: 420_000,
-      periodCapMinor: 13_020_000,
+      dailyMinor: 420_000,
+      capMinor: 13_020_000,
       releasedMinor: 2_300_000,
       autopilotBoundMinor: 1_000_000
     });
@@ -255,8 +255,8 @@ describe("seedSignal: campaigns", () => {
     expect(JSON.parse(healthXsell.budgetJson)).toEqual({
       currency: "AED",
       period: "2026-01",
-      dailyCapMinor: 20_000,
-      periodCapMinor: 620_000,
+      dailyMinor: 20_000,
+      capMinor: 620_000,
       autopilotBoundMinor: 100_000
     });
     expect(healthXsell.state).toBe("live");
@@ -277,8 +277,8 @@ describe("seedSignal: campaigns", () => {
     expect(JSON.parse(renewalNudge.budgetJson)).toEqual({
       currency: "AED",
       period: "2026-01",
-      dailyCapMinor: 15_000,
-      periodCapMinor: 465_000,
+      dailyMinor: 15_000,
+      capMinor: 465_000,
       autopilotBoundMinor: 100_000
     });
     expect(renewalNudge.state).toBe("scheduled");
@@ -299,8 +299,8 @@ describe("seedSignal: campaigns", () => {
     expect(JSON.parse(homeBundle.budgetJson)).toEqual({
       currency: "AED",
       period: "2026-02",
-      dailyCapMinor: 12_000,
-      periodCapMinor: 372_000,
+      dailyMinor: 12_000,
+      capMinor: 372_000,
       autopilotBoundMinor: 100_000
     });
     expect(homeBundle.state).toBe("review");
@@ -319,8 +319,8 @@ describe("seedSignal: campaigns", () => {
     expect(JSON.parse(travelWinter.budgetJson)).toEqual({
       currency: "AED",
       period: "2025-12",
-      dailyCapMinor: 180_000,
-      periodCapMinor: 7_200_000,
+      dailyMinor: 180_000,
+      capMinor: 7_200_000,
       unspentMinor: 250_000
     });
     expect(travelWinter.state).toBe("ended");
@@ -339,8 +339,8 @@ describe("seedSignal: campaigns", () => {
     expect(JSON.parse(travelSummer.budgetJson)).toEqual({
       currency: "AED",
       period: "2026-06",
-      dailyCapMinor: 200_000,
-      periodCapMinor: 6_000_000,
+      dailyMinor: 200_000,
+      capMinor: 6_000_000,
       autopilotBoundMinor: 1_000_000
     });
     expect(travelSummer.state).toBe("draft");
@@ -620,7 +620,7 @@ describe("seedSignal: budget moves and their approvals", () => {
     expect(travelRemainder.ts).toBe(NOW - 12 * DAY);
     expect(JSON.parse(travelRemainder.evidenceJson!)).toEqual({
       campaignEndedAt: day(NOW - 13 * DAY),
-      periodCapMinor: 7_200_000,
+      capMinor: 7_200_000,
       spentMinor: 6_950_000,
       boundMinor: 1_000_000
     });
