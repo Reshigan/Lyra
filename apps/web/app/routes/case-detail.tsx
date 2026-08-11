@@ -28,6 +28,7 @@ import {
 import { ApiError, api, fetchMe, names, type Problem } from "../api.server";
 import { cloudflare } from "../context";
 import { translator } from "../i18n";
+import { humanise } from "../modules/spec";
 import { Entry, Facts, Header, Payload, labelsFrom, rowsOf, safe, tag, type Page } from "./detail-kit";
 import { Gate } from "./staff";
 import { useShellData } from "./workspace";
@@ -477,7 +478,7 @@ export default function CaseDetail() {
   ];
 
   const approvalColumns: Array<Column<CaseApprovalRow>> = [
-    { key: "policyKey", header: l("colPolicyKey"), render: (row) => <span className="font-mono text-12">{row.policyKey}</span> },
+    { key: "policyKey", header: l("colPolicyKey"), render: (row) => humanise(row.policyKey) },
     {
       key: "decision",
       header: l("colOutcome"),

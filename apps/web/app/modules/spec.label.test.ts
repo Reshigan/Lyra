@@ -89,6 +89,9 @@ describe("humanise", () => {
     expect(humanise("apiKeyRotated")).toBe("API key rotated");
     // A word that merely starts with one is left alone.
     expect(humanise("aid.requested")).toBe("Aid requested");
+    // core_identity_providers.kind, on the sign-in providers table.
+    expect(humanise("oidc")).toBe("OIDC");
+    expect(humanise("saml")).toBe("SAML");
   });
 
   // A model run's purpose is minted by the caller of the gateway, so the AI

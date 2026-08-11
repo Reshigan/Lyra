@@ -24,9 +24,10 @@ import {
 import { ApiError, api, fetchMe, names } from "../api.server";
 import { toneFor } from "../components/fields";
 import { cloudflare } from "../context";
-import { pseudoText, translator } from "../i18n";
+import { moduleName, pseudoText, translator, type Translate } from "../i18n";
 import { ConfirmButton } from "../components/confirm";
 import { WORKSPACES } from "../modules";
+import { humanise } from "../modules/spec";
 import { Problem } from "./module";
 import { useShellData } from "./workspace";
 import { who, type Names } from "../names";
@@ -481,6 +482,16 @@ export default function Approvals() {
 
 type Item = Awaited<ReturnType<typeof loader>>["items"][number];
 
+/**
+ * `axis.claim_payment` → "Claim payment". The heading of every card in the
+ * queue was the policy key as stored, and the module it starts with is already
+ * a line below it — so the prefix goes when it is this row's own module, and
+ * stays when the key came from somewhere else.
+ */
+export function policyTitle(policyKey: string, module: string): string {
+  return humanise(policyKey.startsWith(`${module}.`) ? policyKey.slice(module.length + 1) : policyKey);
+}
+
 function ApprovalCard({
   item,
   locale,
@@ -494,7 +505,7 @@ function ApprovalCard({
   item: Item;
   locale: string;
   l: (key: string) => string;
-  t: (key: string, vars?: Record<string, string>) => string;
+  t: Translate;
   busy: boolean;
   deciding: FormDataEntryValue | null | undefined;
   resolved: Names;
@@ -512,7 +523,7 @@ function ApprovalCard({
   return (
     <Card
       elevation="flat"
-      title={<span className="font-mono text-14">{item.policyKey}</span>}
+      title={policyTitle(item.policyKey, item.module)}
       description={item.subject.text}
       actions={
         <div className="flex flex-wrap items-center gap-2">
@@ -533,7 +544,7 @@ function ApprovalCard({
     >
       <div className="flex flex-col gap-4">
         <dl className="grid gap-x-8 gap-y-3 sm:grid-cols-2">
-          <Entry term={l("module")}>{item.module}</Entry>
+          <Entry term={l("module")}>{moduleName(t, item.module)}</Entry>
           {/* What is actually being changed. A create has no row to open yet,
               and a hand-written engine's subject has no generic screen — both
               say so rather than offering a link that goes nowhere. */}

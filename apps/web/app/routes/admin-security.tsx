@@ -328,7 +328,7 @@ export default function AdminSecurity() {
 
   const providerColumns: Array<Column<ProviderRow>> = [
     { key: "name", header: l("colProviderName"), render: (row) => row.name },
-    { key: "kind", header: l("colKind"), render: (row) => <span className="font-mono text-12">{row.kind}</span> },
+    { key: "kind", header: l("colKind"), render: (row) => humanise(row.kind) },
     {
       key: "emailDomain",
       header: l("colDomain"),

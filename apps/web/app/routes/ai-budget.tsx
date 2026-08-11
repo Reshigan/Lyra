@@ -30,6 +30,7 @@ import {
 import { ApiError, api } from "../api.server";
 import { cloudflare } from "../context";
 import { moduleName, pseudoText, translator } from "../i18n";
+import { humanise } from "../modules/spec";
 import { Problem } from "./module";
 import { useShellData } from "./workspace";
 
@@ -416,7 +417,7 @@ export default function AiBudget() {
           source={<p className="max-w-xs font-ui text-12 text-muted">{L("acceptance.whyBody")}</p>}
         >
           <span aria-hidden="true">{AGENT_MARK}</span>{" "}
-          <span className="font-mono text-12">{row.surface}</span>
+          {humanise(row.surface)}
         </EvidenceLink>
       )
     },

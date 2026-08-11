@@ -691,7 +691,7 @@ export default function ClaimDetail() {
   ];
 
   const approvalColumns: Array<Column<ApprovalRow>> = [
-    { key: "policyKey", header: l("colPolicyKey"), render: (row) => <span className="font-mono text-12">{row.policyKey}</span> },
+    { key: "policyKey", header: l("colPolicyKey"), render: (row) => humanise(row.policyKey) },
     {
       key: "decision",
       header: l("colOutcome"),
