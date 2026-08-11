@@ -137,7 +137,8 @@ export function flowFrom(events: readonly FlowEvent[]): Flow {
 export interface LaidOutNode extends FlowNode {
   x: number;
   y: number;
-  height: number;
+  /** How much work the step saw, as the length of its bar. */
+  width: number;
 }
 
 export interface LaidOutLink extends FlowLink {
@@ -150,44 +151,55 @@ export interface Layout {
   links: LaidOutLink[];
 }
 
-const NODE_WIDTH = 16;
+/** How thick a step's bar is. The bar's *length* carries how much work it saw. */
+const NODE_HEIGHT = 14;
 const NODE_GAP = 12;
+/** Vertical room per rank: the bar plus space for its ribbons to fan out. */
+export const ROW_HEIGHT = 56;
+/** The tallest a step's bar gets, as a share of the canvas width. */
+const BAR_SHARE = 0.26;
 
-/** ponytail: hand-rolled bezier ribbons — the same call Sparkline makes for a line chart, no chart library. */
+/** The canvas a flow needs. Ranks run down the page, so depth is height. */
+export function flowHeight(flow: Flow): number {
+  const maxRank = flow.nodes.reduce((max, node) => Math.max(max, node.rank), 0);
+  return Math.max(ROW_HEIGHT * 2, (maxRank + 1) * ROW_HEIGHT);
+}
+
+/**
+ * ponytail: hand-rolled bezier ribbons — the same call Sparkline makes for a
+ * line chart, no chart library.
+ *
+ * The flow runs top to bottom, not left to right. Laid out sideways, ten ranks
+ * across 880px left each step 87px of column — narrower than "Documents
+ * requested (1)" — so every label overwrote its neighbour and the last one ran
+ * off the canvas, while the 420px of height went unused. Down the page each step
+ * gets the full width for its name.
+ */
 export function layoutFlow(flow: Flow, width: number, height: number): Layout {
   const maxRank = flow.nodes.reduce((max, node) => Math.max(max, node.rank), 0);
-  const columnWidth = maxRank > 0 ? (width - NODE_WIDTH) / maxRank : 0;
-  const grandTotal = flow.nodes.reduce((sum, node) => sum + node.total, 0) || 1;
+  const rowHeight = maxRank > 0 ? (height - NODE_HEIGHT) / maxRank : 0;
+  const maxTotal = flow.nodes.reduce((max, node) => Math.max(max, node.total), 0) || 1;
 
-  const byColumn = new Map<number, FlowNode[]>();
+  const byRow = new Map<number, FlowNode[]>();
   for (const node of flow.nodes) {
-    const bucket = byColumn.get(node.rank);
+    const bucket = byRow.get(node.rank);
     if (bucket) bucket.push(node);
-    else byColumn.set(node.rank, [node]);
+    else byRow.set(node.rank, [node]);
   }
 
   const positioned = new Map<string, LaidOutNode>();
-  for (const column of byColumn.values()) {
-    let y = 0;
-    for (const node of column) {
-      const nodeHeight = Math.max(
-        4,
-        (node.total / grandTotal) * height - NODE_GAP,
-      );
-      positioned.set(node.step, {
-        ...node,
-        x: node.rank * columnWidth,
-        y,
-        height: nodeHeight,
-      });
-      y += nodeHeight + NODE_GAP;
+  for (const row of byRow.values()) {
+    let x = 0;
+    for (const node of row) {
+      const nodeWidth = Math.max(4, (node.total / maxTotal) * width * BAR_SHARE);
+      positioned.set(node.step, { ...node, x, y: node.rank * rowHeight, width: nodeWidth });
+      x += nodeWidth + NODE_GAP;
     }
   }
 
   const outOffset = new Map<string, number>();
   const inOffset = new Map<string, number>();
-  const maxCount =
-    flow.links.reduce((max, link) => Math.max(max, link.count), 0) || 1;
+  const maxCount = flow.links.reduce((max, link) => Math.max(max, link.count), 0) || 1;
 
   const links = flow.links.map((link) => {
     const source = positioned.get(link.from);
@@ -195,18 +207,18 @@ export function layoutFlow(flow: Flow, width: number, height: number): Layout {
     if (!source || !target) return { ...link, path: "", width: 0 };
 
     const linkWidth = Math.max(1, (link.count / maxCount) * 24);
-    const sourceY = source.y + (outOffset.get(link.from) ?? 0) + linkWidth / 2;
-    const targetY = target.y + (inOffset.get(link.to) ?? 0) + linkWidth / 2;
+    const sourceX = source.x + (outOffset.get(link.from) ?? 0) + linkWidth / 2;
+    const targetX = target.x + (inOffset.get(link.to) ?? 0) + linkWidth / 2;
     outOffset.set(link.from, (outOffset.get(link.from) ?? 0) + linkWidth);
     inOffset.set(link.to, (inOffset.get(link.to) ?? 0) + linkWidth);
 
-    const x1 = source.x + NODE_WIDTH;
-    const x2 = target.x;
-    const midX = (x1 + x2) / 2;
+    const y1 = source.y + NODE_HEIGHT;
+    const y2 = target.y;
+    const midY = (y1 + y2) / 2;
     return {
       ...link,
-      path: `M ${x1} ${sourceY} C ${midX} ${sourceY}, ${midX} ${targetY}, ${x2} ${targetY}`,
-      width: linkWidth,
+      path: `M ${sourceX} ${y1} C ${sourceX} ${midY}, ${targetX} ${midY}, ${targetX} ${y2}`,
+      width: linkWidth
     };
   });
 
@@ -250,7 +262,6 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 /* --------------------------------------------------------------- component */
 
 const WIDTH = 880;
-const HEIGHT = 420;
 
 export default function AxisProcessMap() {
   const loaded = useLoaderData<typeof loader>();
@@ -258,7 +269,8 @@ export default function AxisProcessMap() {
   const locale = shell?.locale ?? "en";
   const t = translator(locale);
   const l = labelsIn(locale, shell?.domainPack);
-  const laid = layoutFlow(loaded.flow, WIDTH, HEIGHT);
+  const height = flowHeight(loaded.flow);
+  const laid = layoutFlow(loaded.flow, WIDTH, height);
 
   return (
     <div className="flex flex-col gap-6">
@@ -273,10 +285,10 @@ export default function AxisProcessMap() {
         // than floating on the page background like a debug render.
         <Panel>
           <svg
-            viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+            viewBox={`0 0 ${WIDTH} ${height}`}
             role="img"
             aria-label={l("title")}
-            className="h-[420px] w-full"
+            className="h-auto w-full"
           >
             {laid.links.map((link, i) => (
               <path
@@ -297,13 +309,14 @@ export default function AxisProcessMap() {
                 <rect
                   x={node.x}
                   y={node.y}
-                  width={NODE_WIDTH}
-                  height={node.height}
+                  width={node.width}
+                  height={NODE_HEIGHT}
+                  rx={3}
                   fill="var(--accent)"
                 />
                 <text
-                  x={node.x + NODE_WIDTH + 6}
-                  y={node.y + node.height / 2}
+                  x={node.x + node.width + 8}
+                  y={node.y + NODE_HEIGHT / 2}
                   dominantBaseline="middle"
                   className="fill-text font-ui text-12"
                 >

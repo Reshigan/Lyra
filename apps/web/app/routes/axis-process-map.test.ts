@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LoaderFunctionArgs } from "react-router";
 import type { Env } from "../env";
-import { flowFrom, layoutFlow, loader, type FlowEvent } from "./axis-process-map";
+import { ROW_HEIGHT, flowFrom, flowHeight, layoutFlow, loader, type FlowEvent } from "./axis-process-map";
 
 // The map is process mining across every case, not one case's timeline
 // (case-detail.tsx already tables that) — these tests pin the two arithmetic
@@ -92,7 +92,7 @@ describe("flowFrom", () => {
 });
 
 describe("layoutFlow", () => {
-  it("places later ranks further along and stacks a column's nodes without overlap", () => {
+  it("places later ranks further down and sets a row's nodes side by side without overlap", () => {
     const flow = flowFrom([
       { caseId: "c1", step: "intake", ts: 1 },
       { caseId: "c1", step: "review", ts: 2 },
@@ -105,9 +105,21 @@ describe("layoutFlow", () => {
     const review = laid.nodes.find((n) => n.step === "review")!;
     const escalated = laid.nodes.find((n) => n.step === "escalated")!;
 
-    expect(review.x).toBeGreaterThan(intake.x);
-    expect(escalated.x).toBe(review.x);
-    expect(escalated.y).toBeGreaterThanOrEqual(review.y + review.height);
+    // Sideways, ten ranks across 880px left every label overwriting its
+    // neighbour; the flow runs down the page now.
+    expect(review.y).toBeGreaterThan(intake.y);
+    expect(escalated.y).toBe(review.y);
+    expect(escalated.x).toBeGreaterThanOrEqual(review.x + review.width);
+  });
+
+  it("gives the canvas a row per rank so deep flows are not squeezed", () => {
+    const flow = flowFrom([
+      { caseId: "c1", step: "intake", ts: 1 },
+      { caseId: "c1", step: "review", ts: 2 },
+      { caseId: "c1", step: "bound", ts: 3 }
+    ]);
+
+    expect(flowHeight(flow)).toBe(3 * ROW_HEIGHT);
   });
 
   it("drops a link whose node is missing rather than drawing a dangling path", () => {
