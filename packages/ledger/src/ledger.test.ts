@@ -8,7 +8,7 @@ import { PolicyJson, EntitlementsJson, schema } from "@lyra/db";
 import type { Ctx } from "@lyra/core";
 import { balanceOf, post, reverse } from "./posting.js";
 import { openTxn, reverseTxn, runSaga, runTxn, transition } from "./txn.js";
-import { closePeriod, ensurePeriod, periodCode } from "./periods.js";
+import { closeChecks, closePeriod, ensurePeriod, periodCode } from "./periods.js";
 import { RECIPES, buildRecipe } from "./recipes.js";
 import { clientMoneyPosition, rebuildBalances, trialBalance } from "./reports.js";
 import { valueFlow, valueFlowLines, type MoneyMap } from "./money-map.js";
@@ -748,5 +748,34 @@ describe("a posting is one write or none", () => {
     disarm();
     await post(armed, { txnId: "txn_retry", currency: "AED", lines: TWO_LINES });
     expect(await armed.db.select().from(schema.ledgerJournalBatches)).toHaveLength(1);
+  });
+});
+
+// A close check's detail is read by the controller who has to clear it, and
+// "1 transactions still waiting on a provider" reads as a broken ledger rather
+// than one stuck payment.
+describe("close check details", () => {
+  const detailOf = (checks: Awaited<ReturnType<typeof closeChecks>>, name: string) =>
+    checks.find((c) => c.name.startsWith(name))?.detail;
+
+  it("counts one stuck transaction in the singular", async () => {
+    const code = periodCode(ctx.now);
+    await openTxn(ctx, { type: "CMSN-ACCR", idempotencyKey: "stuck-1", currency: "AED" });
+    await ctx.db.update(schema.ledgerTxns).set({ state: "pending_external" });
+
+    expect(detailOf(await closeChecks(ctx, code), "no_pending_external")).toBe(
+      "1 transaction still waiting on a provider"
+    );
+  });
+
+  it("counts two in the plural", async () => {
+    const code = periodCode(ctx.now);
+    await openTxn(ctx, { type: "CMSN-ACCR", idempotencyKey: "stuck-1", currency: "AED" });
+    await openTxn(ctx, { type: "CMSN-ACCR", idempotencyKey: "stuck-2", currency: "AED" });
+    await ctx.db.update(schema.ledgerTxns).set({ state: "pending_external" });
+
+    expect(detailOf(await closeChecks(ctx, code), "no_pending_external")).toBe(
+      "2 transactions still waiting on a provider"
+    );
   });
 });

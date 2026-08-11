@@ -1,4 +1,5 @@
 // What the four bespoke ledger screens agree on: the state machine they may
+import { humanise } from "../modules/spec";
 import { vocabulary } from "../modules/vocabulary";
 import { pseudoText } from "../i18n";
 // offer, the invariant they must show, and the words they say it in.
@@ -289,6 +290,10 @@ export const LABELS: Record<string, Record<string, string>> = {
     "period.checks": "Checks",
     "period.checksCaption": "Close checks for this period",
     "period.check": "Check",
+    "check.trial_balance_zero": "Debits equal credits",
+    "check.batches_match_lines": "Every batch agrees with its lines",
+    "check.no_pending_external": "Nothing still waiting on a provider",
+    "check.no_open_client_money_breach": "No open client-money breach",
     "period.detail": "Detail",
     "period.ok": "Pass",
     "period.fail": "Fail",
@@ -531,6 +536,10 @@ export const LABELS: Record<string, Record<string, string>> = {
     "period.checks": "الفحوص",
     "period.checksCaption": "فحوص إقفال هذه الفترة",
     "period.check": "الفحص",
+    "check.trial_balance_zero": "المدين يساوي الدائن",
+    "check.batches_match_lines": "كل دفعة تطابق سطورها",
+    "check.no_pending_external": "لا شيء ينتظر مزوّدًا",
+    "check.no_open_client_money_breach": "لا مخالفة مفتوحة في أموال العملاء",
     "period.detail": "التفصيل",
     "period.ok": "ناجح",
     "period.fail": "فاشل",
@@ -691,4 +700,16 @@ export function labelIn(locale: string, pack?: string): Label {
       ? text.replace(/\{(\w+)\}/g, (whole, name: string) => String(vars[name] ?? whole))
       : text;
   };
+}
+
+/**
+ * A close check as the accountant reading it says it. The ledger names checks
+ * for itself — `no_pending_external@2026-08` — and the close screen printed
+ * exactly that, key, period suffix and all, in the blocking banner and in every
+ * row of the checks table. The period is already the heading above both.
+ */
+export function checkName(name: string, l: Label): string {
+  const key = name.includes("@") ? name.slice(0, name.indexOf("@")) : name;
+  const said = l(`check.${key}`);
+  return said === `check.${key}` ? humanise(key) : said;
 }

@@ -6,6 +6,15 @@ import { actorRef, audit, badRequest, conflict, type Ctx } from "@lyra/core";
 // (contra postings only). A period is created on first posting into it, so
 // nobody has to remember to open next month.
 
+/**
+ * A check detail is read by the controller who has to clear it, and "1
+ * transactions still waiting on a provider" reads as a bug in the ledger
+ * rather than one stuck payment.
+ */
+function plural(n: number, one: string, many: string): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
 export type PeriodState = "open" | "soft_closed" | "hard_closed";
 
 export interface Period {
@@ -120,7 +129,9 @@ export async function closeChecks(ctx: Ctx, code: string): Promise<CloseCheck[]>
   checks.push({
     name: "batches_match_lines",
     ok: torn.length === 0,
-    detail: torn.length ? `${torn.length} batches disagree with their lines: ${torn.map((t) => t.id).join(", ")}` : undefined
+    detail: torn.length
+      ? `${plural(torn.length, "batch disagrees", "batches disagree")} with their lines: ${torn.map((t) => t.id).join(", ")}`
+      : undefined
   });
 
   const unsettled = await ctx.db
@@ -131,7 +142,7 @@ export async function closeChecks(ctx: Ctx, code: string): Promise<CloseCheck[]>
   checks.push({
     name: "no_pending_external",
     ok: stuck === 0,
-    detail: stuck ? `${stuck} transactions still waiting on a provider` : undefined
+    detail: stuck ? `${plural(stuck, "transaction", "transactions")} still waiting on a provider` : undefined
   });
 
   const breaches = await ctx.db
@@ -148,7 +159,7 @@ export async function closeChecks(ctx: Ctx, code: string): Promise<CloseCheck[]>
   checks.push({
     name: "no_open_client_money_breach",
     ok: open === 0,
-    detail: open ? `${open} client-money breaches recorded` : undefined
+    detail: open ? `${plural(open, "client-money breach", "client-money breaches")} recorded` : undefined
   });
 
   return checks.map((c) => ({ ...c, name: `${c.name}@${code}` }));

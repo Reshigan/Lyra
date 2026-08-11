@@ -20,13 +20,14 @@ import {
   Table,
   type Column
 } from "@lyra/ui";
-import { ApiError, api, fetchMe } from "../api.server";
+import { ApiError, api, fetchMe, names } from "../api.server";
 import { cloudflare } from "../context";
+import { who } from "../names";
 import { translator } from "../i18n";
 import { ConfirmButton } from "../components/confirm";
 import { Problem } from "./module";
 import { useShellData } from "./workspace";
-import { PERM, labelIn, periodTone } from "./ledger.shared";
+import { PERM, checkName, labelIn, periodTone } from "./ledger.shared";
 
 // Closing a period is the moment a month stops being editable, so the checks
 // that block it are the screen — not a message that appears after the press.
@@ -96,12 +97,24 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     )
   ]);
 
+  const rows = recent?.data ?? [];
+
+  // A period says who closed it as `user:us_01KE…XK2`. The close screen prints
+  // that twice — in the period's own header and down the CLOSED BY column of
+  // the last twelve months — and a controller checking who signed off a month
+  // cannot read a ULID.
+  const resolved = await names([view?.period?.closedBy, ...rows.map((row) => row.closedBy)], {
+    env,
+    request
+  });
+
   return {
     denied: false as const,
     code,
     period: view?.period ?? null,
     checks: view?.checks ?? [],
-    recent: recent?.data ?? [],
+    recent: rows,
+    names: resolved,
     canClose: held.has(PERM.periodsClose),
     canRebuild: held.has(PERM.journalsPost)
   };
@@ -242,7 +255,7 @@ export default function LedgerPeriods() {
                 <div className="flex flex-col gap-1">
                   <dt className="font-ui text-12 text-subtle">{l("period.closedBy")}</dt>
                   <dd className="font-ui text-13 text-text">
-                    {period.closedBy}
+                    {who(period.closedBy, loaded.names)}
                     {period.closedAt ? (
                       <>
                         {" · "}
@@ -265,7 +278,7 @@ export default function LedgerPeriods() {
                 <ul className="flex flex-col gap-1">
                   {failed.map((check) => (
                     <li key={check.name} className="font-ui text-13 text-text">
-                      <span className="font-mono text-12">{check.name}</span>
+                      <span className="font-ui text-13">{checkName(check.name, l)}</span>
                       {check.detail ? <span className="text-muted"> — {check.detail}</span> : null}
                     </li>
                   ))}
@@ -284,7 +297,7 @@ export default function LedgerPeriods() {
                 {
                   key: "name",
                   header: l("period.check"),
-                  render: (row) => <span className="font-mono text-12">{row.name}</span>
+                  render: (row) => checkName(row.name, l)
                 },
                 {
                   key: "ok",
@@ -379,7 +392,11 @@ export default function LedgerPeriods() {
                   </Badge>
                 )
               },
-              { key: "closedBy", header: l("period.closedBy"), render: (row) => row.closedBy ?? l("none") },
+              {
+                key: "closedBy",
+                header: l("period.closedBy"),
+                render: (row) => who(row.closedBy, loaded.names) ?? l("none")
+              },
               {
                 key: "closedAt",
                 header: l("when"),

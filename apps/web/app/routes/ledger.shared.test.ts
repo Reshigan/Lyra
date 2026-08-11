@@ -5,6 +5,7 @@ import {
   TRANSITIONS,
   TXN_STATES,
   balanceCheck,
+  checkName,
   labelIn,
   nextStates,
   txnActions
@@ -158,5 +159,25 @@ describe("labelIn", () => {
     for (const locale of ["en", "ar"]) {
       for (const state of TXN_STATES) expect(LABELS[locale]![`state.${state}`]).toBeTruthy();
     }
+  });
+});
+
+// The close screen printed `no_pending_external@2026-08` in the blocking banner
+// and down the checks table — the ledger's own name for the check, period
+// suffix and all, where the period is already the heading above it.
+describe("checkName", () => {
+  const l = labelIn("en");
+
+  it("says the check and drops the period the heading already gives", () => {
+    expect(checkName("no_pending_external@2026-08", l)).toBe("Nothing still waiting on a provider");
+    expect(checkName("trial_balance_zero@2026-08", l)).toBe("Debits equal credits");
+  });
+
+  it("still reads as words when nobody wrote a label for the check", () => {
+    expect(checkName("some_new_check@2026-08", l)).toBe("Some new check");
+  });
+
+  it("says it in Arabic too", () => {
+    expect(checkName("no_pending_external@2026-08", labelIn("ar"))).not.toContain("_");
   });
 });
