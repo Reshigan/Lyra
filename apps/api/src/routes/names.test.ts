@@ -113,6 +113,21 @@ describe("GET /v1/names", () => {
     expect(queried).toEqual(["core_teams"]);
   });
 
+  it("names colleagues and teams for any signed-in actor, still masking PII", async () => {
+    // The ORBIT console's WITH column and its handover FROM/TO read
+    // `user:us_01KE…VNK5` at an agent, because orbit.agent holds no
+    // core:users:read — nobody grants staff-admin rights to answer a chat.
+    // Who is holding your conversation is not an admin fact; the directory is
+    // readable to anyone signed in, with the same masking as every other read.
+    const app = router(baseCtx(fakeDb(rows), ["orbit:conversations:read"]));
+    const res = await app.fetch(new Request("http://api.test/?refs=user:us_1,team:tm_1,cu_1"));
+    const body = (await res.json()) as { names: Record<string, string> };
+    expect(body.names).toEqual({
+      "user:us_1": "Layla A•• M•••••••",
+      "team:tm_1": "Motor claims"
+    });
+  });
+
   it("masks a PII display name without core:pii:view, and never leaks a secret column", async () => {
     const app = router(baseCtx(fakeDb(rows), ["core:users:read"]));
     const res = await app.fetch(new Request("http://api.test/?refs=user:us_1"));

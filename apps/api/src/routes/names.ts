@@ -57,6 +57,17 @@ const DISPLAY_COLUMNS = [
  */
 const ALIASES: Record<string, string> = { usr: "us" };
 
+/**
+ * The tenant's own staff directory. Naming the colleague who holds your
+ * conversation is not an administrative act, but `core:users:read` is: no
+ * tenant grants staff-admin rights to answer a chat, so the ORBIT console's
+ * WITH column and its handover FROM/TO rendered `user:us_01KE…VNK5` at the
+ * agent whose queue it is. These two resolve for any signed-in actor in the
+ * tenant — display column only, tenant-scoped, PII-masked exactly as every
+ * other read is, and never the list, record or write paths (ADR-0039).
+ */
+const DIRECTORY = new Set(["users", "teams"]);
+
 interface Parsed {
   /** The ref exactly as asked, so the caller can look up the string it holds. */
   ref: string;
@@ -115,7 +126,11 @@ nameRoutes.get("/", async (c) => {
   const plans = [...byPrefix].flatMap(([prefix, group]) => {
     const resource = REGISTRY.find((one) => one.idPrefix === prefix);
     if (!resource) return [];
-    if (!can(ctx.actor, resource.perms.read, { tenantId: ctx.tenantId, module: resource.module })) return [];
+    if (
+      !DIRECTORY.has(resource.path) &&
+      !can(ctx.actor, resource.perms.read, { tenantId: ctx.tenantId, module: resource.module })
+    )
+      return [];
     const cols = getTableColumns(resource.table) as Record<string, SQLiteColumn>;
     const column = DISPLAY_COLUMNS.find((key) => cols[key]);
     if (!column || !cols.id) return [];
