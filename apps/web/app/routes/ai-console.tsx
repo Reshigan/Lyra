@@ -216,6 +216,15 @@ const LABELS: Record<string, Record<string, string>> = {
     "severity.info": "Information",
     "severity.warn": "Warning",
     "severity.block": "Blocked",
+    // ai_guardrail_events.rule is the rule that fired. A tenant may write its
+    // own, so these are the ones the platform ships, not the whole vocabulary.
+    "rule.prompt_injection": "Prompt injection",
+    "rule.regulated_claim": "Regulated claim",
+    "rule.hallucinated_placeholder": "Invented value",
+    "rule.secret_in_output": "Secret in output",
+    "rule.intent_mismatch": "Intent mismatch",
+    "rule.comparison_claim_requires_source": "Comparison without a source",
+    "rule.no_guarantee_of_cover": "Guarantee of cover",
     "audit.title": "AI audit log",
     "audit.note": "Content is never stored here — every row carries hashes only.",
     "audit.when": "When",
@@ -349,6 +358,13 @@ const LABELS: Record<string, Record<string, string>> = {
     "severity.info": "معلومة",
     "severity.warn": "تحذير",
     "severity.block": "حجب",
+    "rule.prompt_injection": "حقن التعليمات",
+    "rule.regulated_claim": "ادعاء خاضع للتنظيم",
+    "rule.hallucinated_placeholder": "قيمة مختلقة",
+    "rule.secret_in_output": "سر في المخرجات",
+    "rule.intent_mismatch": "عدم تطابق الغرض",
+    "rule.comparison_claim_requires_source": "مقارنة بلا مصدر",
+    "rule.no_guarantee_of_cover": "ضمان التغطية",
     "audit.title": "سجل تدقيق الذكاء الاصطناعي",
     "audit.note": "لا يُخزَّن المحتوى هنا إطلاقًا — كل سطر يحمل بصمات فقط.",
     "audit.when": "الوقت",
@@ -664,6 +680,25 @@ function localised(value: unknown, locale: string): string | null {
   return typeof hit === "string" ? hit : null;
 }
 
+/**
+ * The runs table listed an agent by its key (`renewal`), the one machine string
+ * on a screen that already holds every agent's name. An agent the roster no
+ * longer carries — retired, or unreadable to this role — keeps the key.
+ */
+export function agentNames(
+  agents: readonly { key: string; nameJson: unknown }[],
+  locale: string
+): Record<string, string> {
+  return Object.fromEntries(agents.map((agent) => [agent.key, localised(agent.nameJson, locale) ?? agent.key]));
+}
+
+/**
+ * The rule that fired, in words: the platform's own rules are named, and a rule
+ * a tenant wrote for itself is humanised rather than printed as
+ * `hallucinated_placeholder`.
+ */
+export const ruleLabel = (L: Label, rule: string): string => L(`rule.${rule}`, humanise(rule));
+
 const STATE_TONES: Record<string, BadgeTone> = {
   succeeded: "success",
   running: "info",
@@ -709,6 +744,8 @@ export default function AiConsole() {
     ...new Set([...(loaded.agents ?? []).map((agent) => agent.module), ...(loaded.kill?.modules ?? [])])
   ].sort();
 
+  const named = agentNames(loaded.agents ?? [], locale);
+
   const runColumns: Array<Column<Run>> = [
     {
       key: "startedAt",
@@ -722,7 +759,7 @@ export default function AiConsole() {
       // from AGENT_MARK so there is exactly one sparkle in the product.
       render: (run) => (
         <EvidenceLink sourceLabel={L("runs.why")} source={<RunWhy run={run} L={L} locale={locale} />}>
-          <span aria-hidden="true">{AGENT_MARK}</span> <span className="font-mono text-12">{run.agentKey}</span>
+          <span aria-hidden="true">{AGENT_MARK}</span> {named[run.agentKey] ?? run.agentKey}
         </EvidenceLink>
       )
     },
@@ -792,7 +829,7 @@ export default function AiConsole() {
     {
       key: "rule",
       header: L("guardrails.rule"),
-      render: (event) => <span className="font-mono text-12">{event.rule}</span>
+      render: (event) => ruleLabel(L, event.rule)
     },
     {
       key: "severity",

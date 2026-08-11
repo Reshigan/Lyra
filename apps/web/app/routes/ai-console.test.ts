@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ActionFunctionArgs } from "react-router";
 import type { Env } from "../env";
-import { action, autonomyRung } from "./ai-console";
+import { action, agentNames, autonomyRung, ruleLabel } from "./ai-console";
 
 // docs/12 §4: "Kill switches: per-agent, per-module, per-tenant, global — all
 // one click, all logged". The per-agent tier is covered next door in
@@ -120,5 +120,41 @@ describe("autonomyRung", () => {
 
   it("reads anything unrecognised as the most cautious rung", () => {
     expect(autonomyRung("wide_open")).toBe("suggest");
+  });
+});
+
+// The recent-runs table read `renewal`, `qa`, `creative` — agent keys, on a
+// screen whose own cards above them carry the names.
+describe("agentNames", () => {
+  const roster = [
+    { key: "renewal", nameJson: { en: "Renewal agent", ar: "وكيل التجديد" } },
+    { key: "qa", nameJson: null }
+  ];
+
+  it("names an agent in the reader's locale", () => {
+    expect(agentNames(roster, "ar")["renewal"]).toBe("وكيل التجديد");
+  });
+
+  it("falls back to English before it falls back to the key", () => {
+    expect(agentNames(roster, "fr")["renewal"]).toBe("Renewal agent");
+  });
+
+  it("keeps the key for an agent that carries no name", () => {
+    expect(agentNames(roster, "en")["qa"]).toBe("qa");
+  });
+});
+
+// The guardrail table printed the rule as stored — `hallucinated_placeholder` —
+// on the one screen a compliance officer reads.
+describe("ruleLabel", () => {
+  const L = (key: string, fallback?: string) =>
+    key === "rule.prompt_injection" ? "Prompt injection" : (fallback ?? key);
+
+  it("names a rule the platform ships", () => {
+    expect(ruleLabel(L, "prompt_injection")).toBe("Prompt injection");
+  });
+
+  it("humanises a rule a tenant wrote for itself", () => {
+    expect(ruleLabel(L, "own_brand_tone")).toBe("Own brand tone");
   });
 });
