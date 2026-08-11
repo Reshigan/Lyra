@@ -1783,6 +1783,34 @@ function BrandPanel({
  * The session table. `revokedAt` is the only state the API reports — there is no
  * "this is you" flag on /v1/me/sessions, so no row claims to be the current one.
  */
+/**
+ * A session as the person ending it recognises it. The row carries the raw user
+ * agent — `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36
+ * (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36` — and this list is how
+ * somebody spots the sign-in that is not theirs. Two words they can act on beat
+ * a string that is the same for every row until its 90th character.
+ */
+export function deviceName(ua: string | null | undefined, unknown: string): string {
+  if (!ua) return unknown;
+  const browser =
+    /\bEdg[eA]?\//.test(ua) ? "Edge"
+    : /\bOPR\/|\bOpera\b/.test(ua) ? "Opera"
+    : /\bChrome\//.test(ua) ? "Chrome"
+    : /\bFirefox\//.test(ua) ? "Firefox"
+    : /\bSafari\//.test(ua) ? "Safari"
+    : null;
+  const platform =
+    /\biPhone\b|\biPad\b/.test(ua) ? "iOS"
+    : /\bAndroid\b/.test(ua) ? "Android"
+    : /\bMac OS X\b|\bMacintosh\b/.test(ua) ? "macOS"
+    : /\bWindows\b/.test(ua) ? "Windows"
+    : /\bCrOS\b/.test(ua) ? "ChromeOS"
+    : /\bLinux\b/.test(ua) ? "Linux"
+    : null;
+  if (browser && platform) return `${browser} on ${platform}`;
+  return browser ?? platform ?? unknown;
+}
+
 function sessionColumns(
   label: (key: string) => string,
   locale: string,
@@ -1793,10 +1821,8 @@ function sessionColumns(
       key: "ua",
       header: label("sessions.device"),
       render: (row) => (
-        // The user agent is long and unparsed; wrapping beats a truncation that
-        // hides the one word telling two browsers apart.
-        <span className="block max-w-96 break-words font-ui text-12">
-          {row.ua ?? label("sessions.unknown")}
+        <span className="block max-w-96 break-words font-ui text-12" title={row.ua ?? undefined}>
+          {deviceName(row.ua, label("sessions.unknown"))}
         </span>
       )
     },
