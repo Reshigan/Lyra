@@ -21,11 +21,14 @@ import {
   KPIWall,
   Stat,
   Table,
+  shortRef,
   type BadgeTone,
   type Column
 } from "@lyra/ui";
-import { api, asRouteError, fetchMe, type Problem as ProblemShape } from "../api.server";
+import { api, asRouteError, fetchMe, names, type Problem as ProblemShape } from "../api.server";
 import { cloudflare } from "../context";
+import { humanise } from "../modules/spec";
+import { who } from "../names";
 import { Gate } from "./staff";
 import { ORBIT, labelsFrom, refusal, safe, type Label, type Labels, type Page } from "./orbit-shared";
 
@@ -275,13 +278,24 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       : Promise.resolve({ data: [] } as Page<SampledConversation>)
   ]);
 
+  // The table's DISPUTED BY column read `user:us_01KE…S9M` and its sample's
+  // CUSTOMER column a bare `cu_01KE…`: rows carry refs and no names for them.
+  const resolved = await names(
+    [
+      ...scores.data.map((row) => row.disputedBy),
+      ...sample.data.map((row) => row.customerId)
+    ].filter((one): one is string => Boolean(one)),
+    opts
+  );
+
   return {
     locale: me.locale,
     nonce: crypto.randomUUID(),
     rubric,
     may: { read: held.has(ORBIT.qa), score: held.has(ORBIT.qaScore) },
     scores,
-    sample: sample.data
+    sample: sample.data,
+    resolved
   };
 }
 
@@ -392,14 +406,18 @@ export default function ConversationQuality() {
                     <Link
                       to={`/orbit/conversations/${row.conversationId}/thread`}
                       className="font-mono text-12 text-accent underline underline-offset-2"
+                      title={row.conversationId}
                     >
-                      {row.conversationId}
+                      {shortRef(row.conversationId)}
                     </Link>
                   ) : (
                     "—"
                   )
               },
-              { key: "rubricKey", header: l("rubric"), render: (row) => row.rubricKey },
+                            // `orbit.retention_call` is the key the agent writes; a reviewer
+              // reads "Orbit retention call". Rubrics are tenant-defined, so
+              // there is no label table to look them up in.
+              { key: "rubricKey", header: l("rubric"), render: (row) => humanise(row.rubricKey) },
               {
                 key: "score",
                 header: l("score"),
@@ -458,7 +476,7 @@ export default function ConversationQuality() {
                     <span className="flex flex-wrap gap-1">
                       {flags.map((flag) => (
                         <Badge key={flag} tone="warning" size="sm">
-                          {flag}
+                          {humanise(flag)}
                         </Badge>
                       ))}
                     </span>
@@ -468,7 +486,7 @@ export default function ConversationQuality() {
               {
                 key: "disputedBy",
                 header: l("disputed"),
-                render: (row) => row.disputedBy ?? "—"
+                render: (row) => (row.disputedBy ? who(row.disputedBy, loaded.resolved) : "—")
               },
               {
                 key: "ts",
@@ -536,7 +554,7 @@ export default function ConversationQuality() {
                     to={`/orbit/conversations/${row.id}/thread`}
                     className="font-ui text-13 text-accent underline underline-offset-2"
                   >
-                    {row.customerId ?? row.id}
+                    {row.customerId ? who(row.customerId, loaded.resolved) : shortRef(row.id)}
                   </Link>
                 )
               },
