@@ -11,7 +11,7 @@ import {
 } from "@lyra/ui";
 import type { ColumnSpec, FieldSpec, Row } from "../modules/spec";
 import { who, type Names } from "../names";
-import { inputValue, optionLabel } from "../modules/spec";
+import { humanise, inputValue, optionLabel } from "../modules/spec";
 
 // One place that knows how a typed value renders and how it is edited. Both
 // route files (module.tsx, record.tsx) and every bespoke screen share it, so a
@@ -94,12 +94,14 @@ export function Cell({ column, row, locale, label, resolved = {} }: CellProps) {
       );
     case "boolean":
       return <span>{label(value ? "yes" : "no")}</span>;
-    case "json":
-      return (
-        <span className="font-mono text-12 text-subtle">
-          {truncate(JSON.stringify(value), 60)}
-        </span>
-      );
+    case "json": {
+      // The customers list headed a column NAME and printed
+      // `{"en":"E2E Visitor"}`, and TAGS `["portal-lead"]`. A JSON column holds
+      // a localised name, a list or a small map — all three are readable.
+      const text = readable(value, locale);
+      if (!text) return <span className="text-subtle">—</span>;
+      return <span>{truncate(text, 60)}</span>;
+    }
     case "number":
       return <span className="tabular-nums">{String(value)}</span>;
     default: {
@@ -199,6 +201,47 @@ function inputTypeFor(field: FieldSpec): string {
       return "datetime-local";
     default:
       return "text";
+  }
+}
+
+/**
+ * A JSON value as a person reads it: `{en,ar}` in their own locale, a list as
+ * a comma-separated list, anything else as its labelled pairs. Empty comes
+ * back empty so the caller can render the same em dash a null does.
+ */
+export function readable(value: unknown, locale: string): string {
+  const raw =
+    typeof value === "string" && /^\s*[[{]/.test(value) ? safeParse(value) : value;
+  if (raw === null || raw === undefined) return "";
+  if (Array.isArray(raw)) {
+    return raw
+      .map((one) => readable(one, locale))
+      .filter(Boolean)
+      .join(", ");
+  }
+  if (typeof raw === "object") {
+    const record = raw as Record<string, unknown>;
+    const localised = record[locale] ?? record.en;
+    if (typeof localised === "string") return localised.trim();
+    return Object.entries(record)
+      .map(([key, one]) => {
+        // A flag map (`{"pep":true,"sanctions":false}`) reads as the flags that
+        // are set, not as a list of the word "true".
+        if (typeof one === "boolean") return one ? humanise(key) : "";
+        const text = readable(one, locale);
+        return text ? `${humanise(key)}: ${text}` : "";
+      })
+      .filter(Boolean)
+      .join(", ");
+  }
+  return String(raw).trim();
+}
+
+function safeParse(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
   }
 }
 
