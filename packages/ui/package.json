@@ -18,14 +18,14 @@
   },
   "dependencies": {
     "radix-ui": "^1.6.7",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
   },
   "devDependencies": {
     "@lyra/config": "workspace:*",
     "@types/node": "^22",
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
     "typescript": "^5.7.2",
     "vitest": "^3.2.7"
   }
