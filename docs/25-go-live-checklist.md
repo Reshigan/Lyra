@@ -1042,6 +1042,18 @@ depends on one):
   Detox scaffold (this build) covers the Expo Go dev-client path only, not
   signed store builds, which need Apple/Google developer accounts.
 
+**Expo SDK 55 → 57, deferred 2026-08-11 (ADR-0044).** The rest of the
+dependabot backlog was cleared into `main` before go-live — GitHub Actions
+majors, wrangler 4 + workers-types 5, vite 8, zod 4, TypeScript 6,
+`@libsql/client` 0.17, `@hono/node-server` 2, react 19.2.8 — each verified
+against the full gate (typecheck, lint, unit, e2e) and pushed as its own
+commit. The four Expo-family PRs are one upgrade, not four (Expo pins the
+React Native version for an SDK), and need a native rebuild plus a Detox
+run on simulators that this CI does not provide. Nothing that goes live
+depends on it. TypeScript 7 is also held back: it typechecks clean but
+`typescript-eslint` 8.67 refuses to load against it, which takes
+`pnpm lint` down.
+
 ---
 
 ## 8. Closing gate

@@ -44,7 +44,7 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "tsx": "^4.23.12",
     "turbo": "^2.10.9",
-    "typescript": "^5.7.2",
+    "typescript": "^6.0.3",
     "typescript-eslint": "^8.67.0",
     "vitest": "^3.2.7"
   },
@@ -54,7 +54,7 @@
       "ws": ">=8.21.0",
       "brace-expansion": ">=5.0.9",
       "sharp": ">=0.35.0",
-      "vite": ">=6.4.3",
+      "vite": ">=8.2.1",
       "js-yaml": ">=4.3.1",
       "nanoid": ">=3.3.17",
       "hono": ">=4.12.34"

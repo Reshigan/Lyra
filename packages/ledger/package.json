@@ -23,7 +23,7 @@
     "@libsql/client": "^0.17.4",
     "@lyra/config": "workspace:*",
     "@types/node": "^22",
-    "typescript": "^5.7.2",
+    "typescript": "^6.0.3",
     "vitest": "^3.2.7"
   }
 }
