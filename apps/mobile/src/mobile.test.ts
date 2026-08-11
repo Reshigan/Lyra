@@ -44,13 +44,20 @@ const {
   approvalAmountMinor,
   approvalTitle,
   bps,
+  budgetOf,
+  campaignOrder,
   caseSeverity,
   chosenBriefing,
   contentTypeOf,
   dueIn,
   highlightsOf,
   isInbound,
+  mainCurrency,
+  moneyText,
+  pacingOf,
+  plannedMinor,
   queueOrder,
+  spendByCampaign,
   threadOrder,
   todayIso,
   unownedAnomaly
@@ -596,6 +603,12 @@ describe("persona tab config", () => {
     expect(sla?.route).toBe("/j/queue?filter=sla");
   });
 
+  it("points both SIGNAL money tabs at the one cockpit screen", () => {
+    const [campaigns, budget] = tabsFor("signal", "default");
+    expect(campaigns?.route).toBe("/j/campaigns");
+    expect(budget?.route).toBe("/j/campaigns?view=budget");
+  });
+
   it("swaps Decisions for Governance only for the north board variant", () => {
     expect(tabsFor("north", "default").map((tab) => tab.labelKey)).toContain("tab.decisions");
     expect(tabsFor("north", "board").map((tab) => tab.labelKey)).toContain("tab.governance");
@@ -905,6 +918,84 @@ describe("journey helpers", () => {
     // Under an hour still reads as an hour: "due in 0h" is not a deadline.
     expect(dueIn(now + 60_000, now)).toEqual({ overdue: false, hours: 1 });
     expect(dueIn(null, now)).toBeNull();
+  });
+
+  it("reads a budget whether the column arrived parsed, as text, or broken", () => {
+    expect(budgetOf({ id: "c", budgetJson: { dailyMinor: 500 } })).toEqual({ dailyMinor: 500 });
+    expect(budgetOf({ id: "c", budgetJson: '{"capMinor":900}' })).toEqual({ capMinor: 900 });
+    expect(budgetOf({ id: "c", budgetJson: "not json" })).toEqual({});
+    expect(budgetOf({ id: "c" })).toEqual({});
+  });
+
+  it("measures the plan by cap, then total, then the daily rate over the window", () => {
+    expect(plannedMinor({ capMinor: 10_000, dailyMinor: 900 }, 7)).toBe(10_000);
+    expect(plannedMinor({ totalMinor: 5_000, dailyMinor: 900 }, 7)).toBe(5_000);
+    expect(plannedMinor({ dailyMinor: 900 }, 7)).toBe(6_300);
+    expect(plannedMinor({}, 7)).toBe(0);
+  });
+
+  it("calls spend against plan by name, and says nothing about an unset ceiling", () => {
+    expect(pacingOf(1_100, 1_000).state).toBe("over");
+    expect(pacingOf(950, 1_000).state).toBe("hot");
+    expect(pacingOf(600, 1_000).state).toBe("on");
+    expect(pacingOf(100, 1_000).state).toBe("cold");
+    // No ceiling is not 0% spent — it is a number nobody set.
+    expect(pacingOf(400, 0)).toEqual({ ratio: null, state: "unplanned" });
+  });
+
+  it("totals spend per campaign and drops what the importer could not attribute", () => {
+    const rows = [
+      { id: "s1", campaignId: "c1", amountMinor: 100 },
+      { id: "s2", campaignId: "c1", amountMinor: 250 },
+      { id: "s3", campaignId: null, amountMinor: 999 },
+      { id: "s4", campaignId: "c2" }
+    ];
+    expect(spendByCampaign(rows)).toEqual({ c1: 350, c2: 0 });
+    expect(spendByCampaign(null)).toEqual({});
+  });
+
+  it("orders campaigns by what is spending, then by how near its ceiling", () => {
+    const rows = [
+      { id: "c_draft", name: "Draft", state: "draft", budgetJson: { capMinor: 1_000 } },
+      { id: "c_cold", name: "Cold", state: "live", budgetJson: { capMinor: 1_000 } },
+      { id: "c_over", name: "Over", state: "live", budgetJson: { capMinor: 1_000 } },
+      { id: "c_none", name: "None", state: "live" },
+      { id: "c_done", name: "Done", state: "ended", budgetJson: { capMinor: 1_000 } }
+    ];
+    const spent = { c_cold: 200, c_over: 1_400, c_draft: 900 };
+    expect(campaignOrder(rows, spent, 7).map((row) => row.id)).toEqual([
+      "c_over",
+      "c_cold",
+      "c_none",
+      "c_draft"
+    ]);
+    // The budget tab has nothing to say about a campaign with no ceiling.
+    expect(campaignOrder(rows, spent, 7, true).map((row) => row.id)).toEqual([
+      "c_over",
+      "c_draft",
+      "c_cold"
+    ]);
+    expect(campaignOrder(null, {}, 7)).toEqual([]);
+  });
+
+  it("totals in the currency most campaigns are budgeted in", () => {
+    const rows = [
+      { id: "a", budgetJson: { currency: "AED" } },
+      { id: "b", budgetJson: { currency: "AED" } },
+      { id: "c", budgetJson: { currency: "ZAR" } }
+    ];
+    expect(mainCurrency(rows)).toBe("AED");
+    expect(mainCurrency([{ id: "a" }])).toBe("ZAR");
+    expect(mainCurrency(null, "AED")).toBe("AED");
+  });
+
+  it("writes minor units as whole money", () => {
+    const text = moneyText("en-ZA", "ZAR", 123_456);
+    // Grouping is a non-breaking space in this locale, so match on the digits.
+    expect(text.replace(/\s/gu, "")).toContain("1235");
+    expect(text).toContain("R");
+    // Cents on a phone are noise: R 1 234.56 rounds to the rand.
+    expect(text).not.toContain(".");
   });
 
   it("offers exactly the document types AXIS accepts", () => {
