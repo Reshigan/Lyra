@@ -382,34 +382,6 @@ export default function Login() {
           </div>
         ) : null}
 
-        {step === "password" && personas.length ? (
-          <section className="mt-6" aria-labelledby="demo-heading">
-            <h2 id="demo-heading" className="text-13 font-medium">
-              {t("auth.demo.title")}
-            </h2>
-            <p className="mt-1 text-12 text-muted">{t("auth.demo.intro")}</p>
-            <Form method="post" className="mt-3 grid gap-2">
-              <input type="hidden" name="step" value="demo" />
-              <input type="hidden" name="next" value={next} />
-              {personas.map((persona) => (
-                <Button
-                  key={persona.email}
-                  type="submit"
-                  name="email"
-                  value={persona.email}
-                  disabled={busy}
-                  className="justify-between"
-                >
-                  <span>{persona.name}</span>
-                  {/* The role is the point of the persona — it says which
-                      permissions the demo lands in. */}
-                  <span className="font-mono text-12 text-muted">{persona.roleKey}</span>
-                </Button>
-              ))}
-            </Form>
-          </section>
-        ) : null}
-
         <Form method="post" className="mt-6 flex flex-col gap-4" key={step}>
           <input type="hidden" name="next" value={next} />
           {step === "totp" ? (
@@ -543,6 +515,36 @@ export default function Login() {
             </div>
           ) : null}
         </Form>
+
+        {step === "password" && personas.length ? (
+          /* Below the form and shut by default: the demo wall used to sit above
+             the email field, so on a laptop the thing everyone came here to do
+             was off-screen. A closed <details> is one native element, no state,
+             and keyboard-reachable as-is. */
+          <details className="mt-6 border-t border-border pt-4">
+            <summary className="cursor-pointer text-13 font-medium">{t("auth.demo.title")}</summary>
+            <p className="mt-1 text-12 text-muted">{t("auth.demo.intro")}</p>
+            <Form method="post" className="mt-3 grid gap-2">
+              <input type="hidden" name="step" value="demo" />
+              <input type="hidden" name="next" value={next} />
+              {personas.map((persona) => (
+                <Button
+                  key={persona.email}
+                  type="submit"
+                  name="email"
+                  value={persona.email}
+                  disabled={busy}
+                  className="justify-between"
+                >
+                  <span>{persona.name}</span>
+                  {/* The role is the point of the persona — it says which
+                      permissions the demo lands in. */}
+                  <span className="font-mono text-12 text-muted">{persona.roleKey}</span>
+                </Button>
+              ))}
+            </Form>
+          </details>
+        ) : null}
       </Card>
     </main>
   );

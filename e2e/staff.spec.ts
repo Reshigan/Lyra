@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { goto } from "./fixtures.js";
+import { goto, pickPersona } from "./fixtures.js";
 import { expectNoA11yViolations } from "./a11y.js";
 import { PERSONAS } from "./env.js";
 
@@ -8,7 +8,7 @@ import { PERSONAS } from "./env.js";
 // visible immediately — no separate activation step.
 test("J-A2 admin invites a teammate and the role bundle is visible immediately @journey:J-A2 @accept:M1", async ({ page }) => {
   await goto(page, "/login");
-  await page.getByRole("button", { name: new RegExp(PERSONAS.tenantAdmin.name) }).click();
+  await pickPersona(page, PERSONAS.tenantAdmin.name);
   await page.waitForURL(/^http:\/\/[^/]+\/$/);
 
   await goto(page, "/admin/staff");

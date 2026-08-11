@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { goto } from "./fixtures.js";
+import { goto, pickPersona } from "./fixtures.js";
 import { totpAt, TOTP_STEP_SEC } from "@lyra/core";
 import { expectNoA11yViolations } from "./a11y.js";
 import { PERSONAS, SEED_PASSWORD, TENANT_SLUG } from "./env.js";
@@ -12,7 +12,7 @@ test.describe("sign-in", () => {
 
   test("demo persona one-click sign-in lands tenant.admin on the home workspace @accept:M0", async ({ page }) => {
     await goto(page, "/login");
-    await page.getByRole("button", { name: new RegExp(PERSONAS.tenantAdmin.name) }).click();
+    await pickPersona(page, PERSONAS.tenantAdmin.name);
     await page.waitForURL(/^http:\/\/[^/]+\/$/);
     await expect(page.getByLabel("Primary").getByRole("link", { name: "Administration" })).toBeVisible();
     await expectNoA11yViolations(page);

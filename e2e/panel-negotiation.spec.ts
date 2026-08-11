@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { PERSONAS } from "./env.js";
-import { goto, loginAsFinanceController, loginAsScoutLead } from "./fixtures.js";
+import { goto, loginAsFinanceController, loginAsScoutLead, pickPersona } from "./fixtures.js";
 
 // J-P2 "panel negotiation" (docs/06-roles-and-journeys.md:75): "bench alert ->
 // negotiation pack -> meeting -> commission/coverage delta logged." The
@@ -27,7 +27,7 @@ test("J-P2 a commission rate change is refused for dual control, then decided by
   const admin = await browser.newContext();
   const adminPage = await admin.newPage();
   await adminPage.goto("/login");
-  await adminPage.getByRole("button", { name: new RegExp(PERSONAS.tenantAdmin.name) }).click();
+  await pickPersona(adminPage, PERSONAS.tenantAdmin.name);
   await adminPage.waitForURL(/^http:\/\/[^/]+\/$/);
 
   await adminPage.goto("/distribution/commission-rates");

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { PERSONAS } from "./env.js";
-import { loginAsComplianceOfficer } from "./fixtures.js";
+import { loginAsComplianceOfficer, pickPersona } from "./fixtures.js";
 
 // J-A3 "Incident pause" (docs/06-roles-and-journeys.md §Admin & Dev): one-click
 // pause an agent, a banner shows degraded mode, resume with an audit note.
@@ -33,7 +33,7 @@ test("J-A3 compliance officer pauses an agent with a reason, admin resumes it @j
   const admin = await browser.newContext();
   const adminPage = await admin.newPage();
   await adminPage.goto("/login");
-  await adminPage.getByRole("button", { name: new RegExp(PERSONAS.tenantAdmin.name) }).click();
+  await pickPersona(adminPage, PERSONAS.tenantAdmin.name);
   await adminPage.waitForURL(/^http:\/\/[^/]+\/$/);
   await adminPage.goto("/admin/ai/console");
 
