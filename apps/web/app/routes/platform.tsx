@@ -24,6 +24,7 @@ import {
   type Column
 } from "@lyra/ui";
 import { ApiError, api, fetchMe } from "../api.server";
+import { RefPicker, type RefOption } from "../components/ref-picker";
 import { cloudflare } from "../context";
 import { pseudoText, translator } from "../i18n";
 import { Problem } from "./module";
@@ -343,7 +344,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   };
   const idempotencyKey = crypto.randomUUID();
 
-  const [overview, slo, incidents, deployments, flags, sessions] = await Promise.all([
+  const [overview, slo, incidents, deployments, flags, sessions, staff] = await Promise.all([
     may.read
       ? safe(() => api<{ tenants: TenantHealth[]; lastSnapshotAt: number | null }>("/v1/platform/ops/overview", { env, request }), {
           tenants: [],
@@ -362,7 +363,12 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       : { flags: [] },
     may.impersonate
       ? safe(() => api<{ sessions: ImpersonationSession[] }>("/v1/platform/impersonation", { env, request }), { sessions: [] })
-      : { sessions: [] }
+      : { sessions: [] },
+    // Who an operator may act as, by name. The list is best-effort: a platform
+    // role without `core:users:read` still gets the plain box and a pasted id.
+    may.impersonate
+      ? safe(() => api<{ data: { id: string; name: string }[] }>("/v1/staff/users?limit=200", { env, request }), { data: [] })
+      : { data: [] }
   ]);
 
   return {
@@ -374,6 +380,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     deployments: deployments.deployments,
     flags: flags.flags,
     sessions: sessions.sessions,
+    people: staff.data.map((row) => ({ id: row.id, label: row.name })) as RefOption[],
     idempotencyKey
   };
 }
@@ -749,7 +756,7 @@ export default function Platform() {
               <input type="hidden" name="idempotencyKey" value={loaded.idempotencyKey} />
               <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
                 <Field label={l("fieldTargetUser")} required className="sm:w-72">
-                  <Input name="targetUserId" required />
+                  <RefPicker name="targetUserId" options={loaded.people} required />
                 </Field>
                 <Field label={l("fieldReason")} required className="sm:flex-1">
                   <Input name="reason" required />

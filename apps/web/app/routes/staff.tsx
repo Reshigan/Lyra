@@ -27,6 +27,7 @@ import {
   type Column
 } from "@lyra/ui";
 import { ApiError, api, fetchMe, names } from "../api.server";
+import { RefPicker, type RefOption } from "../components/ref-picker";
 import { cloudflare } from "../context";
 import { who, type Names } from "../names";
 import { pseudoText, translator } from "../i18n";
@@ -493,6 +494,7 @@ export default function Staff() {
 
   const locale = shell?.locale ?? "en";
   const t = translator(locale);
+  const people: RefOption[] = loaded.options.map((o) => ({ id: o.id, label: o.name }));
   const l = labelsIn(locale);
   // The money field's precision follows the currency beside it: 500 in JPY is
   // 500 minor units, in ZAR it is 50000.
@@ -596,12 +598,6 @@ export default function Staff() {
     <div className="flex flex-col gap-6">
       <PageHeader title={l("title")} description={l("intro")} />
 
-      <datalist id="staff-options">
-        {loaded.options.map((o) => (
-          <option key={o.id} value={o.id} label={o.name} />
-        ))}
-      </datalist>
-
       <Form method="get" className="flex flex-wrap items-end gap-3" aria-label={l("search")}>
         <Field label={l("search")}>
           <Input name="q" defaultValue={loaded.q} className="w-64" />
@@ -654,7 +650,7 @@ export default function Staff() {
                 />
               </Field>
               <Field label={l("manager")} hint={l("managerHint")}>
-                <Input name="managerId" list="staff-options" className="w-56" />
+                <RefPicker name="managerId" options={people} className="w-56" />
               </Field>
               <Field label={l("dueAt")}>
                 <DatePicker name="dueAt" />
@@ -706,10 +702,10 @@ export default function Staff() {
                 <input type="hidden" name="idempotencyKey" value={loaded.idempotencyKey} />
                 <div className="flex flex-wrap gap-3">
                   <Field label={l("from")} hint={l("fromHint")}>
-                    <Input name="fromUserId" list="staff-options" className="w-56" />
+                    <RefPicker name="fromUserId" options={people} className="w-56" />
                   </Field>
                   <Field label={l("to")} required>
-                    <Input name="toUserId" list="staff-options" required className="w-56" />
+                    <RefPicker name="toUserId" options={people} required className="w-56" />
                   </Field>
                   <Field label={l("reason")} required>
                     <Select

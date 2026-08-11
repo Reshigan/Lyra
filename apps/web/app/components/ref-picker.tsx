@@ -34,9 +34,11 @@ export interface RefPickerProps {
   defaultValue?: string;
   placeholder?: string;
   className?: string;
+  /** Guards the visible box — the hidden field a form posts is never validated. */
+  required?: boolean;
 }
 
-export function RefPicker({ name, options, defaultValue, placeholder, className }: RefPickerProps) {
+export function RefPicker({ name, options, defaultValue, placeholder, className, required }: RefPickerProps) {
   const listId = useId();
   const [typed, setTyped] = useState(
     () => options.find((option) => option.id === defaultValue)?.label ?? defaultValue ?? ""
@@ -49,6 +51,7 @@ export function RefPicker({ name, options, defaultValue, placeholder, className 
         onChange={(event) => setTyped(event.target.value)}
         placeholder={placeholder}
         maxLength={200}
+        required={required}
         className={className}
         autoComplete="off"
       />
