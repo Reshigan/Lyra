@@ -150,6 +150,14 @@ export const en = {
   "severity.due": "Due soon",
   "severity.normal": "On track",
 
+  "renewals.title": "Renewals",
+  "renewals.empty": "No renewal is open.",
+  "renewals.state": "{state} · {strategy}",
+  "renewals.expiresIn": "Expires in {days} days",
+  "renewals.expired": "Expired {days} days ago",
+  "renewals.noExpiry": "No expiry date",
+  "renewals.risk": "Churn risk {score}",
+
   "campaigns.title": "Campaigns",
   "campaigns.budgetTitle": "Budget",
   "campaigns.empty": "No campaign is running.",
@@ -333,6 +341,14 @@ export const ar: Messages = {
   "severity.urgent": "عاجل",
   "severity.due": "يقترب موعده",
   "severity.normal": "ضمن المسار",
+
+  "renewals.title": "التجديدات",
+  "renewals.empty": "لا يوجد تجديد مفتوح.",
+  "renewals.state": "{state} · {strategy}",
+  "renewals.expiresIn": "ينتهي خلال {days} يومًا",
+  "renewals.expired": "انتهى منذ {days} يومًا",
+  "renewals.noExpiry": "لا يوجد تاريخ انتهاء",
+  "renewals.risk": "خطر الفقد {score}",
 
   "campaigns.title": "الحملات",
   "campaigns.budgetTitle": "الميزانية",

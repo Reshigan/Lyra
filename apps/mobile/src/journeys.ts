@@ -179,6 +179,43 @@ export function dueIn(slaDueAt: unknown, now: number): { overdue: boolean; hours
   return { overdue: delta < 0, hours: Math.max(1, Math.round(Math.abs(delta) / 3_600_000)) };
 }
 
+/* ---------------------------------------------------------------- renewals */
+
+/** The renewal states still open to influence. Accepted and lost are history —
+ *  the phone tab is for the ones a call can still change. */
+export const OPEN_RENEWAL_STATES = ["scheduled", "offered"] as const;
+
+/** Whole days from `now` until `at`, negative once it has passed
+ *  (apps/web/app/routes/orbit-shared.ts `daysUntil`). */
+export function daysUntil(at: unknown, now: number): number | null {
+  if (typeof at !== "number" || !at) return null;
+  return Math.ceil((at - now) / 86_400_000);
+}
+
+export type Urgency = "gone" | "now" | "soon" | "later";
+
+/** How loudly a renewal reads, matching the web board (orbit-pipeline.tsx
+ *  `urgency`) so a card is never hot on one surface and calm on the other. */
+export function urgencyOf(days: number | null): Urgency {
+  if (days === null) return "later";
+  if (days < 0) return "gone";
+  if (days <= 7) return "now";
+  if (days <= 30) return "soon";
+  return "later";
+}
+
+/** Renewals in calling order: soonest expiry first, and an expired one before a
+ *  renewal with no date at all. Churn risk breaks the tie — of two policies
+ *  expiring the same day, ring the one more likely to walk. */
+export function renewalOrder(rows: readonly Row[] | null, now: number): Row[] {
+  return [...(rows ?? [])].sort((a, b) => {
+    const left = daysUntil(a.expiryAt, now);
+    const right = daysUntil(b.expiryAt, now);
+    if (left !== right) return (left ?? Number.MAX_SAFE_INTEGER) - (right ?? Number.MAX_SAFE_INTEGER);
+    return numberOr(b.churnScore, -1) - numberOr(a.churnScore, -1);
+  });
+}
+
 /* --------------------------------------------------------------- campaigns */
 
 /** The campaign's `budgetJson`, as the autopilot reads it (apps/web/app/routes/

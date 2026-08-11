@@ -23,7 +23,7 @@ export const PERSONA_TABS: Record<Workspace, TabConfig[]> = {
   ],
   orbit: [
     { labelKey: "tab.inbox", icon: "chatbubbles", screen: "orbit/conversations", route: "/j/threads" },
-    { labelKey: "tab.renewals", icon: "refresh", screen: "orbit/conversations" },
+    { labelKey: "tab.renewals", icon: "refresh", screen: "orbit/conversations", route: "/j/renewals" },
     { labelKey: "tab.approvals", icon: "checkmark-circle", screen: "orbit/conversations", route: "/j/approvals" }
   ],
   signal: [

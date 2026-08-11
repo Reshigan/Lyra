@@ -49,6 +49,7 @@ const {
   caseSeverity,
   chosenBriefing,
   contentTypeOf,
+  daysUntil,
   dueIn,
   highlightsOf,
   isInbound,
@@ -57,9 +58,11 @@ const {
   pacingOf,
   plannedMinor,
   queueOrder,
+  renewalOrder,
   spendByCampaign,
   threadOrder,
   todayIso,
+  urgencyOf,
   unownedAnomaly
 } = await import("./journeys");
 const {
@@ -603,6 +606,14 @@ describe("persona tab config", () => {
     expect(sla?.route).toBe("/j/queue?filter=sla");
   });
 
+  it("sends the ORBIT renewals tab to its own screen, not the inbox", () => {
+    const renewals = tabsFor("orbit", "default")[1];
+    expect(renewals?.labelKey).toBe("tab.renewals");
+    expect(renewals?.route).toBe("/j/renewals");
+    // A renewal detail cannot ride the "/orbit" entry — that one is conversations.
+    expect(resourceForNavKey("orbit-renewals")).toBe("orbit/renewals");
+  });
+
   it("points both SIGNAL money tabs at the one cockpit screen", () => {
     const [campaigns, budget] = tabsFor("signal", "default");
     expect(campaigns?.route).toBe("/j/campaigns");
@@ -918,6 +929,42 @@ describe("journey helpers", () => {
     // Under an hour still reads as an hour: "due in 0h" is not a deadline.
     expect(dueIn(now + 60_000, now)).toEqual({ overdue: false, hours: 1 });
     expect(dueIn(null, now)).toBeNull();
+  });
+
+  it("reads an expiry as whole days, negative once it has passed", () => {
+    const now = 1_000_000_000;
+    expect(daysUntil(now + 2 * 86_400_000, now)).toBe(2);
+    expect(daysUntil(now - 86_400_000, now)).toBe(-1);
+    expect(daysUntil(null, now)).toBeNull();
+  });
+
+  it("calls a renewal's urgency the same way the web board does", () => {
+    expect(urgencyOf(-1)).toBe("gone");
+    expect(urgencyOf(7)).toBe("now");
+    expect(urgencyOf(30)).toBe("soon");
+    expect(urgencyOf(31)).toBe("later");
+    // No expiry is not urgent; there is nothing to be late for.
+    expect(urgencyOf(null)).toBe("later");
+  });
+
+  it("orders renewals soonest first, riskiest of the same day first", () => {
+    const now = 1_000_000_000;
+    const day = 86_400_000;
+    const rows = [
+      { id: "r_far", expiryAt: now + 60 * day },
+      { id: "r_none" },
+      { id: "r_calm", expiryAt: now + 3 * day, churnScore: 10 },
+      { id: "r_risky", expiryAt: now + 3 * day, churnScore: 80 },
+      { id: "r_late", expiryAt: now - day }
+    ];
+    expect(renewalOrder(rows, now).map((row) => row.id)).toEqual([
+      "r_late",
+      "r_risky",
+      "r_calm",
+      "r_far",
+      "r_none"
+    ]);
+    expect(renewalOrder(null, now)).toEqual([]);
   });
 
   it("reads a budget whether the column arrived parsed, as text, or broken", () => {

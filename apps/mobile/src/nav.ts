@@ -23,7 +23,12 @@ const RESOURCE_BY_HREF: Record<string, string> = {
   "/ledger": "ledger/txns",
   "/analytics": "analytics/reports",
   "/compliance": "compliance/dsar-requests",
-  "/admin": "core/users"
+  "/admin": "core/users",
+  // Not a nav href — `/v1/me` never sends this one. It is here so a journey
+  // screen can open a record the generic detail view can still render:
+  // /m/orbit-renewals/{id} (app/j/renewals.tsx). A renewal is not a
+  // conversation, so it cannot ride the "/orbit" entry.
+  "/orbit-renewals": "orbit/renewals"
 };
 
 /** `/v1/{module}/{resource}` for a nav href, or `undefined` if mobile has no
