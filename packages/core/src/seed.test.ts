@@ -621,6 +621,14 @@ describe("seed", () => {
     expect(byKey["2026-01-04:exec:en"]).toMatchObject({ status: "published", approvedBy: "hala.zayed" });
     expect(byKey["2026-01-02:board:en"]).toMatchObject({ status: "review", approvedBy: null, publishedAt: null });
     expect(byKey["2025-12-31:investor:en"]).toMatchObject({ status: "draft", approvedBy: null, publishedAt: null });
+
+    // narrativeRef holds the prose itself (engines/narrator.ts). The seed used
+    // to hold an R2 key, and the reader printed the key as the briefing body.
+    for (const briefing of briefings) {
+      expect(briefing.narrativeRef).not.toMatch(/^briefings\//);
+      expect(briefing.narrativeRef!.length).toBeGreaterThan(200);
+      expect(briefing.narrativeRef).toContain("\n\n");
+    }
   });
 
   it("detects NORTH anomalies with the right state, magnitude and driver", async () => {

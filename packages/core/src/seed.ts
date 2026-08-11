@@ -1537,7 +1537,6 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
     callCentre: id("dec", now + 5)
   };
 
-  const briefingRef = (b: string): string => `briefings/${tenantId}/${b}.md`;
   await db.insert(schema.northBriefings).values([
     {
       id: briefingIds.jan05En,
@@ -1547,7 +1546,17 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
       date: "2026-01-05",
       audience: "exec",
       locale: "en",
-      narrativeRef: briefingRef(briefingIds.jan05En),
+      narrativeRef: `December closed at AED 2,389,000 of gross written premium, the best month \
+of the year and 18.4% above November. Motor on the web and app channels drove \
+almost all of the increase; nothing in the mix suggests a one-off.
+
+Broker share reached 36.1% of premium. Alpha Brokers and the Meridian embed \
+together wrote just over a third of the book, which is the highest \
+concentration we have carried and worth watching rather than celebrating.
+
+Against that, yesterday's quote-to-bind rate was 18.9% — well below the \
+five-day average of 23.4%. Two anomalies are open on it and neither has an \
+owner yet.`,
       highlightsJson: JSON.stringify([
         {
           metricKey: "gwp",
@@ -1584,7 +1593,15 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
       date: "2026-01-05",
       audience: "exec",
       locale: "ar",
-      narrativeRef: briefingRef(briefingIds.jan05Ar),
+      narrativeRef: `أغلق ديسمبر عند 2,389,000 درهم من إجمالي الأقساط المكتتبة، وهو أفضل شهر في \
+السنة وبزيادة 18.4% عن نوفمبر. جاء معظم النمو من تأمين المركبات عبر الموقع \
+والتطبيق.
+
+تحسّن الاحتفاظ عند التجديد إلى 83.1% للشهر الثالث على التوالي، ويعود ذلك في \
+الأساس إلى التواصل المبكر قبل موعد التجديد.
+
+يبقى انخفاض معدل التحويل من عرض السعر إلى الإصدار أمس هو البند الوحيد الذي \
+يحتاج إلى قرار اليوم.`,
       highlightsJson: JSON.stringify([
         {
           metricKey: "gwp",
@@ -1614,7 +1631,13 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
       date: "2026-01-04",
       audience: "exec",
       locale: "en",
-      narrativeRef: briefingRef(briefingIds.jan04En),
+      narrativeRef: `Sixty-one policies issued yesterday, the strongest issuing day of the new \
+year and 17.3% above the same day last week. Most of it is motor renewals \
+coming back rather than new business.
+
+Quote latency at the 95th percentile drifted to 3.04 seconds, above the \
+2.3-second target. The manual-priced Oryx leg is the slowest part of the \
+panel and is the whole of the gap.`,
       highlightsJson: JSON.stringify([
         {
           metricKey: "policies_issued",
@@ -1644,7 +1667,16 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
       date: "2026-01-02",
       audience: "board",
       locale: "en",
-      narrativeRef: briefingRef(briefingIds.jan02Board),
+      narrativeRef: `Q4 finished ahead of plan on premium and slightly behind on acquisition \
+cost. December alone wrote AED 2,389,000, up 18.4% on the prior month.
+
+The book grew in every month of the quarter and ended at 4,608 active \
+policies, up 5.7%.
+
+The one item for the board is the own-paper loss ratio, which widened to \
+64.2% in December. It is one month, not a trend, but it is the number that \
+would change the Q1 plan if it holds. This draft is in review and has not \
+been circulated.`,
       highlightsJson: JSON.stringify([
         {
           metricKey: "gwp",
@@ -1681,7 +1713,14 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
       date: "2025-12-31",
       audience: "investor",
       locale: "en",
-      narrativeRef: briefingRef(briefingIds.dec31Investor),
+      narrativeRef: `Retained commission for December was AED 226,950, tracking premium at 18.4% \
+growth. The shift toward b2b volume did not dilute the margin, which is the \
+question this mix shift was always going to raise.
+
+Acquisition cost per policy improved for the third consecutive month to \
+AED 189. The improvement is organic — paid spend was flat over the quarter.
+
+This is a draft and the December figures are unaudited.`,
       highlightsJson: JSON.stringify([
         {
           metricKey: "net_commission",

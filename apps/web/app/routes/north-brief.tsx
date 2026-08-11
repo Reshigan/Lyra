@@ -23,6 +23,7 @@ import {
   Select
 } from "@lyra/ui";
 import { api } from "../api.server";
+import { humanise } from "../modules/spec";
 import { cloudflare } from "../context";
 import { Gate } from "./staff";
 import { useShellData } from "./workspace";
@@ -71,13 +72,14 @@ const LABELS: Labels = {
     print: "Print",
     "link.board": "Board pack",
     "link.whatif": "What-if",
-    // The three audiences a briefing can be written for, and the two states it
+    // The three audiences a briefing can be written for, and the three states it
     // can be in. Rendered directly as `l(brief.audience)` / `l(row.status)`,
     // so a missing key here shows the actor a raw enum.
     exec: "Executive",
     board: "Board",
     investor: "Investor",
     draft: "Draft",
+    review: "In review",
     published: "Published",
     "brief.none.title": "No briefing has been written yet",
     "brief.none.body": "Asking for one runs the narrator over the metrics that have closed, and lands it here for review.",
@@ -126,6 +128,7 @@ const LABELS: Labels = {
     board: "مجلس الإدارة",
     investor: "المستثمرون",
     draft: "مسودة",
+    review: "قيد المراجعة",
     published: "منشورة",
     "brief.none.title": "لم تُكتب أي إحاطة بعد",
     "brief.none.body": "طلب إحاطة يشغّل الراوي على المؤشرات المغلقة، ويضع النتيجة هنا للمراجعة.",
@@ -364,7 +367,9 @@ export default function NorthBrief() {
   };
   const name = (metricKey: string) => {
     const metric = byKey.get(metricKey);
-    return metric ? metricName(metric, locale) : metricKey;
+    // A briefing outlives the metric list it was written against, and the
+    // anomaly copy reads "quote_latency_p95 moved from…" when it misses.
+    return metric ? metricName(metric, locale) : humanise(metricKey);
   };
 
   return (

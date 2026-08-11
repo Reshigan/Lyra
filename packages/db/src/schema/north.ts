@@ -52,7 +52,7 @@ export const briefings = sqliteTable(
     date: text("date").notNull(), // YYYY-MM-DD
     audience: text("audience").notNull().default("exec"), // exec|board|investor
     locale: text("locale").notNull().default("en"),
-    narrativeRef: text("narrative_ref"), // R2 key
+    narrativeRef: text("narrative_ref"), // the briefing prose itself (see engines/narrator.ts)
     highlightsJson: text("highlights_json"),
     anomaliesJson: text("anomalies_json"),
     status: text("status").notNull().default("draft"), // draft|review|published
