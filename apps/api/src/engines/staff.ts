@@ -169,7 +169,7 @@ export async function inviteStaff(
   await assertSeatAvailable(ctx);
 
   const user: typeof schema.users.$inferInsert = {
-    id: newId("usr", ctx.now),
+    id: newId("us", ctx.now),
     tenantId: ctx.tenantId,
     email,
     name: input.name,

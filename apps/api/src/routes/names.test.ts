@@ -61,7 +61,8 @@ const CASE = { id: "cas_1", ref: "CASE-1042" };
 const rows = (table: unknown): unknown[] => {
   const name = String((table as { [k: symbol]: unknown })[Symbol.for("drizzle:Name")] ?? "");
   if (name === "core_customers") return [CUSTOMER];
-  if (name === "core_users") return [USER];
+  // Both mints live in core_users: the registry's `us` and the legacy `usr`.
+  if (name === "core_users") return [USER, { ...USER, id: "usr_1" }];
   if (name === "core_teams") return [TEAM];
   if (name === "axis_cases") return [CASE];
   return [];
@@ -118,6 +119,17 @@ describe("GET /v1/names", () => {
     const body = (await res.json()) as { names: Record<string, string> };
     expect(body.names["user:us_1"]).toBe("Layla A•• M•••••••");
     expect(JSON.stringify(body)).not.toContain("SECRET-HASH");
+  });
+
+  it("resolves users minted under the legacy `usr_` prefix", async () => {
+    // Users were minted two ways — the registry's `us` and a hand-written
+    // `usr` in staff invites and SSO provisioning — so every staff-invited
+    // person was permanently unnameable. New ids are `us_`; the alias is what
+    // keeps the rows already on disk readable.
+    const app = router(baseCtx(fakeDb(rows), ["*:*:*"]));
+    const res = await app.fetch(new Request("http://api.test/?refs=users:usr_1"));
+    const body = (await res.json()) as { names: Record<string, string> };
+    expect(body.names["users:usr_1"]).toBe("Layla Al Mansouri");
   });
 
   it("ignores unknown prefixes and malformed refs rather than failing the batch", async () => {

@@ -401,7 +401,7 @@ async function linkOrCreate(
   if (!role) throw forbidden(`default role ${provider.defaultRoleKey} does not exist`);
 
   const user = {
-    id: newId("usr", now),
+    id: newId("us", now),
     tenantId: provider.tenantId,
     email,
     phone: null,

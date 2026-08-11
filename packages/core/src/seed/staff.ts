@@ -58,7 +58,7 @@ export async function seedStaff(ctx: SeedContext): Promise<void> {
   // the background check is still with the vendor, and everything gated on
   // `active` is untouched — which is exactly why she has no password yet and
   // her account is `invited` rather than live.
-  const joiner = id("usr", now + 1);
+  const joiner = id("us", now + 1);
   await db.insert(schema.users).values({
     id: joiner,
     tenantId,
@@ -108,7 +108,7 @@ export async function seedStaff(ctx: SeedContext): Promise<void> {
   /* ---------------------------------------------------------------- leaver */
   // Resigned, last day was yesterday. Suspended rather than deleted: his name is
   // on an audit trail and a deleted row would break the chain that proves it.
-  const leaver = id("usr", now + 30);
+  const leaver = id("us", now + 30);
   const lastDay = now - DAY;
   await db.insert(schema.users).values({
     id: leaver,

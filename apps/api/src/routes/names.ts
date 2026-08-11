@@ -49,6 +49,14 @@ const DISPLAY_COLUMNS = [
   "slug"
 ];
 
+/**
+ * Legacy id prefixes that point at a registered resource under another name.
+ * Users were minted both as the registry's `us` and as a hand-written `usr`
+ * (staff invites, SSO provisioning), so those rows resolved to nothing at all.
+ * Minting is aligned on `us` now; this keeps the rows already on disk readable.
+ */
+const ALIASES: Record<string, string> = { usr: "us" };
+
 interface Parsed {
   /** The ref exactly as asked, so the caller can look up the string it holds. */
   ref: string;
@@ -62,7 +70,8 @@ function parseRef(ref: string): Parsed | null {
   const id = colon > 0 ? ref.slice(colon + 1) : ref;
   const under = id.indexOf("_");
   if (under <= 0 || under === id.length - 1) return null;
-  return { ref, id, prefix: id.slice(0, under) };
+  const prefix = id.slice(0, under);
+  return { ref, id, prefix: ALIASES[prefix] ?? prefix };
 }
 
 /** A `*Json` column holds `{ en, ar }`; anything else is already a string. */
