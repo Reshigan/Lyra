@@ -367,9 +367,12 @@ describe("the period screen", () => {
       args("https://web.test/ledger/settlement?counterpartyKind=partner&channelId=brokerAlpha&period=2026-06")
     );
 
-    expect(calls[1]?.url).toContain("counterpartyKind=partner");
-    expect(calls[1]?.url).toContain(`counterpartyRef=${encodeURIComponent("channel:brokerAlpha")}`);
-    expect(calls[1]?.url).toContain("period=2026-06");
+    // The channel picker's list is fetched alongside; the queue call is the
+    // one that carries the filters.
+    const queue = calls.map((call) => call.url).find((url) => url.includes("/settlements"))!;
+    expect(queue).toContain("counterpartyKind=partner");
+    expect(queue).toContain(`counterpartyRef=${encodeURIComponent("channel:brokerAlpha")}`);
+    expect(queue).toContain("period=2026-06");
     expect(loaded.settlements).toHaveLength(1);
     expect(loaded.may.settle).toBe(false);
   });

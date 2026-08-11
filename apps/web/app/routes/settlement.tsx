@@ -23,6 +23,8 @@ import {
   type Column
 } from "@lyra/ui";
 import { ApiError, api, fetchMe, names } from "../api.server";
+import { refOptions } from "../refs.server";
+import { RefPicker, type RefOption } from "../components/ref-picker";
 import { cloudflare } from "../context";
 import { pseudoText, translator } from "../i18n";
 import { who } from "../names";
@@ -372,10 +374,15 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     filters,
     settlements: [] as Settlement[],
     resolved: {} as Record<string, string>,
+    channels: [] as RefOption[],
     idempotencyKey
   };
 
   if (!may.read) return shut;
+
+  // Both boxes wanted `ch_01KE…` typed in from memory. The channel list is
+  // short and named; an actor who cannot read it keeps the plain box.
+  const channels = await refOptions("/v1/dist/channels?sort=name&order=asc&limit=200", env, request);
 
   const query = new URLSearchParams({ limit: "100" });
   if (filters.counterpartyKind) query.set("counterpartyKind", filters.counterpartyKind);
@@ -388,11 +395,11 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     // A settlement carries `channel:ch_…` / `provider:pv_…` and no name for it,
     // so the COUNTERPARTY column was a queue of ULIDs (ADR-0048).
     const resolved = await names(page.data.map((one) => one.counterpartyRef), { env, request });
-    return { may, filters, settlements: page.data, resolved, idempotencyKey };
+    return { may, filters, settlements: page.data, resolved, channels, idempotencyKey };
   } catch (error) {
     // A grant can be revoked between /v1/me and this call; that is a notice,
     // never a blank screen.
-    if (error instanceof ApiError && error.status === 403) return shut;
+    if (error instanceof ApiError && error.status === 403) return { ...shut, channels };
     throw error;
   }
 }
@@ -548,7 +555,12 @@ export default function SettlementPeriod() {
           />
         </Field>
         <Field label={l("channelId")}>
-          <Input name="channelId" defaultValue={context.channelId ?? ""} className="w-56" />
+          <RefPicker
+            name="channelId"
+            options={loaded.channels}
+            defaultValue={context.channelId ?? ""}
+            className="w-56"
+          />
         </Field>
         <Field label={l("period")}>
           <Input type="month" name="period" defaultValue={context.period ?? ""} />
@@ -576,7 +588,12 @@ export default function SettlementPeriod() {
               />
             </Field>
             <Field label={l("channelId")} required hint={l("channelIdHint", { example: "…" })}>
-              <Input name="channelId" required defaultValue={context.channelId ?? ""} className="w-56" />
+              <RefPicker
+                name="channelId"
+                options={loaded.channels}
+                defaultValue={context.channelId ?? ""}
+                className="w-56"
+              />
             </Field>
             <Field label={l("period")} required hint={l("periodHint")}>
               <Input type="month" name="period" required defaultValue={context.period ?? thisMonth()} />
