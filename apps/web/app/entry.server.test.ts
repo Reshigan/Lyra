@@ -26,4 +26,16 @@ describe("contentSecurityPolicy", () => {
     ])
       expect(policy).toContain(directive);
   });
+
+  it("admits the Turnstile widget by host, and nothing else third-party", () => {
+    const policy = contentSecurityPolicy("abc123");
+
+    // Script, iframe and the widget's own XHR back to Cloudflare — miss any one
+    // and the challenge silently fails to render on the public forms.
+    expect(policy).toContain("script-src 'self' 'nonce-abc123' https://challenges.cloudflare.com");
+    expect(policy).toContain("frame-src https://challenges.cloudflare.com");
+    expect(policy).toContain("connect-src 'self' https://challenges.cloudflare.com");
+    // One named host, never a wildcard.
+    expect(policy).not.toContain("*");
+  });
 });

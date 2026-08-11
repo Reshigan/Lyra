@@ -48,15 +48,30 @@ Before the first `terraform apply`:
   docs/10 §6 requirements with no code-side dependency — nothing in
   `apps/api`/`apps/web` checks these are on.
 - **Turnstile** (`turnstile.tf`): one managed widget scoped to the zone's
-  domains. This resource only provisions the widget (sitekey + secret,
-  secret written to a `wrangler secret`-style output, never to state in
-  plaintext beyond what Terraform state already requires encrypting at
-  rest). **Not done here:** wiring the sitekey into an actual form —
-  docs/06 doesn't enumerate which web forms count as "public," and no
-  Turnstile widget exists anywhere in `apps/web` today (`grep -rl turnstile
-  apps/` — zero hits). That's a follow-up app-side task once the account
-  owner decides which forms (signup? public lead-gen forms on tenant hosted
-  pages?) need it.
+  domains. This resource provisions the widget (sitekey + secret, secret
+  written to a `wrangler secret`-style output, never to state in plaintext
+  beyond what Terraform state already requires encrypting at rest).
+
+  The app side is wired: the challenge renders on the two forms a stranger
+  can post to with no session and no token — portal lead capture
+  (`portal.$tenantSlug.tsx`, J-C1) and public DSAR intake
+  (`portal.$tenantSlug.privacy.tsx`, J-C4) — and `apps/api`
+  (`src/turnstile.ts`) verifies the response against siteverify before
+  either handler writes anything. Every other form on the platform sits
+  behind a session or a one-time token and is not challenged.
+
+  Both sides are off until their binding exists, so `pnpm dev`, the on-prem
+  twin and CI are unaffected. To turn it on after `terraform apply`:
+
+  ```bash
+  terraform output turnstile_sitekey            # → apps/web wrangler.jsonc vars.TURNSTILE_SITE_KEY
+  terraform output -raw turnstile_secret | \
+    wrangler secret put TURNSTILE_SECRET --config apps/api/wrangler.jsonc
+  ```
+
+  Set both or neither: a site key with no secret challenges visitors and
+  verifies nothing; a secret with no site key rejects every submission,
+  because no widget is rendered to produce a token.
 
 ## Applying per environment
 

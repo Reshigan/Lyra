@@ -5,6 +5,7 @@ import { id as newId, schema, BrandJson, EntitlementsJson, PolicyJson } from "@l
 import { audit, conflict, emit, notFound, recordConsent, sha256Hex } from "@lyra/core";
 import { body } from "../http.js";
 import { readUpload } from "../upload.js";
+import { verifyTurnstile } from "../turnstile.js";
 import { ctxFor, db as rawDb, throttle } from "../auth.js";
 import { panelFor } from "../engines/rating.js";
 import { runShop } from "../engines/shop.js";
@@ -61,6 +62,11 @@ portalRoutes.get("/:tenantSlug/site", async (c) => {
   });
 });
 
+/** The widget's `cf-turnstile-response`, forwarded by the web action. Optional in
+ * the schema because the gate itself decides whether one is required — see
+ * `verifyTurnstile`. */
+const TurnstileToken = z.string().max(4096).optional();
+
 const LeadBody = z
   .object({
     productId: z.string().min(1),
@@ -75,7 +81,8 @@ const LeadBody = z
      * lead-capture behaviour and still valid — a product whose panel prices by
      * referral has nothing to show in the browser.
      */
-    inputs: z.record(z.string(), z.unknown()).optional()
+    inputs: z.record(z.string(), z.unknown()).optional(),
+    turnstileToken: TurnstileToken
   })
   .strict();
 
@@ -154,6 +161,7 @@ portalRoutes.post("/:tenantSlug/leads", async (c) => {
   await throttle(c.env, `portal-lead:${email}`, LEAD_MAX, LEAD_WINDOW_SEC);
   const ip = c.req.header("cf-connecting-ip");
   if (ip) await throttle(c.env, `portal-lead-ip:${ip}`, LEAD_IP_MAX, LEAD_WINDOW_SEC);
+  await verifyTurnstile(c.env, input.turnstileToken, ip);
 
   const database = rawDb(c.env);
   const tenant = await activeTenant(database, c.req.param("tenantSlug"));
@@ -541,7 +549,8 @@ const PrivacyRequestBody = z
     type: z.enum(["access", "erasure", "rectification", "portability", "objection", "restriction"]),
     email: z.string().email(),
     name: z.string().max(200).optional(),
-    details: z.string().max(2000).optional()
+    details: z.string().max(2000).optional(),
+    turnstileToken: TurnstileToken
   })
   .strict();
 
@@ -575,6 +584,7 @@ portalRoutes.post("/:tenantSlug/privacy-requests", async (c) => {
   await throttle(c.env, `portal-dsar:${email}`, DSAR_MAX, LEAD_WINDOW_SEC);
   const ip = c.req.header("cf-connecting-ip");
   if (ip) await throttle(c.env, `portal-dsar-ip:${ip}`, DSAR_IP_MAX, LEAD_WINDOW_SEC);
+  await verifyTurnstile(c.env, input.turnstileToken, ip);
 
   const database = rawDb(c.env);
   const tenant = await activeTenant(database, c.req.param("tenantSlug"));

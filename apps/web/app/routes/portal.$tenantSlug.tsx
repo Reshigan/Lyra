@@ -14,6 +14,7 @@ import { ApiError, api, asRouteError, type Brand } from "../api.server";
 import { DEFAULT_LOCALE, localeFrom, pseudoText } from "../i18n";
 import { optionLabel } from "../modules/spec";
 import { brandStyle } from "../components/shell";
+import { Turnstile } from "../components/turnstile";
 
 // The public comparison site (yallacompare-style, docs/decisions/ADR-0030). No
 // session, no tenant-scoped caller — a lead can land here from an ad with
@@ -37,6 +38,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "portal.form.success": "Thanks — we've received your request and will be in touch.",
     "portal.form.error.validation": "Check the highlighted fields and try again.",
     "portal.form.error.throttled": "Too many requests from this email — try again later.",
+    "portal.form.error.challenge": "The security check did not pass. Reload the page and try again.",
     "portal.form.error.generic": "Something went wrong. Please try again.",
     "portal.privacy": "Your privacy rights",
     "portal.quick": "Quick quote — three details, real prices.",
@@ -69,6 +71,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "portal.form.success": "شكرًا — استلمنا طلبك وسنتواصل معك قريبًا.",
     "portal.form.error.validation": "تحقق من الحقول المحددة وحاول مرة أخرى.",
     "portal.form.error.throttled": "طلبات كثيرة من هذا البريد — حاول لاحقًا.",
+    "portal.form.error.challenge": "لم يجتز فحص الأمان. أعد تحميل الصفحة وحاول مرة أخرى.",
     "portal.form.error.generic": "حدث خطأ ما. حاول مرة أخرى.",
     "portal.privacy": "حقوقك في الخصوصية",
     "portal.quick": "عرض سعر سريع — ثلاث معلومات وأسعار حقيقية.",
@@ -138,7 +141,12 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   const env = context.get(cloudflare).env;
   const tenantSlug = params.tenantSlug!;
   const site = await api<SiteResponse>(`/v1/portal/${tenantSlug}/site`, { env, request }).catch(asRouteError);
-  return { locale: localeFrom(request), tenantSlug, site };
+  return {
+    locale: localeFrom(request),
+    tenantSlug,
+    site,
+    turnstileSiteKey: env.TURNSTILE_SITE_KEY ?? null
+  };
 }
 
 export const meta: MetaFunction<typeof loader> = ({ loaderData: loaded }) => [
@@ -181,7 +189,10 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
         ...(form.get("phone") ? { phone: String(form.get("phone")).trim() } : {}),
         ...(form.get("message") ? { message: String(form.get("message")).trim() } : {}),
         consent: form.get("consent") === "on",
-        ...(Object.keys(inputs).length ? { inputs } : {})
+        ...(Object.keys(inputs).length ? { inputs } : {}),
+        ...(form.get("cf-turnstile-response")
+          ? { turnstileToken: String(form.get("cf-turnstile-response")) }
+          : {})
       }
     });
     // A token means the panel priced in-session: take the visitor straight to
@@ -198,15 +209,17 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
     const errorKey =
       error.status === 429
         ? "portal.form.error.throttled"
-        : error.status === 400
-          ? "portal.form.error.validation"
-          : "portal.form.error.generic";
+        : error.status === 403
+          ? "portal.form.error.challenge"
+          : error.status === 400
+            ? "portal.form.error.validation"
+            : "portal.form.error.generic";
     return { productId, ok: false, errorKey } satisfies ActionData;
   }
 }
 
 export default function Portal() {
-  const { locale, tenantSlug, site } = useLoaderData<typeof loader>();
+  const { locale, tenantSlug, site, turnstileSiteKey } = useLoaderData<typeof loader>();
   const result = useActionData<ActionData>();
   const navigation = useNavigation();
   const l = labeller(locale);
@@ -297,6 +310,7 @@ export default function Portal() {
                         <Textarea name="message" rows={3} />
                       </Field>
                       <Checkbox name="consent" required label={l("portal.form.consent")} />
+                      <Turnstile siteKey={turnstileSiteKey} locale={locale} />
                       <Button type="submit" variant="primary" loading={busy}>
                         {busy ? l("portal.form.working") : l("portal.form.submit")}
                       </Button>

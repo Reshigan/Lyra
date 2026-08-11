@@ -183,6 +183,24 @@ describe("POST /v1/portal/:tenantSlug/leads", () => {
     expect(qr1!.channelId).toBe(qr2!.channelId);
   });
 
+  it("refuses an unchallenged submission once a Turnstile secret is bound (docs/10 §6)", async () => {
+    const productId = await firstActiveProductId();
+    kv.store.clear(); // the assertion under test is the 403, not a leftover 429
+    env.TURNSTILE_SECRET = "1x0000000000000000000000000000000AA";
+    try {
+      const res = await call("POST", "/v1/portal/gonxt/leads", {
+        productId,
+        name: "Bot",
+        email: "bot@example.com",
+        consent: true
+      });
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe("forbidden");
+    } finally {
+      delete env.TURNSTILE_SECRET;
+    }
+  });
+
   it("throttles repeated submissions from the same email", async () => {
     const productId = await firstActiveProductId();
     const payload = { productId, name: "Spammy", email: "spam@example.com", consent: true };

@@ -10,12 +10,21 @@ import { isbot } from "isbot";
  * without it `default-src 'self'` refuses React Router's inline hydration
  * scripts and the page never becomes interactive.
  */
+/**
+ * Turnstile's script and the iframe it mounts (docs/10 §6, components/turnstile.tsx).
+ * One named Cloudflare host, not a wildcard — the widget is the only third-party
+ * code any document here is allowed to load.
+ */
+const TURNSTILE_HOST = "https://challenges.cloudflare.com";
+
 export function contentSecurityPolicy(nonce: string): string {
   return [
     "default-src 'self'",
-    `script-src 'self' 'nonce-${nonce}'`,
+    `script-src 'self' 'nonce-${nonce}' ${TURNSTILE_HOST}`,
     "img-src 'self' data:",
     "style-src 'self' 'unsafe-inline'",
+    `frame-src ${TURNSTILE_HOST}`,
+    `connect-src 'self' ${TURNSTILE_HOST}`,
     "frame-ancestors 'none'"
   ].join("; ");
 }

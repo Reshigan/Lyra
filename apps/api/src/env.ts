@@ -73,6 +73,12 @@ export interface Env {
    * a `vars` entry: the day it lands in wrangler.jsonc it is in git.
    */
   FIELD_KEY?: string;
+  /**
+   * docs/10 §6 Turnstile secret (`infra/cloudflare/turnstile.tf`). A wrangler
+   * secret. Its absence is meaningful: no secret, no challenge — see
+   * `turnstile.ts`.
+   */
+  TURNSTILE_SECRET?: string;
 }
 
 /**

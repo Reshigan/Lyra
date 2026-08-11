@@ -12,6 +12,7 @@ import { cloudflare } from "../context";
 import { ApiError, api, asRouteError, type Brand } from "../api.server";
 import { DEFAULT_LOCALE, localeFrom, pseudoText } from "../i18n";
 import { brandStyle } from "../components/shell";
+import { Turnstile } from "../components/turnstile";
 
 // J-C4 "Exercise privacy rights" (docs/06), public half. Same door as the
 // comparison site next to it: no session, nothing but the tenant slug in the
@@ -49,6 +50,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "privacy.success.reference": "Reference",
     "privacy.error.validation": "Check the highlighted fields and try again.",
     "privacy.error.throttled": "Too many requests from this address — try again later.",
+    "privacy.error.challenge": "The security check did not pass. Reload the page and try again.",
     "privacy.error.generic": "Something went wrong. Please try again.",
     "privacy.back": "Back to products"
   },
@@ -74,6 +76,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "privacy.success.reference": "الرقم المرجعي",
     "privacy.error.validation": "تحقق من الحقول المحددة وحاول مرة أخرى.",
     "privacy.error.throttled": "طلبات كثيرة من هذا العنوان — حاول لاحقًا.",
+    "privacy.error.challenge": "لم يجتز فحص الأمان. أعد تحميل الصفحة وحاول مرة أخرى.",
     "privacy.error.generic": "حدث خطأ ما. حاول مرة أخرى.",
     "privacy.back": "العودة إلى المنتجات"
   }
@@ -92,7 +95,12 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   const env = context.get(cloudflare).env;
   const tenantSlug = params.tenantSlug!;
   const site = await api<SiteResponse>(`/v1/portal/${tenantSlug}/site`, { env, request }).catch(asRouteError);
-  return { locale: localeFrom(request), tenantSlug, tenant: site.tenant };
+  return {
+    locale: localeFrom(request),
+    tenantSlug,
+    tenant: site.tenant,
+    turnstileSiteKey: env.TURNSTILE_SITE_KEY ?? null
+  };
 }
 
 export const meta: MetaFunction<typeof loader> = ({ loaderData: loaded }) => [
@@ -114,7 +122,10 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
         type: String(form.get("type") ?? ""),
         email: String(form.get("email") ?? "").trim(),
         ...(form.get("name") ? { name: String(form.get("name")).trim() } : {}),
-        ...(form.get("details") ? { details: String(form.get("details")).trim() } : {})
+        ...(form.get("details") ? { details: String(form.get("details")).trim() } : {}),
+        ...(form.get("cf-turnstile-response")
+          ? { turnstileToken: String(form.get("cf-turnstile-response")) }
+          : {})
       }
     });
     return { ok: true, reference: created.reference, dueAt: created.dueAt } satisfies ActionData;
@@ -123,15 +134,17 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
     const errorKey =
       error.status === 429
         ? "privacy.error.throttled"
-        : error.status === 400
-          ? "privacy.error.validation"
-          : "privacy.error.generic";
+        : error.status === 403
+          ? "privacy.error.challenge"
+          : error.status === 400
+            ? "privacy.error.validation"
+            : "privacy.error.generic";
     return { ok: false, errorKey } satisfies ActionData;
   }
 }
 
 export default function PortalPrivacy() {
-  const { locale, tenantSlug, tenant } = useLoaderData<typeof loader>();
+  const { locale, tenantSlug, tenant, turnstileSiteKey } = useLoaderData<typeof loader>();
   const result = useActionData<ActionData>();
   const navigation = useNavigation();
   const l = labeller(locale);
@@ -193,6 +206,8 @@ export default function PortalPrivacy() {
           <Field label={l("privacy.details")} id="privacy-details">
             <Textarea name="details" rows={4} />
           </Field>
+
+          <Turnstile siteKey={turnstileSiteKey} locale={locale} />
 
           <Button type="submit" variant="primary" loading={busy}>
             {busy ? l("privacy.working") : l("privacy.submit")}

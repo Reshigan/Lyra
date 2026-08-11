@@ -1,6 +1,7 @@
 # docs/10-deployment-cloudflare.md §6: "Turnstile on public forms."
-# Provisions the widget only — wiring the sitekey into a specific apps/web
-# form is a follow-up app-side task (see README.md).
+# Provisions the widget. The app side is already wired to it — apps/web renders
+# the challenge on the portal lead and DSAR forms, apps/api verifies the
+# response — and stays dormant until these outputs are bound (see README.md).
 
 resource "cloudflare_turnstile_widget" "public_forms" {
   account_id = var.account_id

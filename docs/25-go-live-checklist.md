@@ -1004,14 +1004,24 @@ These cannot be done by an assistant; they require the account owner directly.
       §6) — **NOT APPLIED, USER ACTION**: these are zone-level Cloudflare
       settings. **Drafted, not applied, 2026-08-10:** `infra/cloudflare/waf.tf`
       declares the Cloudflare Managed Ruleset + Bot Fight Mode,
-      `turnstile.tf` provisions a Turnstile widget (sitekey/secret only —
-      wiring the sitekey into an actual `apps/web` form is a separate,
-      not-yet-scoped follow-up; no public form currently embeds Turnstile,
-      confirmed via `grep -rl turnstile apps/`). Nothing in `apps/api`/
+      `turnstile.tf` provisions a Turnstile widget. Nothing in `apps/api`/
       `apps/web` code enables or depends on the zone-level settings, so
-      there is no other code-side gap — only running `terraform apply`
+      the remaining work is running `terraform apply`
       (see `infra/cloudflare/README.md`) or the dashboard-toggle equivalent,
       which the account owner needs to do before go-live.
+
+      **Turnstile's app side is now wired, 2026-08-11.** The formerly flagged
+      "no public form embeds Turnstile" gap is closed. The challenge renders
+      on the only two forms a stranger can post to with no session and no
+      token — portal lead capture (J-C1, `portal.$tenantSlug.tsx`) and public
+      DSAR intake (J-C4, `portal.$tenantSlug.privacy.tsx`) — and
+      `apps/api/src/turnstile.ts` verifies the response against siteverify,
+      failing closed, before either handler writes. Both halves are dormant
+      until their binding exists (`TURNSTILE_SITE_KEY` var on web,
+      `TURNSTILE_SECRET` secret on api), so dev, on-prem and CI are
+      unaffected and the account owner turns it on by setting the two values
+      `terraform output` prints. CSP admits `challenges.cloudflare.com` by
+      name for script/frame/connect — no wildcard.
 
 ---
 
