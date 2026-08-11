@@ -585,7 +585,12 @@ export function Card({
           {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
         </header>
       ) : null}
-      <div className={padded ? "p-4" : undefined}>{children}</div>
+      {/* A card whose body is conditional (`{rows.length ? <ul/> : null}`) used
+          to keep its padding anyway, and the empty band under the header read
+          as a half-loaded screen. No children, no body. */}
+      {children == null || children === false ? null : (
+        <div className={padded ? "p-4" : undefined}>{children}</div>
+      )}
     </section>
   );
 }
