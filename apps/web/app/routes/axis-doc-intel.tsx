@@ -33,6 +33,7 @@ import {
 import { ApiError, api } from "../api.server";
 import { cloudflare } from "../context";
 import { pseudoText } from "../i18n";
+import { tag } from "./detail-kit";
 import { Gate } from "./staff";
 import { useShellData } from "./workspace";
 
@@ -128,6 +129,15 @@ const LABELS: Record<string, Record<string, string>> = {
     "empty.title": "Nothing waiting",
     "empty.body": "Every document has been read and confirmed.",
     "nav.label": "Documents",
+    "docType.eid": "Identity card",
+    "docType.mulkiya": "Vehicle registration",
+    "docType.census": "Member list",
+    "docType.medical": "Medical report",
+    "docType.tradelicense": "Trade licence",
+    "docType.other": "Other",
+    "preview.none": "No preview",
+    "preview.nonePlus": "This file is not an image the browser can draw — a PDF, or a scan the store has not kept. Open it to read it.",
+    "preview.open": "Open the file",
     approvalTitle: "Waiting on an approval",
     approvalBody:
       "This is gated by {policy}. The request is recorded and takes effect once someone with the authority approves it.",
@@ -193,6 +203,15 @@ const LABELS: Record<string, Record<string, string>> = {
     "empty.title": "لا شيء بالانتظار",
     "empty.body": "كل المستندات قُرئت وأُكّدت.",
     "nav.label": "المستندات",
+    "docType.eid": "بطاقة الهوية",
+    "docType.mulkiya": "ملكية المركبة",
+    "docType.census": "كشف الأعضاء",
+    "docType.medical": "تقرير طبي",
+    "docType.tradelicense": "رخصة تجارية",
+    "docType.other": "أخرى",
+    "preview.none": "لا توجد معاينة",
+    "preview.nonePlus": "هذا الملف ليس صورة يمكن للمتصفح رسمها — ملف PDF أو نسخة لم يحتفظ بها المخزن. افتحه لقراءته.",
+    "preview.open": "فتح الملف",
     approvalTitle: "بانتظار موافقة",
     approvalBody: "هذا الإجراء يمر بسياسة {policy}. سُجّل الطلب ويسري بعد موافقة صاحب الصلاحية.",
     approvalLink: "فتح الموافقات",
@@ -490,6 +509,13 @@ export default function AxisDocIntel() {
   const counted = (status: string) => loaded.docs.filter((doc) => doc.status === status).length;
 
   const [index, setIndex] = useState(0);
+  const [broken, setBroken] = useState(false);
+  // A new row is a new file: whatever failed to draw for the last one says
+  // nothing about this one.
+  const go = (next: number) => {
+    setIndex(next);
+    setBroken(false);
+  };
   const selected = loaded.docs[Math.min(index, Math.max(loaded.docs.length - 1, 0))];
   const model = selected ? fieldsOf(selected) : {};
   const names = Object.keys(model);
@@ -503,10 +529,12 @@ export default function AxisDocIntel() {
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
-      const tag = (event.target as HTMLElement | null)?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      const focused = (event.target as HTMLElement | null)?.tagName;
+      if (focused === "INPUT" || focused === "TEXTAREA" || focused === "SELECT") return;
       if (event.key === "j") setIndex((i) => Math.min(i + 1, loaded.docs.length - 1));
       else if (event.key === "k") setIndex((i) => Math.max(i - 1, 0));
+      else return;
+      setBroken(false);
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -558,7 +586,7 @@ export default function AxisDocIntel() {
               <li key={doc.id}>
                 <button
                   type="button"
-                  onClick={() => setIndex(i)}
+                  onClick={() => go(i)}
                   aria-current={i === index ? "true" : undefined}
                   className={cn(
                     "flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-start font-ui text-12",
@@ -566,7 +594,7 @@ export default function AxisDocIntel() {
                     i === index ? "bg-surface-2 text-accent" : "text-muted"
                   )}
                 >
-                  <span className="truncate">{doc.docType}</span>
+                  <span className="truncate">{tag(l, "docType", doc.docType)}</span>
                   <Badge tone={statusTone(doc.status)} size="sm">
                     {l(`status.${doc.status}`)}
                   </Badge>
@@ -576,11 +604,28 @@ export default function AxisDocIntel() {
           </ul>
 
           <div className="relative overflow-hidden rounded border border-border bg-surface-2 lg:max-h-[70vh]">
-            <img
-              src={`/axis/documents/${selected.id}/file`}
-              alt={selected.docType}
-              className="block w-full object-contain"
-            />
+            {/* Not every document is a drawable image — a PDF, or a seed row
+                whose bytes were never stored — and a broken image icon reads as
+                a broken screen. One onError and the panel says what happened. */}
+            {broken ? (
+              <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
+                <p className="font-ui text-14 text-muted">{l("preview.none")}</p>
+                <p className="font-ui text-12 text-subtle">{l("preview.nonePlus")}</p>
+                <a
+                  href={`/axis/documents/${selected.id}/file`}
+                  className="font-ui text-12 text-accent underline underline-offset-2"
+                >
+                  {l("preview.open")}
+                </a>
+              </div>
+            ) : (
+              <img
+                src={`/axis/documents/${selected.id}/file`}
+                alt={tag(l, "docType", selected.docType)}
+                onError={() => setBroken(true)}
+                className="block w-full object-contain"
+              />
+            )}
             {Object.entries(boxes).map(([name, [x, y, w, h]]) => (
               <span
                 key={name}
@@ -599,7 +644,7 @@ export default function AxisDocIntel() {
                   to={`/axis/documents/${selected.id}`}
                   className="font-mono text-13 text-accent underline underline-offset-2"
                 >
-                  {selected.docType}
+                  {tag(l, "docType", selected.docType)}
                 </Link>
                 <Badge tone={statusTone(selected.status)} size="sm">
                   {l(`status.${selected.status}`)}
@@ -625,7 +670,7 @@ export default function AxisDocIntel() {
                       {l("evidence.file")}: <Ref value={selected.fileId} />
                     </span>
                     <span>
-                      {l("evidence.type")}: {selected.docType}
+                      {l("evidence.type")}: {tag(l, "docType", selected.docType)}
                     </span>
                     <span>
                       {l("evidence.read")}: <DateTime value={selected.createdAt} locale={locale} />
@@ -644,7 +689,7 @@ export default function AxisDocIntel() {
                   </span>
                 }
               >
-                {selected.fileId}
+                <Ref value={selected.fileId} />
               </EvidenceLink>
             }
           >
