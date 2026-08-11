@@ -82,5 +82,12 @@ describe("humanise", () => {
   it("reads a dotted audit code as a sentence", () => {
     expect(humanise("core.session.login")).toBe("Core session login");
     expect(humanise("compliance.screening.run")).toBe("Compliance screening run");
+
+    // "Ai agent pause" was the title on every AI row of the home timeline.
+    expect(humanise("ai.agent.pause")).toBe("AI agent pause");
+    expect(humanise("compliance.dsar.export")).toBe("Compliance DSAR export");
+    expect(humanise("apiKeyRotated")).toBe("API key rotated");
+    // A word that merely starts with one is left alone.
+    expect(humanise("aid.requested")).toBe("Aid requested");
   });
 });

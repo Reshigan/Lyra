@@ -213,8 +213,35 @@ export function optionLabel(
 }
 
 /**
+ * Words this platform never spells in lower case. Lowercasing is what makes
+ * `pendingSettlement` and `PENDING_SETTLEMENT` land in the same place, and it
+ * cost us "Ai agent pause" on the home timeline and "Dsar" on the compliance
+ * queue — the two initialisms a regulator reads most.
+ */
+const ACRONYMS = new Set([
+  "ai",
+  "api",
+  "crm",
+  "dsar",
+  "fnol",
+  "id",
+  "kpi",
+  "kyc",
+  "llm",
+  "ocr",
+  "pii",
+  "pos",
+  "psp",
+  "sla",
+  "sms",
+  "sso",
+  "url",
+  "vat"
+]);
+
+/**
  * `pending_settlement` → `Pending settlement`, `core.session.login` → `Core
- * session login`. Readable beats faithful.
+ * session login`, `ai.agent.pause` → `AI agent pause`. Readable beats faithful.
  */
 export function humanise(value: string): string {
   const words = value
@@ -222,7 +249,12 @@ export function humanise(value: string): string {
     .replace(/[._-]+/g, " ")
     .trim()
     .toLowerCase();
-  return words ? `${words.charAt(0).toUpperCase()}${words.slice(1)}` : value;
+  if (!words) return value;
+  const said = words
+    .split(" ")
+    .map((word) => (ACRONYMS.has(word) ? word.toUpperCase() : word))
+    .join(" ");
+  return `${said.charAt(0).toUpperCase()}${said.slice(1)}`;
 }
 
 /** `cases` → the tab, or undefined. */
