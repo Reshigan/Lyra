@@ -1,5 +1,12 @@
 import { expect, test } from "@playwright/test";
-import { chooseOption, goto, loginAsComplianceOfficer, loginAsScoutLead, loginAsSignalLead } from "./fixtures.js";
+import {
+  chooseOption,
+  goto,
+  loginAsComplianceOfficer,
+  loginAsScoutLead,
+  loginAsSignalLead,
+  shortRef
+} from "./fixtures.js";
 
 // J-M1 "campaign in a day" (docs/06-roles-and-journeys.md:66-67): "brief -> 20
 // ar/en variants -> compliance lane -> publish -> cockpit shows CAC by
@@ -115,7 +122,7 @@ test("J-M1 a growth lead authors an audience and campaign, then launches it (aut
   await loginAsComplianceOfficer(page);
   await goto(page, "/admin/audit-log");
   await expect(
-    page.getByRole("row", { name: new RegExp(`signal\\.campaigns\\.update.*${campaignId}`) })
+    page.getByRole("row", { name: new RegExp(`signal\\.campaigns\\.update.*${shortRef(campaignId)}`) })
   ).toBeVisible();
 });
 

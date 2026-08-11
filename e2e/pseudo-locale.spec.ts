@@ -56,7 +56,11 @@ test.describe("pseudo-locale and RTL rendering", () => {
 
   for (const locale of ["pseudo", "ar"] as const) {
     test(`${locale} holds the dense workspace screens together`, async ({ page, baseURL }) => {
-      test.setTimeout(120_000);
+      // Three full screens, each with a layout-overflow measurement and a
+      // complete axe scan, in one test. Under the four-worker local stack the
+      // pair of these ran 4 minutes apiece and died on the whole-test budget
+      // mid-teardown, taking their traces with them.
+      test.setTimeout(300_000);
       // Log in first: the persona buttons are matched by name, and the login
       // screen in a pseudo-locale is not the thing under test here.
       await loginAsTenantAdmin(page);

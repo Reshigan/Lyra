@@ -55,10 +55,12 @@ test("J-P1 a whitespace candidate is validated and given an owner @journey:J-P1 
   await expect(page.getByRole("status").getByText(/scout\.whitespace_promote/)).toBeVisible();
   await page.getByRole("link", { name: "Open the approval queue" }).click();
 
-  // Single control — the same scout lead decides it. Scope the region by the
+  // Single control — the same scout lead decides it. The card is headed by the
+  // policy read as words with the module dropped (approvals.tsx policyTitle).
+  // Scope the region by the
   // subject, in case another scout.whitespace_promote request is pending.
   const request = page
-    .getByRole("region", { name: "scout.whitespace_promote" })
+    .getByRole("region", { name: "Whitespace promote" })
     .filter({ hasText: whitespaceId });
   await expect(request).toBeVisible();
   await request.getByRole("button", { name: "Approve", exact: true }).click();

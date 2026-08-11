@@ -22,7 +22,9 @@ test("J-E1 exec reads the morning briefing on a phone and assigns an action on t
   // seeded (packages/core/src/seed.ts), so the row match has to pin down the
   // English one specifically or Playwright's strict mode rejects the
   // ambiguity.
-  const briefingRow = page.getByRole("row", { name: /2026-01-05 exec en/ });
+  // The kind column reads as words now (core `humanise`), so the row says
+  // "Executive", not the stored `exec`.
+  const briefingRow = page.getByRole("row", { name: /2026-01-05 Executive en/ });
   await expect(briefingRow).toBeVisible();
   await expect(briefingRow.getByText("Published")).toBeVisible();
   await briefingRow.getByRole("link", { name: "2026-01-05" }).click();

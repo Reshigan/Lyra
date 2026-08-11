@@ -87,7 +87,9 @@ test("J-X1 an agent hands a conversation to a teammate with a readable summary @
   // orbit:handover:write — the same permission journeys.test.ts:608-621
   // exercises directly via POST /v1/orbit/handover-notes.
   const summary = "Customer asked about excess on a windscreen claim; needs a human.";
-  await page.getByLabel("Hand to", { exact: true }).fill("yusuf.karim");
+  // The field picks a teammate by name from the tenant directory (a Radix
+  // Select, conversation.tsx:885), not a typed ref.
+  await chooseOption(page, "Hand to", "Yusuf Karim");
   await page.getByLabel("What the next person needs to know", { exact: true }).fill(summary);
   await page.getByRole("button", { name: "Save handover note", exact: true }).click();
 

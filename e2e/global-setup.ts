@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { makeLibsqlDb } from "@lyra/db/libsql";
-import { approvals, signalBudgetMoves, users } from "@lyra/db/schema";
+import { approvals, distNextBestOffers, signalBudgetMoves, users } from "@lyra/db/schema";
 import { and, eq, like } from "drizzle-orm";
 import { API_ORIGIN, DB_PATH, FILES_DIR, LIBSQL_URL } from "./env.js";
 
@@ -60,6 +60,16 @@ export default async function globalSetup(): Promise<void> {
           )
         );
     }
+
+    // orbit-journeys.spec.ts's J-C3 surfaces a next-best-offer as axis.lead.
+    // Surfacing is one-way — dist-offers.tsx only renders the button for an
+    // offer still `proposed` — so on a reused DB the second run finds every
+    // offer already surfaced and no button to press. Put them back, same
+    // idiom as the two resets above.
+    await db
+      .update(distNextBestOffers)
+      .set({ state: "proposed", surfacedAt: null })
+      .where(eq(distNextBestOffers.state, "surfaced"));
     return;
   }
 

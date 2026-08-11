@@ -85,7 +85,9 @@ test("J-O3 finance controller runs a reconciliation and decides an exception wit
   await chooseOption(page, "Transaction type*", "CM-RECEIPT");
   await page.getByLabel("Transaction key*", { exact: true }).fill(naturalKey);
   await page.getByLabel("Currency", { exact: true }).fill("AED");
-  await page.getByLabel("Gross amount, in minor units", { exact: true }).fill("500000");
+  // The field takes money the way a person writes it — 5000.00 AED — and posts
+  // the minor units itself (packages/ui MoneyField's hidden `grossMinor`).
+  await page.getByLabel("Gross amount", { exact: true }).fill("5000");
   // The generic `grossMinor`/`currency` fields above are the ledger envelope;
   // CM-RECEIPT's own recipe (packages/ledger/src/recipes.ts ClientMoneyArgs)
   // separately requires `amountMinor` inside the free-form Arguments JSON.

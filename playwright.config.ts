@@ -18,13 +18,20 @@ export default defineConfig({
   // Playwright workers, and 60s was not enough for a cold compile there:
   // J-M3 spent the whole budget in `goto`'s hydration wait without ever
   // reaching an assertion, and J-O3 lost a form round trip to the default 5s
-  // assertion budget. Double both under CI only — locally the tighter numbers
-  // still fail a genuinely broken expectation fast.
-  timeout: process.env.CI ? 120_000 : 60_000,
-  expect: { timeout: process.env.CI ? 15_000 : 5_000 },
+  // assertion budget. The same cold-compile cost lands locally on a first run
+  // against a fresh DB — a dozen journeys failed a first assertion on a route
+  // the dev server was still compiling, and eleven more ran out of the
+  // whole-test budget — so both budgets are the CI numbers everywhere.
+  timeout: 120_000,
+  expect: { timeout: 15_000 },
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  workers: process.env.CI ? 2 : undefined,
+  // The stack under test is one wrangler-dev API process and one libsql file
+  // however many cores the machine has, so Playwright's local default (half
+  // the cores — ten here) only queues writes behind each other: creates landed
+  // more than 20s after the POST and blew the assertion budget in seven
+  // journeys that pass alone. Four is the most the single API keeps up with.
+  workers: process.env.CI ? 2 : 4,
   reporter: process.env.CI ? "github" : "list",
   use: {
     baseURL: WEB_ORIGIN,

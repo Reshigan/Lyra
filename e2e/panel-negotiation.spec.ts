@@ -57,10 +57,13 @@ test("J-P2 a commission rate change is refused for dual control, then decided by
   // The seed already carries one *decided* dist.rate_change approval
   // (packages/core/src/seed/admin.ts:253-263, decision: "approved"), and
   // /approvals defaults to the pending state (approvals.tsx:130) — so the row
-  // this test just raised is the only "dist.rate_change" region the pending
-  // queue can show.
+  // this test just raised is the only rate-change card *this run* adds. The
+  // card is headed by the policy read as words (approvals.tsx policyTitle) —
+  // "Dist rate change", not `dist.rate_change`. Earlier runs against a reused
+  // DB leave their own identical pending cards behind, and any one of them
+  // decides the same way, so take the first.
   await controllerPage.goto("/approvals");
-  const request = controllerPage.getByRole("region", { name: "dist.rate_change" });
+  const request = controllerPage.getByRole("region", { name: "Dist rate change" }).first();
   await expect(request).toBeVisible();
   await request.getByRole("button", { name: "Approve", exact: true }).click();
   await expect(controllerPage.getByRole("status")).toHaveText("Approved. The action may now proceed.");

@@ -5,7 +5,14 @@ import { makeLibsqlDb } from "@lyra/db/libsql";
 import type { Ctx } from "@lyra/core";
 import { sweepRenewals } from "../apps/api/src/engines/renewals.js";
 import { LIBSQL_URL, TENANT_SLUG } from "./env.js";
-import { chooseOption, goto, loginAsAxisLead, loginAsOrbitAgent, loginAsOrbitRetention } from "./fixtures.js";
+import {
+  chooseOption,
+  goto,
+  loginAsAxisLead,
+  loginAsOrbitAgent,
+  loginAsOrbitRetention,
+  shortRef
+} from "./fixtures.js";
 
 // J-C2 "help on WhatsApp" (docs/06-roles-and-journeys.md): a customer message
 // lands, the AI drafts a reply as ghost text, the agent approves it in one
@@ -46,7 +53,7 @@ test("J-C2 an agent approves the AI's suggested reply and it queues, not sends @
   await page.getByRole("button", { name: "Create", exact: true }).click();
   // Message content is PII-masked in this list view ("[redacted]"), so match
   // on the conversation id column instead of the text just typed in.
-  await expect(page.getByRole("row", { name: new RegExp(conversationId) }).first()).toBeVisible();
+  await expect(page.getByRole("row", { name: new RegExp(shortRef(conversationId)) }).first()).toBeVisible();
 
   // The panel is a real stateful disclosure now (module.tsx's CreatePanel):
   // a successful create leaves it open, so clicking "New — Messages" again
@@ -64,7 +71,7 @@ test("J-C2 an agent approves the AI's suggested reply and it queues, not sends @
   // Unlike the first create, nothing here waits on the result before this test
   // navigates away — without a wait, the client-side POST races page.goto and
   // can get cancelled mid-flight, silently dropping the draft message.
-  await expect(page.getByRole("row", { name: new RegExp(conversationId) })).toHaveCount(2);
+  await expect(page.getByRole("row", { name: new RegExp(shortRef(conversationId)) })).toHaveCount(2);
 
   await goto(page, `/orbit/conversations/${conversationId}/thread`);
 
@@ -89,7 +96,7 @@ test("J-C2 an agent approves the AI's suggested reply and it queues, not sends @
  * uses for its own fixture resets. Only db/tenantId/now are actually read by
  * sweepRenewals; the rest of Ctx is unused stub filler.
  */
-async function runRenewalsSweep(): Promise<void> {
+async function runRenewalsSweep(): Promise<string> {
   const db = makeLibsqlDb(LIBSQL_URL);
   const [tenant] = await db
     .select({ id: schema.tenants.id })
@@ -121,6 +128,18 @@ async function runRenewalsSweep(): Promise<void> {
     policy: PolicyJson.parse({}),
     entitlements: EntitlementsJson.parse({})
   });
+
+  // The renewals table shows the customer by name now (apps/api/src/routes
+  // /names.ts resolves refs for every list), so the id the NBO page needs
+  // cannot be read off the row — take it from the renewal the sweep just made.
+  const [renewal] = await db
+    .select({ customerId: schema.orbitRenewals.customerId })
+    .from(schema.orbitRenewals)
+    .where(eq(schema.orbitRenewals.tenantId, tenant.id))
+    .orderBy(asc(schema.orbitRenewals.expiryAt))
+    .limit(1);
+  if (!renewal?.customerId) throw new Error("sweep raised no renewal to work from");
+  return renewal.customerId;
 }
 
 // J-C3 "one-tap renewal": the nightly sweep raises a renewal, the retention
@@ -133,14 +152,13 @@ test("J-C3 retention proposes and closes a renewal; surfacing needs axis.lead @j
   // The seeded demo customer already carries a policy inside the renewal
   // window (packages/core/src/seed/context.ts's `renewalPolicyId`), so this is
   // idempotent and safe to call from a clean seed.
-  await runRenewalsSweep();
+  const customerId = await runRenewalsSweep();
 
   await loginAsOrbitRetention(page);
   await goto(page, "/orbit/renewals");
   const rows = page.locator("tbody tr");
   await expect(rows).toHaveCount(1);
   const row = rows.first();
-  const customerId = (await row.locator("td").nth(1).innerText()).trim();
 
   await row.getByRole("link").first().click();
   await page.waitForURL(/\/orbit\/renewals\/[^/?]+$/);

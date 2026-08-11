@@ -137,6 +137,18 @@ export async function confirmAction(page: Page): Promise<void> {
  * typeahead selects from the keyboard, which has no actionability check to
  * lose, and exercises the same code path a keyboard user takes (docs/13 §8).
  */
+/**
+ * How a table cell prints an opaque id: head and tail only (packages/ui
+ * format.tsx `shortRef`). A spec that made a row and knows its id has to look
+ * for it the way the screen shows it — matching the full id finds nothing.
+ */
+export function shortRef(value: string): string {
+  const match = /^(?:([a-z][a-z0-9_]*):)?([a-z][a-z0-9]*_)([0-9a-hjkmnp-tv-z]{16,})$/i.exec(value.trim());
+  if (!match) return value;
+  const [, scope, prefix, body] = match;
+  return `${scope ? `${scope}:` : ""}${prefix}${body!.slice(0, 4)}\u2026${body!.slice(-4)}`;
+}
+
 export async function chooseOption(scope: Page | Locator, label: string, optionText: string): Promise<void> {
   // A Locator scope narrows the *trigger* lookup only — Radix renders the open
   // menu in a portal at <body>, outside any form, so options always resolve

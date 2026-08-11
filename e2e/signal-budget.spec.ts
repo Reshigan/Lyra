@@ -53,10 +53,11 @@ test("J-M2 signal lead reverses an autopilot budget move @journey:J-M2 @accept:M
   // Single control, no self-decide gate — the same signal lead approves.
   // Seed data already carries a second, unrelated pending signal.budget_move
   // request (packages/core/src/seed/signal.ts:928-945), so every
-  // "signal.budget_move" region is scoped by its subject — the move's own row
+  // "Budget move" region — the policy read as words with the module dropped
+  // (approvals.tsx policyTitle) — is scoped by its subject: the move's own row
   // id, rendered as the card's description/subject link text.
   await goto(page, "/approvals");
-  const request = page.getByRole("region", { name: "signal.budget_move" }).filter({ hasText: moveId });
+  const request = page.getByRole("region", { name: "Budget move" }).filter({ hasText: moveId });
   await expect(request).toBeVisible();
   // Wait for the decision POST, not just the click: the approvals list
   // revalidates while the queue is on screen, and a click that lands on a row
