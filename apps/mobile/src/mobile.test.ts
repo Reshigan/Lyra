@@ -45,25 +45,34 @@ const {
   approvalTitle,
   bps,
   budgetOf,
+  byId,
   campaignOrder,
   caseSeverity,
   chosenBriefing,
+  clusterOrder,
   contentTypeOf,
   daysUntil,
+  deltaPct,
   dueIn,
   highlightsOf,
+  indexText,
   isInbound,
+  latestPeriod,
   mainCurrency,
   moneyText,
+  opportunityOf,
   pacingOf,
   plannedMinor,
+  positionOf,
   queueOrder,
   renewalOrder,
+  rollByProvider,
   spendByCampaign,
   threadOrder,
   todayIso,
   urgencyOf,
-  unownedAnomaly
+  unownedAnomaly,
+  whitespaceOrder
 } = await import("./journeys");
 const {
   ApiError,
@@ -620,6 +629,16 @@ describe("persona tab config", () => {
     expect(budget?.route).toBe("/j/campaigns?view=budget");
   });
 
+  it("gives every SCOUT tab its own screen and a record it can open", () => {
+    expect(tabsFor("scout", "default").map((tab) => tab.route)).toEqual([
+      "/j/clusters",
+      "/j/whitespace",
+      "/j/panel"
+    ]);
+    expect(resourceForNavKey("scout-clusters")).toBe("scout/clusters");
+    expect(resourceForNavKey("scout-whitespaces")).toBe("scout/whitespaces");
+  });
+
   it("swaps Decisions for Governance only for the north board variant", () => {
     expect(tabsFor("north", "default").map((tab) => tab.labelKey)).toContain("tab.decisions");
     expect(tabsFor("north", "board").map((tab) => tab.labelKey)).toContain("tab.governance");
@@ -1043,6 +1062,94 @@ describe("journey helpers", () => {
     expect(text).toContain("R");
     // Cents on a phone are noise: R 1 234.56 rounds to the rand.
     expect(text).not.toContain(".");
+  });
+
+  it("ranks clusters by momentum, then by how much evidence built them", () => {
+    const rows = [
+      { id: "c_small", theme: "B", momentumScore: 40, size: 2 },
+      { id: "c_loud", theme: "A", momentumScore: 90, size: 1 },
+      { id: "c_big", theme: "C", momentumScore: 40, size: 9 },
+      { id: "c_none", theme: "D" }
+    ];
+    expect(clusterOrder(rows).map((row) => row.id)).toEqual(["c_loud", "c_big", "c_small", "c_none"]);
+    expect(clusterOrder(null)).toEqual([]);
+  });
+
+  it("places a whitespace on the radar's two axes, or says it cannot", () => {
+    const clusters = byId([{ id: "cl", momentumScore: 60 }]);
+    const plotted = opportunityOf(
+      { id: "w", clusterId: "cl", competitionScore: 25, evidenceRefsJson: '{"refs":["a","b"]}' },
+      clusters
+    );
+    expect(plotted).toEqual({ fit: 75, momentum: 60, evidence: 2, plotted: true, score: 45 });
+    // No cluster means no momentum anybody measured — inventing one is a lie.
+    expect(opportunityOf({ id: "w", competitionScore: 25 }, clusters).plotted).toBe(false);
+    expect(opportunityOf({ id: "w", clusterId: "cl" }, clusters).plotted).toBe(false);
+    // A cluster the page did not load is the same as no cluster.
+    expect(opportunityOf({ id: "w", clusterId: "gone", competitionScore: 1 }, clusters).plotted).toBe(
+      false
+    );
+    // Broken evidence JSON costs the count, not the row.
+    expect(opportunityOf({ id: "w", evidenceRefsJson: "{" }, clusters).evidence).toBe(0);
+  });
+
+  it("orders whitespaces best-bet first and sinks the unplottable ones", () => {
+    const clusters = [
+      { id: "hot", momentumScore: 90 },
+      { id: "cool", momentumScore: 20 }
+    ];
+    const rows = [
+      { id: "w_weak", clusterId: "cool", competitionScore: 50 },
+      { id: "w_orphan", competitionScore: 5 },
+      { id: "w_best", clusterId: "hot", competitionScore: 10 }
+    ];
+    expect(whitespaceOrder(rows, clusters).map((row) => row.id)).toEqual([
+      "w_best",
+      "w_weak",
+      "w_orphan"
+    ]);
+    expect(whitespaceOrder(null, clusters)).toEqual([]);
+  });
+
+  it("reads the newest period off the bench and rolls it up by provider", () => {
+    const rows = [
+      { id: "b1", providerId: "p_a", line: "motor", period: "2026-01", volume: 100, ourPriceIdx: 9000, marketPriceIdx: 10000, winRate: 20 },
+      { id: "b2", providerId: "p_a", line: "home", period: "2026-02", volume: 300, ourPriceIdx: 10400, marketPriceIdx: 10000, winRate: 40 },
+      { id: "b3", providerId: "p_a", line: "motor", period: "2026-02", volume: 100, ourPriceIdx: 10000, marketPriceIdx: 10000, winRate: 80 },
+      { id: "b4", providerId: "p_b", line: "motor", period: "2026-02", volume: 100, ourPriceIdx: null, marketPriceIdx: null, winRate: null }
+    ];
+    expect(latestPeriod(rows)).toBe("2026-02");
+    expect(latestPeriod(null)).toBeNull();
+
+    const [first, second] = rollByProvider(rows, latestPeriod(rows));
+    // The January row is out of period, and every average is volume-weighted:
+    // (10400·300 + 10000·100) / 400 = 10300.
+    expect(first).toEqual({
+      providerId: "p_a",
+      volume: 400,
+      share: 0.8,
+      winRate: 50,
+      ourIdx: 10300,
+      marketIdx: 10000,
+      lines: ["home", "motor"]
+    });
+    // A column nobody priced stays null rather than becoming a zero.
+    expect(second?.ourIdx).toBeNull();
+    expect(second?.winRate).toBeNull();
+    expect(rollByProvider(rows, null)).toEqual([]);
+  });
+
+  it("calls a price position the same way the web bench does", () => {
+    expect(deltaPct(10300, 10000)).toBeCloseTo(3);
+    expect(deltaPct(10000, 0)).toBeNull();
+    expect(deltaPct(null, 10000)).toBeNull();
+    expect(positionOf(3)).toBe("dearer");
+    expect(positionOf(-3)).toBe("cheaper");
+    // Two points of index is inside the noise of a median over four quotes.
+    expect(positionOf(1.9)).toBe("atMarket");
+    expect(positionOf(null)).toBe("unpriced");
+    expect(indexText(9420, "en")).toBe("0.94");
+    expect(indexText(null)).toBeNull();
   });
 
   it("offers exactly the document types AXIS accepts", () => {

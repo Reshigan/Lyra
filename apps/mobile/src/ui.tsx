@@ -47,18 +47,21 @@ export function textOf(chrome: Chrome, style?: TextStyle): TextStyle {
   };
 }
 
-export function Body({ chrome, style, selectable, testID, children }: {
+export function Body({ chrome, style, selectable, testID, numberOfLines, children }: {
   chrome: Chrome;
   style?: TextStyle;
   /** For values a user has to copy out — a setup key, a recovery code. */
   selectable?: boolean;
   testID?: string;
+  /** Cap for prose a row cannot hold — see `Muted`. */
+  numberOfLines?: number;
   children: ReactNode;
 }) {
   return (
     <Text
       selectable={selectable}
       testID={testID}
+      numberOfLines={numberOfLines}
       style={[
         textOf(chrome, {
           color: chrome.theme.text,
@@ -89,9 +92,20 @@ export function Title({ chrome, children }: { chrome: Chrome; children: ReactNod
   );
 }
 
-export function Muted({ chrome, children }: { chrome: Chrome; children: ReactNode }) {
+export function Muted({
+  chrome,
+  numberOfLines,
+  children
+}: {
+  chrome: Chrome;
+  /** Cap for prose a row cannot hold — an API-authored summary has no length
+   *  limit, and one long one must not push the next card off the screen. */
+  numberOfLines?: number;
+  children: ReactNode;
+}) {
   return (
     <Text
+      numberOfLines={numberOfLines}
       style={textOf(chrome, {
         color: chrome.theme.muted,
         fontSize: TEXT.s13,

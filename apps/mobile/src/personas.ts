@@ -34,9 +34,9 @@ export const PERSONA_TABS: Record<Workspace, TabConfig[]> = {
     { labelKey: "tab.attribution", icon: "trending-up", screen: "signal/campaigns" }
   ],
   scout: [
-    { labelKey: "tab.clusters", icon: "layers", screen: "scout/signals" },
-    { labelKey: "tab.whitespace", icon: "search", screen: "scout/signals" },
-    { labelKey: "tab.panel", icon: "people", screen: "scout/signals" }
+    { labelKey: "tab.clusters", icon: "layers", screen: "scout/signals", route: "/j/clusters" },
+    { labelKey: "tab.whitespace", icon: "search", screen: "scout/signals", route: "/j/whitespace" },
+    { labelKey: "tab.panel", icon: "people", screen: "scout/signals", route: "/j/panel" }
   ],
   north: [
     { labelKey: "tab.brief", icon: "sunny", screen: "north/metrics", route: "/j/brief" },

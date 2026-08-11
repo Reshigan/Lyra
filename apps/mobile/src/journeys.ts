@@ -347,6 +347,162 @@ export function moneyText(locale: string, currency: string, minor: number): stri
   }).format(minor / 100);
 }
 
+/* ------------------------------------------------------------------- scout */
+
+/** Clusters loudest first: momentum is what the radar ranks on, and a big
+ *  cluster breaks the tie because it took more evidence to build. */
+export function clusterOrder(rows: readonly Row[] | null): Row[] {
+  return [...(rows ?? [])].sort((a, b) => {
+    const momentum = numberOr(b.momentumScore, -1) - numberOr(a.momentumScore, -1);
+    if (momentum !== 0) return momentum;
+    const size = numberOr(b.size, -1) - numberOr(a.size, -1);
+    if (size !== 0) return size;
+    return String(a.theme ?? a.id).localeCompare(String(b.theme ?? b.id));
+  });
+}
+
+const clamp100 = (value: number): number => Math.max(0, Math.min(100, value));
+
+/** A whitespace placed on the web radar's two axes (scout.shared.ts `dots`):
+ *  openness of the market across, the linked cluster's momentum up. `plotted`
+ *  is false for the rows that screen counts instead of drawing — no cluster
+ *  means no momentum anybody measured, and inventing one would be a lie. */
+export interface Opportunity {
+  fit: number | null;
+  momentum: number | null;
+  evidence: number;
+  plotted: boolean;
+  /** Rank key: the two axes multiplied, so a dot needs both to lead. */
+  score: number;
+}
+
+export function opportunityOf(row: Row, clustersById: ReadonlyMap<string, Row>): Opportunity {
+  const cluster = typeof row.clusterId === "string" ? clustersById.get(row.clusterId) : undefined;
+  const competition = typeof row.competitionScore === "number" ? row.competitionScore : null;
+  const evidence = refsOf(row).length;
+  if (!cluster || competition === null) {
+    return { fit: competition === null ? null : clamp100(100 - competition), momentum: null, evidence, plotted: false, score: -1 };
+  }
+  const fit = clamp100(100 - competition);
+  const momentum = clamp100(numberOr(cluster.momentumScore, 0));
+  return { fit, momentum, evidence, plotted: true, score: (fit * momentum) / 100 };
+}
+
+/** The evidence references behind a whitespace (`evidenceRefsJson.refs`). */
+function refsOf(row: Row): string[] {
+  const raw = row.evidenceRefsJson;
+  const blob: unknown = typeof raw === "string" ? tryParse(raw) : raw;
+  if (!blob || typeof blob !== "object") return [];
+  const refs = (blob as { refs?: unknown }).refs;
+  return Array.isArray(refs) ? refs.filter((ref): ref is string => typeof ref === "string") : [];
+}
+
+function tryParse(text: string): unknown {
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+export function byId(rows: readonly Row[] | null): Map<string, Row> {
+  return new Map((rows ?? []).map((row) => [row.id, row]));
+}
+
+/** Whitespaces best-bet first. The ones the radar cannot plot sink to the
+ *  bottom rather than vanish — someone still has to link them to a cluster. */
+export function whitespaceOrder(rows: readonly Row[] | null, clusters: readonly Row[] | null): Row[] {
+  const index = byId(clusters);
+  return [...(rows ?? [])].sort(
+    (a, b) => opportunityOf(b, index).score - opportunityOf(a, index).score
+  );
+}
+
+/** `YYYY-MM` sorts lexically, which is the whole reason the column is text. */
+export function latestPeriod(rows: readonly Row[] | null): string | null {
+  return (rows ?? []).reduce<string | null>((best, row) => {
+    const period = typeof row.period === "string" ? row.period : null;
+    return period !== null && (best === null || period > best) ? period : best;
+  }, null);
+}
+
+export interface PanelRoll {
+  providerId: string;
+  volume: number;
+  /** 0–1 of the period's total volume. */
+  share: number;
+  winRate: number | null;
+  ourIdx: number | null;
+  marketIdx: number | null;
+  lines: string[];
+}
+
+/** One period's bench rows rolled up per provider, biggest book first —
+ *  mirroring scout.shared.ts `rollByProvider`. Every average is weighted by
+ *  volume, and a column nobody priced stays null rather than becoming a zero. */
+export function rollByProvider(rows: readonly Row[] | null, period: string | null): PanelRoll[] {
+  const scoped = (rows ?? []).filter((row) => period !== null && row.period === period);
+  const total = scoped.reduce((sum, row) => sum + numberOr(row.volume, 0), 0);
+  const groups = new Map<string, Row[]>();
+  for (const row of scoped) {
+    const provider = typeof row.providerId === "string" ? row.providerId : "";
+    groups.set(provider, [...(groups.get(provider) ?? []), row]);
+  }
+  return [...groups.entries()]
+    .map(([providerId, own]) => {
+      const volume = own.reduce((sum, row) => sum + numberOr(row.volume, 0), 0);
+      return {
+        providerId,
+        volume,
+        share: total > 0 ? volume / total : 0,
+        winRate: weighted(own, "winRate"),
+        ourIdx: weighted(own, "ourPriceIdx"),
+        marketIdx: weighted(own, "marketPriceIdx"),
+        lines: [...new Set(own.map((row) => String(row.line ?? "")).filter(Boolean))].sort()
+      };
+    })
+    .sort((a, b) => b.volume - a.volume);
+}
+
+function weighted(rows: readonly Row[], key: string): number | null {
+  let sum = 0;
+  let mass = 0;
+  for (const row of rows) {
+    const value = row[key];
+    if (typeof value !== "number") continue;
+    sum += value * numberOr(row.volume, 0);
+    mass += numberOr(row.volume, 0);
+  }
+  return mass > 0 ? Math.round(sum / mass) : null;
+}
+
+/** Percent above (positive) or below (negative) the panel median. */
+export function deltaPct(ourIdx: number | null, marketIdx: number | null): number | null {
+  if (ourIdx === null || marketIdx === null || marketIdx === 0) return null;
+  return ((ourIdx - marketIdx) / marketIdx) * 100;
+}
+
+/** Two points of index is inside the noise of a median over four quotes. */
+export const AT_MARKET_PCT = 2;
+
+export type PricePosition = "unpriced" | "cheaper" | "dearer" | "atMarket";
+
+/** Where our cut sits against the panel, as one word (scout.shared.ts
+ *  `positionOf`) — so a provider is never dear on the desk and fine on a phone. */
+export function positionOf(pct: number | null): PricePosition {
+  if (pct === null) return "unpriced";
+  if (pct <= -AT_MARKET_PCT) return "cheaper";
+  if (pct >= AT_MARKET_PCT) return "dearer";
+  return "atMarket";
+}
+
+/** Basis points as the index the analysts quote: 9420 → "0.94". */
+export function indexText(bp: number | null, locale = "en"): string | null {
+  return bp === null
+    ? null
+    : (bp / 10_000).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 /* ----------------------------------------------------------------- capture */
 
 /** The document types AXIS accepts (apps/api/src/routes/axis.ts DOC_TYPES).

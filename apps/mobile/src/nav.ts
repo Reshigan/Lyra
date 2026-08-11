@@ -28,7 +28,12 @@ const RESOURCE_BY_HREF: Record<string, string> = {
   // screen can open a record the generic detail view can still render:
   // /m/orbit-renewals/{id} (app/j/renewals.tsx). A renewal is not a
   // conversation, so it cannot ride the "/orbit" entry.
-  "/orbit-renewals": "orbit/renewals"
+  "/orbit-renewals": "orbit/renewals",
+  // Same again for SCOUT: a cluster and a whitespace are neither of them the
+  // signals the "/scout" nav entry points at (app/j/clusters.tsx,
+  // app/j/whitespace.tsx).
+  "/scout-clusters": "scout/clusters",
+  "/scout-whitespaces": "scout/whitespaces"
 };
 
 /** `/v1/{module}/{resource}` for a nav href, or `undefined` if mobile has no
