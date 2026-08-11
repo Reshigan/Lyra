@@ -38,6 +38,7 @@ import {
   isReversible,
   labelsIn,
   mintKey,
+  mainCurrency,
   plannedMinor,
   safe,
   totalSpendMinor,
@@ -85,6 +86,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   ]);
 
   const live = campaigns.data.filter((campaign) => campaign.state !== "ended");
+  // Every headline here is one currency's: adding AED minor units to ZAR ones
+  // produces a total that is true in neither (signal.shared mainCurrency).
+  const currency = mainCurrency(live);
+  const inCurrency = live.filter((campaign) => (budgetOf(campaign).currency ?? currency) === currency);
   return {
     days,
     campaigns: live,
@@ -94,10 +99,11 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
         totalSpendMinor(spend.data.filter((row) => row.campaignId === campaign.id))
       ])
     ) as Record<string, number>,
-    spentMinor: totalSpendMinor(spend.data),
-    ceilingMinor: live.reduce((sum, campaign) => sum + plannedMinor(budgetOf(campaign), days), 0),
-    currency: budgetOf(live[0] ?? ({} as CampaignRow)).currency ?? "ZAR",
+    spentMinor: totalSpendMinor(spend.data, currency),
+    ceilingMinor: inCurrency.reduce((sum, campaign) => sum + plannedMinor(budgetOf(campaign), days), 0),
+    currency,
     moves: moves.data,
+    campaignNames: Object.fromEntries(campaigns.data.map((one) => [one.id, one.name])) as Record<string, string>,
     now: Date.now(),
     key: mintKey("signal-budget")
   };
@@ -301,7 +307,7 @@ export default function BudgetAndBounds() {
             rowKey={(move) => move.id}
             rows={loaded.moves}
             columns={[
-              ...moveColumns(l, locale),
+              ...moveColumns(l, locale, loaded.campaignNames),
               {
                 key: "undo",
                 header: l("budget.reverse"),

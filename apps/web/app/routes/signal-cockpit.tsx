@@ -37,7 +37,9 @@ import {
   dailySpend,
   explain,
   labelsIn,
+  mainCurrency,
   mintKey,
+  moveEndpoint,
   plannedMinor,
   rollByChannel,
   safe,
@@ -80,6 +82,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   ]);
 
   const running = campaigns.data.filter((campaign) => RUNNING_STATES.includes(campaign.state));
+  // One currency per headline — see mainCurrency in signal.shared.
+  const currency = mainCurrency(running.length ? running : campaigns.data);
   return {
     days,
     // The kill switch lives on the tenant policy, and /v1/me is the only read
@@ -88,9 +92,13 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     spend: spend.data,
     touches: touches.data,
     moves: moves.data,
+    // A move names its campaign by ref; the changes table printed the ref.
+    campaignNames: Object.fromEntries(campaigns.data.map((one) => [one.id, one.name])) as Record<string, string>,
     running,
-    plannedMinor: running.reduce((sum, campaign) => sum + plannedMinor(budgetOf(campaign), days), 0),
-    currency: budgetOf(running[0] ?? campaigns.data[0] ?? ({} as CampaignRow)).currency ?? "ZAR",
+    plannedMinor: running
+      .filter((campaign) => (budgetOf(campaign).currency ?? currency) === currency)
+      .reduce((sum, campaign) => sum + plannedMinor(budgetOf(campaign), days), 0),
+    currency,
     key: mintKey("signal-cockpit")
   };
 }
@@ -152,7 +160,7 @@ export default function GrowthCockpit() {
   const may = new Set(shell?.permissions ?? []);
   const busy = navigation.state !== "idle";
 
-  const spent = totalSpendMinor(loaded.spend);
+  const spent = totalSpendMinor(loaded.spend, loaded.currency);
   const rolls = rollByChannel(loaded.spend, loaded.touches);
   const binds = rolls.reduce((sum, roll) => sum + roll.binds, 0);
   const cac = cacMinor(spent, binds);
@@ -298,7 +306,7 @@ export default function GrowthCockpit() {
             captionHidden
             rowKey={(move) => move.id}
             rows={loaded.moves}
-            columns={moveColumns(l, locale)}
+            columns={moveColumns(l, locale, loaded.campaignNames)}
           />
         )}
       </Card>
@@ -352,13 +360,19 @@ function campaignColumns(l: (key: string) => string, locale: string): Array<Colu
 
 /** The agents' own audit trail, in the operator's language. Shared with the
  *  budget screen, which adds the undo column. */
-export function moveColumns(l: (key: string) => string, locale: string): Array<Column<MoveRow>> {
+export function moveColumns(
+  l: (key: string) => string,
+  locale: string,
+  /** Campaign id → name, so a move reads as a campaign and a channel. */
+  names: Record<string, string> = {}
+): Array<Column<MoveRow>> {
   return [
     { key: "when", header: l("when"), render: (move) => <DateTime value={move.ts} locale={locale} /> },
     {
       key: "from",
       header: l("budget.moves"),
-      render: (move) => `${move.fromRef} ${arrowFor(locale)} ${move.toRef}`
+      render: (move) =>
+        `${moveEndpoint(move.fromRef, names, locale)} ${arrowFor(locale)} ${moveEndpoint(move.toRef, names, locale)}`
     },
     {
       key: "amount",

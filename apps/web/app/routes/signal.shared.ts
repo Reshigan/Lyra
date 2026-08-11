@@ -231,6 +231,23 @@ export function channelLabel(slug: string, locale = "en"): string {
   return slug.replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+/**
+ * Where a budget move came from or went to. The autopilot stores an endpoint as
+ * `signal_campaign:cmp_01KE…#google_search` — the campaign, then the channel
+ * inside it — and the moves table printed exactly that on both sides of the
+ * arrow, twice per row. `names` is campaign id → campaign name; a campaign the
+ * caller did not load falls back to the channel alone, which is still a place a
+ * person recognises.
+ */
+export function moveEndpoint(ref: string, names: Record<string, string>, locale = "en"): string {
+  const [target = "", channel] = ref.split("#");
+  const id = target.includes(":") ? target.slice(target.indexOf(":") + 1) : target;
+  const campaign = names[id];
+  const place = channel ? channelLabel(channel, locale) : "";
+  if (campaign && place) return `${campaign} · ${place}`;
+  return campaign || place || ref;
+}
+
 export function channelsOf(campaign: CampaignRow): string[] {
   const raw = asJson<unknown>(campaign.channelsJson, []);
   if (Array.isArray(raw)) return raw.map((entry) => String(entry)).filter(Boolean);
@@ -254,8 +271,34 @@ export interface ChannelRoll {
 
 const BIND = "bind";
 
-export function totalSpendMinor(rows: readonly SpendRow[]): number {
-  return rows.reduce((sum, row) => sum + (row.amountMinor || 0), 0);
+export function totalSpendMinor(rows: readonly SpendRow[], currency?: string): number {
+  return rows
+    .filter((row) => !currency || row.currency === currency)
+    .reduce((sum, row) => sum + (row.amountMinor || 0), 0);
+}
+
+/**
+ * The currency a screen totals in: the one most of its campaigns are budgeted
+ * in. Minor units from two currencies added together make a number that is true
+ * in neither — the budget screen headed a ZAR 60,000 ceiling over a table of
+ * AED campaigns — so every total here is scoped to this one and each row keeps
+ * its own.
+ */
+export function mainCurrency(campaigns: readonly CampaignRow[], fallback = "ZAR"): string {
+  const tally = new Map<string, number>();
+  for (const campaign of campaigns) {
+    const code = budgetOf(campaign).currency;
+    if (code) tally.set(code, (tally.get(code) ?? 0) + 1);
+  }
+  let best = fallback;
+  let seen = 0;
+  for (const [code, count] of tally) {
+    if (count > seen) {
+      best = code;
+      seen = count;
+    }
+  }
+  return best;
 }
 
 /** Spend and outcome side by side per channel. The join is the channel string:
