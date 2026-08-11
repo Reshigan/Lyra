@@ -92,6 +92,7 @@ export const en = {
   "common.delete": "Delete",
   "common.cancel": "Cancel",
   "common.dismiss": "Dismiss",
+  "common.loading": "Loading",
   "common.edit": "Edit",
   "common.open": "Open",
   "common.back": "Back to list",

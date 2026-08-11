@@ -87,6 +87,7 @@ export const ar: Messages = {
   "common.delete": "حذف",
   "common.cancel": "إلغاء",
   "common.dismiss": "تجاهل",
+  "common.loading": "جارٍ التحميل",
   "common.edit": "تعديل",
   "common.open": "فتح",
   "common.back": "العودة إلى القائمة",

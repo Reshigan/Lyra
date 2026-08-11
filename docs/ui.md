@@ -1209,7 +1209,15 @@ indication of where you are beyond the nav highlight.
 > with in-place notices kept as the default (ADR-0051). The module switcher is
 > the labelled rail itself and is not mounted twice (ADR-0052).
 
-**5. Nothing in the product uses `Skeleton`.** The latency doctrine calls for
+**5. ~~Nothing in the product uses `Skeleton`.~~** *Closed.* The wait that
+actually exists is navigation: loaders run on the server, so a slow screen was a
+page that did not change. The shell now draws the arriving screen's shape once a
+navigation has held for 400ms — under that it holds still, because a skeleton
+that flashes reads as a fault. The copilot answer keeps its own shape-specific
+skeleton, which is the pattern for any screen whose wait is one region rather
+than the whole page.
+
+**The defect as found:** The latency doctrine calls for
 skeletons over spinners above 400ms. Zero screens do this. Loading states are
 either instant (server-rendered) or nothing.
 

@@ -1,7 +1,9 @@
-import { NavLink, useLocation, useNavigate, useSubmit } from "react-router";
+import { useEffect, useState } from "react";
+import { NavLink, useLocation, useNavigate, useNavigation, useSubmit } from "react-router";
 import {
   Breadcrumbs,
   Menu,
+  Skeleton,
   ToastProvider,
   isOpaqueRef,
   shortRef,
@@ -178,6 +180,14 @@ export function Shell({ t, nav, brand, tenantName, actorName, children }: ShellP
   const crumbs = crumbsFor(pathname, nav, t);
   const navigate = useNavigate();
   const submit = useSubmit();
+  // docs/07 latency doctrine: a wait under 400ms is answered by holding still —
+  // a skeleton that flashes reads as a fault. Past it the screen the actor asked
+  // for is drawn as its shape while its data lands, so the wait has somewhere to
+  // happen other than the screen they were leaving.
+  const navigation = useNavigation();
+  const settling =
+    navigation.state === "loading" && (navigation.location?.pathname ?? pathname) !== pathname;
+  const slow = useSettledFor(settling, 400);
 
   return (
     // The toast host lives above every workspace so any screen can say what
@@ -337,7 +347,7 @@ export function Shell({ t, nav, brand, tenantName, actorName, children }: ShellP
                 rail can: a record opened from a queue, or a screen hanging off
                 one. At module level this renders nothing at all. */}
             {crumbs.length ? <Breadcrumbs items={crumbs} label={t("nav.breadcrumb")} /> : null}
-            {children}
+            {slow ? <PageSkeleton label={t("common.loading")} /> : children}
           </main>
         </div>
 
@@ -440,5 +450,43 @@ function NavItemLink({ item, t, nested }: { item: NavItem; t: Translate; nested?
         </>
       )}
     </NavLink>
+  );
+}
+
+/** True once `active` has held for `ms` — nothing at all below that. */
+function useSettledFor(active: boolean, ms: number): boolean {
+  const [late, setLate] = useState(false);
+  useEffect(() => {
+    if (!active) {
+      setLate(false);
+      return;
+    }
+    const timer = setTimeout(() => setLate(true), ms);
+    return () => clearTimeout(timer);
+  }, [active, ms]);
+  return late;
+}
+
+/**
+ * The shape of a workspace screen: a title, a line of intent, and a body. It is
+ * deliberately generic — the shell cannot know what is arriving, and a skeleton
+ * that guesses wrong is a worse promise than one that only says "a screen".
+ */
+export function PageSkeleton({ label }: { label: string }) {
+  return (
+    <div className="flex flex-col gap-6" role="status" aria-busy="true" aria-live="polite">
+      <span className="sr-only">{label}</span>
+      <div aria-hidden="true" className="flex flex-col gap-2">
+        <Skeleton className="h-6 w-64" />
+        <Skeleton className="h-3 w-96 max-w-full" />
+      </div>
+      <div aria-hidden="true" className="flex flex-col gap-3 rounded-lg border border-border bg-surface-1 p-4">
+        <Skeleton className="h-3 w-40" />
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-11/12" />
+        <Skeleton className="h-4 w-4/5" />
+        <Skeleton className="h-4 w-2/3" />
+      </div>
+    </div>
   );
 }
