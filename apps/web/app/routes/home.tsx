@@ -284,7 +284,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     ),
     panel<{ data: AuditRow[] }>(held.has("core:audit:read"), () =>
       api(
-        `/v1/core/audit-log?actorRef=${encodeURIComponent(`${me.actor.kind}:${me.actor.id}`)}&sort=ts&order=desc&limit=6`,
+        `/v1/core/audit-log?actorRef=${encodeURIComponent(`${me.actor.kind}:${me.actor.id}`)}&sort=ts&order=desc&limit=24`,
         { env, request }
       )
     ),
@@ -317,7 +317,13 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     counts: inbox.state === "ok" ? inbox.data.counts : null,
     economics: economics.state === "ok" ? summarise(rows) : null,
     areas: map(economics, () => byArea(rows)),
-    activity: map(activity, (a) => a.data),
+    // Signing in is not work you did: six "Core session login" rows pushed
+    // every real change off the panel. The list endpoint filters on equality
+    // only, so the exclusion happens here — over-fetch 24, keep 6 changes.
+    // Session history stays where it belongs, on Settings › security.
+    activity: map(activity, (a) =>
+      a.data.filter((entry) => !entry.action.startsWith("core.session.")).slice(0, 6)
+    ),
     runs: map(runs, (r) => r.data)
   };
 }
