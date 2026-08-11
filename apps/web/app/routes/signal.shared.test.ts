@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { mainCurrency, moveEndpoint, totalSpendMinor } from "./signal.shared";
-import type { CampaignRow, SpendRow } from "./signal.shared";
+import { citationsOf, engineName, mainCurrency, moveEndpoint, totalSpendMinor } from "./signal.shared";
+import type { AeoRow, CampaignRow, SpendRow } from "./signal.shared";
 
 // The budget screen's "Moves made" table printed
 // `signal_campaign:cmp_0KE95STOARG4GC1CVMRRB6Q4R#meta →
@@ -53,5 +53,36 @@ describe("totalSpendMinor", () => {
 
   it("adds everything when no currency is named", () => {
     expect(totalSpendMinor(rows)).toBe(350);
+  });
+});
+
+// The answer-engines table printed "[object Object]" under QUOTED BY: the
+// crawler writes sightings, not names.
+const page = (citedByJson: string | null): AeoRow => ({ citedByJson }) as AeoRow;
+
+describe("citationsOf", () => {
+  it("names the engine inside a sighting record", () => {
+    expect(
+      citationsOf(page(JSON.stringify([{ engine: "chatgpt", firstSeen: 1 }, { engine: "perplexity" }])))
+    ).toEqual(["ChatGPT", "Perplexity"]);
+  });
+
+  it("still reads a bare list of names", () => {
+    expect(citationsOf(page(JSON.stringify(["gemini"])))).toEqual(["Gemini"]);
+  });
+
+  it("still reads the wrapped shape", () => {
+    expect(citationsOf(page(JSON.stringify({ engines: ["chatgpt"] })))).toEqual(["ChatGPT"]);
+  });
+
+  it("is empty when nothing quoted the page", () => {
+    expect(citationsOf(page(null))).toEqual([]);
+    expect(citationsOf(page(JSON.stringify([{ lastSeen: 3 }])))).toEqual([]);
+  });
+});
+
+describe("engineName", () => {
+  it("titles an engine nobody spelled for it", () => {
+    expect(engineName("some_new_engine")).toBe("Some New Engine");
   });
 });

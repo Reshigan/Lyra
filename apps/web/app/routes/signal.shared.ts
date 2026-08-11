@@ -451,12 +451,52 @@ export function aeoCoverage(pages: readonly AeoRow[]): AeoRoll {
   };
 }
 
-/** `citedByJson` is written by the crawler as a list of engine names, and has
- *  arrived as both a bare array and `{engines:[…]}`. Read both, trust neither. */
+/**
+ * The engines quoting an answer page, as a person names them. `citedByJson` is
+ * written by the crawler as a list, and has arrived as bare names, as
+ * `{engines:[…]}`, and as sighting records — `{engine, firstSeen, lastSeen}` —
+ * which the QUOTED BY column rendered as `[object Object]`. Read all three,
+ * trust none.
+ */
 export function citationsOf(page: AeoRow): string[] {
   const raw = asJson<unknown>(page.citedByJson, []);
   const list = Array.isArray(raw) ? raw : ((raw as { engines?: unknown }).engines ?? []);
-  return Array.isArray(list) ? list.map((entry) => String(entry)).filter(Boolean) : [];
+  if (!Array.isArray(list)) return [];
+  return list
+    .map((entry) => {
+      if (typeof entry === "string") return entry;
+      const record = entry as { engine?: unknown; name?: unknown };
+      const named = record?.engine ?? record?.name;
+      return typeof named === "string" ? named : "";
+    })
+    .filter(Boolean)
+    .map(engineName);
+}
+
+/**
+ * Answer engines spell themselves; `humanise` would give "Chatgpt". Anything
+ * unknown falls back to title case, which is still a name and not a slug.
+ */
+const ENGINE_NAMES: Record<string, string> = {
+  chatgpt: "ChatGPT",
+  perplexity: "Perplexity",
+  gemini: "Gemini",
+  copilot: "Copilot",
+  claude: "Claude",
+  google_ai_overviews: "Google AI Overviews",
+  google_sge: "Google AI Overviews",
+  grok: "Grok"
+};
+
+export function engineName(slug: string): string {
+  return (
+    ENGINE_NAMES[slug] ??
+    slug
+      .split(/[_\s-]+/)
+      .filter(Boolean)
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ")
+  );
 }
 
 /** A page nobody re-verified inside the window is answering from old facts. */
