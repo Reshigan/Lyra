@@ -181,7 +181,7 @@ export function Shell({ t, nav, brand, tenantName, actorName, children }: ShellP
 
   return (
     // The toast host lives above every workspace so any screen can say what
-    // happened after the control that caused it has scrolled away (ADR-0045).
+    // happened after the control that caused it has scrolled away (ADR-0051).
     // In-place `role="status"` notices stay the default: docs/15 asks for quiet
     // feedback beside the work, and AI never toasts for itself.
     <ToastProvider dismissLabel={t("common.dismiss")}>

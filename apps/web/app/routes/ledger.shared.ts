@@ -417,7 +417,6 @@ export const LABELS: Record<string, Record<string, string>> = {
     "open.code": "Code",
     "open.openedAs": "Opened as {id}.",
     "open.openRecord": "Open it",
-    "open.argsInvalid": "Arguments must be a JSON object.",
 
     /* periods */
     "period.title": "Period close",
@@ -702,7 +701,6 @@ export const LABELS: Record<string, Record<string, string>> = {
     "open.code": "الرمز",
     "open.openedAs": "فُتحت بالمعرّف {id}.",
     "open.openRecord": "فتحها",
-    "open.argsInvalid": "يجب أن تكون المعاملات كائن JSON.",
 
     "period.title": "إقفال الفترة",
     "period.intro":
