@@ -24,7 +24,7 @@ import {
   type BadgeTone,
   type TimelineEvent
 } from "@lyra/ui";
-import { ApiError, api, fetchMe, type Problem } from "../api.server";
+import { ApiError, api, fetchMe, names, type Names, type Problem } from "../api.server";
 import { cloudflare } from "../context";
 import { DEFAULT_LOCALE, pseudoText, translator } from "../i18n";
 import { humanise } from "../modules/spec";
@@ -293,7 +293,24 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   ]);
 
   const rows = economics.state === "ok" ? economics.data.data : [];
+  const approvals = inbox.state === "ok" ? inbox.data.approvals.slice(0, 3) : [];
+  const notifications = inbox.state === "ok" ? inbox.data.notifications.slice(0, 6) : [];
+
+  // Approvals, the timeline and the notice list all carry refs and no display
+  // text, so the home screen greeted people with three columns of ULIDs. One
+  // batch call for every ref on the page; unresolved ones fall back to the
+  // short ref they already are.
+  const resolved = await names(
+    [
+      ...approvals.flatMap((one) => [one.subjectRef, one.requestedBy]),
+      ...(activity.state === "ok" ? activity.data.data.map((entry) => entry.subjectRef) : []),
+      ...notifications.map((note) => note.subjectRef)
+    ],
+    { env, request }
+  );
+
   return {
+    names: resolved,
     approvals: map(inbox, (i) => i.approvals.slice(0, 3)),
     notifications: map(inbox, (i) => i.notifications.slice(0, 6)),
     counts: inbox.state === "ok" ? inbox.data.counts : null,
@@ -302,6 +319,12 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     activity: map(activity, (a) => a.data),
     runs: map(runs, (r) => r.data)
   };
+}
+
+/** Ref → the name a person expects, or the shortest honest thing we have. */
+function who(ref: string | null | undefined, resolved: Names): string | null {
+  if (!ref) return null;
+  return resolved[ref] ?? shortRef(ref);
 }
 
 /**
@@ -568,8 +591,10 @@ export default function Home() {
               // here would hard-code the industry's nouns into the shell — that
               // vocabulary belongs to the active domain pack (docs/21).
               summary={approval.policyKey}
-              consequence={label("approvals.subject", { ref: shortRef(approval.subjectRef) })}
-              requestedBy={shortRef(approval.requestedBy)}
+              consequence={label("approvals.subject", {
+                ref: who(approval.subjectRef, loaded.names) ?? ""
+              })}
+              requestedBy={who(approval.requestedBy, loaded.names) ?? ""}
               // Each strip is a region landmark. Sharing one name with the
               // section around them makes a landmark list of identical entries
               // (axe landmark-unique), so each carries what it is waiting on.
@@ -627,7 +652,7 @@ export default function Home() {
                   // table nobody maintains.
                   title: humanise(entry.action),
                   at: entry.ts,
-                  ...(entry.subjectRef ? { detail: shortRef(entry.subjectRef) } : {})
+                  ...(entry.subjectRef ? { detail: who(entry.subjectRef, loaded.names) ?? "" } : {})
                 })
               )}
             />
@@ -654,8 +679,8 @@ export default function Home() {
                       <DateTime value={note.createdAt} precision="minute" locale={locale} />
                     </p>
                     {note.subjectRef ? (
-                      <p className="mt-0.5 break-all font-ui text-12 text-muted">
-                        {shortRef(note.subjectRef)}
+                      <p className="mt-0.5 break-words font-ui text-12 text-muted">
+                        {who(note.subjectRef, loaded.names)}
                       </p>
                     ) : null}
                   </div>
