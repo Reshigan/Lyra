@@ -308,9 +308,12 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     )
   ]);
 
-  // The handler column carried a `user:us_…` ref; a desk lists claims by who
-  // is on them, not by which ULID is on them.
-  const resolved = await names(page.data.map((row) => row.handlerRef), opts);
+  // The handler and claimant columns carried `user:us_…` and `cu_…` refs; a
+  // desk lists claims by who is on them, not by which ULID is on them.
+  const resolved = await names(
+    page.data.flatMap((row) => [row.handlerRef, row.customerId]),
+    opts
+  );
 
   return {
     now: Date.now(),
@@ -409,6 +412,36 @@ function urgencyFlag(row: ClaimRow, now: number, l: Label): { key: string; tone:
   return null;
 }
 
+// Nine values a row and not one heading: the desk rendered "— AED 0.00 AED
+// 0.00 277 Nobody" and left the reader to guess which number was the reserve
+// and which was a day count. A real table is out (every row carries its own
+// Advance form), so the columns are a grid with one heading row on top, and
+// each cell repeats its own label on a narrow screen where the heading row is
+// not there to align with.
+const DESK_GRID =
+  "grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-[minmax(9rem,1.1fr)_minmax(8rem,1.3fr)_6rem_7rem_7rem_5rem_5rem_7rem_minmax(7rem,1fr)] sm:items-center";
+
+const COLUMNS = [
+  "col.ref",
+  "col.holder",
+  "col.peril",
+  "col.incurred",
+  "col.reserve",
+  "col.daysOpen",
+  "col.fraud",
+  "col.siu",
+  "col.handler"
+] as const;
+
+function Cell({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      <span className="font-ui text-12 uppercase tracking-wide text-subtle sm:hidden">{label}</span>
+      <span className="min-w-0 truncate">{children}</span>
+    </div>
+  );
+}
+
 export default function ClaimsDesk() {
   const loaded = useLoaderData<typeof loader>();
   const result = useActionData<typeof action>();
@@ -452,6 +485,15 @@ export default function ClaimsDesk() {
           }
         />
       ) : (
+        <>
+        <div
+          aria-hidden="true"
+          className={`${DESK_GRID} hidden px-3 font-ui text-12 uppercase tracking-wide text-subtle sm:grid`}
+        >
+          {COLUMNS.map((key) => (
+            <span key={key}>{l(key)}</span>
+          ))}
+        </div>
         <ul className="space-y-2">
           {rows.map((row) => {
             const hops = hopsFor(row.status);
@@ -459,33 +501,55 @@ export default function ClaimsDesk() {
             const daysOpen = Math.floor((now - row.reportedAt) / DAY_MS);
             return (
               <li key={row.id} className="rounded-lg border border-border bg-surface-1 p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <Link to={`/axis/claims/${row.id}/detail`} className="flex items-center gap-2">
-                    <Ref value={row.claimNo} className="text-accent" />
-                    {flag ? (
-                      <Badge tone={flag.tone} size="sm" dot>
-                        {flag.key}
+                <div className={DESK_GRID}>
+                  <Cell label={l("col.ref")}>
+                    <Link to={`/axis/claims/${row.id}/detail`} className="flex items-center gap-2">
+                      <Ref value={row.claimNo} className="text-accent" />
+                      {flag ? (
+                        <Badge tone={flag.tone} size="sm" dot>
+                          {flag.key}
+                        </Badge>
+                      ) : null}
+                    </Link>
+                  </Cell>
+                  <Cell label={l("col.holder")}>
+                    <Link to={`/admin/customers/${row.customerId}/360`} className="text-accent hover:underline">
+                      {who(row.customerId, loaded.names)}
+                    </Link>
+                  </Cell>
+                  <Cell label={l("col.peril")}>{row.perilCode ?? "—"}</Cell>
+                  <Cell label={l("col.incurred")}>
+                    <Money amountMinor={incurredOf(row)} currency={row.currency} locale={locale} />
+                  </Cell>
+                  <Cell label={l("col.reserve")}>
+                    <Money
+                      amountMinor={row.reserveMinor ?? row.amountMinor}
+                      currency={row.currency}
+                      locale={locale}
+                    />
+                  </Cell>
+                  <Cell label={l("col.daysOpen")}>{daysOpen}</Cell>
+                  <Cell label={l("col.fraud")}>
+                    {row.fraudScore !== null ? (
+                      <Badge tone={FRAUD_TONE(row.fraudScore)} size="sm">
+                        {row.fraudScore}
                       </Badge>
-                    ) : null}
-                  </Link>
-                  <Link to={`/admin/customers/${row.customerId}/360`} className="text-accent hover:underline">
-                    {row.customerId}
-                  </Link>
-                  <span>{row.perilCode ?? "—"}</span>
-                  <Money amountMinor={incurredOf(row)} currency={row.currency} locale={locale} />
-                  <Money amountMinor={row.reserveMinor ?? row.amountMinor} currency={row.currency} locale={locale} />
-                  <span>{daysOpen}</span>
-                  {row.fraudScore !== null ? (
-                    <Badge tone={FRAUD_TONE(row.fraudScore)} size="sm">
-                      {row.fraudScore}
-                    </Badge>
-                  ) : null}
-                  {row.siuState ? (
-                    <Badge tone={SIU_TONE[row.siuState] ?? "neutral"} size="sm">
-                      {l(`siu.${row.siuState}`)}
-                    </Badge>
-                  ) : null}
-                  <span>{who(row.handlerRef, loaded.names) ?? l("unassigned")}</span>
+                    ) : (
+                      "—"
+                    )}
+                  </Cell>
+                  <Cell label={l("col.siu")}>
+                    {row.siuState ? (
+                      <Badge tone={SIU_TONE[row.siuState] ?? "neutral"} size="sm">
+                        {l(`siu.${row.siuState}`)}
+                      </Badge>
+                    ) : (
+                      "—"
+                    )}
+                  </Cell>
+                  <Cell label={l("col.handler")}>
+                    {who(row.handlerRef, loaded.names) ?? l("unassigned")}
+                  </Cell>
                 </div>
 
                 {held.has(PERM.update) && hops.length > 0 ? (
@@ -514,6 +578,7 @@ export default function ClaimsDesk() {
             );
           })}
         </ul>
+        </>
       )}
 
       {held.has(PERM.update) && loaded.claims.length ? (
