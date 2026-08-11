@@ -9,6 +9,8 @@ export const ar: Messages = {
   "app.loading": "جارٍ التحميل",
 
   "nav.primary": "التنقل الرئيسي",
+
+  "nav.breadcrumb": "أنت هنا",
   "nav.home": "الرئيسية",
   "nav.group.modules": "الوحدات",
   "nav.axis": "العمليات",

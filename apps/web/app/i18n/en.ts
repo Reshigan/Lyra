@@ -9,6 +9,8 @@ export const en = {
   "app.loading": "Loading",
 
   "nav.primary": "Primary",
+
+  "nav.breadcrumb": "You are here",
   "nav.home": "Home",
   "nav.group.modules": "Modules",
   "nav.axis": "Operations",

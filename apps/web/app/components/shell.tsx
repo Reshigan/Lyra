@@ -1,6 +1,8 @@
 import { Form, NavLink, useLocation } from "react-router";
+import { Breadcrumbs, isOpaqueRef, shortRef, type Crumb } from "@lyra/ui";
 import type { Brand, NavItem } from "../api.server";
 import type { Translate } from "../i18n";
+import { humanise } from "../modules/spec";
 import { isRouted } from "../routing";
 import { ConstellationMark } from "./mark";
 import { SearchPalette } from "./search";
@@ -114,6 +116,32 @@ export function routedLeaves(item: NavItem): NavItem[] {
   return isRouted(item.href) || item.href === "/" ? [item] : [];
 }
 
+/**
+ * Where you are, when the nav highlight cannot say it. A module's own landing
+ * page needs no trail — the rail is already pointing at it (docs/07 §3:
+ * breadcrumbs only below module level) — so this answers with nothing until the
+ * path goes deeper than a nav destination. Below that, the trail is the nav's
+ * own ancestors plus what the path adds: a record id shortened the way every
+ * other id on screen is, and a trailing screen name (`compare`, `audit-trail`)
+ * said as words.
+ */
+export function crumbsFor(pathname: string, nav: NavItem[], t: Translate): Crumb[] {
+  const leaves = nav.flatMap(routedLeaves).filter((item) => item.href !== "/");
+  const ancestors = leaves
+    .filter((item) => pathname === item.href || pathname.startsWith(`${item.href}/`))
+    .sort((a, b) => a.href.length - b.href.length);
+  const deepest = ancestors.at(-1);
+  if (!deepest) return [];
+  const rest = pathname.slice(deepest.href.length).split("/").filter(Boolean);
+  if (!rest.length) return [];
+  return [
+    ...ancestors.map((item) => ({ label: t(item.labelKey), href: item.href })),
+    ...rest.map((segment) => ({
+      label: isOpaqueRef(segment) ? shortRef(segment) : humanise(segment)
+    }))
+  ];
+}
+
 export function Shell({ t, nav, brand, tenantName, actorName, children }: ShellProps) {
   const { product: productName, tenant: servedName } = lockupNames(brand, tenantName);
   // The API returns every item this actor may open, including modules whose
@@ -139,6 +167,7 @@ export function Shell({ t, nav, brand, tenantName, actorName, children }: ShellP
   const currentItem = items
     .filter((item) => (item.href === "/" ? pathname === "/" : pathname.startsWith(item.href)))
     .sort((a, b) => b.href.length - a.href.length)[0];
+  const crumbs = crumbsFor(pathname, nav, t);
 
   return (
     <div className="lyra-field min-h-screen bg-bg text-text" style={brandStyle(brand)}>
@@ -295,6 +324,10 @@ export function Shell({ t, nav, brand, tenantName, actorName, children }: ShellP
             className="h-0.5 w-full shrink-0 rounded-full"
             style={{ background: accentFor(pathname) }}
           />
+          {/* Only below module level, and only when the path says more than the
+              rail can: a record opened from a queue, or a screen hanging off
+              one. At module level this renders nothing at all. */}
+          {crumbs.length ? <Breadcrumbs items={crumbs} label={t("nav.breadcrumb")} /> : null}
           {children}
         </main>
       </div>
