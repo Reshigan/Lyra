@@ -20,7 +20,8 @@ import {
   type BadgeTone,
   type Column
 } from "@lyra/ui";
-import { ApiError, api } from "../api.server";
+import { ApiError, api, directory, type DirectoryEntry } from "../api.server";
+import { whoIs } from "../people";
 import { cloudflare } from "../context";
 import { moduleName, pseudoText, translator } from "../i18n";
 import { humanise } from "../modules/spec";
@@ -270,12 +271,16 @@ export async function loader({ request, context, params }: LoaderFunctionArgs) {
       `/v1/ai/runs/${encodeURIComponent(params["id"] ?? "")}/detail`,
       { env, request }
     );
-    return { detail, status: 200 };
+    // Who asked for this run is a colleague, and the audit trail stored them
+    // as a ref. The directory names them; an actor who is a scheduler or a
+    // webhook is not in it and keeps the ref.
+    const people = await directory({ env, request });
+    return { detail, people, status: 200 };
   } catch (error) {
     // A run the actor may not read, or one that is not there, is a page with an
     // explanation on it — never a blank screen or an error boundary.
     if (error instanceof ApiError && (error.status === 403 || error.status === 404)) {
-      return { detail: null, status: error.status };
+      return { detail: null, people: [] as DirectoryEntry[], status: error.status };
     }
     throw error;
   }
@@ -589,7 +594,10 @@ export default function AiRun() {
                   term={L("run.autonomy")}
                   detail={L(`autonomy.${run.autonomyLevel}`, run.autonomyLevel)}
                 />
-                <Pair term={L("run.actor")} detail={<span className="break-all">{run.actorRef}</span>} />
+                <Pair
+                  term={L("run.actor")}
+                  detail={<span className="break-all">{whoIs(loaded.people, run.actorRef) ?? run.actorRef}</span>}
+                />
                 {run.subjectRef ? (
                   <Pair
                     term={L("run.subject")}
