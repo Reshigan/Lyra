@@ -165,10 +165,10 @@ export function Money({
 
 /**
  * A storage key that escaped into the interface: `us_01KE953T07XY8ZQK4M2N6VJH3B`,
- * or `user:us_…` with a scope on the front. Twenty-six base-32 characters are
+ * or `user:us_…` / `scout_cluster:clu_…` with a scope on the front. Twenty-six base-32 characters are
  * unreadable, unmemorable, and wide enough to burst a card.
  */
-const OPAQUE_REF = /^(?:([a-z][a-z0-9]*):)?([a-z][a-z0-9]*_)([0-9a-hjkmnp-tv-z]{16,})$/i;
+const OPAQUE_REF = /^(?:([a-z][a-z0-9_]*):)?([a-z][a-z0-9]*_)([0-9a-hjkmnp-tv-z]{16,})$/i;
 
 /**
  * Head and tail of an opaque ref — enough to match one against a log line —

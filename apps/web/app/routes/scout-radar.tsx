@@ -7,7 +7,17 @@ import {
   type ActionFunctionArgs,
   type LoaderFunctionArgs
 } from "react-router";
-import { AGENT_MARK, Badge, Button, Card, DateTime, EmptyState, EvidenceLink, GuardrailNotice } from "@lyra/ui";
+import {
+  AGENT_MARK,
+  Badge,
+  Button,
+  Card,
+  DateTime,
+  EmptyState,
+  EvidenceLink,
+  GuardrailNotice,
+  Ref
+} from "@lyra/ui";
 import { ApiError, api } from "../api.server";
 import { cloudflare } from "../context";
 import { Gate } from "./staff";
@@ -243,7 +253,7 @@ export default function ScoutRadar() {
                 <ul className="flex flex-wrap gap-2">
                   {loaded.evidence.refs.map((ref) => (
                     <li key={ref} className="rounded-sm border border-line px-2 py-1 font-mono text-12 text-subtle">
-                      {ref}
+                      <Ref value={ref} />
                     </li>
                   ))}
                 </ul>
@@ -323,7 +333,13 @@ function Quadrant({ dots: plotted, l }: { dots: Dot[]; l: Label }) {
               className={`block rounded-full border-2 border-module-scout ${dot.selected ? "bg-module-scout" : ""}`}
               style={{ width: dotSize(dot.evidence), height: dotSize(dot.evidence) }}
             />
-            <span className={`whitespace-nowrap font-ui text-12 ${dot.selected ? "text-text" : "text-subtle"}`}>
+            {/* Bounded and wrapped, not `whitespace-nowrap`: a theme called
+                "Agency repair lost at renewal" ran a single line straight
+                across its neighbours' dots. Two lines, then the title. */}
+            <span
+              title={dot.label}
+              className={`line-clamp-2 w-28 text-center font-ui text-12 ${dot.selected ? "text-text" : "text-subtle"}`}
+            >
               {dot.label}
             </span>
           </Link>

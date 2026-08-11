@@ -340,7 +340,23 @@ describe("shortRef hides storage keys without hiding anything else", () => {
     expect(shortRef("user:us_01KE953T07XY8ZQK4M2N6VJH3B")).toBe("user:us_01KE…JH3B");
   });
 
-  it.each(["CASE-1042", "sara@example.com", "Sara Haddad", "MOTOR-COMP", ""])(
+  // SCOUT's evidence chips scope with an underscore, and the radar dossier was
+  // printing all 26 characters of `scout_cluster:clu_…` across a side panel.
+  it("keeps an underscored scope in front of the ref", () => {
+    expect(shortRef("scout_cluster:clu_01KE953T01PGEWT2MJW1EDH8R1")).toBe(
+      "scout_cluster:clu_01KE…H8R1"
+    );
+  });
+
+  it.each([
+    "CASE-1042",
+    "sara@example.com",
+    "Sara Haddad",
+    "MOTOR-COMP",
+    "",
+    "funnel:gonxt-web/renewal-compare",
+    "app-store:ae/gonxt-app/2026-01"
+  ])(
     "leaves %s alone",
     (value) => {
       expect(shortRef(value)).toBe(value);
