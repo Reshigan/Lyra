@@ -2505,6 +2505,7 @@ export interface Operations {
   "DELETE /v1/core/webhooks/{id}": Op<{ id: string }, never, never, void>;
   "POST /v1/core/webhooks/{id}/rotate": Op<{ id: string }, never, never, Record<string, unknown>>;
   "POST /v1/core/webhooks/{id}/test": Op<{ id: string }, never, never, Record<string, unknown>>;
+  "GET /v1/directory": Op<never, never, never, Record<string, unknown>>;
   "GET /v1/dist/channels": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<DistChannels>>;
   "POST /v1/dist/channels": Op<never, never, DistChannels, DistChannels>;
   "GET /v1/dist/channels/{id}": Op<{ id: string }, never, never, DistChannels>;
@@ -2636,6 +2637,7 @@ export interface Operations {
   "POST /v1/me/password": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/me/sessions": Op<never, never, never, Record<string, unknown>>;
   "DELETE /v1/me/sessions/{id}": Op<{ id: string }, never, never, Record<string, unknown>>;
+  "GET /v1/names": Op<never, never, never, Record<string, unknown>>;
   "GET /v1/north/alert_rules": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<NorthAlert_rules>>;
   "POST /v1/north/alert_rules": Op<never, never, NorthAlert_rules, NorthAlert_rules>;
   "GET /v1/north/alert_rules/{id}": Op<{ id: string }, never, never, NorthAlert_rules>;
@@ -3163,6 +3165,7 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "DELETE /v1/core/webhooks/{id}": { tag: "core", summary: "Soft-delete a webhook", permission: "core:webhooks:write", public: false },
   "POST /v1/core/webhooks/{id}/rotate": { tag: "core", summary: "Rotate a webhook's signing secret to a fresh, server-generated one", permission: "core:webhooks:write", public: false },
   "POST /v1/core/webhooks/{id}/test": { tag: "core", summary: "Send a signed test delivery to a webhook, without a queued event behind it", permission: "core:webhooks:read", public: false },
+  "GET /v1/directory": { tag: "search", summary: "List assignable staff and team refs (`?kind=user|team`) for the current tenant", permission: null, public: false },
   "GET /v1/dist/channels": { tag: "dist", summary: "List channels", permission: "dist:channels:read", public: false },
   "POST /v1/dist/channels": { tag: "dist", summary: "Create a channel", permission: "dist:channels:write", public: false },
   "GET /v1/dist/channels/{id}": { tag: "dist", summary: "Fetch one channel", permission: "dist:channels:read", public: false },
@@ -3294,6 +3297,7 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "POST /v1/me/password": { tag: "me", summary: "Change the caller's password; other sessions are revoked", permission: null, public: false },
   "GET /v1/me/sessions": { tag: "me", summary: "The caller's active sessions, newest first", permission: null, public: false },
   "DELETE /v1/me/sessions/{id}": { tag: "me", summary: "Revoke one of the caller's sessions", permission: null, public: false },
+  "GET /v1/names": { tag: "search", summary: "Resolve up to 200 record refs (`cu_…`, `user:us_…`) to display names, per resource read permission", permission: null, public: false },
   "GET /v1/north/alert_rules": { tag: "north", summary: "List alert_rules", permission: "north:alerts:read", public: false },
   "POST /v1/north/alert_rules": { tag: "north", summary: "Create a alert_rule", permission: "north:alerts:write", public: false },
   "GET /v1/north/alert_rules/{id}": { tag: "north", summary: "Fetch one alert_rule", permission: "north:alerts:read", public: false },
