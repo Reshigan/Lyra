@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import type { Env } from "../env";
-import { LABELS, action, connectorHealth, connectorTone, labelsIn, loader } from "./axis-admin";
+import { LABELS, action, caseKind, connectorHealth, connectorTone, labelsIn, loader } from "./axis-admin";
 
 const env = { ENVIRONMENT: "test", API_ORIGIN: "https://api.test", SESSION_COOKIE: "s" } as Env;
 
@@ -166,5 +166,22 @@ describe("unknown intent", () => {
     const result = await action(args(form({ intent: "nope" })));
     expect(result.problem?.status).toBe(400);
     expect(calls).toHaveLength(0);
+  });
+});
+
+// The procedures table's APPLIES TO column printed the stored case kind —
+// `group_medical`, `renewal_ops` — at an admin.
+describe("caseKind", () => {
+  it("says the kind of case a procedure governs", () => {
+    expect(caseKind("group_medical", "en")).toBe("Group scheme");
+    expect(caseKind("kyc", "en")).toBe("Identity check");
+  });
+
+  it("translates", () => {
+    expect(caseKind("claim", "ar")).not.toBe("claim");
+  });
+
+  it("still reads as words for a kind nobody wrote a label for", () => {
+    expect(caseKind("group_travel", "en")).toBe("Group travel");
   });
 });

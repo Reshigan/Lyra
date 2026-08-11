@@ -11,6 +11,8 @@ import { Badge, Button, Card, EmptyState, PageHeader, Stat, Table, type BadgeTon
 import { ApiError, api, fetchMe, type Problem } from "../api.server";
 import { cloudflare } from "../context";
 import { pseudoText, translator } from "../i18n";
+import { axis } from "../modules/axis";
+import { labelsFor, optionLabel } from "../modules/spec";
 import { tag } from "./detail-kit";
 import { Gate } from "./staff";
 import { useShellData } from "./workspace";
@@ -150,6 +152,16 @@ export const LABELS: Record<string, Record<string, string>> = {
   }
 };
 
+/**
+ * The kind of case a procedure governs. The column held the stored key —
+ * `group_medical`, `renewal_ops` — where AXIS already writes the words for it
+ * (modules/axis.ts `kind.*`, en and ar) and the tenant's domain pack may
+ * rename them again (CLAUDE.md §14).
+ */
+export function caseKind(kind: string, locale: string, pack?: string): string {
+  return optionLabel(labelsFor(axis, locale, pack), "kind", kind);
+}
+
 export function labelsIn(locale: string): (key: string, vars?: Record<string, string>) => string {
   const t = translator(locale);
   const table = LABELS[locale] ?? LABELS.en!;
@@ -268,7 +280,11 @@ export default function AxisAdmin() {
         </Badge>
       )
     },
-    { key: "appliesTo", header: l("colApplies"), render: (row) => row.appliesTo ?? "" },
+    {
+      key: "appliesTo",
+      header: l("colApplies"),
+      render: (row) => (row.appliesTo ? caseKind(row.appliesTo, locale, shell?.domainPack) : "")
+    },
     {
       key: "publish",
       header: t("common.actions"),
