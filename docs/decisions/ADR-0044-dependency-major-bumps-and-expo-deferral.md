@@ -1,9 +1,8 @@
-# ADR-0044 — Dependency major bumps taken before go-live, and the Expo SDK 57 deferral
+# ADR-0044: Dependency majors are taken before go-live; the Expo SDK bump is not
 
-- Status: accepted
-- Date: 2026-08-11
-- Supersedes: nothing
-- Related: docs/25-go-live-checklist.md
+## Status
+
+Accepted. Records the backlog decision behind docs/25-go-live-checklist.md §7.
 
 ## Context
 
@@ -69,3 +68,13 @@ live, does not depend on it.
 - The Expo SDK 57 upgrade is a milestone of its own: bump `expo`,
   `react-native` and the `expo-*` packages together, run `expo-doctor`,
   rebuild native, and re-run Detox before merging.
+
+## References
+
+- Commits `ee31238`, `37abf06`, `620f2b3`, `bc33bb1`, `3ee5aca` — one per
+  bump, each carrying its own verification note.
+- Dependabot PRs #9, #11, #12, #20 — the four Expo-family PRs left open,
+  each commented with this ADR's reasoning.
+- `package.json` (root) — `pnpm.overrides.vite`, the entry whose stale
+  floor broke `pnpm install --frozen-lockfile` in the security workflow.
+- docs/25-go-live-checklist.md §7 — the same deferral, stated as scope.

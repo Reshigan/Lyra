@@ -1,4 +1,4 @@
-# ADR-0042: Depth is lightness and layering, not perspective
+# ADR-0045: Depth is lightness and layering, not perspective
 
 ## Status
 
