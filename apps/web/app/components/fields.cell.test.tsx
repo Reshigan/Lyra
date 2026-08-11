@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { Cell, readable } from "./fields";
+import { Cell, measure, readable } from "./fields";
 import type { ColumnSpec } from "../modules/spec";
 
 // Every generic list and record page renders through Cell, and every one of
@@ -93,5 +93,31 @@ describe("Cell on a share and on an enum", () => {
 
   it("leaves a value the pack has no words for exactly as it is", () => {
     expect(cell({ name: "key", type: "text" }, { key: "direct-web" })).toContain("direct-web");
+  });
+});
+
+// The NORTH snapshots list is one `value` column carrying four different kinds
+// of number: it printed gross written premium in cents (`74300000`), an 88.1%
+// response rate (`8810`) and a 3.62s latency (`3620`) with no unit on screen.
+describe("measure", () => {
+  it("reads money in its own currency", () => {
+    expect(measure(74_300_000, "money", "ZAR", "en")).toContain("743,000");
+  });
+
+  it("reads basis points as a percentage", () => {
+    expect(measure(8810, "percent", "", "en")).toBe("88.1%");
+  });
+
+  it("reads milliseconds as a duration", () => {
+    expect(measure(3620, "duration_ms", "", "en")).toContain("3.62");
+    expect(measure(450, "duration_ms", "", "en")).toContain("450");
+  });
+
+  it("reads a count as a grouped count", () => {
+    expect(measure(4608, "count", "", "en")).toBe("4,608");
+  });
+
+  it("says nothing rather than NaN", () => {
+    expect(measure(Number.NaN, "count", "", "en")).toBe("—");
   });
 });

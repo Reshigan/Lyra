@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { id } from "@lyra/db";
 import { schema } from "@lyra/db";
 import { badRequest, can, checkKAnonymity, CUSTOMER_PII, DEFAULT_K_FLOOR, gate, scoped, sealFields } from "@lyra/core";
@@ -657,7 +657,37 @@ export const SCOUT = register(
 
 export const NORTH = register(
   r("metrics", schema.northMetrics, "mtr", "north", rw("north:metrics")),
-  r("snapshots", schema.northSnapshots, "snp", "north", ro("north:snapshots:read"), { immutable: true }),
+  r("snapshots", schema.northSnapshots, "snp", "north", ro("north:snapshots:read"), {
+    immutable: true,
+    // A snapshot is `{metricKey, value}` and nothing else: the name a person
+    // reads and the unit that makes the number mean anything both live on the
+    // metric definition. Without them the list printed `gwp … 74300000`.
+    decorate: async (ctx, rows) => {
+      const keys = [...new Set(rows.map((row) => String(row.metricKey ?? "")))].filter(Boolean);
+      if (!keys.length) return rows;
+      const defs = (await ctx.db
+        .select({
+          key: schema.northMetrics.key,
+          nameJson: schema.northMetrics.nameJson,
+          unit: schema.northMetrics.unit,
+          currency: schema.northMetrics.currency
+        })
+        .from(schema.northMetrics)
+        .where(scoped(ctx, schema.northMetrics, inArray(schema.northMetrics.key, keys)))) as {
+        key: string;
+        nameJson: string;
+        unit: string;
+        currency: string | null;
+      }[];
+      const byKey = new Map(defs.map((def) => [def.key, def]));
+      return rows.map((row) => {
+        const def = byKey.get(String(row.metricKey ?? ""));
+        return def
+          ? { ...row, metricName: def.nameJson, unit: def.unit, currency: def.currency }
+          : row;
+      });
+    }
+  }),
   // No generic create: docs/modules/north.md §2.2's hallucination control (every
   // claim machine-verified against the metric layer) only runs inside
   // engines/narrator.ts's generateBriefing(), called from POST

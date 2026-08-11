@@ -126,6 +126,14 @@ export interface Resource {
     row: Record<string, unknown>,
     action: "create" | "update" | "delete"
   ) => Promise<void>;
+  /**
+   * Read-only columns joined onto a page of rows before it goes out, for a row
+   * that is unreadable without them: a NORTH snapshot carries `value: 74300000`
+   * and its unit lives on the metric definition, so the list rendered gross
+   * written premium in cents as a bare integer. One query per page, never per
+   * row. The added keys are display-only — no write path accepts them.
+   */
+  decorate?: (ctx: Ctx, rows: Record<string, unknown>[]) => Promise<Record<string, unknown>[]>;
 }
 
 /* ------------------------------------------------------- shape from table */
@@ -355,7 +363,10 @@ export function crudRouter(r: Resource): Hono<App> {
           (row): row is Record<string, unknown> => row !== null
         )
       : window;
-    const out: Page<Record<string, unknown>> = { data: page.map((row) => view(ctx, row)) };
+    const seen = page.map((row) => view(ctx, row));
+    const out: Page<Record<string, unknown>> = {
+      data: r.decorate ? await r.decorate(ctx, seen) : seen
+    };
     if (rows.length > list.limit && last) {
       out.cursor = encodeCursor((last[sortKey] ?? null) as string | number | null, last.id as string);
     }

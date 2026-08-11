@@ -3,6 +3,7 @@ import {
   Checkbox,
   DateTime,
   Field,
+  formatMoney,
   Input,
   Money,
   Select,
@@ -101,6 +102,13 @@ export function Cell({ column, row, locale, label, resolved = {} }: CellProps) {
       const text = readable(value, locale);
       if (!text) return <span className="text-subtle">—</span>;
       return <span>{truncate(text, 60)}</span>;
+    }
+    case "measure": {
+      const unit = column.unitFrom ? String(row[column.unitFrom] ?? "") : "";
+      const currency = column.currencyFrom ? String(row[column.currencyFrom] ?? "") : "";
+      return (
+        <span className="tabular-nums">{measure(Number(value), unit, currency, locale)}</span>
+      );
     }
     case "number":
       return <span className="tabular-nums">{String(value)}</span>;
@@ -205,6 +213,34 @@ export function FieldInput({
       )}
     </Field>
   );
+}
+
+/**
+ * One `value` column, four meanings. NORTH stores every metric as an integer —
+ * minor units for money, basis points for a share, milliseconds for a duration
+ * — so the snapshots list printed premium in cents (`74300000`) and a 88.1%
+ * response rate (`8810`) in the same column with no unit anywhere on screen.
+ */
+export function measure(value: number, unit: string, currency: string, locale: string): string {
+  if (!Number.isFinite(value)) return "—";
+  switch (unit) {
+    case "money":
+      return currency ? formatMoney(value, currency, locale) : String(value);
+    case "percent":
+    case "ratio":
+      // Basis points (north.ts `thresholdValue.hint`), which is ppm × 100.
+      return formatRate(value * 100, locale);
+    case "duration_ms":
+      return value >= 1000
+        ? new Intl.NumberFormat(locale, {
+            style: "unit",
+            unit: "second",
+            maximumFractionDigits: 2
+          }).format(value / 1000)
+        : new Intl.NumberFormat(locale, { style: "unit", unit: "millisecond" }).format(value);
+    default:
+      return new Intl.NumberFormat(locale).format(value);
+  }
 }
 
 /** Numeric inputs need a step or the browser rejects a decimal share. */

@@ -27,6 +27,9 @@ export type FieldType =
   /** A multiplier stored in parts per million: an FX rate of 18.5 is 18500000
    * on the wire and must never read as 1850%. */
   | "ratio"
+  /** A number whose meaning is a sibling column: NORTH snapshots store money,
+   * basis points, milliseconds and plain counts in one `value`. */
+  | "measure"
   | "money"
   | "select"
   | "date"
@@ -55,6 +58,8 @@ export interface ColumnSpec {
   badge?: boolean;
   /** Currency comes from a sibling column, the platform stores minor units. */
   currencyFrom?: string;
+  /** For `measure`: the column holding this row's unit (money|percent|ratio|duration_ms|count). */
+  unitFrom?: string;
 }
 
 export interface FilterSpec {

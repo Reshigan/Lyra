@@ -53,6 +53,7 @@ export const north: WorkspaceSpec = {
       sensitivity: "Sensitivity",
       direction: "Good direction",
       metricKey: "Metric",
+      metricName: "Metric",
       period: "Period",
       value: "Value",
       dimsHash: "Dimensions",
@@ -167,6 +168,7 @@ export const north: WorkspaceSpec = {
       sensitivity: "الحساسية",
       direction: "الاتجاه المرغوب",
       metricKey: "المؤشر",
+      metricName: "المؤشر",
       period: "الفترة",
       value: "القيمة",
       dimsHash: "الأبعاد",
@@ -305,10 +307,10 @@ export const north: WorkspaceSpec = {
       order: "desc",
       filters: [{ name: "grain", options: ["day", "week", "month"] }],
       columns: [
-        { name: "metricKey", type: "text" },
+        { name: "metricName", type: "json" },
         { name: "period", type: "text", sortable: true },
         { name: "grain", type: "text" },
-        { name: "value", type: "number" },
+        { name: "value", type: "measure", unitFrom: "unit", currencyFrom: "currency" },
         { name: "dimsHash", type: "text" },
         { name: "ts", type: "datetime", sortable: true }
       ]
