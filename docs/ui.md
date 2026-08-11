@@ -1187,6 +1187,13 @@ looking at that part of the page; there is no way to search across the product;
 and on a three-level path (`/ledger/journal-lines/abc123`) there is no
 indication of where you are beyond the nav highlight.
 
+> **Closed.** All five are settled. ⌘K is the header's `SearchPalette`
+> (ADR-0031). The breadcrumb is `crumbsFor` in `shell.tsx`, below module level
+> only (docs/07 §3). The user menu is the account pill, now the trigger for the
+> kit's `Menu` carrying Settings and Sign out. The toast host wraps the shell,
+> with in-place notices kept as the default (ADR-0051). The module switcher is
+> the labelled rail itself and is not mounted twice (ADR-0052).
+
 **5. Nothing in the product uses `Skeleton`.** The latency doctrine calls for
 skeletons over spinners above 400ms. Zero screens do this. Loading states are
 either instant (server-rendered) or nothing.

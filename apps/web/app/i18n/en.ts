@@ -91,6 +91,7 @@ export const en = {
   "common.save": "Save changes",
   "common.delete": "Delete",
   "common.cancel": "Cancel",
+  "common.dismiss": "Dismiss",
   "common.edit": "Edit",
   "common.open": "Open",
   "common.back": "Back to list",

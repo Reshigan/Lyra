@@ -1,5 +1,13 @@
-import { Form, NavLink, useLocation } from "react-router";
-import { Breadcrumbs, isOpaqueRef, shortRef, type Crumb } from "@lyra/ui";
+import { NavLink, useLocation, useNavigate, useSubmit } from "react-router";
+import {
+  Breadcrumbs,
+  Menu,
+  ToastProvider,
+  isOpaqueRef,
+  shortRef,
+  type Crumb,
+  type MenuItem
+} from "@lyra/ui";
 import type { Brand, NavItem } from "../api.server";
 import type { Translate } from "../i18n";
 import { humanise } from "../modules/spec";
@@ -168,190 +176,208 @@ export function Shell({ t, nav, brand, tenantName, actorName, children }: ShellP
     .filter((item) => (item.href === "/" ? pathname === "/" : pathname.startsWith(item.href)))
     .sort((a, b) => b.href.length - a.href.length)[0];
   const crumbs = crumbsFor(pathname, nav, t);
+  const navigate = useNavigate();
+  const submit = useSubmit();
 
   return (
-    <div className="lyra-field min-h-screen bg-bg text-text" style={brandStyle(brand)}>
-      <a
-        href="#workspace"
-        className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:m-2 focus:rounded-md focus:bg-surface-2 focus:px-3 focus:py-2 focus:text-13"
-      >
-        {t("app.skipToContent")}
-      </a>
+    // The toast host lives above every workspace so any screen can say what
+    // happened after the control that caused it has scrolled away (ADR-0045).
+    // In-place `role="status"` notices stay the default: docs/15 asks for quiet
+    // feedback beside the work, and AI never toasts for itself.
+    <ToastProvider dismissLabel={t("common.dismiss")}>
+      <div className="lyra-field min-h-screen bg-bg text-text" style={brandStyle(brand)}>
+        <a
+          href="#workspace"
+          className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:m-2 focus:rounded-md focus:bg-surface-2 focus:px-3 focus:py-2 focus:text-13"
+        >
+          {t("app.skipToContent")}
+        </a>
 
-      {/* Opaque, not glass: docs/15 §3 bans blur outright — depth here comes
-          from the surface being a step lighter than the field behind it, plus
-          the hairline. `lyra-vt-chrome` holds the bar still while the workspace
-          under it transitions, so navigation moves the content, not the frame. */}
-      <header className="lyra-vt-chrome sticky top-0 z-30 flex h-[50px] items-center gap-2 border-b border-border bg-surface-1 px-3 sm:gap-3 sm:px-4">
-        <div className="flex shrink-0 items-center gap-2">
-          <NavLink
-            to="/"
-            end
-            className="flex shrink-0 items-center gap-[9px] rounded-md px-1 py-1 font-display text-13 text-text hover:text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-          >
-            {logo ? (
-              <img src={logo} alt={productName} className="h-6 w-auto" />
-            ) : (
+        {/* Opaque, not glass: docs/15 §3 bans blur outright — depth here comes
+            from the surface being a step lighter than the field behind it, plus
+            the hairline. `lyra-vt-chrome` holds the bar still while the workspace
+            under it transitions, so navigation moves the content, not the frame. */}
+        <header className="lyra-vt-chrome sticky top-0 z-30 flex h-[50px] items-center gap-2 border-b border-border bg-surface-1 px-3 sm:gap-3 sm:px-4">
+          <div className="flex shrink-0 items-center gap-2">
+            <NavLink
+              to="/"
+              end
+              className="flex shrink-0 items-center gap-[9px] rounded-md px-1 py-1 font-display text-13 text-text hover:text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            >
+              {logo ? (
+                <img src={logo} alt={productName} className="h-6 w-auto" />
+              ) : (
+                <>
+                  {/* A tenant with a logo gets its own; a tenant without one is
+                      not left with a bare word. */}
+                  <ConstellationMark className="shrink-0" />
+                  {/* ponytail: the wide tracking is the display face's Latin
+                      setting. Arabic is cursive — spacing it out pulls joined
+                      letters apart — so the LTR variant carries it. */}
+                  <span className="truncate font-semibold ltr:tracking-[0.15em]">{productName}</span>
+                </>
+              )}
+            </NavLink>
+            {/* Whose workspace this is, beside what it is called. Only when the
+                two are different words (docs/07 §6: the brand renames the
+                product, it does not replace the tenant). */}
+            {servedName ? (
               <>
-                {/* A tenant with a logo gets its own; a tenant without one is
-                    not left with a bare word. */}
-                <ConstellationMark className="shrink-0" />
-                {/* ponytail: the wide tracking is the display face's Latin
-                    setting. Arabic is cursive — spacing it out pulls joined
-                    letters apart — so the LTR variant carries it. */}
-                <span className="truncate font-semibold ltr:tracking-[0.15em]">{productName}</span>
+                <span aria-hidden="true" className="h-[15px] w-px shrink-0 bg-border-strong" />
+                <span className="hidden max-w-[16ch] truncate font-ui text-12 text-muted sm:inline">
+                  {servedName}
+                </span>
               </>
-            )}
-          </NavLink>
-          {/* Whose workspace this is, beside what it is called. Only when the
-              two are different words (docs/07 §6: the brand renames the
-              product, it does not replace the tenant). */}
-          {servedName ? (
+            ) : null}
+          </div>
+
+          {/* ⌘K answers both halves of the design's two overlays: what is this,
+              and where do I go. The destinations are the nav's own, so a place
+              the rail cannot open is not offered here either (ADR-0031). */}
+          <SearchPalette
+            t={t}
+            destinations={items.map((item) => ({ href: item.href, label: t(item.labelKey) }))}
+          />
+
+          <div className="ms-auto flex shrink-0 items-center gap-1">
+            <ThemeToggle t={t} />
+            {/* The pill is the menu's trigger: it already says who is acting, so
+                the account actions hang off it instead of spending header width
+                as two flat controls (docs/ui.md §7.4). */}
+            <Menu
+              label={t("header.account")}
+              items={accountMenuItems(
+                t,
+                (href) => void navigate(href),
+                () => void submit(null, { method: "post", action: "/logout" })
+              )}
+              trigger={
+                <button
+                  type="button"
+                  className="ms-1 flex items-center gap-2 rounded-orbit border border-border py-0.5 pe-2.5 ps-0.5 transition-colors duration-150 hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                  title={actorName ? t("header.signedInAs", { name: actorName }) : t("header.account")}
+                >
+                  {/* Initials in the tenant accent, the name beside them: the pill
+                      says who is acting before the menu is opened. Accent on
+                      accent-contrast, not accent on a tint of itself — the tint's
+                      ratio depends on the tenant's hue and a blue one landed at
+                      4.24:1; --accent-contrast is AA-validated on save. */}
+                  <span
+                    aria-hidden="true"
+                    className="grid size-6 shrink-0 place-items-center rounded-orbit bg-accent font-mono text-12 font-medium text-accent-contrast"
+                  >
+                    {actorName ? initialsOf(actorName) : "\u2022"}
+                  </span>
+                  <span className="hidden max-w-40 truncate font-ui text-12 text-muted sm:inline">
+                    {actorName ?? t("header.account")}
+                  </span>
+                </button>
+              }
+            />
+          </div>
+        </header>
+
+        <div className="flex min-h-[calc(100vh-50px)] flex-col md:flex-row">
+          <nav
+            aria-label={t("nav.primary")}
+            className={[
+              // Small screens: one scrollable row under the header, labels intact,
+              // group headings dropped — there is no room for them in a strip.
+              "flex shrink-0 gap-1 overflow-x-auto border-b border-border bg-surface-1 p-2 md:hidden"
+            ].join(" ")}
+          >
+            {items.map((item) => (
+              <NavItemLink key={item.href} item={item} t={t} />
+            ))}
+          </nav>
+
+          <nav
+            aria-label={t("nav.primary")}
+            className="lyra-vt-rail hidden md:sticky md:top-[50px] md:flex md:h-[calc(100vh-50px)] md:w-60 md:shrink-0 md:flex-col md:gap-0.5 md:overflow-y-auto md:border-e md:border-border md:p-3"
+          >
+            {groups.map((group, i) => (
+              // Keyed by position: a heading's own `href` is "" (apps/api/src
+              // /routes/me.ts) and `??` does not fall back on "", so every
+              // heading group used to share the key "" — React then reused the
+              // wrong group's DOM. Groups are derived fresh from `nav` on each
+              // render, so index is stable for as long as the list is.
+              <div key={i} className="mb-1">
+                {group.heading ? (
+                  <h2 className="mb-1 mt-4 px-3 font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle first:mt-0">
+                    {t(group.heading.labelKey)}
+                  </h2>
+                ) : null}
+                <ul className="flex flex-col gap-0.5">
+                  {group.items.map((item) => (
+                    <li key={item.href}>
+                      <NavItemLink item={item} t={t} nested={Boolean(group.heading)} />
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </nav>
+
+          <main
+            key={pathname}
+            id="workspace"
+            tabIndex={-1}
+            className="lyra-vt-workspace lyra-stagger mx-auto flex min-w-0 w-full max-w-[100rem] flex-1 flex-col gap-4 p-4 sm:p-6"
+          >
+            {/* Every screen carries the hue of the workspace it belongs to — the
+                same 2px the rail draws beside the current item. Drawn once, here,
+                so a screen never has to know which module it is inside. Shared
+                surfaces (ledger, admin, settings) fall back to the accent. */}
+            <span
+              aria-hidden="true"
+              className="h-0.5 w-full shrink-0 rounded-full"
+              style={{ background: accentFor(pathname) }}
+            />
+            {/* Only below module level, and only when the path says more than the
+                rail can: a record opened from a queue, or a screen hanging off
+                one. At module level this renders nothing at all. */}
+            {crumbs.length ? <Breadcrumbs items={crumbs} label={t("nav.breadcrumb")} /> : null}
+            {children}
+          </main>
+        </div>
+
+        {/* The status strip: who you are working inside, in the same mono the
+            numbers use. Decorative in the accessibility tree — every fact on it
+            is already announced by the lockup and the nav's current item. */}
+        <footer
+          aria-hidden="true"
+          className="lyra-vt-status sticky bottom-0 z-20 hidden h-7 items-center gap-2 border-t border-border bg-surface-1 px-4 font-mono text-12 text-subtle sm:flex"
+        >
+          <span className="truncate">{productName}</span>
+          {/* Off-nav surfaces (search, a record opened by url) have no current
+              item. The strip then names the product only — it used to print
+              "Primary", the nav landmark's aria-label. */}
+          {currentItem ? (
             <>
-              <span aria-hidden="true" className="h-[15px] w-px shrink-0 bg-border-strong" />
-              <span className="hidden max-w-[16ch] truncate font-ui text-12 text-muted sm:inline">
-                {servedName}
-              </span>
+              <span className="text-border-strong">/</span>
+              <span className="truncate">{t(currentItem.labelKey)}</span>
             </>
           ) : null}
-        </div>
-
-        {/* ⌘K answers both halves of the design's two overlays: what is this,
-            and where do I go. The destinations are the nav's own, so a place
-            the rail cannot open is not offered here either (ADR-0031). */}
-        <SearchPalette
-          t={t}
-          destinations={items.map((item) => ({ href: item.href, label: t(item.labelKey) }))}
-        />
-
-        <div className="ms-auto flex shrink-0 items-center gap-1">
-          <ThemeToggle t={t} />
-          <NavLink
-            to="/settings"
-            className={({ isActive }) =>
-              [
-                "rounded-md px-2.5 py-1.5 font-ui text-12 transition-colors duration-150",
-                isActive ? "bg-surface-2 text-text" : "text-muted hover:bg-surface-2 hover:text-text"
-              ].join(" ")
-            }
-          >
-            {t("header.settings")}
-          </NavLink>
-          <Form method="post" action="/logout">
-            <button
-              type="submit"
-              className="rounded-md px-2.5 py-1.5 font-ui text-12 text-muted transition-colors duration-150 hover:bg-surface-2 hover:text-text"
-            >
-              {t("header.signOut")}
-            </button>
-          </Form>
-          {actorName ? (
-            <span
-              className="ms-1 hidden items-center gap-2 rounded-orbit border border-border py-0.5 pe-2.5 ps-0.5 sm:inline-flex"
-              title={t("header.signedInAs", { name: actorName })}
-            >
-              {/* Initials in the tenant accent, the name beside them: the pill
-                  says who is acting without a menu having to be opened. The
-                  full "signed in as" sentence stays as the pill's title.
-                  Accent on accent-contrast, not accent on a tint of itself —
-                  the tint's ratio depends on the tenant's hue and a blue one
-                  landed at 4.24:1; --accent-contrast is AA-validated on save. */}
-              <span
-                aria-hidden="true"
-                className="grid size-6 shrink-0 place-items-center rounded-orbit bg-accent font-mono text-12 font-medium text-accent-contrast"
-              >
-                {initialsOf(actorName)}
-              </span>
-              <span className="max-w-40 truncate font-ui text-12 text-muted">{actorName}</span>
-            </span>
-          ) : null}
-        </div>
-      </header>
-
-      <div className="flex min-h-[calc(100vh-50px)] flex-col md:flex-row">
-        <nav
-          aria-label={t("nav.primary")}
-          className={[
-            // Small screens: one scrollable row under the header, labels intact,
-            // group headings dropped — there is no room for them in a strip.
-            "flex shrink-0 gap-1 overflow-x-auto border-b border-border bg-surface-1 p-2 md:hidden"
-          ].join(" ")}
-        >
-          {items.map((item) => (
-            <NavItemLink key={item.href} item={item} t={t} />
-          ))}
-        </nav>
-
-        <nav
-          aria-label={t("nav.primary")}
-          className="lyra-vt-rail hidden md:sticky md:top-[50px] md:flex md:h-[calc(100vh-50px)] md:w-60 md:shrink-0 md:flex-col md:gap-0.5 md:overflow-y-auto md:border-e md:border-border md:p-3"
-        >
-          {groups.map((group, i) => (
-            // Keyed by position: a heading's own `href` is "" (apps/api/src
-            // /routes/me.ts) and `??` does not fall back on "", so every
-            // heading group used to share the key "" — React then reused the
-            // wrong group's DOM. Groups are derived fresh from `nav` on each
-            // render, so index is stable for as long as the list is.
-            <div key={i} className="mb-1">
-              {group.heading ? (
-                <h2 className="mb-1 mt-4 px-3 font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle first:mt-0">
-                  {t(group.heading.labelKey)}
-                </h2>
-              ) : null}
-              <ul className="flex flex-col gap-0.5">
-                {group.items.map((item) => (
-                  <li key={item.href}>
-                    <NavItemLink item={item} t={t} nested={Boolean(group.heading)} />
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </nav>
-
-        <main
-          key={pathname}
-          id="workspace"
-          tabIndex={-1}
-          className="lyra-vt-workspace lyra-stagger mx-auto flex min-w-0 w-full max-w-[100rem] flex-1 flex-col gap-4 p-4 sm:p-6"
-        >
-          {/* Every screen carries the hue of the workspace it belongs to — the
-              same 2px the rail draws beside the current item. Drawn once, here,
-              so a screen never has to know which module it is inside. Shared
-              surfaces (ledger, admin, settings) fall back to the accent. */}
-          <span
-            aria-hidden="true"
-            className="h-0.5 w-full shrink-0 rounded-full"
-            style={{ background: accentFor(pathname) }}
-          />
-          {/* Only below module level, and only when the path says more than the
-              rail can: a record opened from a queue, or a screen hanging off
-              one. At module level this renders nothing at all. */}
-          {crumbs.length ? <Breadcrumbs items={crumbs} label={t("nav.breadcrumb")} /> : null}
-          {children}
-        </main>
+        </footer>
       </div>
-
-      {/* The status strip: who you are working inside, in the same mono the
-          numbers use. Decorative in the accessibility tree — every fact on it
-          is already announced by the lockup and the nav's current item. */}
-      <footer
-        aria-hidden="true"
-        className="lyra-vt-status sticky bottom-0 z-20 hidden h-7 items-center gap-2 border-t border-border bg-surface-1 px-4 font-mono text-12 text-subtle sm:flex"
-      >
-        <span className="truncate">{productName}</span>
-        {/* Off-nav surfaces (search, a record opened by url) have no current
-            item. The strip then names the product only — it used to print
-            "Primary", the nav landmark's aria-label. */}
-        {currentItem ? (
-          <>
-            <span className="text-border-strong">/</span>
-            <span className="truncate">{t(currentItem.labelKey)}</span>
-          </>
-        ) : null}
-      </footer>
-    </div>
+    </ToastProvider>
   );
+}
+
+/**
+ * What the account control offers. A pure list so the menu's contents are
+ * readable without a router: the two actions the header used to spend its width
+ * on as flat controls (docs/ui.md §7.4).
+ */
+export function accountMenuItems(
+  t: Translate,
+  open: (href: string) => void,
+  signOut: () => void
+): MenuItem[] {
+  return [
+    { id: "settings", label: t("header.settings"), onSelect: () => open("/settings") },
+    { id: "signOut", label: t("header.signOut"), tone: "danger", onSelect: signOut }
+  ];
 }
 
 /**
