@@ -20,6 +20,7 @@ import {
   Money,
   Ref,
   Select,
+  Skeleton,
   Stat,
   Table,
   Textarea,
@@ -29,7 +30,7 @@ import { ApiError, api, fetchMe, names, type Problem } from "../api.server";
 import { cloudflare } from "../context";
 import { translator } from "../i18n";
 import { humanise } from "../modules/spec";
-import { Entry, Facts, Header, Payload, labelsFrom, rowsOf, safe, tag, type Page } from "./detail-kit";
+import { Entry, Facts, Header, Payload, labelsFrom, rowsOf, safe, tag, type Label, type Page } from "./detail-kit";
 import { Gate } from "./staff";
 import { useShellData } from "./workspace";
 
@@ -153,6 +154,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     copilotPlaceholder: "Ask a question about this case…",
     copilotSubmit: "Ask",
     copilotEmpty: "Ask a question and the answer will appear here, grounded in this case's own facts.",
+    copilotThinking: "Reading this case…",
     copilotWhyGrounded: "Checked against this case's own recorded facts. No unsupported claims found.",
     copilotWhyFlagged: "Checked against this case's own recorded facts. {count} possible unsupported claims flagged for review.",
     moveTitle: "Move it on",
@@ -227,6 +229,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     copilotPlaceholder: "اطرح سؤالًا حول هذه الحالة…",
     copilotSubmit: "اسأل",
     copilotEmpty: "اطرح سؤالًا وستظهر الإجابة هنا، مستندة إلى وقائع هذه الحالة.",
+    copilotThinking: "جارٍ قراءة الحالة…",
     copilotWhyGrounded: "تم التحقق منها مقابل وقائع هذه الحالة المسجّلة. لا توجد ادعاءات غير مدعومة.",
     copilotWhyFlagged: "تم التحقق منها مقابل وقائع هذه الحالة المسجّلة. تم رصد {count} ادعاء محتمل غير مدعوم يستحق المراجعة.",
     moveTitle: "تحريك البند",
@@ -277,6 +280,57 @@ export const LABELS: Record<string, Record<string, string>> = {
 };
 
 export const labelsIn = labelsFrom(LABELS);
+
+/**
+ * The copilot's answer region, and the wait before it. A model round trip is
+ * the one pause on this screen a person sits through in place — no navigation
+ * happens, so the shell's own progress bar never shows — and docs/15 gives a
+ * screen 400ms before it owes the *shape* of what is coming. Three ghost lines
+ * of prose plus the confidence bar is that shape; the pulse is decoration, the
+ * live region is what a screen reader hears.
+ */
+export function CopilotAnswer({
+  pending,
+  l,
+  answer,
+  confidence,
+  mismatches
+}: {
+  pending: boolean;
+  l: Label;
+  answer?: string | null | undefined;
+  confidence?: number | null | undefined;
+  mismatches?: unknown[] | null | undefined;
+}) {
+  if (pending) {
+    return (
+      <div className="mt-4 flex flex-col gap-3" aria-live="polite" aria-busy="true">
+        <span className="font-ui text-12 text-subtle">{l("copilotThinking")}</span>
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-11/12" />
+        <Skeleton className="h-4 w-2/3" />
+        <Skeleton className="h-2 w-40" />
+      </div>
+    );
+  }
+  if (!answer) return null;
+  return (
+    <div className="mt-4 flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <AgentBadge
+          size="sm"
+          why={
+            mismatches && mismatches.length > 0
+              ? l("copilotWhyFlagged", { count: String(mismatches.length) })
+              : l("copilotWhyGrounded")
+          }
+        />
+        <GhostText text={answer} onAccept={() => {}} onDiscard={() => {}} />
+      </div>
+      <ConfidenceMeter value={confidence ?? 0} />
+    </div>
+  );
+}
 
 /* ------------------------------------------------------------------ loader */
 
@@ -694,22 +748,13 @@ export default function CaseDetail() {
               {l("copilotSubmit")}
             </Button>
           </Form>
-          {result?.done === "answered" && result.answer ? (
-            <div className="mt-4 flex flex-col gap-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <AgentBadge
-                  size="sm"
-                  why={
-                    result.mismatches && result.mismatches.length > 0
-                      ? l("copilotWhyFlagged", { count: String(result.mismatches.length) })
-                      : l("copilotWhyGrounded")
-                  }
-                />
-                <GhostText text={result.answer} onAccept={() => {}} onDiscard={() => {}} />
-              </div>
-              <ConfidenceMeter value={result.confidence ?? 0} />
-            </div>
-          ) : null}
+          <CopilotAnswer
+            pending={busy && navigation.formData?.get("intent") === "copilot"}
+            l={l}
+            answer={result?.done === "answered" ? result.answer : undefined}
+            confidence={result?.confidence}
+            mismatches={result?.mismatches}
+          />
         </Card>
       ) : null}
     </div>
