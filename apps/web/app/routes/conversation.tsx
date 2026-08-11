@@ -31,6 +31,7 @@ import {
 import { ApiError, api, directory, fetchMe, type ApiOptions } from "../api.server";
 import { cloudflare } from "../context";
 import { pseudoText, translator } from "../i18n";
+import { humanise } from "../modules/spec";
 import { Problem } from "./module";
 import { useShellData } from "./workspace";
 
@@ -766,7 +767,7 @@ export default function ConversationThread() {
                   <span className="font-ui text-13 text-muted">{l("draftNote")}</span>
                   {run ? (
                     <span className="font-ui text-12 text-subtle">
-                      {run.purpose} · {l("autonomy")}: {run.autonomyLevel}
+                      {humanise(run.purpose)} · {l("autonomy")}: {humanise(run.autonomyLevel)}
                     </span>
                   ) : null}
                 </div>

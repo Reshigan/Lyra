@@ -786,7 +786,7 @@ export default function Home() {
                     </Badge>
                   </div>
                   <p className="break-words font-ui text-12 text-subtle">
-                    {run.purpose} ·{" "}
+                    {humanise(run.purpose)} ·{" "}
                     <DateTime value={run.startedAt} precision="minute" locale={locale} />
                   </p>
                 </li>

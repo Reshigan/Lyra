@@ -31,6 +31,7 @@ import { ApiError, api, names } from "../api.server";
 import { who, type Names } from "../names";
 import { cloudflare } from "../context";
 import { moduleName, pseudoText, translator } from "../i18n";
+import { humanise } from "../modules/spec";
 import { Problem } from "./module";
 import { useShellData } from "./workspace";
 
@@ -726,7 +727,7 @@ export default function AiConsole() {
       )
     },
     { key: "module", header: L("runs.askedBy"), render: (run) => moduleName(t, run.module) },
-    { key: "purpose", header: L("runs.purpose"), render: (run) => run.purpose },
+    { key: "purpose", header: L("runs.purpose"), render: (run) => humanise(run.purpose) },
     {
       key: "state",
       header: L("runs.state"),
@@ -756,7 +757,7 @@ export default function AiConsole() {
     // Spend and the audit log are keyed by module code (`dist`, `core`); the
     // person reading the table navigates by the name on the rail.
     { key: "module", header: L("spend.module"), render: (row) => moduleName(t, row.module) },
-    { key: "purpose", header: L("spend.purpose"), render: (row) => row.purpose },
+    { key: "purpose", header: L("spend.purpose"), render: (row) => humanise(row.purpose) },
     { key: "calls", header: L("spend.calls"), numeric: true, render: (row) => nf.format(row.calls) },
     { key: "tokens", header: L("spend.tokens"), numeric: true, render: (row) => nf.format(row.tokens) },
     {
@@ -823,7 +824,7 @@ export default function AiConsole() {
     },
     { key: "actorRef", header: L("audit.actor"), render: (row) => who(row.actorRef, loaded.names) },
     { key: "module", header: L("audit.module"), render: (row) => moduleName(t, row.module) },
-    { key: "purpose", header: L("audit.purpose"), render: (row) => row.purpose },
+    { key: "purpose", header: L("audit.purpose"), render: (row) => humanise(row.purpose) },
     {
       key: "model",
       header: L("audit.model"),

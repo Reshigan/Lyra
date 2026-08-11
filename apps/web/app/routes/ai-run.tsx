@@ -22,7 +22,8 @@ import {
 } from "@lyra/ui";
 import { ApiError, api } from "../api.server";
 import { cloudflare } from "../context";
-import { pseudoText, translator } from "../i18n";
+import { moduleName, pseudoText, translator } from "../i18n";
+import { humanise } from "../modules/spec";
 import { useShellData } from "./workspace";
 
 // One agent run, opened. `GET /v1/ai/runs/:id/detail` (apps/api/src/routes/ai.ts)
@@ -581,9 +582,9 @@ export default function AiRun() {
           <Card title={L("run.why")}>
             <div className="flex flex-col gap-4">
               <dl className="flex flex-col gap-2">
-                <Pair term={L("run.purpose")} detail={run.purpose} />
-                <Pair term={L("run.module")} detail={run.module} />
-                <Pair term={L("run.trigger")} detail={run.trigger} />
+                <Pair term={L("run.purpose")} detail={humanise(run.purpose)} />
+                <Pair term={L("run.module")} detail={moduleName(t, run.module)} />
+                <Pair term={L("run.trigger")} detail={humanise(run.trigger)} />
                 <Pair
                   term={L("run.autonomy")}
                   detail={L(`autonomy.${run.autonomyLevel}`, run.autonomyLevel)}

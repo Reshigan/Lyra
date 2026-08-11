@@ -90,6 +90,15 @@ describe("humanise", () => {
     // A word that merely starts with one is left alone.
     expect(humanise("aid.requested")).toBe("Aid requested");
   });
+
+  // A model run's purpose is minted by the caller of the gateway, so the AI
+  // console, the run page, the home timeline and the drafting note all showed
+  // people `axis.claim.fraud_score` where a phrase belongs.
+  it("reads a model run's purpose as a phrase", () => {
+    expect(humanise("axis.claim.fraud_score")).toBe("Axis claim fraud score");
+    expect(humanise("dist.quote.explain")).toBe("Dist quote explain");
+    expect(humanise("conversation.reply")).toBe("Conversation reply");
+  });
 });
 
 // The inbox printed `ai.guardrail.blocked` at a person, because titleKey is
