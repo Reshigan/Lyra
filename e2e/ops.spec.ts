@@ -202,4 +202,27 @@ test("J-O2 axis lead shops a new risk and the panel answers @journey:J-O2 @accep
   // is where the Commission column lives — a referral never carries one).
   await expect(page.getByText(/Referred|Quoted/).first()).toBeVisible();
   await expect(page.getByText("Did not quote", { exact: true })).toBeVisible();
+
+  // The comparison is transposed — providers are columns — so it scrolls
+  // sideways on a laptop as soon as the panel is more than two or three deep.
+  // The row-label column has to stay put through that scroll, or the user is
+  // reading numbers with nothing saying what they measure (docs/ui.md §7.11).
+  // The freshly shopped request answers with referrals and therefore renders no
+  // grid at all, so the assertion goes to the request the seed already answered
+  // four providers deep (packages/core/src/seed.ts) — the case the column was
+  // pinned for.
+  await goto(page, "/distribution/quote-requests?state=complete");
+  const answered = page.getByRole("row").filter({ hasText: "Complete" }).first();
+  await expect(answered).toBeVisible();
+  await answered.getByRole("link").first().click();
+  await page.waitForURL(/\/distribution\/quote-requests\/.+/);
+  await goto(page, `${page.url().replace(/\/$/, "")}/compare`);
+
+  // Assert the mechanism rather than the scroll: a computed `position: sticky`
+  // on the row labels is what survives a narrow viewport.
+  const labelCell = page.getByRole("rowheader").first();
+  await expect(labelCell).toBeVisible();
+  await expect
+    .poll(() => labelCell.evaluate((el) => getComputedStyle(el).position))
+    .toBe("sticky");
 });

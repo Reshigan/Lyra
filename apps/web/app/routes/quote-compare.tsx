@@ -607,7 +607,14 @@ export default function QuoteCompare() {
               <caption className="sr-only">{L("region")}</caption>
               <thead>
                 <tr className="border-b border-border">
-                  <th scope="col" className="p-3 text-start font-ui text-12 text-subtle">
+                  {/* The row labels stay put while the provider columns scroll
+                      under them — without this, the fourth provider is a column
+                      of numbers with nothing saying what they measure.
+                      `start-0` not `left-0`: the sticky edge follows dir. */}
+                  <th
+                    scope="col"
+                    className="sticky start-0 z-20 bg-surface-1 p-3 text-start font-ui text-12 text-subtle"
+                  >
                     {L("detail")}
                   </th>
                   {quotes.map((quote) => (
@@ -653,7 +660,7 @@ export default function QuoteCompare() {
                     <tr key={attribute.key} className="border-b border-border/60">
                       <th
                         scope="row"
-                        className="p-3 text-start align-top font-ui text-12 font-normal text-subtle"
+                        className="sticky start-0 z-10 bg-surface-1 p-3 text-start align-top font-ui text-12 font-normal text-subtle"
                       >
                         <span className="flex flex-wrap items-center gap-2">
                           {attribute.label}
@@ -677,7 +684,10 @@ export default function QuoteCompare() {
               {loaded.can.select ? (
                 <tfoot>
                   <tr>
-                    <th scope="row" className="p-3 text-start font-ui text-12 font-normal text-subtle">
+                    <th
+                      scope="row"
+                      className="sticky start-0 z-10 bg-surface-1 p-3 text-start font-ui text-12 font-normal text-subtle"
+                    >
                       {L("choose")}
                     </th>
                     {quotes.map((quote) => (

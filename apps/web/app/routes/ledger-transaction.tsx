@@ -29,6 +29,7 @@ import { cloudflare } from "../context";
 import { arrowFor, translator } from "../i18n";
 import { ConfirmButton } from "../components/confirm";
 import { humanise } from "../modules/spec";
+import { policyTitle } from "./approvals";
 import { Problem } from "./module";
 import { useShellData } from "./workspace";
 import {
@@ -562,7 +563,7 @@ export default function LedgerTransaction() {
           </Button>
         </div>
         {loaded.approvals.length === 0 ? (
-          <p className="font-ui text-13 text-subtle">{l("txn.approvalsEmpty")}</p>
+          <EmptyState title={l("txn.approvalsEmpty")} />
         ) : (
           <Table<ApprovalRow>
             caption={l("txn.approvals")}
@@ -571,7 +572,13 @@ export default function LedgerTransaction() {
             rows={loaded.approvals}
             rowKey={(row) => row.id}
             columns={[
-              { key: "policy", header: l("txn.approvals"), render: (row) => row.policyKey },
+              {
+                key: "policy",
+                header: l("txn.approvals"),
+                // The gate's own name for itself ("ledger.txn_authorize") is not
+                // a sentence. Same helper the approvals inbox reads it with.
+                render: (row) => policyTitle(row.policyKey, "ledger")
+              },
               {
                 key: "decision",
                 header: l("state"),

@@ -155,6 +155,17 @@ describe("labelIn", () => {
     expect(missing).toEqual([]);
   });
 
+  // /ledger/period-close with no ?period= reused the denied copy, so a
+  // controller who simply hadn't picked a period yet was told they lacked
+  // permission to be there (docs/ui.md §7.13).
+  it("does not tell a permitted user they lack access when no period is chosen", () => {
+    for (const locale of ["en", "ar"]) {
+      expect(LABELS[locale]!["period.noneSelected"]).toBeTruthy();
+      expect(LABELS[locale]!["period.noneSelected"]).not.toBe(LABELS[locale]!.denied);
+      expect(LABELS[locale]!["period.noneSelectedBody"]).toBeTruthy();
+    }
+  });
+
   it("names every transaction state in both locales", () => {
     for (const locale of ["en", "ar"]) {
       for (const state of TXN_STATES) expect(LABELS[locale]![`state.${state}`]).toBeTruthy();

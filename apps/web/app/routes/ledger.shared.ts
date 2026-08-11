@@ -312,6 +312,9 @@ export const LABELS: Record<string, Record<string, string>> = {
     "period.recent": "Periods",
     "period.recentCaption": "Recent accounting periods",
     "period.noneRecent": "No periods have been closed yet.",
+    "period.noneSelected": "No period chosen.",
+    "period.noneSelectedBody":
+      "Pick a period from the list below, or look one up by code, to see its checks and close it.",
     "period.lookup": "Look up a period",
     "period.rebuild": "Check balances against the journal",
     "period.rebuildBody":
@@ -558,6 +561,9 @@ export const LABELS: Record<string, Record<string, string>> = {
     "period.recent": "الفترات",
     "period.recentCaption": "الفترات المحاسبية الأخيرة",
     "period.noneRecent": "لم يتم إقفال أي فترة بعد.",
+    "period.noneSelected": "لم يتم اختيار فترة.",
+    "period.noneSelectedBody":
+      "اختر فترة من القائمة أدناه، أو ابحث عنها بالرمز، لعرض فحوصها وإقفالها.",
     "period.lookup": "بحث عن فترة",
     "period.rebuild": "مطابقة الأرصدة مع الدفتر",
     "period.rebuildBody":

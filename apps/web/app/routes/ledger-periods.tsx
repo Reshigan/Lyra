@@ -358,7 +358,10 @@ export default function LedgerPeriods() {
           </div>
         </Card>
       ) : (
-        <EmptyState title={l("denied")} body={l("deniedBody", { permission: PERM.periodsRead })} />
+        // No ?period= is a controller who has not picked one yet, not a
+        // controller without the permission — the loader already answered that
+        // above, and saying it twice tells a permitted user they are locked out.
+        <EmptyState title={l("period.noneSelected")} body={l("period.noneSelectedBody")} />
       )}
 
       <section className="flex flex-col gap-3">

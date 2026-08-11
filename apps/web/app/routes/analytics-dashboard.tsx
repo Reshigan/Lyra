@@ -1,6 +1,7 @@
 import { useLoaderData, type LoaderFunctionArgs } from "react-router";
 import { DateTime, EmptyState, ProgressBar, Sparkline, Stat, Table, type Column } from "@lyra/ui";
 import { ApiError, api, fetchMe } from "../api.server";
+import { humanise } from "../modules/spec";
 import { Cell } from "../components/fields";
 import { cloudflare } from "../context";
 import { pseudoText, translator } from "../i18n";
@@ -106,8 +107,12 @@ const LABELS: Record<string, Record<string, string>> = {
   }
 };
 
-/** Local table first, then the shared `common.*` catalogue, then the raw key. */
-function labelsIn(locale: string): (key: string) => string {
+/**
+ * Local table first, then the shared `common.*` catalogue, then the key said as
+ * words — a tile type nobody labelled becomes "Claims by state", never
+ * `claims_by_state` set in a heading.
+ */
+export function labelsIn(locale: string): (key: string) => string {
   const table = LABELS[locale] ?? LABELS.en ?? {};
   const fallback = LABELS.en ?? {};
   const t = translator(locale);
@@ -115,7 +120,7 @@ function labelsIn(locale: string): (key: string) => string {
     const local = table[key] ?? fallback[key];
     if (local) return pseudoText(locale, local);
     const shared = t(`common.${key}`);
-    return shared === `common.${key}` ? key : shared;
+    return shared === `common.${key}` ? pseudoText(locale, humanise(key)) : shared;
   };
 }
 

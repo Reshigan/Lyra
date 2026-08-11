@@ -26,6 +26,7 @@ import { ApiError, api, fetchMe, type Problem as ProblemBody } from "../api.serv
 import { cloudflare } from "../context";
 import { CATALOGUES, LOCALES, moduleName, pseudoText, translator, type Translate } from "../i18n";
 import { ConfirmButton } from "../components/confirm";
+import { humanise, permissionTitle } from "@lyra/core/words";
 import { titleText } from "../modules/spec";
 import { Problem } from "./module";
 import { CALENDARS, FALLBACK_CURRENCY, calendarFrom, useShellData } from "./workspace";
@@ -1365,7 +1366,7 @@ function MfaPanel({
   result: ActionResult | undefined;
   pending: FormDataEntryValue | undefined | null;
   label: (key: string) => string;
-  t: (key: string, vars?: Record<string, string>) => string;
+  t: Translate;
   failure: (intent: string) => React.ReactNode;
 }) {
   const secret = result?.intent === "mfa-start" ? result.secret : undefined;
@@ -1534,9 +1535,10 @@ function PermissionsPanel({
                 {held.map((permission) => (
                   <li
                     key={permission}
-                    className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-12 text-muted"
+                    className="rounded bg-surface-2 px-1.5 py-0.5 font-ui text-12 text-muted"
+                    title={permission}
                   >
-                    {permission}
+                    {permissionTitle(permission)}
                   </li>
                 ))}
               </ul>
@@ -1574,7 +1576,7 @@ function NewKeyForm({
   result: ActionResult | undefined;
   pending: FormDataEntryValue | undefined | null;
   label: (key: string) => string;
-  t: (key: string, vars?: Record<string, string>) => string;
+  t: Translate;
   failure: (intent: string) => React.ReactNode;
 }) {
   const minted = result?.intent === "create-key" ? result.keySecret : undefined;
@@ -1632,11 +1634,19 @@ function NewKeyForm({
             [...groups].map(([module, permissions]) => (
               <details key={module} className="rounded-md border border-border p-2">
                 <summary className="cursor-pointer font-ui text-13 text-text">
-                  {`${module} (${permissions.length})`}
+                  {`${moduleName(t, module)} (${permissions.length})`}
                 </summary>
                 <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  {/* The grant string is the value; what the actor reads is the
+                      verb — "Revoke API keys", not `core:api_keys:revoke`. The
+                      module is the <summary> they opened to get here. */}
                   {permissions.map((permission) => (
-                    <Checkbox key={permission} name="scopes" value={permission} label={permission} />
+                    <Checkbox
+                      key={permission}
+                      name="scopes"
+                      value={permission}
+                      label={permissionTitle(permission)}
+                    />
                   ))}
                 </div>
               </details>
@@ -1673,7 +1683,7 @@ function BrandPanel({
   tenantName: string;
   pending: FormDataEntryValue | undefined | null;
   label: (key: string) => string;
-  t: (key: string, vars?: Record<string, string>) => string;
+  t: Translate;
   failure: (intent: string) => React.ReactNode;
   done: (intent: string, key: string) => React.ReactNode;
 }) {
@@ -1976,9 +1986,9 @@ function dsarColumns(label: (key: string) => string, locale: string): Array<Colu
     {
       key: "state",
       header: label("dsar.state"),
-      // The API's own state vocabulary; it has no label key, so it is shown as
-      // the machine word rather than as a mistranslation.
-      render: (row) => <Badge tone="neutral">{row.state}</Badge>
+      // The API's own state vocabulary; there is no label key for it, so it is
+      // said as words rather than guessed at as a translation.
+      render: (row) => <Badge tone="neutral">{humanise(row.state)}</Badge>
     },
     {
       key: "dueAt",

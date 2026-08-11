@@ -51,3 +51,15 @@ export function humanise(value: string): string {
     .join(" ");
   return `${said.charAt(0).toUpperCase()}${said.slice(1)}`;
 }
+
+/**
+ * `core:api_keys:revoke` → `Revoke API keys`. A permission is minted as
+ * module / resource / action, and the only part of that a person choosing an
+ * API key's scopes cares about is the last two — the module is the group they
+ * are already reading under. Anything that is not three parts is said as words
+ * rather than dropped: a wildcard grant is still something the actor holds.
+ */
+export function permissionTitle(permission: string): string {
+  const [, resource, action] = permission.split(":");
+  return resource && action ? humanise(`${action}_${resource}`) : humanise(permission);
+}
