@@ -26,8 +26,9 @@ import {
   type BadgeTone,
   type Column
 } from "@lyra/ui";
-import { ApiError, api, fetchMe } from "../api.server";
+import { ApiError, api, fetchMe, names } from "../api.server";
 import { cloudflare } from "../context";
+import { who, type Names } from "../names";
 import { pseudoText, translator } from "../i18n";
 import { Gate } from "./module";
 import { useShellData } from "./workspace";
@@ -328,6 +329,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     teams: [] as Team[],
     options: [] as StaffOption[],
     delegations: [] as Delegation[],
+    named: {} as Names,
     profileId: me.profile?.id ?? null,
     idempotencyKey
   };
@@ -359,6 +361,15 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       : { data: [] }
   ]);
 
+  // A delegation names both sides by user id. The picker's option list covers
+  // most of them, but it is only loaded for someone who may invite and it stops
+  // at 200 — and the row that falls off the end printed a bare ULID at whoever
+  // is deciding to revoke it.
+  const named = await names(
+    delegations.data.flatMap((row) => [row.fromUserId, row.toUserId]),
+    { env, request }
+  );
+
   return {
     may,
     q,
@@ -368,6 +379,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     teams: teams.data,
     options: options.data,
     delegations: delegations.data,
+    named,
     profileId: me.profile?.id ?? null,
     idempotencyKey
   };
@@ -530,8 +542,8 @@ export default function Staff() {
   ];
 
   const delegationColumns: Array<Column<Delegation>> = [
-    { key: "fromUserId", header: l("colFrom"), render: (row) => nameOf(loaded.options, row.fromUserId) },
-    { key: "toUserId", header: l("colTo"), render: (row) => nameOf(loaded.options, row.toUserId) },
+    { key: "fromUserId", header: l("colFrom"), render: (row) => nameOf(loaded.options, row.fromUserId, loaded.named) },
+    { key: "toUserId", header: l("colTo"), render: (row) => nameOf(loaded.options, row.toUserId, loaded.named) },
     { key: "reason", header: l("colReason"), render: (row) => l(`reason.${row.reason}`) },
     {
       key: "window",
@@ -762,7 +774,7 @@ export default function Staff() {
   );
 }
 
-function nameOf(options: readonly StaffOption[], id: string): string {
-  return options.find((o) => o.id === id)?.name ?? id;
+export function nameOf(options: readonly StaffOption[], id: string, resolved: Names = {}): string {
+  return options.find((o) => o.id === id)?.name ?? who(id, resolved) ?? id;
 }
 
