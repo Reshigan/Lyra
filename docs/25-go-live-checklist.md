@@ -794,6 +794,34 @@ These cannot be done by an assistant; they require the account owner directly.
 
 ## 6. Deploy & cutover (docs/10, docs/24 §2)
 
+- [ ] **Flip the production API off `ENVIRONMENT: "demo"` the day a real
+      tenant lands on `lyra.vantax.co.za`.** `apps/api/wrangler.jsonc:20`
+      deliberately sets `"demo"` on the production worker (rationale in the
+      comment above it, and `/health` has reported `{"environment":"demo"}`
+      since the 2026-08-07 cutover) because the host is the showcase and
+      carries seeded data only. Audited 2026-08-11 — this is intentional, not
+      drift, but nothing in CI or the code enforces the flip, so it is
+      recorded here as a gate. What `"demo"` un-gates on the live host, all
+      keyed off `(env.ENVIRONMENT ?? "production") === "production"`:
+      - `apps/api/src/auth.ts:420` (`demoOnly`) — the one-click persona
+        sign-in routes are **mounted and answering**; verified live,
+        `GET https://api.lyra.vantax.co.za/v1/auth/demo/personas` → `200`.
+        This is a password-free sign-in path for the seeded personas.
+      - `/v1/auth/demo/login`, `/demo/clock`, `/demo/seed`,
+        `/demo/resync-roles`, `/v1/signal/demo/spend-tick` — same gate, also
+        live, and advertised in the OpenAPI document
+        (`apps/api/src/openapi.ts:33,347`). `/demo/seed` writes tenant data.
+      - `apps/api/src/clock.ts:10` (`simNow`) — timestamps follow the KV
+        offset `sim:clock:offsetMs` staged by `/demo/clock` instead of the
+        real clock. Anything a real tenant signed or was billed for would
+        carry a virtual timestamp.
+
+      Flipping is a one-word edit plus a production deploy; password sign-in
+      is unaffected either way. `apps/web/wrangler.jsonc:16` already declares
+      `"production"` for the same tier — the two apps disagree today, and
+      that is fine only for as long as the API side is deliberate. Note the
+      web `ENVIRONMENT` var is currently read by nothing outside tests.
+
 - [x] Staging deploy green: `pnpm deploy:staging` for both api
       (`lyra-api-staging` → `https://api-staging.lyra.vantax.co.za`) and web
       (`lyra-web-staging` → `https://staging.lyra.vantax.co.za`) —
