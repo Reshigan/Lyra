@@ -277,6 +277,54 @@ describe("routeConversation", () => {
     expect(second!.resolutionDueAt).toBe(first!.resolutionDueAt);
   });
 
+  // orbit_agent_presence.active_count is never written by anything, so every
+  // agent looked idle and "least loaded" degenerated into the updatedAt
+  // tiebreak: the same agent collected every new conversation while a
+  // colleague sat empty. Load is counted from the conversations they actually
+  // hold.
+  it("counts an agent's open conversations as their load, and skips one already at maxConcurrent", async () => {
+    await ctx.db.insert(schema.orbitTeams).values({
+      id: "otm_default",
+      tenantId,
+      key: "default",
+      nameJson: "{}",
+      isDefault: true,
+      createdAt: now,
+      updatedAt: now
+    });
+    await ctx.db.insert(schema.orbitTeamMembers).values([
+      { id: "tmm_0", tenantId, teamId: "otm_default", userId: "u_0", createdAt: now },
+      { id: "tmm_1", tenantId, teamId: "otm_default", userId: "u_1", maxConcurrent: 1, createdAt: now }
+    ]);
+    // u_0 sorts first on every other tiebreak (lower id, same heartbeat).
+    await ctx.db.insert(schema.orbitAgentPresence).values([
+      { id: "ap_0", tenantId, userId: "u_0", status: "available", activeCount: 0, updatedAt: now },
+      { id: "ap_1", tenantId, userId: "u_1", status: "available", activeCount: 0, updatedAt: now }
+    ]);
+    await ctx.db.insert(schema.orbitConversations).values([
+      // Two live conversations on u_0, one on u_1, one u_0 already closed.
+      { id: "cnv_a", tenantId, channel: "whatsapp", state: "agent", assigneeRef: "u_0", createdAt: now, updatedAt: now },
+      { id: "cnv_b", tenantId, channel: "whatsapp", state: "agent", assigneeRef: "u_0", createdAt: now, updatedAt: now },
+      { id: "cnv_c", tenantId, channel: "whatsapp", state: "closed", assigneeRef: "u_0", createdAt: now, updatedAt: now },
+      { id: "cnv_d", tenantId, channel: "whatsapp", state: "agent", assigneeRef: "u_1", createdAt: now, updatedAt: now }
+    ]);
+
+    // u_1 is lighter but full (maxConcurrent 1), so the work goes to u_0.
+    expect((await routeConversation(ctx, "cnv_1")).assigneeRef).toBe("u_0");
+
+    // Free u_1 up and the next conversation goes to them, not to u_0 again.
+    await ctx.db.update(schema.orbitConversations).set({ state: "closed" }).where(eq(schema.orbitConversations.id, "cnv_d"));
+    await ctx.db.insert(schema.orbitConversations).values({
+      id: "cnv_2",
+      tenantId,
+      channel: "whatsapp",
+      state: "bot",
+      createdAt: now,
+      updatedAt: now
+    });
+    expect((await routeConversation(ctx, "cnv_2")).assigneeRef).toBe("u_1");
+  });
+
   // Regression test for C3: a routine re-route (not the stale-presence path)
   // must not poach a conversation away from an agent who already owns it,
   // even when a more attractive candidate becomes available in the interim.

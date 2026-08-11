@@ -77,9 +77,35 @@ export function pickAssignee(
 /** An agent idle longer than this (no presence heartbeat) is treated as gone: sweepRouting reassigns their open conversations. */
 export const PRESENCE_STALE_MS = 15 * 60_000;
 
-import { eq, isNull, lte, ne } from "drizzle-orm";
+import { count, eq, isNull, lte, ne } from "drizzle-orm";
 import { schema } from "@lyra/db";
 import { emit, scoped, type Ctx } from "@lyra/core";
+
+/**
+ * How many live conversations each agent is holding right now.
+ *
+ * orbit_agent_presence.active_count exists but nothing ever writes it, so
+ * trusting it made every agent look idle and "least loaded" collapsed into
+ * the heartbeat tiebreak. The conversations table already knows the answer,
+ * and counting it cannot drift out of step with reality the way an
+ * incremented counter does.
+ */
+async function loadByAssignee(ctx: Ctx): Promise<Map<string, number>> {
+  const rows = await ctx.db
+    .select({ assigneeRef: schema.orbitConversations.assigneeRef, open: count() })
+    .from(schema.orbitConversations)
+    .where(scoped(ctx, schema.orbitConversations, ne(schema.orbitConversations.state, "closed")))
+    .groupBy(schema.orbitConversations.assigneeRef);
+  return new Map(rows.flatMap((r) => (r.assigneeRef ? [[r.assigneeRef, r.open] as const] : [])));
+}
+
+/** Presence as the router sees it: the stored row, with its load counted live. */
+function withLoad(
+  rows: readonly { userId: string; status: "available" | "away" | "offline"; updatedAt: number }[],
+  load: ReadonlyMap<string, number>
+): Map<string, PresenceInput> {
+  return new Map(rows.map((p) => [p.userId, { status: p.status, updatedAt: p.updatedAt, activeCount: load.get(p.userId) ?? 0 }]));
+}
 
 async function defaultTeamId(ctx: Ctx): Promise<string | null> {
   const [team] = await ctx.db
@@ -139,7 +165,7 @@ export async function routeConversation(
     .select()
     .from(schema.orbitAgentPresence)
     .where(scoped(ctx, schema.orbitAgentPresence));
-  const presence = new Map(presenceRows.map((p) => [p.userId, p]));
+  const presence = withLoad(presenceRows, await loadByAssignee(ctx));
   const requireSkills = conversation.requireSkillsJson ? (JSON.parse(conversation.requireSkillsJson) as string[]) : [];
 
   // C1/C3: this function is also called mid-flight by sweepRouting's
@@ -291,7 +317,7 @@ export async function sweepRouting(
         .from(schema.orbitTeamMembers)
         .where(scoped(ctx, schema.orbitTeamMembers, eq(schema.orbitTeamMembers.teamId, conv.teamId)));
       const presenceRows = await ctx.db.select().from(schema.orbitAgentPresence).where(scoped(ctx, schema.orbitAgentPresence));
-      const presence = new Map(presenceRows.map((p) => [p.userId, p]));
+      const presence = withLoad(presenceRows, await loadByAssignee(ctx));
       const requireSkills = conv.requireSkillsJson ? (JSON.parse(conv.requireSkillsJson) as string[]) : [];
       const nextAssignee = pickAssignee(
         members.filter((m) => m.userId !== stale.userId),
