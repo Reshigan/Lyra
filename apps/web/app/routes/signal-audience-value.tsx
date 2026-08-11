@@ -1,5 +1,5 @@
 import { Link, useLoaderData, type LoaderFunctionArgs } from "react-router";
-import { Badge, Card, EmptyState, KPIWall, Money, Stat, Table, type Column } from "@lyra/ui";
+import { Badge, Card, EmptyState, KPIWall, Money, NoData, Stat, Table, type Column } from "@lyra/ui";
 import { api } from "../api.server";
 import { cloudflare } from "../context";
 import { useShellData } from "./workspace";
@@ -151,7 +151,8 @@ function valueColumns(l: Label, locale: string, currency: string): Array<Column<
       key: "size",
       header: l("aud.size"),
       numeric: true,
-      render: (row) => (row.audience.sizeCached === null ? l("none") : row.audience.sizeCached.toLocaleString(locale))
+      render: (row) =>
+        row.audience.sizeCached === null ? <NoData reason={l("none")} /> : row.audience.sizeCached.toLocaleString(locale)
     },
     { key: "reach", header: l("aud.reach"), numeric: true, render: (row) => String(row.campaigns) },
     { key: "spend", header: l("spend"), numeric: true, render: (row) => money(row.spendMinor) },
@@ -161,26 +162,26 @@ function valueColumns(l: Label, locale: string, currency: string): Array<Column<
       key: "cac",
       header: l("cac"),
       numeric: true,
-      render: (row) => (row.cacMinor === null ? l("none") : money(row.cacMinor))
+      render: (row) => (row.cacMinor === null ? <NoData reason={l("none")} /> : money(row.cacMinor))
     },
     {
       key: "ltv",
       header: l("ltv"),
       numeric: true,
-      render: (row) => (row.ltvMinor === null ? l("none") : money(row.ltvMinor))
+      render: (row) => (row.ltvMinor === null ? <NoData reason={l("none")} /> : money(row.ltvMinor))
     },
     {
       key: "multiple",
       header: l("multiple"),
       numeric: true,
       render: (row) => {
-        if (row.campaigns === 0) return <span className="text-subtle">{l("aud.unmeasured")}</span>;
+        if (row.campaigns === 0) return <NoData reason={l("aud.unmeasured")} />;
         // A multiple built on two signings would be read as a finding; say so
         // rather than printing it (docs/22: a number without its confidence lies).
-        if (row.binds < THIN) return <span className="text-subtle">{l("aud.thin")}</span>;
+        if (row.binds < THIN) return <NoData reason={l("aud.thin")} />;
         const ratio = ltvToCac(row.ltvMinor, row.cacMinor);
         return ratio === null ? (
-          l("none")
+          <NoData reason={l("none")} />
         ) : (
           <span className={ratio < 1 ? "text-danger" : undefined}>{multipleText(locale, ratio)}</span>
         );
@@ -190,7 +191,7 @@ function valueColumns(l: Label, locale: string, currency: string): Array<Column<
       key: "conversion",
       header: l("aud.conversion"),
       numeric: true,
-      render: (row) => (row.conversionPct > 0 ? `${row.conversionPct}%` : l("none"))
+      render: (row) => (row.conversionPct > 0 ? `${row.conversionPct}%` : <NoData reason={l("none")} />)
     }
   ];
 }

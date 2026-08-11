@@ -332,3 +332,23 @@ export function DateTime({
     </time>
   );
 }
+
+/**
+ * A cell with nothing in it yet. Screens spelled the reason out in full inside
+ * every empty cell — "Not enough data yet" across five columns and eleven rows
+ * on the audience-value table, wrapping each one four lines deep and crowding
+ * out the numbers that do exist. The dash is the cell; the reason stays one
+ * hover (or one screen reader) away.
+ */
+export function NoData({
+  reason,
+  className,
+  ...props
+}: { reason: string } & React.HTMLAttributes<HTMLSpanElement>) {
+  return (
+    <span {...props} title={reason} className={cn("text-subtle", className)}>
+      <span aria-hidden="true">—</span>
+      <span className="sr-only absolute h-px w-px overflow-hidden">{reason}</span>
+    </span>
+  );
+}
