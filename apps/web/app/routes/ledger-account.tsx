@@ -1,5 +1,5 @@
 import { Form, Link, useLoaderData, useNavigation, type LoaderFunctionArgs } from "react-router";
-import { Badge, Button, Card, DateTime, EmptyState, Field, Input, Money, Table, type Column } from "@lyra/ui";
+import { Badge, Button, Card, DateTime, EmptyState, Field, Input, Money, Ref, Table, type Column } from "@lyra/ui";
 import { ApiError, api, fetchMe } from "../api.server";
 import { cloudflare } from "../context";
 import { translator } from "../i18n";
@@ -161,7 +161,7 @@ export default function LedgerAccount() {
             to={`/ledger/transactions/${encodeURIComponent(row.txnId)}`}
             className="rounded-sm font-mono text-12 text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent"
           >
-            {row.txnId}
+            <Ref value={row.txnId} />
           </Link>
         ) : (
           l("none")

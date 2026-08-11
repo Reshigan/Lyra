@@ -442,7 +442,7 @@ function OfferRow({
                   {offer.runId ? (
                     <Fragment>
                       <dt>{l("run")}</dt>
-                      <dd className="font-mono text-12 text-text">{offer.runId}</dd>
+                      <dd className="font-mono text-12 text-text">{shortRef(offer.runId)}</dd>
                     </Fragment>
                   ) : null}
                   {Object.entries(evidence).map(([key, value]) => (

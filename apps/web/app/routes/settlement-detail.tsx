@@ -18,6 +18,7 @@ import {
   PageHeader,
   Table,
   Textarea,
+  shortRef,
   type Column
 } from "@lyra/ui";
 import { ApiError, api, fetchMe, type Problem } from "../api.server";
@@ -374,7 +375,7 @@ export default function SettlementDetail() {
         </p>
         {terms.agreementId ? (
           <p className="font-ui text-13 text-text">
-            {l("termsAgreement")}: <span className="font-mono">{terms.agreementId}</span>
+            {l("termsAgreement")}: <span className="font-mono">{shortRef(terms.agreementId)}</span>
             {terms.agreementVersion !== null ? ` (${l("termsAgreementVersion", { version: String(terms.agreementVersion) })})` : ""}
           </p>
         ) : (

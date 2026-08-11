@@ -20,9 +20,11 @@ import {
   PageHeader,
   Select,
   Textarea,
+  shortRef,
   type BadgeTone
 } from "@lyra/ui";
-import { ApiError, api, fetchMe, type Problem as ApiProblem } from "../api.server";
+import { ApiError, api, fetchMe, directory, type DirectoryEntry, type Problem as ApiProblem } from "../api.server";
+import { whoIs } from "../people";
 import { cloudflare } from "../context";
 import { orbit } from "../modules/orbit";
 import { labelsFor, optionLabel } from "../modules/spec";
@@ -343,6 +345,7 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
     blocking: [] as string[],
     partner: null as Partner | null,
     agreements: [] as Agreement[],
+    people: [] as DirectoryEntry[],
     // Minted per render, not per click: a double submit is then one advance the
     // API deduplicates rather than two (CLAUDE.md §12).
     idempotencyKey: crypto.randomUUID()
@@ -350,7 +353,7 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   if (!may.read) return { ...empty, denied: true as const };
 
   const query = new URLSearchParams({ subjectKind, subjectRef: ref });
-  const [checklist, partner, agreements] = await Promise.all([
+  const [checklist, partner, agreements, people] = await Promise.all([
     soft(api<{ data: Step[]; blocking: string[] }>(`/v1/onboarding/steps?${query}`, { env, request })),
     isPartner && held.has(PERM.partnersRead)
       ? soft(api<Partner>(`/v1/orbit/partners/${encodeURIComponent(ref)}`, { env, request }))
@@ -362,12 +365,15 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
             { env, request }
           )
         )
-      : Promise.resolve(null)
+      : Promise.resolve(null),
+    // Who owns a step is a colleague, and the checklist showed them as `us_…`.
+    directory({ env, request })
   ]);
 
   return {
     ...empty,
     denied: false as const,
+    people,
     steps: checklist?.data ?? [],
     blocking: checklist?.blocking ?? [],
     partner: partner ?? null,
@@ -562,7 +568,7 @@ export default function Onboarding() {
         </p>
       ) : null}
 
-      {partner ? <Subject l={l} locale={locale} partner={partner} /> : null}
+      {partner ? <Subject l={l} locale={locale} people={loaded.people} partner={partner} /> : null}
 
       <section aria-labelledby="checklist-heading" className="flex flex-col gap-3">
         <h2 id="checklist-heading" className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">
@@ -590,6 +596,7 @@ export default function Onboarding() {
                   key={step.id}
                   l={l}
                   locale={locale}
+                  people={loaded.people}
                   step={step}
                   blocking={blocking.has(step.key)}
                   may={may}
@@ -632,7 +639,17 @@ function Header({ l, loaded }: { l: Label; loaded: Awaited<ReturnType<typeof loa
 }
 
 /** Where the subject stands, before anything about what is left to do. */
-function Subject({ l, locale, partner }: { l: Label; locale: string; partner: Partner }) {
+function Subject({
+  l,
+  locale,
+  people,
+  partner
+}: {
+  l: Label;
+  locale: string;
+  people: readonly DirectoryEntry[];
+  partner: Partner;
+}) {
   const facts: Array<[string, React.ReactNode]> = [
     ["onb.stage", <Badge tone={stageTone(partner.stage)} dot>{l(`stage.${partner.stage}`)}</Badge>],
     [
@@ -643,7 +660,7 @@ function Subject({ l, locale, partner }: { l: Label; locale: string; partner: Pa
     ],
     ["kind", <span>{optionLabel(l, "kind", partner.kind)}</span>]
   ];
-  if (partner.ownerRef) facts.push(["ownerRef", <span>{partner.ownerRef}</span>]);
+  if (partner.ownerRef) facts.push(["ownerRef", <span>{whoIs(people, partner.ownerRef) ?? shortRef(partner.ownerRef)}</span>]);
   if (partner.riskRating)
     facts.push(["onb.riskRating", <span>{optionLabel(l, "riskRating", partner.riskRating)}</span>]);
   if (partner.country) facts.push(["onb.country", <span>{partner.country}</span>]);
@@ -689,6 +706,7 @@ function Subject({ l, locale, partner }: { l: Label; locale: string; partner: Pa
 function StepCard({
   l,
   locale,
+  people,
   step,
   blocking,
   may,
@@ -696,6 +714,7 @@ function StepCard({
 }: {
   l: Label;
   locale: string;
+  people: readonly DirectoryEntry[];
   step: Step;
   blocking: boolean;
   may: { write: boolean; waive: boolean };
@@ -737,7 +756,7 @@ function StepCard({
             <dd className="text-text">
               {optionLabel(l, "evidenceKind", step.evidenceKind)}
               {step.evidenceRef ? (
-                <span className="ms-1.5 font-mono text-12 text-subtle">{step.evidenceRef}</span>
+                <span className="ms-1.5 font-mono text-12 text-subtle">{shortRef(step.evidenceRef)}</span>
               ) : null}
             </dd>
           </div>
@@ -745,7 +764,7 @@ function StepCard({
         {step.ownerRef ? (
           <div className="flex gap-1.5">
             <dt className="text-subtle">{l("ownerRef")}</dt>
-            <dd className="font-mono text-12 text-text">{step.ownerRef}</dd>
+            <dd className="font-ui text-12 text-text">{whoIs(people, step.ownerRef) ?? shortRef(step.ownerRef)}</dd>
           </div>
         ) : null}
         {step.dueAt ? (
@@ -762,7 +781,7 @@ function StepCard({
             <dd className="text-text">
               <DateTime value={step.decidedAt} locale={locale} precision="minute" />
               {step.decidedBy ? (
-                <span className="ms-1.5 font-mono text-12 text-subtle">{step.decidedBy}</span>
+                <span className="ms-1.5 font-ui text-12 text-subtle">{whoIs(people, step.decidedBy) ?? shortRef(step.decidedBy)}</span>
               ) : null}
             </dd>
           </div>
@@ -770,7 +789,7 @@ function StepCard({
         {step.waivedApprovalId ? (
           <div className="flex gap-1.5">
             <dt className="text-subtle">{l("onb.waivedBy")}</dt>
-            <dd className="font-mono text-12 text-text">{step.waivedApprovalId}</dd>
+            <dd className="font-mono text-12 text-text">{shortRef(step.waivedApprovalId)}</dd>
           </div>
         ) : null}
       </dl>

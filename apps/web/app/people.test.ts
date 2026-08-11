@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { DirectoryEntry } from "../api.server";
-import { whoIs } from "./conversation";
+import type { DirectoryEntry } from "./api.server";
+import { whoIs } from "./people";
 
 // The facts panel printed `us_01KE…` for the agent holding the thread and
 // `tm_01KE…` for their team, while the directory the same loader had already

@@ -819,7 +819,7 @@ export default function ClaimDetail() {
           <Entry term={l("caseRef")}>
             {claim.caseId ? (
               <Link to={`/axis/cases/${claim.caseId}/detail`} className="text-accent hover:underline">
-                {claim.caseId}
+                <Ref value={claim.caseId} />
               </Link>
             ) : (
               "—"

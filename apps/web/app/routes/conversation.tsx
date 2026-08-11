@@ -28,7 +28,8 @@ import {
   Textarea,
   type BadgeTone
 } from "@lyra/ui";
-import { ApiError, api, directory, fetchMe, type ApiOptions, type DirectoryEntry } from "../api.server";
+import { ApiError, api, directory, fetchMe, type ApiOptions } from "../api.server";
+import { whoIs } from "../people";
 import { cloudflare } from "../context";
 import { pseudoText, translator } from "../i18n";
 import { humanise } from "../modules/spec";
@@ -227,16 +228,6 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
     handovers: handovers?.data ?? null,
     scores: scores?.data ?? null
   };
-}
-
-/**
- * The directory already holds every name this screen shows an agent, so the
- * facts panel reads from it rather than resolving the same refs twice. A team
- * is stored bare (`tm_…`) but listed as `team:tm_…`, hence the suffix match.
- */
-export function whoIs(entries: readonly DirectoryEntry[], ref: string | null): string | null {
-  if (!ref) return null;
-  return entries.find((entry) => entry.ref === ref || entry.ref.endsWith(`:${ref}`))?.name ?? null;
 }
 
 /**
