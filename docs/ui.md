@@ -1271,10 +1271,13 @@ therefore either a raw editable column or a bespoke route. Either wire the
 existing mechanism up or delete it; a designed-but-dead affordance is why
 nothing on a record screen looks like a verb.
 
-**16. Two secondary money surfaces expose raw JSON to finance users.**
-`/ledger/transactions` asks for the transaction's `args` as hand-typed JSON in a
-`<Textarea>`; `/ledger/recon` asks for statement `lines` the same way. A
-controller opening a transaction should not be writing JSON.
+**16. ~~Two secondary money surfaces expose raw JSON to finance users.~~**
+*Closed.* `/ledger/transactions` now renders one input per recipe argument —
+money in a money field — off the field list `GET /txn-types` publishes.
+`/ledger/recon` takes the statement as the counterparty exported it (reference,
+amount, our reference, date, description; commas or tabs, header row optional),
+parses it server-side and shows the rows it read back before the run starts.
+Neither screen asks a controller to write JSON.
 
 ---
 

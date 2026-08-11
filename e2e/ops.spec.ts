@@ -90,8 +90,9 @@ test("J-O3 finance controller runs a reconciliation and decides an exception wit
   await page.getByLabel("Gross amount", { exact: true }).fill("5000");
   // The generic `grossMinor`/`currency` fields above are the ledger envelope;
   // CM-RECEIPT's own recipe (packages/ledger/src/recipes.ts ClientMoneyArgs)
-  // separately requires `amountMinor` inside the free-form Arguments JSON.
-  await page.getByLabel("Arguments", { exact: true }).fill(JSON.stringify({ amountMinor: 500000 }));
+  // separately requires `amountMinor`, which the form now asks for as its own
+  // money field rather than as JSON (docs/ui.md §7 P3-16).
+  await page.getByLabel("Amount*", { exact: true }).fill("5000");
   await page.getByRole("button", { name: "Open transaction" }).click();
   await confirmAction(page);
   await expect(page.getByText(/Opened as/)).toBeVisible();
@@ -100,10 +101,12 @@ test("J-O3 finance controller runs a reconciliation and decides an exception wit
   // insurer-process tolerance absorbs — an auto-match, not an exact one.
   await goto(page, "/ledger/recon");
   const statementRef = `STMT-${Date.now()}`;
-  const lines = JSON.stringify([
-    { ref: statementRef, amountMinor: 500050, currency: "AED", ourRef: naturalKey }
-  ]);
-  await page.getByLabel("Statement lines*", { exact: true }).fill(lines);
+  // The statement is pasted as the counterparty exported it — reference,
+  // amount, our reference — and the amount is read in the currency's own
+  // precision (docs/ui.md §7 P3-16), so 5000.50 AED is 500050 minor units.
+  await page
+    .getByLabel("Statement lines*", { exact: true })
+    .fill(`${statementRef},5000.50,${naturalKey}`);
   await page.getByRole("button", { name: "Start run" }).click();
   await confirmAction(page);
   // The run itself matches every statement line against the ledger inside the

@@ -1,4 +1,5 @@
 // What the four bespoke ledger screens agree on: the state machine they may
+import { minorFromMajor } from "@lyra/ui";
 import { humanise } from "../modules/spec";
 import { vocabulary } from "../modules/vocabulary";
 import { pseudoText } from "../i18n";
@@ -131,6 +132,87 @@ export function argsFromForm(fields: readonly ArgField[], form: FormData): Recor
     args[field.name] = field.kind === "integer" && raw !== "" && !Number.isNaN(asNumber) ? asNumber : raw;
   }
   return args;
+}
+
+/* -------------------------------------------------------- statement lines */
+
+/** Mirrors packages/ledger/src/recon.ts StatementLine, as `POST /recon/runs` takes it. */
+export interface StatementLine {
+  ref: string;
+  amountMinor: number;
+  currency: string;
+  ourRef?: string;
+  postedAt?: number;
+  description?: string;
+}
+
+export interface StatementParse {
+  lines: StatementLine[];
+  /** Rows that were not read, quoted back with their number so the operator can find them. */
+  rejected: Array<{ row: number; text: string }>;
+}
+
+/** One row, comma or tab separated, with quoted fields kept whole. */
+function cells(row: string, separator: string): string[] {
+  const out: string[] = [];
+  let cell = "";
+  let quoted = false;
+  for (let i = 0; i < row.length; i++) {
+    const char = row[i];
+    if (quoted) {
+      // "" inside a quoted field is a literal quote — the CSV convention.
+      if (char === '"' && row[i + 1] === '"') {
+        cell += '"';
+        i++;
+      } else if (char === '"') quoted = false;
+      else cell += char;
+    } else if (char === '"') quoted = true;
+    else if (char === separator) {
+      out.push(cell);
+      cell = "";
+    } else cell += char;
+  }
+  out.push(cell);
+  return out.map((value) => value.trim());
+}
+
+/**
+ * A pasted statement, in the shape the counterparty exported it: reference,
+ * amount, our reference, date, description — comma or tab separated, header
+ * row optional. Amounts are read in the currency's own precision, so a
+ * controller pastes 1 500,55 and the run sees 150055.
+ *
+ * A row that cannot be read is handed back rather than dropped: a statement
+ * that silently loses a line reconciles to the wrong answer.
+ */
+export function statementFromCsv(text: string, currency: string, locale = "en"): StatementParse {
+  const lines: StatementLine[] = [];
+  const rejected: Array<{ row: number; text: string }> = [];
+  const rows = text.split(/\r?\n/);
+  const separator = rows.find((row) => row.trim())?.includes("\t") ? "\t" : ",";
+
+  rows.forEach((raw, index) => {
+    if (!raw.trim()) return;
+    const [ref = "", amount = "", ourRef = "", postedAt = "", description = ""] = cells(raw, separator);
+    const amountMinor = minorFromMajor(amount, currency, locale);
+    if (amountMinor === null || !ref) {
+      // A first row whose amount is not a number is the header, not a mistake.
+      if (index === 0 && !lines.length) return;
+      rejected.push({ row: index + 1, text: raw.trim() });
+      return;
+    }
+    const at = Date.parse(postedAt);
+    lines.push({
+      ref,
+      amountMinor,
+      currency,
+      ...(ourRef ? { ourRef } : {}),
+      ...(Number.isNaN(at) ? {} : { postedAt: at }),
+      ...(description ? { description } : {})
+    });
+  });
+
+  return { lines, rejected };
 }
 
 /* --------------------------------------------------------- the invariant */
@@ -423,7 +505,18 @@ export const LABELS: Record<string, Record<string, string>> = {
     "recon.propose": "Let the assistant propose matches for the leftovers",
     "recon.proposeHint": "Proposals are never posted. Each one still needs a person to confirm it.",
     "recon.lines": "Statement lines",
-    "recon.linesHint": "One JSON array: ref, amountMinor, currency, and optionally ourRef, postedAt, description.",
+    "recon.linesHint":
+      "Paste the statement as it was exported — one line per row, columns in this order: reference, amount, our reference, date, description. Only the first two are needed. Commas or tabs; a header row is fine.",
+    "recon.linesPlaceholder": "INS-8891, 1500.55, TXN-01, 2026-08-01, August premium",
+    "recon.linesRead": "{count} lines read, {rejected} not.",
+    "recon.linesCaption": "The statement lines as they were read",
+    "recon.linesMore": "…and {count} more, all of which will be reconciled.",
+    "recon.linesRejected": "These rows were not read. Fix them or take them out — a run must see the whole statement.",
+    "recon.linesRow": "Row {row}",
+    "recon.lineAmount": "Amount",
+    "recon.lineOurRef": "Our reference",
+    "recon.linePostedAt": "Date",
+    "recon.lineDescription": "Description",
     "recon.start": "Start run",
     "recon.startConfirm": "Start this reconciliation run?",
     "recon.runs": "Runs",
@@ -458,7 +551,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     "recon.decided": "Match recorded as {decision}.",
     "recon.pick": "Pick a run",
     "recon.pickBody": "Start a run above, or open one by its id.",
-    "recon.linesInvalid": "Statement lines must be a JSON array.",
+    "recon.linesInvalid": "Paste the statement before starting a run.",
     "recon.unmatched": "Unmatched",
     "recon.unmatchedRefs": "Statement lines with no transaction",
     "recon.unmatchedTxns": "Transactions with no statement line",
@@ -692,7 +785,18 @@ export const LABELS: Record<string, Record<string, string>> = {
     "recon.propose": "دع المساعد يقترح مطابقات للمتبقّي",
     "recon.proposeHint": "الاقتراحات لا تُرحّل أبدًا، ويظل كل اقتراح بحاجة إلى تأكيد شخص.",
     "recon.lines": "سطور الكشف",
-    "recon.linesHint": "مصفوفة JSON واحدة: ref و amountMinor و currency، واختياريًا ourRef و postedAt و description.",
+    "recon.linesHint":
+      "الصق الكشف كما صُدِّر — سطر لكل صف، والأعمدة بهذا الترتيب: المرجع، المبلغ، مرجعنا، التاريخ، الوصف. الأول والثاني وحدهما مطلوبان. فواصل أو علامات جدولة، وصف العناوين مقبول.",
+    "recon.linesPlaceholder": "INS-8891, 1500.55, TXN-01, 2026-08-01, قسط أغسطس",
+    "recon.linesRead": "قُرئ {count} سطرًا، وتعذّر {rejected}.",
+    "recon.linesCaption": "سطور الكشف كما قُرئت",
+    "recon.linesMore": "…و{count} أخرى، وجميعها ستُسوّى.",
+    "recon.linesRejected": "هذه الصفوف لم تُقرأ. صحّحها أو احذفها — التشغيل يجب أن يرى الكشف كاملًا.",
+    "recon.linesRow": "الصف {row}",
+    "recon.lineAmount": "المبلغ",
+    "recon.lineOurRef": "مرجعنا",
+    "recon.linePostedAt": "التاريخ",
+    "recon.lineDescription": "الوصف",
     "recon.start": "بدء التشغيل",
     "recon.startConfirm": "هل تبدأ هذه التسوية؟",
     "recon.runs": "عمليات التشغيل",
@@ -727,7 +831,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     "recon.decided": "سُجّلت المطابقة على أنها {decision}.",
     "recon.pick": "اختر تشغيلًا",
     "recon.pickBody": "ابدأ تشغيلًا أعلاه أو افتح واحدًا بمعرّفه.",
-    "recon.linesInvalid": "يجب أن تكون سطور الكشف مصفوفة JSON.",
+    "recon.linesInvalid": "الصق الكشف قبل بدء التشغيل.",
     "recon.unmatched": "غير مطابق",
     "recon.unmatchedRefs": "سطور كشف بلا معاملة",
     "recon.unmatchedTxns": "معاملات بلا سطر كشف",

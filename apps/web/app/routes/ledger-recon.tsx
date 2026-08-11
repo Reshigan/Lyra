@@ -32,7 +32,7 @@ import { translator } from "../i18n";
 import { ConfirmButton } from "../components/confirm";
 import { Problem } from "./module";
 import { useShellData } from "./workspace";
-import { PERM, labelIn } from "./ledger.shared";
+import { PERM, labelIn, statementFromCsv, type StatementLine } from "./ledger.shared";
 
 // A reconciliation run is arithmetic; deciding a match is a judgement. The
 // judgement carries a name and a reason onto the record, so the decide control
@@ -140,7 +140,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
   const env = context.get(cloudflare).env;
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
-  const empty = { problem: null, started: null, decided: null };
+  const empty = { problem: null, started: null, decided: null, rejected: [] as Array<{ row: number; text: string }> };
 
   try {
     if (intent === "decide") {
@@ -157,13 +157,12 @@ export async function action({ request, context }: ActionFunctionArgs) {
       return { ...empty, decided: decision };
     }
 
-    let lines: unknown;
-    try {
-      lines = JSON.parse(String(form.get("lines") ?? ""));
-    } catch {
-      return { ...empty, problem: { title: "lines", status: 400 } };
-    }
-    if (!Array.isArray(lines)) return { ...empty, problem: { title: "lines", status: 400 } };
+    const currency = String(form.get("currency") ?? "");
+    // The statement is read here, not in the browser: the run posts what the
+    // server parsed, so a preview that drifted cannot change what reconciles.
+    const { lines, rejected } = statementFromCsv(String(form.get("lines") ?? ""), currency);
+    if (!lines.length) return { ...empty, problem: { title: "lines", status: 400 } };
+    if (rejected.length) return { ...empty, rejected };
 
     const counterparty = String(form.get("counterpartyRef") ?? "").trim();
     const tolerance = String(form.get("toleranceMinor") ?? "").trim();
@@ -178,7 +177,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
       body: {
         process: String(form.get("process") ?? ""),
         period: String(form.get("period") ?? ""),
-        currency: String(form.get("currency") ?? ""),
+        currency,
         ...(counterparty ? { counterpartyRef: counterparty } : {}),
         ...(tolerance ? { toleranceMinor: Number(tolerance) } : {}),
         propose: form.get("propose") === "on",
@@ -203,6 +202,9 @@ export default function LedgerRecon() {
   // The money field's precision follows the currency beside it: 500 in JPY is
   // 500 minor units, in ZAR it is 50000.
   const [currency, setCurrency] = useState(loaded.currency);
+  // The pasted statement lives in state so the screen can show what it read
+  // back — the operator checks the rows, not the paste.
+  const [statement, setStatement] = useState("");
 
   const busy = navigation.state !== "idle";
 
@@ -364,6 +366,19 @@ export default function LedgerRecon() {
                 : result.problem
           }
         />
+      ) : null}
+
+      {result?.rejected?.length ? (
+        <div role="alert" className="flex flex-col gap-2 rounded-md border border-danger/40 bg-danger/10 p-3">
+          <p className="font-ui text-13 text-text">{l("recon.linesRejected")}</p>
+          <ul className="flex flex-col gap-1">
+            {result.rejected.map((row) => (
+              <li key={row.row} className="font-mono text-12 text-muted">
+                {l("recon.linesRow", { row: String(row.row) })} — {row.text}
+              </li>
+            ))}
+          </ul>
+        </div>
       ) : null}
 
       {result?.started ? (
@@ -546,18 +561,26 @@ export default function LedgerRecon() {
             </div>
 
             <Field label={l("recon.lines")} hint={l("recon.linesHint")} required>
-              {/* No defaultValue: a pre-filled "[]" both lets `required` pass on
-                  an empty import and survives a programmatic fill as trailing
-                  text ("[{…}][]" — an invalid body the action 400s on). The
-                  hint carries the shape instead. */}
+              {/* The statement as the counterparty exported it. No defaultValue:
+                  an empty paste must fail `required` rather than post a run
+                  against nothing. */}
               <Textarea
                 name="lines"
                 rows={8}
-                placeholder='[{ "ref": "…", "amountMinor": 0, "currency": "AED" }]'
+                value={statement}
+                onChange={(event) => setStatement(event.target.value)}
+                placeholder={l("recon.linesPlaceholder")}
                 className="font-mono text-12"
                 required
               />
             </Field>
+
+            <StatementPreview
+              text={statement}
+              currency={currency || "ZAR"}
+              locale={locale}
+              l={l}
+            />
 
             <Checkbox name="propose" label={l("recon.propose")} />
             <p className="font-ui text-12 text-subtle">{l("recon.proposeHint")}</p>
@@ -569,6 +592,83 @@ export default function LedgerRecon() {
             </div>
           </Form>
         </Card>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * What the server will read out of the paste, shown before the run starts. It
+ * reconciles nothing and posts nothing — it is the statement said back in
+ * words, so a mis-shaped column is caught by eye rather than by a wrong match.
+ */
+function StatementPreview({
+  text,
+  currency,
+  locale,
+  l
+}: {
+  text: string;
+  currency: string;
+  locale: string;
+  l: (key: string, vars?: Record<string, string>) => string;
+}) {
+  const { lines, rejected } = statementFromCsv(text, currency);
+  if (!text.trim()) return null;
+
+  return (
+    <div className="flex flex-col gap-2">
+      <p role="status" aria-live="polite" className="font-ui text-12 text-subtle">
+        {l("recon.linesRead", { count: String(lines.length), rejected: String(rejected.length) })}
+      </p>
+      {lines.length ? (
+        <Table<StatementLine & { row: number }>
+          caption={l("recon.linesCaption")}
+          captionHidden
+          density="compact"
+          columns={[
+            {
+              key: "ref",
+              header: l("recon.statementRef"),
+              render: (row) => <Ref value={row.ref} className="text-12" />
+            },
+            {
+              key: "amountMinor",
+              header: l("recon.lineAmount"),
+              numeric: true,
+              render: (row) => (
+                <Money amountMinor={row.amountMinor} currency={row.currency} locale={locale} />
+              )
+            },
+            {
+              key: "ourRef",
+              header: l("recon.lineOurRef"),
+              render: (row) => <Ref value={row.ourRef ?? null} className="text-12" fallback={l("none")} />
+            },
+            {
+              key: "postedAt",
+              header: l("recon.linePostedAt"),
+              render: (row) =>
+                row.postedAt === undefined ? (
+                  l("none")
+                ) : (
+                  <DateTime value={row.postedAt} locale={locale} precision="day" />
+                )
+            },
+            {
+              key: "description",
+              header: l("recon.lineDescription"),
+              render: (row) => row.description ?? l("none")
+            }
+          ]}
+          rows={lines.slice(0, 20).map((line, index) => ({ ...line, row: index }))}
+          rowKey={(row) => `${row.ref}.${row.row}`}
+        />
+      ) : null}
+      {lines.length > 20 ? (
+        <p className="font-ui text-12 text-subtle">
+          {l("recon.linesMore", { count: String(lines.length - 20) })}
+        </p>
       ) : null}
     </div>
   );

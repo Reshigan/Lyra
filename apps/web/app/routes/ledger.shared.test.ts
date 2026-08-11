@@ -3,6 +3,7 @@ import {
   LABELS,
   PERM,
   argsFromForm,
+  statementFromCsv,
   TRANSITIONS,
   TXN_STATES,
   balanceCheck,
@@ -235,5 +236,80 @@ describe("argsFromForm", () => {
 
   it("passes a non-numeric amount through for the ledger to refuse by name", () => {
     expect(argsFromForm(fields, form({ "arg.amountMinor": "lots" }))).toEqual({ amountMinor: "lots" });
+  });
+});
+
+describe("statementFromCsv", () => {
+  it("reads reference, amount, our reference, date and description in column order", () => {
+    const parsed = statementFromCsv(
+      "INS-8891,1500.55,TXN-01,2026-08-01,August premium\n",
+      "ZAR"
+    );
+    expect(parsed.rejected).toEqual([]);
+    expect(parsed.lines).toEqual([
+      {
+        ref: "INS-8891",
+        amountMinor: 150055,
+        currency: "ZAR",
+        ourRef: "TXN-01",
+        postedAt: Date.parse("2026-08-01"),
+        description: "August premium"
+      }
+    ]);
+  });
+
+  it("needs only a reference and an amount", () => {
+    expect(statementFromCsv("INS-1,20", "ZAR").lines).toEqual([
+      { ref: "INS-1", amountMinor: 2000, currency: "ZAR" }
+    ]);
+  });
+
+  it("skips a header row rather than refusing it", () => {
+    const parsed = statementFromCsv("Reference,Amount\nINS-1,20", "ZAR");
+    expect(parsed.rejected).toEqual([]);
+    expect(parsed.lines.map((line) => line.ref)).toEqual(["INS-1"]);
+  });
+
+  it("takes the columns tab-separated too, the way a spreadsheet pastes", () => {
+    expect(statementFromCsv("INS-1\t20\tTXN-01", "ZAR").lines).toEqual([
+      { ref: "INS-1", amountMinor: 2000, currency: "ZAR", ourRef: "TXN-01" }
+    ]);
+  });
+
+  it("keeps a quoted description whole when it carries a comma", () => {
+    const parsed = statementFromCsv('INS-1,20,,,"Premium, less fee"', "ZAR");
+    expect(parsed.lines[0]?.description).toBe("Premium, less fee");
+  });
+
+  it("counts the currency's own precision", () => {
+    expect(statementFromCsv("INS-1,500", "JPY").lines[0]?.amountMinor).toBe(500);
+    expect(statementFromCsv("INS-1,500", "KWD").lines[0]?.amountMinor).toBe(500000);
+  });
+
+  it("keeps a credit negative — a statement has both directions", () => {
+    expect(statementFromCsv("INS-1,-42.10", "ZAR").lines[0]?.amountMinor).toBe(-4210);
+  });
+
+  it("names the row it could not read instead of dropping it quietly", () => {
+    const parsed = statementFromCsv("INS-1,20\nINS-2,about twenty\n,30", "ZAR");
+    expect(parsed.lines.map((line) => line.ref)).toEqual(["INS-1"]);
+    expect(parsed.rejected).toEqual([
+      { row: 2, text: "INS-2,about twenty" },
+      { row: 3, text: ",30" }
+    ]);
+  });
+
+  it("ignores blank rows and trailing whitespace", () => {
+    expect(statementFromCsv("\n INS-1 , 20 \n\n", "ZAR").lines).toEqual([
+      { ref: "INS-1", amountMinor: 2000, currency: "ZAR" }
+    ]);
+  });
+
+  it("leaves the date out when it is not a date the browser agrees on", () => {
+    expect(statementFromCsv("INS-1,20,,not-a-date", "ZAR").lines[0]).not.toHaveProperty("postedAt");
+  });
+
+  it("says nothing for an empty paste", () => {
+    expect(statementFromCsv("   ", "ZAR")).toEqual({ lines: [], rejected: [] });
   });
 });
