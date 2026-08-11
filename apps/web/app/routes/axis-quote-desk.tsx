@@ -19,11 +19,13 @@ import {
   KPIWall,
   Money,
   Stat,
+  shortRef,
   type BadgeTone
 } from "@lyra/ui";
-import { ApiError, api } from "../api.server";
+import { ApiError, api, names } from "../api.server";
 import { cloudflare } from "../context";
 import { pseudoText } from "../i18n";
+import { RefPicker, type RefOption } from "../components/ref-picker";
 import { Gate } from "./staff";
 import { useShellData } from "./workspace";
 
@@ -323,6 +325,23 @@ export function toDeskQuotes(cases: DeskCase[], responses: QuoteResponse[]): Des
   });
 }
 
+/**
+ * The customers the issue form can offer: the ones on this desk that resolved
+ * to a name. A case whose customer the actor may not read is left out rather
+ * than offered as a ULID, and one customer with two open cases is offered once.
+ */
+export function deskCustomers(
+  cases: DeskCase[],
+  resolved: Record<string, string>
+): RefOption[] {
+  const byId = new Map<string, RefOption>();
+  for (const kase of cases) {
+    const label = kase.customerId ? resolved[kase.customerId] : undefined;
+    if (kase.customerId && label) byId.set(kase.customerId, { id: kase.customerId, label });
+  }
+  return [...byId.values()];
+}
+
 async function safe<T>(call: Promise<T>, fallback: T): Promise<T> {
   try {
     return await call;
@@ -363,7 +382,25 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       )
     : { data: [] as QuoteResponse[] };
 
-  return { now: Date.now(), kind, cases: cases.data, quotes: toDeskQuotes(cases.data, responses.data) };
+  // Every bid on this desk named its insurer `prv_01KE…` and the issue form
+  // asked for the customer as a pasted id. One batch names both (docs/07).
+  const resolved = await names(
+    [
+      ...responses.data.map((row) => row.providerId),
+      ...cases.data.map((row) => row.customerId)
+    ],
+    opts
+  );
+
+  return {
+    now: Date.now(),
+    kind,
+    cases: cases.data,
+    quotes: toDeskQuotes(cases.data, responses.data),
+    resolved,
+    // The desk's own customers, so the issue form can be typed over by name.
+    customers: deskCustomers(cases.data, resolved)
+  };
 }
 
 /* ----------------------------------------------------------------- action */
@@ -499,6 +536,8 @@ export default function AxisQuoteDesk() {
   const l = labelsIn(locale);
   const held = new Set(shell?.permissions ?? []);
   const busy = navigation.state !== "idle";
+  // A panel member is an insurer with a name; `prv_01KE…` is how it is stored.
+  const providerName = (id: string): string => loaded.resolved[id] ?? shortRef(id);
   const now = loaded.now;
   const group = loaded.kind === "group_medical";
 
@@ -577,7 +616,7 @@ export default function AxisQuoteDesk() {
             <ul className="flex flex-col divide-y divide-border">
               {entry.bids.map((bid) => (
                 <li key={bid.id} className="flex flex-wrap items-center gap-3 py-2">
-                  <span className="font-ui text-12 text-text">{bid.providerId}</span>
+                  <span className="font-ui text-12 text-text">{providerName(bid.providerId)}</span>
                   <span className="font-mono text-13 tabular-nums text-text">
                     <Money amountMinor={bid.premiumMinor} currency={bid.currency} locale={locale} />
                   </span>
@@ -606,7 +645,7 @@ export default function AxisQuoteDesk() {
                             variant="secondary"
                             loading={busy}
                             // One "Pick" per bid: the provider is what tells them apart.
-                            aria-label={`${l("pick.submit")}: ${bid.providerId}`}
+                            aria-label={`${l("pick.submit")}: ${providerName(bid.providerId)}`}
                           >
                             {l("pick.submit")}
                           </Button>
@@ -624,7 +663,7 @@ export default function AxisQuoteDesk() {
                             size="sm"
                             variant="ghost"
                             loading={busy}
-                            aria-label={`${l("decline.submit")}: ${bid.providerId}`}
+                            aria-label={`${l("decline.submit")}: ${providerName(bid.providerId)}`}
                           >
                             {l("decline.submit")}
                           </Button>
@@ -656,7 +695,7 @@ export default function AxisQuoteDesk() {
                   <span className="flex flex-col gap-1">
                     <span className="font-ui text-13 font-medium text-muted">{l("issue.quote")}</span>
                     <span className="font-mono text-13 text-text">
-                      {kase?.ref ?? quote.caseId} · {quote.providerId} ·{" "}
+                      {kase?.ref ?? shortRef(quote.caseId)} · {providerName(quote.providerId)} ·{" "}
                       <Money amountMinor={quote.premiumMinor} currency={quote.currency} locale={locale} />
                     </span>
                   </span>
@@ -664,7 +703,11 @@ export default function AxisQuoteDesk() {
                     <Input name="policyNo" required />
                   </Field>
                   <Field label={l("issue.customer")} className="w-48">
-                    <Input name="customerId" defaultValue={kase?.customerId ?? ""} required />
+                    <RefPicker
+                      name="customerId"
+                      options={loaded.customers}
+                      defaultValue={kase?.customerId ?? ""}
+                    />
                   </Field>
                   <Field label={l("issue.start")} className="w-40">
                     <DatePicker name="startAt" required />

@@ -6,6 +6,7 @@ import {
   OPEN_CASE_STATUSES,
   action,
   byPressure,
+  deskCustomers,
   deskGroups,
   epochOf,
   expiryOf,
@@ -499,5 +500,28 @@ describe("the cases on the desk", () => {
     expect([...OPEN_CASE_STATUSES]).toEqual(["quoting", "review", "approval"]);
     expect(OPEN_CASE_STATUSES).not.toContain("issued");
     expect(OPEN_CASE_STATUSES).not.toContain("cancelled");
+  });
+});
+
+// The issue form asked for the customer as a pasted `cu_01KE…`, so the desk
+// offers the customers it already has by name.
+describe("deskCustomers", () => {
+  it("offers a named customer once, however many cases they have open", () => {
+    const cases = [
+      kase({ id: "case_1", customerId: "cu_1" }),
+      kase({ id: "case_2", customerId: "cu_1" })
+    ];
+
+    expect(deskCustomers(cases, { cu_1: "Amina Haddad" })).toEqual([
+      { id: "cu_1", label: "Amina Haddad" }
+    ]);
+  });
+
+  it("leaves out a customer the actor may not read rather than offering a ULID", () => {
+    expect(deskCustomers([kase({ customerId: "cu_1" })], {})).toEqual([]);
+  });
+
+  it("skips a case that has no customer yet", () => {
+    expect(deskCustomers([kase({ customerId: null })], { cu_1: "Amina Haddad" })).toEqual([]);
   });
 });
