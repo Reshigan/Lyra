@@ -23,9 +23,11 @@ import {
 } from "@lyra/ui";
 import { ApiError, api, fetchMe, type Problem } from "../api.server";
 import { cloudflare } from "../context";
-import { pseudoText, translator } from "../i18n";
+import { translator } from "../i18n";
+import { labelsFrom } from "./detail-kit";
 import {
   Gate,
+  LABELS as QUEUE_LABELS,
   PERM,
   reasonError,
   settlementTone,
@@ -132,7 +134,7 @@ const TRANSITIONS: Record<string, { path: string; reason: boolean; confirm: bool
   reopen: { path: "reopen", reason: true, confirm: true }
 };
 
-export const LABELS: Record<string, Record<string, string>> = {
+const OWN: Record<string, Record<string, string>> = {
   en: {
     deniedTitle: "You can't open this settlement",
     title: "Settlement",
@@ -203,14 +205,18 @@ export const LABELS: Record<string, Record<string, string>> = {
   }
 };
 
-function labelsIn(locale: string): (key: string, vars?: Record<string, string>) => string {
-  const table = LABELS[locale] ?? LABELS.en ?? {};
-  const fallback = LABELS.en ?? {};
-  return (key, vars) => {
-    const raw = pseudoText(locale, table[key] ?? fallback[key] ?? key);
-    return vars ? raw.replace(/\{(\w+)\}/g, (match, name: string) => vars[name] ?? match) : raw;
-  };
-}
+/**
+ * A settlement speaks the queue's vocabulary — the four state names above all —
+ * and adds its own words on top. Resolving through detail-kit's `labelsFrom`
+ * (docs/ui.md §7 P3-14) is what puts the shared `approval*` words behind the
+ * `<Gate>` notice; hand-rolling the lookup here rendered them as bare keys.
+ */
+export const LABELS: Record<string, Record<string, string>> = {
+  en: { ...QUEUE_LABELS.en, ...OWN.en },
+  ar: { ...QUEUE_LABELS.ar, ...OWN.ar }
+};
+
+export const labelsIn = labelsFrom(LABELS);
 
 /* ------------------------------------------------------------------ loader */
 

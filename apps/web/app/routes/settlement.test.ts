@@ -3,6 +3,7 @@ import type { Env } from "../env";
 import {
   LABELS as PERIOD_LABELS,
   PERM,
+  SETTLEMENT_STATES,
   filtersFrom,
   percentFromPpm,
   queueGroups,
@@ -18,6 +19,7 @@ import {
   LABELS as DETAIL_LABELS,
   approvalOf,
   channelOf,
+  labelsIn as detailLabelsIn,
   lineSums,
   netHolds,
   pdfSafe,
@@ -569,6 +571,17 @@ describe("the label tables", () => {
   it("translates every English key on the settlement screen into Arabic", () => {
     const missing = Object.keys(DETAIL_LABELS.en!).filter((key) => !(key in DETAIL_LABELS.ar!));
     expect(missing).toEqual([]);
+  });
+
+  it("says the shared words on a settlement rather than their keys", () => {
+    const l = detailLabelsIn("en");
+    // The <Gate> notice and the state badge both read through the route's own
+    // resolver; hand-rolling that lookup rendered "approvalTitle" and
+    // "state.draft" on screen, which is what J-X2 caught.
+    expect(l("approvalTitle")).toBe("Waiting on an approval");
+    expect(l("approvalBody", { policy: "dist.settlement_run" })).toContain("dist.settlement_run");
+    expect(l("approvalLink")).toBe("Open the approval queue");
+    for (const state of SETTLEMENT_STATES) expect(l(`state.${state}`)).not.toBe(`state.${state}`);
   });
 
   it("leaves no English text sitting in the Arabic catalogues", () => {
