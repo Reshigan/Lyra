@@ -22,7 +22,8 @@ import {
   Table,
   type Column
 } from "@lyra/ui";
-import { ApiError, api, fetchMe, names } from "../api.server";
+import { ApiError, api, fetchMe } from "../api.server";
+import { refOptions } from "../refs.server";
 import { cloudflare } from "../context";
 import { useShellData } from "./workspace";
 import { pseudoText } from "../i18n";
@@ -323,18 +324,10 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   // The screening's subject is usually someone already on file, and the box
   // that asked for them wanted a `cu_01KE…` typed in by hand. An actor whose
   // role cannot read customers gets no list and keeps the plain box.
-  let customers: RefOption[] = [];
-  if (kind === "screening" && allowed.includes(kind)) {
-    const page = await api<{ data: { id: string }[] }>(
-      "/v1/core/customers?sort=createdAt&order=desc&limit=100",
-      { env, request }
-    ).catch(() => null);
-    const rows = page?.data ?? [];
-    const named = await names(rows.map((row) => row.id), { env, request });
-    customers = rows
-      .map((row) => ({ id: row.id, label: named[row.id] ?? "" }))
-      .filter((option) => option.label !== "");
-  }
+  const customers: RefOption[] =
+    kind === "screening" && allowed.includes(kind)
+      ? await refOptions("/v1/core/customers?sort=createdAt&order=desc&limit=100", env, request)
+      : [];
 
   return {
     kind,

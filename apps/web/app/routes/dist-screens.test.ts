@@ -235,7 +235,9 @@ describe("the statement loader", () => {
       args("https://web.test/distribution/commission-entries/statement?state=paid&kind=renewal")
     );
 
-    expect(calls[1]?.url).toBe(
+    // The two picker lists are fetched alongside; the statement call is the
+    // one that must carry the filters, and only the honoured ones.
+    expect(calls.map((call) => call.url)).toContain(
       "https://api.test/v1/dist/commission-entries/statement?state=paid"
     );
   });

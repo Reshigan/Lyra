@@ -12,7 +12,7 @@ import {
   Badge,
   Button,
   EmptyState,
-  Input,
+  Field,
   Money,
   PageHeader,
   Select,
@@ -20,6 +20,8 @@ import {
   type Column
 } from "@lyra/ui";
 import { ApiError, api, fetchMe, names } from "../api.server";
+import { refOptions } from "../refs.server";
+import { RefPicker } from "../components/ref-picker";
 import { who } from "../names";
 import { Cell, FieldInput, toneFor } from "../components/fields";
 import { cloudflare } from "../context";
@@ -322,7 +324,15 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   // twice, which the API deduplicates, rather than two entries (CLAUDE.md §12).
   const idempotencyKey = crypto.randomUUID();
 
-  if (!may.read) return { may, filters, statement: null, names: {}, idempotencyKey };
+  if (!may.read)
+    return { may, filters, statement: null, names: {}, providers: [], channels: [], idempotencyKey };
+
+  // The two filter boxes wanted `prv_01KE…` and `chn_01KE…` typed in by hand,
+  // which is not something a broker has. Both lists are short and named.
+  const [providers, channels] = await Promise.all([
+    refOptions("/v1/core/providers?sort=name&order=asc&limit=200", env, request),
+    refOptions("/v1/dist/channels?sort=name&order=asc&limit=200", env, request)
+  ]);
 
   const query = new URLSearchParams(filters).toString();
   try {
@@ -336,12 +346,20 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       statement.entries.flatMap((entry) => [entry.policyId, entry.providerId, entry.channelId]),
       { env, request }
     );
-    return { may, filters, statement, names: resolved, idempotencyKey };
+    return { may, filters, statement, names: resolved, providers, channels, idempotencyKey };
   } catch (error) {
     // A grant can be revoked between /v1/me and this call; that is a notice,
     // never a blank screen.
     if (error instanceof ApiError && error.status === 403) {
-      return { may: { ...may, read: false }, filters, statement: null, names: {}, idempotencyKey };
+      return {
+        may: { ...may, read: false },
+        filters,
+        statement: null,
+        names: {},
+        providers,
+        channels,
+        idempotencyKey
+      };
     }
     throw error;
   }
@@ -494,20 +512,22 @@ export default function CommissionStatement() {
       <Header l={l} />
 
       <Form method="get" className="flex flex-wrap items-end gap-3" aria-label={l("filters")}>
-        <Input
-          name="providerId"
-          defaultValue={loaded.filters.providerId ?? ""}
-          aria-label={l("providerId")}
-          placeholder={l("providerId")}
-          className="w-56"
-        />
-        <Input
-          name="channelId"
-          defaultValue={loaded.filters.channelId ?? ""}
-          aria-label={l("channelId")}
-          placeholder={l("channelId")}
-          className="w-56"
-        />
+        <Field label={l("providerId")} labelHidden className="w-56">
+          <RefPicker
+            name="providerId"
+            options={loaded.providers}
+            defaultValue={loaded.filters.providerId ?? ""}
+            placeholder={l("providerId")}
+          />
+        </Field>
+        <Field label={l("channelId")} labelHidden className="w-56">
+          <RefPicker
+            name="channelId"
+            options={loaded.channels}
+            defaultValue={loaded.filters.channelId ?? ""}
+            placeholder={l("channelId")}
+          />
+        </Field>
         <Select
           name="state"
           aria-label={l("state")}
