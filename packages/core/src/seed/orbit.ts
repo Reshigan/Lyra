@@ -134,6 +134,99 @@ export async function seedOrbit(ctx: SeedContext): Promise<void> {
     certificate: id("cnv", now + 17)
   };
 
+  /* ---- the desk itself --------------------------------------------------
+   * engines/orbit-routing.ts routes on these five tables; without them a real
+   * tenant queues every conversation and assigns none. The orbit team ids are
+   * the core team ids on purpose — orbit_conversations.team_id is written by
+   * the seed from ctx.teams and by the router from orbit_teams, and one id
+   * keeps both readings of that column true. */
+  await db.insert(schema.orbitTeams).values([
+    {
+      id: ctx.teams.motor,
+      tenantId,
+      key: "motor",
+      nameJson: JSON.stringify({ en: "Motor desk", ar: "مكتب المركبات" }),
+      isDefault: true, // the catch-all rule below points here
+      createdAt: now,
+      updatedAt: now
+    },
+    {
+      id: ctx.teams.retention,
+      tenantId,
+      key: "retention",
+      nameJson: JSON.stringify({ en: "Retention", ar: "الاحتفاظ بالعملاء" }),
+      createdAt: now,
+      updatedAt: now
+    }
+  ]);
+
+  await db.insert(schema.orbitTeamMembers).values([
+    {
+      // Sara answers the Arabic accident thread, so "ar" is a skill she is
+      // actually picked on, not decoration.
+      id: id("tmm", now + 1),
+      tenantId,
+      teamId: ctx.teams.motor,
+      userId: ctx.users["orbit.agent"]!,
+      skillsJson: JSON.stringify(["motor", "ar"]),
+      maxConcurrent: 6,
+      createdAt: now
+    },
+    {
+      id: id("tmm", now + 2),
+      tenantId,
+      teamId: ctx.teams.retention,
+      userId: ctx.users["orbit.retention"]!,
+      skillsJson: JSON.stringify(["renewal", "motor"]),
+      maxConcurrent: 4,
+      createdAt: now
+    },
+    {
+      id: id("tmm", now + 3),
+      tenantId,
+      teamId: ctx.teams.motor,
+      userId: ctx.users["orbit.partners"]!,
+      skillsJson: JSON.stringify(["partner"]),
+      maxConcurrent: 3,
+      createdAt: now
+    }
+  ]);
+
+  await db.insert(schema.orbitAgentPresence).values([
+    { id: id("ap", now + 1), tenantId, userId: ctx.users["orbit.agent"]!, status: "available", updatedAt: now },
+    { id: id("ap", now + 2), tenantId, userId: ctx.users["orbit.retention"]!, status: "available", updatedAt: now },
+    // Dana works the partner desk, not the customer queue.
+    { id: id("ap", now + 3), tenantId, userId: ctx.users["orbit.partners"]!, status: "away", updatedAt: now }
+  ]);
+
+  await db.insert(schema.orbitSlaPolicies).values([
+    { id: id("slp", now + 1), tenantId, key: "standard", frtMinutes: 15, resolutionMinutes: 480, createdAt: now, updatedAt: now },
+    { id: id("slp", now + 2), tenantId, key: "urgent", frtMinutes: 5, resolutionMinutes: 120, createdAt: now, updatedAt: now }
+  ]);
+
+  await db.insert(schema.orbitRoutingRules).values([
+    {
+      id: id("rr", now + 1),
+      tenantId,
+      teamId: ctx.teams.retention,
+      seq: 1,
+      conditionsJson: JSON.stringify({ intent: "renewal.offer" }),
+      createdAt: now,
+      updatedAt: now
+    },
+    {
+      // Last rule wins nothing on its own — it is the wildcard that stops a
+      // conversation sitting unrouted because no condition matched it.
+      id: id("rr", now + 2),
+      tenantId,
+      teamId: ctx.teams.motor,
+      seq: 2,
+      conditionsJson: JSON.stringify({}),
+      createdAt: now,
+      updatedAt: now
+    }
+  ]);
+
   await db.insert(schema.orbitConversations).values([
     {
       // The thread the demo opens: proactive renewal outreach that turns into a

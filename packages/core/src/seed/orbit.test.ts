@@ -1013,3 +1013,65 @@ describe("seedOrbit — orbit_partner_txns", () => {
     }
   });
 });
+
+// The routing engine (apps/api/src/engines/orbit-routing.ts) reads five tables
+// that nothing used to write, so a freshly seeded tenant queued every
+// conversation and routed none of them. These rows are that desk's roster.
+describe("seedOrbit — routing tables", () => {
+  it("gives the tenant one default team, reusing the core team ids the conversations already carry", async () => {
+    const rows = await db.select().from(schema.orbitTeams).orderBy(asc(schema.orbitTeams.key));
+    expect(rows.map((r) => r.key)).toEqual(["motor", "retention"]);
+    expect(rows.map((r) => r.id)).toEqual([TEAMS.motor, TEAMS.retention]);
+    expect(rows.filter((r) => r.isDefault).map((r) => r.key)).toEqual(["motor"]);
+    for (const row of rows) {
+      expect(row.tenantId).toBe(TENANT_ID);
+      expect(row.status).toBe("active");
+      expect(JSON.parse(row.nameJson)).toHaveProperty("en");
+      expect(JSON.parse(row.nameJson)).toHaveProperty("ar");
+    }
+  });
+
+  it("puts the three seeded agents on a team with skills the rules can require", async () => {
+    const rows = await db.select().from(schema.orbitTeamMembers).orderBy(asc(schema.orbitTeamMembers.userId));
+    expect(rows.map((r) => r.userId).sort()).toEqual([USER_IDS.agent, USER_IDS.partners, USER_IDS.retention].sort());
+
+    const byUser = new Map(rows.map((r) => [r.userId, r]));
+    expect(byUser.get(USER_IDS.agent)!.teamId).toBe(TEAMS.motor);
+    expect(byUser.get(USER_IDS.retention)!.teamId).toBe(TEAMS.retention);
+    // Sara takes the Arabic accident thread, so the skill she is picked on is real.
+    expect(JSON.parse(byUser.get(USER_IDS.agent)!.skillsJson)).toContain("ar");
+    for (const row of rows) expect(row.maxConcurrent).toBeGreaterThan(0);
+  });
+
+  it("marks the two agents holding open conversations available", async () => {
+    const rows = await db.select().from(schema.orbitAgentPresence).orderBy(asc(schema.orbitAgentPresence.userId));
+    const byUser = new Map(rows.map((r) => [r.userId, r.status]));
+    expect(byUser.get(USER_IDS.agent)).toBe("available");
+    expect(byUser.get(USER_IDS.retention)).toBe("available");
+    // Dana's thread is with the partner desk, not the queue — she is off it.
+    expect(byUser.get(USER_IDS.partners)).toBe("away");
+    for (const row of rows) expect(row.updatedAt).toBeGreaterThan(0);
+  });
+
+  it("writes an SLA policy the conversations name", async () => {
+    const rows = await db.select().from(schema.orbitSlaPolicies);
+    expect(rows.map((r) => r.key)).toContain("standard");
+    for (const row of rows) {
+      expect(row.frtMinutes).toBeGreaterThan(0);
+      expect(row.resolutionMinutes).toBeGreaterThan(row.frtMinutes);
+    }
+  });
+
+  it("ends the rule list with a wildcard so nothing falls through unrouted", async () => {
+    const rows = await db.select().from(schema.orbitRoutingRules).orderBy(asc(schema.orbitRoutingRules.seq));
+    expect(rows.length).toBeGreaterThanOrEqual(2);
+    expect(rows.every((r) => r.enabled)).toBe(true);
+    // Every rule points at a team that exists.
+    const teams = new Set((await db.select().from(schema.orbitTeams)).map((t) => t.id));
+    for (const row of rows) expect(teams.has(row.teamId)).toBe(true);
+    // The renewal desk is picked by intent before the catch-all.
+    expect(JSON.parse(rows[0]!.conditionsJson)).toEqual({ intent: "renewal.offer" });
+    expect(rows[0]!.teamId).toBe(TEAMS.retention);
+    expect(JSON.parse(rows.at(-1)!.conditionsJson)).toEqual({});
+  });
+});

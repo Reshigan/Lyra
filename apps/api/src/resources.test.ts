@@ -7,7 +7,7 @@ import type { SQLiteColumn } from "drizzle-orm/sqlite-core";
 import { Hono } from "hono";
 import { beforeAll, describe, expect, it } from "vitest";
 import { EntitlementsJson, PolicyJson, schema } from "@lyra/db";
-import { decide, notFound, type Ctx } from "@lyra/core";
+import { decide, notFound, permissionsForRole, type Ctx } from "@lyra/core";
 import { crudRouter, type Resource } from "./crud.js";
 import { onError } from "./mw.js";
 import { BY_MODULE } from "./resources.js";
@@ -849,5 +849,56 @@ describe("core/roles: a role editor cannot define authority they do not hold", (
     await seed("rl_rename", "rename_me", JSON.stringify(["*:*:*"]));
     const res = await send(router(resource(), editor()), "PATCH", "/rl_rename", { name: "renamed" });
     expect(res.status).toBe(200);
+  });
+});
+
+/* --------------------------------------- the routing desk, through the API */
+
+// engines/orbit-routing.ts reads teams, members, presence, rules and policies,
+// and until these resources existed nothing but the seed could write them: a
+// tenant could not build a desk at all. The grants are the point of the test —
+// a supervisor runs the roster, an agent only flips their own availability.
+describe("orbit routing tables are writable by the roles that own them", () => {
+  const asRole = (roleKey: string): Partial<Ctx> => ({
+    actor: {
+      kind: "user",
+      id: "u_role",
+      tenantId: "t_test",
+      grants: [{ roleKey, permissions: [...permissionsForRole(roleKey)] }]
+    }
+  });
+  const find = (path: string): Resource => BY_MODULE.orbit!.find((r) => r.path === path)!;
+
+  it("lets a lead stand up a team and put an agent on it", async () => {
+    const lead = asRole("orbit.lead");
+    const team = await send(router(find("teams"), lead), "POST", "/", {
+      key: `desk_${NOW}`,
+      nameJson: JSON.stringify({ en: "Motor desk", ar: "مكتب المركبات" }),
+      isDefault: false
+    });
+    expect(team.status).toBe(201);
+
+    const member = await send(router(find("team-members"), lead), "POST", "/", {
+      teamId: team.body.id,
+      userId: "u_sara",
+      skillsJson: JSON.stringify(["motor"])
+    });
+    expect(member.status).toBe(201);
+    expect(member.body.maxConcurrent).toBe(5); // the cap the router honours
+  });
+
+  it("lets an agent mark themselves available but not rewrite the roster", async () => {
+    const agent = asRole("orbit.agent");
+    const presence = await send(router(find("agent-presence"), agent), "POST", "/", {
+      userId: "u_sara",
+      status: "available"
+    });
+    expect(presence.status).toBe(201);
+
+    const team = await send(router(find("teams"), agent), "POST", "/", {
+      key: `nope_${NOW}`,
+      nameJson: "{}"
+    });
+    expect(team.status).toBe(403);
   });
 });

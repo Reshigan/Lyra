@@ -443,6 +443,21 @@ export const ORBIT = register(
     read: "orbit:qa:read",
     create: "orbit:qa:score"
   }, { actorColumns: ["scoredBy"] }),
+  // The routing engine (engines/orbit-routing.ts) reads all five of these and
+  // nothing else wrote them, so every tenant's queue routed to nobody. A
+  // supervisor runs the roster and the rules; an agent flips their own
+  // availability.
+  r("teams", schema.orbitTeams, "otm", "orbit", rw("orbit:teams")),
+  r("team-members", schema.orbitTeamMembers, "tmm", "orbit", rw("orbit:teams")),
+  r("sla-policies", schema.orbitSlaPolicies, "slp", "orbit", rw("orbit:teams")),
+  r("routing-rules", schema.orbitRoutingRules, "rr", "orbit", rw("orbit:teams")),
+  // ponytail: any agent may write any presence row, as leads legitimately mark
+  // a colleague away. Narrow to self-or-lead if that is ever abused.
+  r("agent-presence", schema.orbitAgentPresence, "ap", "orbit", {
+    read: "orbit:presence:read",
+    create: "orbit:presence:write",
+    update: "orbit:presence:write"
+  }),
   r("channel-connectors", schema.orbitChannelConnectors, "ccn", "orbit", {
     read: "orbit:channels:read",
     create: "orbit:channels:write",

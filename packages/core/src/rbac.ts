@@ -157,6 +157,8 @@ export const PERMISSIONS = [
   "orbit:qa:read", "orbit:qa:score",
   "orbit:handover:read", "orbit:handover:write",
   "orbit:channels:read", "orbit:channels:write",
+  "orbit:teams:read", "orbit:teams:write",
+  "orbit:presence:read", "orbit:presence:write",
 
   // SIGNAL — growth
   "signal:campaigns:read", "signal:campaigns:create", "signal:campaigns:update",
@@ -387,7 +389,7 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
   "orbit.agent": [
     ...readsOf("orbit"), "orbit:ai:invoke", "ai:suggestions:read",
     "orbit:conversations:reply", "orbit:conversations:close",
-    "orbit:messages:send", "orbit:handover:write",
+    "orbit:messages:send", "orbit:handover:write", "orbit:presence:write",
     // docs/06 J-C2: the agent's whole job is reading the customer's message
     // and the AI's drafted reply to it — both are `content`, PII-masked
     // without this grant (packages/core/src/pii.ts).
@@ -399,6 +401,7 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     "orbit:conversations:reply", "orbit:conversations:assign",
     "orbit:conversations:close", "orbit:messages:send", "orbit:handover:write",
     "orbit:qa:score", "orbit:renewals:update", "orbit:journeys:write",
+    "orbit:presence:write", "orbit:teams:write",
     "core:customers:read", "core:pii:view", "core:consents:read", "core:search:read",
     "core:approvals:read", "core:approvals:decide", "core:files:read",
     "axis:policies:read", "axis:cases:read", "axis:cases:create",

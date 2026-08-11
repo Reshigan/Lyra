@@ -1769,6 +1769,15 @@ export interface NorthSnapshots {
   ts: number;
 }
 
+export interface OrbitAgentPresence {
+  id?: string;
+  tenantId?: string;
+  userId: string;
+  status?: string;
+  activeCount?: number;
+  updatedAt?: number;
+}
+
 export interface OrbitChannelConnectors {
   id?: string;
   tenantId?: string;
@@ -1937,6 +1946,48 @@ export interface OrbitRenewals {
   ownerRef?: string;
   offeredAt?: number;
   decidedAt?: number;
+  createdAt?: number;
+  updatedAt?: number;
+}
+
+export interface OrbitRoutingRules {
+  id?: string;
+  tenantId?: string;
+  teamId: string;
+  seq: number;
+  enabled?: boolean;
+  conditionsJson?: string;
+  createdAt?: number;
+  updatedAt?: number;
+}
+
+export interface OrbitSlaPolicies {
+  id?: string;
+  tenantId?: string;
+  key: string;
+  frtMinutes: number;
+  resolutionMinutes: number;
+  createdAt?: number;
+  updatedAt?: number;
+}
+
+export interface OrbitTeamMembers {
+  id?: string;
+  tenantId?: string;
+  teamId: string;
+  userId: string;
+  skillsJson?: string;
+  maxConcurrent?: number;
+  createdAt?: number;
+}
+
+export interface OrbitTeams {
+  id?: string;
+  tenantId?: string;
+  key: string;
+  nameJson: string;
+  isDefault?: boolean;
+  status?: string;
   createdAt?: number;
   updatedAt?: number;
 }
@@ -2685,6 +2736,10 @@ export interface Operations {
   "POST /v1/onboarding/steps/{id}/complete": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/onboarding/steps/{id}/fail": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/onboarding/steps/{id}/waive": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
+  "GET /v1/orbit/agent-presence": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<OrbitAgentPresence>>;
+  "POST /v1/orbit/agent-presence": Op<never, never, OrbitAgentPresence, OrbitAgentPresence>;
+  "GET /v1/orbit/agent-presence/{id}": Op<{ id: string }, never, never, OrbitAgentPresence>;
+  "PATCH /v1/orbit/agent-presence/{id}": Op<{ id: string }, never, OrbitAgentPresence, OrbitAgentPresence>;
   "GET /v1/orbit/channel-connectors": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<OrbitChannelConnectors>>;
   "POST /v1/orbit/channel-connectors": Op<never, never, OrbitChannelConnectors, OrbitChannelConnectors>;
   "GET /v1/orbit/channel-connectors/{id}": Op<{ id: string }, never, never, OrbitChannelConnectors>;
@@ -2723,7 +2778,27 @@ export interface Operations {
   "POST /v1/orbit/renewals/sweep": Op<never, never, never, Record<string, unknown>>;
   "GET /v1/orbit/renewals/{id}": Op<{ id: string }, never, never, OrbitRenewals>;
   "PATCH /v1/orbit/renewals/{id}": Op<{ id: string }, never, OrbitRenewals, OrbitRenewals>;
+  "GET /v1/orbit/routing-rules": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<OrbitRoutingRules>>;
+  "POST /v1/orbit/routing-rules": Op<never, never, OrbitRoutingRules, OrbitRoutingRules>;
+  "GET /v1/orbit/routing-rules/{id}": Op<{ id: string }, never, never, OrbitRoutingRules>;
+  "PATCH /v1/orbit/routing-rules/{id}": Op<{ id: string }, never, OrbitRoutingRules, OrbitRoutingRules>;
+  "DELETE /v1/orbit/routing-rules/{id}": Op<{ id: string }, never, never, void>;
   "POST /v1/orbit/routing/sweep": Op<never, never, never, Record<string, unknown>>;
+  "GET /v1/orbit/sla-policies": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<OrbitSlaPolicies>>;
+  "POST /v1/orbit/sla-policies": Op<never, never, OrbitSlaPolicies, OrbitSlaPolicies>;
+  "GET /v1/orbit/sla-policies/{id}": Op<{ id: string }, never, never, OrbitSlaPolicies>;
+  "PATCH /v1/orbit/sla-policies/{id}": Op<{ id: string }, never, OrbitSlaPolicies, OrbitSlaPolicies>;
+  "DELETE /v1/orbit/sla-policies/{id}": Op<{ id: string }, never, never, void>;
+  "GET /v1/orbit/team-members": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<OrbitTeamMembers>>;
+  "POST /v1/orbit/team-members": Op<never, never, OrbitTeamMembers, OrbitTeamMembers>;
+  "GET /v1/orbit/team-members/{id}": Op<{ id: string }, never, never, OrbitTeamMembers>;
+  "PATCH /v1/orbit/team-members/{id}": Op<{ id: string }, never, OrbitTeamMembers, OrbitTeamMembers>;
+  "DELETE /v1/orbit/team-members/{id}": Op<{ id: string }, never, never, void>;
+  "GET /v1/orbit/teams": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<OrbitTeams>>;
+  "POST /v1/orbit/teams": Op<never, never, OrbitTeams, OrbitTeams>;
+  "GET /v1/orbit/teams/{id}": Op<{ id: string }, never, never, OrbitTeams>;
+  "PATCH /v1/orbit/teams/{id}": Op<{ id: string }, never, OrbitTeams, OrbitTeams>;
+  "DELETE /v1/orbit/teams/{id}": Op<{ id: string }, never, never, void>;
   "POST /v1/platform/ai/kill": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/platform/ai/release": Op<never, never, never, Record<string, unknown>>;
   "GET /v1/platform/deployments": Op<never, never, never, Record<string, unknown>>;
@@ -3345,6 +3420,10 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "POST /v1/onboarding/steps/{id}/complete": { tag: "onboarding", summary: "Clear a step, attaching the evidence its kind requires", permission: "core:onboarding:write", public: false },
   "POST /v1/onboarding/steps/{id}/fail": { tag: "onboarding", summary: "Record that a step came back negative, with the reason", permission: "core:onboarding:write", public: false },
   "POST /v1/onboarding/steps/{id}/waive": { tag: "onboarding", summary: "Waive a required step (dual control; the waiver is recorded against it)", permission: "core:onboarding:waive", public: false },
+  "GET /v1/orbit/agent-presence": { tag: "orbit", summary: "List agent-presence", permission: "orbit:presence:read", public: false },
+  "POST /v1/orbit/agent-presence": { tag: "orbit", summary: "Create a agent presence", permission: "orbit:presence:write", public: false },
+  "GET /v1/orbit/agent-presence/{id}": { tag: "orbit", summary: "Fetch one agent presence", permission: "orbit:presence:read", public: false },
+  "PATCH /v1/orbit/agent-presence/{id}": { tag: "orbit", summary: "Update a agent presence", permission: "orbit:presence:write", public: false },
   "GET /v1/orbit/channel-connectors": { tag: "orbit", summary: "List channel-connectors", permission: "orbit:channels:read", public: false },
   "POST /v1/orbit/channel-connectors": { tag: "orbit", summary: "Create a channel connector", permission: "orbit:channels:write", public: false },
   "GET /v1/orbit/channel-connectors/{id}": { tag: "orbit", summary: "Fetch one channel connector", permission: "orbit:channels:read", public: false },
@@ -3383,7 +3462,27 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "POST /v1/orbit/renewals/sweep": { tag: "orbit", summary: "Force the renewal sweep now (also runs on the scheduled tick)", permission: "orbit:renewals:update", public: false },
   "GET /v1/orbit/renewals/{id}": { tag: "orbit", summary: "Fetch one renewal", permission: "orbit:renewals:read", public: false },
   "PATCH /v1/orbit/renewals/{id}": { tag: "orbit", summary: "Update a renewal", permission: "orbit:renewals:update", public: false },
+  "GET /v1/orbit/routing-rules": { tag: "orbit", summary: "List routing-rules", permission: "orbit:teams:read", public: false },
+  "POST /v1/orbit/routing-rules": { tag: "orbit", summary: "Create a routing rule", permission: "orbit:teams:write", public: false },
+  "GET /v1/orbit/routing-rules/{id}": { tag: "orbit", summary: "Fetch one routing rule", permission: "orbit:teams:read", public: false },
+  "PATCH /v1/orbit/routing-rules/{id}": { tag: "orbit", summary: "Update a routing rule", permission: "orbit:teams:write", public: false },
+  "DELETE /v1/orbit/routing-rules/{id}": { tag: "orbit", summary: "Soft-delete a routing rule", permission: "orbit:teams:write", public: false },
   "POST /v1/orbit/routing/sweep": { tag: "orbit", summary: "Force the routing sweep now — SLA breach escalation and absence reassignment (also runs on the scheduled tick)", permission: "orbit:conversations:assign", public: false },
+  "GET /v1/orbit/sla-policies": { tag: "orbit", summary: "List sla-policies", permission: "orbit:teams:read", public: false },
+  "POST /v1/orbit/sla-policies": { tag: "orbit", summary: "Create a sla policy", permission: "orbit:teams:write", public: false },
+  "GET /v1/orbit/sla-policies/{id}": { tag: "orbit", summary: "Fetch one sla policy", permission: "orbit:teams:read", public: false },
+  "PATCH /v1/orbit/sla-policies/{id}": { tag: "orbit", summary: "Update a sla policy", permission: "orbit:teams:write", public: false },
+  "DELETE /v1/orbit/sla-policies/{id}": { tag: "orbit", summary: "Soft-delete a sla policy", permission: "orbit:teams:write", public: false },
+  "GET /v1/orbit/team-members": { tag: "orbit", summary: "List team-members", permission: "orbit:teams:read", public: false },
+  "POST /v1/orbit/team-members": { tag: "orbit", summary: "Create a team member", permission: "orbit:teams:write", public: false },
+  "GET /v1/orbit/team-members/{id}": { tag: "orbit", summary: "Fetch one team member", permission: "orbit:teams:read", public: false },
+  "PATCH /v1/orbit/team-members/{id}": { tag: "orbit", summary: "Update a team member", permission: "orbit:teams:write", public: false },
+  "DELETE /v1/orbit/team-members/{id}": { tag: "orbit", summary: "Soft-delete a team member", permission: "orbit:teams:write", public: false },
+  "GET /v1/orbit/teams": { tag: "orbit", summary: "List teams", permission: "orbit:teams:read", public: false },
+  "POST /v1/orbit/teams": { tag: "orbit", summary: "Create a team", permission: "orbit:teams:write", public: false },
+  "GET /v1/orbit/teams/{id}": { tag: "orbit", summary: "Fetch one team", permission: "orbit:teams:read", public: false },
+  "PATCH /v1/orbit/teams/{id}": { tag: "orbit", summary: "Update a team", permission: "orbit:teams:write", public: false },
+  "DELETE /v1/orbit/teams/{id}": { tag: "orbit", summary: "Soft-delete a team", permission: "orbit:teams:write", public: false },
   "POST /v1/platform/ai/kill": { tag: "platform", summary: "Throw the global AI kill switch — one click, no approval (docs/12 §4)", permission: "admin:flags:write", public: false },
   "POST /v1/platform/ai/release": { tag: "platform", summary: "Release the global AI kill switch (gates on the core.flag_toggle approval)", permission: "admin:flags:write", public: false },
   "GET /v1/platform/deployments": { tag: "platform", summary: "Deployment history, newest first", permission: "admin:diagnostics:read", public: false },
