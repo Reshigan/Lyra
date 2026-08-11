@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ActionFunctionArgs } from "react-router";
 import type { Env } from "../env";
-import { action } from "./ai-console";
+import { action, autonomyRung } from "./ai-console";
 
 // docs/12 §4: "Kill switches: per-agent, per-module, per-tenant, global — all
 // one click, all logged". The per-agent tier is covered next door in
@@ -102,5 +102,23 @@ describe("tenant and module kill switches", () => {
 
     expect(result.problem?.status).toBe(400);
     expect(calls).toHaveLength(0);
+  });
+});
+
+// Nine of the ten seeded agents store `suggest_only`, a spelling on no ladder:
+// the Autonomy badge printed the raw key and the picker under it opened blank.
+describe("autonomyRung", () => {
+  it("keeps a level that is already a rung", () => {
+    expect(autonomyRung("act_with_approval")).toBe("act_with_approval");
+  });
+
+  it("maps the spellings written before the ladder was declared", () => {
+    expect(autonomyRung("suggest_only")).toBe("suggest");
+    expect(autonomyRung("act")).toBe("act_within_limits");
+    expect(autonomyRung("act_autonomously")).toBe("autonomous");
+  });
+
+  it("reads anything unrecognised as the most cautious rung", () => {
+    expect(autonomyRung("wide_open")).toBe("suggest");
   });
 });

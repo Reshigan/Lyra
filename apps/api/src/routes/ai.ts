@@ -1,7 +1,7 @@
 import { Hono, type Context } from "hono";
 import { and, desc, eq, gte } from "drizzle-orm";
 import { z } from "zod";
-import { id as newId, parseJson, schema, toJson, PolicyJson } from "@lyra/db";
+import { AgentAutonomy, id as newId, parseJson, schema, toJson, PolicyJson } from "@lyra/db";
 import {
   actorRef,
   audit,
@@ -490,7 +490,7 @@ aiRoutes.post("/agents/:key/autonomy", async (c) => {
   const input = await body(
     c,
     z.object({
-      autonomyLevel: z.enum(["suggest", "act_with_approval", "act_within_limits", "autonomous"]),
+      autonomyLevel: AgentAutonomy,
       reason: z.string().min(3).max(500)
     })
   );

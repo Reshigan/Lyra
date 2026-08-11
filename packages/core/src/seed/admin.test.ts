@@ -985,7 +985,7 @@ describe("seedAdmin: aiRuns", () => {
       module: "dist",
       purpose: "quote.compare",
       actorRef: "system:dist-fanout",
-      autonomyLevel: "suggest_only",
+      autonomyLevel: "suggest",
       trigger: "event",
       state: "succeeded",
       inputHash: await digest("run.quoting.input"),

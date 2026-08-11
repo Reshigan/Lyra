@@ -26,8 +26,31 @@ export type BrandJson = z.infer<typeof BrandJson>;
 
 /* ----------------------------------------------------------------- policy */
 
+/**
+ * How much a *campaign* may do on its own (`signal_campaigns.autonomy_level`,
+ * and the tenant default a transaction is stamped with). SIGNAL's autopilot
+ * gates on the top two rungs and the budget screen labels all five, so this
+ * ladder stays as it is. Agents use a different one — see AGENT_AUTONOMY.
+ */
 export const AutonomyLevel = z.enum(["suggest", "draft", "act_with_approval", "act", "act_and_report"]);
 export type AutonomyLevel = z.infer<typeof AutonomyLevel>;
+
+/**
+ * How much an *agent* may do on its own (`ai_agents.autonomy_level`), lowest
+ * rung first. The API that changes it and the console that shows it have
+ * always used these four, but nothing declared them where the writers could
+ * see: the seed wrote `suggest_only` on nine of ten agents, a spelling on no
+ * ladder anywhere, so the console rendered the raw key `suggest_only` where a
+ * label belongs and its autonomy picker opened with nothing selected
+ * (docs/ui.md P2 defect 9, docs/ui/admin.md §14 defect 2; ADR-0049).
+ *
+ * Order is rank: the console compares indices to tell a raise from a lowering,
+ * so a new rung goes in at its true height or the raise confirmation is wrong.
+ */
+export const AGENT_AUTONOMY = ["suggest", "act_with_approval", "act_within_limits", "autonomous"] as const;
+
+export const AgentAutonomy = z.enum(AGENT_AUTONOMY);
+export type AgentAutonomy = z.infer<typeof AgentAutonomy>;
 
 export const PolicyJson = z.object({
   autoApprove: z.array(z.string()).default([]),

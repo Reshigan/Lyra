@@ -397,7 +397,7 @@ describe("seedOrbit — ai_runs", () => {
     expect(row.module).toBe("orbit");
     expect(row.purpose).toBe("orbit.renewal.draft_reply");
     expect(row.actorRef).toBe(YUSUF);
-    expect(row.autonomyLevel).toBe("suggest_only");
+    expect(row.autonomyLevel).toBe("suggest");
     expect(row.trigger).toBe("event");
     expect(row.state).toBe("awaiting_approval");
     expect(row.confidence).toBe(78);

@@ -4,6 +4,7 @@
 // H1-H12 be fully built out — LATER work builds against these types
 // without a rebuild (docs/16 "Horizon governance").
 
+import type { AgentAutonomy } from "@lyra/db";
 import { hashObject } from "./crypto.js";
 import type { Channel } from "./consent.js";
 
@@ -36,8 +37,11 @@ export async function verifyOfferSignature(signed: SignedAgentOffer): Promise<bo
  * ai.ts) and is enforced by approvals.ts (dual-control) and
  * signal-autopilot.ts (pre-action filter). This is the declared-envelope
  * type docs/16 asks for; `reversible` documents which levels need a
- * reversal path rather than the L1 cap already enforced elsewhere. */
-export type AutonomyLevel = "observe_only" | "act_with_approval" | "act_and_notify" | "act_autonomously";
+ * reversal path rather than the L1 cap already enforced elsewhere. The rungs
+ * are the ones the column actually stores (`AGENT_AUTONOMY`) — the seam used
+ * to name a fourth vocabulary of its own (`observe_only … act_autonomously`),
+ * so an envelope could never be compared against a stored level (ADR-0049). */
+export type AutonomyLevel = AgentAutonomy;
 export interface AutonomyEnvelope {
   readonly level: AutonomyLevel;
   readonly maxActionsPerDay?: number;

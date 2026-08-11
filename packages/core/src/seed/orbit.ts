@@ -20,7 +20,7 @@ export async function seedOrbit(ctx: SeedContext): Promise<void> {
   const yusuf = `user:${ctx.users["orbit.retention"]!}`; // Yusuf Karim, retention desk
   const dana = `user:${ctx.users["orbit.partners"]!}`; // Dana Aziz, partner desk
 
-  // The tenant runs one ORBIT agent (`renewal`, autonomy suggest_only), so every
+  // The tenant runs one ORBIT agent (`renewal`, autonomy suggest), so every
   // AI turn on this side is attributed to it — including the one on C3 that
   // answered an accident report as if it were a renewal question, which is
   // exactly what the failing QA score is about.
@@ -441,7 +441,7 @@ export async function seedOrbit(ctx: SeedContext): Promise<void> {
   /* ---- the run behind the draft ------------------------------------------
    * The approve-a-draft surface reads the run to show confidence and evidence.
    * It is left `awaiting_approval` because the `renewal` agent's autonomy is
-   * suggest_only — the draft cannot send itself (CLAUDE.md rule 4). */
+   * suggest — the draft cannot send itself (CLAUDE.md rule 4). */
   await db.insert(schema.aiRuns).values({
     id: id("run", renewalWindow + 9),
     tenantId,
@@ -450,7 +450,7 @@ export async function seedOrbit(ctx: SeedContext): Promise<void> {
     purpose: "orbit.renewal.draft_reply",
     subjectRef: conv.renewal,
     actorRef: yusuf,
-    autonomyLevel: "suggest_only",
+    autonomyLevel: "suggest",
     trigger: "event",
     state: "awaiting_approval",
     inputHash: await hash({ conversationId: conv.renewal, policyRef: "CDR-MOT-2501-664118" }),

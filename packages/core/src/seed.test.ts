@@ -342,14 +342,14 @@ describe("seed", () => {
     const agents = await db.select().from(schema.aiAgents);
     const byKey = Object.fromEntries(agents.map((a) => [a.key, a]));
 
-    expect(byKey["quoting"]).toMatchObject({ module: "dist", tier: "standard", autonomyLevel: "suggest_only" });
+    expect(byKey["quoting"]).toMatchObject({ module: "dist", tier: "standard", autonomyLevel: "suggest" });
     expect(byKey["copilot"]).toMatchObject({ module: "axis", tier: "standard", autonomyLevel: "act_with_approval" });
-    expect(byKey["renewal"]).toMatchObject({ module: "orbit", tier: "fast", autonomyLevel: "suggest_only" });
-    expect(byKey["creative"]).toMatchObject({ module: "signal", tier: "standard", autonomyLevel: "suggest_only" });
-    expect(byKey["discovery"]).toMatchObject({ module: "scout", tier: "reasoning", autonomyLevel: "suggest_only" });
-    expect(byKey["briefing"]).toMatchObject({ module: "north", tier: "reasoning", autonomyLevel: "suggest_only" });
-    expect(byKey["recon"]).toMatchObject({ module: "ledger", tier: "fast", autonomyLevel: "suggest_only" });
-    expect(byKey["qa"]).toMatchObject({ module: "core", tier: "standard", autonomyLevel: "suggest_only" });
+    expect(byKey["renewal"]).toMatchObject({ module: "orbit", tier: "fast", autonomyLevel: "suggest" });
+    expect(byKey["creative"]).toMatchObject({ module: "signal", tier: "standard", autonomyLevel: "suggest" });
+    expect(byKey["discovery"]).toMatchObject({ module: "scout", tier: "reasoning", autonomyLevel: "suggest" });
+    expect(byKey["briefing"]).toMatchObject({ module: "north", tier: "reasoning", autonomyLevel: "suggest" });
+    expect(byKey["recon"]).toMatchObject({ module: "ledger", tier: "fast", autonomyLevel: "suggest" });
+    expect(byKey["qa"]).toMatchObject({ module: "core", tier: "standard", autonomyLevel: "suggest" });
 
     // Only the two customer-facing modules require consent, and only the
     // one agent with approval-gated autonomy demands a human in the loop.

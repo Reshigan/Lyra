@@ -53,9 +53,32 @@ import { useShellData } from "./workspace";
 const AUTONOMY_LEVELS = ["suggest", "act_with_approval", "act_within_limits", "autonomous"] as const;
 type AutonomyLevel = (typeof AUTONOMY_LEVELS)[number];
 
-const rankOf = (level: string): number => AUTONOMY_LEVELS.indexOf(level as AutonomyLevel);
+/**
+ * Spellings written before the ladder was declared (packages/db json.ts
+ * AGENT_AUTONOMY). Nine of the ten seeded agents carry `suggest_only`, which
+ * is on no ladder anywhere: the badge printed the raw key and the picker below
+ * it opened with nothing selected, because the stored value matched none of
+ * its options. Unknown reads as the most cautious rung, never the freest.
+ */
+const AUTONOMY_SYNONYMS: Record<string, AutonomyLevel> = {
+  suggest_only: "suggest",
+  observe_only: "suggest",
+  draft: "suggest",
+  act: "act_within_limits",
+  act_and_report: "act_within_limits",
+  act_and_notify: "act_within_limits",
+  act_autonomously: "autonomous"
+};
 
-/** Unknown current level ranks -1, so any change off it counts as a raise and asks. */
+/** A stored autonomy value as a rung of the ladder. */
+export const autonomyRung = (level: string): AutonomyLevel =>
+  AUTONOMY_LEVELS.includes(level as AutonomyLevel)
+    ? (level as AutonomyLevel)
+    : (AUTONOMY_SYNONYMS[level] ?? "suggest");
+
+const rankOf = (level: string): number => AUTONOMY_LEVELS.indexOf(autonomyRung(level));
+
+/** A level nobody recognises ranks lowest, so any change off it asks first. */
 const raises = (from: string, to: string): boolean => rankOf(to) > rankOf(from);
 
 /**
@@ -1265,7 +1288,7 @@ function AgentCard({ agent, L, locale, busy, canPause, canWrite, pending }: Agen
             term={L("agents.autonomy")}
             detail={
               <Badge tone="accent" size="sm">
-                {L(`autonomy.${agent.autonomyLevel}`, agent.autonomyLevel)}
+                {L(`autonomy.${autonomyRung(agent.autonomyLevel)}`)}
               </Badge>
             }
           />
@@ -1359,14 +1382,15 @@ function AgentCard({ agent, L, locale, busy, canPause, canWrite, pending }: Agen
  * action re-checks it server-side.
  */
 function AutonomyForm({ agent, L, busy }: { agent: Agent; L: Label; busy: boolean }) {
-  const [next, setNext] = React.useState<string>(agent.autonomyLevel);
-  const raising = raises(agent.autonomyLevel, next);
+  const level = autonomyRung(agent.autonomyLevel);
+  const [next, setNext] = React.useState<string>(level);
+  const raising = raises(level, next);
 
   return (
     <Form method="post" className="flex flex-col gap-3">
       <input type="hidden" name="intent" value="autonomy" />
       <input type="hidden" name="agentKey" value={agent.key} />
-      <input type="hidden" name="currentLevel" value={agent.autonomyLevel} />
+      <input type="hidden" name="currentLevel" value={level} />
       <div className="flex flex-wrap items-end gap-3">
         <Select
           name="autonomyLevel"
@@ -1382,7 +1406,7 @@ function AutonomyForm({ agent, L, busy }: { agent: Agent; L: Label; busy: boolea
           type="submit"
           variant={raising ? "danger" : "secondary"}
           loading={busy}
-          disabled={next === agent.autonomyLevel}
+          disabled={next === level}
         >
           {L("agents.setAutonomy")}
         </Button>

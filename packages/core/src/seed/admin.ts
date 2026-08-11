@@ -1115,7 +1115,7 @@ export async function seedAdmin(ctx: SeedContext): Promise<void> {
       // Triggered by the fan-out completing, not by a person: the comparison is
       // written before the customer opens the page.
       actorRef: "system:dist-fanout",
-      autonomyLevel: "suggest_only",
+      autonomyLevel: "suggest",
       trigger: "event",
       state: "succeeded",
       inputHash: await digest("run.quoting.input"),
@@ -1141,7 +1141,7 @@ export async function seedAdmin(ctx: SeedContext): Promise<void> {
       purpose: "renewal.outreach_draft",
       subjectRef: renewalRef,
       actorRef: "system:orbit-tick",
-      autonomyLevel: "suggest_only",
+      autonomyLevel: "suggest",
       trigger: "schedule",
       state: "succeeded",
       inputHash: await digest("run.renewal.input"),
@@ -1163,7 +1163,7 @@ export async function seedAdmin(ctx: SeedContext): Promise<void> {
       purpose: "creative.variant",
       subjectRef: `campaigns:motor-jan`,
       actorRef: `user:${marketer}`,
-      autonomyLevel: "suggest_only",
+      autonomyLevel: "suggest",
       trigger: "user",
       // Refused rather than failed: the model answered, the guardrail stopped
       // the answer. The block below is the same event from the other side.
@@ -1185,7 +1185,7 @@ export async function seedAdmin(ctx: SeedContext): Promise<void> {
       module: "scout",
       purpose: "market.scan",
       actorRef: "system:scout-tick",
-      autonomyLevel: "suggest_only",
+      autonomyLevel: "suggest",
       trigger: "schedule",
       state: "succeeded",
       inputHash: await digest("run.discovery.input"),
@@ -1206,7 +1206,7 @@ export async function seedAdmin(ctx: SeedContext): Promise<void> {
       purpose: "exec.briefing",
       subjectRef: `north-briefings:2026-01-04`,
       actorRef: "system:north-tick",
-      autonomyLevel: "suggest_only",
+      autonomyLevel: "suggest",
       trigger: "schedule",
       state: "succeeded",
       inputHash: await digest("run.briefing.input"),
@@ -1227,7 +1227,7 @@ export async function seedAdmin(ctx: SeedContext): Promise<void> {
       purpose: "recon.match",
       subjectRef: `settlements:cedar-2512`,
       actorRef: "system:ledger-tick",
-      autonomyLevel: "suggest_only",
+      autonomyLevel: "suggest",
       trigger: "schedule",
       // The provider dropped the connection mid-call; nothing was written, and
       // the next tick will retry. Failure here is infrastructure, not judgement.
@@ -1249,7 +1249,7 @@ export async function seedAdmin(ctx: SeedContext): Promise<void> {
       purpose: "output.review",
       subjectRef: `ai_runs:${runRenewal}`,
       actorRef: "api:qvk_live_a1b2c3d4",
-      autonomyLevel: "suggest_only",
+      autonomyLevel: "suggest",
       trigger: "api",
       state: "succeeded",
       inputHash: await digest("run.qa.input"),
@@ -1270,7 +1270,7 @@ export async function seedAdmin(ctx: SeedContext): Promise<void> {
       purpose: "quote.compare",
       subjectRef: `quote-requests:bulk-import-2601`,
       actorRef: "api:qvk_live_e5f6g7h8",
-      autonomyLevel: "suggest_only",
+      autonomyLevel: "suggest",
       trigger: "api",
       // The daily ceiling caught a bulk import mid-flight. Stopping is the
       // designed behaviour, so the row records it as a state and not an error.
@@ -1292,7 +1292,7 @@ export async function seedAdmin(ctx: SeedContext): Promise<void> {
       purpose: "creative.variant",
       subjectRef: `campaigns:renewal-nudge`,
       actorRef: `user:${marketer}`,
-      autonomyLevel: "suggest_only",
+      autonomyLevel: "suggest",
       trigger: "user",
       // Cancelled by the person who started it, which is a different thing from
       // refused: nothing was wrong with the request, they changed their mind.
