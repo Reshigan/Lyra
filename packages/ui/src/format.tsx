@@ -188,6 +188,11 @@ const OPAQUE_REF = /^(?:([a-z][a-z0-9_]*):)?([a-z][a-z0-9]*_)([0-9a-hjkmnp-tv-z]
  * ponytail: shortening, not resolution. When an endpoint starts returning the
  * display name behind a ref, render the name and demote this to its subtitle.
  */
+/** Whether a string is one of those keys, so a loader can ask what it is called. */
+export function isOpaqueRef(value: string): boolean {
+  return OPAQUE_REF.test(value.trim());
+}
+
 export function shortRef(value: string): string {
   const match = OPAQUE_REF.exec(value.trim());
   if (!match) return value;

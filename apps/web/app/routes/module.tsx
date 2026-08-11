@@ -11,8 +11,8 @@ import {
   type ActionFunctionArgs,
   type LoaderFunctionArgs
 } from "react-router";
-import { Button, EmptyState, Input, Panel, Select, Table, type Column } from "@lyra/ui";
-import { ApiError, api, asRouteError, fetchMe } from "../api.server";
+import { Button, EmptyState, Input, Panel, Select, Table, type Column, isOpaqueRef } from "@lyra/ui";
+import { ApiError, api, asRouteError, fetchMe, names } from "../api.server";
 import { Cell, FieldInput } from "../components/fields";
 import { cloudflare } from "../context";
 import { translator } from "../i18n";
@@ -56,6 +56,13 @@ function resolve(params: { module?: string; resource?: string }): {
   return { spec, tab };
 }
 
+/** Every ref-shaped string in the page, whichever column it happens to sit in. */
+function refsIn(rows: readonly Row[]): string[] {
+  return rows.flatMap((row) =>
+    Object.values(row).filter((value): value is string => typeof value === "string" && isOpaqueRef(value))
+  );
+}
+
 export async function loader({ request, params, context }: LoaderFunctionArgs) {
   const { spec, tab } = resolve(params);
   const env = context.get(cloudflare).env;
@@ -97,10 +104,17 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
     }
   );
 
+  // Every list carries refs its rows have no names for — the cases list headed
+  // a column OWNER and printed `user:us_01KE…`. One batch per page names them
+  // all; anything unresolved falls back to the short ref (Cell).
+  const rows = page.data ?? [];
+  const resolved = await names(refsIn(rows), { env, request });
+
   return {
     modulePath: spec.path,
     resource: tab.key,
-    rows: page.data ?? [],
+    rows,
+    resolved,
     cursor: page.cursor ?? null,
     deleted,
     query: Object.fromEntries(query)
@@ -196,10 +210,10 @@ export default function ModuleList() {
           to={`${spec.path}/${tab.key}/${String(row.id)}`}
           className="font-medium text-text underline-offset-2 hover:underline"
         >
-          <Cell column={column} row={row} locale={locale} label={label} />
+          <Cell column={column} row={row} locale={locale} label={label} resolved={loaded.resolved} />
         </Link>
       ) : (
-        <Cell column={column} row={row} locale={locale} label={label} />
+        <Cell column={column} row={row} locale={locale} label={label} resolved={loaded.resolved} />
       )
   }));
 

@@ -9,8 +9,8 @@ import {
   type ActionFunctionArgs,
   type LoaderFunctionArgs
 } from "react-router";
-import { Button, DateTime } from "@lyra/ui";
-import { ApiError, api, asRouteError } from "../api.server";
+import { Button, DateTime, isOpaqueRef } from "@lyra/ui";
+import { ApiError, api, asRouteError, names } from "../api.server";
 import { Cell, FieldInput } from "../components/fields";
 import { cloudflare } from "../context";
 import { translator } from "../i18n";
@@ -49,7 +49,13 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   const { spec, tab } = resolve(params);
   const env = context.get(cloudflare).env;
   const row = await api<Row>(`${tab.api}/${params.id}`, { env, request }).catch(asRouteError);
-  return { modulePath: spec.path, resource: tab.key, row };
+  // Same reason as the list (module.tsx): a record's fields hold refs and no
+  // names for them.
+  const resolved = await names(
+    Object.values(row).filter((value): value is string => typeof value === "string" && isOpaqueRef(value)),
+    { env, request }
+  );
+  return { modulePath: spec.path, resource: tab.key, row, resolved };
 }
 
 export async function action({ request, params, context }: ActionFunctionArgs) {
@@ -159,7 +165,7 @@ export default function Record() {
             <div key={column.name} className="flex min-w-0 flex-col gap-1">
               <dt className="font-ui text-12 text-subtle">{label(column.name)}</dt>
               <dd className="font-ui text-13 text-text">
-                <Cell column={column} row={row} locale={locale} label={label} />
+                <Cell column={column} row={row} locale={locale} label={label} resolved={loaded.resolved} />
               </dd>
             </div>
           ))}

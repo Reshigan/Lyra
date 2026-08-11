@@ -10,6 +10,7 @@ import {
   type BadgeTone
 } from "@lyra/ui";
 import type { ColumnSpec, FieldSpec, Row } from "../modules/spec";
+import { who, type Names } from "../names";
 import { inputValue, optionLabel } from "../modules/spec";
 
 // One place that knows how a typed value renders and how it is edited. Both
@@ -65,9 +66,11 @@ export interface CellProps {
   locale: string;
   /** Resolves a value to its translated label (`status.issued`), if the pack has one. */
   label: (key: string) => string;
+  /** Ref → name, from the loader's /v1/names batch. Absent = show the short ref. */
+  resolved?: Names;
 }
 
-export function Cell({ column, row, locale, label }: CellProps) {
+export function Cell({ column, row, locale, label, resolved = {} }: CellProps) {
   const value = row[column.name];
   if (value === null || value === undefined || value === "") {
     return <span className="text-subtle">—</span>;
@@ -108,7 +111,11 @@ export function Cell({ column, row, locale, label }: CellProps) {
           </Badge>
         );
       }
-      return <span>{truncate(text, 80)}</span>;
+      // A ref-shaped value is an id that escaped into the interface: the cases
+      // list printed `user:us_01KE…FMN` under OWNER. `who` names it when the
+      // batch resolved it and shortens it when it did not; anything that is not
+      // a ref (a name, a case number, an email) comes back untouched.
+      return <span>{truncate(who(text, resolved) ?? text, 80)}</span>;
     }
   }
 }
