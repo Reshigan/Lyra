@@ -22,10 +22,11 @@ import {
   Table,
   type Column
 } from "@lyra/ui";
-import { ApiError, api, fetchMe } from "../api.server";
+import { ApiError, api, fetchMe, names } from "../api.server";
 import { cloudflare } from "../context";
 import { useShellData } from "./workspace";
 import { pseudoText } from "../i18n";
+import { RefPicker, type RefOption } from "../components/ref-picker";
 
 // The three compliance capabilities that are runs rather than forms (docs/12
 // §3–§5, ADR-0002): a screening is a question put to a provider, an evidence
@@ -133,7 +134,8 @@ const LABELS: Record<string, Record<string, string>> = {
     "field.subject": "Name",
     "hint.subject": "The name to screen, as it is written on the document",
     "field.customerId": "Customer",
-    "hint.customerId": "A customer record id, if the subject is one. Overrides the name.",
+    "hint.customerId": "The customer on file, if the subject is one. Overrides the name.",
+    "placeholder.customer": "Search by name",
     "field.kind": "Screening type",
     "field.purpose": "Purpose",
     "field.subjectRef": "Subject",
@@ -220,7 +222,8 @@ const LABELS: Record<string, Record<string, string>> = {
     "field.subject": "الاسم",
     "hint.subject": "الاسم المراد فحصه كما هو مكتوب في الوثيقة",
     "field.customerId": "العميل",
-    "hint.customerId": "معرّف سجل العميل إن كان الموضوع عميلًا. يُقدَّم على الاسم.",
+    "hint.customerId": "العميل المسجَّل إن كان الموضوع عميلًا. يُقدَّم على الاسم.",
+    "placeholder.customer": "ابحث بالاسم",
     "field.kind": "نوع الفحص",
     "field.purpose": "الغرض",
     "field.subjectRef": "الموضوع",
@@ -316,9 +319,27 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   // workspace layout owns that redirect.
   const me = await fetchMe(env, request);
   const allowed = ORDER.filter((key) => me.permissions.includes(RUNS[key].permission));
+
+  // The screening's subject is usually someone already on file, and the box
+  // that asked for them wanted a `cu_01KE…` typed in by hand. An actor whose
+  // role cannot read customers gets no list and keeps the plain box.
+  let customers: RefOption[] = [];
+  if (kind === "screening" && allowed.includes(kind)) {
+    const page = await api<{ data: { id: string }[] }>(
+      "/v1/core/customers?sort=createdAt&order=desc&limit=100",
+      { env, request }
+    ).catch(() => null);
+    const rows = page?.data ?? [];
+    const named = await names(rows.map((row) => row.id), { env, request });
+    customers = rows
+      .map((row) => ({ id: row.id, label: named[row.id] ?? "" }))
+      .filter((option) => option.label !== "");
+  }
+
   return {
     kind,
     allowed,
+    customers,
     denied: !allowed.includes(kind),
     // The download is a plain link to the API, same trade as the finance
     // reports: no second copy of the archive passes through this app.
@@ -446,7 +467,9 @@ export default function ComplianceRun() {
       ) : (
         <>
           <Form method="post" aria-label={l(`run.${loaded.kind}`)} className="flex flex-wrap items-end gap-3">
-            {loaded.kind === "screening" ? <ScreeningFields l={l} /> : null}
+            {loaded.kind === "screening" ? (
+              <ScreeningFields l={l} customers={loaded.customers} />
+            ) : null}
             {loaded.kind === "evidence" ? <EvidenceFields l={l} /> : null}
             {loaded.kind === "retention" ? <RetentionFields l={l} /> : null}
             <Button type="submit" loading={busy}>
@@ -484,14 +507,14 @@ function options(values: readonly string[], l: Label, prefix = ""): { value: str
   return values.map((value) => ({ value, label: l(`${prefix}${value}`) === `${prefix}${value}` ? value : l(`${prefix}${value}`) }));
 }
 
-function ScreeningFields({ l }: { l: Label }) {
+function ScreeningFields({ l, customers }: { l: Label; customers: RefOption[] }) {
   return (
     <>
       <Field label={l("field.subject")} hint={l("hint.subject")} className="w-64">
         <Input name="subject" maxLength={200} />
       </Field>
       <Field label={l("field.customerId")} hint={l("hint.customerId")} className="w-56">
-        <Input name="customerId" maxLength={64} />
+        <RefPicker name="customerId" options={customers} placeholder={l("placeholder.customer")} />
       </Field>
       <Field label={l("field.kind")} className="w-52">
         <Select name="kind" defaultValue="sanctions" options={options(SCREENING_KINDS, l, "kind.")} />
