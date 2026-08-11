@@ -19,6 +19,7 @@ import {
   EvidenceLink,
   Field,
   GuardrailNotice,
+  Checkbox,
   Input,
   Money,
   MoneyField,
@@ -37,6 +38,8 @@ import {
   PERM,
   budgetOf,
   canLaunch,
+  SIGNAL_CHANNELS,
+  channelLabel,
   channelsOf,
   explain,
   labelsIn,
@@ -180,8 +183,11 @@ export async function action({ request, context }: ActionFunctionArgs): Promise<
         if (!OBJECTIVES.some((allowed) => allowed === objective)) return refuse("objective_required");
         const owner = text(form, "ownerRef");
         if (!owner) return refuse("owner_required");
-        const channels = text(form, "channels")
-          .split(",")
+        // One entry per ticked box; comma-splitting survives for anything
+        // posting the old free-text field.
+        const channels = form
+          .getAll("channels")
+          .flatMap((entry) => String(entry).split(","))
           .map((entry) => entry.trim())
           .filter(Boolean);
         if (channels.length === 0) return refuse("channels_required");
@@ -384,14 +390,25 @@ export default function CampaignStudio() {
               <Field label={l("audience")} hint={l("studio.audienceHint")}>
                 <Select
                   name="audienceId"
+                  placeholder={l("studio.audienceAll")}
                   options={loaded.audiences.map((audience) => ({
                     value: audience.id,
                     label: audience.name
                   }))}
                 />
               </Field>
-              <Field label={l("studio.channels")} required>
-                <Input name="channels" required defaultValue="google,meta" />
+              <Field label={l("studio.channels")} required hint={l("studio.channelsHint")}>
+                <div className="flex flex-wrap gap-x-6 gap-y-2">
+                  {SIGNAL_CHANNELS.map((channel) => (
+                    <Checkbox
+                      key={channel.slug}
+                      name="channels"
+                      value={channel.slug}
+                      label={channelLabel(channel.slug, locale)}
+                      defaultChecked={channel.slug === "google_search" || channel.slug === "meta"}
+                    />
+                  ))}
+                </div>
               </Field>
               <Field label={l("studio.daily")} required>
                 <MoneyField name="dailyMinor" currency={currency} locale={locale} required defaultMinor={50000} />
@@ -471,7 +488,7 @@ export default function CampaignStudio() {
                 }
               />
               <Stat label={l("autonomy")} value={l(`autonomy.${campaign.autonomyLevel}`)} />
-              <Stat label={l("studio.channels")} value={channelsOf(campaign).join(" · ") || "—"} />
+              <Stat label={l("studio.channels")} value={channelsOf(campaign).map((slug) => channelLabel(slug, locale)).join(" · ") || "—"} />
             </dl>
           </Card>
 
@@ -666,7 +683,7 @@ export function channelColumns(
   currency: string
 ): Array<Column<ChannelRoll>> {
   return [
-    { key: "channel", header: l("channel"), render: (roll) => roll.channel },
+    { key: "channel", header: l("channel"), render: (roll) => channelLabel(roll.channel, locale) },
     {
       key: "spend",
       header: l("spend"),

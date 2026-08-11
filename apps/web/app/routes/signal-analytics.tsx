@@ -34,6 +34,7 @@ import {
   labelsIn,
   ltvMinor,
   ltvToCac,
+  channelLabel,
   multipleText,
   rollByChannel,
   safe,
@@ -315,7 +316,7 @@ export default function GrowthAnalytics() {
 export function attributionColumns(l: Label, locale: string, currency: string): Array<Column<ChannelRoll>> {
   const money = (amountMinor: number) => <Money amountMinor={amountMinor} currency={currency} locale={locale} />;
   return [
-    { key: "channel", header: l("channel"), render: (roll) => roll.channel },
+    { key: "channel", header: l("channel"), render: (roll) => channelLabel(roll.channel, locale) },
     { key: "spend", header: l("spend"), numeric: true, render: (roll) => money(roll.spendMinor) },
     { key: "clicks", header: l("clicks"), numeric: true, render: (roll) => roll.clicks.toLocaleString(locale) },
     { key: "binds", header: l("binds"), numeric: true, render: (roll) => roll.binds.toLocaleString(locale) },

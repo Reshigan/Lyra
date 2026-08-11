@@ -12,6 +12,7 @@ import {
   isReversible,
   labelsIn,
   ltvToCac,
+  channelLabel,
   windowDays,
   type AeoRow,
   type AudienceRow,
@@ -373,6 +374,25 @@ describe("studio action", () => {
     expect(calls).toHaveLength(0);
   });
 
+  it("collects one entry per ticked channel box", async () => {
+    // The form posts `channels` once per checkbox, not one comma-joined string.
+    const calls = stubFetch(json(campaignRow({ id: "cmp_new" })));
+    const body = new FormData();
+    body.set("intent", "create-campaign");
+    body.set("name", "Winter push");
+    body.set("objective", "acq");
+    body.set("ownerRef", "usr_1");
+    body.append("channels", "google_search");
+    body.append("channels", "meta");
+    body.set("dailyMinor", "100000");
+
+    await studioAction(args(body)).catch(() => undefined);
+
+    expect(JSON.parse(calls[0]?.body ?? "{}")).toMatchObject({
+      channelsJson: ["google_search", "meta"]
+    });
+  });
+
   it("creates the draft then redirects, so a refresh cannot create a second campaign", async () => {
     const calls = stubFetch(json(campaignRow({ id: "cmp_new" })));
     const body = form({
@@ -650,5 +670,17 @@ describe("answer-engine action", () => {
 
     expect(result.done).toBeNull();
     expect(result.problem?.status).toBe(403);
+  });
+});
+
+describe("channelLabel", () => {
+  it("names a channel the way a person would", () => {
+    expect(channelLabel("google_search")).toBe("Google Search");
+    expect(channelLabel("meta")).toBe("Facebook");
+    expect(channelLabel("meta", "ar")).toBe("فيسبوك");
+  });
+
+  it("still renders a slug no catalogue knows", () => {
+    expect(channelLabel("partner_portal")).toBe("Partner Portal");
   });
 });

@@ -203,6 +203,34 @@ export function budgetOf(campaign: CampaignRow): Budget {
   return asJson<Budget>(campaign.budgetJson, {});
 }
 
+/**
+ * The places a campaign can run. Slugs are what the API and the seed store
+ * (`google_search`, `meta`); the label is what a person reads. Unknown slugs
+ * are still rendered — an importer may know a channel this list does not —
+ * so this is a display catalogue, not a validation whitelist.
+ *
+ * ponytail: two locales inline. Move to the domain pack when a tenant sells
+ * through a channel that needs its own naming.
+ */
+export const SIGNAL_CHANNELS: ReadonlyArray<{ slug: string; en: string; ar: string }> = [
+  { slug: "google_search", en: "Google Search", ar: "بحث Google" },
+  { slug: "bing_search", en: "Bing Search", ar: "بحث Bing" },
+  { slug: "meta", en: "Facebook", ar: "فيسبوك" },
+  { slug: "instagram", en: "Instagram", ar: "إنستغرام" },
+  { slug: "youtube", en: "YouTube", ar: "يوتيوب" },
+  { slug: "email", en: "Email", ar: "البريد الإلكتروني" },
+  { slug: "whatsapp", en: "WhatsApp", ar: "واتساب" },
+  { slug: "sms", en: "SMS", ar: "رسالة نصية" },
+  { slug: "push", en: "Push", ar: "إشعار" }
+];
+
+/** A channel slug as a person reads it — `google_search` → "Google Search". */
+export function channelLabel(slug: string, locale = "en"): string {
+  const known = SIGNAL_CHANNELS.find((channel) => channel.slug === slug);
+  if (known) return locale.startsWith("ar") ? known.ar : known.en;
+  return slug.replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 export function channelsOf(campaign: CampaignRow): string[] {
   const raw = asJson<unknown>(campaign.channelsJson, []);
   if (Array.isArray(raw)) return raw.map((entry) => String(entry)).filter(Boolean);
@@ -553,7 +581,9 @@ const LABELS: Record<string, Record<string, string>> = {
     "studio.name": "What is this campaign called",
     "studio.objective": "What is it for",
     "studio.audienceHint": "Who it reaches. Leave empty to reach everyone.",
+    "studio.audienceAll": "Everyone",
     "studio.channels": "Where it runs",
+    "studio.channelsHint": "Tick every place this campaign may buy. The autopilot moves budget between the ones you tick.",
     "studio.daily": "Daily budget",
     "studio.boundHint": "The most the autopilot may move between channels in one decision.",
     "studio.owner": "Who owns it",
@@ -806,7 +836,9 @@ const LABELS: Record<string, Record<string, string>> = {
     "studio.name": "ما اسم هذه الحملة",
     "studio.objective": "ما الغرض منها",
     "studio.audienceHint": "من تصل إليه. اتركه فارغًا للوصول إلى الجميع.",
+    "studio.audienceAll": "الجميع",
     "studio.channels": "أين تعمل",
+    "studio.channelsHint": "اختر كل مكان يمكن للحملة الشراء فيه. ينقل الطيار الآلي الميزانية بين ما تختاره.",
     "studio.daily": "الميزانية اليومية",
     "studio.boundHint": "أقصى مبلغ يحوّله الطيار الآلي بين القنوات في قرار واحد.",
     "studio.owner": "من المسؤول عنها",
