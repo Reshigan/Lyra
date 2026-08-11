@@ -22,6 +22,7 @@ export * from "./signal-compliance.js";
 export * from "./totp.js";
 export * from "./seed.js";
 export * from "./whitespace.js";
+export * from "./words.js";
 export * from "./wording-diff.js";
 export * from "./seams.js";
 export * from "./lifecycle.js";

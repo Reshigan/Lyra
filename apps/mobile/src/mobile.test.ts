@@ -314,7 +314,7 @@ describe("nav mapping", () => {
     expect(navTitle(t, "axis")).toBe("Operations");
     // A garbage deep link (/m/foo) must never render the raw key "nav.foo".
     expect(navTitle(t, "foo")).toBe("Foo");
-    expect(navTitle(t, "quote-requests")).toBe("Quote Requests");
+    expect(navTitle(t, "quote-requests")).toBe("Quote requests");
     // An API labelKey newer than this app's catalogue falls back the same way.
     expect(navTitle(t, "atlas", "nav.atlas")).toBe("Atlas");
   });
@@ -331,7 +331,11 @@ describe("row display", () => {
   it("does not repeat the title as the subtitle", () => {
     expect(subtitleOf({ id: "u_1", email: "a@b.co" })).toBeUndefined();
     expect(subtitleOf({ id: "u_1", name: "Amina", email: "a@b.co", status: "active" })).toBe(
-      "active"
+      "Active"
+    );
+    // A raw enum is never a subtitle.
+    expect(subtitleOf({ id: "u_1", name: "A", state: "pending_settlement" })).toBe(
+      "Pending settlement"
     );
   });
 
@@ -342,12 +346,12 @@ describe("row display", () => {
   });
 
   it("labels a field as words, never as the raw column name", () => {
-    expect(humanize("tenant_id")).toBe("Tenant Id");
-    expect(humanize("created_at")).toBe("Created At");
+    expect(humanize("tenant_id")).toBe("Tenant ID");
+    expect(humanize("created_at")).toBe("Created at");
     expect(humanize("status")).toBe("Status");
-    expect(humanize("quote-requests")).toBe("Quote Requests");
+    expect(humanize("quote-requests")).toBe("Quote requests");
     const fields = fieldsOf({ id: "x", tenant_id: "ten_1" });
-    expect(fields.find((f) => f.key === "tenant_id")?.label).toBe("Tenant Id");
+    expect(fields.find((f) => f.key === "tenant_id")?.label).toBe("Tenant ID");
   });
 });
 

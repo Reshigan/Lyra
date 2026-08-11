@@ -9,7 +9,8 @@
     ".": "./src/index.ts",
     "./rbac": "./src/rbac.ts",
     "./seed": "./src/seed.ts",
-    "./totp": "./src/totp.ts"
+    "./totp": "./src/totp.ts",
+    "./words": "./src/words.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

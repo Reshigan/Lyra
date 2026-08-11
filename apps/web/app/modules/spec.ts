@@ -13,6 +13,11 @@
 
 import { pseudoText, translator } from "../i18n";
 import { vocabulary } from "./vocabulary";
+import { humanise } from "@lyra/core/words";
+
+// Screens import it from here because that is where they already look for the
+// words a module puts on a table; the rule itself is shared with mobile.
+export { humanise };
 
 export type Row = Record<string, unknown>;
 
@@ -237,52 +242,6 @@ export function optionWords(
   return null;
 }
 
-/**
- * Words this platform never spells in lower case. Lowercasing is what makes
- * `pendingSettlement` and `PENDING_SETTLEMENT` land in the same place, and it
- * cost us "Ai agent pause" on the home timeline and "Dsar" on the compliance
- * queue — the two initialisms a regulator reads most.
- */
-const ACRONYMS = new Set([
-  "ai",
-  "api",
-  "crm",
-  "dsar",
-  "fnol",
-  "id",
-  "kpi",
-  "kyc",
-  "llm",
-  "ocr",
-  "oidc",
-  "pii",
-  "pos",
-  "psp",
-  "saml",
-  "sla",
-  "sms",
-  "sso",
-  "url",
-  "vat"
-]);
-
-/**
- * `pending_settlement` → `Pending settlement`, `core.session.login` → `Core
- * session login`, `ai.agent.pause` → `AI agent pause`. Readable beats faithful.
- */
-export function humanise(value: string): string {
-  const words = value
-    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
-    .replace(/[._-]+/g, " ")
-    .trim()
-    .toLowerCase();
-  if (!words) return value;
-  const said = words
-    .split(" ")
-    .map((word) => (ACRONYMS.has(word) ? word.toUpperCase() : word))
-    .join(" ");
-  return `${said.charAt(0).toUpperCase()}${said.slice(1)}`;
-}
 
 /**
  * A notification title. `titleKey` is open-ended — engines, seeds and future

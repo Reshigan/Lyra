@@ -1,3 +1,5 @@
+import { humanise } from "@lyra/core/words";
+
 import type { Row } from "./api";
 
 // The list and detail screens are deliberately generic: /v1/{module}/{resource}
@@ -29,22 +31,18 @@ export function subtitleOf(row: Row): string | undefined {
   const title = titleOf(row);
   for (const field of SUBTITLE_FIELDS) {
     const value = stringAt(row, field);
-    if (value !== undefined && value !== title) return value;
+    if (value !== undefined && value !== title) {
+      // A status arrives as `pending_settlement`; nobody reads it that way.
+      return field === "email" ? value : humanise(value);
+    }
   }
   return undefined;
 }
 
-/** "tenant_id" → "Tenant Id": a raw machine string is never a label. Locale-
- *  free on purpose — mobile has no column catalogue to translate from, and
- *  title-casing leaves non-Latin text alone. */
-export function humanize(key: string): string {
-  return key
-    .replace(/[_-]+/g, " ")
-    .trim()
-    .split(" ")
-    .map((word) => (word ? word[0]!.toUpperCase() + word.slice(1) : word))
-    .join(" ");
-}
+/** "tenant_id" → "Tenant ID": a raw machine string is never a label. The rule
+ *  itself lives in @lyra/core so a status reads the same word on the phone as
+ *  it does on the web. */
+export const humanize = humanise;
 
 /** Every field of a record, as display pairs. Objects and arrays are shown as
  *  JSON rather than as "[object Object]": raw is honest, blank is not. */
