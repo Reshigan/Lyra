@@ -8,8 +8,9 @@ import {
   type LoaderFunctionArgs
 } from "react-router";
 import { Badge, Button, Card, EmptyState, GuardrailNotice, Table, type Column } from "@lyra/ui";
-import { ApiError, apiFetch, api } from "../api.server";
+import { ApiError, apiFetch, api, names } from "../api.server";
 import { cloudflare } from "../context";
+import { who } from "../names";
 import { Gate } from "./staff";
 import { useShellData } from "./workspace";
 import {
@@ -58,7 +59,14 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   const period = latestPeriod(bench.data);
   const rows = inPeriod(bench.data, period);
-  return { period, rolls: rollByProvider(rows), thin: bench.data.length === 0 };
+  const rolls = rollByProvider(rows);
+  // A bench row carries a provider id and no carrier name, so the column
+  // headed CARRIER was six ULIDs (ADR-0048).
+  const resolved = await names(
+    rolls.map((roll) => roll.providerId),
+    { env, request }
+  );
+  return { period, rolls, resolved, thin: bench.data.length === 0 };
 }
 
 export interface ActionResult {
@@ -119,7 +127,7 @@ export default function ScoutPanel() {
             captionHidden
             rowKey={(roll) => roll.providerId}
             rows={loaded.rolls}
-            columns={panelColumns(l, locale)}
+            columns={panelColumns(l, locale, loaded.resolved)}
           />
         )}
       </Card>
@@ -155,10 +163,14 @@ export default function ScoutPanel() {
   );
 }
 
-export function panelColumns(l: Label, locale: string): Array<Column<ProviderRoll>> {
+export function panelColumns(
+  l: Label,
+  locale: string,
+  resolved: Record<string, string> = {}
+): Array<Column<ProviderRoll>> {
   const percent = (value: number | null) => (value === null ? l("none") : `${value.toLocaleString(locale)}%`);
   return [
-    { key: "providerId", header: l("insurer"), render: (roll) => roll.providerId },
+    { key: "providerId", header: l("insurer"), render: (roll) => who(roll.providerId, resolved) },
     {
       key: "share",
       header: l("share"),

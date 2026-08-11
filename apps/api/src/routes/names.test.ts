@@ -57,6 +57,7 @@ const CUSTOMER = { id: "cu_1", nameJson: JSON.stringify({ en: "Falcon Freight", 
 const USER = { id: "us_1", name: "Layla Al Mansouri", email: "layla@gonxt.ae", passwordHash: "SECRET-HASH" };
 const TEAM = { id: "tm_1", name: "Motor claims" };
 const CASE = { id: "cas_1", ref: "CASE-1042" };
+const PROVIDER = { id: "pv_1", name: "Oryx Insurance", code: "ORYX" };
 
 const rows = (table: unknown): unknown[] => {
   const name = String((table as { [k: symbol]: unknown })[Symbol.for("drizzle:Name")] ?? "");
@@ -65,6 +66,7 @@ const rows = (table: unknown): unknown[] => {
   if (name === "core_users") return [USER, { ...USER, id: "usr_1" }];
   if (name === "core_teams") return [TEAM];
   if (name === "axis_cases") return [CASE];
+  if (name === "core_providers") return [PROVIDER];
   return [];
 };
 
@@ -126,6 +128,16 @@ describe("GET /v1/names", () => {
       "user:us_1": "Layla A•• M•••••••",
       "team:tm_1": "Motor claims"
     });
+  });
+
+  it("names a carrier for an analyst who holds no catalogue rights", async () => {
+    // SCOUT's panel table lists one row per carrier under a column headed
+    // CARRIER and rendered `pv_01KE…` in it: naming a provider needed
+    // core:providers:read, a catalogue-admin grant no analyst holds (ADR-0048).
+    const app = router(baseCtx(fakeDb(rows), ["scout:panel_bench:read"]));
+    const res = await app.fetch(new Request("http://api.test/?refs=pv_1"));
+    const body = (await res.json()) as { names: Record<string, string> };
+    expect(body.names.pv_1).toBe("Oryx Insurance");
   });
 
   it("masks a PII display name without core:pii:view, and never leaks a secret column", async () => {
