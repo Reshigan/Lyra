@@ -177,7 +177,11 @@ const LABELS: Record<string, Record<string, string>> = {
     "autonomy.act_with_approval": "Acts with approval",
     "autonomy.act_within_limits": "Acts within limits",
     "autonomy.autonomous": "Autonomous",
-    "status.retired": "Retired",
+    // An agent is not a policy: detail-kit's shared `status.*` words are the
+    // axis_policies vocabulary, feminine in Arabic and wrong for a وكيل.
+    "agentStatus.active": "Active",
+    "agentStatus.paused": "Paused",
+    "agentStatus.retired": "Retired",
     "runs.title": "Recent runs",
     "runs.when": "Started",
     "runs.agent": "Agent",
@@ -317,7 +321,9 @@ const LABELS: Record<string, Record<string, string>> = {
     "autonomy.act_with_approval": "يتصرف بموافقة",
     "autonomy.act_within_limits": "يتصرف ضمن حدود",
     "autonomy.autonomous": "مستقل",
-    "status.retired": "مسحوب",
+    "agentStatus.active": "نشط",
+    "agentStatus.paused": "موقوف",
+    "agentStatus.retired": "مسحوب",
     "runs.title": "التشغيلات الأخيرة",
     "runs.when": "البداية",
     "runs.agent": "الوكيل",
@@ -1341,7 +1347,7 @@ function AgentCard({ agent, L, locale, busy, canPause, canWrite, pending, resolv
         `${L("agents.module")}: ${moduleName(translator(locale), agent.module)} · ${L("agents.tier")}: ${L(`tier.${agent.tier}`, agent.tier)}`
       }
       actions={
-        <Badge tone={toneOf(agent.status)}>{L(`status.${agent.status}`, agent.status)}</Badge>
+        <Badge tone={toneOf(agent.status)}>{L(`agentStatus.${agent.status}`, agent.status)}</Badge>
       }
     >
       <div className="flex flex-col gap-4">
