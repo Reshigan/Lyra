@@ -29,7 +29,7 @@ import {
 } from "@lyra/ui";
 import { ApiError, api } from "../api.server";
 import { cloudflare } from "../context";
-import { pseudoText, translator } from "../i18n";
+import { moduleName, pseudoText, translator } from "../i18n";
 import { Problem } from "./module";
 import { useShellData } from "./workspace";
 
@@ -707,7 +707,9 @@ export default function AiConsole() {
   ];
 
   const spendColumns: Array<Column<SpendRow>> = [
-    { key: "module", header: L("spend.module"), render: (row) => row.module },
+    // Spend and the audit log are keyed by module code (`dist`, `core`); the
+    // person reading the table navigates by the name on the rail.
+    { key: "module", header: L("spend.module"), render: (row) => moduleName(t, row.module) },
     { key: "purpose", header: L("spend.purpose"), render: (row) => row.purpose },
     { key: "calls", header: L("spend.calls"), numeric: true, render: (row) => nf.format(row.calls) },
     { key: "tokens", header: L("spend.tokens"), numeric: true, render: (row) => nf.format(row.tokens) },
@@ -770,7 +772,7 @@ export default function AiConsole() {
       render: (row) => <DateTime value={row.ts} locale={locale} precision="second" />
     },
     { key: "actorRef", header: L("audit.actor"), render: (row) => row.actorRef },
-    { key: "module", header: L("audit.module"), render: (row) => row.module },
+    { key: "module", header: L("audit.module"), render: (row) => moduleName(t, row.module) },
     { key: "purpose", header: L("audit.purpose"), render: (row) => row.purpose },
     {
       key: "model",
@@ -1247,7 +1249,10 @@ function AgentCard({ agent, L, locale, busy, canPause, canWrite, pending }: Agen
           <span className="font-mono text-12 text-subtle">{agent.key}</span>
         </span>
       }
-      description={description ?? `${L("agents.module")}: ${agent.module} · ${L("agents.tier")}: ${agent.tier}`}
+      description={
+        description ??
+        `${L("agents.module")}: ${moduleName(translator(locale), agent.module)} · ${L("agents.tier")}: ${agent.tier}`
+      }
       actions={
         <Badge tone={toneOf(agent.status)}>{L(`status.${agent.status}`, agent.status)}</Badge>
       }
@@ -1268,7 +1273,7 @@ function AgentCard({ agent, L, locale, busy, canPause, canWrite, pending }: Agen
             term={L("agents.updated")}
             detail={<DateTime value={agent.updatedAt} locale={locale} precision="minute" />}
           />
-          <Pair term={L("agents.module")} detail={agent.module} />
+          <Pair term={L("agents.module")} detail={moduleName(translator(locale), agent.module)} />
           <Pair term={L("agents.tier")} detail={agent.tier} />
           {/* The prompt reference, never the prompt: ai_prompts.body is the
               system text and this screen does not load it. */}

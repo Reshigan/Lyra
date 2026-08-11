@@ -29,7 +29,7 @@ import {
 } from "@lyra/ui";
 import { ApiError, api } from "../api.server";
 import { cloudflare } from "../context";
-import { pseudoText, translator } from "../i18n";
+import { moduleName, pseudoText, translator } from "../i18n";
 import { Problem } from "./module";
 import { useShellData } from "./workspace";
 
@@ -377,8 +377,10 @@ export default function AiBudget() {
   const [module, setModule] = React.useState(ALL_MODULES);
   const selected = ceilings.find((row) => row.module === module);
 
+  // `module.<key>` is not in any label table, so every ceiling row printed its
+  // storage key — "dist", "orbit", "core" — under a heading reading Module.
   const moduleLabel = (key: string): string =>
-    key === ALL_MODULES ? L("module.all") : L(`module.${key}`, key);
+    key === ALL_MODULES ? L("module.all") : moduleName(t, key);
 
   const moduleOptions: SelectOption[] = [
     { value: ALL_MODULES, label: L("module.all") },

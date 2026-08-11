@@ -26,6 +26,8 @@ export const ar: Messages = {
   "nav.platform": "فريق المنصة",
   "nav.settings": "الإعدادات",
 
+  "module.core": "الخدمات المشتركة",
+
   "header.account": "الحساب",
   "header.signedInAs": "تسجيل الدخول باسم {name}",
   "header.settings": "الإعدادات",

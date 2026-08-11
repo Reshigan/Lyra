@@ -26,6 +26,10 @@ export const en = {
   "nav.platform": "Platform staff",
   "nav.settings": "Settings",
 
+  // Spend, budgets and agents are recorded against module keys the nav has no
+  // rail entry for.
+  "module.core": "Shared services",
+
   "header.account": "Account",
   "header.signedInAs": "Signed in as {name}",
   "header.settings": "Settings",

@@ -126,6 +126,28 @@ export function translator(locale: string, overrides?: Record<string, string>): 
   };
 }
 
+/**
+ * Module keys as the platform records them against spend, budgets, agents and
+ * unit economics — `dist`, `core`, `platform` — against the names the nav puts
+ * on the rail. Cost explorer headed a column MODULE and listed "dist", "orbit",
+ * "axis" down it; the person reading it navigates by "Distribution" and
+ * "Conversations". Keys the nav has no entry for (`core`, `platform`) get their
+ * own strings rather than a raw key.
+ */
+const MODULE_LABEL_KEYS: Record<string, string> = {
+  dist: "nav.distribution",
+  distribution: "nav.distribution",
+  core: "module.core",
+  platform: "nav.platform"
+};
+
+/** A module key as a person reads it. Unknown keys come back title-cased. */
+export function moduleName(t: Translate, key: string): string {
+  const labelKey = MODULE_LABEL_KEYS[key] ?? `nav.${key}`;
+  const label = t(labelKey as MessageKey);
+  return label === labelKey ? key.charAt(0).toUpperCase() + key.slice(1) : label;
+}
+
 export function readCookie(header: string | null, name: string): string | undefined {
   if (!header) return undefined;
   for (const part of header.split(";")) {

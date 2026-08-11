@@ -9,7 +9,8 @@ import {
 import type { LoaderFunctionArgs } from "react-router";
 import { ApiError, api } from "../api.server";
 import { cloudflare } from "../context";
-import { pseudoText, translator } from "../i18n";
+import { moduleName, pseudoText, translator } from "../i18n";
+import { humanise } from "../modules/spec";
 import { useShellData } from "./workspace";
 import { useLoaderData } from "react-router";
 
@@ -209,8 +210,10 @@ export default function CostExplorer() {
   const drifts = loaded.rows ? driftingUnits(loaded.rows) : [];
 
   const columns: Array<Column<UnitEconRow>> = [
-    { key: "module", header: L("table.module"), render: (row) => row.module },
-    { key: "unit", header: L("table.unit"), render: (row) => row.unit },
+    // The table headed a column MODULE and listed "dist", "orbit", "axis" down
+    // it — the keys the rollup is stored under, not the names on the rail.
+    { key: "module", header: L("table.module"), render: (row) => moduleName(t, row.module) },
+    { key: "unit", header: L("table.unit"), render: (row) => humanise(row.unit) },
     { key: "day", header: L("table.day"), render: (row) => row.day },
     { key: "volume", header: L("table.volume"), numeric: true, render: (row) => nf.format(row.volume) },
     {
@@ -248,8 +251,8 @@ export default function CostExplorer() {
               <p>{L("drift.reason")}</p>
               <ul className="flex flex-col gap-0.5">
                 {drifts.map((drift) => (
-                  <li key={`${drift.module}/${drift.unit}`} className="font-mono text-12">
-                    {drift.module}/{drift.unit}: +{drift.deltaPct}%
+                  <li key={`${drift.module}/${drift.unit}`} className="text-13">
+                    {moduleName(t, drift.module)} · {humanise(drift.unit)}: +{drift.deltaPct}%
                   </li>
                 ))}
               </ul>

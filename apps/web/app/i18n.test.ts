@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chosenLocale, langFor, localeFrom, pseudoText, translator } from "./i18n";
+import { chosenLocale, langFor, localeFrom, moduleName, pseudoText, translator } from "./i18n";
 import { labelsIn } from "./routes/search-results";
 
 const request = (headers: Record<string, string>) => new Request("https://lyra.test/", { headers });
@@ -56,5 +56,23 @@ describe("pseudo locale", () => {
     const l = labelsIn("pseudo");
     expect(l("title")).toMatch(/^⟦.*⟧$/);
     expect(l("count", { count: "3", areas: "2" })).toContain("3");
+  });
+});
+
+// Cost explorer headed a column MODULE and listed the rollup's storage keys
+// under it: "dist", "orbit", "core".
+describe("moduleName", () => {
+  it("gives the name the nav puts on the rail", () => {
+    expect(moduleName(translator("en"), "orbit")).toBe("Conversations");
+    expect(moduleName(translator("ar"), "orbit")).toBe("المحادثات");
+  });
+
+  it("maps the keys the nav spells differently, or has no rail entry for", () => {
+    expect(moduleName(translator("en"), "dist")).toBe("Distribution");
+    expect(moduleName(translator("en"), "core")).toBe("Shared services");
+  });
+
+  it("title-cases a module nobody has named yet rather than printing nav.x", () => {
+    expect(moduleName(translator("en"), "atlas")).toBe("Atlas");
   });
 });
