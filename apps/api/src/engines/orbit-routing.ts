@@ -77,9 +77,10 @@ export function pickAssignee(
 /** An agent idle longer than this (no presence heartbeat) is treated as gone: sweepRouting reassigns their open conversations. */
 export const PRESENCE_STALE_MS = 15 * 60_000;
 
-import { count, eq, isNull, lte, ne } from "drizzle-orm";
+import { asc, count, eq, isNull, lte, ne } from "drizzle-orm";
 import { schema } from "@lyra/db";
 import { emit, scoped, type Ctx } from "@lyra/core";
+import { SWEEP_MAX } from "./sweep.js";
 
 /**
  * How many live conversations each agent is holding right now.
@@ -236,7 +237,11 @@ export async function sweepRouting(
         lte(schema.orbitConversations.firstResponseDueAt, ctx.now),
         ne(schema.orbitConversations.state, "closed")
       )
-    );
+    )
+    // Oldest breach first, capped (sweep.ts): breaching stamps frtBreachedAt,
+    // so anything past the cap is the next tick's head of queue.
+    .orderBy(asc(schema.orbitConversations.firstResponseDueAt))
+    .limit(SWEEP_MAX);
   for (const conv of frtDue) {
     const priority = Math.max(0, conv.priority - 1);
     await ctx.db
@@ -268,7 +273,9 @@ export async function sweepRouting(
         lte(schema.orbitConversations.resolutionDueAt, ctx.now),
         ne(schema.orbitConversations.state, "closed")
       )
-    );
+    )
+    .orderBy(asc(schema.orbitConversations.resolutionDueAt))
+    .limit(SWEEP_MAX);
   for (const conv of resolutionDue) {
     await ctx.db
       .update(schema.orbitConversations)
@@ -285,7 +292,12 @@ export async function sweepRouting(
   const stalePresence = await ctx.db
     .select()
     .from(schema.orbitAgentPresence)
-    .where(scoped(ctx, schema.orbitAgentPresence, eq(schema.orbitAgentPresence.status, "available"), lte(schema.orbitAgentPresence.updatedAt, ctx.now - PRESENCE_STALE_MS)));
+    .where(scoped(ctx, schema.orbitAgentPresence, eq(schema.orbitAgentPresence.status, "available"), lte(schema.orbitAgentPresence.updatedAt, ctx.now - PRESENCE_STALE_MS)))
+    // Longest-quiet agent first, capped: going offline takes the row out of
+    // this set. Each one walks its own held conversations, so this is the
+    // expensive loop of the three.
+    .orderBy(asc(schema.orbitAgentPresence.updatedAt))
+    .limit(SWEEP_MAX);
 
   let reassigned = 0;
   let unassigned = 0;

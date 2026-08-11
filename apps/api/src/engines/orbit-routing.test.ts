@@ -8,6 +8,7 @@ import { schema } from "@lyra/db";
 import type { Ctx } from "@lyra/core";
 import { PolicyJson, EntitlementsJson } from "@lyra/db";
 import { pickAssignee, pickRoute, routeConversation, sweepRouting, PRESENCE_STALE_MS } from "./orbit-routing.js";
+import { SWEEP_MAX } from "./sweep.js";
 
 describe("pickRoute", () => {
   const rule = (seq: number, teamId: string, conditions: object, enabled = true) => ({
@@ -611,5 +612,45 @@ describe("sweepRouting", () => {
 
     const [otherPresence] = await ctx.db.select().from(schema.orbitAgentPresence).where(eq(schema.orbitAgentPresence.userId, "u_other_stale"));
     expect(otherPresence!.status).toBe("available");
+  });
+
+  // Every sweep runs for every tenant inside one cron invocation, so a query
+  // with no ceiling scans a whole book and starves the tenants queued behind
+  // it. The cap is only safe because a breached conversation drops out of its
+  // own result set — the overflow is the next tick's head of queue, not work
+  // that never happens.
+  it("takes at most SWEEP_MAX breaches per tick, oldest first, and clears the rest on the next one", async () => {
+    const overflow = 3;
+    await ctx.db.insert(schema.orbitConversations).values(
+      Array.from({ length: SWEEP_MAX + overflow }, (_, i) => ({
+        id: `cnv_bulk_${String(i).padStart(4, "0")}`,
+        tenantId,
+        channel: "whatsapp" as const,
+        state: "human" as const,
+        priority: 2,
+        // Descending due dates against ascending ids: if the sweep took rows in
+        // insertion order rather than oldest-breach-first this would pass by
+        // accident.
+        resolutionDueAt: now - 1 - (SWEEP_MAX + overflow - i),
+        createdAt: now - 1000,
+        updatedAt: now - 1000
+      }))
+    );
+
+    const first = await sweepRouting(ctx);
+    expect(first.resolutionBreaches).toBe(SWEEP_MAX);
+    // Row 0 is the oldest breach; the last `overflow` ids are the newest.
+    const [oldest] = await ctx.db.select().from(schema.orbitConversations).where(eq(schema.orbitConversations.id, "cnv_bulk_0000"));
+    expect(oldest!.resolutionBreachedAt).toBe(now);
+    const [newest] = await ctx.db
+      .select()
+      .from(schema.orbitConversations)
+      .where(eq(schema.orbitConversations.id, `cnv_bulk_${String(SWEEP_MAX + overflow - 1).padStart(4, "0")}`));
+    expect(newest!.resolutionBreachedAt).toBeNull();
+
+    const second = await sweepRouting(ctx);
+    expect(second.resolutionBreaches).toBe(overflow);
+    const third = await sweepRouting(ctx);
+    expect(third.resolutionBreaches).toBe(0);
   });
 });

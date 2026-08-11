@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull, lte } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, lte } from "drizzle-orm";
 import { z } from "zod";
 import { id as newId, schema } from "@lyra/db";
 import {
@@ -15,6 +15,7 @@ import {
   type Ctx
 } from "@lyra/core";
 import { autoApprovable, buildRecipe, runTxn } from "@lyra/ledger";
+import { SWEEP_MAX } from "./sweep.js";
 
 type PolicyRow = typeof schema.axisPolicies.$inferSelect;
 type TxnRow = Awaited<ReturnType<typeof runTxn>>;
@@ -599,7 +600,11 @@ export async function sweepPolicyLifecycle(ctx: Ctx): Promise<{ incepted: number
         schema.axisPolicies,
         and(eq(schema.axisPolicies.status, "bound"), lte(schema.axisPolicies.startAt, ctx.now))
       )
-    );
+    )
+    // Earliest start first, capped (sweep.ts): incepting moves the status off
+    // `bound`, so the overflow is simply next tick's head of queue.
+    .orderBy(asc(schema.axisPolicies.startAt))
+    .limit(SWEEP_MAX);
   for (const policy of due) {
     try {
       const txn = await runTxn(ctx, {
@@ -632,6 +637,11 @@ export async function sweepPolicyLifecycle(ctx: Ctx): Promise<{ incepted: number
         and(eq(schema.axisPolicies.status, "active"), isNotNull(schema.axisPolicies.paymentPlanJson))
       )
     );
+  // ponytail: the whole on-risk book, uncapped. Whether an instalment was
+  // missed is inside paymentPlanJson, so unlike the two passes either side of
+  // this one there is no predicate that leaves a checked-and-fine policy out of
+  // the set — a cap here would starve everything past it forever. Bounding it
+  // needs a `next_instalment_due_at` column to filter on (ADR-0050).
   for (const policy of onRisk) {
     try {
       const missed = missedInstalment(policy.paymentPlanJson, ctx.now);
@@ -655,7 +665,10 @@ export async function sweepPolicyLifecycle(ctx: Ctx): Promise<{ incepted: number
           lte(schema.axisPolicies.endAt, ctx.now)
         )
       )
-    );
+    )
+    // Earliest end first, capped: expiring moves the status to `expired`.
+    .orderBy(asc(schema.axisPolicies.endAt))
+    .limit(SWEEP_MAX);
   for (const policy of ended) {
     try {
       const txn = await runTxn(ctx, {
