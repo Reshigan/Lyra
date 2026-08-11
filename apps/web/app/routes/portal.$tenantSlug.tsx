@@ -42,6 +42,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "portal.form.error.generic": "Something went wrong. Please try again.",
     "portal.privacy": "Your privacy rights",
     "portal.quick": "Quick quote — three details, real prices.",
+    "portal.slow": "Leave your details and a specialist prices this one for you.",
     "portal.form.age": "Your age",
     "portal.form.sumInsured": "Value to insure",
     "portal.form.priorClaims": "I have claimed in the last 3 years.",
@@ -75,6 +76,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "portal.form.error.generic": "حدث خطأ ما. حاول مرة أخرى.",
     "portal.privacy": "حقوقك في الخصوصية",
     "portal.quick": "عرض سعر سريع — ثلاث معلومات وأسعار حقيقية.",
+    "portal.slow": "اترك بياناتك وسيقوم مختص بتسعير هذا المنتج لك.",
     "portal.form.age": "عمرك",
     "portal.form.sumInsured": "القيمة المراد تأمينها",
     "portal.form.priorClaims": "قدمت مطالبة خلال آخر ٣ سنوات.",
@@ -267,61 +269,73 @@ export default function Portal() {
                       {l("portal.form.success")}
                     </p>
                   ) : (
-                    <details>
-                      <summary className="cursor-pointer text-13 font-medium text-accent">
-                        {l("portal.quote")}
-                      </summary>
-                      <Form method="post" className="mt-4 flex flex-col gap-3">
-                        <input type="hidden" name="productId" value={product.id} />
-                        <input type="hidden" name="line" value={product.line} />
-                        {QUICK[product.line] ? (
-                          <>
-                            <p className="text-13 text-muted">{l("portal.quick")}</p>
-                            {QUICK[product.line]!.map((field) =>
-                              field.kind === "bool" ? (
-                                <Checkbox key={field.name} name={field.name} label={l(field.labelKey)} />
-                              ) : (
-                                <Field
-                                  key={field.name}
-                                  label={l(field.labelKey)}
-                                  id={`${field.name}-${product.id}`}
-                                >
-                                  <Input
-                                    name={field.name}
-                                    type="number"
-                                    inputMode="numeric"
-                                    required
-                                    {...(field.kind === "number" ? { min: field.min, max: field.max } : { min: 1 })}
-                                  />
-                                </Field>
-                              )
-                            )}
-                          </>
-                        ) : null}
-                        {submitted?.errorKey ? (
-                          <p role="alert" className="text-13 text-danger">
-                            {l(submitted.errorKey)}
-                          </p>
-                        ) : null}
-                        <Field label={l("portal.form.name")} id={`name-${product.id}`}>
-                          <Input name="name" autoComplete="name" required />
-                        </Field>
-                        <Field label={l("portal.form.email")} id={`email-${product.id}`}>
-                          <Input name="email" type="email" autoComplete="email" required />
-                        </Field>
-                        <Field label={l("portal.form.phone")} id={`phone-${product.id}`}>
-                          <Input name="phone" type="tel" autoComplete="tel" />
-                        </Field>
-                        <Field label={l("portal.form.message")} id={`message-${product.id}`}>
-                          <Textarea name="message" rows={3} />
-                        </Field>
-                        <Checkbox name="consent" required label={l("portal.form.consent")} />
-                        <Turnstile siteKey={turnstileSiteKey} locale={locale} />
-                        <Button type="submit" variant="primary" loading={busy}>
-                          {busy ? l("portal.form.working") : l("portal.form.submit")}
-                        </Button>
-                      </Form>
-                    </details>
+                    <>
+                      {/* The promise used to live inside the form, where you
+                          only read it after deciding to open it. It is the
+                          reason to open it, so it sits above the control —
+                          outside <details>, which requires <summary> first. */}
+                      {/* A line without rating fields still takes the lead —
+                          say so, rather than leaving the card silent about
+                          what "get a quote" will actually do. */}
+                      <p className="mb-3 text-13 text-muted">
+                        {l(QUICK[product.line] ? "portal.quick" : "portal.slow")}
+                      </p>
+                      <details>
+                        <summary className="inline-flex cursor-pointer select-none items-center gap-2 text-13 font-medium text-accent underline-offset-4 marker:content-none hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
+                          <span aria-hidden="true">→</span>
+                          {l("portal.quote")}
+                        </summary>
+                        <Form method="post" className="mt-4 flex flex-col gap-3">
+                          <input type="hidden" name="productId" value={product.id} />
+                          <input type="hidden" name="line" value={product.line} />
+                          {QUICK[product.line] ? (
+                            <>
+                              {QUICK[product.line]!.map((field) =>
+                                field.kind === "bool" ? (
+                                  <Checkbox key={field.name} name={field.name} label={l(field.labelKey)} />
+                                ) : (
+                                  <Field
+                                    key={field.name}
+                                    label={l(field.labelKey)}
+                                    id={`${field.name}-${product.id}`}
+                                  >
+                                    <Input
+                                      name={field.name}
+                                      type="number"
+                                      inputMode="numeric"
+                                      required
+                                      {...(field.kind === "number" ? { min: field.min, max: field.max } : { min: 1 })}
+                                    />
+                                  </Field>
+                                )
+                              )}
+                            </>
+                          ) : null}
+                          {submitted?.errorKey ? (
+                            <p role="alert" className="text-13 text-danger">
+                              {l(submitted.errorKey)}
+                            </p>
+                          ) : null}
+                          <Field label={l("portal.form.name")} id={`name-${product.id}`}>
+                            <Input name="name" autoComplete="name" required />
+                          </Field>
+                          <Field label={l("portal.form.email")} id={`email-${product.id}`}>
+                            <Input name="email" type="email" autoComplete="email" required />
+                          </Field>
+                          <Field label={l("portal.form.phone")} id={`phone-${product.id}`}>
+                            <Input name="phone" type="tel" autoComplete="tel" />
+                          </Field>
+                          <Field label={l("portal.form.message")} id={`message-${product.id}`}>
+                            <Textarea name="message" rows={3} />
+                          </Field>
+                          <Checkbox name="consent" required label={l("portal.form.consent")} />
+                          <Turnstile siteKey={turnstileSiteKey} locale={locale} />
+                          <Button type="submit" variant="primary" loading={busy}>
+                            {busy ? l("portal.form.working") : l("portal.form.submit")}
+                          </Button>
+                          </Form>
+                      </details>
+                    </>
                   )}
                 </Card>
               );
