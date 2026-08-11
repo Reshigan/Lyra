@@ -22,11 +22,13 @@ import {
   Select,
   Stat,
   Table,
+  shortRef,
   type BadgeTone,
   type Column
 } from "@lyra/ui";
-import { api, asRouteError, fetchMe, type Problem as ProblemShape } from "../api.server";
+import { api, asRouteError, fetchMe, names, type Problem as ProblemShape } from "../api.server";
 import { cloudflare } from "../context";
+import { who, type Names } from "../names";
 import { Gate } from "./staff";
 import {
   ORBIT,
@@ -124,6 +126,7 @@ export const LABELS: Labels = {
     policyRef: "Policy reference",
     expires: "Expires",
     daysLeft: "Days left",
+    daysLate: "{n} days late",
     risk: "Churn risk",
     strategy: "Strategy",
     state: "State",
@@ -192,6 +195,7 @@ export const LABELS: Labels = {
     policyRef: "مرجع الوثيقة",
     expires: "تنتهي",
     daysLeft: "الأيام المتبقية",
+    daysLate: "متأخر {n} يومًا",
     risk: "خطر التسرب",
     strategy: "الأسلوب",
     state: "الحالة",
@@ -272,6 +276,16 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   ]);
   const lost = await list("state=lost&sort=decidedAt&order=desc&limit=25");
 
+  // Every desk column that names a person read a ULID: CUSTOMER showed
+  // `cu_01KE…KPZ1` and OWNER `user:us_…`. One batch names all three tables.
+  const resolved = await names(
+    [...queue.data, ...outstanding.data, ...settled.data, ...lost.data].flatMap((row) => [
+      row.customerId,
+      row.ownerRef
+    ]),
+    opts
+  );
+
   return {
     locale: me.locale,
     now: Date.now(),
@@ -280,6 +294,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     queue,
     outstanding,
     settled: [...settled.data, ...lost.data].sort((a, b) => (b.decidedAt ?? 0) - (a.decidedAt ?? 0)),
+    resolved,
     savedCount: settled.data.length,
     lostCount: lost.data.length
   };
@@ -393,6 +408,7 @@ export default function SaveDesk() {
           rows={loaded.queue.data}
           l={l}
           locale={loaded.locale}
+          resolved={loaded.resolved}
           now={loaded.now}
           nonce={loaded.nonce}
           writable={loaded.may.write}
@@ -406,6 +422,7 @@ export default function SaveDesk() {
           rows={loaded.outstanding.data}
           l={l}
           locale={loaded.locale}
+          resolved={loaded.resolved}
           now={loaded.now}
           nonce={loaded.nonce}
           writable={loaded.may.write}
@@ -424,8 +441,23 @@ export default function SaveDesk() {
             rowKey={(row) => row.id}
             density="compact"
             columns={[
-              { key: "customerId", header: l("customer"), render: (row) => row.customerId ?? "—" },
-              { key: "policyRef", header: l("policyRef"), render: (row) => row.policyRef ?? "—" },
+              {
+                key: "customerId",
+                header: l("customer"),
+                render: (row) => (row.customerId ? who(row.customerId, loaded.resolved) : "—")
+              },
+              {
+                key: "policyRef",
+                header: l("policyRef"),
+                render: (row) =>
+                  row.policyRef ? (
+                    <span className="font-mono text-12" title={row.policyRef}>
+                      {shortRef(row.policyRef)}
+                    </span>
+                  ) : (
+                    "—"
+                  )
+              },
               {
                 key: "state",
                 header: l("state"),
@@ -456,6 +488,7 @@ function Desk({
   rows,
   l,
   locale,
+  resolved,
   now,
   nonce,
   writable,
@@ -465,6 +498,7 @@ function Desk({
   rows: Renewal[];
   l: Label;
   locale: string;
+  resolved: Names;
   now: number;
   nonce: string;
   writable: boolean;
@@ -480,9 +514,11 @@ function Desk({
       render: (row) => (
         <div className="flex flex-col">
           <Link to={`/orbit/renewals/${row.id}`} className="font-ui text-13 text-accent underline underline-offset-2">
-            {row.customerId ?? row.id}
+            {row.customerId ? who(row.customerId, resolved) : shortRef(row.id)}
           </Link>
-          <span className="font-mono text-12 text-subtle">{row.policyRef ?? ""}</span>
+          <span className="font-mono text-12 text-subtle" title={row.policyRef ?? undefined}>
+            {row.policyRef ? shortRef(row.policyRef) : ""}
+          </span>
         </div>
       )
     },
@@ -498,9 +534,11 @@ function Desk({
       render: (row) => {
         const days = daysUntil(row.expiryAt, now);
         if (days === null) return "—";
+        // A renewal the sweep never closed reads `-197` under a column headed
+        // "Days left", which is not a thing a person can say out loud.
         return (
           <span className={days <= 7 ? "font-ui text-13 font-medium text-danger" : "font-ui text-13 text-text"}>
-            {days}
+            {days < 0 ? l("daysLate").replace("{n}", String(-days)) : days}
           </span>
         );
       }
@@ -523,7 +561,11 @@ function Desk({
       )
     },
     { key: "strategy", header: l("strategy"), render: (row) => <Badge tone="neutral">{l(row.strategy)}</Badge> },
-    { key: "ownerRef", header: l("owner"), render: (row) => row.ownerRef ?? "—" }
+    {
+      key: "ownerRef",
+      header: l("owner"),
+      render: (row) => (row.ownerRef ? who(row.ownerRef, resolved) : "—")
+    }
   ];
 
   if (writable) {
