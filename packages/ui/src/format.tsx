@@ -51,6 +51,17 @@ export function majorFromMinor(minor: number, currency: string, locale = "en"): 
   return minor < 0 ? `-${text}` : text;
 }
 
+/**
+ * `2500000` in AED → `"AED 25,000.00"`. Same rendering `<Money>` does, without
+ * an element around it — an SVG `<text>` cannot hold a `<span>`, and the money
+ * map's node labels were dividing by a hard-coded 100 and printing no currency
+ * at all.
+ */
+export function formatMoney(amountMinor: number, currency: string, locale = "en"): string {
+  const value = amountMinor / 10 ** minorUnits(currency, locale);
+  return new Intl.NumberFormat(locale, { style: "currency", currency }).format(value);
+}
+
 export interface MoneyFieldProps
   extends Omit<
     React.ComponentPropsWithRef<"input">,
@@ -136,8 +147,7 @@ export function Money({
   const inherited = useUiLocale();
   const locale = explicitLocale ?? inherited;
   const format = (minor: number, code: string) => {
-    const value = minor / 10 ** minorUnits(code, locale);
-    const text = new Intl.NumberFormat(locale, { style: "currency", currency: code }).format(value);
+    const text = formatMoney(minor, code, locale);
     return signed && minor > 0 ? `+${text}` : text;
   };
 

@@ -7,7 +7,7 @@
  */
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { MoneyField, minorFromMajor } from "./format.js";
+import { MoneyField, formatMoney, minorFromMajor } from "./format.js";
 
 describe("minorFromMajor", () => {
   it.each([
@@ -49,5 +49,17 @@ describe("MoneyField", () => {
   it("names the currency on the control itself", () => {
     const markup = renderToStaticMarkup(<MoneyField name="x" currency="ZAR" locale="en" />);
     expect(markup).toContain("R");
+  });
+});
+
+describe("formatMoney", () => {
+  // The money map divided by a hard-coded 100 and printed no currency at all,
+  // which is a wrong number in JPY and an ambiguous one everywhere else.
+  it.each([
+    [2500000, "AED", "AED\u00a025,000.00"],
+    [500, "JPY", "\u00a5500"],
+    [500000, "KWD", "KWD\u00a0500.000"]
+  ])("renders %i %s with its own precision", (minor, currency, expected) => {
+    expect(formatMoney(minor, currency, "en")).toBe(expected);
   });
 });

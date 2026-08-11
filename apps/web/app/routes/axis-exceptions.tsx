@@ -14,6 +14,7 @@ import {
   EmptyState,
   Field,
   KPIWall,
+  Money,
   Select,
   Stat,
   type BadgeTone
@@ -541,7 +542,11 @@ export default function AxisExceptions() {
                 </Link>
                 <span className="font-ui text-12 text-subtle">{row.providerId}</span>
                 <span className="ms-auto font-mono text-12 tabular-nums text-warning">
-                  {(row.receivedMinor - row.expectedMinor) / 100} {row.currency}
+                  <Money
+                    amountMinor={row.receivedMinor - row.expectedMinor}
+                    currency={row.currency}
+                    signed
+                  />
                 </span>
               </li>
             ))}

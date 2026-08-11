@@ -1,5 +1,17 @@
 import { Form, Link, useLoaderData, useNavigation, useSearchParams, type LoaderFunctionArgs } from "react-router";
-import { Badge, Button, DateTime, EmptyState, Field, Input, Money, Stat, Table, type Column } from "@lyra/ui";
+import {
+  Badge,
+  Button,
+  DateTime,
+  EmptyState,
+  Field,
+  Input,
+  Money,
+  Stat,
+  Table,
+  formatMoney,
+  type Column
+} from "@lyra/ui";
 import { api, fetchMe } from "../api.server";
 import { cloudflare } from "../context";
 import { translator } from "../i18n";
@@ -413,7 +425,7 @@ export default function LedgerMoneyMap() {
                     y={node.y + 26}
                     className="fill-subtle font-mono text-12 tabular-nums"
                   >
-                    {new Intl.NumberFormat(locale).format(node.amountMinor / 100)}
+                    {formatMoney(node.amountMinor, map.currency, locale)}
                   </text>
                 </g>
               );
