@@ -211,12 +211,25 @@ export function optionLabel(
   owner: string,
   value: string
 ): string {
+  return optionWords(label, owner, value) ?? humanise(value);
+}
+
+/**
+ * The pack's words for an enum value, or null when it has none. Plain text
+ * cells need the difference: a channel key (`direct-web`) and a policy number
+ * are not enums and must survive untouched, where `humanise` would mangle both.
+ */
+export function optionWords(
+  label: (key: string) => string,
+  owner: string,
+  value: string
+): string | null {
   const qualified = `${owner}.${value}`;
   const found = label(qualified);
   if (found !== qualified) return found;
   const bare = label(value);
   if (bare !== value) return bare;
-  return humanise(value);
+  return null;
 }
 
 /**

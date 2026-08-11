@@ -11,7 +11,7 @@ import {
 } from "@lyra/ui";
 import type { ColumnSpec, FieldSpec, Row } from "../modules/spec";
 import { who, type Names } from "../names";
-import { humanise, inputValue, optionLabel } from "../modules/spec";
+import { humanise, inputValue, optionLabel, optionWords } from "../modules/spec";
 
 // One place that knows how a typed value renders and how it is edited. Both
 // route files (module.tsx, record.tsx) and every bespoke screen share it, so a
@@ -128,8 +128,8 @@ export function Cell({ column, row, locale, label, resolved = {} }: CellProps) {
       // "Direct", "Call centre" and "We collect" — badges were the only cells
       // consulting it. No label means the value is not an enum (a key, a
       // number, an email), so it stays exactly as it is.
-      const labelled = label(`${column.name}.${text}`);
-      if (labelled !== `${column.name}.${text}`) return <span>{labelled}</span>;
+      const labelled = optionWords(label, column.name, text);
+      if (labelled) return <span>{labelled}</span>;
       // A ref-shaped value is an id that escaped into the interface: the cases
       // list printed `user:us_01KE…FMN` under OWNER. `who` names it when the
       // batch resolved it and shortens it when it did not; anything that is not
