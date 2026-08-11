@@ -100,6 +100,7 @@ export const en = {
   "common.no": "No",
   "common.actions": "Actions",
   "common.rows": "{count} shown",
+  "common.rowsPerPage": "Rows per page",
   "common.of": "{count} in total",
   "common.deleteConfirm": "Delete this record? It is retained for audit and can be restored by an administrator.",
   // The ask in front of a consequential action (components/confirm.tsx).

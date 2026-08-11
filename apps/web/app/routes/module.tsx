@@ -45,6 +45,28 @@ interface Page {
 /** Query keys the API reserves; everything else is an exact-match column filter. */
 const RESERVED = ["q", "cursor", "sort", "order"] as const;
 
+/**
+ * How many rows a page holds. The API's own default is 50 (ListQuery,
+ * apps/api/src/http.ts) and that stays the unsaid choice — these are the sizes
+ * the footer offers when 50 is the wrong one, a triage queue read a screenful
+ * at a time or a reconciliation read in one sitting.
+ */
+export const PAGE_SIZES = [25, 50, 100, 200] as const;
+
+/** What the API pages by when nobody says otherwise (ListQuery's `default(50)`). */
+export const DEFAULT_PAGE_SIZE = 50;
+
+/**
+ * The chosen size, or null for "whatever the API defaults to". Only a size the
+ * picker offers counts: `?limit=10000` is not a page size, it is a way to ask
+ * for the whole tenant in one response, and while the API caps it (MAX_PAGE)
+ * the screen has no reason to forward it.
+ */
+export function pageSizeIn(params: URLSearchParams): number | null {
+  const raw = Number(params.get("limit"));
+  return (PAGE_SIZES as readonly number[]).includes(raw) ? raw : null;
+}
+
 function resolve(params: { module?: string; resource?: string }): {
   spec: WorkspaceSpec;
   tab: ResourceSpec;
@@ -88,6 +110,9 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   // Only an explicit "1" opts in, and the parameter is otherwise never sent.
   const deleted = incoming.get("deleted") === "1";
   if (deleted) query.set("deleted", "1");
+
+  const pageSize = pageSizeIn(incoming);
+  if (pageSize) query.set("limit", String(pageSize));
 
   const page = await api<Page>(`${tab.api}?${query.toString()}`, { env, request }).catch(
     async (error: unknown) => {
@@ -349,6 +374,12 @@ export default function ModuleList() {
               ]}
             />
           ) : null}
+          {/* Filtering is a new question about the same rows, not a decision to
+              go back to reading 50 at a time — this GET replaces the query
+              string wholesale, so the chosen page size rides along. */}
+          {pageSizeIn(searchParams) ? (
+            <input type="hidden" name="limit" value={String(pageSizeIn(searchParams))} />
+          ) : null}
           <Button type="submit" variant="secondary" loading={busy}>
             {t("common.apply")}
           </Button>
@@ -421,10 +452,34 @@ export default function ModuleList() {
             />
           }
           footer={
-            <div className="flex items-center justify-between gap-3 pt-3">
-              <span className="font-ui text-12 tabular-nums text-subtle">
-                {t("common.rows", { count: String(rows.length) })}
-              </span>
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-3">
+              <div className="flex items-center gap-3">
+                <span className="font-ui text-12 tabular-nums text-subtle">
+                  {t("common.rows", { count: String(rows.length) })}
+                </span>
+                {/* How much of the queue you read at a time. Keyset paging has
+                    no total to count against, so this is the only lever between
+                    "a screenful" and "the whole morning's work" — and it was
+                    the API's default with no way to say otherwise. Changing it
+                    starts the list again: a cursor is a position in a page of
+                    50 and means nothing in a page of 200. */}
+                <label className="flex items-center gap-2 font-ui text-12 text-subtle">
+                  <span>{t("common.rowsPerPage")}</span>
+                  <Select
+                    size="sm"
+                    aria-label={t("common.rowsPerPage")}
+                    value={String(pageSizeIn(searchParams) ?? DEFAULT_PAGE_SIZE)}
+                    options={PAGE_SIZES.map((size) => ({ value: String(size), label: String(size) }))}
+                    onValueChange={(next) => {
+                      const params = new URLSearchParams(searchParams);
+                      params.delete("cursor");
+                      if (Number(next) === DEFAULT_PAGE_SIZE) params.delete("limit");
+                      else params.set("limit", next);
+                      setSearchParams(params);
+                    }}
+                  />
+                </label>
+              </div>
               <div className="flex gap-2">
                 {searchParams.get("cursor") ? (
                   <Button asChild variant="secondary" size="sm">

@@ -95,6 +95,7 @@ export const ar: Messages = {
   "common.no": "لا",
   "common.actions": "إجراءات",
   "common.rows": "{count} معروض",
+  "common.rowsPerPage": "صفوف لكل صفحة",
   "common.of": "{count} إجمالًا",
   "common.deleteConfirm": "هل تريد حذف هذا السجل؟ يُحتفظ به للتدقيق ويمكن للمسؤول استعادته.",
   "common.confirmTitle": "تأكيد هذا الإجراء",
