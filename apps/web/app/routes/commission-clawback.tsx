@@ -25,6 +25,7 @@ import {
   ApiError,
   api,
   fetchMe,
+  names,
   type Problem as ApiProblem,
 } from "../api.server";
 import { toneFor } from "../components/fields";
@@ -248,20 +249,23 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   const me = await fetchMe(env, request);
   const held = new Set(me.permissions);
   const may = { read: held.has(PERM.read), adjust: held.has(PERM.adjust) };
-  if (!may.read) return { may, entry: null, notFound: false };
+  if (!may.read) return { may, entry: null, policyName: null, notFound: false };
 
   try {
     const entry = await api<CommissionEntry>(
       `/v1/dist/commission-entries/${id}`,
       { env, request },
     );
-    return { may, entry, notFound: false };
+    // One ref on the page, so one lookup: the policy number, which is what this
+    // reversal will be argued about by.
+    const resolved = await names([entry.policyId], { env, request });
+    return { may, entry, policyName: resolved[entry.policyId] ?? null, notFound: false };
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) {
-      return { may, entry: null, notFound: true };
+      return { may, entry: null, policyName: null, notFound: true };
     }
     if (error instanceof ApiError && error.status === 403) {
-      return { may: { ...may, read: false }, entry: null, notFound: false };
+      return { may: { ...may, read: false }, entry: null, policyName: null, notFound: false };
     }
     throw error;
   }
@@ -346,9 +350,9 @@ export default function CommissionClawback() {
           <Facet term={l("policyId")}>
             <Link
               to={`/distribution/policies/${entry.policyId}`}
-              className="font-mono text-12 text-accent underline-offset-2 hover:underline"
+              className="font-ui text-12 text-accent underline-offset-2 hover:underline"
             >
-              {shortRef(entry.policyId)}
+              {loaded.policyName ?? shortRef(entry.policyId)}
             </Link>
           </Facet>
           <Facet term={l("providerId")}>

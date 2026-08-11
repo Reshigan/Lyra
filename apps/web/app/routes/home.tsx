@@ -17,14 +17,14 @@ import {
   hueVar,
   KPIWall,
   Money,
-  shortRef,
   Sparkline,
   Stat,
   Timeline,
   type BadgeTone,
   type TimelineEvent
 } from "@lyra/ui";
-import { ApiError, api, fetchMe, names, type Names, type Problem } from "../api.server";
+import { ApiError, api, fetchMe, names, type Problem } from "../api.server";
+import { who } from "../names";
 import { cloudflare } from "../context";
 import { DEFAULT_LOCALE, pseudoText, translator } from "../i18n";
 import { humanise } from "../modules/spec";
@@ -319,12 +319,6 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     activity: map(activity, (a) => a.data),
     runs: map(runs, (r) => r.data)
   };
-}
-
-/** Ref → the name a person expects, or the shortest honest thing we have. */
-function who(ref: string | null | undefined, resolved: Names): string | null {
-  if (!ref) return null;
-  return resolved[ref] ?? shortRef(ref);
 }
 
 /**

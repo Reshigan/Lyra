@@ -15,13 +15,13 @@ import {
   DateTime,
   EmptyState,
   KPIWall,
-  shortRef,
   Stat,
   Table,
   type BadgeTone,
   type Column
 } from "@lyra/ui";
 import { api, asRouteError, fetchMe, names, type Names, type Problem as ProblemShape } from "../api.server";
+import { who } from "../names";
 import { cloudflare } from "../context";
 import { Gate } from "./staff";
 import { ORBIT, labelsFrom, refusal, safe, type Label, type Labels, type Page } from "./orbit-shared";
@@ -264,12 +264,6 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     // — the customer on it is what an operator is looking for.
     customerOf: Object.fromEntries(live.map((row) => [row.id, row.customerId])) as Record<string, string | null>
   };
-}
-
-/** Ref → the name a person expects, or the shortest honest thing we have. */
-function who(ref: string | null | undefined, resolved: Names): string | null {
-  if (!ref) return null;
-  return resolved[ref] ?? shortRef(ref);
 }
 
 /* ------------------------------------------------------------------ action */

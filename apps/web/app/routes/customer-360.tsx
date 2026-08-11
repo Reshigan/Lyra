@@ -18,14 +18,14 @@ import {
   EmptyState,
   Money,
   Ref,
-  shortRef,
   Sparkline,
   Stat,
   Table,
   Timeline,
   type Column
 } from "@lyra/ui";
-import { ApiError, api, fetchMe, type Problem } from "../api.server";
+import { ApiError, api, fetchMe, names, type Names, type Problem } from "../api.server";
+import { who } from "../names";
 import { cloudflare } from "../context";
 import { translator } from "../i18n";
 import { humanise } from "../modules/spec";
@@ -349,6 +349,7 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
     claims: [] as ClaimRow[],
     cases: [] as CaseSummaryRow[],
     activity: [] as AuditRow[],
+    names: {} as Names,
     position: null as PositionResponse | null,
     conversations: [] as ConversationRow[],
     quotes: [] as QuoteRequestRow[],
@@ -412,8 +413,13 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
         : null
     ]);
 
+  // The activity timeline attributes each entry to an actor ref; without a name
+  // the customer's own history reads as a column of ULIDs.
+  const resolved = await names(rowsOf(activity).map((row) => row.actorRef), options);
+
   return {
     ...empty,
+    names: resolved,
     customer,
     policies: rowsOf(policies),
     claims: rowsOf(claims),
@@ -854,7 +860,7 @@ export default function Customer360() {
               // `action.*` keys per-code if a translated verb ever matters.
               title: humanise(row.action),
               at: row.ts,
-              actor: shortRef(row.actorRef)
+              actor: who(row.actorRef, loaded.names) ?? ""
             }))}
           />
         </Card>

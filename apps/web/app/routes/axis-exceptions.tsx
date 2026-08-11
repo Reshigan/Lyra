@@ -16,11 +16,11 @@ import {
   Input,
   KPIWall,
   Select,
-  shortRef,
   Stat,
   type BadgeTone
 } from "@lyra/ui";
-import { ApiError, api } from "../api.server";
+import { ApiError, api, names } from "../api.server";
+import { who } from "../names";
 import { cloudflare } from "../context";
 import { labelsFrom, type Label } from "./detail-kit";
 import { Gate } from "./staff";
@@ -292,10 +292,22 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     )
   ]);
 
+  // Rejected documents and breached complaints point at a case by id, and a
+  // complaint names its owner by ref — an exceptions queue that lists ULIDs is
+  // a queue nobody can triage. `who` falls back to the short ref per row.
+  const resolved = await names(
+    [
+      ...documents.data.map((row) => row.caseId),
+      ...complaints.data.flatMap((row) => [row.caseId, row.ownerRef])
+    ],
+    opts
+  );
+
   return {
     // One server clock for the whole page: severity recomputed per component
     // would drift between a badge and the count printed beside it.
     now,
+    names: resolved,
     cases: cases.data,
     documents: documents.data,
     tasks: tasks.data,
@@ -443,7 +455,7 @@ export default function AxisExceptions() {
                   <Badge tone={TONE[severity]} size="sm" dot>
                     {l(`sev.${severity}`)}
                   </Badge>
-                  <span className="font-ui text-12 text-subtle">{row.ownerRef ?? l("unassigned")}</span>
+                  <span className="font-ui text-12 text-subtle">{who(row.ownerRef, loaded.names) ?? l("unassigned")}</span>
                   <span className="ms-auto font-ui text-12 tabular-nums text-subtle">
                     {ageIn(now - row.createdAt, l)}
                   </span>
@@ -465,8 +477,8 @@ export default function AxisExceptions() {
                 >
                   {row.docType}
                 </Link>
-                <Link to={`/axis/cases/${row.caseId}`} className="font-mono text-12 text-subtle">
-                  {shortRef(row.caseId)}
+                <Link to={`/axis/cases/${row.caseId}`} className="font-ui text-12 text-subtle">
+                  {who(row.caseId, loaded.names)}
                 </Link>
                 <span className="ms-auto font-ui text-12 tabular-nums text-subtle">
                   {ageIn(now - row.createdAt, l)}
@@ -541,8 +553,8 @@ export default function AxisExceptions() {
                   {l("sev.breach")}
                 </Badge>
                 {row.caseId ? (
-                  <Link to={`/axis/cases/${row.caseId}`} className="font-mono text-12 text-subtle">
-                    {shortRef(row.caseId)}
+                  <Link to={`/axis/cases/${row.caseId}`} className="font-ui text-12 text-subtle">
+                    {who(row.caseId, loaded.names)}
                   </Link>
                 ) : null}
                 <span className="font-ui text-12 text-subtle">{row.ownerRef ?? l("unassigned")}</span>

@@ -18,10 +18,10 @@ import {
   Money,
   Ref,
   Select,
-  shortRef,
   type BadgeTone
 } from "@lyra/ui";
-import { ApiError, api } from "../api.server";
+import { ApiError, api, names } from "../api.server";
+import { who } from "../names";
 import { cloudflare } from "../context";
 import { labelsFrom } from "./detail-kit";
 import { Gate } from "./staff";
@@ -343,8 +343,13 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     boardWipWarn(opts)
   ]);
 
+  // Owner is a `user:us_…` ref with no display text, so the card footer read a
+  // ULID where a colleague's name belongs.
+  const resolved = await names(page.data.map((card) => card.ownerRef), opts);
+
   return {
     now: Date.now(),
+    names: resolved,
     cases: page.data,
     counts: Object.fromEntries(totals) as Partial<Record<Lane, number>>,
     wipWarn
@@ -513,7 +518,7 @@ export default function AxisBoard() {
                         </span>
                         <span className="font-ui text-12 text-muted">{card.kind}</span>
                         <span className="flex items-center justify-between gap-2 font-ui text-12 text-subtle">
-                          <span>{card.ownerRef ? shortRef(card.ownerRef) : l("unassigned")}</span>
+                          <span>{who(card.ownerRef, loaded.names) ?? l("unassigned")}</span>
                           {card.valueMinor !== null && card.currency ? (
                             <Money
                               amountMinor={card.valueMinor}

@@ -38,6 +38,9 @@ const DISPLAY_COLUMNS = [
   "title",
   "label",
   "subject",
+  // A case's `ref` IS its human-facing short reference (axis.ts), which is what
+  // an operator says out loud — not a fallback for a missing name.
+  "ref",
   "policyNo",
   "claimNo",
   "code",

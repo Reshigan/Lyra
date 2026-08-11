@@ -17,10 +17,10 @@ import {
   Money,
   Ref,
   Select,
-  shortRef,
   type BadgeTone
 } from "@lyra/ui";
-import { ApiError, api } from "../api.server";
+import { ApiError, api, names } from "../api.server";
+import { who } from "../names";
 import { cloudflare } from "../context";
 import { pseudoText } from "../i18n";
 import { optionLabel } from "../modules/spec";
@@ -308,8 +308,13 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     )
   ]);
 
+  // The handler column carried a `user:us_…` ref; a desk lists claims by who
+  // is on them, not by which ULID is on them.
+  const resolved = await names(page.data.map((row) => row.handlerRef), opts);
+
   return {
     now: Date.now(),
+    names: resolved,
     claims: page.data,
     counts: Object.fromEntries(totals) as Partial<Record<(typeof OPEN_CLAIM_STATES)[number], number>>
   };
@@ -480,7 +485,7 @@ export default function ClaimsDesk() {
                       {l(`siu.${row.siuState}`)}
                     </Badge>
                   ) : null}
-                  <span>{row.handlerRef ? shortRef(row.handlerRef) : l("unassigned")}</span>
+                  <span>{who(row.handlerRef, loaded.names) ?? l("unassigned")}</span>
                 </div>
 
                 {held.has(PERM.update) && hops.length > 0 ? (

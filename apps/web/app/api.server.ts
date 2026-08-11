@@ -2,6 +2,7 @@ import { data } from "react-router";
 import { ApiError } from "./api-error";
 import type { Problem } from "./api-error";
 import type { Env } from "./env";
+import type { Names } from "./names";
 
 // The only way this app talks to apps/api. Server-side by design: every call
 // the shell makes happens in a loader or an action, so the session cookie never
@@ -76,8 +77,8 @@ export async function api<T>(path: string, options: ApiOptions): Promise<T> {
 
 /* ---------------------------------------------------------------- /v1/names */
 
-/** Ref → display name. A ref that resolved to nothing is absent, not null. */
-export type Names = Readonly<Record<string, string>>;
+/** Rendering side of the same contract; re-exported so loaders have one import. */
+export type { Names } from "./names";
 
 /**
  * Display names for the refs a list of rows carries, in one round trip. Rows

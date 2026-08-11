@@ -56,12 +56,14 @@ function fakeDb(rowsFor: (table: unknown) => unknown[]): Ctx["db"] {
 const CUSTOMER = { id: "cu_1", nameJson: JSON.stringify({ en: "Falcon Freight", ar: "فالكون" }) };
 const USER = { id: "us_1", name: "Layla Al Mansouri", email: "layla@gonxt.ae", passwordHash: "SECRET-HASH" };
 const TEAM = { id: "tm_1", name: "Motor claims" };
+const CASE = { id: "cas_1", ref: "CASE-1042" };
 
 const rows = (table: unknown): unknown[] => {
   const name = String((table as { [k: symbol]: unknown })[Symbol.for("drizzle:Name")] ?? "");
   if (name === "core_customers") return [CUSTOMER];
   if (name === "core_users") return [USER];
   if (name === "core_teams") return [TEAM];
+  if (name === "axis_cases") return [CASE];
   return [];
 };
 
@@ -78,6 +80,15 @@ describe("GET /v1/names", () => {
       "user:us_1": "Layla Al Mansouri",
       "team:tm_1": "Motor claims"
     });
+  });
+
+  it("uses a case's human ref as its display text", async () => {
+    // A case has no name column — `ref` is the short reference an operator says
+    // out loud, and the exceptions queue listed the ULID instead.
+    const app = router(baseCtx(fakeDb(rows), ["*:*:*"]));
+    const res = await app.fetch(new Request("http://api.test/?refs=cas_1"));
+    const body = (await res.json()) as { names: Record<string, string> };
+    expect(body.names.cas_1).toBe("CASE-1042");
   });
 
   it("reads a localised name in the actor's locale", async () => {

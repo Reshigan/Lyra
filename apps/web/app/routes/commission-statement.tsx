@@ -17,11 +17,11 @@ import {
   PageHeader,
   Ref,
   Select,
-  shortRef,
   Table,
   type Column
 } from "@lyra/ui";
-import { ApiError, api, fetchMe } from "../api.server";
+import { ApiError, api, fetchMe, names } from "../api.server";
+import { who } from "../names";
 import { Cell, FieldInput, toneFor } from "../components/fields";
 import { cloudflare } from "../context";
 import { pseudoText, translator } from "../i18n";
@@ -321,7 +321,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   // twice, which the API deduplicates, rather than two entries (CLAUDE.md §12).
   const idempotencyKey = crypto.randomUUID();
 
-  if (!may.read) return { may, filters, statement: null, idempotencyKey };
+  if (!may.read) return { may, filters, statement: null, names: {}, idempotencyKey };
 
   const query = new URLSearchParams(filters).toString();
   try {
@@ -329,12 +329,18 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       `/v1/dist/commission-entries/statement${query ? `?${query}` : ""}`,
       { env, request }
     );
-    return { may, filters, statement, idempotencyKey };
+    // A statement line points at its agreement by id; the policy number is what
+    // a broker reconciles against, and it is one batch call away.
+    const resolved = await names(
+      statement.entries.map((entry) => entry.policyId),
+      { env, request }
+    );
+    return { may, filters, statement, names: resolved, idempotencyKey };
   } catch (error) {
     // A grant can be revoked between /v1/me and this call; that is a notice,
     // never a blank screen.
     if (error instanceof ApiError && error.status === 403) {
-      return { may: { ...may, read: false }, filters, statement: null, idempotencyKey };
+      return { may: { ...may, read: false }, filters, statement: null, names: {}, idempotencyKey };
     }
     throw error;
   }
@@ -403,9 +409,9 @@ export default function CommissionStatement() {
         <span className="flex flex-col gap-0.5">
           <Link
             to={`/distribution/commission-entries/${row.id}`}
-            className="font-mono text-12 text-accent underline-offset-2 hover:underline"
+            className="font-ui text-12 text-accent underline-offset-2 hover:underline"
           >
-            {shortRef(row.policyId)}
+            {who(row.policyId, loaded.names)}
           </Link>
           <Ref value={row.providerId} className="text-11 text-subtle" />
         </span>
