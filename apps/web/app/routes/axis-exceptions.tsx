@@ -21,6 +21,7 @@ import {
 } from "@lyra/ui";
 import { ApiError, api, directory, names } from "../api.server";
 import { who } from "../names";
+import { humanise } from "../modules/spec";
 import { cloudflare } from "../context";
 import { labelsFrom, type Label } from "./detail-kit";
 import { Gate } from "./staff";
@@ -299,7 +300,12 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   // a queue nobody can triage. `who` falls back to the short ref per row.
   const resolved = await names(
     [
+      ...cases.data.map((row) => row.ownerRef),
       ...documents.data.map((row) => row.caseId),
+      // A blocked task named its holder `user:us_01KE…FMN` and a variance batch
+      // named the carrier it is owed from `pv_01KE…BGZGV`.
+      ...tasks.data.map((row) => row.assigneeRef),
+      ...escrow.data.map((row) => row.providerId),
       ...complaints.data.flatMap((row) => [row.caseId, row.ownerRef])
     ],
     opts
@@ -482,7 +488,7 @@ export default function AxisExceptions() {
                   to={`/axis/documents/${row.id}`}
                   className="font-mono text-12 text-accent underline underline-offset-2"
                 >
-                  {row.docType}
+                  {humanise(row.docType)}
                 </Link>
                 <Link to={`/axis/cases/${row.caseId}`} className="font-ui text-12 text-subtle">
                   {who(row.caseId, loaded.names)}
@@ -505,9 +511,11 @@ export default function AxisExceptions() {
                   to={`/axis/tasks/${row.id}`}
                   className="font-ui text-12 text-accent underline underline-offset-2"
                 >
-                  {row.titleKey}
+                  {humanise(row.titleKey)}
                 </Link>
-                <span className="font-ui text-12 text-subtle">{row.assigneeRef ?? l("unassigned")}</span>
+                <span className="font-ui text-12 text-subtle">
+                  {who(row.assigneeRef, loaded.names) ?? l("unassigned")}
+                </span>
                 {held.has(PERM.taskWrite) ? (
                   <Form method="post" className="ms-auto">
                     <input type="hidden" name="intent" value="unblock" />
@@ -517,7 +525,7 @@ export default function AxisExceptions() {
                       size="sm"
                       variant="ghost"
                       loading={busy}
-                      aria-label={`${l("unblock.submit")}: ${row.titleKey}`}
+                      aria-label={`${l("unblock.submit")}: ${humanise(row.titleKey)}`}
                     >
                       {l("unblock.submit")}
                     </Button>
@@ -540,7 +548,7 @@ export default function AxisExceptions() {
                 >
                   {row.period}
                 </Link>
-                <span className="font-ui text-12 text-subtle">{row.providerId}</span>
+                <span className="font-ui text-12 text-subtle">{who(row.providerId, loaded.names)}</span>
                 <span className="ms-auto font-mono text-12 tabular-nums text-warning">
                   <Money
                     amountMinor={row.receivedMinor - row.expectedMinor}
@@ -568,7 +576,9 @@ export default function AxisExceptions() {
                     {who(row.caseId, loaded.names)}
                   </Link>
                 ) : null}
-                <span className="font-ui text-12 text-subtle">{row.ownerRef ?? l("unassigned")}</span>
+                <span className="font-ui text-12 text-subtle">
+                  {who(row.ownerRef, loaded.names) ?? l("unassigned")}
+                </span>
                 <span className="ms-auto font-ui text-12 tabular-nums text-subtle">
                   {ageIn(now - row.dueAt, l)}
                 </span>
