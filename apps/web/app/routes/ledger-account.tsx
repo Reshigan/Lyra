@@ -178,8 +178,18 @@ export default function LedgerAccount() {
       </header>
 
       <Form method="get" aria-label={l("account.lookup")} className="flex flex-wrap items-end gap-3">
-        <Field label={l("account.code")} hint={l("account.hint")} className="w-52">
-          <Input name="account" defaultValue={loaded.account} required />
+        {/* The hint sits under the control, and `items-end` then aligned the
+            row against the hint — the account input floated a line above every
+            other field. It is the same sentence the empty state says, so it
+            rides on the input itself. */}
+        <Field label={l("account.code")} className="w-52">
+          <Input
+            name="account"
+            defaultValue={loaded.account}
+            placeholder="1000"
+            title={l("account.hint")}
+            required
+          />
         </Field>
         <Field label={l("currency")} className="w-28">
           <Input name="currency" defaultValue={currency} maxLength={3} />
@@ -194,7 +204,7 @@ export default function LedgerAccount() {
           {t("common.apply")}
         </Button>
         <Button asChild variant="ghost">
-          <Link to="/ledger/accounts">{l("account.pick")}</Link>
+          <Link to="/ledger/accounts">{l("account.browse")}</Link>
         </Button>
       </Form>
 

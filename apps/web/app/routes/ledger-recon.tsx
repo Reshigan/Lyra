@@ -529,7 +529,15 @@ export default function LedgerRecon() {
                   required
                 />
               </Field>
-              <Field label={l("recon.counterparty")} className="w-56">
+              {/* ponytail: a free text id, not a picker — finance roles hold
+                  `dist:channels:read` but no `core:providers:read`, so half the
+                  counterparties cannot be listed to them. The hint says what to
+                  paste; widening the grant is an ADR, not a form change. */}
+              <Field
+                label={l("recon.counterparty")}
+                hint={l("recon.counterpartyHint")}
+                className="w-56"
+              >
                 <Input name="counterpartyRef" />
               </Field>
               <Field label={l("recon.tolerance")} className="w-44">
