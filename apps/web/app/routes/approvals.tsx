@@ -21,7 +21,7 @@ import {
   Select,
   Textarea
 } from "@lyra/ui";
-import { ApiError, api, fetchMe } from "../api.server";
+import { ApiError, api, fetchMe, names } from "../api.server";
 import { toneFor } from "../components/fields";
 import { cloudflare } from "../context";
 import { pseudoText, translator } from "../i18n";
@@ -29,6 +29,7 @@ import { ConfirmButton } from "../components/confirm";
 import { WORKSPACES } from "../modules";
 import { Problem } from "./module";
 import { useShellData } from "./workspace";
+import { who, type Names } from "../names";
 
 // The human-in-the-loop queue (CLAUDE.md §4). Everything consequential the
 // platform tried to do and could not do alone lands here: one card per request,
@@ -235,7 +236,14 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     };
   });
 
-  return { state, items, cursor: next, canReadDecided, readable };
+  // Who raised it and who decided it are `${kind}:${id}` refs, which rendered
+  // as ULIDs at the one person on the platform whose job is to judge them.
+  const resolved = await names(
+    rows.flatMap((row) => [row.requestedBy, row.decidedBy]),
+    { env, request }
+  );
+
+  return { state, items, cursor: next, canReadDecided, readable, resolved };
 }
 
 export async function action({ request, context }: ActionFunctionArgs) {
@@ -447,6 +455,7 @@ export default function Approvals() {
                 t={t}
                 busy={busy}
                 deciding={deciding}
+                resolved={loaded.resolved}
                 problem={result?.id === item.id ? (result.problem ?? null) : null}
               />
             </li>
@@ -479,6 +488,7 @@ function ApprovalCard({
   t,
   busy,
   deciding,
+  resolved,
   problem
 }: {
   item: Item;
@@ -487,6 +497,7 @@ function ApprovalCard({
   t: (key: string, vars?: Record<string, string>) => string;
   busy: boolean;
   deciding: FormDataEntryValue | null | undefined;
+  resolved: Names;
   problem: { title: string; detail?: string } | null;
 }) {
   const pending = item.decision === "pending";
@@ -541,7 +552,7 @@ function ApprovalCard({
             )}
           </Entry>
           <Entry term={l("requestedBy")}>
-            <span className="font-mono text-12">{item.requestedBy}</span>
+            <span>{who(item.requestedBy, resolved)}</span>
           </Entry>
           <Entry term={l("amount")}>
             {item.amountMinor === null ? (
@@ -569,7 +580,7 @@ function ApprovalCard({
           </Entry>
           {item.decidedBy ? (
             <Entry term={l("decidedBy")}>
-              <span className="font-mono text-12">{item.decidedBy}</span>
+              <span>{who(item.decidedBy, resolved)}</span>
             </Entry>
           ) : null}
           {item.decidedAt ? (
