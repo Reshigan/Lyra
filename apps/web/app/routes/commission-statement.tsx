@@ -15,7 +15,6 @@ import {
   Input,
   Money,
   PageHeader,
-  Ref,
   Select,
   Table,
   type Column
@@ -149,6 +148,7 @@ const LABELS: Record<string, Record<string, string>> = {
     netHint: "Receivable less channel payable and tax.",
     policyId: "Policy",
     kind: "Kind",
+    earnedOn: "Earned on",
     premium: "Premium",
     gross: "Gross",
     channel: "Channel share",
@@ -166,7 +166,7 @@ const LABELS: Record<string, Record<string, string>> = {
     accrueIntro:
       "Rates the policy against the commission rate in force and writes the entry. The amounts are derived, never typed — a channel cannot post its own commission.",
     policyIdHint: "The issued policy to rate.",
-    taxMinorHint: "Withheld tax, in minor units. Leave empty for none.",
+    taxMinorHint: "Withheld tax. Leave empty for none.",
     accrued: "Accrued against policy {policy}.",
     accruedGross: "Gross",
     openEntry: "Open the entry",
@@ -211,6 +211,7 @@ const LABELS: Record<string, Record<string, string>> = {
     netHint: "المستحق ناقص حصة القناة والضريبة.",
     policyId: "الوثيقة",
     kind: "النوع",
+    earnedOn: "الاستحقاق",
     premium: "القسط",
     gross: "الإجمالي",
     channel: "حصة القناة",
@@ -227,7 +228,7 @@ const LABELS: Record<string, Record<string, string>> = {
     accrueIntro:
       "يحتسب الوثيقة وفق سعر العمولة الساري ويكتب القيد. المبالغ مشتقة ولا تُكتب يدويًا — لا يمكن لقناة أن تسجل عمولتها بنفسها.",
     policyIdHint: "الوثيقة الصادرة المراد احتسابها.",
-    taxMinorHint: "الضريبة المستقطعة بالوحدات الصغرى. اتركه فارغًا إن لم توجد.",
+    taxMinorHint: "الضريبة المستقطعة. اتركه فارغًا إن لم توجد.",
     accrued: "تم الاحتساب على الوثيقة {policy}.",
     accruedGross: "الإجمالي",
     openEntry: "فتح القيد",
@@ -332,7 +333,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     // A statement line points at its agreement by id; the policy number is what
     // a broker reconciles against, and it is one batch call away.
     const resolved = await names(
-      statement.entries.map((entry) => entry.policyId),
+      statement.entries.flatMap((entry) => [entry.policyId, entry.providerId, entry.channelId]),
       { env, request }
     );
     return { may, filters, statement, names: resolved, idempotencyKey };
@@ -413,7 +414,9 @@ export default function CommissionStatement() {
           >
             {who(row.policyId, loaded.names)}
           </Link>
-          <Ref value={row.providerId} className="text-12 text-subtle" />
+          {/* The carrier read `pv_01KE…H8PQ` under every policy number; the
+              catalogue resolves for any signed-in actor (ADR-0048). */}
+          <span className="text-12 text-subtle">{who(row.providerId, loaded.names)}</span>
         </span>
       )
     },
