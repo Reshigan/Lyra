@@ -214,112 +214,114 @@ export default function PortalQuotes() {
   const accepted = comparison.acceptedOfferingId;
 
   return (
-    <main style={brandStyle(tenant.brand)} className="mx-auto max-w-3xl p-6">
-      <header className="lyra-enter mb-8">
-        <h1 className="font-serif text-22 leading-[1.2]">{l("quote.title")}</h1>
-        <p className="mt-1 text-13 text-muted">{l("quote.intro")}</p>
-        {/* Declared criteria, visible — J-C1's own wording. */}
-        <p className="mt-1 text-13 text-muted">{l("quote.rankedBy")}</p>
-      </header>
+    <main style={brandStyle(tenant.brand)} className="lyra-field min-h-screen bg-bg text-text">
+      <div className="mx-auto max-w-3xl p-6">
+        <header className="lyra-enter mb-8">
+          <h1 className="font-serif text-22 leading-[1.2]">{l("quote.title")}</h1>
+          <p className="mt-1 text-13 text-muted">{l("quote.intro")}</p>
+          {/* Declared criteria, visible — J-C1's own wording. */}
+          <p className="mt-1 text-13 text-muted">{l("quote.rankedBy")}</p>
+        </header>
 
-      {result?.errorKey ? (
-        <p role="alert" className="mb-4 text-13 text-danger">
-          {l(result.errorKey)}
-        </p>
-      ) : null}
+        {result?.errorKey ? (
+          <p role="alert" className="mb-4 text-13 text-danger">
+            {l(result.errorKey)}
+          </p>
+        ) : null}
 
-      {comparison.offers.length === 0 ? (
-        <p className="text-14 text-muted">{l("quote.empty")}</p>
-      ) : (
-        <ol className="lyra-stagger grid gap-4">
-          {comparison.offers.map((offer) => (
-            <li key={offer.offeringId}>
-              <Card
-                title={offer.name}
-                description={offer.providerName ?? undefined}
-                actions={
-                  offer.rank === 1 ? <Badge tone="accent">{l("quote.cheapest")}</Badge> : undefined
-                }
-              >
-                <p className="text-13 text-muted">{l("quote.total")}</p>
-                <p className="font-serif text-22 leading-[1.2]">
-                  <Money amountMinor={offer.totalMinor} currency={offer.currency} locale={locale} />
-                </p>
-                <p className="mt-1 text-13 text-muted">
-                  {l("quote.premium")} <Money amountMinor={offer.premiumMinor} currency={offer.currency} /> ·{" "}
-                  {l("quote.tax")} <Money amountMinor={offer.taxMinor} currency={offer.currency} />
-                  {offer.feesMinor > 0 ? (
-                    <>
-                      {" · "}
-                      {l("quote.fees")} <Money amountMinor={offer.feesMinor} currency={offer.currency} />
-                    </>
-                  ) : null}
-                </p>
-                {coverageLine(l, offer.coverage, offer.currency)}
-                {offer.validUntil ? (
-                  <p className="mt-3 text-13 text-muted">
-                    {l("quote.validUntil")}{" "}
-                    {new Intl.DateTimeFormat(locale, { dateStyle: "long" }).format(new Date(offer.validUntil))}
+        {comparison.offers.length === 0 ? (
+          <p className="text-14 text-muted">{l("quote.empty")}</p>
+        ) : (
+          <ol className="lyra-stagger grid gap-4">
+            {comparison.offers.map((offer) => (
+              <li key={offer.offeringId}>
+                <Card
+                  title={offer.name}
+                  description={offer.providerName ?? undefined}
+                  actions={
+                    offer.rank === 1 ? <Badge tone="accent">{l("quote.cheapest")}</Badge> : undefined
+                  }
+                >
+                  <p className="text-13 text-muted">{l("quote.total")}</p>
+                  <p className="font-serif text-22 leading-[1.2]">
+                    <Money amountMinor={offer.totalMinor} currency={offer.currency} locale={locale} />
                   </p>
-                ) : null}
+                  <p className="mt-1 text-13 text-muted">
+                    {l("quote.premium")} <Money amountMinor={offer.premiumMinor} currency={offer.currency} /> ·{" "}
+                    {l("quote.tax")} <Money amountMinor={offer.taxMinor} currency={offer.currency} />
+                    {offer.feesMinor > 0 ? (
+                      <>
+                        {" · "}
+                        {l("quote.fees")} <Money amountMinor={offer.feesMinor} currency={offer.currency} />
+                      </>
+                    ) : null}
+                  </p>
+                  {coverageLine(l, offer.coverage, offer.currency)}
+                  {offer.validUntil ? (
+                    <p className="mt-3 text-13 text-muted">
+                      {l("quote.validUntil")}{" "}
+                      {new Intl.DateTimeFormat(locale, { dateStyle: "long" }).format(new Date(offer.validUntil))}
+                    </p>
+                  ) : null}
 
-                {accepted === offer.offeringId ? (
-                  <p className="mt-4 text-13 text-success">{l("quote.chosen")}</p>
-                ) : (
-                  <Form method="post" className="mt-4">
-                    <input type="hidden" name="intent" value="accept" />
-                    <input type="hidden" name="token" value={token} />
-                    <input type="hidden" name="offeringId" value={offer.offeringId} />
-                    <Button type="submit" variant={accepted ? "secondary" : "primary"} loading={busy}>
-                      {busy ? l("quote.choosing") : l("quote.choose")}
-                    </Button>
-                  </Form>
-                )}
-              </Card>
-            </li>
-          ))}
-        </ol>
-      )}
+                  {accepted === offer.offeringId ? (
+                    <p className="mt-4 text-13 text-success">{l("quote.chosen")}</p>
+                  ) : (
+                    <Form method="post" className="mt-4">
+                      <input type="hidden" name="intent" value="accept" />
+                      <input type="hidden" name="token" value={token} />
+                      <input type="hidden" name="offeringId" value={offer.offeringId} />
+                      <Button type="submit" variant={accepted ? "secondary" : "primary"} loading={busy}>
+                        {busy ? l("quote.choosing") : l("quote.choose")}
+                      </Button>
+                    </Form>
+                  )}
+                </Card>
+              </li>
+            ))}
+          </ol>
+        )}
 
-      {comparison.referredCount > 0 ? (
-        <p className="mt-4 text-13 text-muted">
-          {l("quote.referred").replace("{n}", String(comparison.referredCount))}
-        </p>
-      ) : null}
+        {comparison.referredCount > 0 ? (
+          <p className="mt-4 text-13 text-muted">
+            {l("quote.referred").replace("{n}", String(comparison.referredCount))}
+          </p>
+        ) : null}
 
-      {accepted ? (
-        <Card className="mt-8" title={l("quote.accepted.title")}>
-          <p className="text-14">{l("quote.accepted.body")}</p>
-          {result?.intent === "document" && result.ok ? (
-            <p role="status" className="mt-3 text-13 text-success">
-              {l("quote.upload.done")}
-            </p>
-          ) : null}
-          <Form method="post" encType="multipart/form-data" className="mt-4 flex flex-col gap-3">
-            <input type="hidden" name="intent" value="document" />
-            <input type="hidden" name="token" value={token} />
-            <Field label={l("quote.upload")} id="quote-file">
-              <input
-                id="quote-file"
-                type="file"
-                name="file"
-                required
-                accept="image/jpeg,image/png,image/heic,image/webp,application/pdf"
-                className="text-13"
-              />
-            </Field>
-            <Button type="submit" variant="primary" loading={busy}>
-              {busy ? l("quote.upload.working") : l("quote.upload.submit")}
-            </Button>
-          </Form>
-        </Card>
-      ) : null}
+        {accepted ? (
+          <Card className="mt-8" title={l("quote.accepted.title")}>
+            <p className="text-14">{l("quote.accepted.body")}</p>
+            {result?.intent === "document" && result.ok ? (
+              <p role="status" className="mt-3 text-13 text-success">
+                {l("quote.upload.done")}
+              </p>
+            ) : null}
+            <Form method="post" encType="multipart/form-data" className="mt-4 flex flex-col gap-3">
+              <input type="hidden" name="intent" value="document" />
+              <input type="hidden" name="token" value={token} />
+              <Field label={l("quote.upload")} id="quote-file">
+                <input
+                  id="quote-file"
+                  type="file"
+                  name="file"
+                  required
+                  accept="image/jpeg,image/png,image/heic,image/webp,application/pdf"
+                  className="text-13"
+                />
+              </Field>
+              <Button type="submit" variant="primary" loading={busy}>
+                {busy ? l("quote.upload.working") : l("quote.upload.submit")}
+              </Button>
+            </Form>
+          </Card>
+        ) : null}
 
-      <footer className="mt-10 border-t border-border pt-4 text-13">
-        <a className="text-accent underline" href={`/portal/${tenantSlug}`}>
-          {l("quote.back")}
-        </a>
-      </footer>
+        <footer className="mt-10 border-t border-border pt-4 text-13">
+          <a className="text-accent underline" href={`/portal/${tenantSlug}`}>
+            {l("quote.back")}
+          </a>
+        </footer>
+      </div>
     </main>
   );
 }

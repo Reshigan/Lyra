@@ -151,75 +151,77 @@ export default function PortalPrivacy() {
   const busy = navigation.state !== "idle";
 
   return (
-    <main style={brandStyle(tenant.brand)} className="mx-auto max-w-2xl p-6">
-      <header className="mb-8 flex items-center gap-3">
-        {tenant.brand.logo?.light ?? tenant.brand.logo?.mark ? (
-          <img
-            src={tenant.brand.logo?.light ?? tenant.brand.logo?.mark}
-            alt={tenant.name}
-            className="h-10 w-auto"
-          />
-        ) : null}
-        <div>
-          <h1 className="font-serif text-22 leading-[1.2]">{l("privacy.title")}</h1>
-          <p className="mt-1 text-13 text-muted">{l("privacy.intro")}</p>
-        </div>
-      </header>
-
-      {result?.ok ? (
-        <Card title={l("privacy.success.title")}>
-          <p role="status" className="text-14">
-            {l("privacy.success.body").replace(
-              "{due}",
-              new Intl.DateTimeFormat(locale, { dateStyle: "long" }).format(new Date(result.dueAt))
-            )}
-          </p>
-          <p className="mt-3 text-13 text-muted">
-            {l("privacy.success.reference")}: <code className="font-mono">{result.reference}</code>
-          </p>
-        </Card>
-      ) : (
-        <Form method="post" className="flex flex-col gap-5">
-          {result?.errorKey ? (
-            <p role="alert" className="text-13 text-danger">
-              {l(result.errorKey)}
-            </p>
-          ) : null}
-
-          <div className="flex flex-col gap-2">
-            <p className="font-ui text-13 font-medium text-muted">{l("privacy.type")}</p>
-            <RadioGroup
-              name="type"
-              required
-              defaultValue="access"
-              label={l("privacy.type")}
-              options={RIGHTS.map((right) => ({ value: right, label: l(`privacy.type.${right}`) }))}
+    <main style={brandStyle(tenant.brand)} className="lyra-field min-h-screen bg-bg text-text">
+      <div className="lyra-enter mx-auto max-w-2xl p-6">
+        <header className="mb-8 flex items-center gap-3">
+          {tenant.brand.logo?.light ?? tenant.brand.logo?.mark ? (
+            <img
+              src={tenant.brand.logo?.light ?? tenant.brand.logo?.mark}
+              alt={tenant.name}
+              className="h-10 w-auto"
             />
+          ) : null}
+          <div>
+            <h1 className="font-serif text-22 leading-[1.2]">{l("privacy.title")}</h1>
+            <p className="mt-1 text-13 text-muted">{l("privacy.intro")}</p>
           </div>
+        </header>
 
-          <Field label={l("privacy.email")} id="privacy-email">
-            <Input name="email" type="email" autoComplete="email" required />
-          </Field>
-          <Field label={l("privacy.name")} id="privacy-name">
-            <Input name="name" autoComplete="name" />
-          </Field>
-          <Field label={l("privacy.details")} id="privacy-details">
-            <Textarea name="details" rows={4} />
-          </Field>
+        {result?.ok ? (
+          <Card title={l("privacy.success.title")}>
+            <p role="status" className="text-14">
+              {l("privacy.success.body").replace(
+                "{due}",
+                new Intl.DateTimeFormat(locale, { dateStyle: "long" }).format(new Date(result.dueAt))
+              )}
+            </p>
+            <p className="mt-3 text-13 text-muted">
+              {l("privacy.success.reference")}: <code className="font-mono">{result.reference}</code>
+            </p>
+          </Card>
+        ) : (
+          <Form method="post" className="flex flex-col gap-5">
+            {result?.errorKey ? (
+              <p role="alert" className="text-13 text-danger">
+                {l(result.errorKey)}
+              </p>
+            ) : null}
 
-          <Turnstile siteKey={turnstileSiteKey} locale={locale} />
+            <div className="flex flex-col gap-2">
+              <p className="font-ui text-13 font-medium text-muted">{l("privacy.type")}</p>
+              <RadioGroup
+                name="type"
+                required
+                defaultValue="access"
+                label={l("privacy.type")}
+                options={RIGHTS.map((right) => ({ value: right, label: l(`privacy.type.${right}`) }))}
+              />
+            </div>
 
-          <Button type="submit" variant="primary" loading={busy}>
-            {busy ? l("privacy.working") : l("privacy.submit")}
-          </Button>
-        </Form>
-      )}
+            <Field label={l("privacy.email")} id="privacy-email">
+              <Input name="email" type="email" autoComplete="email" required />
+            </Field>
+            <Field label={l("privacy.name")} id="privacy-name">
+              <Input name="name" autoComplete="name" />
+            </Field>
+            <Field label={l("privacy.details")} id="privacy-details">
+              <Textarea name="details" rows={4} />
+            </Field>
 
-      <p className="mt-8 text-13">
-        <a className="text-accent underline" href={`/portal/${tenantSlug}`}>
-          {l("privacy.back")}
-        </a>
-      </p>
+            <Turnstile siteKey={turnstileSiteKey} locale={locale} />
+
+            <Button type="submit" variant="primary" loading={busy}>
+              {busy ? l("privacy.working") : l("privacy.submit")}
+            </Button>
+          </Form>
+        )}
+
+        <p className="mt-8 text-13">
+          <a className="text-accent underline" href={`/portal/${tenantSlug}`}>
+            {l("privacy.back")}
+          </a>
+        </p>
+      </div>
     </main>
   );
 }

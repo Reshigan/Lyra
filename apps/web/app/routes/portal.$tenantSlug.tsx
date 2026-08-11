@@ -226,110 +226,117 @@ export default function Portal() {
   const busy = navigation.state !== "idle";
 
   return (
-    <main style={brandStyle(site.tenant.brand)} className="mx-auto max-w-4xl p-6">
-      <header className="mb-8 flex items-center gap-3">
-        {site.tenant.brand.logo?.light ?? site.tenant.brand.logo?.mark ? (
-          <img
-            src={site.tenant.brand.logo?.light ?? site.tenant.brand.logo?.mark}
-            alt={site.tenant.name}
-            className="h-10 w-auto"
-          />
-        ) : null}
-        <div>
-          <h1 className="font-serif text-22 leading-[1.2]">{site.tenant.name}</h1>
-          <p className="mt-1 text-13 text-muted">{l("portal.intro")}</p>
-        </div>
-      </header>
+    // The storefront is the one screen a stranger sees first, and it was the
+    // one rendering on flat --bg with no arrival: the same star field and rise
+    // the workspace uses (app.css), nothing bespoke.
+    <main style={brandStyle(site.tenant.brand)} className="lyra-field min-h-screen bg-bg text-text">
+      <div className="mx-auto max-w-4xl p-6">
+        <header className="lyra-enter mb-8 flex items-center gap-3">
+          {site.tenant.brand.logo?.light ?? site.tenant.brand.logo?.mark ? (
+            <img
+              src={site.tenant.brand.logo?.light ?? site.tenant.brand.logo?.mark}
+              alt={site.tenant.name}
+              className="h-10 w-auto"
+            />
+          ) : null}
+          <div>
+            {/* A stranger reads the offer at arm's length: the storefront gets
+                the display step, not a workspace title's. */}
+            <h1 className="font-serif text-36 leading-[1.15]">{site.tenant.name}</h1>
+            <p className="mt-1 text-16 text-muted">{l("portal.intro")}</p>
+          </div>
+        </header>
 
-      {site.products.length === 0 ? (
-        <p className="text-14 text-muted">{l("portal.empty")}</p>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2">
-          {site.products.map((product) => {
-            const submitted = result?.productId === product.id ? result : undefined;
-            return (
-              <Card
-                key={product.id}
-                title={product.name}
-                description={product.providerName ?? undefined}
-                actions={
-                  <Badge tone="accent">{optionLabel(l, "line", product.line)}</Badge>
-                }
-              >
-                {submitted?.ok ? (
-                  <p role="status" className="text-13 text-success">
-                    {l("portal.form.success")}
-                  </p>
-                ) : (
-                  <details>
-                    <summary className="cursor-pointer text-13 font-medium text-accent">
-                      {l("portal.quote")}
-                    </summary>
-                    <Form method="post" className="mt-4 flex flex-col gap-3">
-                      <input type="hidden" name="productId" value={product.id} />
-                      <input type="hidden" name="line" value={product.line} />
-                      {QUICK[product.line] ? (
-                        <>
-                          <p className="text-13 text-muted">{l("portal.quick")}</p>
-                          {QUICK[product.line]!.map((field) =>
-                            field.kind === "bool" ? (
-                              <Checkbox key={field.name} name={field.name} label={l(field.labelKey)} />
-                            ) : (
-                              <Field
-                                key={field.name}
-                                label={l(field.labelKey)}
-                                id={`${field.name}-${product.id}`}
-                              >
-                                <Input
-                                  name={field.name}
-                                  type="number"
-                                  inputMode="numeric"
-                                  required
-                                  {...(field.kind === "number" ? { min: field.min, max: field.max } : { min: 1 })}
-                                />
-                              </Field>
-                            )
-                          )}
-                        </>
-                      ) : null}
-                      {submitted?.errorKey ? (
-                        <p role="alert" className="text-13 text-danger">
-                          {l(submitted.errorKey)}
-                        </p>
-                      ) : null}
-                      <Field label={l("portal.form.name")} id={`name-${product.id}`}>
-                        <Input name="name" autoComplete="name" required />
-                      </Field>
-                      <Field label={l("portal.form.email")} id={`email-${product.id}`}>
-                        <Input name="email" type="email" autoComplete="email" required />
-                      </Field>
-                      <Field label={l("portal.form.phone")} id={`phone-${product.id}`}>
-                        <Input name="phone" type="tel" autoComplete="tel" />
-                      </Field>
-                      <Field label={l("portal.form.message")} id={`message-${product.id}`}>
-                        <Textarea name="message" rows={3} />
-                      </Field>
-                      <Checkbox name="consent" required label={l("portal.form.consent")} />
-                      <Turnstile siteKey={turnstileSiteKey} locale={locale} />
-                      <Button type="submit" variant="primary" loading={busy}>
-                        {busy ? l("portal.form.working") : l("portal.form.submit")}
-                      </Button>
-                    </Form>
-                  </details>
-                )}
-              </Card>
-            );
-          })}
-        </div>
-      )}
+        {site.products.length === 0 ? (
+          <p className="text-14 text-muted">{l("portal.empty")}</p>
+        ) : (
+          <div className="lyra-stagger grid gap-4 sm:grid-cols-2">
+            {site.products.map((product) => {
+              const submitted = result?.productId === product.id ? result : undefined;
+              return (
+                <Card
+                  key={product.id}
+                  title={product.name}
+                  description={product.providerName ?? undefined}
+                  actions={
+                    <Badge tone="accent">{optionLabel(l, "line", product.line)}</Badge>
+                  }
+                >
+                  {submitted?.ok ? (
+                    <p role="status" className="text-13 text-success">
+                      {l("portal.form.success")}
+                    </p>
+                  ) : (
+                    <details>
+                      <summary className="cursor-pointer text-13 font-medium text-accent">
+                        {l("portal.quote")}
+                      </summary>
+                      <Form method="post" className="mt-4 flex flex-col gap-3">
+                        <input type="hidden" name="productId" value={product.id} />
+                        <input type="hidden" name="line" value={product.line} />
+                        {QUICK[product.line] ? (
+                          <>
+                            <p className="text-13 text-muted">{l("portal.quick")}</p>
+                            {QUICK[product.line]!.map((field) =>
+                              field.kind === "bool" ? (
+                                <Checkbox key={field.name} name={field.name} label={l(field.labelKey)} />
+                              ) : (
+                                <Field
+                                  key={field.name}
+                                  label={l(field.labelKey)}
+                                  id={`${field.name}-${product.id}`}
+                                >
+                                  <Input
+                                    name={field.name}
+                                    type="number"
+                                    inputMode="numeric"
+                                    required
+                                    {...(field.kind === "number" ? { min: field.min, max: field.max } : { min: 1 })}
+                                  />
+                                </Field>
+                              )
+                            )}
+                          </>
+                        ) : null}
+                        {submitted?.errorKey ? (
+                          <p role="alert" className="text-13 text-danger">
+                            {l(submitted.errorKey)}
+                          </p>
+                        ) : null}
+                        <Field label={l("portal.form.name")} id={`name-${product.id}`}>
+                          <Input name="name" autoComplete="name" required />
+                        </Field>
+                        <Field label={l("portal.form.email")} id={`email-${product.id}`}>
+                          <Input name="email" type="email" autoComplete="email" required />
+                        </Field>
+                        <Field label={l("portal.form.phone")} id={`phone-${product.id}`}>
+                          <Input name="phone" type="tel" autoComplete="tel" />
+                        </Field>
+                        <Field label={l("portal.form.message")} id={`message-${product.id}`}>
+                          <Textarea name="message" rows={3} />
+                        </Field>
+                        <Checkbox name="consent" required label={l("portal.form.consent")} />
+                        <Turnstile siteKey={turnstileSiteKey} locale={locale} />
+                        <Button type="submit" variant="primary" loading={busy}>
+                          {busy ? l("portal.form.working") : l("portal.form.submit")}
+                        </Button>
+                      </Form>
+                    </details>
+                  )}
+                </Card>
+              );
+            })}
+          </div>
+        )}
 
-      {/* J-C4's door has to be findable from the public site, or the right is
-          theoretical. */}
-      <footer className="mt-10 border-t border-border pt-4 text-13">
-        <a className="text-accent underline" href={`/portal/${tenantSlug}/privacy`}>
-          {l("portal.privacy")}
-        </a>
-      </footer>
+        {/* J-C4's door has to be findable from the public site, or the right is
+            theoretical. */}
+        <footer className="mt-10 border-t border-border pt-4 text-13">
+          <a className="text-accent underline" href={`/portal/${tenantSlug}/privacy`}>
+            {l("portal.privacy")}
+          </a>
+        </footer>
+      </div>
     </main>
   );
 }
