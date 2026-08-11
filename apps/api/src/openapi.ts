@@ -407,7 +407,13 @@ const HAND_WRITTEN: Op[] = [
   // Batch ref resolution (routes/names.ts). No permission of its own: each ref
   // is gated by the caller's read permission on the resource it points at, and
   // a ref that resolves to nothing is simply absent from the response.
-  { method: "get", path: "/v1/names", summary: "Resolve up to 200 record refs (`cu_…`, `user:us_…`) to display names, per resource read permission", tag: "search" }
+  { method: "get", path: "/v1/names", summary: "Resolve up to 200 record refs (`cu_…`, `user:us_…`) to display names, per resource read permission", tag: "search" },
+
+  // The other half of the same problem (routes/directory.ts, ADR-0047): names
+  // out of refs above, refs out of names here, so an assignment field can be a
+  // picker instead of a box a person types a ULID into. Two columns, capped,
+  // masked, tenant-scoped; no permission of its own.
+  { method: "get", path: "/v1/directory", summary: "List assignable staff and team refs (`?kind=user|team`) for the current tenant", tag: "search" }
 ];
 
 export function openapi(): Record<string, unknown> {

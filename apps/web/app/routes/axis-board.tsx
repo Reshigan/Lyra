@@ -14,13 +14,12 @@ import {
   EmptyState,
   Field,
   GuardrailNotice,
-  Input,
   Money,
   Ref,
   Select,
   type BadgeTone
 } from "@lyra/ui";
-import { ApiError, api, names } from "../api.server";
+import { ApiError, api, directory, names } from "../api.server";
 import { who } from "../names";
 import { cloudflare } from "../context";
 import { labelsFrom } from "./detail-kit";
@@ -346,10 +345,13 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   // Owner is a `user:us_…` ref with no display text, so the card footer read a
   // ULID where a colleague's name belongs.
   const resolved = await names(page.data.map((card) => card.ownerRef), opts);
+  // The assign form took a typed `user:us_…`, which nobody knows (ADR-0047).
+  const assignees = await directory(opts);
 
   return {
     now: Date.now(),
     names: resolved,
+    assignees,
     cases: page.data,
     counts: Object.fromEntries(totals) as Partial<Record<Lane, number>>,
     wipWarn
@@ -573,7 +575,10 @@ export default function AxisBoard() {
               />
             </Field>
             <Field label={l("assign.owner")} hint={l("assign.intro")} className="w-64">
-              <Input name="ownerRef" />
+              <Select
+                name="ownerRef"
+                options={loaded.assignees.map((one) => ({ value: one.ref, label: one.name }))}
+              />
             </Field>
             <Button type="submit" variant="secondary" loading={busy}>
               {l("assign.submit")}

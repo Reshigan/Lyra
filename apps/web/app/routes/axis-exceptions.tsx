@@ -13,13 +13,12 @@ import {
   Card,
   EmptyState,
   Field,
-  Input,
   KPIWall,
   Select,
   Stat,
   type BadgeTone
 } from "@lyra/ui";
-import { ApiError, api, names } from "../api.server";
+import { ApiError, api, directory, names } from "../api.server";
 import { who } from "../names";
 import { cloudflare } from "../context";
 import { labelsFrom, type Label } from "./detail-kit";
@@ -303,11 +302,16 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     opts
   );
 
+  // Claiming an exception took a typed `user:us_…`, which nobody knows
+  // (ADR-0047) — the picker reads the same directory the board's does.
+  const assignees = await directory(opts);
+
   return {
     // One server clock for the whole page: severity recomputed per component
     // would drift between a badge and the count printed beside it.
     now,
     names: resolved,
+    assignees,
     cases: cases.data,
     documents: documents.data,
     tasks: tasks.data,
@@ -575,7 +579,10 @@ export default function AxisExceptions() {
               <Select name="caseId" options={cases.map((row) => ({ value: row.id, label: row.ref }))} />
             </Field>
             <Field label={l("claim.owner")} hint={l("claim.intro")} className="w-64">
-              <Input name="ownerRef" />
+              <Select
+                name="ownerRef"
+                options={loaded.assignees.map((one) => ({ value: one.ref, label: one.name }))}
+              />
             </Field>
             <Button type="submit" variant="secondary" loading={busy}>
               {l("claim.submit")}

@@ -64,7 +64,7 @@ const ALIASES: Record<string, string> = { usr: "us" };
  * WITH column and its handover FROM/TO rendered `user:us_01KE…VNK5` at the
  * agent whose queue it is. These two resolve for any signed-in actor in the
  * tenant — display column only, tenant-scoped, PII-masked exactly as every
- * other read is, and never the list, record or write paths (ADR-0039).
+ * other read is, and never the list, record or write paths (ADR-0046).
  */
 const DIRECTORY = new Set(["users", "teams"]);
 

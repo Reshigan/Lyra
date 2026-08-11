@@ -100,6 +100,33 @@ export async function names(refs: ReadonlyArray<string | null | undefined>, opti
   return body?.names ?? {};
 }
 
+export interface DirectoryEntry {
+  /** `user:us_…` / `team:tm_…` — exactly what an assignment field submits. */
+  ref: string;
+  name: string;
+}
+
+/**
+ * Who this tenant's work can be assigned to (ADR-0047). The assignment fields
+ * on the board, the exceptions queue, the claims desk, a handover and the
+ * signal studio all take a ref, and a person cannot type a ULID — call this in
+ * the loader and render a picker.
+ *
+ * Never throws, for the same reason `names` does not: an empty list degrades
+ * the field to the text input it used to be rather than the whole screen to an
+ * error boundary.
+ */
+export async function directory(
+  options: ApiOptions,
+  kind?: "user" | "team"
+): Promise<DirectoryEntry[]> {
+  const body = await api<{ entries: DirectoryEntry[] }>(
+    `/v1/directory${kind ? `?kind=${kind}` : ""}`,
+    options
+  ).catch(() => null);
+  return body?.entries ?? [];
+}
+
 /* ------------------------------------------------------------------- /v1/me */
 
 export interface NavItem {

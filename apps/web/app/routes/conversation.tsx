@@ -23,12 +23,12 @@ import {
   focusRing,
   GhostText,
   GuardrailNotice,
-  Input,
   Ref,
+  Select,
   Textarea,
   type BadgeTone
 } from "@lyra/ui";
-import { ApiError, api, fetchMe, type ApiOptions } from "../api.server";
+import { ApiError, api, directory, fetchMe, type ApiOptions } from "../api.server";
 import { cloudflare } from "../context";
 import { pseudoText, translator } from "../i18n";
 import { Problem } from "./module";
@@ -209,8 +209,13 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
     : null;
   const run = runs?.data.find((r) => r.outputRef && r.outputRef === draft?.aiAuditId) ?? null;
 
+  // Handing a conversation on took a typed `user:us_…` — the one field where a
+  // ULID is least excusable, because the agent doing it is mid-chat (ADR-0047).
+  const assignees = await directory({ env, request });
+
   return {
     conversation,
+    assignees,
     messages: messages.filter((m) => m.id !== draft?.id),
     draft,
     run,
@@ -868,7 +873,10 @@ export default function ConversationThread() {
             <Form method="post" className="mt-4 flex flex-col gap-3">
               <input type="hidden" name="intent" value="handover" />
               <Field label={l("handoverTo")}>
-                <Input name="toRef" />
+                <Select
+                  name="toRef"
+                  options={loaded.assignees.map((one) => ({ value: one.ref, label: one.name }))}
+                />
               </Field>
               <Field label={l("handoverSummary")}>
                 <Textarea name="summary" rows={3} required />

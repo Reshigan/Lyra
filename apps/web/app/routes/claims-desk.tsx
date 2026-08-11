@@ -19,7 +19,7 @@ import {
   Select,
   type BadgeTone
 } from "@lyra/ui";
-import { ApiError, api, names } from "../api.server";
+import { ApiError, api, directory, names } from "../api.server";
 import { who } from "../names";
 import { cloudflare } from "../context";
 import { pseudoText } from "../i18n";
@@ -315,9 +315,13 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     opts
   );
 
+  // Assigning a handler took a typed `user:us_…`, which nobody knows (ADR-0047).
+  const assignees = await directory(opts);
+
   return {
     now: Date.now(),
     names: resolved,
+    assignees,
     claims: page.data,
     counts: Object.fromEntries(totals) as Partial<Record<(typeof OPEN_CLAIM_STATES)[number], number>>
   };
@@ -589,7 +593,10 @@ export default function ClaimsDesk() {
               <Select name="claimId" options={loaded.claims.map((row) => ({ value: row.id, label: row.claimNo }))} />
             </Field>
             <Field label={l("assign.handler")} className="w-64">
-              <Input name="handlerRef" />
+              <Select
+                name="handlerRef"
+                options={loaded.assignees.map((one) => ({ value: one.ref, label: one.name }))}
+              />
             </Field>
             <Button type="submit" variant="secondary" loading={busy}>
               {l("assign.submit")}

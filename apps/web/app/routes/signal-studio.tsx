@@ -28,7 +28,7 @@ import {
   type BadgeTone,
   type Column
 } from "@lyra/ui";
-import { ApiError, api } from "../api.server";
+import { ApiError, api, directory } from "../api.server";
 import { cloudflare } from "../context";
 import { Gate } from "./staff";
 import { useShellData } from "./workspace";
@@ -124,8 +124,14 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       : Promise.resolve(empty<TouchRow>())
   ]);
 
+  // The owner field defaulted to the signed-in person's *display name*, so a
+  // campaign was owned by the string "Noor Haddad" and by nothing resolvable.
+  // The picker submits a real ref (ADR-0047).
+  const assignees = await directory({ env, request });
+
   return {
     campaign,
+    assignees,
     generated: Number.isFinite(generated) && generated > 0 ? generated : 0,
     audiences: audiences.data,
     drafts: recent.data.filter((row) => DRAFT_STATES.includes(row.state)),
@@ -393,7 +399,10 @@ export default function CampaignStudio() {
                 <Input name="boundMinor" type="number" min={1} step={1} defaultValue={10000} />
               </Field>
               <Field label={l("studio.owner")} required>
-                <Input name="ownerRef" required defaultValue={shell?.actorName ?? ""} />
+                <Select
+                  name="ownerRef"
+                  options={loaded.assignees.map((one) => ({ value: one.ref, label: one.name }))}
+                />
               </Field>
             </div>
             <input type="hidden" name="currency" value={currency} />

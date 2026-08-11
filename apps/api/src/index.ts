@@ -37,6 +37,7 @@ import { platformRoutes } from "./routes/platform.js";
 import { settlementRoutes } from "./routes/settlement.js";
 import { staffRoutes } from "./routes/staff.js";
 import { searchRoutes } from "./routes/search.js";
+import { directoryRoutes } from "./routes/directory.js";
 import { nameRoutes } from "./routes/names.js";
 import type { App, Env } from "./env.js";
 
@@ -95,6 +96,7 @@ app.route("/v1/staff", staffRoutes);
 app.route("/v1/platform", platformRoutes);
 app.route("/v1/search", searchRoutes);
 app.route("/v1/names", nameRoutes);
+app.route("/v1/directory", directoryRoutes);
 
 for (const [module, resources] of Object.entries(BY_MODULE)) {
   mountAll(app.basePath(`/v1/${module}`) as unknown as Hono<App>, resources);
