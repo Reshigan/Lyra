@@ -198,6 +198,15 @@ export const en = {
   "panel.book": "{share}% of volume · {volume} quotes · won {win}",
   "panel.noWin": "unrecorded",
 
+  "attribution.title": "Where the money went",
+  "attribution.empty": "No spend or attribution in the last 30 days.",
+  "attribution.window": "Last {days} days · {spend} spent · {won} won",
+  "attribution.overall": "Overall {ratio} back on what was spent",
+  "attribution.cac": "{cac} per customer · {won} won",
+  "attribution.noWins": "Nothing won yet",
+  "attribution.ratio": "{ratio} back",
+  "attribution.traffic": "{spend} · {clicks} clicks",
+
   "decisions.title": "Decisions",
   "decisions.empty": "No decisions have been logged yet.",
   "decisions.open": "Open",
@@ -435,6 +444,15 @@ export const ar: Messages = {
   "panel.unpriced": "غير مسعّر",
   "panel.book": "{share}% من الحجم · {volume} عرضًا · فوز {win}",
   "panel.noWin": "غير مسجَّل",
+
+  "attribution.title": "أين ذهب المال",
+  "attribution.empty": "لا إنفاق ولا إسناد خلال آخر 30 يومًا.",
+  "attribution.window": "آخر {days} يومًا · أُنفق {spend} · {won} عميلًا",
+  "attribution.overall": "إجمالًا {ratio} مقابل ما أُنفق",
+  "attribution.cac": "{cac} لكل عميل · {won} عميلًا",
+  "attribution.noWins": "لم يُكسب أي عميل بعد",
+  "attribution.ratio": "{ratio} عائد",
+  "attribution.traffic": "{spend} · {clicks} نقرة",
 
   "decisions.title": "القرارات",
   "decisions.empty": "لم يُسجَّل أي قرار بعد.",

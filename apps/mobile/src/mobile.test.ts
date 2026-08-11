@@ -48,7 +48,9 @@ const {
   budgetOf,
   byId,
   campaignOrder,
+  cacMinor,
   caseSeverity,
+  channelLabel,
   chosenBriefing,
   clusterOrder,
   contentTypeOf,
@@ -60,8 +62,11 @@ const {
   indexText,
   isInbound,
   latestPeriod,
+  ltvMinor,
+  ltvToCac,
   mainCurrency,
   moneyText,
+  multipleText,
   optionCount,
   opportunityOf,
   pacingOf,
@@ -69,6 +74,7 @@ const {
   positionOf,
   queueOrder,
   renewalOrder,
+  rollByChannel,
   rollByProvider,
   sectionCount,
   spendByCampaign,
@@ -1166,6 +1172,44 @@ describe("journey helpers", () => {
     expect(positionOf(null)).toBe("unpriced");
     expect(indexText(9420, "en")).toBe("0.94");
     expect(indexText(null)).toBeNull();
+  });
+
+  it("rolls spend and wins together per channel, biggest spend first", () => {
+    const spend = [
+      { id: "s1", channel: "meta", amountMinor: 30_000, clicks: 100 },
+      { id: "s2", channel: "google_search", amountMinor: 60_000, clicks: 200 },
+      { id: "s3", channel: "meta", amountMinor: 20_000, clicks: 50 }
+    ];
+    const touches = [
+      { id: "t1", channel: "meta", touchType: "bind", valueMinor: 100_000 },
+      { id: "t2", channel: "meta", touchType: "view", valueMinor: 999 },
+      { id: "t3", channel: "google_search", touchType: "bind", valueMinor: 40_000 },
+      { id: "t4", channel: "google_search", touchType: "bind", valueMinor: 60_000 }
+    ];
+    const rolls = rollByChannel(spend, touches);
+    expect(rolls.map((roll) => roll.channel)).toEqual(["google_search", "meta"]);
+    // A view is not a customer: only binds count, and only their value.
+    expect(rolls[1]).toEqual({ channel: "meta", spendMinor: 50_000, clicks: 150, binds: 1, valueMinor: 100_000 });
+    // R600 spent on Google won two customers.
+    expect(cacMinor(rolls[0]!.spendMinor, rolls[0]!.binds)).toBe(30_000);
+    expect(ltvMinor(touches)).toBe(Math.round((100_000 + 40_000 + 60_000) / 3));
+    expect(rollByChannel(null, null)).toEqual([]);
+  });
+
+  it("refuses to compute a return nobody can compute", () => {
+    // Spend with nothing won is not an infinite cost, it is an unknown one.
+    expect(cacMinor(50_000, 0)).toBeNull();
+    expect(ltvMinor([])).toBeNull();
+    expect(ltvToCac(100, 0)).toBeNull();
+    expect(ltvToCac(null, 50)).toBeNull();
+    expect(ltvToCac(120, 50)).toBe(2.4);
+    expect(multipleText("en", 2.4)).toBe("2.4×");
+  });
+
+  it("names known channels and titles the ones it has never heard of", () => {
+    expect(channelLabel("google_search")).toBe("Google Search");
+    expect(channelLabel("meta", "ar")).toBe("فيسبوك");
+    expect(channelLabel("tiktok_ads")).toBe("Tiktok ads");
   });
 
   it("puts open decisions first, overdue reviews above future ones", () => {

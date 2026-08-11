@@ -503,6 +503,91 @@ export function indexText(bp: number | null, locale = "en"): string | null {
     : (bp / 10_000).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+/* ------------------------------------------------------------- attribution */
+
+/** The channels SIGNAL names, mirrored from apps/web/app/routes/signal.shared.ts
+ *  `SIGNAL_CHANNELS`. Slugs are not i18n keys — the API invents new ones as
+ *  networks are added — so an unknown slug is titled rather than dropped. */
+const CHANNEL_NAMES: Record<string, { en: string; ar: string }> = {
+  google_search: { en: "Google Search", ar: "بحث Google" },
+  bing_search: { en: "Bing Search", ar: "بحث Bing" },
+  meta: { en: "Facebook", ar: "فيسبوك" },
+  instagram: { en: "Instagram", ar: "إنستغرام" },
+  youtube: { en: "YouTube", ar: "يوتيوب" },
+  email: { en: "Email", ar: "البريد الإلكتروني" },
+  whatsapp: { en: "WhatsApp", ar: "واتساب" },
+  sms: { en: "SMS", ar: "رسالة نصية" },
+  push: { en: "Push", ar: "إشعار" }
+};
+
+export function channelLabel(slug: string, locale = "en"): string {
+  const known = CHANNEL_NAMES[slug];
+  if (known) return locale.startsWith("ar") ? known.ar : known.en;
+  return humanize(slug);
+}
+
+/** An attribution touch that says a customer was actually won. */
+const BIND = "bind";
+
+export interface ChannelRoll {
+  channel: string;
+  spendMinor: number;
+  clicks: number;
+  binds: number;
+  valueMinor: number;
+}
+
+/** Money spent per channel against customers won there (signal.shared.ts
+ *  `rollByChannel`). Biggest spend first: the question this tab answers is
+ *  "where is the money going", and the answer starts at the top. */
+export function rollByChannel(spend: readonly Row[] | null, touches: readonly Row[] | null): ChannelRoll[] {
+  const rolls = new Map<string, ChannelRoll>();
+  const at = (channel: string): ChannelRoll => {
+    let roll = rolls.get(channel);
+    if (!roll) {
+      roll = { channel, spendMinor: 0, clicks: 0, binds: 0, valueMinor: 0 };
+      rolls.set(channel, roll);
+    }
+    return roll;
+  };
+  for (const row of spend ?? []) {
+    const roll = at(String(row.channel ?? ""));
+    roll.spendMinor += numberOr(row.amountMinor, 0);
+    roll.clicks += numberOr(row.clicks, 0);
+  }
+  for (const touch of touches ?? []) {
+    if (touch.touchType !== BIND) continue;
+    const roll = at(String(touch.channel ?? ""));
+    roll.binds += 1;
+    roll.valueMinor += numberOr(touch.valueMinor, 0);
+  }
+  return [...rolls.values()].sort((a, b) => b.spendMinor - a.spendMinor);
+}
+
+/** What one customer cost. Null when nothing was won — spend with no binds is
+ *  not an infinite cost, it is a number nobody can compute yet. */
+export function cacMinor(spendMinor: number, binds: number): number | null {
+  return binds > 0 ? Math.round(spendMinor / binds) : null;
+}
+
+/** Mean contract value of a won customer (signal.shared.ts `ltvMinor`). */
+export function ltvMinor(touches: readonly Row[] | null): number | null {
+  const binds = (touches ?? []).filter((touch) => touch.touchType === BIND);
+  if (binds.length === 0) return null;
+  return Math.round(binds.reduce((sum, touch) => sum + numberOr(touch.valueMinor, 0), 0) / binds.length);
+}
+
+/** LTV:CAC as a plain multiple. Below 1 the channel loses money per customer. */
+export function ltvToCac(ltv: number | null, cac: number | null): number | null {
+  if (ltv === null || cac === null || cac === 0) return null;
+  return ltv / cac;
+}
+
+/** A ratio as "2.4×" in the reader's digits — `toFixed` always writes Latin. */
+export function multipleText(locale: string, value: number): string {
+  return `${new Intl.NumberFormat(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value)}×`;
+}
+
 /* ------------------------------------------------------------------- north */
 
 const DECISION_RANK: Record<string, number> = { open: 0, reviewed: 1, reversed: 2 };

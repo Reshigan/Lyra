@@ -31,7 +31,7 @@ export const PERSONA_TABS: Record<Workspace, TabConfig[]> = {
     // Same screen, budgeted campaigns only: the budget tab is the cockpit with
     // everything nobody set a ceiling on dropped (app/j/campaigns.tsx).
     { labelKey: "tab.budget", icon: "cash", screen: "signal/campaigns", route: "/j/campaigns?view=budget" },
-    { labelKey: "tab.attribution", icon: "trending-up", screen: "signal/campaigns" }
+    { labelKey: "tab.attribution", icon: "trending-up", screen: "signal/campaigns", route: "/j/attribution" }
   ],
   scout: [
     { labelKey: "tab.clusters", icon: "layers", screen: "scout/signals", route: "/j/clusters" },
