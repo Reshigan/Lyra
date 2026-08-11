@@ -24,8 +24,9 @@ import {
 } from "@lyra/ui";
 import { ApiError, api, fetchMe, type Problem as ProblemBody } from "../api.server";
 import { cloudflare } from "../context";
-import { CATALOGUES, LOCALES, pseudoText, translator } from "../i18n";
+import { CATALOGUES, LOCALES, moduleName, pseudoText, translator, type Translate } from "../i18n";
 import { ConfirmButton } from "../components/confirm";
+import { titleText } from "../modules/spec";
 import { Problem } from "./module";
 import { CALENDARS, FALLBACK_CURRENCY, calendarFrom, useShellData } from "./workspace";
 import type { CalendarPreference } from "@lyra/ui";
@@ -1105,7 +1106,7 @@ export default function Settings() {
       />
 
       {/* ------------------------------------------------------ permissions */}
-      <PermissionsPanel permissions={loaded.permissions} pii={loaded.can.pii} label={label} />
+      <PermissionsPanel permissions={loaded.permissions} pii={loaded.can.pii} label={label} t={t} />
 
       {/* --------------------------------------------------------- sessions */}
       <Section id="settings-sessions" title={label("sessions.title")}>
@@ -1178,9 +1179,11 @@ export default function Settings() {
             {loaded.notifications.map((note) => (
               <li key={note.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
                 <div className="min-w-0">
-                  {/* titleKey is a shared-catalogue key; an unknown one renders
-                      as itself rather than as an empty row (app/i18n.ts). */}
-                  <p className="font-ui text-14 break-words text-text">{t(note.titleKey, note.vars)}</p>
+                  {/* titleKey is a shared-catalogue key; an unknown one reads
+                      as words rather than as a dotted key (modules/spec.ts). */}
+                  <p className="font-ui text-14 break-words text-text">
+                    {titleText(t(note.titleKey, note.vars), note.titleKey)}
+                  </p>
                   <p className="font-ui text-12 text-subtle">
                     <DateTime value={note.createdAt} locale={locale} precision="minute" relative />
                   </p>
@@ -1504,11 +1507,13 @@ export function byModule(permissions: readonly string[]): Map<string, string[]> 
 function PermissionsPanel({
   permissions,
   pii,
-  label
+  label,
+  t
 }: {
   permissions: readonly string[];
   pii: boolean;
   label: (key: string) => string;
+  t: Translate;
 }) {
   const groups = byModule(permissions);
 
@@ -1523,7 +1528,7 @@ function PermissionsPanel({
           {[...groups].map(([module, held]) => (
             <details key={module} className="rounded-md border border-border p-2">
               <summary className="cursor-pointer font-ui text-13 text-text">
-                {`${module} (${held.length})`}
+                {`${moduleName(t, module)} (${held.length})`}
               </summary>
               <ul className="mt-2 flex flex-wrap gap-1.5">
                 {held.map((permission) => (

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { humanise, labelsFor, optionLabel, type WorkspaceSpec } from "./spec";
+import { humanise, labelsFor, optionLabel, titleText, type WorkspaceSpec } from "./spec";
 
 // Enum values reach the renderer as raw tokens (`pending_settlement`), and the
 // workspaces spell their labels two different ways — qualified by the column
@@ -89,5 +89,23 @@ describe("humanise", () => {
     expect(humanise("apiKeyRotated")).toBe("API key rotated");
     // A word that merely starts with one is left alone.
     expect(humanise("aid.requested")).toBe("Aid requested");
+  });
+});
+
+// The inbox printed `ai.guardrail.blocked` at a person, because titleKey is
+// minted by engines and seeds and no catalogue can hold every one of them.
+describe("titleText", () => {
+  it("keeps a title the catalogue knows", () => {
+    expect(titleText("A scheduled report was delivered", "analytics.schedule.delivered")).toBe(
+      "A scheduled report was delivered"
+    );
+  });
+
+  it("reads an unknown key as words", () => {
+    expect(titleText("ai.guardrail.blocked", "ai.guardrail.blocked")).toBe("AI guardrail blocked");
+  });
+
+  it("reads it as words when the lookup prefixed the key it could not find", () => {
+    expect(titleText("notice.orbit.renewal.due", "orbit.renewal.due")).toBe("Orbit renewal due");
   });
 });

@@ -282,6 +282,17 @@ export function humanise(value: string): string {
   return `${said.charAt(0).toUpperCase()}${said.slice(1)}`;
 }
 
+/**
+ * A notification title. `titleKey` is open-ended — engines, seeds and future
+ * modules mint their own — so a key the catalogue has never heard of rendered
+ * as itself: the inbox said `ai.guardrail.blocked` where a sentence belongs.
+ * Pass what the lookup returned and the key it was asked for; an unresolved
+ * lookup returns the key (route tables prefix theirs, hence `endsWith`).
+ */
+export function titleText(said: string, key: string): string {
+  return said.endsWith(key) ? humanise(key) : said;
+}
+
 /** `cases` → the tab, or undefined. */
 export function tabOf(spec: WorkspaceSpec, key: string | undefined): ResourceSpec | undefined {
   return key ? spec.tabs.find((tab) => tab.key === key) : spec.tabs[0];

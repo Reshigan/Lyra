@@ -135,6 +135,7 @@ export function translator(locale: string, overrides?: Record<string, string>): 
  * own strings rather than a raw key.
  */
 const MODULE_LABEL_KEYS: Record<string, string> = {
+  ai: "module.ai",
   dist: "nav.distribution",
   distribution: "nav.distribution",
   core: "module.core",

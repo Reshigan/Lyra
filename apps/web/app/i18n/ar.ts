@@ -27,6 +27,7 @@ export const ar: Messages = {
   "nav.settings": "الإعدادات",
 
   "module.core": "الخدمات المشتركة",
+  "module.ai": "خدمات الذكاء الاصطناعي",
 
   "header.account": "الحساب",
   "header.signedInAs": "تسجيل الدخول باسم {name}",

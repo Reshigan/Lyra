@@ -29,6 +29,7 @@ export const en = {
   // Spend, budgets and agents are recorded against module keys the nav has no
   // rail entry for.
   "module.core": "Shared services",
+  "module.ai": "AI services",
 
   "header.account": "Account",
   "header.signedInAs": "Signed in as {name}",

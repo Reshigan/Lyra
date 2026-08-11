@@ -28,7 +28,7 @@ import { who } from "../names";
 import { routedLeaves } from "../components/shell";
 import { cloudflare } from "../context";
 import { DEFAULT_LOCALE, pseudoText, translator } from "../i18n";
-import { humanise } from "../modules/spec";
+import { humanise, titleText } from "../modules/spec";
 import { labelKeyFor, moduleOf } from "../routing";
 import { useShellData } from "./workspace";
 
@@ -677,7 +677,7 @@ export default function Home() {
                     {/* An unknown key renders as itself: a notification nobody
                         translated should look wrong in review, not invisible. */}
                     <p className="break-words font-ui text-13 text-text">
-                      {label(`notice.${note.titleKey}`)}
+                      {titleText(label(`notice.${note.titleKey}`), note.titleKey)}
                     </p>
                     <p className="mt-0.5 font-ui text-12 text-subtle">
                       <DateTime value={note.createdAt} precision="minute" locale={locale} />
