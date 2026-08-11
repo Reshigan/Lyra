@@ -390,7 +390,11 @@ export default function CustomerAnalytics() {
     value === null
       ? l("noData")
       : new Intl.NumberFormat(loaded.locale, { style: "percent", maximumFractionDigits: 1 }).format(value);
-  const rounded = (value: number | null) => (value === null ? l("noData") : String(Math.round(value)));
+  // A bare "4" under a heading reading CSAT is not a number anyone can act on:
+  // the survey is 1-5 (packages/core/src/seed/orbit.ts) and the QA rubric is
+  // 0-100, so the scale rides with the value.
+  const outOf = (value: number | null, max: number) =>
+    value === null ? l("noData") : `${Math.round(value)} / ${max}`;
 
   return (
     <div className="flex flex-col gap-6">
@@ -422,7 +426,7 @@ export default function CustomerAnalytics() {
       <KPIWall>
         <Stat label={l("containment")} value={percent(loaded.containment)} hint={l("containmentHint")} />
         <Stat label={l("handover")} value={percent(loaded.handoverRate)} hint={l("handoverHint")} />
-        <Stat label={l("csat")} value={rounded(loaded.csat)} hint={l("csatHint")} />
+        <Stat label={l("csat")} value={outOf(loaded.csat, 5)} hint={l("csatHint")} />
         <Stat label={l("retention")} value={percent(loaded.retention)} hint={l("retentionHint")} />
       </KPIWall>
 
@@ -447,7 +451,7 @@ export default function CustomerAnalytics() {
             <span className="font-ui text-12 text-subtle">{l("csat")}</span>
           </EvidenceLink>
           <span className="font-ui text-12 text-subtle">
-            {l("quality")} {rounded(loaded.quality)}
+            {l("quality")}: {outOf(loaded.quality, 100)}
           </span>
         </div>
       </Card>
