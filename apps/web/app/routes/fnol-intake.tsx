@@ -14,6 +14,7 @@ import {
   Field,
   GuardrailNotice,
   Input,
+  MoneyField,
   Select,
   Textarea,
   type BadgeTone
@@ -364,7 +365,7 @@ export default function FnolIntake() {
         </Field>
 
         <Field label={l("field.amount")}>
-          <Input name="amountMinor" inputMode="numeric" />
+          <MoneyField name="amountMinor" currency={shell?.currency ?? "ZAR"} locale={locale} />
         </Field>
 
         <Field label={l("field.contact")}>

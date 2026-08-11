@@ -7,7 +7,7 @@ import {
   type ActionFunctionArgs,
   type LoaderFunctionArgs
 } from "react-router";
-import { Button, Card, Checkbox, DatePicker, EmptyState, Field, GuardrailNotice, Input, Money, Textarea } from "@lyra/ui";
+import { Button, Card, Checkbox, DatePicker, EmptyState, Field, GuardrailNotice, Money, MoneyField, Textarea } from "@lyra/ui";
 import { ApiError, api } from "../api.server";
 import { cloudflare } from "../context";
 import { labelsFrom } from "./detail-kit";
@@ -32,7 +32,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "field.changes": "Changes (JSON)",
     "field.changesHint": "An object of the fields changing, e.g. {\"sumInsuredMinor\": 5000000}.",
     "field.effectiveFrom": "Effective from",
-    "field.premiumMinor": "New premium (minor units)",
+    "field.premiumMinor": "New premium",
     "field.reason": "Reason",
     "preview.submit": "Price this change",
     "quote.proRataDays": "Pro-rata days",
@@ -66,7 +66,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "field.changes": "التغييرات (JSON)",
     "field.changesHint": "كائن بالحقول المتغيرة، مثل {\"sumInsuredMinor\": 5000000}.",
     "field.effectiveFrom": "سارٍ من",
-    "field.premiumMinor": "القسط الجديد (بالوحدة الصغرى)",
+    "field.premiumMinor": "القسط الجديد",
     "field.reason": "السبب",
     "preview.submit": "سعّر هذا التغيير",
     "quote.proRataDays": "أيام التناسب",
@@ -335,7 +335,7 @@ export default function PolicyEndorse() {
           <DatePicker name="effectiveFrom" />
         </Field>
         <Field label={l("field.premiumMinor")}>
-          <Input name="premiumMinor" inputMode="numeric" />
+          <MoneyField name="premiumMinor" currency={policy.currency} locale={locale} />
         </Field>
         <Field label={l("field.reason")}>
           <Textarea name="reason" rows={2} defaultValue={result?.reason ?? ""} />

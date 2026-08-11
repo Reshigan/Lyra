@@ -4,6 +4,7 @@
  */
 import * as React from "react";
 import { cn } from "./cn.js";
+import { Input } from "./primitives.js";
 import { useUiCalendar, useUiLocale, useUiTimeZone, type CalendarPreference } from "./text.js";
 
 /** Minor-unit exponent for a currency (AED/USD → 2, JPY → 0, KWD → 3). */
@@ -11,6 +12,93 @@ function minorUnits(currency: string, locale: string): number {
   return (
     new Intl.NumberFormat(locale, { style: "currency", currency }).resolvedOptions()
       .maximumFractionDigits ?? 2
+  );
+}
+
+/** The currency's own symbol, for the inline-start edge of a money control. */
+function currencySymbol(currency: string, locale: string): string {
+  const parts = new Intl.NumberFormat(locale, { style: "currency", currency }).formatToParts(0);
+  return parts.find((part) => part.type === "currency")?.value ?? currency;
+}
+
+/**
+ * `"500.55"` → `50055`, in the currency's own precision (JPY has none, KWD has
+ * three). Returns null for anything that is not a plain decimal number, so a
+ * half-typed field submits nothing rather than a wrong amount.
+ *
+ * The decimal is split and padded rather than multiplied: `12.34 * 100` is
+ * 1233.9999999999998 in binary floating point, and money that rounds by
+ * accident is money the ledger cannot explain.
+ */
+export function minorFromMajor(value: string, currency: string, locale = "en"): number | null {
+  const text = value.trim();
+  if (!/^-?\d+(?:\.\d*)?$|^-?\.\d+$/.test(text)) return null;
+  const digits = minorUnits(currency, locale);
+  const negative = text.startsWith("-");
+  const [whole = "", fraction = ""] = text.replace("-", "").split(".");
+  // Extra fraction digits are cut, not rounded: nobody agreed to the cent that
+  // rounding up would invent.
+  const padded = `${fraction}${"0".repeat(digits)}`.slice(0, digits);
+  const minor = Number(whole || "0") * 10 ** digits + Number(padded || "0");
+  return negative ? -minor : minor;
+}
+
+/** `50000` → `"500"`, the amount as a person would say it out loud. */
+export function majorFromMinor(minor: number, currency: string, locale = "en"): string {
+  const digits = minorUnits(currency, locale);
+  if (digits === 0) return String(minor);
+  const text = (Math.abs(minor) / 10 ** digits).toFixed(digits).replace(/\.?0+$/, "");
+  return minor < 0 ? `-${text}` : text;
+}
+
+export interface MoneyFieldProps
+  extends Omit<
+    React.ComponentPropsWithRef<"input">,
+    "name" | "defaultValue" | "value" | "prefix" | "size" | "type"
+  > {
+  /** The field the form submits, in minor units — `dailyMinor`, `amountMinor`. */
+  name: string;
+  currency: string;
+  locale?: string;
+  /** Starting amount, in minor units, as the API stores it. */
+  defaultMinor?: number;
+}
+
+/**
+ * A money input that speaks the way money is spoken. The visible control takes
+ * rands or dirhams; a hidden input carries the integer minor units the API and
+ * the ledger require, so no call site converts and no user types cents.
+ */
+export function MoneyField({
+  name,
+  currency,
+  locale: explicitLocale,
+  defaultMinor,
+  className,
+  ...props
+}: MoneyFieldProps) {
+  const inherited = useUiLocale();
+  const locale = explicitLocale ?? inherited;
+  const [text, setText] = React.useState(
+    defaultMinor === undefined ? "" : majorFromMinor(defaultMinor, currency, locale)
+  );
+  const minor = minorFromMajor(text, currency, locale);
+  const digits = minorUnits(currency, locale);
+
+  return (
+    <>
+      <Input
+        {...props}
+        type="number"
+        inputMode="decimal"
+        step={digits === 0 ? 1 : 10 ** -digits}
+        value={text}
+        onChange={(event) => setText(event.target.value)}
+        prefix={currencySymbol(currency, locale)}
+        className={className}
+      />
+      <input type="hidden" name={name} value={minor === null ? "" : String(minor)} />
+    </>
   );
 }
 

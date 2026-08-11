@@ -21,6 +21,7 @@ import {
   GuardrailNotice,
   Input,
   Money,
+  MoneyField,
   Select,
   Stat,
   Table,
@@ -393,10 +394,10 @@ export default function CampaignStudio() {
                 <Input name="channels" required defaultValue="google,meta" />
               </Field>
               <Field label={l("studio.daily")} required>
-                <Input name="dailyMinor" type="number" min={1} step={1} required defaultValue={50000} />
+                <MoneyField name="dailyMinor" currency={currency} locale={locale} required defaultMinor={50000} />
               </Field>
               <Field label={l("bound")} hint={l("studio.boundHint")}>
-                <Input name="boundMinor" type="number" min={1} step={1} defaultValue={10000} />
+                <MoneyField name="boundMinor" currency={currency} locale={locale} defaultMinor={10000} />
               </Field>
               <Field label={l("studio.owner")} required>
                 <Select

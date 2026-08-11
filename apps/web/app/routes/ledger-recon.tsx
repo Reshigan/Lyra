@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Form,
   Link,
@@ -17,6 +18,7 @@ import {
   Field,
   Input,
   Money,
+  MoneyField,
   Ref,
   Select,
   shortRef,
@@ -198,6 +200,10 @@ export default function LedgerRecon() {
   const locale = shell?.locale ?? "en";
   const t = translator(locale);
   const l = labelIn(locale, shell?.domainPack);
+  // The money field's precision follows the currency beside it: 500 in JPY is
+  // 500 minor units, in ZAR it is 50000.
+  const [currency, setCurrency] = useState(loaded.currency);
+
   const busy = navigation.state !== "idle";
 
   if (loaded.denied) {
@@ -515,13 +521,19 @@ export default function LedgerRecon() {
                 <Input name="period" defaultValue={new Date().toISOString().slice(0, 7)} required />
               </Field>
               <Field label={l("currency")} required className="w-28">
-                <Input name="currency" defaultValue={loaded.currency} maxLength={3} required />
+                <Input
+                  name="currency"
+                  value={currency}
+                  onChange={(event) => setCurrency(event.target.value.toUpperCase())}
+                  maxLength={3}
+                  required
+                />
               </Field>
               <Field label={l("recon.counterparty")} className="w-56">
                 <Input name="counterpartyRef" />
               </Field>
               <Field label={l("recon.tolerance")} className="w-44">
-                <Input name="toleranceMinor" type="number" step="1" min="0" inputMode="numeric" />
+                <MoneyField name="toleranceMinor" currency={currency || "ZAR"} locale={locale} min={0} />
               </Field>
             </div>
 

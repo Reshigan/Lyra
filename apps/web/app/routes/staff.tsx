@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Form,
   Link,
@@ -18,6 +19,7 @@ import {
   Field,
   Input,
   Money,
+  MoneyField,
   PageHeader,
   Select,
   Table,
@@ -480,6 +482,10 @@ export default function Staff() {
   const locale = shell?.locale ?? "en";
   const t = translator(locale);
   const l = labelsIn(locale);
+  // The money field's precision follows the currency beside it: 500 in JPY is
+  // 500 minor units, in ZAR it is 50000.
+  const [currency, setCurrency] = useState(shell?.currency ?? "ZAR");
+
   const busy = navigation.state !== "idle";
 
   if (!loaded.may.read) {
@@ -710,10 +716,17 @@ export default function Staff() {
                     <DatePicker name="endsAt" withTime required />
                   </Field>
                   <Field label={l("maxAmount")} hint={l("maxAmountHint")}>
-                    <Input type="number" name="maxAmountMinor" min={1} className="w-32" />
+                    <MoneyField name="maxAmountMinor" currency={currency || "ZAR"} locale={locale} className="w-32" />
                   </Field>
                   <Field label={l("currency")}>
-                    <Input name="currency" maxLength={3} pattern="[A-Za-z]{3}" className="w-24" />
+                    <Input
+                      name="currency"
+                      value={currency}
+                      onChange={(event) => setCurrency(event.target.value.toUpperCase())}
+                      maxLength={3}
+                      pattern="[A-Za-z]{3}"
+                      className="w-24"
+                    />
                   </Field>
                 </div>
                 <Field label={l("modules")}>

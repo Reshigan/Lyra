@@ -715,8 +715,8 @@ const LABELS: Record<string, Record<string, string>> = {
        returned so the actor reads a sentence and the log keeps the code */
     "problem.bad_intent": "That control sent something this screen does not do.",
     "problem.campaign_required": "Choose a campaign first.",
-    "problem.budget_required": "Give a daily budget as a whole number of minor units.",
-    "problem.bound_required": "Give a per-move ceiling as a whole number of minor units.",
+    "problem.budget_required": "Give a daily budget.",
+    "problem.bound_required": "Give a per-move ceiling.",
     "problem.bound_over_daily": "The per-move ceiling cannot exceed the daily budget.",
     "problem.autonomy_required": "Choose how much the agents may do on their own.",
     "problem.confirm_required": "Tick the confirmation before changing the bounds.",
@@ -964,8 +964,8 @@ const LABELS: Record<string, Record<string, string>> = {
     /* refusals */
     "problem.bad_intent": "أرسل هذا الزر أمرًا لا تنفّذه هذه الشاشة.",
     "problem.campaign_required": "اختر حملة أولًا.",
-    "problem.budget_required": "أدخل ميزانية يومية كعدد صحيح من الوحدات الصغرى.",
-    "problem.bound_required": "أدخل سقفًا للحركة الواحدة كعدد صحيح من الوحدات الصغرى.",
+    "problem.budget_required": "أدخل ميزانية يومية.",
+    "problem.bound_required": "أدخل سقفًا للحركة الواحدة.",
     "problem.bound_over_daily": "سقف الحركة الواحدة لا يجوز أن يتجاوز الميزانية اليومية.",
     "problem.autonomy_required": "حدّد ما يجوز للوكلاء فعله وحدهم.",
     "problem.confirm_required": "علّم خانة التأكيد قبل تغيير الحدود.",

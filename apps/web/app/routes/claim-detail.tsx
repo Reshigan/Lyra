@@ -15,6 +15,7 @@ import {
   EmptyState,
   Input,
   Money,
+  MoneyField,
   Ref,
   Select,
   Stat,
@@ -220,12 +221,12 @@ export const LABELS: Record<string, Record<string, string>> = {
     reserveTitle: "Reserve",
     reserveIntro: "Say what the claim is now worth and why. Each figure is added to the history; nothing is written over.",
     reserveHead: "Head",
-    reserveAmount: "Reserve after this movement, in minor units",
+    reserveAmount: "Reserve after this movement",
     reserveBasis: "Basis",
     reserveRationale: "Why",
     reserveSubmit: "Add the reserve",
     reserveDone: "The reserve was added.",
-    reserveRequired: "Enter the reserve as a whole number of minor units, zero or above.",
+    reserveRequired: "Enter the reserve as an amount of zero or more.",
     basisRequired: "Choose what the figure is based on.",
     hopTitle: "Move the claim",
     hopIntro: "Only the moves the claim can legally make are offered. Settlement is reached by requesting a payment.",
@@ -240,7 +241,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     payKind: "Kind",
     payPayeeKind: "Paid to",
     payPayeeRef: "Payee",
-    payAmount: "Amount, in minor units",
+    payAmount: "Amount",
     payMethod: "Method",
     paySubmit: "Request the payment",
     paymentDone: "The payment was requested.",
@@ -351,12 +352,12 @@ export const LABELS: Record<string, Record<string, string>> = {
     reserveTitle: "الاحتياطي",
     reserveIntro: "حدّد قيمة المطالبة الآن وسبب ذلك. كل رقم يُضاف إلى السجل، ولا يُستبدل أي رقم سابق.",
     reserveHead: "البند",
-    reserveAmount: "الاحتياطي بعد هذه الحركة بالوحدات الصغرى",
+    reserveAmount: "الاحتياطي بعد هذه الحركة",
     reserveBasis: "الأساس",
     reserveRationale: "السبب",
     reserveSubmit: "إضافة الاحتياطي",
     reserveDone: "تمت إضافة الاحتياطي.",
-    reserveRequired: "أدخل الاحتياطي كرقم صحيح بالوحدات الصغرى، صفر أو أكثر.",
+    reserveRequired: "أدخل الاحتياطي كمبلغ صفر أو أكثر.",
     basisRequired: "اختر الأساس الذي بُني عليه الرقم.",
     hopTitle: "تحريك المطالبة",
     hopIntro: "تُعرض الحركات المسموح بها فقط. التسوية تتم بطلب دفعة.",
@@ -371,7 +372,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     payKind: "النوع",
     payPayeeKind: "جهة الدفع",
     payPayeeRef: "المستفيد",
-    payAmount: "المبلغ بالوحدات الصغرى",
+    payAmount: "المبلغ",
     payMethod: "الوسيلة",
     paySubmit: "طلب الدفع",
     paymentDone: "تم طلب الدفع.",
@@ -863,15 +864,7 @@ export default function ClaimDetail() {
               </label>
               <label className="flex flex-col gap-1 font-ui text-12 text-muted">
                 {l("reserveAmount")}
-                <Input
-                  name="amountMinor"
-                  type="number"
-                  min={0}
-                  step={1}
-                  inputMode="numeric"
-                  required
-                  className="w-40"
-                />
+                <MoneyField name="amountMinor" currency={claim.currency} locale={locale} required className="w-40" />
               </label>
               <label className="flex flex-col gap-1 font-ui text-12 text-muted">
                 {l("reserveBasis")}
@@ -948,15 +941,7 @@ export default function ClaimDetail() {
               </label>
               <label className="flex flex-col gap-1 font-ui text-12 text-muted">
                 {l("payAmount")}
-                <Input
-                  name="amountMinor"
-                  type="number"
-                  min={1}
-                  step={1}
-                  inputMode="numeric"
-                  required
-                  className="w-40"
-                />
+                <MoneyField name="amountMinor" currency={claim.currency} locale={locale} required className="w-40" />
               </label>
               <label className="flex flex-col gap-1 font-ui text-12 text-muted">
                 {l("payMethod")}

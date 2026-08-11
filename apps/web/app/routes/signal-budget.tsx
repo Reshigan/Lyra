@@ -17,9 +17,9 @@ import {
   EmptyState,
   Field,
   GuardrailNotice,
-  Input,
   KPIWall,
   Money,
+  MoneyField,
   Select,
   Stat,
   Table,
@@ -273,10 +273,10 @@ export default function BudgetAndBounds() {
                 />
               </Field>
               <Field label={l("budget.daily")} required>
-                <Input name="dailyMinor" type="number" min={1} step={1} required defaultValue={50000} />
+                <MoneyField name="dailyMinor" currency={currency} locale={locale} required defaultMinor={50000} />
               </Field>
               <Field label={l("bound")} hint={l("studio.boundHint")} required>
-                <Input name="boundMinor" type="number" min={1} step={1} required defaultValue={10000} />
+                <MoneyField name="boundMinor" currency={currency} locale={locale} required defaultMinor={10000} />
               </Field>
             </div>
             <Checkbox name="confirm" label={l("confirm")} required />

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Form,
   Link,
@@ -14,6 +15,7 @@ import {
   EmptyState,
   Field,
   Input,
+  MoneyField,
   Select,
   Table,
   Textarea,
@@ -137,6 +139,10 @@ export default function LedgerOpenTxn() {
   const t = translator(locale);
   const l = labelIn(locale, shell?.domainPack);
   const busy = navigation.state !== "idle";
+  // The money field's precision follows the currency beside it: 500 in JPY is
+  // 500 minor units, in ZAR it is 50000.
+  const [currency, setCurrency] = useState(loaded.currency);
+
 
   if (loaded.denied) {
     return (
@@ -254,10 +260,15 @@ export default function LedgerOpenTxn() {
               />
             </Field>
             <Field label={l("currency")} className="w-28">
-              <Input name="currency" defaultValue={loaded.currency} maxLength={3} />
+              <Input
+                name="currency"
+                value={currency}
+                onChange={(event) => setCurrency(event.target.value.toUpperCase())}
+                maxLength={3}
+              />
             </Field>
             <Field label={l("open.gross")} className="w-44">
-              <Input name="grossMinor" type="number" step="1" inputMode="numeric" />
+              <MoneyField name="grossMinor" currency={currency || "ZAR"} locale={locale} />
             </Field>
           </div>
 
