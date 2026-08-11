@@ -318,6 +318,7 @@ export default function LedgerOpenTxn() {
           columns={columns}
           rows={loaded.types}
           rowKey={(row) => row.code}
+          empty={<EmptyState title={l("open.catalogueEmpty")} body={l("open.catalogueEmptyBody")} />}
         />
       </section>
     </div>

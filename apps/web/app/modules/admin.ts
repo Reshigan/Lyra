@@ -277,6 +277,8 @@ export const admin: WorkspaceSpec = {
       act: "Act",
       act_with_approval: "Act with approval",
       act_and_report: "Act and report",
+      act_within_limits: "Act within limits",
+      autonomous: "Act on its own",
 
       emailsJson: "Email addresses",
       phonesJson: "Phone numbers",
@@ -586,6 +588,8 @@ export const admin: WorkspaceSpec = {
       act: "تنفيذ",
       act_with_approval: "تنفيذ بموافقة",
       act_and_report: "تنفيذ وإبلاغ",
+      act_within_limits: "تنفيذ ضمن حدود",
+      autonomous: "تنفيذ ذاتي",
 
       emailsJson: "عناوين البريد الإلكتروني",
       phonesJson: "أرقام الهاتف",
@@ -1340,7 +1344,11 @@ export const admin: WorkspaceSpec = {
         {
           name: "autonomyLevel",
           type: "select",
-          options: ["suggest", "draft", "act_with_approval", "act", "act_and_report"]
+          // `ai_agents.autonomy_level`, whose ladder is AGENT_AUTONOMY — not the
+          // campaign ladder next to it (packages/db/src/json.ts, ADR-0049). The
+          // rungs offered here used to be the campaign's, so picking one wrote a
+          // word the API rejects (docs/ui.md §7 item 9).
+          options: ["suggest", "act_with_approval", "act_within_limits", "autonomous"]
         },
         { name: "tier", type: "select", options: ["fast", "standard", "reasoning"] },
         { name: "toolsJson", type: "json" },
@@ -1352,7 +1360,11 @@ export const admin: WorkspaceSpec = {
         {
           name: "autonomyLevel",
           type: "select",
-          options: ["suggest", "draft", "act_with_approval", "act", "act_and_report"]
+          // `ai_agents.autonomy_level`, whose ladder is AGENT_AUTONOMY — not the
+          // campaign ladder next to it (packages/db/src/json.ts, ADR-0049). The
+          // rungs offered here used to be the campaign's, so picking one wrote a
+          // word the API rejects (docs/ui.md §7 item 9).
+          options: ["suggest", "act_with_approval", "act_within_limits", "autonomous"]
         },
         { name: "tier", type: "select", options: ["fast", "standard", "reasoning"] },
         { name: "toolsJson", type: "json" },

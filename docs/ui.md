@@ -1126,14 +1126,24 @@ Prioritised. Each item names the specific defect, not a vague dissatisfaction.
 
 ### P0 — correctness and safety
 
-**1. The retention purge has no confirmation at all.**
+**1. ~~The retention purge has no confirmation at all.~~** *Closed.* The purge
+runs dry by default and shows what it would destroy; the destructive run is a
+second form carrying `confirm=purge`, so the figures stay on screen while the
+actor commits to them.
+
+**The defect as found:**
 `/compliance/run/retention` permanently destroys customer data. It has no
 `confirm()`, no confirmation checkbox, and no approval gate. Every other
 destructive act in the product asks at least once. This is the single worst gap
 found. It needs the same treatment as the commission clawback: figures on
 screen, a required checkbox, and an approval policy behind it.
 
-**2. There are five different confirmation idioms for consequential actions.**
+**2. ~~There are five different confirmation idioms for consequential
+actions.~~** *Closed.* There is one idiom — `ConfirmButton` in
+`components/confirm.tsx` — and `window.confirm()` survives nowhere but that
+file's own comment explaining why it is gone.
+
+**The defect as found:**
 The product cannot decide how it asks "are you sure":
 
 | Idiom | Where |
@@ -1152,7 +1162,11 @@ The product already argues for the right one in `commission-clawback.tsx`: *"A
 checkbox, not a modal: the figures stay on screen while the actor confirms
 them."* Make that the rule and remove `confirm()` everywhere.
 
-**3. Machine strings leak to users in at least six places.** Each renders a raw
+**3. ~~Machine strings leak to users in at least six places.~~** *Closed.*
+`humanise()` is reached on every path listed below, the JSON dumps are rendered
+fields, and an unlabelled analytics tile key reads as words.
+
+**The defect as found:** Each renders a raw
 enum key, permission string or JSON blob where a sentence belongs:
 
 - `/approvals` — "Why this needs approval" renders raw machine context keys as
@@ -1177,8 +1191,9 @@ these paths.
 
 ### P1 — chrome that was designed and never mounted
 
-**4. The shell is missing five pieces the design system already ships.**
-There is **no toast host**, **no command bar / global search (⌘K)**, **no
+**4. ~~The shell is missing five pieces the design system already ships.~~**
+
+**The defect as found:** There is **no toast host**, **no command bar / global search (⌘K)**, **no
 breadcrumb**, **no module switcher** and **no user menu** — the account controls
 are two flat text links and a name. Every one of these exists in
 `packages/ui` and is imported by nothing. Symptoms today: a successful save is
@@ -1198,19 +1213,31 @@ indication of where you are beyond the nav highlight.
 skeletons over spinners above 400ms. Zero screens do this. Loading states are
 either instant (server-rendered) or nothing.
 
-**6. `Pagination` is shipped and unused.** Every list hand-rolls a footer with
+**6. ~~`Pagination` is shipped and unused.~~** *Closed.* Lists route through
+the shared footer and the page-size control is reachable: `[25, 50, 100, 200]`
+in `module.tsx`, carried in the query string.
+
+**The defect as found:** Every list hand-rolls a footer with
 "{count} shown" and Previous/Next. Consistent enough, but the page-size control
 (`[25, 50, 100]`) is unreachable anywhere in the product.
 
 ### P2 — the ambient AI grammar is inconsistently applied
 
-**7. Two AI surfaces are missing the marker or the why.**
+**7. ~~Two AI surfaces are missing the marker or the why.~~** *Closed.* The
+comparison screen carries the single ✦ with its "why" one interaction away and
+labels the ranking as the model's answer.
+
+**The defect as found:**
 `/distribution/quote-requests/:id/compare` shows a `ConfidenceMeter` but carries
 **no ✦ marker and no why-link** — the user sees a model's confidence in a ranking
 they cannot inspect. The next-best-offer screen ranks by model score with the
 comment "the order is the model's answer" but does not label it as such.
 
-**8. `AgentBadge`, `GhostText` and `ConfidenceMeter` hard-code English.**
+**8. ~~`AgentBadge`, `GhostText` and `ConfidenceMeter` hard-code English.~~**
+*Closed.* The kit's AI chrome reads its words through `useUiText()`, so the chip
+speaks the locale it is rendered in.
+
+**The defect as found:**
 "Drafted by {agent}", "AI-generated", "Model confidence", "Why this was drafted"
 are literals inside `packages/ui/src/ai.tsx`. They stay English under `dir="rtl"`
 and the Arabic locale, producing an LTR English chip inside an RTL Arabic
@@ -1218,12 +1245,16 @@ sentence. This breaks §2.3 in the most visible possible place. The affected
 screens' own code even notes it: the AI components "ship their own English
 chrome".
 
-**9. Autonomy levels disagree between two screens.** `/admin/ai/console` offers
-`suggest | act_with_approval | act_within_limits | autonomous`; the
-`/admin/agents` tab offers `suggest | draft | act_with_approval | act |
-act_and_report`. Same concept, two vocabularies, neither labelled in plain
-language. A user cannot tell whether "act" and "act_within_limits" are the same
-thing.
+**9. ~~Autonomy levels disagree between two screens.~~** *Closed.* An agent has
+one ladder — `AGENT_AUTONOMY`: suggest, act with approval, act within limits,
+act on its own (`packages/db/src/json.ts`, ADR-0049) — and the `/admin/agents`
+tab now offers exactly that, labelled in both locales. It had been offering the
+*campaign* ladder (`suggest | draft | act_with_approval | act |
+act_and_report`), which the agents API rejects: three of the five rungs a user
+could pick were words the platform would not accept. The campaign ladder still
+belongs to campaigns, where the budget screen sets it.
+
+**The defect as found:**
 
 ### P3 — screens that are structurally weak
 
@@ -1235,7 +1266,12 @@ sign-in & access, brand, regional, your data — served by `/settings/:tab`
 lacks the permission for is not shown at all: `/settings/brand` without
 `core:tenants:update` falls back to profile instead of 404ing.
 
-**11. `/distribution/quote-requests/:id/compare` cannot be read on a laptop.**
+**11. ~~`/distribution/quote-requests/:id/compare` cannot be read on a
+laptop.~~** *Closed.* The row-label column is `sticky start-0` (logical, so the
+sticky edge follows `dir`), and the header row sticks with it — scrolling to the
+fourth provider keeps the labels.
+
+**The defect as found:**
 It is a transposed table (records are columns) inside a `tabIndex={0}` sideways
 scroll region with **no sticky first column and no sticky header**. Scrolling
 right to reach the fourth provider loses the row labels entirely, so the user is
@@ -1251,7 +1287,15 @@ role is read-only dashboards, this is the widest gap between promise and screen.
 Decide whether the answer is a chart library or a deliberate, well-designed
 no-chart language — the current state is neither.
 
-**13. Empty states are inconsistent per screen.** `EmptyState` is the most-used
+**13. ~~Empty states are inconsistent per screen.~~** *Closed.* Every table
+named below now carries an `empty`: the transaction-type catalogue says a type
+must be published before anything can be opened, the compliance manifest and
+evidence tables have theirs, and `/ledger/period-close` distinguishes "no period
+selected" from "you cannot read periods" instead of telling a permitted user
+they lack access. The approvals section was already an `EmptyState`, not a raw
+`<p>`.
+
+**The defect as found:** `EmptyState` is the most-used
 component in the product (20 imports) and yet several tables ship without an
 `empty` prop at all (the transaction-type catalogue, the compliance manifest),
 falling back to a bare blank; the transaction approvals section uses a raw
