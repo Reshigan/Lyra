@@ -24,6 +24,8 @@ import {
 import { ApiError, api } from "../api.server";
 import { cloudflare } from "../context";
 import { pseudoText } from "../i18n";
+import { axis } from "../modules/axis";
+import { labelsFor, optionLabel } from "../modules/spec";
 import { Gate } from "./staff";
 import { useShellData } from "./workspace";
 
@@ -458,6 +460,16 @@ export function phrase(problem: Refusal, l: Label): Refusal {
   return text === key ? problem : { ...problem, title: text };
 }
 
+/**
+ * A case status as the desk says it. The rollup comes back keyed the way the
+ * table stores it — `quoting`, `failed` — and the breakdown printed exactly
+ * that under a STATUS heading. AXIS already writes these labels for its own
+ * screens (modules/axis.ts `status.*`, en and ar); this reads the same table.
+ */
+export function statusLabel(status: string, locale: string, pack?: string): string {
+  return optionLabel(labelsFor(axis, locale, pack), "status", status);
+}
+
 /* -------------------------------------------------------------- the screen */
 
 export default function AxisAnalytics() {
@@ -468,6 +480,7 @@ export default function AxisAnalytics() {
 
   const locale = shell?.locale ?? "en";
   const l = labelsIn(locale);
+  const statusName = (status: string) => statusLabel(status, locale, shell?.domainPack);
   const held = new Set(shell?.permissions ?? []);
   const busy = navigation.state !== "idle";
 
@@ -484,7 +497,7 @@ export default function AxisAnalytics() {
       header: l("byStatus.status"),
       render: (row) => (
         <span className="flex items-center gap-2">
-          <span className="font-ui text-13 text-text">{row.status}</span>
+          <span className="font-ui text-13 text-text">{statusName(row.status)}</span>
           {row.exception ? (
             <Badge tone="danger" size="sm">
               {l("byStatus.exception")}
@@ -501,7 +514,7 @@ export default function AxisAnalytics() {
         <ProgressBar
           value={Math.round(row.share * 100)}
           tone={row.exception ? "danger" : "accent"}
-          label={`${row.status}: ${asPercent(row.share, locale)}`}
+          label={`${statusName(row.status)}: ${asPercent(row.share, locale)}`}
         />
       )
     }

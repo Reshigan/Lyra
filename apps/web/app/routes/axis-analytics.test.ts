@@ -10,6 +10,7 @@ import {
   cycleStats,
   definitionFor,
   durationIn,
+  statusLabel,
   exceptionRate,
   isException,
   labelsIn,
@@ -420,5 +421,23 @@ describe("definitionFor", () => {
 describe("SAMPLE", () => {
   it("stays inside the API's page ceiling", () => {
     expect(SAMPLE).toBeLessThanOrEqual(200);
+  });
+});
+
+// The "Where the work is" breakdown printed the stored keys — `quoting`,
+// `failed` — under a STATUS heading, and again inside the bar's screen-reader
+// label.
+describe("statusLabel", () => {
+  it("says the status the way the desk says it", () => {
+    expect(statusLabel("quoting", "en")).toBe("Quoting");
+    expect(statusLabel("failed", "en")).toBe("Failed");
+  });
+
+  it("translates", () => {
+    expect(statusLabel("quoting", "ar")).not.toBe("quoting");
+  });
+
+  it("still reads as words for a status nobody wrote a label for", () => {
+    expect(statusLabel("pending_settlement", "en")).toBe("Pending settlement");
   });
 });
