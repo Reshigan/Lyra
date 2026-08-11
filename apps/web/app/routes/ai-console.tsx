@@ -27,7 +27,8 @@ import {
   type BadgeTone,
   type Column
 } from "@lyra/ui";
-import { ApiError, api } from "../api.server";
+import { ApiError, api, names } from "../api.server";
+import { who, type Names } from "../names";
 import { cloudflare } from "../context";
 import { moduleName, pseudoText, translator } from "../i18n";
 import { Problem } from "./module";
@@ -145,6 +146,12 @@ const LABELS: Record<string, Record<string, string>> = {
     "agents.title": "Agents",
     "agents.module": "Module",
     "agents.tier": "Tier",
+    // ai_agents.tier picks how much model an agent gets. The cards printed the
+    // stored key — "reasoning", "standard", "fast" — under a heading reading
+    // Tier, which reads as three unrelated words rather than one scale.
+    "tier.reasoning": "Deep reasoning",
+    "tier.standard": "Standard",
+    "tier.fast": "Fast",
     "agents.autonomy": "Autonomy",
     "agents.autonomyConfirmed": "Level confirmed by the API",
     "agents.status": "Status",
@@ -275,6 +282,9 @@ const LABELS: Record<string, Record<string, string>> = {
     "agents.title": "الوكلاء",
     "agents.module": "الوحدة",
     "agents.tier": "الفئة",
+    "tier.reasoning": "استدلال عميق",
+    "tier.standard": "قياسي",
+    "tier.fast": "سريع",
     "agents.autonomy": "مستوى الاستقلالية",
     "agents.autonomyConfirmed": "المستوى المؤكَّد من الواجهة البرمجية",
     "agents.status": "الحالة",
@@ -507,6 +517,18 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     readable(api<KillState>("/v1/ai/kill-switches", opts))
   ]);
 
+  // Every ref on this page is a person: who paused an agent, who asked for a
+  // run, who a guardrail fired about. They arrived as `user:us_01KE9…` and
+  // were rendered as that.
+  const resolved = await names(
+    [
+      ...(agents?.data ?? []).map((agent) => agent.pausedBy),
+      ...(audit?.data ?? []).flatMap((row) => [row.actorRef, row.subjectRef]),
+      ...(guardrails?.data ?? []).map((event) => event.subjectRef)
+    ],
+    opts
+  );
+
   return {
     budget,
     spend,
@@ -514,7 +536,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     runs: runs?.data ?? null,
     guardrails: guardrails?.data ?? [],
     audit: audit?.data ?? null,
-    kill
+    kill,
+    names: resolved
   };
 }
 
@@ -702,7 +725,7 @@ export default function AiConsole() {
         </EvidenceLink>
       )
     },
-    { key: "module", header: L("runs.askedBy"), render: (run) => run.module },
+    { key: "module", header: L("runs.askedBy"), render: (run) => moduleName(t, run.module) },
     { key: "purpose", header: L("runs.purpose"), render: (run) => run.purpose },
     {
       key: "state",
@@ -785,7 +808,11 @@ export default function AiConsole() {
       header: L("guardrails.run"),
       render: (event) => <Ref value={event.runId} className="text-12" />
     },
-    { key: "subjectRef", header: L("guardrails.subject"), render: (event) => event.subjectRef ?? "—" }
+    {
+      key: "subjectRef",
+      header: L("guardrails.subject"),
+      render: (event) => (event.subjectRef ? who(event.subjectRef, loaded.names) : "—")
+    }
   ];
 
   const auditColumns: Array<Column<AuditRow>> = [
@@ -794,7 +821,7 @@ export default function AiConsole() {
       header: L("audit.when"),
       render: (row) => <DateTime value={row.ts} locale={locale} precision="second" />
     },
-    { key: "actorRef", header: L("audit.actor"), render: (row) => row.actorRef },
+    { key: "actorRef", header: L("audit.actor"), render: (row) => who(row.actorRef, loaded.names) },
     { key: "module", header: L("audit.module"), render: (row) => moduleName(t, row.module) },
     { key: "purpose", header: L("audit.purpose"), render: (row) => row.purpose },
     {
@@ -993,6 +1020,7 @@ export default function AiConsole() {
                 busy={busy}
                 canPause={held.has("ai:agents:pause")}
                 canWrite={held.has("ai:agents:write")}
+                resolved={loaded.names}
                 pending={
                   result?.pending && result.pending.agentKey === agent.key ? result.pending : null
                 }
@@ -1257,9 +1285,11 @@ interface AgentCardProps {
   canPause: boolean;
   canWrite: boolean;
   pending: { agentKey: string; requested: string } | null;
+  /** Ref → name, so "Paused by" reads as a colleague and not as a ULID. */
+  resolved: Names;
 }
 
-function AgentCard({ agent, L, locale, busy, canPause, canWrite, pending }: AgentCardProps) {
+function AgentCard({ agent, L, locale, busy, canPause, canWrite, pending, resolved }: AgentCardProps) {
   const name = localised(agent.nameJson, locale) ?? agent.key;
   const description = localised(agent.descriptionJson, locale);
   const tools = asList(agent.toolsJson);
@@ -1274,7 +1304,7 @@ function AgentCard({ agent, L, locale, busy, canPause, canWrite, pending }: Agen
       }
       description={
         description ??
-        `${L("agents.module")}: ${moduleName(translator(locale), agent.module)} · ${L("agents.tier")}: ${agent.tier}`
+        `${L("agents.module")}: ${moduleName(translator(locale), agent.module)} · ${L("agents.tier")}: ${L(`tier.${agent.tier}`, agent.tier)}`
       }
       actions={
         <Badge tone={toneOf(agent.status)}>{L(`status.${agent.status}`, agent.status)}</Badge>
@@ -1297,7 +1327,7 @@ function AgentCard({ agent, L, locale, busy, canPause, canWrite, pending }: Agen
             detail={<DateTime value={agent.updatedAt} locale={locale} precision="minute" />}
           />
           <Pair term={L("agents.module")} detail={moduleName(translator(locale), agent.module)} />
-          <Pair term={L("agents.tier")} detail={agent.tier} />
+          <Pair term={L("agents.tier")} detail={L(`tier.${agent.tier}`, agent.tier)} />
           {/* The prompt reference, never the prompt: ai_prompts.body is the
               system text and this screen does not load it. */}
           <Pair
@@ -1321,7 +1351,9 @@ function AgentCard({ agent, L, locale, busy, canPause, canWrite, pending }: Agen
           {agent.pausedReason ? (
             <Pair term={L("agents.pausedReason")} detail={agent.pausedReason} />
           ) : null}
-          {agent.pausedBy ? <Pair term={L("agents.pausedBy")} detail={agent.pausedBy} /> : null}
+          {agent.pausedBy ? (
+            <Pair term={L("agents.pausedBy")} detail={who(agent.pausedBy, resolved)} />
+          ) : null}
         </dl>
 
         {pending ? (
