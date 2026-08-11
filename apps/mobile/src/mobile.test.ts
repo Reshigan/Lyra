@@ -38,6 +38,7 @@ const { fontFamilyFor, themeFor, productName } = await import("./theme");
 const { defaultWorkspaceForRoles, resolvePersona } = await import("./workspace");
 const { PERSONA_TABS, tabsFor } = await import("./personas");
 const { resolveGate } = await import("./biometric-gate");
+const { fetchNames, shortRef, who } = await import("./names");
 const {
   DOC_TYPES,
   approvalAmountMinor,
@@ -726,6 +727,56 @@ describe("write calls", () => {
     expect(form.get("caseId")).toBe("cas_1");
     expect(form.get("docType")).toBe("eid");
     expect(form.get("file")).toBeTruthy();
+  });
+});
+
+describe("name resolution", () => {
+  // The approvals queue rendered `subjectRef` and `requestedBy` as raw ULIDs.
+  // Names are decoration over refs the screen already holds, so the resolver
+  // degrades to short refs rather than failing the queue.
+  const stubFetch = (impl: (url: string) => Response) => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => impl(String(url))));
+  };
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("shortens an opaque ref and leaves anything else alone", () => {
+    expect(shortRef("us_01KE953T07XY8ZQK4M2N6VJH3B")).toBe("us_01KE…JH3B");
+    expect(shortRef("user:us_01KE953T07XY8ZQK4M2N6VJH3B")).toBe("user:us_01KE…JH3B");
+    expect(shortRef("CASE-1042")).toBe("CASE-1042");
+  });
+
+  it("prefers the resolved name and falls back to the short ref", () => {
+    const names = { "user:us_1": "Layla Al Mansouri" };
+    expect(who("user:us_1", names)).toBe("Layla Al Mansouri");
+    expect(who("us_01KE953T07XY8ZQK4M2N6VJH3B", names)).toBe("us_01KE…JH3B");
+    expect(who(null, names)).toBeNull();
+  });
+
+  it("asks once for a de-duplicated batch, dropping empty refs", async () => {
+    const urls: string[] = [];
+    stubFetch((url) => {
+      urls.push(url);
+      return new Response(JSON.stringify({ names: { cu_1: "Falcon Freight" } }), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      });
+    });
+    const names = await fetchNames("t", ["cu_1", "cu_1", null, undefined]);
+    expect(urls).toHaveLength(1);
+    expect(urls[0]).toContain("/v1/names?refs=cu_1");
+    expect(names).toEqual({ cu_1: "Falcon Freight" });
+  });
+
+  it("asks nothing when there is nothing to resolve", async () => {
+    stubFetch(() => new Response("{}", { status: 200 }));
+    expect(await fetchNames("t", [null, ""])).toEqual({});
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("returns no names rather than throwing when the lookup fails", async () => {
+    stubFetch(() => new Response("nope", { status: 500 }));
+    await expect(fetchNames("t", ["cu_1"])).resolves.toEqual({});
   });
 });
 

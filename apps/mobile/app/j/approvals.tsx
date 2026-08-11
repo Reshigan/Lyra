@@ -9,6 +9,7 @@ import {
   type Inbox
 } from "../../src/api";
 import { approvalAmountMinor, approvalTitle } from "../../src/journeys";
+import { fetchNames, who, type Names } from "../../src/names";
 import { useSession } from "../../src/session";
 import { RADIUS, SPACE } from "../../src/theme";
 import {
@@ -48,6 +49,23 @@ export default function Approvals() {
     (signal) => (token ? fetchInbox(token, signal) : Promise.resolve(EMPTY)),
     [token]
   );
+
+  // Second pass over the queue's refs: a subject and a requester are `cu_…` and
+  // `user:us_…` on the wire, and a phone is where most approvals are actually
+  // decided. Depends on the loaded inbox, so it runs after it and degrades to
+  // short refs (names.ts) rather than holding the queue up.
+  const resolved = useLoad(
+    (signal) =>
+      token && inbox.data
+        ? fetchNames(
+            token,
+            inbox.data.approvals.flatMap((one) => [one.subjectRef, one.requestedBy]),
+            signal
+          )
+        : Promise.resolve({} as Names),
+    [token, inbox.data]
+  );
+  const names = resolved.data ?? {};
 
   if (session.status === "loading") return <Loading chrome={chrome} />;
   if (session.status !== "signedIn") return <Redirect href="/login" />;
@@ -129,11 +147,11 @@ export default function Approvals() {
                 {approvalTitle(approval)}
               </Body>
               <Muted chrome={chrome}>
-                {t("approvals.subject", { subject: approval.subjectRef })}
+                {t("approvals.subject", { subject: who(approval.subjectRef, names) ?? "" })}
               </Muted>
               {approval.requestedBy ? (
                 <Muted chrome={chrome}>
-                  {t("approvals.requestedBy", { name: approval.requestedBy })}
+                  {t("approvals.requestedBy", { name: who(approval.requestedBy, names) ?? "" })}
                 </Muted>
               ) : null}
               {amount !== null ? (
