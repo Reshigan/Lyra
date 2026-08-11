@@ -22,7 +22,8 @@ import {
   Table,
   type Column
 } from "@lyra/ui";
-import { ApiError, api, fetchMe, type Problem } from "../api.server";
+import { ApiError, api, fetchMe, names, type Problem } from "../api.server";
+import { RefPicker, type RefOption } from "../components/ref-picker";
 import { cloudflare } from "../context";
 import { translator } from "../i18n";
 import { humanise } from "../modules/spec";
@@ -201,6 +202,16 @@ export const PAY_KINDS = ["indemnity", "expense", "interim", "final", "ex_gratia
 export const PAYEE_KINDS = ["claimant", "repairer", "provider", "third_party", "insurer"] as const;
 export const PAY_METHODS = ["eft", "cheque", "card", "insurer_direct"] as const;
 
+/**
+ * A payee is a namespaced ref (`customer:cu_01KE…`, `vendor:garage-1`), so the
+ * box cannot become a plain picker. The one payee a desk reaches for most is
+ * the claimant, and the claim already knows who that is — offer them by name
+ * and leave every other payee to the typed ref.
+ */
+export function payeeOptions(customerId: string, holder: string | null): RefOption[] {
+  return holder ? [{ id: `customer:${customerId}`, label: holder }] : [];
+}
+
 /* ---------------------------------------------------------------- labels */
 
 export const LABELS: Record<string, Record<string, string>> = {
@@ -241,6 +252,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     payKind: "Kind",
     payPayeeKind: "Paid to",
     payPayeeRef: "Payee",
+    payPayeeHint: "Name, or vendor:garage-1",
     payAmount: "Amount",
     payMethod: "Method",
     paySubmit: "Request the payment",
@@ -372,6 +384,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     payKind: "النوع",
     payPayeeKind: "جهة الدفع",
     payPayeeRef: "المستفيد",
+    payPayeeHint: "الاسم، أو vendor:garage-1",
     payAmount: "المبلغ",
     payMethod: "الوسيلة",
     paySubmit: "طلب الدفع",
@@ -495,6 +508,7 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
     payments: [] as PaymentRow[],
     recoveries: [] as RecoveryRow[],
     may,
+    holder: null as string | null,
     idempotencyKey: crypto.randomUUID()
   };
 
@@ -504,7 +518,7 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
 
   // Evidence hangs off the work item, not the claim, so that read needs the
   // claim first. The rest of the fan-out is independent.
-  const [policy, documents, approvals, trail, reserves, payments, recoveries] = await Promise.all([
+  const [policy, documents, approvals, trail, reserves, payments, recoveries, named] = await Promise.all([
     held.has(PERM.policy) ? safe(() => api<PolicyRef>(`/v1/axis/policies/${claim.policyId}`, options), null) : null,
     held.has(PERM.documents) && claim.caseId
       ? safe(
@@ -536,7 +550,8 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
     // see the claim but not its payments still gets the claim.
     safe(() => api<Page<ReserveRow>>(`/v1/axis/claims/${id}/reserves?limit=25`, options), null),
     safe(() => api<Page<PaymentRow>>(`/v1/axis/claims/${id}/payments`, options), null),
-    safe(() => api<Page<RecoveryRow>>(`/v1/axis/claims/${id}/recoveries`, options), null)
+    safe(() => api<Page<RecoveryRow>>(`/v1/axis/claims/${id}/recoveries`, options), null),
+    names([claim.customerId], options).catch(() => ({}) as Record<string, string>)
   ]);
 
   return {
@@ -548,7 +563,8 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
     trail: rowsOf(trail),
     reserves: rowsOf(reserves),
     payments: rowsOf(payments),
-    recoveries: rowsOf(recoveries)
+    recoveries: rowsOf(recoveries),
+    holder: named[claim.customerId] ?? null
   };
 }
 
@@ -788,7 +804,7 @@ export default function ClaimDetail() {
           </Entry>
           <Entry term={l("holder")}>
             <Link to={`/admin/customers/${claim.customerId}/360`} className="text-accent hover:underline">
-              {claim.customerId}
+              {loaded.holder ?? <Ref value={claim.customerId} />}
             </Link>
           </Entry>
           <Entry term={l("against")}>
@@ -937,7 +953,13 @@ export default function ClaimDetail() {
               </label>
               <label className="flex flex-col gap-1 font-ui text-12 text-muted">
                 {l("payPayeeRef")}
-                <Input name="payeeRef" required className="w-56" />
+                <RefPicker
+                  name="payeeRef"
+                  options={payeeOptions(claim.customerId, loaded.holder)}
+                  placeholder={l("payPayeeHint")}
+                  required
+                  className="w-56"
+                />
               </label>
               <label className="flex flex-col gap-1 font-ui text-12 text-muted">
                 {l("payAmount")}

@@ -1,7 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import type { Env } from "../env";
-import { CLAIM_TRANSITIONS, LABELS, PERM, RESERVE_BASES, action, hopsFor, labelsIn, loader } from "./claim-detail";
+import {
+  CLAIM_TRANSITIONS,
+  LABELS,
+  PERM,
+  RESERVE_BASES,
+  action,
+  hopsFor,
+  labelsIn,
+  loader,
+  payeeOptions
+} from "./claim-detail";
 
 // Nothing on this screen overwrites money. A reserve is appended (the desk's
 // history of what it thought the claim was worth), a hop is a declared
@@ -380,5 +390,19 @@ describe("loader", () => {
     const loaded = await loader(loadArgs());
 
     expect(loaded.may).toMatchObject({ read: true, reserve: true, pay: false, update: false });
+  });
+});
+
+describe("payeeOptions", () => {
+  // The payee box asked for `customer:cu_01KE…` typed by hand, so paying the
+  // claimant — the common case — meant copying an id off another screen.
+  it("offers the claimant by name, under the ref the API expects", () => {
+    expect(payeeOptions("cu_01KE953T000WTENZD6WY9TPYA0", "Amina Haddad")).toEqual([
+      { id: "customer:cu_01KE953T000WTENZD6WY9TPYA0", label: "Amina Haddad" }
+    ]);
+  });
+
+  it("offers nothing when the holder cannot be named, leaving the typed ref", () => {
+    expect(payeeOptions("cu_01KE953T000WTENZD6WY9TPYA0", null)).toEqual([]);
   });
 });
