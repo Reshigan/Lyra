@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LABELS, coverage, labelsIn, providerTone } from "./admin-security";
+import { LABELS, coverage, labelsIn, providerTone, roleName, signInMethod } from "./admin-security";
 
 // The security posture screen is read-only by design (MFA is a platform floor,
 // not tenant policy), so there is no action reducer to test. What can go wrong
@@ -63,5 +63,29 @@ describe("labelsIn", () => {
 
   it("falls back to the English table for an unknown locale", () => {
     expect(labelsIn("fr")("title")).toBe(LABELS.en!.title);
+  });
+});
+
+// The people-outside-the-floor table printed `orbit.partners` under ROLES and
+// `password` under SIGN-IN METHOD — the grant key and the database column, at
+// an administrator deciding who to chase.
+describe("what the gaps table says about a person", () => {
+  const l = labelsIn("en");
+
+  it("names a role the way the org chart does", () => {
+    expect(roleName("orbit.partners", { "orbit.partners": "Partner manager" })).toBe("Partner manager");
+  });
+
+  it("still reads as words for a role nobody renamed", () => {
+    expect(roleName("orbit.partners", {})).toBe("Orbit partners");
+  });
+
+  it("says how someone signs in", () => {
+    expect(signInMethod("password", l)).toBe("Password");
+    expect(signInMethod("oidc", l)).toBe("Single sign-on");
+  });
+
+  it("says something readable for a method nobody spelled", () => {
+    expect(signInMethod("webauthn", l)).toBe("Webauthn");
   });
 });

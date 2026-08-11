@@ -3,6 +3,7 @@ import { Badge, Card, DateTime, EmptyState, PageHeader, Stat, Table, type Column
 import { ApiError, api, fetchMe, type Problem } from "../api.server";
 import { cloudflare } from "../context";
 import { pseudoText, translator } from "../i18n";
+import { humanise } from "../modules/spec";
 import { useShellData } from "./workspace";
 
 // docs/25 admin_security — "SSO, sessions, network and rate limits".
@@ -103,6 +104,9 @@ export const LABELS: Record<string, Record<string, string>> = {
     colEmail: "Sign-in address",
     colRoles: "Roles",
     colSignIn: "Sign-in method",
+    "signIn.password": "Password",
+    "signIn.oidc": "Single sign-on",
+    "signIn.saml": "Single sign-on",
     staffLink: "Open the staff directory to prompt or suspend an account",
     sessionsTitle: "Sessions",
     sessionsIntro:
@@ -165,6 +169,9 @@ export const LABELS: Record<string, Record<string, string>> = {
     colEmail: "عنوان تسجيل الدخول",
     colRoles: "الأدوار",
     colSignIn: "طريقة تسجيل الدخول",
+    "signIn.password": "كلمة مرور",
+    "signIn.oidc": "دخول موحّد",
+    "signIn.saml": "دخول موحّد",
     staffLink: "افتح دليل الموظفين لتنبيه حساب أو تعليقه",
     sessionsTitle: "الجلسات",
     sessionsIntro:
@@ -223,6 +230,28 @@ export function labelsIn(locale: string): (key: string, vars?: Record<string, st
   };
 }
 
+
+/**
+ * How this person actually signs in. The posture read returns the column —
+ * `password`, `oidc` — and the table printed it, so the one row that matters
+ * (an SSO account outside the second-factor floor) read the same as a database
+ * dump.
+ */
+export function signInMethod(provider: string, l: (key: string) => string): string {
+  const said = l(`signIn.${provider}`);
+  return said === `signIn.${provider}` ? humanise(provider) : said;
+}
+
+/**
+ * A role as the org chart says it. Roles carry a name in `core_roles` — the
+ * staff directory picks from those — but the posture read only knows the key it
+ * was granted under, and this table printed `orbit.partners` at an
+ * administrator deciding who to chase.
+ */
+export function roleName(key: string, named: Readonly<Record<string, string>>): string {
+  return named[key] ?? humanise(key);
+}
+
 /* ------------------------------------------------------------------ loader */
 
 /** A withheld read blanks one card, never the screen. */
@@ -245,11 +274,18 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     providersRead: held.has(PERM.providersRead)
   };
 
-  const posture = may.settingsRead
-    ? await safe(() => api<Posture>("/v1/core/security-posture", { env, request }), null)
-    : null;
+  const [posture, roles] = await Promise.all([
+    may.settingsRead ? safe(() => api<Posture>("/v1/core/security-posture", { env, request }), null) : null,
+    // The posture read names a person's roles by key. The names live on the
+    // role rows themselves, which is what the staff directory offers when it
+    // grants one.
+    safe(() => api<{ data: Array<{ key: string; name: string }> }>("/v1/core/roles?limit=200", { env, request }), {
+      data: []
+    })
+  ]);
+  const named = Object.fromEntries(roles.data.map((role) => [role.key, role.name]));
 
-  return { may, posture, problem: null as Problem | null };
+  return { may, posture, named, problem: null as Problem | null };
 }
 
 /* --------------------------------------------------------------- component */
@@ -281,13 +317,13 @@ export default function AdminSecurity() {
         <span className="flex flex-wrap gap-1">
           {row.roleKeys.map((key) => (
             <Badge key={key} tone="neutral" size="sm">
-              {key}
+              {roleName(key, loaded.named)}
             </Badge>
           ))}
         </span>
       )
     },
-    { key: "authProvider", header: l("colSignIn"), render: (row) => row.authProvider }
+    { key: "authProvider", header: l("colSignIn"), render: (row) => signInMethod(row.authProvider, l) }
   ];
 
   const providerColumns: Array<Column<ProviderRow>> = [
