@@ -44,10 +44,13 @@ const {
   approvalAmountMinor,
   approvalTitle,
   bps,
+  caseSeverity,
   chosenBriefing,
   contentTypeOf,
+  dueIn,
   highlightsOf,
   isInbound,
+  queueOrder,
   threadOrder,
   todayIso,
   unownedAnomaly
@@ -587,6 +590,12 @@ describe("persona tab config", () => {
     ]);
   });
 
+  it("points both AXIS deadline tabs at the one queue screen", () => {
+    const [queue, sla] = tabsFor("axis", "default");
+    expect(queue?.route).toBe("/j/queue");
+    expect(sla?.route).toBe("/j/queue?filter=sla");
+  });
+
   it("swaps Decisions for Governance only for the north board variant", () => {
     expect(tabsFor("north", "default").map((tab) => tab.labelKey)).toContain("tab.decisions");
     expect(tabsFor("north", "board").map((tab) => tab.labelKey)).toContain("tab.governance");
@@ -857,6 +866,45 @@ describe("journey helpers", () => {
     expect(isInbound({ id: "m", role: "customer" })).toBe(true);
     expect(isInbound({ id: "m", role: "agent_human" })).toBe(false);
     expect(isInbound({ id: "m", role: "agent_ai" })).toBe(false);
+  });
+
+  it("ranks a missed deadline above an urgent label", () => {
+    const now = 1_000_000_000;
+    const hour = 3_600_000;
+    expect(caseSeverity({ priority: "normal", slaDueAt: now - hour }, now)).toBe("breach");
+    expect(caseSeverity({ priority: "urgent", slaDueAt: now + 48 * hour }, now)).toBe("urgent");
+    expect(caseSeverity({ priority: "normal", slaDueAt: now + 3 * hour }, now)).toBe("due");
+    expect(caseSeverity({ priority: "normal", slaDueAt: now + 48 * hour }, now)).toBe("normal");
+    expect(caseSeverity({ priority: "normal" }, now)).toBe("normal");
+  });
+
+  it("orders the queue worst first, then by deadline, then by age", () => {
+    const now = 1_000_000_000;
+    const hour = 3_600_000;
+    const rows = [
+      { id: "c_calm", priority: "normal", slaDueAt: now + 96 * hour, createdAt: 1 },
+      { id: "c_urgent", priority: "urgent", slaDueAt: now + 96 * hour, createdAt: 2 },
+      { id: "c_late", priority: "low", slaDueAt: now - hour, createdAt: 3 },
+      { id: "c_soon", priority: "normal", slaDueAt: now + 2 * hour, createdAt: 4 }
+    ];
+    expect(queueOrder(rows, now).map((row) => row.id)).toEqual([
+      "c_late",
+      "c_urgent",
+      "c_soon",
+      "c_calm"
+    ]);
+    // The SLA tab is the same queue with everything no clock presses on dropped.
+    expect(queueOrder(rows, now, true).map((row) => row.id)).toEqual(["c_late", "c_soon"]);
+    expect(queueOrder(null, now)).toEqual([]);
+  });
+
+  it("reads a deadline as whole hours on the right side of now", () => {
+    const now = 1_000_000_000;
+    expect(dueIn(now + 7_200_000, now)).toEqual({ overdue: false, hours: 2 });
+    expect(dueIn(now - 7_200_000, now)).toEqual({ overdue: true, hours: 2 });
+    // Under an hour still reads as an hour: "due in 0h" is not a deadline.
+    expect(dueIn(now + 60_000, now)).toEqual({ overdue: false, hours: 1 });
+    expect(dueIn(null, now)).toBeNull();
   });
 
   it("offers exactly the document types AXIS accepts", () => {

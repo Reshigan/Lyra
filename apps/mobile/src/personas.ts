@@ -15,8 +15,10 @@ const HOME_TAB: TabConfig = { labelKey: "nav.home", icon: "home", screen: "core/
 
 export const PERSONA_TABS: Record<Workspace, TabConfig[]> = {
   axis: [
-    { labelKey: "tab.queue", icon: "list", screen: "axis/cases" },
-    { labelKey: "tab.sla", icon: "time", screen: "axis/cases" },
+    { labelKey: "tab.queue", icon: "list", screen: "axis/cases", route: "/j/queue" },
+    // Same screen, deadline-only: the SLA tab is the queue with everything a
+    // clock is not pressing on filtered out (app/j/queue.tsx).
+    { labelKey: "tab.sla", icon: "time", screen: "axis/cases", route: "/j/queue?filter=sla" },
     { labelKey: "tab.capture", icon: "camera", screen: "axis/cases", route: "/j/capture" }
   ],
   orbit: [

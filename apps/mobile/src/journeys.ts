@@ -120,6 +120,65 @@ export function isInbound(row: Row): boolean {
   return row.role === "customer";
 }
 
+/* ------------------------------------------------------------------- queue */
+
+/** The case states that still owe somebody work (apps/web/app/routes/
+ *  axis-exceptions.tsx STUCK_CASE_STATUSES). Issued, failed and cancelled
+ *  cases are nobody's queue. */
+export const OPEN_CASE_STATUSES = ["intake", "quoting", "awaiting_docs", "review", "approval"] as const;
+
+export type CaseSeverity = "breach" | "urgent" | "due" | "normal";
+
+/**
+ * How loudly one case reads, matching the web queue exactly
+ * (axis-exceptions.tsx `severityOf`) so the two surfaces never rank the same
+ * case differently. The deadline beats the label: a `normal` case past its SLA
+ * is worse than an `urgent` one due tomorrow.
+ */
+export function caseSeverity(
+  row: Readonly<Record<string, unknown>>,
+  now: number,
+  soonMs = 24 * 60 * 60 * 1000
+): CaseSeverity {
+  const due = typeof row.slaDueAt === "number" ? row.slaDueAt : null;
+  if (due !== null && due < now) return "breach";
+  if (row.priority === "urgent") return "urgent";
+  if (due !== null && due - now <= soonMs) return "due";
+  return "normal";
+}
+
+const SEVERITY_RANK: Record<CaseSeverity, number> = { breach: 0, urgent: 1, due: 2, normal: 3 };
+
+/** Worst first, then earliest deadline, then oldest. Total and deterministic. */
+export function byCaseSeverity(now: number) {
+  return (a: Row, b: Row): number => {
+    const rank = SEVERITY_RANK[caseSeverity(a, now)] - SEVERITY_RANK[caseSeverity(b, now)];
+    if (rank !== 0) return rank;
+    const due = numberOr(a.slaDueAt, Number.MAX_SAFE_INTEGER) - numberOr(b.slaDueAt, Number.MAX_SAFE_INTEGER);
+    return due !== 0 ? due : numberOr(a.createdAt, 0) - numberOr(b.createdAt, 0);
+  };
+}
+
+const numberOr = (value: unknown, fallback: number): number =>
+  typeof value === "number" ? value : fallback;
+
+/** The queue in reading order — and, on the SLA tab, only the cases a deadline
+ *  is actually pressing on. */
+export function queueOrder(rows: readonly Row[] | null, now: number, slaOnly = false): Row[] {
+  const kept = (rows ?? []).filter(
+    (row) => !slaOnly || caseSeverity(row, now) === "breach" || caseSeverity(row, now) === "due"
+  );
+  return kept.sort(byCaseSeverity(now));
+}
+
+/** A deadline as one coarse unit of time, signed by which side of now it is on.
+ *  Precision nobody acts on is noise, so hours and days is as fine as it goes. */
+export function dueIn(slaDueAt: unknown, now: number): { overdue: boolean; hours: number } | null {
+  if (typeof slaDueAt !== "number") return null;
+  const delta = slaDueAt - now;
+  return { overdue: delta < 0, hours: Math.max(1, Math.round(Math.abs(delta) / 3_600_000)) };
+}
+
 /* ----------------------------------------------------------------- capture */
 
 /** The document types AXIS accepts (apps/api/src/routes/axis.ts DOC_TYPES).
