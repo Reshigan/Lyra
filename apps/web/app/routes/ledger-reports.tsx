@@ -219,6 +219,13 @@ const LABELS: Record<string, Record<string, string>> = {
     "col.normalSide": "Normal side",
     "side.debit": "Debit",
     "side.credit": "Credit",
+    // The five account types, rendered from `row.type`. A missing key here
+    // shows the reader the raw enum.
+    "type.asset": "Asset",
+    "type.liability": "Liability",
+    "type.equity": "Equity",
+    "type.income": "Income",
+    "type.expense": "Expense",
     "col.debit": "Debit",
     "col.credit": "Credit",
     "col.balance": "Balance",
@@ -296,6 +303,11 @@ const LABELS: Record<string, Record<string, string>> = {
     "col.normalSide": "الطبيعة",
     "side.debit": "مدين",
     "side.credit": "دائن",
+    "type.asset": "أصل",
+    "type.liability": "التزام",
+    "type.equity": "حقوق ملكية",
+    "type.income": "إيراد",
+    "type.expense": "مصروف",
     "col.debit": "مدين",
     "col.credit": "دائن",
     "col.balance": "الرصيد",
@@ -655,7 +667,7 @@ function TrialBalanceView({ tb, accounts, locale, l, t }: ViewProps & { tb: Tria
       render: (row) => <AccountCode code={row.accountCode} accounts={accounts} />
     },
     { key: "name", header: l("col.name"), render: (row) => row.name },
-    { key: "type", header: l("col.type"), render: (row) => row.type },
+    { key: "type", header: l("col.type"), render: (row) => l(`type.${row.type}`) },
     {
       key: "normalSide",
       header: l("col.normalSide"),

@@ -307,8 +307,15 @@ export function Shell({ t, nav, brand, tenantName, actorName, children }: ShellP
         className="lyra-vt-status sticky bottom-0 z-20 hidden h-7 items-center gap-2 border-t border-border bg-surface-1 px-4 font-mono text-12 text-subtle sm:flex"
       >
         <span className="truncate">{productName}</span>
-        <span className="text-border-strong">/</span>
-        <span className="truncate">{t(currentItem?.labelKey ?? "nav.primary")}</span>
+        {/* Off-nav surfaces (search, a record opened by url) have no current
+            item. The strip then names the product only — it used to print
+            "Primary", the nav landmark's aria-label. */}
+        {currentItem ? (
+          <>
+            <span className="text-border-strong">/</span>
+            <span className="truncate">{t(currentItem.labelKey)}</span>
+          </>
+        ) : null}
       </footer>
     </div>
   );
