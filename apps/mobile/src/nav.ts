@@ -33,7 +33,11 @@ const RESOURCE_BY_HREF: Record<string, string> = {
   // signals the "/scout" nav entry points at (app/j/clusters.tsx,
   // app/j/whitespace.tsx).
   "/scout-clusters": "scout/clusters",
-  "/scout-whitespaces": "scout/whitespaces"
+  "/scout-whitespaces": "scout/whitespaces",
+  // And NORTH: a decision and a board pack are neither of them the metrics the
+  // "/north" nav entry points at (app/j/decisions.tsx, app/j/boardpack.tsx).
+  "/north-decisions": "north/decisions",
+  "/north-boardpacks": "north/boardpacks"
 };
 
 /** `/v1/{module}/{resource}` for a nav href, or `undefined` if mobile has no

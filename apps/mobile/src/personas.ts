@@ -40,8 +40,8 @@ export const PERSONA_TABS: Record<Workspace, TabConfig[]> = {
   ],
   north: [
     { labelKey: "tab.brief", icon: "sunny", screen: "north/metrics", route: "/j/brief" },
-    { labelKey: "tab.decisions", icon: "git-branch", screen: "north/metrics" },
-    { labelKey: "tab.boardpack", icon: "bar-chart", screen: "north/metrics" }
+    { labelKey: "tab.decisions", icon: "git-branch", screen: "north/metrics", route: "/j/decisions" },
+    { labelKey: "tab.boardpack", icon: "bar-chart", screen: "north/metrics", route: "/j/boardpack" }
   ],
   admin: [
     { labelKey: "tab.approvals", icon: "checkmark-done", screen: "core/users", route: "/j/approvals" },

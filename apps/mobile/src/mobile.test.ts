@@ -44,6 +44,7 @@ const {
   approvalAmountMinor,
   approvalTitle,
   bps,
+  boardpackOrder,
   budgetOf,
   byId,
   campaignOrder,
@@ -52,6 +53,7 @@ const {
   clusterOrder,
   contentTypeOf,
   daysUntil,
+  decisionOrder,
   deltaPct,
   dueIn,
   highlightsOf,
@@ -60,6 +62,7 @@ const {
   latestPeriod,
   mainCurrency,
   moneyText,
+  optionCount,
   opportunityOf,
   pacingOf,
   plannedMinor,
@@ -67,6 +70,7 @@ const {
   queueOrder,
   renewalOrder,
   rollByProvider,
+  sectionCount,
   spendByCampaign,
   threadOrder,
   todayIso,
@@ -639,6 +643,18 @@ describe("persona tab config", () => {
     expect(resourceForNavKey("scout-whitespaces")).toBe("scout/whitespaces");
   });
 
+  it("gives both NORTH governance tabs their own screen and a record to open", () => {
+    expect(tabsFor("north", "default").map((tab) => tab.route)).toEqual([
+      "/j/brief",
+      "/j/decisions",
+      "/j/boardpack"
+    ]);
+    // The board variant renames the tab; it must not lose the screen.
+    expect(tabsFor("north", "board")[1]?.route).toBe("/j/decisions");
+    expect(resourceForNavKey("north-decisions")).toBe("north/decisions");
+    expect(resourceForNavKey("north-boardpacks")).toBe("north/boardpacks");
+  });
+
   it("swaps Decisions for Governance only for the north board variant", () => {
     expect(tabsFor("north", "default").map((tab) => tab.labelKey)).toContain("tab.decisions");
     expect(tabsFor("north", "board").map((tab) => tab.labelKey)).toContain("tab.governance");
@@ -1150,6 +1166,46 @@ describe("journey helpers", () => {
     expect(positionOf(null)).toBe("unpriced");
     expect(indexText(9420, "en")).toBe("0.94");
     expect(indexText(null)).toBeNull();
+  });
+
+  it("puts open decisions first, overdue reviews above future ones", () => {
+    const now = Date.parse("2026-08-12T00:00:00Z");
+    const day = 86_400_000;
+    const rows = [
+      { id: "d_done", status: "reviewed", reviewAt: now - 5 * day, title: "A" },
+      { id: "d_undated", status: "open", title: "C" },
+      { id: "d_soon", status: "open", reviewAt: now + 3 * day, title: "B" },
+      { id: "d_late", status: "open", reviewAt: now - 2 * day, title: "D" },
+      { id: "d_gone", status: "reversed", title: "E" }
+    ];
+    expect(decisionOrder(rows, now).map((row) => row.id)).toEqual([
+      "d_late",
+      "d_soon",
+      "d_undated",
+      "d_done",
+      "d_gone"
+    ]);
+    expect(decisionOrder(null, now)).toEqual([]);
+  });
+
+  it("counts the options weighed whichever shape the log recorded", () => {
+    expect(optionCount({ id: "d", optionsJson: '["a","b","c"]' })).toBe(3);
+    expect(optionCount({ id: "d", optionsJson: '{"options":[{"label":"a"}]}' })).toBe(1);
+    // A call recorded without its alternatives, and outright broken JSON.
+    expect(optionCount({ id: "d" })).toBe(0);
+    expect(optionCount({ id: "d", optionsJson: "{oops" })).toBe(0);
+  });
+
+  it("shelves board packs newest period first, finished copy on top", () => {
+    const rows = [
+      { id: "p_old", period: "2026-Q1", status: "distributed" },
+      { id: "p_draft", period: "2026-Q2", status: "draft" },
+      { id: "p_final", period: "2026-Q2", status: "final" },
+      { id: "p_nul" }
+    ];
+    expect(boardpackOrder(rows).map((row) => row.id)).toEqual(["p_final", "p_draft", "p_old", "p_nul"]);
+    expect(sectionCount({ id: "p", sectionsJson: '[{"title":"Briefing"},{"title":"Metrics"}]' })).toBe(2);
+    expect(sectionCount({ id: "p" })).toBe(0);
   });
 
   it("offers exactly the document types AXIS accepts", () => {

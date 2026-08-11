@@ -503,6 +503,61 @@ export function indexText(bp: number | null, locale = "en"): string | null {
     : (bp / 10_000).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+/* ------------------------------------------------------------------- north */
+
+const DECISION_RANK: Record<string, number> = { open: 0, reviewed: 1, reversed: 2 };
+
+/** Decisions in the order a governance conversation walks them: the ones still
+ *  open first, soonest review date at the top and an overdue review above a
+ *  future one. A decision nobody set a date on sits under the dated ones — it
+ *  is open, but nothing says it is due. Closed decisions keep the same order
+ *  underneath so the tab still reads as a record.
+ *
+ *  There is no web route for decisions (only north-brief.tsx), so this rule is
+ *  authored here rather than mirrored. */
+export function decisionOrder(rows: readonly Row[] | null, now: number): Row[] {
+  return [...(rows ?? [])].sort((a, b) => {
+    const state = (DECISION_RANK[String(a.status ?? "")] ?? 3) - (DECISION_RANK[String(b.status ?? "")] ?? 3);
+    if (state !== 0) return state;
+    const left = daysUntil(a.reviewAt, now);
+    const right = daysUntil(b.reviewAt, now);
+    if (left !== right) return (left ?? Number.MAX_SAFE_INTEGER) - (right ?? Number.MAX_SAFE_INTEGER);
+    return String(a.title ?? a.id).localeCompare(String(b.title ?? b.id));
+  });
+}
+
+/** How many options were on the table, from `optionsJson`. Zero means the row
+ *  recorded a call without recording the alternatives — worth showing as
+ *  nothing rather than as "0 options", which the screen decides. */
+export function optionCount(row: Row): number {
+  const parsed = typeof row.optionsJson === "string" ? tryParse(row.optionsJson) : null;
+  if (Array.isArray(parsed)) return parsed.length;
+  const options = parsed && typeof parsed === "object" ? (parsed as { options?: unknown }).options : null;
+  return Array.isArray(options) ? options.length : 0;
+}
+
+const PACK_RANK: Record<string, number> = { distributed: 0, final: 1, review: 2, draft: 3 };
+
+/** Board packs newest period first — a pack is named by the period it covers,
+ *  and "2026-Q2" sorts correctly as text. Two packs for one period are ranked
+ *  by how finished they are, so the distributed one is the one you reach for. */
+export function boardpackOrder(rows: readonly Row[] | null): Row[] {
+  return [...(rows ?? [])].sort((a, b) => {
+    const period = String(b.period ?? "").localeCompare(String(a.period ?? ""));
+    if (period !== 0) return period;
+    return (PACK_RANK[String(a.status ?? "")] ?? 4) - (PACK_RANK[String(b.status ?? "")] ?? 4);
+  });
+}
+
+/** How many sections a pack carries, from `sectionsJson` — the one number that
+ *  says whether a generated pack actually has anything in it. */
+export function sectionCount(row: Row): number {
+  const parsed = typeof row.sectionsJson === "string" ? tryParse(row.sectionsJson) : null;
+  if (Array.isArray(parsed)) return parsed.length;
+  const sections = parsed && typeof parsed === "object" ? (parsed as { sections?: unknown }).sections : null;
+  return Array.isArray(sections) ? sections.length : 0;
+}
+
 /* ----------------------------------------------------------------- capture */
 
 /** The document types AXIS accepts (apps/api/src/routes/axis.ts DOC_TYPES).
