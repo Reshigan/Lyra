@@ -1,6 +1,6 @@
 import { Link, useLoaderData, type LoaderFunctionArgs } from "react-router";
-import { Badge, Card, DateTime, EmptyState, Money, Stat, Table, type Column } from "@lyra/ui";
-import { api, fetchMe } from "../api.server";
+import { Badge, Card, DateTime, EmptyState, Money, Ref, Stat, Table, type Column } from "@lyra/ui";
+import { api, fetchMe, names } from "../api.server";
 import { cloudflare } from "../context";
 import { translator } from "../i18n";
 import {
@@ -203,7 +203,8 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
     product: null as Product | null,
     offerings: [] as OfferingRow[],
     channels: [] as ChannelRow[],
-    unrestricted: false
+    unrestricted: false,
+    named: {} as Record<string, string>
   };
 
   if (!held.has(PERM.read)) return empty;
@@ -228,9 +229,15 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
         )
       : null;
 
+  const named = await names(
+    offerings.map((row) => row.providerId),
+    options
+  ).catch(() => ({}) as Record<string, string>);
+
   return {
     ...empty,
     product,
+    named,
     offerings,
     channels: rowsOf(channels),
     unrestricted: offerings.length > 0 && keys.length === 0
@@ -268,7 +275,13 @@ export default function ProductDetail() {
         </span>
       )
     },
-    { key: "providerId", header: l("colProvider"), render: (row) => <span className="font-mono text-12">{row.providerId}</span> },
+    {
+      key: "providerId",
+      header: l("colProvider"),
+      render: (row) => (
+        <span className="font-ui text-12">{loaded.named[row.providerId] ?? <Ref value={row.providerId} />}</span>
+      )
+    },
     { key: "status", header: l("colStatus"), render: (row) => <Badge size="sm">{tag(l, "status", row.status)}</Badge> },
     {
       key: "pricingMode",

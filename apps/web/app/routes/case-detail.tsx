@@ -25,7 +25,7 @@ import {
   Textarea,
   type Column
 } from "@lyra/ui";
-import { ApiError, api, fetchMe, type Problem } from "../api.server";
+import { ApiError, api, fetchMe, names, type Problem } from "../api.server";
 import { cloudflare } from "../context";
 import { translator } from "../i18n";
 import { Entry, Facts, Header, Payload, labelsFrom, rowsOf, safe, tag, type Page } from "./detail-kit";
@@ -299,6 +299,7 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
     documents: [] as DocumentRow[],
     approvals: [] as CaseApprovalRow[],
     tasks: [] as TaskRow[],
+    named: {} as Record<string, string>,
     may,
     idempotencyKey: crypto.randomUUID()
   };
@@ -318,9 +319,18 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   ]);
 
   if (!workItem) return empty;
+  // The case points at a holder, a channel, an owner and a team. Name them in
+  // one call so the facts read as people and places, not as refs.
+  const named = await names(
+    [workItem.customerId, workItem.channelId, workItem.ownerRef, workItem.teamId].filter(
+      (ref): ref is string => Boolean(ref)
+    ),
+    options
+  ).catch(() => ({}) as Record<string, string>);
   return {
     ...empty,
     workItem,
+    named,
     events: rowsOf(events),
     documents: rowsOf(documents),
     approvals: rowsOf(approvals),
@@ -531,13 +541,17 @@ export default function CaseDetail() {
           <Entry term={l("kind")}>{tag(l, "kind", workItem.kind)}</Entry>
           <Entry term={l("priority")}>{tag(l, "priority", workItem.priority)}</Entry>
           <Entry term={l("source")}>{tag(l, "source", workItem.source)}</Entry>
-          <Entry term={l("owner")}>{workItem.ownerRef ?? "—"}</Entry>
-          <Entry term={l("team")}>{workItem.teamId ?? "—"}</Entry>
+          <Entry term={l("owner")}>
+            {workItem.ownerRef ? (loaded.named[workItem.ownerRef] ?? <Ref value={workItem.ownerRef} />) : "—"}
+          </Entry>
+          <Entry term={l("team")}>
+            {workItem.teamId ? (loaded.named[workItem.teamId] ?? <Ref value={workItem.teamId} />) : "—"}
+          </Entry>
           <Entry term={l("productLine")}>{workItem.productLine ?? "—"}</Entry>
           <Entry term={l("holder")}>
             {workItem.customerId ? (
               <Link to={`/admin/customers/${workItem.customerId}/360`} className="text-accent hover:underline">
-                {workItem.customerId}
+                {loaded.named[workItem.customerId] ?? <Ref value={workItem.customerId} />}
               </Link>
             ) : (
               "—"
@@ -546,7 +560,7 @@ export default function CaseDetail() {
           <Entry term={l("channel")}>
             {workItem.channelId ? (
               <Link to={`/distribution/channels/${workItem.channelId}/detail`} className="text-accent hover:underline">
-                {workItem.channelId}
+                {loaded.named[workItem.channelId] ?? <Ref value={workItem.channelId} />}
               </Link>
             ) : (
               "—"
@@ -558,7 +572,7 @@ export default function CaseDetail() {
                 to={`/distribution/quote-requests/${workItem.quoteRequestId}/compare`}
                 className="text-accent hover:underline"
               >
-                {workItem.quoteRequestId}
+                <Ref value={workItem.quoteRequestId} />
               </Link>
             ) : (
               "—"

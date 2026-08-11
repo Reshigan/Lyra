@@ -1,6 +1,6 @@
 import { Link, useLoaderData, type LoaderFunctionArgs } from "react-router";
-import { Badge, Button, Card, DateTime, EmptyState, Money, Stat, Table, type Column } from "@lyra/ui";
-import { api, fetchMe } from "../api.server";
+import { Badge, Button, Card, DateTime, EmptyState, Money, Ref, Stat, Table, type Column } from "@lyra/ui";
+import { api, fetchMe, names } from "../api.server";
 import { cloudflare } from "../context";
 import { translator } from "../i18n";
 import {
@@ -210,6 +210,7 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
     entries: [] as EntryRow[],
     documents: [] as FileRow[],
     versions: [] as VersionRow[],
+    named: {} as Record<string, string>,
     may
   };
 
@@ -217,7 +218,7 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   const policy = await safe(() => api<Policy>(`/v1/axis/policies/${id}`, options), null);
   if (!policy) return empty;
 
-  const [claims, entries, documents, versions] = await Promise.all([
+  const [claims, entries, documents, versions, named] = await Promise.all([
     held.has(PERM.claims)
       ? safe(() => api<Page<ClaimRow>>(`/v1/axis/claims?policyId=${id}&limit=50`, options), null)
       : null,
@@ -236,7 +237,15 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
       : null,
     // This agreement's own versions (F5). The old query asked for every other
     // contract the same holder owns, which is a different question entirely.
-    safe(() => api<Page<VersionRow>>(`/v1/axis/policies/${id}/versions`, options), null)
+    safe(() => api<Page<VersionRow>>(`/v1/axis/policies/${id}/versions`, options), null),
+    // Everything this agreement points at, named in one call: a person reads
+    // "Amina Haddad", not `cu_01KE…`.
+    names(
+      [policy.customerId, policy.providerId, policy.productId, policy.channelId].filter(
+        (ref): ref is string => Boolean(ref)
+      ),
+      options
+    ).catch(() => ({}) as Record<string, string>)
   ]);
 
   return {
@@ -245,7 +254,8 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
     claims: rowsOf(claims),
     entries: rowsOf(entries),
     documents: rowsOf(documents),
-    versions: rowsOf(versions)
+    versions: rowsOf(versions),
+    named
   };
 }
 
@@ -415,24 +425,24 @@ export default function PolicyDetail() {
         <Facts>
           <Entry term={l("holder")}>
             <Link to={`/admin/customers/${policy.customerId}/360`} className="text-accent hover:underline">
-              {policy.customerId}
+              {loaded.named[policy.customerId] ?? <Ref value={policy.customerId} />}
             </Link>
           </Entry>
-          <Entry term={l("provider")}>{policy.providerId}</Entry>
+          <Entry term={l("provider")}>{loaded.named[policy.providerId] ?? <Ref value={policy.providerId} />}</Entry>
           <Entry term={l("product")}>
             {policy.productId ? (
               <Link to={`/admin/products/${policy.productId}/detail`} className="text-accent hover:underline">
-                {policy.productId}
+                {loaded.named[policy.productId] ?? <Ref value={policy.productId} />}
               </Link>
             ) : (
               "—"
             )}
           </Entry>
-          <Entry term={l("offering")}>{policy.offeringId ?? "—"}</Entry>
+          <Entry term={l("offering")}>{policy.offeringId ? <Ref value={policy.offeringId} /> : "—"}</Entry>
           <Entry term={l("channel")}>
             {policy.channelId ? (
               <Link to={`/distribution/channels/${policy.channelId}/detail`} className="text-accent hover:underline">
-                {policy.channelId}
+                {loaded.named[policy.channelId] ?? <Ref value={policy.channelId} />}
               </Link>
             ) : (
               "—"
@@ -441,13 +451,13 @@ export default function PolicyDetail() {
           <Entry term={l("caseRef")}>
             {policy.caseId ? (
               <Link to={`/axis/cases/${policy.caseId}/detail`} className="text-accent hover:underline">
-                {policy.caseId}
+                <Ref value={policy.caseId} />
               </Link>
             ) : (
               "—"
             )}
           </Entry>
-          <Entry term={l("escrow")}>{policy.escrowBatchId ?? "—"}</Entry>
+          <Entry term={l("escrow")}>{policy.escrowBatchId ? <Ref value={policy.escrowBatchId} /> : "—"}</Entry>
         </Facts>
       </Card>
 

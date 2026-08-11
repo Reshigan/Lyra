@@ -1,6 +1,6 @@
 import { Link, useLoaderData, type LoaderFunctionArgs } from "react-router";
 import { Badge, Card, DateTime, EmptyState, Money, Ref, Stat, Table, type Column } from "@lyra/ui";
-import { api, fetchMe } from "../api.server";
+import { api, fetchMe, names } from "../api.server";
 import { cloudflare } from "../context";
 import { translator } from "../i18n";
 import {
@@ -234,7 +234,8 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
     unrestricted: false,
     rates: [] as RateRow[],
     quotes: [] as QuoteRequestRow[],
-    settlements: [] as SettlementRow[]
+    settlements: [] as SettlementRow[],
+    named: {} as Record<string, string>
   };
 
   if (!held.has(PERM.read)) return empty;
@@ -275,14 +276,22 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
 
   const all = rowsOf(offeringPage);
   const mine = sellsFor(channel.key, all);
+  const quoteRows = rowsOf(quotes);
+  // Both tables show what is being sold. A product's name belongs in the cell;
+  // its id belongs in the link.
+  const named = await names(
+    [...mine.map((row) => row.productId), ...quoteRows.map((row) => row.productId)],
+    options
+  ).catch(() => ({}) as Record<string, string>);
   return {
     ...empty,
     channel,
     offerings: mine,
     unrestricted: all.length > 0 && mine.length === 0,
     rates: rowsOf(rates),
-    quotes: rowsOf(quotes),
-    settlements: rowsOf(settlements)
+    quotes: quoteRows,
+    settlements: rowsOf(settlements),
+    named
   };
 }
 
@@ -331,8 +340,8 @@ export default function ChannelDetail() {
       key: "productId",
       header: l("colScope"),
       render: (row) => (
-        <Link to={`/admin/products/${row.productId}/detail`} className="font-mono text-12 text-accent hover:underline">
-          {row.productId}
+        <Link to={`/admin/products/${row.productId}/detail`} className="font-ui text-12 text-accent hover:underline">
+          {loaded.named[row.productId] ?? <Ref value={row.productId} />}
         </Link>
       )
     },
@@ -388,8 +397,8 @@ export default function ChannelDetail() {
       key: "productId",
       header: l("colScope"),
       render: (row) => (
-        <Link to={`/admin/products/${row.productId}/detail`} className="font-mono text-12 text-accent hover:underline">
-          {row.productId}
+        <Link to={`/admin/products/${row.productId}/detail`} className="font-ui text-12 text-accent hover:underline">
+          {loaded.named[row.productId] ?? <Ref value={row.productId} />}
         </Link>
       )
     },
