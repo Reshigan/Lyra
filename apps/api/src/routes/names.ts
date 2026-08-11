@@ -55,11 +55,18 @@ const DISPLAY_COLUMNS = [
  * (staff invites, SSO provisioning), so those rows resolved to nothing at all.
  * Minting is aligned on `us` now; this keeps the rows already on disk readable.
  *
- * Providers and products are the same story from the other side: the registry
- * mints `prv`/`prd`, the rows in every tenant seeded before it carry `pv`/`pr`,
- * and a SCOUT panel full of `pv_01KE…` resolves to nothing without this.
+ * The catalogue is the same story from the other side: the registry mints
+ * `prv`/`prd`/`chn`/`off`, the rows in every tenant seeded before it carry
+ * `pv`/`pr`/`ch`/`of`, and a SCOUT panel full of `pv_01KE…` or a settlement
+ * queue full of `channel:ch_01KE…` resolves to nothing without this.
  */
-const ALIASES: Record<string, string> = { usr: "us", pv: "prv", pr: "prd" };
+const ALIASES: Record<string, string> = {
+  usr: "us",
+  pv: "prv",
+  pr: "prd",
+  ch: "chn",
+  of: "off"
+};
 
 /**
  * The tenant's own staff directory. Naming the colleague who holds your
@@ -70,12 +77,14 @@ const ALIASES: Record<string, string> = { usr: "us", pv: "prv", pr: "prd" };
  * tenant — display column only, tenant-scoped, PII-masked exactly as every
  * other read is, and never the list, record or write paths (ADR-0046).
  *
- * Providers and products join them for the same reason: a carrier's name and a
- * product's name are the vocabulary of every SCOUT, AXIS and ORBIT screen, and
- * `core:providers:read` is an administrative grant no analyst holds. The panel
- * table listed six `pv_01KE…` ids under a column headed "Carrier".
+ * The catalogue joins them for the same reason: a carrier's name, a product's
+ * name and a channel's name are the vocabulary of every SCOUT, AXIS, ORBIT and
+ * ledger screen, and `core:providers:read` is an administrative grant no
+ * analyst holds. The panel table listed six `pv_01KE…` ids under a column
+ * headed "Carrier"; the settlement queue listed `channel:ch_01KE…` under
+ * "Counterparty" (ADR-0048).
  */
-const DIRECTORY = new Set(["users", "teams", "providers", "products"]);
+const DIRECTORY = new Set(["users", "teams", "providers", "products", "channels", "offerings"]);
 
 interface Parsed {
   /** The ref exactly as asked, so the caller can look up the string it holds. */

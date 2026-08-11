@@ -17,15 +17,15 @@ import {
   Input,
   Money,
   PageHeader,
-  Ref,
   Select,
   Table,
   type BadgeTone,
   type Column
 } from "@lyra/ui";
-import { ApiError, api, fetchMe } from "../api.server";
+import { ApiError, api, fetchMe, names } from "../api.server";
 import { cloudflare } from "../context";
 import { pseudoText, translator } from "../i18n";
+import { who } from "../names";
 import { Gate } from "./module";
 import { useShellData } from "./workspace";
 
@@ -245,6 +245,9 @@ export const LABELS: Record<string, Record<string, string>> = {
     "kind.partner": "Partner",
     "kind.creator": "Creator",
     "kind.publisher": "Publisher",
+    // Not draftable here (PAYABLE_KINDS) but rows carry it: money in from a
+    // carrier is settled the same way and shows up in this queue.
+    "kind.insurer": "Insurer",
     "state.draft": "Draft",
     "state.approved": "Approved, awaiting payment",
     "state.paid": "Paid",
@@ -299,6 +302,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     "kind.partner": "شريك",
     "kind.creator": "صانع محتوى",
     "kind.publisher": "ناشر",
+    "kind.insurer": "شركة تأمين",
     "state.draft": "مسودة",
     "state.approved": "موافَق عليها، بانتظار الصرف",
     "state.paid": "مدفوعة",
@@ -363,7 +367,13 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   // Minted per render, not per click: a double submit is then the same run
   // twice, which the API deduplicates (CLAUDE.md §12).
   const idempotencyKey = crypto.randomUUID();
-  const shut = { may: { ...may, read: false }, filters, settlements: [] as Settlement[], idempotencyKey };
+  const shut = {
+    may: { ...may, read: false },
+    filters,
+    settlements: [] as Settlement[],
+    resolved: {} as Record<string, string>,
+    idempotencyKey
+  };
 
   if (!may.read) return shut;
 
@@ -375,7 +385,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   try {
     const page = await api<{ data: Settlement[] }>(`/v1/ledger/settlements?${query.toString()}`, { env, request });
-    return { may, filters, settlements: page.data, idempotencyKey };
+    // A settlement carries `channel:ch_…` / `provider:pv_…` and no name for it,
+    // so the COUNTERPARTY column was a queue of ULIDs (ADR-0048).
+    const resolved = await names(page.data.map((one) => one.counterpartyRef), { env, request });
+    return { may, filters, settlements: page.data, resolved, idempotencyKey };
   } catch (error) {
     // A grant can be revoked between /v1/me and this call; that is a notice,
     // never a blank screen.
@@ -458,7 +471,7 @@ export default function SettlementPeriod() {
       header: l("colCounterparty"),
       render: (row) => (
         <span className="flex flex-col gap-0.5">
-          <Ref value={row.counterpartyRef} className="text-12" />
+          <span className="text-13 text-text">{who(row.counterpartyRef, loaded.resolved)}</span>
           <span className="font-ui text-12 text-subtle">{l(`kind.${row.counterpartyKind}`)}</span>
         </span>
       )
@@ -506,7 +519,10 @@ export default function SettlementPeriod() {
         // "link" is not a navigation affordance.
         <Link
           to={`/ledger/settlements/${row.id}`}
-          aria-label={l("openFor", { period: row.period, counterparty: row.counterpartyRef })}
+          aria-label={l("openFor", {
+            period: row.period,
+            counterparty: who(row.counterpartyRef, loaded.resolved) ?? row.counterpartyRef
+          })}
           className="font-ui text-12 text-accent underline-offset-2 hover:underline"
         >
           {l("open")}

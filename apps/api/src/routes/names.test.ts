@@ -58,6 +58,7 @@ const USER = { id: "us_1", name: "Layla Al Mansouri", email: "layla@gonxt.ae", p
 const TEAM = { id: "tm_1", name: "Motor claims" };
 const CASE = { id: "cas_1", ref: "CASE-1042" };
 const PROVIDER = { id: "pv_1", name: "Oryx Insurance", code: "ORYX" };
+const CHANNEL = { id: "ch_1", nameJson: JSON.stringify({ en: "Broker Alpha", ar: "بروكر ألفا" }), key: "broker-alpha" };
 
 const rows = (table: unknown): unknown[] => {
   const name = String((table as { [k: symbol]: unknown })[Symbol.for("drizzle:Name")] ?? "");
@@ -67,6 +68,7 @@ const rows = (table: unknown): unknown[] => {
   if (name === "core_teams") return [TEAM];
   if (name === "axis_cases") return [CASE];
   if (name === "core_providers") return [PROVIDER];
+  if (name === "dist_channels") return [CHANNEL];
   return [];
 };
 
@@ -138,6 +140,16 @@ describe("GET /v1/names", () => {
     const res = await app.fetch(new Request("http://api.test/?refs=pv_1"));
     const body = (await res.json()) as { names: Record<string, string> };
     expect(body.names.pv_1).toBe("Oryx Insurance");
+  });
+
+  it("names a settlement counterparty whose id carries the seed's prefix", async () => {
+    // The ledger settlement queue's COUNTERPARTY column read
+    // `channel:ch_01KE…95NX`: the registry mints channels as `chn` and every
+    // seeded tenant carries `ch`, so the ref matched no resource at all.
+    const app = router(baseCtx(fakeDb(rows), ["dist:commissions:read"]));
+    const res = await app.fetch(new Request("http://api.test/?refs=channel:ch_1"));
+    const body = (await res.json()) as { names: Record<string, string> };
+    expect(body.names["channel:ch_1"]).toBe("Broker Alpha");
   });
 
   it("masks a PII display name without core:pii:view, and never leaks a secret column", async () => {
