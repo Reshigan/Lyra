@@ -82,7 +82,7 @@ export type Edition = z.infer<typeof Edition>;
 export const EntitlementsJson = z.object({
   edition: Edition.default("core"),
   modules: z.array(z.enum(["axis", "orbit", "signal", "scout", "north"])).default([]),
-  features: z.record(z.boolean()).default({}),
+  features: z.record(z.string(), z.boolean()).default({}),
   seats: z.number().int().positive().default(5),
   limits: z
     .object({
@@ -165,7 +165,7 @@ export const LensJson = z.object({
     .default([]),
   /** docs/15 §5 learned adaptation: view/filter key -> interaction count, capped
    *  (see MAX_LENS_WEIGHT in packages/core/src/lens.ts) so this stays a small blob. */
-  weights: z.record(z.number().int().nonnegative()).default({})
+  weights: z.record(z.string(), z.number().int().nonnegative()).default({})
 });
 export type LensJson = z.infer<typeof LensJson>;
 

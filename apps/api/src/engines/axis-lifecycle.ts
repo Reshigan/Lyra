@@ -417,7 +417,7 @@ export const RenewBody = z.object({
   channelMinor: z.number().int().nonnegative().default(0),
   /** Set when the renewal was re-shopped rather than rolled at the same price. */
   quoteResponseId: z.string().min(1).nullish(),
-  terms: z.record(z.unknown()).optional(),
+  terms: z.record(z.string(), z.unknown()).optional(),
   note: z.string().max(500).nullish()
 });
 export type RenewInput = z.infer<typeof RenewBody>;

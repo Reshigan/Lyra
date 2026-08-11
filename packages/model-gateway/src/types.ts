@@ -22,7 +22,7 @@ export const ToolDef = z.object({
   name: z.string(),
   description: z.string(),
   /** JSON Schema for the arguments. */
-  parameters: z.record(z.unknown()),
+  parameters: z.record(z.string(), z.unknown()),
   /** Consequential tools may not run without an approval (CLAUDE.md rule 4). */
   consequential: z.boolean().default(false)
 });
