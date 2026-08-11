@@ -18,7 +18,6 @@ import {
   MoneyField,
   Select,
   Table,
-  Textarea,
   type Column
 } from "@lyra/ui";
 import { ApiError, api, fetchMe } from "../api.server";
@@ -27,16 +26,17 @@ import { translator } from "../i18n";
 import { ConfirmButton } from "../components/confirm";
 import { Problem } from "./module";
 import { useShellData } from "./workspace";
-import { PERM, labelIn, mintKey } from "./ledger.shared";
+import { PERM, argsFromForm, labelIn, mintKey, type ArgField } from "./ledger.shared";
 
 // Opening a transaction is the only way money starts moving, so it is a form
 // with a catalogue rather than a row in a table: the type decides the recipe,
 // the recipe decides the journal, and the ledger validates both.
 //
-// The recipe's own argument schema is private to @lyra/ledger — `GET /txn-types`
-// publishes the catalogue, not the shapes — so arguments are entered as JSON and
-// the API's field-error map is rendered back beside the field. See the report:
-// an additive `args` field list on that endpoint would turn this into inputs.
+// The recipe's schema stays private to @lyra/ledger, but `GET /txn-types` now
+// publishes each recipe's arguments as a flat field list, so the form asks for
+// money in a money field instead of asking a controller to type JSON
+// (docs/ui.md §7 P3-16). The API's field-error map still renders back beside it:
+// the ledger owns the validation and names the field it refused.
 
 interface TxnType {
   code: string;
@@ -44,6 +44,7 @@ interface TxnType {
   approval: string | null;
   payout?: true;
   clientMoney?: true;
+  args?: ArgField[];
 }
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
@@ -82,22 +83,14 @@ export async function action({ request, context }: ActionFunctionArgs) {
   const env = context.get(cloudflare).env;
   const form = await request.formData();
   const type = String(form.get("type") ?? "");
-  const rawArgs = String(form.get("args") ?? "").trim();
   const gross = String(form.get("grossMinor") ?? "").trim();
   const currency = String(form.get("currency") ?? "").trim();
   const reason = String(form.get("reason") ?? "").trim();
 
-  let args: unknown = {};
-  if (rawArgs) {
-    try {
-      args = JSON.parse(rawArgs);
-    } catch {
-      return { problem: { title: "args", status: 400 }, opened: null, approval: null };
-    }
-    if (args === null || typeof args !== "object" || Array.isArray(args)) {
-      return { problem: { title: "args", status: 400 }, opened: null, approval: null };
-    }
-  }
+  // The field list the form was rendered from comes back with it, so the action
+  // reads exactly the arguments this type declared and nothing else.
+  const fields = JSON.parse(String(form.get("argFields") ?? "[]")) as ArgField[];
+  const args = argsFromForm(fields, form);
 
   try {
     const result = await api<{ txn: { id: string; state: string } }>(
@@ -142,6 +135,9 @@ export default function LedgerOpenTxn() {
   // The money field's precision follows the currency beside it: 500 in JPY is
   // 500 minor units, in ZAR it is 50000.
   const [currency, setCurrency] = useState(loaded.currency);
+  // The type decides the recipe, and the recipe decides which fields this form
+  // asks for — so the picker drives the rest of the form, not just the URL.
+  const [code, setCode] = useState(loaded.denied ? "" : (loaded.types[0]?.code ?? ""));
 
 
   if (loaded.denied) {
@@ -190,6 +186,10 @@ export default function LedgerOpenTxn() {
     }
   ];
 
+  // What this type needs, straight from its recipe. An older API that does not
+  // publish the list yet simply renders no argument inputs rather than breaking.
+  const argFields = loaded.types.find((type) => type.code === code)?.args ?? [];
+
   // The API names the argument fields it wanted when the recipe refuses.
   const fieldErrors = Object.entries(result?.problem?.errors ?? {});
 
@@ -230,13 +230,7 @@ export default function LedgerOpenTxn() {
         </div>
       ) : null}
 
-      {result?.problem ? (
-        result.problem.title === "args" ? (
-          <Problem problem={{ title: l("open.argsInvalid") }} />
-        ) : (
-          <Problem problem={result.problem} />
-        )
-      ) : null}
+      {result?.problem ? <Problem problem={result.problem} /> : null}
 
       {fieldErrors.length > 0 ? (
         <ul role="alert" className="flex flex-col gap-1 rounded-md border border-danger/40 bg-danger/10 p-3">
@@ -255,7 +249,8 @@ export default function LedgerOpenTxn() {
             <Field label={l("open.type")} required className="w-64">
               <Select
                 name="type"
-                defaultValue={loaded.types[0]?.code ?? ""}
+                value={code}
+                onValueChange={setCode}
                 options={loaded.types.map((type) => ({ value: type.code, label: type.code }))}
               />
             </Field>
@@ -276,9 +271,30 @@ export default function LedgerOpenTxn() {
             <Input name="naturalKey" defaultValue={loaded.naturalKey} maxLength={200} required />
           </Field>
 
-          <Field label={l("open.args")} hint={l("open.argsHint")}>
-            <Textarea name="args" rows={6} defaultValue="{}" className="font-mono text-12" />
-          </Field>
+          <fieldset className="flex flex-col gap-3 border-0 p-0">
+            <legend className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">
+              {l("open.args")}
+            </legend>
+            <p className="max-w-prose font-ui text-12 text-subtle">{l("open.argsHint")}</p>
+            {/* Posted back so the action reads exactly the fields it rendered. */}
+            <input type="hidden" name="argFields" value={JSON.stringify(argFields)} />
+            {argFields.length ? (
+              <div className="flex flex-wrap gap-3">
+                {argFields.map((field) => (
+                  <ArgInput
+                    key={`${code}.${field.name}`}
+                    field={field}
+                    label={l(`arg.${field.name}`)}
+                    accountHint={l("open.argAccountHint")}
+                    currency={currency || "ZAR"}
+                    locale={locale}
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="font-ui text-13 text-muted">{l("open.argsNone")}</p>
+            )}
+          </fieldset>
 
           <Field label={l("reason")}>
             <Input name="reason" maxLength={500} />
@@ -305,5 +321,49 @@ export default function LedgerOpenTxn() {
         />
       </section>
     </div>
+  );
+}
+
+/**
+ * One recipe argument. Minor-unit amounts get the money field so the operator
+ * types 1 500,00 and the form posts 150000; rates and account codes are what
+ * they say they are. A field left blank is not sent, so the recipe's own default
+ * — shown as the placeholder — is what posts.
+ */
+function ArgInput({
+  field,
+  label,
+  accountHint,
+  currency,
+  locale
+}: {
+  field: ArgField;
+  label: string;
+  accountHint: string;
+  currency: string;
+  locale: string;
+}) {
+  const name = `arg.${field.name}`;
+  const money = field.kind === "integer" && field.name.endsWith("Minor");
+  const account = field.kind === "text" && field.name.endsWith("Account");
+
+  return (
+    <Field
+      label={label}
+      required={field.required}
+      className={money ? "w-52" : "w-44"}
+      {...(account ? { hint: accountHint } : {})}
+    >
+      {money ? (
+        <MoneyField name={name} currency={currency} locale={locale} required={field.required} />
+      ) : (
+        <Input
+          name={name}
+          {...(field.kind === "integer" ? { type: "number", step: 1, inputMode: "numeric" } : {})}
+          required={field.required}
+          {...(field.default !== undefined ? { placeholder: String(field.default) } : {})}
+        />
+      )}
+    </Field>
   );
 }

@@ -5,6 +5,7 @@ import { actorRef, audit, badRequest, notFound, require_, scoped, sha256Hex, wit
 import { id, schema } from "@lyra/db";
 import {
   RECIPES,
+  argFields,
   TXN_STATES,
   TXN_TYPES,
   accountStatement,
@@ -134,7 +135,10 @@ ledgerRoutes.get("/txn-types", (c) => {
     data: Object.entries(TXN_TYPES).map(([code, def]) => ({
       ...def,
       code,
-      financial: Boolean(RECIPES[code])
+      financial: Boolean(RECIPES[code]),
+      // The recipe's arguments as a field list, so the UI asks for money in a
+      // money field rather than asking for JSON (docs/ui.md §7 P3-16).
+      args: argFields(code)
     }))
   });
 });

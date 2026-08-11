@@ -436,6 +436,52 @@ export const RECIPES: Record<string, RecipeSpec> = {
   "CREATOR-SPEND": spec(AccrualArgs, expenseAccrual, { expenseAccount: "5150", payableAccount: "2150" })
 };
 
+/**
+ * One argument of a recipe, flat enough to render as an input. The schema stays
+ * private — this is the shape of the question, not the shape of the validation.
+ */
+export interface ArgField {
+  name: string;
+  /** `integer` is a whole number: minor units, parts-per-million, a count. */
+  kind: "integer" | "text";
+  required: boolean;
+  /** What the recipe posts to if the operator says nothing. */
+  default?: string | number;
+}
+
+/**
+ * The recipe's arguments as a field list, so `POST /v1/ledger/txn-types` can
+ * publish them and the UI can ask for money in a money field instead of asking
+ * a controller to hand-type JSON (docs/ui.md §7 P3-16).
+ *
+ * Kind and optionality are probed through `safeParse` rather than read off zod
+ * internals: the answer is then whatever the schema actually accepts, and it
+ * survives a zod upgrade.
+ */
+export function argFields(code: string): ArgField[] {
+  const s = RECIPES[code];
+  if (!s) return [];
+  const shape = (s.schema as unknown as { shape: Record<string, z.ZodType> }).shape;
+  return Object.entries(shape).flatMap(([name, field]) => {
+    // Dimensions are free-form analysis tags, not a question with an answer.
+    if (name === "dims") return [];
+    const kind = field.safeParse(1).success ? "integer" : field.safeParse("x").success ? "text" : null;
+    if (!kind) return [];
+    const blank = field.safeParse(undefined);
+    const fallback = s.defaults?.[name] ?? (blank.success ? blank.data : undefined);
+    return [
+      {
+        name,
+        kind,
+        required: !blank.success,
+        ...(typeof fallback === "string" || typeof fallback === "number"
+          ? { default: fallback }
+          : {})
+      } satisfies ArgField
+    ];
+  });
+}
+
 /** Validate and build. The only entry point the API layer needs. */
 export function buildRecipe(code: string, args: RecipeArgs): PostingLine[] {
   const s = RECIPES[code];

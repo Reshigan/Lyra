@@ -104,6 +104,35 @@ export function txnActions(held: ReadonlySet<string>, state: string): TxnActions
   };
 }
 
+/* ------------------------------------------------------- recipe arguments */
+
+/** Mirrors packages/ledger/src/recipes.ts ArgField, as published by `GET /txn-types`. */
+export interface ArgField {
+  name: string;
+  kind: "integer" | "text";
+  required: boolean;
+  default?: string | number;
+}
+
+/**
+ * The arguments the operator actually typed, read off `arg.<name>` inputs.
+ *
+ * A blank field is left out entirely rather than sent as an empty string, so
+ * the recipe's own default stands. Nothing is validated here beyond the number
+ * conversion: the ledger owns the schema and names the field it refused, and a
+ * second opinion in the browser would only be a second thing to keep in step.
+ */
+export function argsFromForm(fields: readonly ArgField[], form: FormData): Record<string, unknown> {
+  const args: Record<string, unknown> = {};
+  for (const field of fields) {
+    const raw = String(form.get(`arg.${field.name}`) ?? "").trim();
+    if (!raw) continue;
+    const asNumber = Number(raw);
+    args[field.name] = field.kind === "integer" && raw !== "" && !Number.isNaN(asNumber) ? asNumber : raw;
+  }
+  return args;
+}
+
 /* --------------------------------------------------------- the invariant */
 
 export interface SidedLine {
@@ -271,7 +300,33 @@ export const LABELS: Record<string, Record<string, string>> = {
     "open.gross": "Gross amount",
     "open.args": "Arguments",
     "open.argsHint":
-      "JSON the recipe expects. The ledger validates it and names the fields it wanted if any are missing.",
+      "What this type needs to post its journal. Leave a field blank to take the recipe's own default.",
+    "open.argsNone": "This type takes no arguments.",
+    "open.argAccountHint": "Account code",
+    /* The recipe argument names, from `GET /txn-types`. An unnamed one falls
+       back to its own name read as words, so a new recipe field still shows. */
+    "arg.amountMinor": "Amount",
+    "arg.grossMinor": "Gross commission",
+    "arg.netMinor": "Net amount",
+    "arg.taxMinor": "Tax",
+    "arg.feeMinor": "Fee",
+    "arg.channelMinor": "Channel share",
+    "arg.premiumMinor": "Premium",
+    "arg.flatFeeMinor": "Flat fee",
+    "arg.withholdingMinor": "Withholding tax",
+    "arg.baseCommissionPpm": "Commission rate (ppm)",
+    "arg.channelSharePpm": "Channel share rate (ppm)",
+    "arg.taxPpm": "Tax rate (ppm)",
+    "arg.incomeAccount": "Income account",
+    "arg.expenseAccount": "Expense account",
+    "arg.receivableAccount": "Receivable account",
+    "arg.payableAccount": "Payable account",
+    "arg.cashAccount": "Cash account",
+    "arg.creditAccount": "Credit account",
+    "arg.debitAccount": "Debit account",
+    "arg.deferredAccount": "Deferred revenue account",
+    "arg.liabilityAccount": "Liability account",
+    "arg.memo": "Memo",
     "open.submit": "Open transaction",
     "open.confirm": "Open this transaction? It posts to the ledger.",
     "open.opened": "Transaction opened",
@@ -521,7 +576,31 @@ export const LABELS: Record<string, Record<string, string>> = {
     "open.keyHint": "المفتاح الطبيعي لهذه المعاملة. إعادة استخدامه تُعيد المعاملة نفسها.",
     "open.gross": "المبلغ الإجمالي",
     "open.args": "المعاملات",
-    "open.argsHint": "قيمة JSON تتوقعها الوصفة. يتحقق الدفتر منها ويسمّي الحقول الناقصة.",
+    "open.argsHint": "ما تحتاجه هذه المعاملة لترحيل قيدها. اترك الحقل فارغًا ليُؤخذ الافتراضي من الوصفة.",
+    "open.argsNone": "هذا النوع لا يأخذ معاملات.",
+    "open.argAccountHint": "رمز الحساب",
+    "arg.amountMinor": "المبلغ",
+    "arg.grossMinor": "العمولة الإجمالية",
+    "arg.netMinor": "الصافي",
+    "arg.taxMinor": "الضريبة",
+    "arg.feeMinor": "الرسوم",
+    "arg.channelMinor": "حصة القناة",
+    "arg.premiumMinor": "القسط",
+    "arg.flatFeeMinor": "رسوم ثابتة",
+    "arg.withholdingMinor": "ضريبة الاستقطاع",
+    "arg.baseCommissionPpm": "نسبة العمولة (جزء بالمليون)",
+    "arg.channelSharePpm": "نسبة حصة القناة (جزء بالمليون)",
+    "arg.taxPpm": "نسبة الضريبة (جزء بالمليون)",
+    "arg.incomeAccount": "حساب الإيراد",
+    "arg.expenseAccount": "حساب المصروف",
+    "arg.receivableAccount": "حساب المدينين",
+    "arg.payableAccount": "حساب الدائنين",
+    "arg.cashAccount": "حساب النقد",
+    "arg.creditAccount": "الحساب الدائن",
+    "arg.debitAccount": "الحساب المدين",
+    "arg.deferredAccount": "حساب الإيراد المؤجل",
+    "arg.liabilityAccount": "حساب الالتزام",
+    "arg.memo": "بيان",
     "open.submit": "فتح المعاملة",
     "open.confirm": "هل تفتح هذه المعاملة؟ سيتم الترحيل إلى الدفتر.",
     "open.opened": "فُتحت المعاملة",

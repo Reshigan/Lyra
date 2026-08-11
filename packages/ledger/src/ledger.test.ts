@@ -9,7 +9,7 @@ import type { Ctx } from "@lyra/core";
 import { balanceOf, post, reverse } from "./posting.js";
 import { openTxn, reverseTxn, runSaga, runTxn, transition } from "./txn.js";
 import { closeChecks, closePeriod, ensurePeriod, periodCode } from "./periods.js";
-import { RECIPES, buildRecipe } from "./recipes.js";
+import { RECIPES, argFields, buildRecipe } from "./recipes.js";
 import { clientMoneyPosition, rebuildBalances, trialBalance } from "./reports.js";
 import { valueFlow, valueFlowLines, type MoneyMap } from "./money-map.js";
 import { reconcile } from "./recon.js";
@@ -777,5 +777,44 @@ describe("close check details", () => {
     expect(detailOf(await closeChecks(ctx, code), "no_pending_external")).toBe(
       "2 transactions still waiting on a provider"
     );
+  });
+});
+
+// docs/ui.md §7 P3-16: a controller opening a transaction should not be
+// writing JSON. The recipe schemas stay private; what they publish is a flat
+// field list the UI can render as inputs.
+describe("recipe argument fields", () => {
+  it("names each argument, its kind and whether it must be given", () => {
+    const fields = argFields("CM-RECEIPT");
+    expect(fields).toEqual([
+      { name: "amountMinor", kind: "integer", required: true },
+      { name: "memo", kind: "text", required: false }
+    ]);
+  });
+
+  it("carries the recipe's own default so the form shows the account it will post to", () => {
+    const fields = argFields("FEE-BROK");
+    expect(fields.find((f) => f.name === "incomeAccount")).toEqual({
+      name: "incomeAccount",
+      kind: "text",
+      required: false,
+      default: "4020"
+    });
+  });
+
+  it("leaves free-form dimensions out — they are not a form field", () => {
+    expect(argFields("PAYOUT-INSTRUCT").map((f) => f.name)).not.toContain("dims");
+  });
+
+  it("says nothing for a type that posts no journal", () => {
+    expect(argFields("NOTE")).toEqual([]);
+  });
+
+  it("publishes fields for every financial type, and every field is renderable", () => {
+    for (const code of Object.keys(RECIPES)) {
+      const fields = argFields(code);
+      expect(fields.length, code).toBeGreaterThan(0);
+      for (const f of fields) expect(["integer", "text"], `${code}.${f.name}`).toContain(f.kind);
+    }
   });
 });

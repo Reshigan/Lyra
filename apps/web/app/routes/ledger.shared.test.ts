@@ -2,13 +2,15 @@ import { describe, expect, it } from "vitest";
 import {
   LABELS,
   PERM,
+  argsFromForm,
   TRANSITIONS,
   TXN_STATES,
   balanceCheck,
   checkName,
   labelIn,
   nextStates,
-  txnActions
+  txnActions,
+  type ArgField
 } from "./ledger.shared";
 
 // The three pieces of judgement the ledger screens make before they render:
@@ -190,5 +192,48 @@ describe("checkName", () => {
 
   it("says it in Arabic too", () => {
     expect(checkName("no_pending_external@2026-08", labelIn("ar"))).not.toContain("_");
+  });
+});
+
+// docs/ui.md §7 P3-16: the open-transaction screen asked a controller to type
+// the recipe's arguments as JSON. `GET /txn-types` now publishes the field list
+// and the form posts one input per field, so this is the reader of that form.
+describe("argsFromForm", () => {
+  const fields: ArgField[] = [
+    { name: "amountMinor", kind: "integer", required: true },
+    { name: "feeMinor", kind: "integer", required: false, default: 0 },
+    { name: "cashAccount", kind: "text", required: false, default: "1000" },
+    { name: "memo", kind: "text", required: false }
+  ];
+
+  function form(entries: Record<string, string>): FormData {
+    const data = new FormData();
+    for (const [k, v] of Object.entries(entries)) data.set(k, v);
+    return data;
+  }
+
+  it("reads each field off its own input and numbers the integers", () => {
+    expect(argsFromForm(fields, form({ "arg.amountMinor": "150000", "arg.feeMinor": "250" }))).toEqual({
+      amountMinor: 150000,
+      feeMinor: 250
+    });
+  });
+
+  it("leaves a blank field out so the recipe's own default stands", () => {
+    expect(argsFromForm(fields, form({ "arg.amountMinor": "1", "arg.cashAccount": "  " }))).toEqual({
+      amountMinor: 1
+    });
+  });
+
+  it("keeps text as text, trimmed", () => {
+    expect(argsFromForm(fields, form({ "arg.memo": " renewal " }))).toEqual({ memo: "renewal" });
+  });
+
+  it("ignores anything the field list did not ask for", () => {
+    expect(argsFromForm(fields, form({ "arg.somethingElse": "9", type: "BIND" }))).toEqual({});
+  });
+
+  it("passes a non-numeric amount through for the ledger to refuse by name", () => {
+    expect(argsFromForm(fields, form({ "arg.amountMinor": "lots" }))).toEqual({ amountMinor: "lots" });
   });
 });
