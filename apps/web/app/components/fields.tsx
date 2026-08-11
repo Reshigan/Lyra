@@ -104,6 +104,16 @@ export function Cell({ column, row, locale, label, resolved = {} }: CellProps) {
     }
     case "number":
       return <span className="tabular-nums">{String(value)}</span>;
+    case "rate":
+      // Parts per million on the wire, a percentage on screen: 400000 is 40%,
+      // and printed bare beside money columns it read as an amount.
+      return <span className="tabular-nums">{formatRate(Number(value), locale)}</span>;
+    case "ratio":
+      return (
+        <span className="tabular-nums">
+          {new Intl.NumberFormat(locale, { maximumFractionDigits: 6 }).format(Number(value) / 1_000_000)}
+        </span>
+      );
     default: {
       const text = String(value);
       if (column.badge) {
@@ -113,6 +123,13 @@ export function Cell({ column, row, locale, label, resolved = {} }: CellProps) {
           </Badge>
         );
       }
+      // An enum the pack has words for reads as those words: the channels list
+      // printed `b2c`, `call_centre` and `us` where the same pack already had
+      // "Direct", "Call centre" and "We collect" — badges were the only cells
+      // consulting it. No label means the value is not an enum (a key, a
+      // number, an email), so it stays exactly as it is.
+      const labelled = label(`${column.name}.${text}`);
+      if (labelled !== `${column.name}.${text}`) return <span>{labelled}</span>;
       // A ref-shaped value is an id that escaped into the interface: the cases
       // list printed `user:us_01KE…FMN` under OWNER. `who` names it when the
       // batch resolved it and shortens it when it did not; anything that is not
@@ -183,17 +200,43 @@ export function FieldInput({
           {...common}
           type={inputTypeFor(field)}
           defaultValue={value}
-          {...(field.type === "money" || field.type === "number" ? { step: 1 } : {})}
+            {...stepFor(field.type)}
         />
       )}
     </Field>
   );
 }
 
+/** Numeric inputs need a step or the browser rejects a decimal share. */
+function stepFor(type: FieldSpec["type"]): { step?: number } {
+  switch (type) {
+    case "money":
+    case "number":
+      return { step: 1 };
+    case "rate":
+      return { step: 0.01 };
+    case "ratio":
+      return { step: 0.000001 };
+    default:
+      return {};
+  }
+}
+
+/** Parts per million as a percentage, trailing zeroes dropped. */
+export function formatRate(ppm: number, locale: string): string {
+  if (!Number.isFinite(ppm)) return "—";
+  return new Intl.NumberFormat(locale, {
+    style: "percent",
+    maximumFractionDigits: 4
+  }).format(ppm / 1_000_000);
+}
+
 function inputTypeFor(field: FieldSpec): string {
   switch (field.type) {
     case "number":
     case "money":
+    case "rate":
+    case "ratio":
       return "number";
     case "date":
       return "date";

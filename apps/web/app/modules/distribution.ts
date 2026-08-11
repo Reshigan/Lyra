@@ -309,7 +309,7 @@ export const distribution: WorkspaceSpec = {
         { name: "medium", type: "text" },
         { name: "partnerId", type: "text" },
         { name: "collectsPayment", type: "text" },
-        { name: "defaultCommissionPpm", type: "number" },
+        { name: "defaultCommissionPpm", type: "rate" },
         { name: "status", type: "text", badge: true },
         { name: "createdAt", type: "datetime", sortable: true }
       ],
@@ -329,7 +329,7 @@ export const distribution: WorkspaceSpec = {
           options: ["us", "partner", "underwriter"]
         },
         { name: "currency", type: "text" },
-        { name: "defaultCommissionPpm", type: "number" },
+        { name: "defaultCommissionPpm", type: "rate" },
         { name: "settlementTermsJson", type: "json" }
       ],
       editable: [
@@ -340,7 +340,7 @@ export const distribution: WorkspaceSpec = {
           options: ["web", "app", "portal", "api", "branch", "call_centre", "embed"]
         },
         { name: "collectsPayment", type: "select", options: ["us", "partner", "underwriter"] },
-        { name: "defaultCommissionPpm", type: "number" },
+        { name: "defaultCommissionPpm", type: "rate" },
         { name: "nameJson", type: "json" },
         { name: "settlementTermsJson", type: "json" }
       ]
@@ -363,7 +363,7 @@ export const distribution: WorkspaceSpec = {
         { name: "productId", type: "text" },
         { name: "pricingMode", type: "text" },
         { name: "minPremiumMinor", type: "money", currencyFrom: "currency" },
-        { name: "baseCommissionPpm", type: "number" },
+        { name: "baseCommissionPpm", type: "rate" },
         { name: "status", type: "text", badge: true },
         { name: "effectiveFrom", type: "date", sortable: true }
       ],
@@ -381,8 +381,8 @@ export const distribution: WorkspaceSpec = {
         },
         { name: "effectiveFrom", type: "date", required: true },
         { name: "effectiveTo", type: "date" },
-        { name: "baseCommissionPpm", type: "number" },
-        { name: "maxDiscountPpm", type: "number" },
+        { name: "baseCommissionPpm", type: "rate" },
+        { name: "maxDiscountPpm", type: "rate" },
         { name: "minPremiumMinor", type: "money" },
         { name: "slaSeconds", type: "number" },
         { name: "coverageJson", type: "json" },
@@ -392,8 +392,8 @@ export const distribution: WorkspaceSpec = {
       // `dist.offering_publish` (resources.ts) rather than writing it directly.
       editable: [
         { name: "status", type: "select", options: ["draft", "active", "paused", "withdrawn"] },
-        { name: "baseCommissionPpm", type: "number" },
-        { name: "maxDiscountPpm", type: "number" },
+        { name: "baseCommissionPpm", type: "rate" },
+        { name: "maxDiscountPpm", type: "rate" },
         { name: "minPremiumMinor", type: "money" },
         { name: "effectiveTo", type: "date" },
         { name: "coverageJson", type: "json" },
@@ -414,7 +414,7 @@ export const distribution: WorkspaceSpec = {
         { name: "channelId", type: "text" },
         { name: "offeringId", type: "text" },
         { name: "productId", type: "text" },
-        { name: "channelSharePpm", type: "number" },
+        { name: "channelSharePpm", type: "rate" },
         { name: "flatFeeMinor", type: "money", currencyFrom: "currency" },
         { name: "earnedOn", type: "text", badge: true },
         { name: "effectiveFrom", type: "date", sortable: true },
@@ -425,8 +425,8 @@ export const distribution: WorkspaceSpec = {
         { name: "offeringId", type: "text" },
         { name: "productId", type: "text" },
         { name: "line", type: "text" },
-        { name: "channelSharePpm", type: "number", required: true },
-        { name: "baseCommissionPpm", type: "number" },
+        { name: "channelSharePpm", type: "rate", required: true },
+        { name: "baseCommissionPpm", type: "rate" },
         { name: "flatFeeMinor", type: "money" },
         { name: "currency", type: "text" },
         { name: "earnedOn", type: "select", options: ["issue", "collection"] },
@@ -504,7 +504,7 @@ export const distribution: WorkspaceSpec = {
         { name: "feesMinor", type: "money", currencyFrom: "currency" },
         { name: "commissionMinor", type: "money", currencyFrom: "currency" },
         // ppm, like every other rate here (schema/dist.ts: 12.5% is 125_000).
-        { name: "commissionPpm", type: "number" },
+        { name: "commissionPpm", type: "rate" },
         { name: "priceRank", type: "number" },
         { name: "valueScore", type: "number" },
         { name: "coverageJson", type: "json" },

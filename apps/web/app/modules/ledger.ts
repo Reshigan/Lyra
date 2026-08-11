@@ -641,7 +641,7 @@ export const ledger: WorkspaceSpec = {
         { name: "periodId", type: "text" },
         { name: "totalDebitMinor", type: "money", currencyFrom: "currency" },
         { name: "totalCreditMinor", type: "money", currencyFrom: "currency" },
-        { name: "fxRatePpm", type: "number" },
+        { name: "fxRatePpm", type: "ratio" },
         { name: "postedBy", type: "text" },
         { name: "postedAt", type: "datetime", sortable: true }
       ]
@@ -956,14 +956,14 @@ export const ledger: WorkspaceSpec = {
       columns: [
         { name: "fromCurrency", type: "text" },
         { name: "toCurrency", type: "text" },
-        { name: "ratePpm", type: "number" },
+        { name: "ratePpm", type: "ratio" },
         { name: "asOf", type: "text", sortable: true },
         { name: "source", type: "text" }
       ],
       fields: [
         { name: "fromCurrency", type: "text", required: true },
         { name: "toCurrency", type: "text", required: true },
-        { name: "ratePpm", type: "number", required: true },
+        { name: "ratePpm", type: "ratio", required: true },
         { name: "asOf", type: "text", required: true, hintKey: "asOf" },
         { name: "source", type: "text" }
       ]
@@ -979,7 +979,7 @@ export const ledger: WorkspaceSpec = {
       columns: [
         { name: "code", type: "text" },
         { name: "market", type: "text" },
-        { name: "ratePpm", type: "number" },
+        { name: "ratePpm", type: "rate" },
         { name: "placeOfSupply", type: "text" },
         { name: "reverseCharge", type: "boolean" },
         { name: "exempt", type: "boolean" },
@@ -989,7 +989,7 @@ export const ledger: WorkspaceSpec = {
       fields: [
         { name: "market", type: "text", required: true },
         { name: "code", type: "text", required: true },
-        { name: "ratePpm", type: "number", required: true },
+        { name: "ratePpm", type: "rate", required: true },
         { name: "placeOfSupply", type: "text" },
         { name: "reverseCharge", type: "boolean" },
         { name: "exempt", type: "boolean" },
@@ -997,7 +997,7 @@ export const ledger: WorkspaceSpec = {
         { name: "effectiveTo", type: "date" }
       ],
       editable: [
-        { name: "ratePpm", type: "number" },
+        { name: "ratePpm", type: "rate" },
         { name: "reverseCharge", type: "boolean" },
         { name: "exempt", type: "boolean" },
         { name: "effectiveTo", type: "date" }

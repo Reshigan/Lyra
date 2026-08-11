@@ -58,3 +58,40 @@ describe("readable", () => {
     expect(readable(null, "en")).toBe("");
   });
 });
+
+// The channels list headed a column DEFAULT COMMISSION and printed `400000`
+// between two money columns, and KIND, MEDIUM and COLLECTS PAYMENT printed
+// `b2c`, `call_centre` and `us` while the pack already had words for all three.
+describe("Cell on a share and on an enum", () => {
+  const cell = (
+    spec: ColumnSpec,
+    row: Record<string, unknown>,
+    words: Record<string, string> = {}
+  ) =>
+    renderToStaticMarkup(
+      <Cell column={spec} row={row} locale="en" label={(key) => words[key] ?? key} resolved={{}} />
+    );
+
+  it("reads parts per million as a percentage", () => {
+    const markup = cell({ name: "defaultCommissionPpm", type: "rate" }, { defaultCommissionPpm: 400000 });
+    expect(markup).toContain("40%");
+    expect(markup).not.toContain("400000");
+  });
+
+  it("keeps a rate a multiplier, not a percentage", () => {
+    const markup = cell({ name: "ratePpm", type: "ratio" }, { ratePpm: 18_500_000 });
+    expect(markup).toContain("18.5");
+    expect(markup).not.toContain("%");
+  });
+
+  it("says the words the pack has for an enum", () => {
+    const markup = cell({ name: "medium", type: "text" }, { medium: "call_centre" }, {
+      "medium.call_centre": "Call centre"
+    });
+    expect(markup).toContain("Call centre");
+  });
+
+  it("leaves a value the pack has no words for exactly as it is", () => {
+    expect(cell({ name: "key", type: "text" }, { key: "direct-web" })).toContain("direct-web");
+  });
+});

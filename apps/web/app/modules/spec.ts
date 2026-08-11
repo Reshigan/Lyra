@@ -20,6 +20,13 @@ export type FieldType =
   | "text"
   | "textarea"
   | "number"
+  /** A share stored in parts per million, read and written as a percentage.
+   * The channels list headed a column DEFAULT COMMISSION and printed `400000`
+   * beside money columns, which reads as four hundred thousand rand. */
+  | "rate"
+  /** A multiplier stored in parts per million: an FX rate of 18.5 is 18500000
+   * on the wire and must never read as 1850%. */
+  | "ratio"
   | "money"
   | "select"
   | "date"
@@ -322,6 +329,16 @@ export function bodyFrom(fields: readonly FieldSpec[], form: FormData): Row {
       case "money":
         out[field.name] = Number(value);
         break;
+      case "rate": {
+        const percent = Number(value);
+        if (Number.isFinite(percent)) out[field.name] = Math.round(percent * 10_000);
+        break;
+      }
+      case "ratio": {
+        const factor = Number(value);
+        if (Number.isFinite(factor)) out[field.name] = Math.round(factor * 1_000_000);
+        break;
+      }
       case "boolean":
         out[field.name] = value === "on" || value === "true";
         break;
@@ -350,6 +367,14 @@ export function inputValue(field: FieldSpec, row: Row | undefined): string {
   switch (field.type) {
     case "json":
       return JSON.stringify(value, null, 2);
+    case "rate": {
+      const ppm = Number(value);
+      return Number.isFinite(ppm) ? String(ppm / 10_000) : "";
+    }
+    case "ratio": {
+      const ppm = Number(value);
+      return Number.isFinite(ppm) ? String(ppm / 1_000_000) : "";
+    }
     case "date":
     case "datetime": {
       const ms = Number(value);
