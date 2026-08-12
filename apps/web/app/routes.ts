@@ -27,6 +27,8 @@ export default [
     route("ledger/transactions", "routes/ledger-open-txn.tsx"),
     route("ledger/transactions/:id", "routes/ledger-transaction.tsx"),
     route("ledger/period-close", "routes/ledger-periods.tsx"),
+    route("ledger/year-end", "routes/ledger-year-end.tsx"),
+    route("ledger/journal", "routes/ledger-journal.tsx"),
     route("ledger/statement", "routes/ledger-account.tsx"),
     route("ledger/recon", "routes/ledger-recon.tsx"),
     route("analytics/report/:id", "routes/analytics-report.tsx"),

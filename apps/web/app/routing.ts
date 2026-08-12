@@ -48,6 +48,8 @@ export const HIDDEN_ROUTES: Record<string, string> = {
   "/ledger/transactions": "opens a transaction inside the ledger workspace, linked from its tools list",
   "/ledger/transactions/:id": "opens one transaction from the ledger transactions list",
   "/ledger/period-close": "closes an accounting period, linked from the ledger workspace tools list",
+  "/ledger/year-end": "closes a fiscal year into retained earnings, linked from the ledger workspace tools list",
+  "/ledger/journal": "drafts a manual journal entry, linked from the ledger workspace tools list",
   "/ledger/statement": "one account's journal lines, linked from the ledger workspace tools list",
   "/ledger/money-map": "a period's value flow inside the ledger workspace, linked from its reports list",
   "/ledger/recon": "reconciliation runs inside the ledger workspace, linked from its tools list",

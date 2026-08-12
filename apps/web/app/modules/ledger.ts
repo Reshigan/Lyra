@@ -28,6 +28,10 @@ export const ledger: WorkspaceSpec = {
     // closed by its checks, a run is decided by a person.
     { href: "/ledger/transactions", labelKey: "link.open-txn", permission: "ledger:txns:create" },
     { href: "/ledger/period-close", labelKey: "link.period-close", permission: "ledger:periods:read" },
+    // A year is closed once the months are; the entry is the one instrument that
+    // can express what no recipe covers. Both post through dual control.
+    { href: "/ledger/year-end", labelKey: "link.year-end", permission: "ledger:journals:read" },
+    { href: "/ledger/journal", labelKey: "link.journal", permission: "ledger:journals:draft" },
     { href: "/ledger/statement", labelKey: "link.statement", permission: "ledger:journals:read" },
     { href: "/ledger/recon", labelKey: "link.recon", permission: "ledger:recon:read" },
     { href: "/ledger/settlement", labelKey: "link.settlement", permission: "dist:commissions:read" }
@@ -66,6 +70,8 @@ export const ledger: WorkspaceSpec = {
       "link.open-txn": "Open a transaction",
       "link.txn-detail": "Journal, approvals and next steps",
       "link.period-close": "Period close",
+      "link.year-end": "Year-end close",
+      "link.journal": "Manual journal",
       "link.statement": "Account statement",
       "link.recon": "Reconciliation",
       "link.settlement": "Commission settlements",
@@ -414,6 +420,8 @@ export const ledger: WorkspaceSpec = {
       "link.open-txn": "فتح معاملة",
       "link.txn-detail": "القيود والموافقات والخطوات التالية",
       "link.period-close": "إقفال الفترة",
+      "link.year-end": "الإقفال السنوي",
+      "link.journal": "قيد يدوي",
       "link.statement": "كشف حساب",
       "link.recon": "المطابقة",
       "link.settlement": "تسويات العمولات",

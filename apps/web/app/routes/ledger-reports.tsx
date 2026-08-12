@@ -82,6 +82,9 @@ interface BalanceSheet {
   currency: string;
   assets: Section;
   liabilities: Section;
+  /** Posted 3xxx accounts. Empty until the tenant's first year-end close. */
+  equity: Section;
+  currentYearUnpostedMinor: number;
   equityMinor: number;
   balanced: boolean;
 }
@@ -250,7 +253,10 @@ const LABELS: Record<string, Record<string, string>> = {
     "bs.equity": "Equity",
     "bs.unbalanced.title": "This balance sheet does not balance",
     "bs.unbalanced.body":
-      "Assets do not equal liabilities plus equity. The difference is shown; equity is derived from the journal, so the gap is in the postings, not in a closing entry.",
+      "Assets do not equal liabilities plus equity. The difference is shown; equity is read from the journal, so the gap is in the postings.",
+    "bs.equity.posted": "Posted equity",
+    "bs.equity.unposted": "Current year (not yet closed)",
+    "bs.equity.unposted.hint": "This year's result still sits in income and expense. The year-end close moves it into retained earnings.",
     "aged.counterparty": "Counterparty",
     "aged.current": "0–30 days",
     "aged.d30": "31–60 days",
@@ -332,7 +338,10 @@ const LABELS: Record<string, Record<string, string>> = {
     "bs.equity": "حقوق الملكية",
     "bs.unbalanced.title": "الميزانية العمومية غير متوازنة",
     "bs.unbalanced.body":
-      "الأصول لا تساوي الالتزامات مضافًا إليها حقوق الملكية. الفرق ظاهر أدناه، وحقوق الملكية مشتقة من اليومية، لذا الخلل في القيود لا في قيد الإقفال.",
+      "الأصول لا تساوي الالتزامات مضافًا إليها حقوق الملكية. الفرق ظاهر أدناه، وحقوق الملكية مقروءة من اليومية، لذا الخلل في القيود.",
+    "bs.equity.posted": "حقوق الملكية المسجلة",
+    "bs.equity.unposted": "نتيجة السنة الجارية (قبل الإقفال)",
+    "bs.equity.unposted.hint": "نتيجة هذه السنة ما زالت في الإيرادات والمصروفات. إقفال نهاية السنة ينقلها إلى الأرباح المحتجزة.",
     "aged.counterparty": "الطرف المقابل",
     "aged.current": "0–30 يومًا",
     "aged.d30": "31–60 يومًا",
@@ -845,6 +854,15 @@ function BalanceSheetView({ bs, accounts, locale, l, t }: ViewProps & { bs: Bala
           label={l("bs.equity")}
           value={<Money amountMinor={bs.equityMinor} currency={currency} locale={locale} />}
         />
+        {/* The year's result is not equity until the year is closed, so it is
+            named rather than folded in silently (docs/27 F3). */}
+        {bs.currentYearUnpostedMinor === 0 ? null : (
+          <Stat
+            label={l("bs.equity.unposted")}
+            value={<Money amountMinor={bs.currentYearUnpostedMinor} currency={currency} locale={locale} />}
+            hint={l("bs.equity.unposted.hint")}
+          />
+        )}
       </KPIWall>
 
       {bs.balanced ? null : (
@@ -878,6 +896,17 @@ function BalanceSheetView({ bs, accounts, locale, l, t }: ViewProps & { bs: Bala
           l={l}
           t={t}
         />
+        {bs.equity.rows.length === 0 ? null : (
+          <SectionTable
+            section={bs.equity}
+            title={l("bs.equity.posted")}
+            currency={currency}
+            accounts={accounts}
+            locale={locale}
+            l={l}
+            t={t}
+          />
+        )}
       </div>
     </section>
   );
