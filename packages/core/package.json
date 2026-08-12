@@ -16,6 +16,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "seed": "tsx src/seed-cli.ts",
+    "seed:history": "tsx src/seed-history-cli.ts",
     "mutation": "cd ../.. && stryker run packages/core/stryker.config.mjs"
   },
   "dependencies": {
