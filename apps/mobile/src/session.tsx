@@ -19,6 +19,7 @@ import {
   type Me
 } from "./api";
 import { dirFor, resolveLocale, translator, type Translate } from "./i18n";
+import { tabsFor, type TabConfig } from "./personas";
 import { resolvePersona, type Persona } from "./workspace";
 import {
   clearPendingRecoveryCodes,
@@ -52,6 +53,10 @@ interface Session {
   /** Resolved once per session bootstrap from `me.roles`; fixed for the
    *  session's lifetime, same staleness contract as the web lens. */
   persona: Persona;
+  /** The tab bar, computed once here rather than in each of the four screens
+   *  that index it positionally — a filter applied in three of them and missed
+   *  in the fourth puts a tab's label above another tab's screen. */
+  tabs: TabConfig[];
   locale: string;
   dir: "ltr" | "rtl";
   t: Translate;
@@ -277,13 +282,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     if (I18nManager.isRTL !== rtl) I18nManager.forceRTL(rtl);
   }, [locale]);
 
-  const value = useMemo<Session>(
-    () => ({
+  const value = useMemo<Session>(() => {
+    const persona = resolvePersona(me?.roles ?? []);
+    return {
       status,
       mfaStep,
       token,
       me,
-      persona: resolvePersona(me?.roles ?? []),
+      persona,
+      // `/v1/me` returns permissions already expanded to concrete strings
+      // (me.ts), so a tab's `perm` is a plain membership test.
+      tabs: tabsFor(persona.workspace, persona.variant, me?.permissions ?? []),
       locale,
       dir: dirFor(locale),
       t: translator(locale),
@@ -298,24 +307,23 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       recoveryCodesSaved,
       refresh,
       signOut
-    }),
-    [
-      status,
-      mfaStep,
-      token,
-      me,
-      locale,
-      restoreError,
-      signIn,
-      verifyCode,
-      enrol,
-      confirmEnrol,
-      pendingRecoveryCodes,
-      recoveryCodesSaved,
-      refresh,
-      signOut
-    ]
-  );
+    };
+  }, [
+    status,
+    mfaStep,
+    token,
+    me,
+    locale,
+    restoreError,
+    signIn,
+    verifyCode,
+    enrol,
+    confirmEnrol,
+    pendingRecoveryCodes,
+    recoveryCodesSaved,
+    refresh,
+    signOut
+  ]);
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }

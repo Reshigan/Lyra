@@ -1,14 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import type { ComponentProps } from "react";
-import { tabsFor } from "../../src/personas";
 import { useSession } from "../../src/session";
 
 type IconName = ComponentProps<typeof Ionicons>["name"];
 
 export default function TabsLayout() {
   const session = useSession();
-  const tabs = tabsFor(session.persona.workspace, session.persona.variant);
+  const tabs = session.tabs;
   const iconFor = (index: number, fallback: IconName): IconName => (tabs[index]?.icon as IconName) ?? fallback;
 
   return (

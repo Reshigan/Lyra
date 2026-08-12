@@ -686,6 +686,16 @@ describe("persona tab config", () => {
     expect(tabs[0]?.route).toBe("/j/requests");
   });
 
+  it("drops a tab the signed-in person has no permission for", () => {
+    // Both finance roles land on the ledger workspace, but only the controller
+    // may decide approvals (rbac.ts) — the analyst was being handed a tab that
+    // 403s at the person whose tab it is.
+    const controller = tabsFor("ledger", "default", ["core:approvals:read", "ledger:recon:read"]);
+    expect(controller.map((tab) => tab.labelKey)).toEqual(["tab.money", "tab.approvals", "tab.recon"]);
+    const analyst = tabsFor("ledger", "default", ["ledger:recon:read"]);
+    expect(analyst.map((tab) => tab.labelKey)).toEqual(["tab.money", "tab.recon"]);
+  });
+
   it("lands every routeless tab on a list rather than a 404", () => {
     // A tab with no journey screen redirects to `/m/${screen}`, and `screen`
     // held a resource path — so `/m/core/users` matched `[nav]/[id]` and asked
