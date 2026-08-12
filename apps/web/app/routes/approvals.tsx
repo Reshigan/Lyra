@@ -30,6 +30,7 @@ import { WORKSPACES } from "../modules";
 import { humanise } from "../modules/spec";
 import { policyTitle } from "../policy";
 import { labelsFrom } from "./detail-kit";
+import { ShiftClear } from "../components/shift-clear";
 import { Problem } from "./module";
 import { useShellData } from "./workspace";
 import { who, type Names } from "../names";
@@ -326,8 +327,16 @@ const LABELS: Record<string, Record<string, string>> = {
     selfRaised: "You raised this request, and this rule needs a second person to decide it.",
     noPermission: "Decisions across the tenant are not yours to read, so this list stays empty.",
     unavailable: "The queue could not be read just now.",
-    emptyPending: "Nothing is waiting for your decision.",
     emptyDecided: "No decisions in this state yet.",
+    clearEyebrow: "Shift clear",
+    clearHead: "Nothing is waiting on you.",
+    clearBody:
+      "Every request that needed your decision has one. Anything raised from here — by a person or by an agent — lands on this screen the moment it is raised, and the rail keeps the count while you work elsewhere.",
+    clearAfter: "A decision is final and is kept in the audit log, so an empty queue is a closed day, not a cleared one.",
+    figCleared: "Decided today",
+    figWaiting: "Still waiting",
+    figNotices: "Notices",
+    clearDecided: "See what you decided",
     announceApproved: "Approved. The action may now proceed.",
     announceRejected: "Rejected. The action will not proceed."
   },
@@ -365,8 +374,16 @@ const LABELS: Record<string, Record<string, string>> = {
     selfRaised: "أنت من طلب هذا، وهذه القاعدة تتطلب شخصًا ثانيًا ليقرّر.",
     noPermission: "قرارات المؤسسة ليست من صلاحيتك للاطلاع، لذلك تبقى هذه القائمة فارغة.",
     unavailable: "تعذّرت قراءة قائمة الطلبات الآن.",
-    emptyPending: "لا يوجد ما ينتظر قرارك.",
     emptyDecided: "لا قرارات في هذه الحالة بعد.",
+    clearEyebrow: "انتهت النوبة",
+    clearHead: "لا شيء بانتظارك.",
+    clearBody:
+      "كل طلب كان يحتاج قرارك صار له قرار. وأي طلب جديد — من شخص أو من وكيل ذكاء اصطناعي — يظهر على هذه الشاشة فور رفعه، والشريط الجانبي يعرض العدد بينما تعمل في مكان آخر.",
+    clearAfter: "القرار نهائي ويُحفظ في سجل التدقيق، فالقائمة الفارغة تعني يومًا مغلقًا لا يومًا مؤجلًا.",
+    figCleared: "قرارات اليوم",
+    figWaiting: "قيد الانتظار",
+    figNotices: "الإشعارات",
+    clearDecided: "اطّلع على قراراتك",
     announceApproved: "تمت الموافقة. يمكن تنفيذ الإجراء الآن.",
     announceRejected: "تم الرفض. لن يُنفَّذ الإجراء."
   }
@@ -390,6 +407,8 @@ export default function Approvals() {
   const busy = navigation.state !== "idle";
   const deciding = navigation.formData?.get("id");
   const items = loaded.items;
+  // Arabic reads Eastern Arabic digits; a figure printed with String() would not.
+  const count = (value: number) => new Intl.NumberFormat(locale).format(value);
 
   return (
     <div className="flex flex-col gap-6">
@@ -434,17 +453,40 @@ export default function Approvals() {
         <Problem problem={result.problem} />
       ) : null}
 
-      {items.length === 0 ? (
+      {items.length === 0 && loaded.readable && loaded.state === "pending" ? (
+        // The one empty list on the platform that is an achievement.
+        <ShiftClear
+          eyebrow={l("clearEyebrow")}
+          head={l("clearHead")}
+          body={l("clearBody")}
+          after={l("clearAfter")}
+          figures={
+            shell?.inbox
+              ? [
+                  { label: l("figCleared"), value: count(shell.inbox.counts.clearedToday) },
+                  { label: l("figWaiting"), value: count(shell.inbox.counts.approvals) },
+                  { label: l("figNotices"), value: count(shell.inbox.counts.notifications) }
+                ]
+              : []
+          }
+        >
+          {loaded.canReadDecided ? (
+            <Button asChild variant="secondary">
+              <Link to="/approvals?state=approved">{l("clearDecided")}</Link>
+            </Button>
+          ) : null}
+        </ShiftClear>
+      ) : items.length === 0 ? (
         <EmptyState
           title={t("common.empty.title")}
           body={
+            // A readable, empty pending queue never reaches here — it is the
+            // shift-clear screen above.
             !loaded.readable
               ? loaded.state === "pending"
                 ? l("unavailable")
                 : l("noPermission")
-              : loaded.state === "pending"
-                ? l("emptyPending")
-                : l("emptyDecided")
+              : l("emptyDecided")
           }
         />
       ) : (
