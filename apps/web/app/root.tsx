@@ -1,5 +1,4 @@
 import {
-  isRouteErrorResponse,
   Links,
   Meta,
   Outlet,
@@ -13,6 +12,7 @@ import {
 } from "react-router";
 import { UiTextProvider, UiTimeZoneProvider } from "@lyra/ui";
 import "./app.css";
+import { ErrorPanel } from "./components/error-panel";
 import { DEFAULT_LOCALE, dirFor, langFor, localeFrom, readCookie, translator } from "./i18n";
 
 // Only the two first-paint faces (packages/ui/FONTS.md §Preload; ADR-0026).
@@ -104,38 +104,19 @@ export default function App() {
 }
 
 /**
- * What happened → what we did → what you can do, with a copyable reference
- * (docs/07 §5). No stack traces: they are in the logs, keyed by that reference.
+ * The last boundary: whatever failed, failed before a session existed — the
+ * root loader itself, or the document. Nothing is loaded, so the panel gets a
+ * bare page. A failure *inside* the session renders in the shell instead
+ * (routes/workspace.tsx): losing the rail on a mistyped URL reads as a crash.
  */
 export function ErrorBoundary() {
   const error = useRouteError();
   const data = useRouteLoaderData<typeof loader>("root");
   const t = translator(data?.locale ?? DEFAULT_LOCALE);
 
-  let messageKey = "error.generic";
-  if (isRouteErrorResponse(error)) {
-    if (error.status === 404) messageKey = "error.notFound";
-    else if (error.status === 403) messageKey = "error.forbidden";
-    else if (error.status === 401) messageKey = "error.unauthorized";
-  }
-  const requestId =
-    isRouteErrorResponse(error) && typeof error.data === "string" ? error.data : null;
-
   return (
-    <main className="mx-auto flex min-h-screen max-w-prose flex-col justify-center gap-4 p-8">
-      <h1 className="font-display text-28">{t("error.title")}</h1>
-      <p className="text-muted">{t(messageKey)}</p>
-      {requestId ? (
-        <p className="font-mono text-12 text-muted">{t("error.requestId", { id: requestId })}</p>
-      ) : null}
-      <p>
-        <a
-          className="text-accent underline underline-offset-4"
-          href={typeof location === "undefined" ? "/" : location.pathname}
-        >
-          {t("error.retry")}
-        </a>
-      </p>
+    <main className="mx-auto flex min-h-screen max-w-prose flex-col justify-center p-8">
+      <ErrorPanel error={error} t={t} />
     </main>
   );
 }

@@ -150,11 +150,19 @@ export const en = {
   "common.filters": "Filters",
 
   "error.title": "This did not load",
+  /* A refusal and an empty address are not failures — saying "this did not
+     load" over either one describes a crash that did not happen. */
+  "error.forbiddenTitle": "This area is not yours",
+  "error.notFoundTitle": "Nothing here",
   "error.generic": "The page could not be built. Nothing was saved, and you can try again.",
   "error.notFound": "There is nothing at this address.",
   "error.forbidden": "Your roles do not include access to this area.",
   "error.unauthorized": "Your session has ended. Sign in to continue.",
   "error.retry": "Try again",
+  /* 403 and 404 do not change on a reload — the roles are the roles, and the
+     address is still empty. Offer the work instead of a button that
+     reproduces the page. */
+  "error.home": "Go to your workspace",
   "error.requestId": "Reference {id}",
   "error.detail": "Details",
   /* Routes refuse an unrecognised form intent by title. Only reachable if a

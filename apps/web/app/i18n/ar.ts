@@ -142,11 +142,14 @@ export const ar: Messages = {
   "common.filters": "عوامل التصفية",
 
   "error.title": "تعذّر تحميل هذه الصفحة",
+  "error.forbiddenTitle": "هذا القسم ليس ضمن صلاحياتك",
+  "error.notFoundTitle": "لا يوجد شيء هنا",
   "error.generic": "تعذّر بناء الصفحة. لم يُحفظ شيء، ويمكنك المحاولة مرة أخرى.",
   "error.notFound": "لا يوجد شيء على هذا العنوان.",
   "error.forbidden": "أدوارك لا تشمل الوصول إلى هذا القسم.",
   "error.unauthorized": "انتهت جلستك. سجّل الدخول للمتابعة.",
   "error.retry": "أعد المحاولة",
+  "error.home": "انتقل إلى مساحة عملك",
   "error.requestId": "المرجع {id}",
   "error.detail": "التفاصيل",
   "error.unknownIntent": "هذا الإجراء غير متاح."

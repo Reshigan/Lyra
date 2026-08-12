@@ -3,6 +3,7 @@ import {
   Outlet,
   redirect,
   useLoaderData,
+  useRouteError,
   useRouteLoaderData,
   type LoaderFunctionArgs,
   type MetaFunction
@@ -10,9 +11,10 @@ import {
 import { UiCalendarProvider, type CalendarPreference } from "@lyra/ui";
 import { cloudflare } from "../context";
 import { api, ApiError, fetchMe } from "../api.server";
+import { ErrorPanel } from "../components/error-panel";
 import { Shell } from "../components/shell";
 import type { Inbox } from "../components/shift";
-import { chosenLocale, translator } from "../i18n";
+import { chosenLocale, DEFAULT_LOCALE, translator } from "../i18n";
 import { DEFAULT_PACK } from "../modules/vocabulary";
 
 // Everything behind a session hangs off this layout. One bootstrap call feeds
@@ -96,6 +98,40 @@ export const meta: MetaFunction<typeof loader> = ({ loaderData: loaded }) => [
   // The product name is tenant configuration, never a literal (CLAUDE.md §5).
   { title: loaded?.brand?.name ?? loaded?.tenantName ?? "" }
 ];
+
+/**
+ * A screen inside the session that fails is still a screen. Without a boundary
+ * here the nearest one is root's, which replaces the whole document: typing
+ * `/north` as an agent who holds no NORTH role dropped the rail, the day strip
+ * and the tenant's own brand, and read as a crash rather than a closed door.
+ *
+ * It has to survive its own layout's loader having failed — the boundary
+ * renders for that case too, and there is then no shell to render. The bare
+ * panel is the fallback; root's boundary stays the one for a dead document.
+ */
+export function ErrorBoundary() {
+  const error = useRouteError();
+  const shell = useShellData();
+  const t = translator(shell?.locale ?? DEFAULT_LOCALE, shell?.overrides);
+  const panel = <ErrorPanel error={error} t={t} className="mx-auto my-16" />;
+
+  if (!shell) return <main className="mx-auto flex min-h-screen max-w-prose flex-col justify-center p-8">{panel}</main>;
+
+  return (
+    <UiCalendarProvider calendar={shell.calendar}>
+      <Shell
+        t={t}
+        nav={shell.nav}
+        brand={shell.brand}
+        tenantName={shell.tenantName}
+        actorName={shell.actorName}
+        inbox={shell.inbox}
+      >
+        {panel}
+      </Shell>
+    </UiCalendarProvider>
+  );
+}
 
 export default function Workspace() {
   const shell = useLoaderData<typeof loader>();
