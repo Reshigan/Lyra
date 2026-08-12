@@ -21,6 +21,12 @@ describe("who", () => {
     expect(who("settlements:cedar-2512", {})).toBe("Settlements cedar-2512");
   });
 
+  it("says a create by what it creates, not by its dedupe digest", () => {
+    expect(
+      who("commission-rates:new:2ea07245cc1fdac67c38cd4d675d490eab3d56b0105d612bd9a322a36fb7cc2c", {})
+    ).toBe("New commission rates");
+  });
+
   it("leaves a plain string alone", () => {
     expect(who("Cedar Motor Plus", {})).toBe("Cedar Motor Plus");
     expect(who(null, {})).toBeNull();

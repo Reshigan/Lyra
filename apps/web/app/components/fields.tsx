@@ -5,6 +5,7 @@ import {
   Field,
   formatMoney,
   Input,
+  isOpaqueRef,
   Money,
   Select,
   Textarea,
@@ -140,9 +141,13 @@ export function Cell({ column, row, locale, label, resolved = {} }: CellProps) {
       if (labelled) return <span>{labelled}</span>;
       // A ref-shaped value is an id that escaped into the interface: the cases
       // list printed `user:us_01KE…FMN` under OWNER. `who` names it when the
-      // batch resolved it and shortens it when it did not; anything that is not
-      // a ref (a name, a case number, an email) comes back untouched.
-      return <span>{truncate(who(text, resolved) ?? text, 80)}</span>;
+      // batch resolved it and shortens it when it did not. Only ref-shaped
+      // values go through it: `who`'s other half says a `scope:key` as words
+      // ("New commission rates"), which is right for an approval's subject and
+      // wrong for a conversation's external reference — it turned the customer's
+      // own WhatsApp number `wa:971559876543` into "Wa 971559876543".
+      const named = isOpaqueRef(text) ? who(text, resolved) : null;
+      return <span>{truncate(named ?? text, 80)}</span>;
     }
   }
 }

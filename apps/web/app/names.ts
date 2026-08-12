@@ -20,5 +20,11 @@ export function who(ref: string | null | undefined, resolved: Names): string | n
   // it belongs to alone: that half is the business's own name for the thing.
   if (short !== ref) return short;
   const colon = ref.indexOf(":");
-  return colon < 0 ? ref : `${humanise(ref.slice(0, colon))} ${ref.slice(colon + 1)}`;
+  if (colon < 0) return ref;
+  const scope = humanise(ref.slice(0, colon));
+  const key = ref.slice(colon + 1);
+  // A create has no row yet, so crud.ts names the subject after the request:
+  // `commission-rates:new:<sha256 of the body>`. The digest is what stops a
+  // retry raising a second approval — nobody reads it.
+  return /^new:[0-9a-f]{16,}$/i.test(key) ? `New ${scope.toLowerCase()}` : `${scope} ${key}`;
 }

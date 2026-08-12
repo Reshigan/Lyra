@@ -780,7 +780,9 @@ export default function Home() {
                 <li key={run.id} className="flex flex-col gap-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="min-w-0 break-words font-ui text-13 text-text">
-                      {run.agentKey}
+                      {/* `agentKey` is minted in code (`renewal`, `qa`) and this
+                          panel is the one place a person reads it. */}
+                      {humanise(run.agentKey)}
                     </span>
                     <Badge tone={RUN_TONE[run.state] ?? "neutral"} size="sm">
                       {label(`runs.state.${run.state}`)}

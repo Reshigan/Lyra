@@ -12,6 +12,8 @@ describe("humanise", () => {
     expect(humanise("dsar_raised")).toBe("DSAR raised");
     // The audit feed read "Core mfa verified" on the home screen.
     expect(humanise("core.mfa.verified")).toBe("Core MFA verified");
+    // The home screen's agent-run panel says the agent key: `qa` is an agent.
+    expect(humanise("qa")).toBe("QA");
   });
 });
 

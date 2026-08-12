@@ -27,6 +27,7 @@ const ACRONYMS = new Set([
   "pii",
   "pos",
   "psp",
+  "qa",
   "saml",
   "sla",
   "sms",

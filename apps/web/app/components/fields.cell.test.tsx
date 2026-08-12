@@ -30,6 +30,14 @@ describe("Cell on a ref-shaped value", () => {
   it("leaves anything that is not a ref alone", () => {
     expect(render("GNX-2601-0001")).toContain("GNX-2601-0001");
   });
+
+  // A conversation's external reference is the customer's own address on the
+  // channel, not a ref this platform mints. Saying its scope as words rewrote
+  // the number the agent searches for: `wa:971559876543` → "Wa 971559876543".
+  it("leaves a channel address alone, colon and all", () => {
+    expect(render("wa:971559876543")).toContain("wa:971559876543");
+    expect(render("cms:aeo/excess-explained")).toContain("cms:aeo/excess-explained");
+  });
 });
 
 // The customers list headed a column NAME and printed `{"en":"E2E Visitor"}`
