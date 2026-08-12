@@ -27,7 +27,7 @@ import { ApiError, api, fetchMe, names, type Problem } from "../api.server";
 import { who } from "../names";
 import { routedLeaves } from "../components/shell";
 import { cloudflare } from "../context";
-import { DEFAULT_LOCALE, pseudoText, translator } from "../i18n";
+import { DEFAULT_LOCALE, moduleName, pseudoText, translator } from "../i18n";
 import { humanise, titleText } from "../modules/spec";
 import { labelKeyFor, moduleOf } from "../routing";
 import { policyTitle } from "./approvals";
@@ -724,7 +724,10 @@ export default function Home() {
                 // Areas the actor cannot open are still counted — the business
                 // is bigger than one role — but they are not links.
                 const reachable = offered.has(href);
-                const name = reachable ? t(labelKeyFor(href)) : row.module;
+                // Named either way. A door being closed is no reason to print
+                // "dist" at someone — and the areas the actor cannot open are
+                // exactly the ones whose keys the nav never labels.
+                const name = reachable ? t(labelKeyFor(href)) : moduleName(t, row.module);
                 return (
                   <li key={row.module} className="flex flex-col gap-1">
                     <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
