@@ -9,7 +9,7 @@ import {
   type ActionFunctionArgs,
   type LoaderFunctionArgs
 } from "react-router";
-import { Button, DateTime, isOpaqueRef } from "@lyra/ui";
+import { Button, DateTime, isOpaqueRef, shortRef } from "@lyra/ui";
 import { ApiError, api, asRouteError, names } from "../api.server";
 import { Cell, FieldInput } from "../components/fields";
 import { cloudflare } from "../context";
@@ -19,6 +19,7 @@ import { workspaceFor } from "../modules";
 import {
   bodyFrom,
   labelsFor,
+  optionWords,
   tabOf,
   visibleActions,
   type ActionSpec,
@@ -115,8 +116,13 @@ export default function Record() {
   const actions = visibleActions(tab, shell?.permissions ?? []);
   const completed = actions.find((entry) => entry.intent === done) ?? null;
   // The heading is whatever this resource calls itself first — a case reference,
-  // a policy number — falling back to the identifier.
-  const heading = String(row[tab.columns[0]?.name ?? "id"] ?? row.id ?? "");
+  // a policy number — falling back to the identifier. It goes through the same
+  // two steps a cell does: an enum reads as its words ("Premium remitted", not
+  // `PREM-REMIT`), and a key that escaped into the interface is shortened
+  // rather than printed at 26 characters across the top of the screen.
+  const headingColumn = tab.columns[0]?.name ?? "id";
+  const headingRaw = String(row[headingColumn] ?? row.id ?? "");
+  const heading = optionWords(label, headingColumn, headingRaw) ?? shortRef(headingRaw);
 
   return (
     <div className="flex flex-col gap-6">

@@ -353,6 +353,10 @@ export default function ModuleList() {
               aria-label={label(filter.name)}
               defaultValue={searchParams.get(filter.name) ?? ""}
               placeholder={label(filter.name)}
+              // Narrow on purpose: a filter strip is one line of questions above
+              // the rows, not a column of full-width controls that pushes the
+              // table under the fold.
+              className="w-44"
               options={[
                 { value: "", label: t("common.all") },
                 ...filter.options.map((option) => ({
@@ -368,6 +372,7 @@ export default function ModuleList() {
               aria-label={t("common.deleted.state")}
               defaultValue={deletedView ? "1" : ""}
               placeholder={t("common.deleted.live")}
+              className="w-44"
               options={[
                 { value: "", label: t("common.deleted.live") },
                 { value: "1", label: t("common.deleted.only") }

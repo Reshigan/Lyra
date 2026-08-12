@@ -207,10 +207,20 @@ export function Field({
 /* -------------------------------------------------------------------------- */
 
 const controlBase =
-  "w-full rounded-md border border-border bg-surface-1 font-ui text-14 text-text " +
+  "rounded-md border border-border bg-surface-1 font-ui text-14 text-text " +
   "placeholder:text-subtle transition-colors duration-150 ease-out " +
   "hover:border-border-strong aria-invalid:border-danger " +
   "disabled:cursor-not-allowed disabled:opacity-50";
+
+/**
+ * A control fills its column unless the screen sized it. `cn` joins classes, it
+ * does not resolve conflicts (cn.ts), so a `w-full` baked into `controlBase`
+ * silently beat every `className="w-56"` a screen passed — which is why the
+ * module filter strips rendered one full-width control per row instead of a
+ * single line. Yield the default width when the caller brought their own.
+ */
+const widthFrom = (className?: string) =>
+  /(^|\s)(w-|flex-1)/.test(className ?? "") ? undefined : "w-full";
 
 const inputSizes: Record<ControlSize, string> = {
   sm: "h-8 px-2.5 text-13",
@@ -234,6 +244,7 @@ export function Input({ size = "md", prefix, suffix, className, ...props }: Inpu
       {...props}
       className={cn(
         controlBase,
+        widthFrom(className),
         inputSizes[size],
         focusRing,
         prefix ? "ps-9" : undefined,
@@ -269,7 +280,13 @@ export function Textarea({ className, ...props }: React.ComponentPropsWithRef<"t
     <textarea
       {...field}
       {...props}
-      className={cn(controlBase, "min-h-24 p-3 leading-normal", focusRing, className)}
+      className={cn(
+        controlBase,
+        widthFrom(className),
+        "min-h-24 p-3 leading-normal",
+        focusRing,
+        className
+      )}
     />
   );
 }
@@ -293,7 +310,7 @@ export function DatePicker({ calendar, withTime = false, className, ...props }: 
       {...props}
       type={withTime ? "datetime-local" : "date"}
       lang={calendar ? `${props.lang ?? "en"}-u-ca-${calendar}` : props.lang}
-      className={cn(controlBase, inputSizes.md, focusRing, className)}
+      className={cn(controlBase, widthFrom(className), inputSizes.md, focusRing, className)}
     />
   );
 }
@@ -383,6 +400,7 @@ export function Select({
         {...aria}
         className={cn(
           controlBase,
+          widthFrom(className),
           inputSizes[size],
           focusRing,
           "inline-flex items-center justify-between gap-2 text-start",

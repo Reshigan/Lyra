@@ -348,6 +348,19 @@ describe("shortRef hides storage keys without hiding anything else", () => {
     );
   });
 
+  // A transaction's idempotency key is `<txn-type>:<subject>` and sometimes
+  // carries the period it covers on the end (docs/19 §3). The ledger printed
+  // all 26 characters of `prem-remit:pol_…` in its REFERENCE column: the type
+  // and the period are the readable parts, the ULID in the middle is not.
+  it("keeps a hyphenated scope and a trailing qualifier", () => {
+    expect(shortRef("prem-remit:pol_01KZZWT01BM04WBABVJZ3CAFY1")).toBe("prem-remit:pol_01KZ…AFY1");
+    expect(shortRef("sub-invoice:pv_01KZTR0J1CT91BSD37TMG0TSQ5:2026-08")).toBe(
+      "sub-invoice:pv_01KZ…TSQ5:2026-08"
+    );
+    // AXIS spells its own with a dot: `axis.renew:pol_…`.
+    expect(shortRef("axis.renew:pol_01KZZWT01C29RTQZ426J7TTEP5")).toBe("axis.renew:pol_01KZ…TEP5");
+  });
+
   it.each([
     "CASE-1042",
     "sara@example.com",

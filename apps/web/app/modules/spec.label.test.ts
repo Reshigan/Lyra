@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { humanise, labelsFor, optionLabel, titleText, type WorkspaceSpec } from "./spec";
+import { WORKSPACES } from "./index";
 
 // Enum values reach the renderer as raw tokens (`pending_settlement`), and the
 // workspaces spell their labels two different ways — qualified by the column
@@ -119,5 +120,26 @@ describe("titleText", () => {
 
   it("reads it as words when the lookup prefixed the key it could not find", () => {
     expect(titleText("notice.orbit.renewal.due", "orbit.renewal.due")).toBe("Orbit renewal due");
+  });
+});
+
+// Arabic is a first-class locale, not a fallback (CLAUDE.md §7). A key present
+// in `en` and missing from `ar` renders the English word inside an RTL table —
+// which is how the ledger's 94 transaction-type labels could have landed
+// half-translated.
+describe("label tables", () => {
+  it("spell every key in both locales", () => {
+    for (const spec of WORKSPACES) {
+      const en = Object.keys(spec.labels.en ?? {}).sort();
+      const ar = Object.keys(spec.labels.ar ?? {}).sort();
+      expect({ path: spec.path, missing: en.filter((k) => !ar.includes(k)) }).toEqual({
+        path: spec.path,
+        missing: []
+      });
+      expect({ path: spec.path, extra: ar.filter((k) => !en.includes(k)) }).toEqual({
+        path: spec.path,
+        extra: []
+      });
+    }
   });
 });

@@ -178,7 +178,8 @@ export function Money({
  * or `user:us_…` / `scout_cluster:clu_…` with a scope on the front. Twenty-six base-32 characters are
  * unreadable, unmemorable, and wide enough to burst a card.
  */
-const OPAQUE_REF = /^(?:([a-z][a-z0-9_]*):)?([a-z][a-z0-9]*_)([0-9a-hjkmnp-tv-z]{16,})$/i;
+const OPAQUE_REF =
+  /^(?:([a-z][a-z0-9_.-]*):)?([a-z][a-z0-9]*_)([0-9a-hjkmnp-tv-z]{16,})(:[a-z0-9-]+)?$/i;
 
 /**
  * Head and tail of an opaque ref — enough to match one against a log line —
@@ -196,8 +197,8 @@ export function isOpaqueRef(value: string): boolean {
 export function shortRef(value: string): string {
   const match = OPAQUE_REF.exec(value.trim());
   if (!match) return value;
-  const [, scope, prefix, body] = match;
-  return `${scope ? `${scope}:` : ""}${prefix}${body!.slice(0, 4)}…${body!.slice(-4)}`;
+  const [, scope, prefix, body, tail] = match;
+  return `${scope ? `${scope}:` : ""}${prefix}${body!.slice(0, 4)}…${body!.slice(-4)}${tail ?? ""}`;
 }
 
 export interface RefProps extends Omit<React.ComponentPropsWithRef<"span">, "children"> {
