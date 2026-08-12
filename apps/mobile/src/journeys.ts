@@ -655,6 +655,78 @@ export function hoursSince(ts: unknown, now: number): number | null {
   return Math.max(0, Math.floor((now - at) / 3_600_000));
 }
 
+/* ------------------------------------------------------------------- money */
+
+/** Where a transaction stands, for the controller whose morning it is. The
+ *  ledger has thirteen states (packages/db/src/schema/ledger.ts); a phone tab
+ *  needs to know only whether someone has to do something about this one. */
+export type TxnStanding = "broken" | "stalled" | "waiting" | "moving" | "done";
+
+/** A transaction the ledger gave up on is broken; one waiting on a bank is
+ *  normal until the deadline the ledger itself stamped passes, after which
+ *  nobody is coming and a person has to chase it. Settled and reversed money
+ *  has arrived somewhere and is nobody's morning. */
+export function txnStanding(row: Row, now: number): TxnStanding {
+  const state = String(row.state ?? "");
+  if (state === "failed" || state === "rejected") return "broken";
+  if (state === "pending_external") {
+    const deadline = row.externalTimeoutAt;
+    return typeof deadline === "number" && deadline > 0 && deadline <= now ? "stalled" : "waiting";
+  }
+  if (state === "settled" || state === "reversed" || state === "adjusted" || state === "expired") return "done";
+  return "moving";
+}
+
+const TXN_RANK: Record<TxnStanding, number> = { broken: 0, stalled: 1, waiting: 2, moving: 2, done: 3 };
+
+/** Money worst first, and settled money not at all — the tab exists to name
+ *  what still owes someone a decision. Within a standing the oldest goes
+ *  first: an in-flight transaction only gets more worrying the longer it
+ *  stays in flight. */
+export function txnOrder(rows: readonly Row[] | null, now: number): Row[] {
+  return [...(rows ?? [])]
+    .filter((row) => txnStanding(row, now) !== "done")
+    .sort((a, b) => {
+      const rank = TXN_RANK[txnStanding(a, now)] - TXN_RANK[txnStanding(b, now)];
+      if (rank !== 0) return rank;
+      return numberOr(a.createdAt, Number.MAX_SAFE_INTEGER) - numberOr(b.createdAt, Number.MAX_SAFE_INTEGER);
+    });
+}
+
+/* ---------------------------------------------------------------- requests */
+
+/** Where a data-subject request stands. Unlike everything else on the phone,
+ *  a DSAR's clock is statutory (docs/12): `dueAt` is a legal deadline, not a
+ *  service target, so the date outranks the workflow state. */
+export type DsarStanding = "late" | "due" | "open" | "closed";
+
+/** The DSAR states still owing the subject an answer
+ *  (packages/db/src/schema/compliance.ts). */
+export const OPEN_DSAR_STATES = ["received", "verifying", "in_progress", "awaiting_legal"] as const;
+
+/** Fulfilled, refused and expired requests are records. An open one reads off
+ *  the same day-count scale renewals use (`urgencyOf`), so "3 days left" means
+ *  the same thing everywhere in the app rather than growing a second scale. */
+export function dsarStanding(row: Row, now: number): DsarStanding {
+  if (!OPEN_DSAR_STATES.includes(String(row.state ?? "") as (typeof OPEN_DSAR_STATES)[number])) return "closed";
+  const urgency = urgencyOf(daysUntil(row.dueAt, now));
+  if (urgency === "gone") return "late";
+  if (urgency === "now") return "due";
+  return "open";
+}
+
+/** DSARs by the deadline the law set — soonest first, overdue at the top,
+ *  closed ones last so the queue reads as work rather than as history. */
+export function dsarOrder(rows: readonly Row[] | null, now: number): Row[] {
+  return [...(rows ?? [])].sort((a, b) => {
+    const closed = Number(dsarStanding(a, now) === "closed") - Number(dsarStanding(b, now) === "closed");
+    if (closed !== 0) return closed;
+    const left = daysUntil(a.dueAt, now);
+    const right = daysUntil(b.dueAt, now);
+    return (left ?? Number.MAX_SAFE_INTEGER) - (right ?? Number.MAX_SAFE_INTEGER);
+  });
+}
+
 /* ----------------------------------------------------------------- capture */
 
 /** The document types AXIS accepts (apps/api/src/routes/axis.ts DOC_TYPES).

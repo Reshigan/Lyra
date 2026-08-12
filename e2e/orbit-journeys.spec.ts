@@ -22,7 +22,7 @@ import {
 // through apps/web/app/routes/conversation.tsx instead of the raw AI-run
 // endpoint, since that page is where the draft/approve UI actually lives.
 //
-// Conversation and both messages are seeded through the real "New — <Tab>"
+// Conversation and both messages are seeded through the real "New"
 // panels (same idiom as handover.spec.ts) — a raw page.request call shares no
 // cookies with the API origin (apps/web/app/api.server.ts's apiFetch forwards
 // the browser's cookie header itself; a direct API-origin request bypasses
@@ -32,7 +32,7 @@ test("J-C2 an agent approves the AI's suggested reply and it queues, not sends @
 
   const customerId = `cus-e2e-jc2-${Date.now()}`;
   await goto(page, "/orbit/conversations");
-  await page.getByText("New — Conversations").click();
+  await page.locator("summary", { hasText: "New" }).click();
   // Radix combobox, not a native <select> — chooseOption picks it from the
   // keyboard rather than racing the popper (e2e/fixtures.ts).
   await chooseOption(page, "Channel*", "WhatsApp");
@@ -46,7 +46,7 @@ test("J-C2 an agent approves the AI's suggested reply and it queues, not sends @
   const conversationId = page.url().split("/").pop()!;
 
   await goto(page, "/orbit/messages");
-  await page.getByText("New — Messages").click();
+  await page.locator("summary", { hasText: "New" }).click();
   await page.getByLabel("Conversation*", { exact: true }).fill(conversationId);
   await chooseOption(page, "Sender*", "Customer");
   await page.getByLabel("Message*", { exact: true }).fill("Is my windscreen covered?");
@@ -56,7 +56,7 @@ test("J-C2 an agent approves the AI's suggested reply and it queues, not sends @
   await expect(page.getByRole("row", { name: new RegExp(shortRef(conversationId)) }).first()).toBeVisible();
 
   // The panel is a real stateful disclosure now (module.tsx's CreatePanel):
-  // a successful create leaves it open, so clicking "New — Messages" again
+  // a successful create leaves it open, so clicking "New" again
   // would toggle it shut rather than opening a fresh one.
   const draftContent =
     "Yes — windscreen is covered under your comprehensive add-on, subject to the excess.";

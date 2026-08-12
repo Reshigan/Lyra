@@ -10,7 +10,7 @@ test("J-O1 axis agent filters the exceptions queue and clears a failed case @jou
 
   await goto(page, "/axis/cases");
   const ref = `J-O1-${Date.now()}`;
-  await page.getByText("New — Cases").click();
+  await page.locator("summary", { hasText: "New" }).click();
   await page.getByLabel("Reference*", { exact: true }).fill(ref);
   await chooseOption(page, "Kind*", "Quote");
   // The click resolves as soon as the event fires, not once the submission
@@ -163,7 +163,7 @@ test("J-O2 axis lead shops a new risk and the panel answers @journey:J-O2 @accep
   // no matching consentId trips the docs/12 §3 consent gate on reshop. This
   // journey is about an anonymous risk shopped cold, so leave it unset.
   await goto(page, "/distribution/quote-requests");
-  await page.getByText("New — Quote requests").click();
+  await page.locator("summary", { hasText: "New" }).click();
   await page.getByLabel("Channel*", { exact: true }).fill(channelId);
   await page.getByLabel("Product*", { exact: true }).fill(productId);
   await page

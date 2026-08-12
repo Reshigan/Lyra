@@ -21,7 +21,7 @@ test("J-X2 an above-threshold policy is refused for dual control (axis.bind) @jo
 
   await goto(page, "/axis/policies");
   const policyNo = `J-X2-${Date.now()}`;
-  await page.getByText("New — Policies").click();
+  await page.locator("summary", { hasText: "New" }).click();
   await page.getByLabel("Policy number*", { exact: true }).fill(policyNo);
   await page.getByLabel("Customer*", { exact: true }).fill("cust-jx2");
   await page.getByLabel("Provider*", { exact: true }).fill("prov-jx2");

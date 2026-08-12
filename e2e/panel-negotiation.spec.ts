@@ -31,7 +31,7 @@ test("J-P2 a commission rate change is refused for dual control, then decided by
   await adminPage.waitForURL(/^http:\/\/[^/]+\/$/);
 
   await adminPage.goto("/distribution/commission-rates");
-  await adminPage.getByText("New — Commission rates").click();
+  await adminPage.locator("summary", { hasText: "New" }).click();
   const channelId = `J-P2-channel-${Date.now()}`;
   await adminPage.getByLabel("Channel*", { exact: true }).fill(channelId);
   await adminPage.getByLabel("Channel share*", { exact: true }).fill("500000");

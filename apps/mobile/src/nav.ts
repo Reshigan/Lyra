@@ -40,7 +40,11 @@ const RESOURCE_BY_HREF: Record<string, string> = {
   "/north-boardpacks": "north/boardpacks",
   // And admin: the audit log is not the users the "/admin" nav entry points at
   // (app/j/audit.tsx).
-  "/admin-audit": "core/audit-log"
+  "/admin-audit": "core/audit-log",
+  // And the ledger: a reconciliation run is not a transaction, and it is the
+  // controller's third tab (personas.ts) — the one answer to "do the two
+  // ledgers still agree?".
+  "/ledger-recon": "ledger/recon-runs"
 };
 
 /** `/v1/{module}/{resource}` for a nav href, or `undefined` if mobile has no

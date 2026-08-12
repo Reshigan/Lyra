@@ -37,7 +37,7 @@ test("J-M3 an AEO page is authored against a query cluster @journey:J-M3", async
   const cluster = `car insurance dubai excess ${suffix}`;
   const contentRef = `cms:aeo/excess-explained-${suffix}`;
 
-  await page.getByText("New — Answer pages").click();
+  await page.locator("summary", { hasText: "New" }).click();
   await page.getByLabel("Query cluster*", { exact: true }).fill(cluster);
   await page.getByLabel("Content*", { exact: true }).fill(contentRef);
   await page.getByRole("button", { name: "Create", exact: true }).click();

@@ -65,7 +65,7 @@ test("J-E3 exec saves a what-if scenario and revisits it with updated assumption
 
   const question = `J-E3-${Date.now()} What if renewal retention drops 5pt next quarter?`;
   await goto(page, "/north/scenarios");
-  await page.getByText("New — Scenarios").click();
+  await page.locator("summary", { hasText: "New" }).click();
   await page.getByLabel("Question*", { exact: true }).fill(question);
   await page
     .getByLabel("Assumptions*", { exact: true })
@@ -114,7 +114,7 @@ test("J-E2 exec assembles a board pack for Thursday @journey:J-E2 @accept:M6", a
 
   const title = `J-E2 Board pack ${Date.now()}`;
   await goto(page, "/north/boardpacks");
-  await page.getByText("New — Board packs").click();
+  await page.locator("summary", { hasText: "New" }).click();
   await page.getByLabel("Title*", { exact: true }).fill(title);
   await page.getByLabel("Period*", { exact: true }).fill("2026-Q1");
   await page

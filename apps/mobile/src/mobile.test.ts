@@ -57,6 +57,8 @@ const {
   daysUntil,
   decisionOrder,
   deltaPct,
+  dsarOrder,
+  dsarStanding,
   dueIn,
   highlightsOf,
   hoursSince,
@@ -81,6 +83,8 @@ const {
   spendByCampaign,
   threadOrder,
   todayIso,
+  txnOrder,
+  txnStanding,
   urgencyOf,
   unownedAnomaly,
   whitespaceOrder
@@ -669,6 +673,29 @@ describe("persona tab config", () => {
     expect(resourceForNavKey("admin-audit")).toBe("core/audit-log");
   });
 
+  it("gives the finance controller money, approvals and reconciliation", () => {
+    const tabs = tabsFor("ledger", "default");
+    expect(tabs.map((tab) => tab.labelKey)).toEqual(["tab.money", "tab.approvals", "tab.recon"]);
+    expect(tabs[0]?.route).toBe("/j/money");
+    expect(resourceForNavKey("ledger-recon")).toBe("ledger/recon-runs");
+  });
+
+  it("gives the compliance officer the DSAR clock, approvals and the log", () => {
+    const tabs = tabsFor("compliance", "default");
+    expect(tabs.map((tab) => tab.labelKey)).toEqual(["tab.requests", "tab.approvals", "tab.audit"]);
+    expect(tabs[0]?.route).toBe("/j/requests");
+  });
+
+  it("lands every routeless tab on a list rather than a 404", () => {
+    // A tab with no journey screen redirects to `/m/${screen}`, and `screen`
+    // held a resource path — so `/m/core/users` matched `[nav]/[id]` and asked
+    // the API for a record whose id was the word "users". Every persona's
+    // fallback tab rendered "not found" at the person whose tab it is.
+    for (const [workspace, tabs] of Object.entries(PERSONA_TABS))
+      for (const tab of tabs)
+        expect(resourceForNavKey(tab.screen), `${workspace} · ${tab.labelKey}`).toBeTruthy();
+  });
+
   it("swaps Decisions for Governance only for the north board variant", () => {
     expect(tabsFor("north", "default").map((tab) => tab.labelKey)).toContain("tab.decisions");
     expect(tabsFor("north", "board").map((tab) => tab.labelKey)).toContain("tab.governance");
@@ -680,7 +707,9 @@ describe("persona tab config", () => {
   });
 
   it("gives every single-tab workspace a Home tab pointing at its own resource", () => {
-    for (const workspace of ["distribution", "ledger", "compliance", "settings"] as const) {
+    // Ledger and compliance left this list when the controller and the officer
+    // got real tabs — the two tests above own their shapes now.
+    for (const workspace of ["distribution", "settings"] as const) {
       const tabs = tabsFor(workspace, "default");
       expect(tabs).toHaveLength(1);
       expect(tabs[0]?.labelKey).toBe("nav.home");
@@ -1294,5 +1323,68 @@ describe("journey helpers", () => {
     expect(contentTypeOf("file:///tmp/scan.pdf")).toBe("application/pdf");
     expect(contentTypeOf("file:///tmp/a.jpg?x=1")).toBe("image/jpeg");
     expect(contentTypeOf("file:///tmp/nodots")).toBe("image/jpeg");
+  });
+
+  it("says where a transaction stands, with the clock beating the state", () => {
+    const now = 1_000_000_000;
+    expect(txnStanding({ id: "t", state: "failed" }, now)).toBe("broken");
+    expect(txnStanding({ id: "t", state: "rejected" }, now)).toBe("broken");
+    // Waiting on a bank is normal until the deadline the ledger stamped passes;
+    // after it, nobody is coming and a person has to chase it.
+    expect(txnStanding({ id: "t", state: "pending_external", externalTimeoutAt: now + 60_000 }, now)).toBe("waiting");
+    expect(txnStanding({ id: "t", state: "pending_external", externalTimeoutAt: now - 60_000 }, now)).toBe("stalled");
+    expect(txnStanding({ id: "t", state: "executing" }, now)).toBe("moving");
+    // Money that has arrived is not a controller's morning.
+    expect(txnStanding({ id: "t", state: "settled" }, now)).toBe("done");
+    expect(txnStanding({ id: "t", state: "reversed" }, now)).toBe("done");
+  });
+
+  it("orders money worst first, and drops what has already settled", () => {
+    const now = 1_000_000_000;
+    const rows = [
+      { id: "t_settled", state: "settled", createdAt: now - 5000 },
+      { id: "t_moving", state: "executing", createdAt: now - 4000 },
+      { id: "t_stalled", state: "pending_external", externalTimeoutAt: now - 1, createdAt: now - 3000 },
+      { id: "t_broken", state: "failed", createdAt: now - 2000 },
+      { id: "t_old", state: "initiated", createdAt: now - 9000 }
+    ];
+    // Broken, stalled, then whatever is still moving oldest first — an
+    // in-flight transaction gets more worrying the longer it stays in flight.
+    expect(txnOrder(rows, now).map((row) => row.id)).toEqual([
+      "t_broken",
+      "t_stalled",
+      "t_old",
+      "t_moving"
+    ]);
+    expect(txnOrder(null, now)).toEqual([]);
+  });
+
+  it("reads a DSAR against its statutory clock, not its state", () => {
+    const now = 1_000_000_000;
+    const day = 86_400_000;
+    expect(dsarStanding({ id: "d", state: "received", dueAt: now - day }, now)).toBe("late");
+    expect(dsarStanding({ id: "d", state: "received", dueAt: now + 3 * day }, now)).toBe("due");
+    expect(dsarStanding({ id: "d", state: "in_progress", dueAt: now + 20 * day }, now)).toBe("open");
+    // A fulfilled request is a record, however far past its date it sits.
+    expect(dsarStanding({ id: "d", state: "fulfilled", dueAt: now - 90 * day }, now)).toBe("closed");
+    expect(dsarStanding({ id: "d", state: "refused", dueAt: now - day }, now)).toBe("closed");
+  });
+
+  it("orders DSARs by the deadline the law set, closed ones last", () => {
+    const now = 1_000_000_000;
+    const day = 86_400_000;
+    const rows = [
+      { id: "d_done", state: "fulfilled", dueAt: now - 30 * day },
+      { id: "d_soon", state: "verifying", dueAt: now + 2 * day },
+      { id: "d_late", state: "received", dueAt: now - day },
+      { id: "d_calm", state: "in_progress", dueAt: now + 25 * day }
+    ];
+    expect(dsarOrder(rows, now).map((row) => row.id)).toEqual([
+      "d_late",
+      "d_soon",
+      "d_calm",
+      "d_done"
+    ]);
+    expect(dsarOrder(null, now)).toEqual([]);
   });
 });

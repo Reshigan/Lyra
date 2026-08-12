@@ -44,6 +44,9 @@ export const en = {
   "tab.staff": "Staff",
   "tab.audit": "Activity",
   "tab.capture": "Capture",
+  "tab.money": "Money",
+  "tab.recon": "Reconciliation",
+  "tab.requests": "Requests",
 
   "home.signedInAs": "Signed in as {name}",
   "home.workspaces": "Workspaces",
@@ -241,6 +244,21 @@ export const en = {
   "audit.daysAgo": "{days}d ago",
   "audit.noTime": "undated",
 
+  "money.title": "Money",
+  "money.intro": "Transactions that have not landed yet, worst first.",
+  "money.empty": "Every transaction has settled.",
+  "money.failed": "Failed — {code}",
+  "money.stalled": "Past its external deadline",
+
+  "requests.title": "Requests",
+  "requests.intro": "Data-subject requests against the statutory clock.",
+  "requests.empty": "No request has been lodged.",
+  "requests.kind": "{type} · via {channel}",
+  "requests.dueIn": "Due in {days} days",
+  "requests.overdue": "Overdue by {days} days",
+  "requests.noDue": "No deadline set",
+  "requests.closed": "Closed",
+
   "capture.title": "Add a document",
   "capture.case": "Case reference",
   "capture.caseHint": "The case this document belongs to.",
@@ -305,6 +323,9 @@ export const ar: Messages = {
   "tab.staff": "الموظفون",
   "tab.audit": "النشاط",
   "tab.capture": "التقاط",
+  "tab.money": "الأموال",
+  "tab.recon": "التسوية",
+  "tab.requests": "الطلبات",
 
   "home.signedInAs": "تسجيل الدخول باسم {name}",
   "home.workspaces": "مساحات العمل",
@@ -499,6 +520,21 @@ export const ar: Messages = {
   "audit.hoursAgo": "قبل {hours} ساعة",
   "audit.daysAgo": "قبل {days} يوم",
   "audit.noTime": "بدون تاريخ",
+
+  "money.title": "الأموال",
+  "money.intro": "المعاملات التي لم تكتمل بعد، الأسوأ أولًا.",
+  "money.empty": "كل المعاملات تمت تسويتها.",
+  "money.failed": "فشلت — {code}",
+  "money.stalled": "تجاوزت الموعد الخارجي",
+
+  "requests.title": "الطلبات",
+  "requests.intro": "طلبات أصحاب البيانات مقابل المهلة النظامية.",
+  "requests.empty": "لم يُقدَّم أي طلب.",
+  "requests.kind": "{type} · عبر {channel}",
+  "requests.dueIn": "مستحق خلال {days} يومًا",
+  "requests.overdue": "متأخر {days} يومًا",
+  "requests.noDue": "لا يوجد موعد نهائي",
+  "requests.closed": "مغلق",
 
   "capture.title": "أضف مستندًا",
   "capture.case": "مرجع الحالة",

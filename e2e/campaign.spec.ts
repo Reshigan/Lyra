@@ -54,7 +54,7 @@ test("J-M1 a growth lead authors an audience and campaign, then launches it (aut
   // the unfiltered (well under page-size) list, same as save-desk/scout-
   // whitespace/signal-budget do for their own non-searchable resources.
   await goto(page, "/signal/audiences");
-  await page.getByText("New — Audiences").click();
+  await page.locator("summary", { hasText: "New" }).click();
   await page.getByLabel("Name*", { exact: true }).fill(audienceName);
   await page
     .getByLabel("Definition*", { exact: true })
@@ -74,7 +74,7 @@ test("J-M1 a growth lead authors an audience and campaign, then launches it (aut
   // campaigns *is* searchable (resources.ts: searchable: ["name"]), so the
   // fresh row is located with `?q=` instead of scanning an unfiltered list.
   await goto(page, "/signal/campaigns");
-  await page.getByText("New — Campaigns").click();
+  await page.locator("summary", { hasText: "New" }).click();
   await page.getByLabel("Name*", { exact: true }).fill(campaignName);
   // A Radix combobox (packages/ui/src/primitives.tsx Select), not a native
   // <select> — selectOption doesn't apply; chooseOption picks it the keyboard

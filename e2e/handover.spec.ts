@@ -69,7 +69,7 @@ test("J-X1 an agent hands a conversation to a teammate with a readable summary @
 
   const externalRef = `e2e-jx1-${Date.now()}`;
   await goto(page, "/orbit/conversations");
-  await page.getByText("New — Conversations").click();
+  await page.locator("summary", { hasText: "New" }).click();
   // A Radix combobox (packages/ui/src/primitives.tsx Select), not a native
   // <select> — selectOption doesn't apply; chooseOption picks it the keyboard
   // way, which does not race the popper (e2e/fixtures.ts).
@@ -108,5 +108,5 @@ test("J-X1 scoring the handover is the lead's job, not the agent's @journey:J-X1
   // shape of "scoring is the lead's job, not the agent's" in this UI.
   await goto(page, "/orbit/qa-scores");
   await expect(page.getByRole("row", { name: /orbit\.escalation/ })).toHaveCount(2);
-  await expect(page.getByText("New — Quality scores")).toHaveCount(0);
+  await expect(page.locator("summary", { hasText: "New" })).toHaveCount(0);
 });
