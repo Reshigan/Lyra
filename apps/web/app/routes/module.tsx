@@ -472,6 +472,10 @@ export default function ModuleList() {
                   <span>{t("common.rowsPerPage")}</span>
                   <Select
                     size="sm"
+                    // It holds a two-digit number. Left to fill, it took the
+                    // rest of the footer and folded "Rows per page" onto three
+                    // lines beside it.
+                    className="w-20"
                     aria-label={t("common.rowsPerPage")}
                     value={String(pageSizeIn(searchParams) ?? DEFAULT_PAGE_SIZE)}
                     options={PAGE_SIZES.map((size) => ({ value: String(size), label: String(size) }))}
@@ -562,7 +566,12 @@ function CreatePanel({
         >
           +
         </span>
-        {t("common.new")} — {label(tab.key)}
+        {/* Just "New". The panel sits under the table it adds a row to, and the
+            screen is already titled — "New — Cases" was two labels joined by a
+            dash because neither one could be dropped, which is a machine's
+            sentence, not a person's. A singular noun per resource in every
+            locale would buy "New case"; the context already says it. */}
+        {t("common.new")}
       </summary>
       <Form method="post" className="flex flex-col gap-4 border-t border-border p-4">
         <input type="hidden" name="intent" value="create" />

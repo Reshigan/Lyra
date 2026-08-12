@@ -113,7 +113,13 @@ export function Table<T>({
                     {...(ariaSort ? { "aria-sort": ariaSort } : {})}
                     style={col.width ? { inlineSize: col.width } : undefined}
                     className={cn(
-                      "border-b border-border bg-surface-1 font-medium uppercase tracking-[0.14em] text-12 text-subtle",
+                      // A header is a label, not prose: it names the column on one
+                      // line or the column is too narrow. Uppercase at 0.14em
+                      // tracking is wide enough that "SLA due" broke across two
+                      // rows and shoved the header band taller than the data.
+                      // The wrapper scrolls (line 87), so a long header widens
+                      // the table rather than folding.
+                      "whitespace-nowrap border-b border-border bg-surface-1 font-medium uppercase tracking-[0.14em] text-12 text-subtle",
                       cellPad,
                       col.numeric ? "text-end" : "text-start"
                     )}
