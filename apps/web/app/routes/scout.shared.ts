@@ -144,7 +144,7 @@ export function asJson<T>(raw: unknown, fallback: T): T {
 /* ---------------------------------------------------------- panel roll-ups */
 
 /** Volume-weighted mean of a nullable column; null when nothing is priced. */
-function weighted(rows: readonly PanelRow[], pick: (row: PanelRow) => number | null): number | null {
+export function weighted(rows: readonly PanelRow[], pick: (row: PanelRow) => number | null): number | null {
   let sum = 0;
   let mass = 0;
   for (const row of rows) {

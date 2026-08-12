@@ -64,6 +64,9 @@ export default [
 
     route("scout/radar", "routes/scout-radar.tsx"),
     route("scout/panel", "routes/scout-panel.tsx"),
+    route("scout/pricing", "routes/scout-pricing.tsx"),
+    route("scout/experiments", "routes/scout-experiments.tsx"),
+    route("scout/analytics", "routes/scout-analytics.tsx"),
 
     route("axis/exceptions", "routes/axis-exceptions.tsx"),
     route("axis/board", "routes/axis-board.tsx"),

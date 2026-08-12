@@ -72,7 +72,10 @@ export const scout: WorkspaceSpec = {
       api: "API",
       report: "Report",
       "link.radar": "Opportunity radar",
-      "link.panel": "Panel benchmarks"
+      "link.panel": "Panel benchmarks",
+      "link.pricing": "Price benchmarks",
+      "link.experiments": "Experiments",
+      "link.analytics": "Pricing analytics"
     },
     ar: {
       signals: "الإشارات",
@@ -138,12 +141,18 @@ export const scout: WorkspaceSpec = {
       api: "واجهة برمجية",
       report: "تقرير",
       "link.radar": "رادار الفرص",
-      "link.panel": "مقارنة المزودين"
+      "link.panel": "مقارنة المزودين",
+      "link.pricing": "مقارنة الأسعار",
+      "link.experiments": "التجارب",
+      "link.analytics": "تحليلات التسعير"
     }
   },
   links: [
     { href: "/scout/radar", labelKey: "link.radar", permission: "scout:clusters:read" },
-    { href: "/scout/panel", labelKey: "link.panel", permission: "scout:panel_bench:read" }
+    { href: "/scout/panel", labelKey: "link.panel", permission: "scout:panel_bench:read" },
+    { href: "/scout/pricing", labelKey: "link.pricing", permission: "scout:panel_bench:read" },
+    { href: "/scout/experiments", labelKey: "link.experiments", permission: "scout:experiments:read" },
+    { href: "/scout/analytics", labelKey: "link.analytics", permission: "scout:panel_bench:read" }
   ],
   tabs: [
     {

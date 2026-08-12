@@ -1,0 +1,241 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ActionFunctionArgs } from "react-router";
+import type { Env } from "../env";
+import {
+  DECISIONS,
+  adequacy,
+  elasticities,
+  latestPeriod,
+  losses,
+  rollByLine,
+  verdictKey,
+  type ExperimentRow,
+  type PanelRow
+} from "./scout.shared";
+import { action as experimentsAction } from "./scout-experiments";
+import { action as analyticsAction } from "./scout-analytics";
+
+// The three SCOUT screens that read the panel bench and the experiment board.
+// Only one of them writes — concluding an experiment is a decision about a build
+// and is logged against the person who made it — so what is asserted here is
+// that every refusal happens before the API is called, that the write carries an
+// idempotency key, and that an API problem arrives as a Problem the screen can
+// render rather than an exception. The derivations are checked beside them
+// because the index, the elasticity and the adequacy have no endpoint: these
+// screens are the only place those numbers exist.
+
+const env = { ENVIRONMENT: "test", API_ORIGIN: "https://api.test", SESSION_COOKIE: "s" } as Env;
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+function stubFetch(...replies: Response[]) {
+  const calls: Array<{ url: string; method: string; body: string | null; key: string | null }> = [];
+  let at = 0;
+  vi.stubGlobal("fetch", (input: URL | string, init: RequestInit = {}) => {
+    const headers = new Headers(init.headers ?? {});
+    calls.push({
+      url: String(input),
+      method: init.method ?? "GET",
+      body: typeof init.body === "string" ? init.body : null,
+      key: headers.get("idempotency-key")
+    });
+    const reply = replies[Math.min(at, replies.length - 1)] ?? new Response(null, { status: 204 });
+    at += 1;
+    return Promise.resolve(reply.clone());
+  });
+  return calls;
+}
+
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+
+function args(form: FormData): ActionFunctionArgs {
+  return {
+    request: new Request("https://web.test/scout", { method: "POST", body: form }),
+    context: { get: () => ({ env, ctx: null }) },
+    params: {}
+  } as unknown as ActionFunctionArgs;
+}
+
+const form = (fields: Record<string, string>): FormData => {
+  const body = new FormData();
+  for (const [name, value] of Object.entries(fields)) body.set(name, value);
+  return body;
+};
+
+/* ------------------------------------------------------------------ fixtures */
+
+const bench = (over: Partial<PanelRow> = {}): PanelRow => ({
+  id: "pb_1",
+  providerId: "prv_1",
+  line: "motor",
+  period: "2026-06",
+  ourPriceIdx: 10_000,
+  marketPriceIdx: 10_000,
+  winRate: 30,
+  volume: 100,
+  coverageGapsJson: null,
+  updatedAt: 1_770_000_000_000,
+  ...over
+});
+
+const experiment = (over: Partial<ExperimentRow> = {}): ExperimentRow => ({
+  id: "sxp_1",
+  whitespaceId: "sws_1",
+  landingRef: null,
+  trafficPlanJson: null,
+  resultsJson: null,
+  state: "draft",
+  startedAt: null,
+  concludedAt: null,
+  createdAt: 1_770_000_000_000,
+  ...over
+});
+
+/* ------------------------------------------------------------- derivations */
+
+describe("price benchmarks", () => {
+  it("weights the index by volume and reads the newest period lexically", () => {
+    const rows = [bench({ period: "2026-05" }), bench({ period: "2026-06" }), bench({ period: "2026-04" })];
+    expect(latestPeriod(rows)).toBe("2026-06");
+  });
+
+  it("indexes a line against the median and names only the cuts above it", () => {
+    const rows = [
+      // 1000 at 5% above, 100 at market: the weighting must not read as 2.5%.
+      bench({ line: "motor", ourPriceIdx: 10_500, volume: 1_000 }),
+      bench({ line: "motor", ourPriceIdx: 10_000, volume: 100 }),
+      bench({ line: "home", ourPriceIdx: 9_400, volume: 500 })
+    ];
+    const byLine = rollByLine(rows);
+    expect(byLine.map((row) => row.line)).toEqual(["motor", "home"]);
+    expect(Math.round(byLine[0]!.pct!)).toBe(5);
+    expect(Math.round(byLine[1]!.pct!)).toBe(-6);
+
+    const lost = losses(rows);
+    expect(lost).toHaveLength(1);
+    expect(lost[0]!.line).toBe("motor");
+    expect(Math.round(lost[0]!.pct)).toBe(5);
+  });
+
+  it("leaves an unpriced cut null rather than counting it as the median", () => {
+    const byLine = rollByLine([bench({ ourPriceIdx: null })]);
+    expect(byLine[0]!.pct).toBeNull();
+    expect(losses([bench({ ourPriceIdx: null })])).toEqual([]);
+  });
+});
+
+describe("pricing analytics", () => {
+  it("reads elasticity from the last two periods of one cut", () => {
+    const moved = elasticities([
+      bench({ period: "2026-05", ourPriceIdx: 10_000, winRate: 30 }),
+      bench({ period: "2026-06", ourPriceIdx: 9_500, winRate: 36 })
+    ]);
+    expect(moved).toHaveLength(1);
+    expect(Math.round(moved[0]!.idxPct)).toBe(-5);
+    expect(moved[0]!.winDelta).toBe(6);
+    // Six points of win rate for five percent of price cut.
+    expect(moved[0]!.ratio).toBeCloseTo(1.2, 2);
+  });
+
+  it("omits a cut with one period rather than comparing it against itself", () => {
+    expect(elasticities([bench()])).toEqual([]);
+  });
+
+  it("measures adequacy as volume at or below the median", () => {
+    const measured = adequacy([
+      bench({ ourPriceIdx: 9_000, volume: 300 }),
+      bench({ ourPriceIdx: 11_000, volume: 100 }),
+      bench({ ourPriceIdx: null, volume: 999 })
+    ]);
+    expect(measured).toEqual({ atOrBelow: 300, priced: 400 });
+  });
+});
+
+describe("experiment verdicts", () => {
+  it("reads the state and the recorded verdict, never a threshold nothing stores", () => {
+    expect(verdictKey(experiment()).key).toBe("xp.draft");
+    expect(verdictKey(experiment({ state: "running" })).key).toBe("xp.running");
+    expect(verdictKey(experiment({ state: "abandoned" })).key).toBe("xp.parked");
+    expect(
+      verdictKey(experiment({ state: "concluded", resultsJson: JSON.stringify({ verdict: "supported" }) })).tone
+    ).toBe("success");
+    expect(
+      verdictKey(experiment({ state: "concluded", resultsJson: JSON.stringify({ verdict: "did_not_replicate" }) }))
+        .key
+    ).toBe("xp.notReplicated");
+  });
+});
+
+/* ----------------------------------------------------------------- actions */
+
+describe("scout-experiments action", () => {
+  it("refuses a decision with no experiment before calling the API", async () => {
+    const calls = stubFetch(json({}));
+    const result = await experimentsAction(args(form({ intent: "decide", state: "concluded" })));
+    expect(result.problem?.code).toBe("experiment_required");
+    expect(calls).toHaveLength(0);
+  });
+
+  it("refuses a state that is not one of the three decisions", async () => {
+    const calls = stubFetch(json({}));
+    const result = await experimentsAction(args(form({ intent: "decide", id: "sxp_1", state: "deleted" })));
+    expect(result.problem?.code).toBe("state_required");
+    expect(calls).toHaveLength(0);
+  });
+
+  it("patches the experiment with an idempotency key", async () => {
+    const calls = stubFetch(json(experiment({ state: "concluded" })));
+    const result = await experimentsAction(
+      args(form({ intent: "decide", id: "sxp_1", state: "concluded", key: "scout-xp:abc" }))
+    );
+    expect(result.problem).toBeNull();
+    expect(result.done).toEqual({ id: "sxp_1", state: "concluded" });
+    expect(calls[0]!.method).toBe("PATCH");
+    expect(calls[0]!.url).toBe("https://api.test/v1/scout/scout-experiments/sxp_1");
+    expect(JSON.parse(calls[0]!.body!)).toEqual({ state: "concluded" });
+    expect(calls[0]!.key).toBe("scout-xp:abc");
+  });
+
+  it("hands an approval gate back as a Problem rather than throwing", async () => {
+    stubFetch(
+      json({ title: "Approval required", status: 403, code: "approval_required", policy_key: "scout.experiment" }, 403)
+    );
+    const result = await experimentsAction(args(form({ intent: "decide", id: "sxp_1", state: "abandoned" })));
+    expect(result.problem?.code).toBe("approval_required");
+    expect(result.done).toBeNull();
+  });
+
+  it("only offers the three states the decide permission may set", () => {
+    expect([...DECISIONS]).toEqual(["running", "concluded", "abandoned"]);
+  });
+});
+
+describe("scout-analytics action", () => {
+  it("refuses an unknown dataset before calling the API", async () => {
+    const calls = stubFetch(json({}));
+    const result = await analyticsAction(args(form({ intent: "export", dataset: "panelBench", format: "xlsx" })));
+    expect(result.problem?.code).toBe("dataset_required");
+    expect(calls).toHaveLength(0);
+  });
+
+  it("refuses an unknown format before calling the API", async () => {
+    const calls = stubFetch(json({}));
+    const result = await analyticsAction(args(form({ intent: "export", dataset: "whitespaces", format: "docx" })));
+    expect(result.problem?.code).toBe("format_required");
+    expect(calls).toHaveLength(0);
+  });
+
+  it("exports a registered dataset through the platform's own report engine", async () => {
+    const calls = stubFetch(json({ id: "exp_1", format: "xlsx", state: "ready", rowCount: 12, expiresAt: null, error: null }));
+    const result = await analyticsAction(args(form({ intent: "export", dataset: "whitespaces", format: "xlsx" })));
+    expect(result.problem).toBeNull();
+    expect(result.exported?.state).toBe("ready");
+    expect(calls[0]!.url).toBe("https://api.test/v1/analytics/exports");
+    const body = JSON.parse(calls[0]!.body!) as { definition: { dataset: string; metrics: string[] } };
+    expect(body.definition.dataset).toBe("whitespaces");
+    expect(body.definition.metrics.length).toBeGreaterThan(0);
+  });
+});
