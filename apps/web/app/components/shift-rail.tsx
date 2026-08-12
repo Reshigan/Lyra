@@ -86,6 +86,12 @@ export function ShiftRail({ t, shift }: { t: Translate; shift: Shift | null }) {
                   </span>
                 </span>
                 <span className="block text-13 leading-snug text-text">{item.title}</span>
+                {/* Five approvals of the same kind read as five identical rows
+                    without this. Truncated rather than wrapped: the rail is a
+                    fixed column and a queue is scanned, not read. */}
+                {item.subject ? (
+                  <span className="block truncate text-12 leading-snug text-subtle">{item.subject}</span>
+                ) : null}
               </NavLink>
             </li>
           ))}

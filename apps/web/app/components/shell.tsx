@@ -18,6 +18,7 @@ import { ColdOpen } from "./cold-open";
 import { ConstellationMark } from "./mark";
 import { Meridian } from "./meridian";
 import { SearchPalette } from "./search";
+import type { Names } from "../names";
 import { shiftFrom, type Inbox } from "./shift";
 import { ShiftRail } from "./shift-rail";
 import { ThemeToggle } from "./theme-toggle";
@@ -112,6 +113,8 @@ export interface ShellProps {
    * surfaces then render nothing rather than an invented zero.
    */
   inbox?: Inbox | null;
+  /** Display names for the approval subjects the rail lists. */
+  names?: Names;
   children: React.ReactNode;
 }
 
@@ -162,7 +165,7 @@ export function crumbsFor(pathname: string, nav: NavItem[], t: Translate): Crumb
   ];
 }
 
-export function Shell({ t, nav, brand, tenantName, actorName, inbox = null, children }: ShellProps) {
+export function Shell({ t, nav, brand, tenantName, actorName, inbox = null, names = {}, children }: ShellProps) {
   const { product: productName, tenant: servedName } = lockupNames(brand, tenantName);
   // The API returns every item this actor may open, including modules whose
   // screens have not shipped yet (and headings whose one real destination
@@ -329,7 +332,7 @@ export function Shell({ t, nav, brand, tenantName, actorName, inbox = null, chil
                 comp has no nav menu at all (its search overlay is the
                 navigation), but every screen still has to be reachable without
                 knowing its name. */}
-            <ShiftRail t={t} shift={shiftFrom(inbox)} />
+            <ShiftRail t={t} shift={shiftFrom(inbox, names)} />
             {groups.map((group, i) => (
               // Keyed by position: a heading's own `href` is "" (apps/api/src
               // /routes/me.ts) and `??` does not fall back on "", so every

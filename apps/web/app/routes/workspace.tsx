@@ -10,7 +10,7 @@ import {
 } from "react-router";
 import { UiCalendarProvider, type CalendarPreference } from "@lyra/ui";
 import { cloudflare } from "../context";
-import { api, ApiError, fetchMe } from "../api.server";
+import { api, ApiError, fetchMe, names } from "../api.server";
 import { ErrorPanel } from "../components/error-panel";
 import { Shell } from "../components/shell";
 import type { Inbox } from "../components/shift";
@@ -61,6 +61,14 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   // when it is null.
   const inbox = await api<Inbox>("/v1/me/inbox", { env, request }).catch(() => null);
 
+  // The rail lists the approvals by what they are about, and an approval holds a
+  // ref, not a name. Batched into one call, and skipped entirely when the queue
+  // is empty (names() returns {} for no refs without touching the network).
+  const subjects = await names(
+    (inbox?.approvals ?? []).map((approval) => approval.subjectRef),
+    { env, request }
+  );
+
   // "/" used to redirect to the actor's primary workspace. It is now a real
   // screen (routes/home.tsx): what is waiting on me, how the business is doing,
   // where I go next — which beats being teleported into a list.
@@ -70,6 +78,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     // locale — which no profile can hold — is the case that makes it obvious.
     locale: chosenLocale(request) ?? me.locale,
     inbox,
+    names: subjects,
     nav: me.nav,
     permissions: me.permissions,
     brand: me.tenant.brand,
@@ -126,6 +135,7 @@ export function ErrorBoundary() {
         tenantName={shell.tenantName}
         actorName={shell.actorName}
         inbox={shell.inbox}
+        names={shell.names}
       >
         {panel}
       </Shell>
@@ -148,6 +158,7 @@ export default function Workspace() {
         tenantName={shell.tenantName}
         actorName={shell.actorName}
         inbox={shell.inbox}
+        names={shell.names}
       >
         <Outlet />
       </Shell>

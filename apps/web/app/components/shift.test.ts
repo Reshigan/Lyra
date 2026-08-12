@@ -64,6 +64,35 @@ describe("shiftFrom", () => {
     expect(shift?.open).toBe(12);
   });
 
+  it("tells two decisions of the same kind apart by their subject", () => {
+    const shift = shiftFrom(
+      inbox({
+        approvals: [
+          {
+            id: "a",
+            policyKey: "axis.cancel",
+            module: "axis",
+            subjectRef: "cases:cs_01hzzzzzzzzzzzzzzzzzzzzzzz",
+            requestedAt: today(9)
+          },
+          {
+            id: "b",
+            policyKey: "axis.cancel",
+            module: "axis",
+            subjectRef: "policies:new:0123456789abcdef0123456789abcdef",
+            requestedAt: today(10)
+          }
+        ],
+        counts: { approvals: 2, notifications: 0, clearedToday: 0 }
+      }),
+      { "cases:cs_01hzzzzzzzzzzzzzzzzzzzzzzz": "CDR-MOT-2601-778201" }
+    );
+    expect(shift?.items.map((i) => [i.title, i.subject])).toEqual([
+      ["Cancel", "CDR-MOT-2601-778201"],
+      ["Cancel", "New policies"]
+    ]);
+  });
+
   it("is absent when the inbox could not be read, so the rail can omit itself", () => {
     expect(shiftFrom(null)).toBeNull();
   });

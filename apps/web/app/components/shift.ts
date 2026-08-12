@@ -1,3 +1,4 @@
+import { who, type Names } from "../names";
 import { policyTitle } from "../policy";
 
 // The two Horizon compositions that read the same queue: the shift rail (what
@@ -15,6 +16,7 @@ export interface InboxApproval {
   id: string;
   policyKey: string;
   module: string;
+  subjectRef?: string | null;
   requestedAt: number;
 }
 
@@ -37,6 +39,8 @@ export interface ShiftItem {
   ordinal: string;
   module: string;
   title: string;
+  /** What the decision is about — a case reference, a policy number. */
+  subject: string | null;
   at: number;
 }
 
@@ -66,8 +70,16 @@ export function ringDash(done: number, open: number): string {
  * The rail's list: every approval waiting on this actor, oldest first, because
  * a shift is worked in the order it arrived. Capped at nine — a rail is a
  * shift, not a queue screen, and /approvals holds the rest.
+ *
+ * `resolved` names the subjects. Without it a shift of five binds is five rows
+ * reading "Bind" — the action is the same every time, so it is the subject that
+ * tells them apart.
  */
-export function shiftFrom(inbox: Inbox | null | undefined, limit = 9): Shift | null {
+export function shiftFrom(
+  inbox: Inbox | null | undefined,
+  resolved: Names = {},
+  limit = 9
+): Shift | null {
   if (!inbox) return null;
   const open = inbox.counts?.approvals ?? inbox.approvals.length;
   const done = inbox.counts?.clearedToday ?? 0;
@@ -79,6 +91,7 @@ export function shiftFrom(inbox: Inbox | null | undefined, limit = 9): Shift | n
       ordinal: String(i + 1).padStart(2, "0"),
       module: approval.module,
       title: policyTitle(approval.policyKey, approval.module),
+      subject: who(approval.subjectRef, resolved),
       at: approval.requestedAt
     }));
   return { done, open, dash: ringDash(done, open), items };
