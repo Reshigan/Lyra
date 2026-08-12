@@ -28,6 +28,15 @@ description = "Mobile API calls that pass the session token as a variable"
 regexTarget = "line"
 regexes = ['''queryRows\(\s*token,''']
 
+# An idempotency key is a dedupe token the caller chooses and may repeat
+# (docs/19 §4) — the opposite of a secret. `generic-api-key` scores the hyphen-
+# and-digit shape of one as high entropy.
+[[allowlists]]
+targetRules = ["generic-api-key"]
+description = "Idempotency keys are request identifiers, not credentials"
+regexTarget = "line"
+regexes = ['''idempotencyKey:\s*["'`]''']
+
 # .env.example ships placeholders on purpose — that is what makes it an example.
 [[allowlists]]
 targetRules = ["generic-api-key"]
