@@ -144,16 +144,18 @@ jobs:
 # FREQUENCY_CAP of 3 leaves no room to propose another. `rm -rf
 # $TMPDIR/lyra-e2e` before re-running. CI always starts empty.
 #
-# Run 31627230986 failed four attempts running on the same three journeys —
-# axis-lifecycle.spec.ts:37, ops.spec.ts:157, ops.spec.ts:221 — each a
-# `waitForURL` timeout after a click that landed. It reproduced on no local
-# run. The cause was vite's dep optimizer, not the specs: radix-ui reaches the
-# client only through packages/ui, so the scanner missed it, a second
-# optimizer pass gave it a new browserHash, and the page ended up holding two
-# generations (`deps/radix-ui.js?v=3e9e5c5c` beside
-# `deps/react-dom.js?v=8aff3b7b`) — two React copies, so a <Link> read a
-# RouterContext the mounted router never provided and its click navigated
-# nothing. Fixed at the source with `optimizeDeps.include` in
-# apps/web/vite.config.ts. If this shape returns (navigation timeout, click
-# landed, zero network in the trace after it), check the trace for more than
-# one `?v=` hash before suspecting the test.
+# Runs 31627230986 and 31633595222 failed on the same shape — a `waitForURL`
+# timeout after a click that landed, on axis-lifecycle.spec.ts:37,
+# ops.spec.ts:157 and ops.spec.ts:221, reproducing on no local run. The cause
+# was React Router v8 lazy route discovery, not the specs. Decoding every
+# `/__manifest?paths=` request in the trace showed it: the nav that works
+# (/admin/products) gets an eager batch AND a second, dedicated 3-path
+# discovery request, and completes in 0.3s; the navs that hang
+# (/distribution/channels, /axis/policies) get only the eager batch — their
+# path is already in it, so the navigation's own discovery is deduped away and
+# `navigate()` awaits a promise nothing settles. That happens before any route
+# module or `.data` fetch, which is why the trace shows zero network for the
+# whole 120s. Fixed with `routeDiscovery: { mode: "initial" }` in
+# apps/web/react-router.config.ts — the full manifest ships with the document
+# and there is no discovery request to lose. If this shape returns, decode the
+# `__manifest` requests in the trace before suspecting the test.
