@@ -2,8 +2,9 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
+import { eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
-import type { Db } from "@lyra/db";
+import { schema, type Db } from "@lyra/db";
 import { seed, totpAt, TOTP_STEP_SEC } from "@lyra/core";
 import { app } from "./index.js";
 import type { Env } from "./env.js";
@@ -21,6 +22,7 @@ const PEOPLE: Record<string, string> = {
 };
 
 let env: Env;
+let db: Db;
 let tokens: Record<string, string>;
 
 const exec = { waitUntil() {}, passThroughOnException() {} };
@@ -61,6 +63,7 @@ beforeAll(async () => {
   for (const stmt of statements) await client.execute(stmt);
   const database = drizzle(client) as unknown as Db;
   await seed(database as never, { mfaSecret: DEMO_TOTP_SECRET });
+  db = database;
 
   env = {
     DB_CLIENT: database,
@@ -128,5 +131,47 @@ describe("POST /v1/me/lens/usage and /v1/me/lens/reset", () => {
   it("rejects a body without a key", async () => {
     const res = await call("axis.agent", "POST", "/v1/me/lens/usage", {});
     expect(res.status).toBe(400);
+  });
+});
+
+// The shell's shift ring divides cleared-today by cleared-today + still-open,
+// so the inbox has to report the first half. The day boundary is the part
+// worth a test: a decision from yesterday must not inflate today's ring.
+describe("GET /v1/me/inbox", () => {
+  it("counts what this actor cleared today, and nothing older", async () => {
+    const before = await call("north.exec", "GET", "/v1/me/inbox");
+    expect(before.status).toBe(200);
+    const baseline = before.body.counts.clearedToday as number;
+    expect(typeof baseline).toBe("number");
+
+    const [actor] = await db
+      .select({ id: schema.users.id, tenantId: schema.users.tenantId })
+      .from(schema.users)
+      .where(eq(schema.users.email, "hala.zayed@gonxt.ae"));
+    if (!actor) throw new Error("hala.zayed is not seeded");
+
+    const now = Date.now();
+    const row = {
+      tenantId: actor.tenantId,
+      subjectRef: "test:inbox",
+      policyKey: "axis.cancel",
+      module: "axis",
+      requestedBy: actor.id,
+      decidedBy: actor.id,
+      decision: "approved"
+    };
+    await db.insert(schema.approvals).values([
+      { ...row, id: "apr_inbox_today", requestedAt: now, decidedAt: now },
+      {
+        ...row,
+        id: "apr_inbox_yesterday",
+        requestedAt: now - 86_400_000,
+        decidedAt: now - 86_400_000
+      }
+    ]);
+
+    const after = await call("north.exec", "GET", "/v1/me/inbox");
+    expect(after.status).toBe(200);
+    expect(after.body.counts.clearedToday).toBe(baseline + 1);
   });
 });

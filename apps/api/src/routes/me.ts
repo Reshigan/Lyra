@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, gte, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { schema } from "@lyra/db";
 import {
@@ -232,7 +232,32 @@ meRoutes.get("/inbox", async (c) => {
     )
     .orderBy(desc(schema.notifications.createdAt))
     .limit(50);
-  return c.json({ approvals, notifications, counts: { approvals: approvals.length, notifications: notifications.length } });
+  // The shell's shift ring needs a denominator: a ring fed only by what is
+  // still open can never say anything but "nothing done". This is the other
+  // half — what this actor has already cleared today.
+  //
+  // ponytail: UTC day boundary. No tenant carries a timezone yet (BrandJson /
+  // PolicyJson in packages/db/src/json.ts); when one does, offset here.
+  const dayStart = ctx.now - (ctx.now % 86_400_000);
+  const cleared = await ctx.db
+    .select({ id: schema.approvals.id })
+    .from(schema.approvals)
+    .where(
+      and(
+        eq(schema.approvals.tenantId, ctx.tenantId),
+        eq(schema.approvals.decidedBy, ctx.actor.id),
+        gte(schema.approvals.decidedAt, dayStart)
+      )
+    );
+  return c.json({
+    approvals,
+    notifications,
+    counts: {
+      approvals: approvals.length,
+      notifications: notifications.length,
+      clearedToday: cleared.length
+    }
+  });
 });
 
 /**
