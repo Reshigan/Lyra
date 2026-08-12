@@ -14,7 +14,13 @@ const FINANCE_SCREENS = [
   "/ledger/transactions",
   "/ledger/statement",
   "/ledger/period-close",
-  "/ledger/reports/trial-balance"
+  "/ledger/reports/trial-balance",
+  // Both are read-only until a button is pressed: year-end previews the closing
+  // entry, the journal screen is an empty form. Year-end is also the one screen
+  // that fails if the 3xxx accounts never reached this tenant.
+  "/ledger/year-end",
+  "/ledger/journal",
+  "/ledger/reports/balance-sheet"
 ];
 
 test.describe("the deployed ledger", () => {
@@ -28,6 +34,15 @@ test.describe("the deployed ledger", () => {
       // the route still responds 200 and still has a <main>.
       await expect(page.getByRole("main")).not.toContainText(/Something went wrong|Unexpected error/i);
     }
+  });
+
+  test("the year-end preview finds the equity accounts this tenant was seeded before", async ({ page }) => {
+    await signIn(page, PERSONAS.financeController);
+    await page.goto("/ledger/year-end");
+    // 3100 is Retained Earnings. It arrives on an already-seeded tenant only
+    // through syncChartOfAccounts, so its absence here is the backfill missing
+    // rather than a screen bug — which is exactly the failure worth catching.
+    await expect(page.getByRole("main")).toContainText("3100");
   });
 
   test("the transaction list shows more than the fixture book", async ({ page }) => {
