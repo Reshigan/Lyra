@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { Doctrine, PALETTE } from "./design";
+import { Doctrine, IN_HAND, PALETTE } from "./design";
 
 // The doctrine page is the design system explaining itself: the four rules the
 // rest of the platform is built to, the palette and the three type voices. Its
@@ -23,6 +23,16 @@ describe("the doctrine page", () => {
     for (const family of ["font-serif", "font-display", "font-mono"]) {
       expect(markup).toContain(family);
     }
+  });
+
+  it("shows the same doctrine in hand, with the one ✦ the ambient grammar allows", () => {
+    const markup = renderToStaticMarkup(<Doctrine locale="en" />);
+    expect(markup).toContain("In hand");
+    for (const row of IN_HAND) expect(markup).toContain(row.value);
+    // docs/15 §4: one marker per AI artifact. Two on this page — the one rule
+    // 02 quotes, and the one the specimen card wears. A third would mean some
+    // surface here is marking itself twice.
+    expect(markup.split("✦")).toHaveLength(3);
   });
 
   it("is written in both languages", () => {

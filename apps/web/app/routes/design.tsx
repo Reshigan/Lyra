@@ -49,6 +49,19 @@ const VOICES = [
   { key: "mono", cls: "font-mono text-22" }
 ] as const;
 
+/**
+ * The specimen figures the in-hand frame carries. Figures, not copy: they read
+ * the same in both languages, exactly like the mono voice sample above. `hue`
+ * is the token the delta is coloured by — down is not automatically bad, so the
+ * direction is stated rather than derived.
+ */
+export const IN_HAND = [
+  { key: "open", value: "34", delta: "+6", hue: "text-warning" },
+  { key: "cleared", value: "18", delta: "+4", hue: "text-success" },
+  { key: "response", value: "6.2m", delta: "−18%", hue: "text-success" },
+  { key: "exposure", value: "41.8M", delta: "+2.1%", hue: "text-tx4" }
+] as const;
+
 const LABELS: Labels = {
   en: {
     eyebrow: "Horizon — the doctrine",
@@ -95,7 +108,24 @@ const LABELS: Labels = {
     "voice.display.sample": "STRUCTURE & LABELS",
     "voice.display.note": "Module marks and micro-labels, tracked wide, never bolder than 600.",
     "voice.mono.sample": "41.8M · 6.2 min · −18.4%",
-    "voice.mono.note": "Every figure, reference and tick — so columns of numbers line up."
+    "voice.mono.note": "Every figure, reference and tick — so columns of numbers line up.",
+    "hand.heading": "In hand",
+    "hand.note":
+      "The same doctrine at 328px: one narrated line, figures in mono, the ambient draft as a card beside the work rather than a dialogue over it. Nothing is re-styled for the phone — the tokens are the tokens.",
+    "hand.title": "Your shift",
+    "hand.head": "Two decisions are waiting on you.",
+    "hand.open": "Open with you",
+    "hand.cleared": "Cleared today",
+    "hand.response": "Median response",
+    "hand.exposure": "Exposure",
+    "hand.card.label": "Drafted for you",
+    "hand.card.body":
+      "The renewal is priced 4% under last term because the vehicle moved to a lower-risk district. Nothing has been sent.",
+    "hand.card.primary": "Review",
+    "hand.card.secondary": "Why this",
+    "hand.footer": "Approvals and evidence stay on the phone; anything consequential still waits for you to press it.",
+    "hand.tab1": "Shift",
+    "hand.tab2": "Records"
   },
   ar: {
     eyebrow: "Horizon — العقيدة التصميمية",
@@ -142,7 +172,24 @@ const LABELS: Labels = {
     "voice.display.sample": "البنية والتسميات",
     "voice.display.note": "علامات الوحدات والتسميات الدقيقة، متباعدة الأحرف، ولا أثقل من 600.",
     "voice.mono.sample": "41.8M · 6.2 min · −18.4%",
-    "voice.mono.note": "كل رقم ومرجع وعلامة قياس — حتى تصطف أعمدة الأرقام."
+    "voice.mono.note": "كل رقم ومرجع وعلامة قياس — حتى تصطف أعمدة الأرقام.",
+    "hand.heading": "في اليد",
+    "hand.note":
+      "العقيدة نفسها بعرض 328 بكسل: سطر مروي واحد، وأرقام بخط أحادي، والمسودة المحيطة بطاقة بجوار العمل لا نافذة فوقه. لا شيء يُعاد تنسيقه للهاتف — الرموز هي الرموز.",
+    "hand.title": "نوبتك",
+    "hand.head": "قراران ينتظران قرارك.",
+    "hand.open": "مفتوح لديك",
+    "hand.cleared": "أُنجز اليوم",
+    "hand.response": "وسيط زمن الرد",
+    "hand.exposure": "التعرّض",
+    "hand.card.label": "مسودة لك",
+    "hand.card.body":
+      "التجديد مسعّر أقل بنسبة ٤٪ من المدة السابقة لأن المركبة انتقلت إلى منطقة أقل خطرًا. لم يُرسل شيء.",
+    "hand.card.primary": "مراجعة",
+    "hand.card.secondary": "لماذا",
+    "hand.footer": "الموافقات والأدلة تبقى على الهاتف؛ وكل ما له أثر ينتظر ضغطتك.",
+    "hand.tab1": "النوبة",
+    "hand.tab2": "السجلات"
   }
 };
 
@@ -204,6 +251,88 @@ export function Doctrine({ locale }: { locale: string }) {
           </ul>
         </section>
       </div>
+
+      {/* CLAUDE.md's definition of done asks every UI change to note its mobile
+          parity; this is where that is noted. A specimen, not a control: the
+          frame is inert, and the phone itself is apps/mobile. */}
+      <section className="flex flex-col gap-4 border-t border-line2 pt-7 lg:flex-row lg:items-start lg:gap-8">
+        <div className="flex flex-1 flex-col gap-3">
+          <h2 className="font-display text-16 font-600 text-tx">{l("hand.heading")}</h2>
+          <p className="max-w-[60ch] text-13 leading-body text-tx4">{l("hand.note")}</p>
+        </div>
+
+        <div className="w-[328px] max-w-full flex-none rounded-[25px] border border-line4 bg-bg p-[9px] shadow-raised">
+          <div className="flex h-[604px] flex-col overflow-hidden rounded-[18px] border border-line2 bg-s1">
+            <div className="flex flex-none items-center justify-between px-4 py-2 font-mono text-12 text-tx5">
+              {/* A drawn status bar, not the reader's clock: a doctrine page that
+                  ticks reads as a live screen it is not. */}
+              <span dir="ltr">09:41</span>
+              <span aria-hidden="true">▮▮▮ ◗</span>
+            </div>
+
+            <div className="flex flex-none items-center gap-2 px-4 pb-2">
+              <span className="block h-[18px] w-[18px] rounded-orbit bg-accent" aria-hidden="true" />
+              <span className="text-12 text-tx4">{l("hand.title")}</span>
+            </div>
+
+            <div className="flex-1 overflow-hidden px-4 pb-4">
+              <p className="font-serif text-22 leading-display text-tx0">{l("hand.head")}</p>
+
+              <ul className="mt-3 flex flex-col">
+                {IN_HAND.map((row) => (
+                  <li
+                    key={row.key}
+                    className="flex items-baseline justify-between gap-2 border-b border-line2 py-2.5"
+                  >
+                    <span className="text-12 text-tx4">{l(`hand.${row.key}`)}</span>
+                    <span className="flex flex-none items-baseline gap-2 font-mono">
+                      <span className="text-13 text-tx">{row.value}</span>
+                      {/* Fixed width so the deltas form a column rather than a
+                          ragged edge — the same reason the mono voice exists. */}
+                      <span className={`w-11 text-end text-12 ${row.hue}`} dir="ltr">
+                        {row.delta}
+                      </span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+
+              <div className="mt-4 border border-line2 bg-s2 p-3">
+                <p className="flex items-center gap-2">
+                  <span className="text-accent" aria-hidden="true">
+                    ✦
+                  </span>
+                  <span className="font-display text-12 uppercase tracking-[.14em] text-tx4">
+                    {l("hand.card.label")}
+                  </span>
+                </p>
+                <p className="mt-2 text-13 leading-body text-tx">{l("hand.card.body")}</p>
+                <p className="mt-3 flex gap-2">
+                  {/* WCAG 2.2 AA target size, drawn at the phone's own scale:
+                      44px is the floor the real app is built to. */}
+                  <span className="flex h-11 flex-1 items-center justify-center rounded-md bg-accent text-13 font-600 text-accent-contrast">
+                    {l("hand.card.primary")}
+                  </span>
+                  <span className="flex h-11 w-[88px] flex-none items-center justify-center rounded-md border border-line4 text-13 text-tx3">
+                    {l("hand.card.secondary")}
+                  </span>
+                </p>
+              </div>
+
+              <p className="mt-4 text-12 leading-body text-tx5">{l("hand.footer")}</p>
+            </div>
+
+            <div className="flex flex-none border-t border-line2">
+              <span className="flex h-12 flex-1 items-center justify-center text-12 text-accent">
+                {l("hand.tab1")}
+              </span>
+              <span className="flex h-12 flex-1 items-center justify-center text-12 text-tx5">
+                {l("hand.tab2")}
+              </span>
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
