@@ -676,7 +676,11 @@ export function KPIWall({ children, className }: { children: React.ReactNode; cl
   return (
     <div
       className={cn("grid gap-4", className)}
-      style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(13rem, 100%), 1fr))" }}
+      // auto-fill, not auto-fit: a home with two stats and no economics panel
+      // stretched them to half a screen each, which reads as an empty band
+      // rather than two numbers. Empty tracks keep the stats at their own
+      // width; a full wall still fills the row.
+      style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(13rem, 100%), 1fr))" }}
     >
       {children}
     </div>

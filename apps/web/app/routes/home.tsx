@@ -76,7 +76,9 @@ const LABELS: Record<string, Record<string, string>> = {
     "kpi.volume.trend": "Units delivered per day over the last 30 days",
 
     "approvals.title": "Decisions waiting on you",
-    "approvals.subject": "Subject {ref}",
+    // The ref is a name, not a grammatical object: "Subject: New policies"
+    // reads; "Subject New policies" is two nouns collided.
+    "approvals.subject": "Subject: {ref}",
     "approvals.more": "{count} more waiting elsewhere",
     "approvals.all": "Open the full queue",
     "approvals.deciding": "Recording your decision…",
@@ -141,7 +143,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "kpi.volume.trend": "الوحدات المنجزة يوميًا خلال آخر ٣٠ يومًا",
 
     "approvals.title": "قرارات بانتظارك",
-    "approvals.subject": "الموضوع {ref}",
+    "approvals.subject": "الموضوع: {ref}",
     "approvals.more": "{count} قرارات أخرى بانتظارك في مواضع أخرى",
     "approvals.all": "فتح قائمة القرارات كاملة",
     "approvals.deciding": "جارٍ تسجيل قرارك…",
