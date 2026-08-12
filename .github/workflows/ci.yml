@@ -143,3 +143,15 @@ jobs:
 # the seed's one `proposed` offer has already been surfaced, and NBO's
 # FREQUENCY_CAP of 3 leaves no room to propose another. `rm -rf
 # $TMPDIR/lyra-e2e` before re-running. CI always starts empty.
+#
+# Known infra flake, seen once (run 31627230986, 2026-08-12, three journeys):
+# vite's dep optimizer re-bundled mid-run and the browser then asked for a
+# hashed chunk it had already deleted —
+#   [vite] Pre-transform error: The file does not exist at
+#   ".../apps/web/node_modules/.vite/deps/rolldown-runtime-*.js"
+# Once that happens the dev server stays broken for the rest of the run, so
+# `retries: 1` cannot save it and the failures look like three unrelated
+# navigation timeouts. The signature is that one log line; the remedy is
+# `gh run rerun <id> --failed`. Not seen in the 25 runs before it — if it
+# recurs, pre-bundle deps before Playwright starts rather than chasing the
+# individual specs.
