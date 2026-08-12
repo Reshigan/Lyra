@@ -24,10 +24,11 @@ import {
 import { ApiError, api, fetchMe, names } from "../api.server";
 import { toneFor } from "../components/fields";
 import { cloudflare } from "../context";
-import { moduleName, pseudoText, translator, type Translate } from "../i18n";
+import { moduleName, translator, type Translate } from "../i18n";
 import { ConfirmButton } from "../components/confirm";
 import { WORKSPACES } from "../modules";
 import { humanise } from "../modules/spec";
+import { labelsFrom } from "./detail-kit";
 import { Problem } from "./module";
 import { useShellData } from "./workspace";
 import { who, type Names } from "../names";
@@ -368,10 +369,10 @@ const LABELS: Record<string, Record<string, string>> = {
   }
 };
 
-function labeller(locale: string): (key: string) => string {
-  const table = LABELS[locale] ?? LABELS.en!;
-  return (key) => pseudoText(locale, table[key] ?? LABELS.en![key] ?? key);
-}
+// Hand-rolling `LABELS[locale] ?? LABELS.en` skips the shared catalogue, so a
+// state this screen never wrote down — `state.approved`, which SHARED says —
+// reached the filter dropdown as a bare key (docs/ui.md §7 P3-14).
+export const labelsIn = labelsFrom(LABELS);
 
 export default function Approvals() {
   const loaded = useLoaderData<typeof loader>();
@@ -382,7 +383,7 @@ export default function Approvals() {
 
   const locale = shell?.locale ?? "en";
   const t = translator(locale);
-  const l = labeller(locale);
+  const l = labelsIn(locale);
   const busy = navigation.state !== "idle";
   const deciding = navigation.formData?.get("id");
   const items = loaded.items;

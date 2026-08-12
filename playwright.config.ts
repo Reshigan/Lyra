@@ -9,6 +9,9 @@ import { API_ORIGIN, API_PORT, FILES_DIR, LIBSQL_URL, WEB_ORIGIN } from "./e2e/e
 
 export default defineConfig({
   testDir: "./e2e",
+  // e2e/live points at a deployment (playwright.live.config.ts), not this
+  // config's local stack — running it here signs into 127.0.0.1 and fails.
+  testIgnore: "live/**",
   fullyParallel: true,
   // The web target here is `vite dev`, which compiles a route's module graph
   // the first time any test reaches it — a first visit to a cold screen costs
