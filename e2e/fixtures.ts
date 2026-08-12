@@ -138,6 +138,18 @@ export async function confirmAction(page: Page): Promise<void> {
  * lose, and exercises the same code path a keyboard user takes (docs/13 §8).
  */
 /**
+ * The screen itself, without the shell around it. The rail's shift block
+ * (components/shift-rail.tsx) repeats the titles of whatever is waiting on this
+ * actor, so an unscoped by-name lookup can resolve to chrome instead of the
+ * screen — "Endorse" matched both the endorsement link and a queued endorsement
+ * approval. Scope any by-name lookup whose name is an ordinary verb through
+ * this.
+ */
+export function content(page: Page): Locator {
+  return page.getByRole("main");
+}
+
+/**
  * How a table cell prints an opaque id: head and tail only (packages/ui
  * format.tsx `shortRef`). A spec that made a row and knows its id has to look
  * for it the way the screen shows it — matching the full id finds nothing.

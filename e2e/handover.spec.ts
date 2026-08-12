@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { chooseOption, goto, loginAsOrbitAgent } from "./fixtures.js";
+import { chooseOption, content, goto, loginAsOrbitAgent } from "./fixtures.js";
 
 // J-X1 "handover catch" (docs/06-roles-and-journeys.md:57): "AI escalates
 // mid-chat -> human console opens with summary + suggested action -> resolve
@@ -48,7 +48,7 @@ test("J-X1 the human console shows the AI's escalation summary and its QA score 
   // Client-side <Link> navigation (pushState, no full load) — wait for the
   // URL to change before reading it or acting on the next page.
   await page.waitForURL(/\/orbit\/conversations\/[^/]+$/);
-  await page.getByRole("link", { name: "Open thread" }).click();
+  await content(page).getByRole("link", { name: "Open thread" }).click();
   await page.waitForURL(/\/orbit\/conversations\/[^/]+\/thread$/);
 
   await expect(
@@ -81,7 +81,7 @@ test("J-X1 an agent hands a conversation to a teammate with a readable summary @
   await expect(row).toBeVisible();
   await row.getByRole("link").first().click();
   await page.waitForURL(/\/orbit\/conversations\/[^/]+$/);
-  await page.getByRole("link", { name: "Open thread" }).click();
+  await content(page).getByRole("link", { name: "Open thread" }).click();
   await page.waitForURL(/\/orbit\/conversations\/[^/]+\/thread$/);
 
   // orbit:handover:write — the same permission journeys.test.ts:608-621

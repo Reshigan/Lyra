@@ -4,7 +4,7 @@ import { EntitlementsJson, PolicyJson, schema } from "@lyra/db";
 import { makeLibsqlDb } from "@lyra/db/libsql";
 import type { Ctx } from "@lyra/core";
 import { sweepRenewals } from "../apps/api/src/engines/renewals.js";
-import { goto, loginAsAxisLead, loginAsOrbitRetention } from "./fixtures.js";
+import { content, goto, loginAsAxisLead, loginAsOrbitRetention } from "./fixtures.js";
 import { LIBSQL_URL, TENANT_SLUG } from "./env.js";
 
 // AXIS task 11 (docs/14 M?): the mid-term change and cancellation screens
@@ -44,7 +44,7 @@ test("axis lead endorses a policy: price the change, then confirm it", async ({ 
   await loginAsAxisLead(page);
   const id = await openPolicyDetail(page, POLICY_NO);
 
-  await page.getByRole("link", { name: "Endorse" }).click();
+  await content(page).getByRole("link", { name: "Endorse" }).click();
   await page.waitForURL(`**/axis/policies/${id}/endorse`);
 
   // Deliberately no premiumMinor: a premium change routes through the
@@ -64,7 +64,7 @@ test("axis lead prices a cancellation, which holds for approval rather than writ
   await loginAsAxisLead(page);
   const id = await openPolicyDetail(page, IN_FORCE_POLICY_NO);
 
-  await page.getByRole("link", { name: "Cancel" }).click();
+  await content(page).getByRole("link", { name: "Cancel" }).click();
   await page.waitForURL(`**/axis/policies/${id}/cancel`);
 
   await page.getByLabel("Reason").fill("e2e cancellation");

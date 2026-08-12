@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { monthKey } from "@lyra/core";
-import { goto, loginAsAxisLead, loginAsFinanceController } from "./fixtures.js";
+import { content, goto, loginAsAxisLead, loginAsFinanceController } from "./fixtures.js";
 
 // J-X2 "the save desk" (docs/06-roles-and-journeys.md): the acceptance test
 // this journey actually has (apps/api/src/journeys.test.ts:644-758) is a pair
@@ -71,7 +71,7 @@ test("J-X2 approving a settlement run is always refused for dual control (dist.s
 
   await expect(page.getByRole("status").getByText("Waiting on an approval")).toBeVisible();
   await expect(page.getByRole("status").getByText(/dist\.settlement_run/)).toBeVisible();
-  await expect(page.getByRole("link", { name: "Open the approval queue" })).toBeVisible();
+  await expect(content(page).getByRole("link", { name: "Open the approval queue" })).toBeVisible();
 
   // Gap: the delegation round-trip (staff.tsx "Grant a delegation" ->
   // delegate decides dist:commissions:settle -> retry succeeds) is the real

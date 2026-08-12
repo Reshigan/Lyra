@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { chooseOption, goto, loginAsScoutLead } from "./fixtures.js";
+import { chooseOption, content, goto, loginAsScoutLead } from "./fixtures.js";
 
 // J-P1 "the pivot" (docs/06-roles-and-journeys.md): a whitespace candidate
 // moves toward promotion as evidence firms up. Whitespace has no create (it's
@@ -53,7 +53,7 @@ test("J-P1 a whitespace candidate is validated and given an owner @journey:J-P1 
   // shared <Gate> (routes/module.tsx).
   await expect(page.getByRole("status").getByText("Waiting on an approval")).toBeVisible();
   await expect(page.getByRole("status").getByText(/scout\.whitespace_promote/)).toBeVisible();
-  await page.getByRole("link", { name: "Open the approval queue" }).click();
+  await content(page).getByRole("link", { name: "Open the approval queue" }).click();
 
   // Single control — the same scout lead decides it. The card is headed by the
   // policy read as words with the module dropped (approvals.tsx policyTitle).

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { chooseOption, confirmAction, goto, loginAsAxisAgent, loginAsAxisLead, loginAsFinanceController, loginAsTenantAdmin } from "./fixtures.js";
+import { chooseOption, confirmAction, content, goto, loginAsAxisAgent, loginAsAxisLead, loginAsFinanceController, loginAsTenantAdmin } from "./fixtures.js";
 
 // J-O1 "Exception clearing" (docs/06-roles-and-journeys.md §Ops (AXIS)): an
 // axis.agent opens the exceptions queue — AXIS cases filtered to
@@ -113,7 +113,7 @@ test("J-O3 finance controller runs a reconciliation and decides an exception wit
   // POST, so on a two-core CI runner this one form round trip can outlast the
   // 15s assertion budget — it did, twice, in run 31419046722. Wait on the
   // outcome, not on the budget: a genuinely broken run still fails here.
-  const runLink = page.getByRole("link", { name: "Run", exact: true });
+  const runLink = content(page).getByRole("link", { name: "Run", exact: true });
   await expect(runLink).toBeVisible({ timeout: 60_000 });
   await expect(page.getByText(/started/)).toBeVisible();
 
