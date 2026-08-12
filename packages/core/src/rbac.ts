@@ -413,7 +413,10 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     "orbit:renewals:update", "orbit:conversations:reply",
     "orbit:messages:send",
     "core:customers:read", "core:consents:read", "core:search:read",
-    "axis:policies:read", "axis:quotes:create", "axis:quotes:compare",
+    // The desk that carries "Bind renewal" is this role's (renewal-desk.tsx),
+    // so this role finishes the job — ADR-0054. Separation of duties stays
+    // with the `axis.renew` approval policy, which is where it always lived.
+    "axis:policies:read", "axis:policies:renew", "axis:quotes:create", "axis:quotes:compare",
     "analytics:reports:read", "analytics:reports:run",
     "dist:ai:invoke", "dist:offerings:read", "dist:quote_requests:create",
     "dist:offers:read"

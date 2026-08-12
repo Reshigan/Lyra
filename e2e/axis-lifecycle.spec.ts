@@ -132,8 +132,10 @@ test("orbit retention works a renewal from the AXIS renewal desk", async ({ page
   await row.getByRole("button", { name: "Do not contact" }).click();
   await expect(page.getByRole("status").getByText("Recorded.")).toBeVisible();
 
-  // Gap: "Bind renewal" has no coverage here — orbit.retention holds
-  // orbit:renewals:update but not axis:policies:renew, and axis.lead (who
-  // does) lacks orbit:renewals:read, so no persona can reach this screen's
-  // bind action through its own UI.
+  // The desk's own owner finishes the desk's work (ADR-0054). Binding is
+  // gated by the `axis.renew` approval policy, not by the permission, so the
+  // first press raises the approval rather than issuing the successor term —
+  // which is the control working, not the button failing.
+  await row.getByRole("button", { name: "Bind renewal" }).click();
+  await expect(content(page).getByText("Waiting on an approval")).toBeVisible();
 });

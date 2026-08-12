@@ -33,8 +33,12 @@ export default defineConfig({
   // however many cores the machine has, so Playwright's local default (half
   // the cores — ten here) only queues writes behind each other: creates landed
   // more than 20s after the POST and blew the assertion budget in seven
-  // journeys that pass alone. Four is the most the single API keeps up with.
-  workers: process.env.CI ? 2 : 4,
+  // journeys that pass alone. Four was not low enough either: a full local run
+  // at four lost the same seven journeys to 120s timeouts in 13.3m, and those
+  // exact seven passed in 47.8s on a `--last-failed --workers=2` re-run. Two
+  // everywhere — a flaky suite is Sev-2 (CLAUDE.md), and the wall-clock the
+  // extra pair buys is spent on retries anyway.
+  workers: 2,
   reporter: process.env.CI ? "github" : "list",
   use: {
     baseURL: WEB_ORIGIN,

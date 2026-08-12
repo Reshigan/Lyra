@@ -2,7 +2,9 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { makeLibsqlDb } from "@lyra/db/libsql";
-import { approvals, distNextBestOffers, signalBudgetMoves, users } from "@lyra/db/schema";
+import type { CoreDb } from "@lyra/core";
+import { resyncSystemRolePermissions } from "@lyra/core/seed";
+import { approvals, distNextBestOffers, signalBudgetMoves, tenants, users } from "@lyra/db/schema";
 import { and, eq, like } from "drizzle-orm";
 import { API_ORIGIN, DB_PATH, FILES_DIR, LIBSQL_URL } from "./env.js";
 
@@ -70,6 +72,17 @@ export default async function globalSetup(): Promise<void> {
       .update(distNextBestOffers)
       .set({ state: "proposed", surfacedAt: null })
       .where(eq(distNextBestOffers.state, "surfaced"));
+
+    // core_roles.permissions_json is a snapshot taken at seed time, so a
+    // permission added to a role in rbac.ts (e.g. ADR-0054) never reaches a
+    // reused DB and the spec that demands it fails against stale grants.
+    // Every seeded role here is a system role, compiled from rbac.ts — so
+    // resyncing them is restoring the source of truth, not overriding an
+    // operator's narrowing.
+    const seeded = await db.select({ id: tenants.id }).from(tenants);
+    for (const tenant of seeded) {
+      await resyncSystemRolePermissions(db as unknown as CoreDb, tenant.id);
+    }
     return;
   }
 
