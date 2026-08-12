@@ -13,8 +13,16 @@ import { LIBSQL_URL, TENANT_SLUG } from "./env.js";
 // (§B.1/§B.2/§D.5/D.7) — these tests exercise both steps end to end.
 
 // CDR-MOT-2601-778201 (seed.ts's `policyId`): not consumed by any other e2e
-// spec, unlike renewalPolicyId (orbit-journeys.spec.ts's J-C3).
+// spec, unlike renewalPolicyId (orbit-journeys.spec.ts's J-C3). It is the
+// policy the demo just sold, so it incepts two days after the seed clock —
+// which is exactly the case the endorsement default has to survive.
 const POLICY_NO = "CDR-MOT-2601-778201";
+
+// Cancellation is the one verb that policy cannot demonstrate: cancelling
+// cover that has not started is not-taken-up, a different verb with a
+// different money story (axis-lifecycle.ts's priceCancellation). This one is
+// mid-term, on risk since the start of the month (seed/settlement.ts).
+const IN_FORCE_POLICY_NO = "CDR-MOP-2601-772350";
 
 /**
  * The generic policies list (module.tsx) links each row's first column to
@@ -54,7 +62,7 @@ test("axis lead endorses a policy: price the change, then confirm it", async ({ 
 
 test("axis lead prices a cancellation, which holds for approval rather than writing", async ({ page }) => {
   await loginAsAxisLead(page);
-  const id = await openPolicyDetail(page, POLICY_NO);
+  const id = await openPolicyDetail(page, IN_FORCE_POLICY_NO);
 
   await page.getByRole("link", { name: "Cancel" }).click();
   await page.waitForURL(`**/axis/policies/${id}/cancel`);

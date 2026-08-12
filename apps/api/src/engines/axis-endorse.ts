@@ -49,7 +49,11 @@ export async function priceEndorsement(ctx: Ctx, policy: PolicyRow, input: Endor
     );
   if (!current) throw conflict("policy has no effective version to endorse");
 
-  const effectiveFrom = input.effectiveFrom ?? ctx.now;
+  // Cover sold today may incept next week, and an endorsement cannot take
+  // effect before the cover it changes: defaulting to `now` on a forward-dated
+  // policy refused every endorsement with "must fall inside the remaining
+  // term". Left unsaid, the change takes effect when the cover does.
+  const effectiveFrom = input.effectiveFrom ?? Math.max(ctx.now, current.effectiveFrom);
   if (effectiveFrom < current.effectiveFrom || effectiveFrom >= policy.endAt) {
     throw badRequest("effectiveFrom must fall inside the remaining term");
   }

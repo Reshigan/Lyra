@@ -234,6 +234,23 @@ describe("AXIS endorsement (docs/27 F5)", () => {
     expect(txns.every((t) => !(t.subjectRefsJson ?? "").includes(policyId))).toBe(true);
   });
 
+  // Cover sold today, incepting in a fortnight, is ordinary — and the customer
+  // changing their mind before it starts is more ordinary still. Priced with no
+  // `effectiveFrom` at all, the change used to be refused as outside the term.
+  it("dates an unstated change from inception when the cover has not started", async () => {
+    await autoApprove("axis.bind", "axis.underwriting_referral", "axis.endorse");
+    const start = Date.now() + 14 * DAY;
+    const { id: policyId } = await boundPolicy("POL-END-FUTURE", start);
+
+    const quote = ok(
+      await call("POST", `/v1/axis/policies/${policyId}/endorse/preview`, {
+        changes: { sumInsuredMinor: 30_000_000 }
+      })
+    );
+    // The whole term is still ahead of the change, so nothing is earned yet.
+    expect(quote.proRataDays).toBe(365);
+  });
+
   it("a negative premium delta requires dual control", async () => {
     // Everything the endorsement touches is automated except the refund: what
     // is under test is that giving money back is a second pair of eyes.

@@ -215,6 +215,7 @@ export async function seedSettlement(ctx: SeedContext): Promise<void> {
   const channelTotal = new Map<string, number>();
   const entries: (typeof schema.distCommissionEntries.$inferInsert)[] = [];
   const policies: (typeof schema.axisPolicies.$inferInsert)[] = [];
+  const versions: (typeof schema.axisPolicyVersions.$inferInsert)[] = [];
   for (const bucket of buckets) {
     let total = 0;
     for (const spec of bucket.specs) {
@@ -230,6 +231,7 @@ export async function seedSettlement(ctx: SeedContext): Promise<void> {
       // already-accrued — it has to stay clean, because it is the one policy an
       // accrual can still be posted against (apps/api/src/dist.test.ts).
       const policyId = nid("pol");
+      const versionId = nid("pver");
       policies.push({
         id: policyId,
         tenantId,
@@ -245,6 +247,32 @@ export async function seedSettlement(ctx: SeedContext): Promise<void> {
         currency: BASE,
         commissionMinor: split.grossMinor,
         status: "active",
+        currentVersionId: versionId,
+        versionSeq: 1,
+        createdAt: spec.earnedAt,
+        updatedAt: spec.earnedAt
+      });
+      // A bind always writes version 1 (routes/axis.ts `bindPolicy`), and every
+      // mid-term verb reads it: without a schedule these policies are on risk
+      // but cannot be endorsed or cancelled — "policy has no effective version".
+      versions.push({
+        id: versionId,
+        tenantId,
+        policyId,
+        versionSeq: 1,
+        reason: "issue",
+        effectiveFrom: spec.earnedAt,
+        effectiveTo: spec.earnedAt + 365 * DAY,
+        premiumMinor: spec.premiumMinor,
+        taxMinor: 0,
+        feesMinor: 0,
+        commissionMinor: split.grossMinor,
+        currency: BASE,
+        premiumDeltaMinor: 0,
+        termsJson: JSON.stringify({ excessMinor: 100_000 }),
+        state: "effective",
+        issuedBy: analyst,
+        issuedAt: spec.earnedAt,
         createdAt: spec.earnedAt,
         updatedAt: spec.earnedAt
       });
@@ -277,6 +305,7 @@ export async function seedSettlement(ctx: SeedContext): Promise<void> {
     channelTotal.set(bucket.settlementId, total);
   }
   await db.insert(schema.axisPolicies).values(policies);
+  await db.insert(schema.axisPolicyVersions).values(versions);
   await db.insert(schema.distCommissionEntries).values(entries);
 
   const netOf = (settlementId: string): number => channelTotal.get(settlementId) ?? 0;
