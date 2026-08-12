@@ -631,7 +631,12 @@ describe("J-O3 month-end reconciliation", () => {
   });
 
   it("the analyst may run a reconciliation but not close the period", async () => {
-    const denied = await call("finance.analyst", "POST", "/v1/ledger/periods/2026-01/close");
+    // A well-formed close request, so what comes back is an authorisation answer
+    // and not a validation one: the permission check is the first thing
+    // closePeriod does (docs/specs/gap-finance-design.md D10).
+    const denied = await call("finance.analyst", "POST", "/v1/ledger/periods/2026-01/close", {
+      to: "soft_closed"
+    });
     expect(denied.status).toBe(403);
   });
 });

@@ -188,9 +188,10 @@ ledgerRoutes.get("/period/:code", async (c) => {
   return c.json({ period: await ensurePeriod(ctx, code), checks: await closeChecks(ctx, code) });
 });
 
+// The permission and approval gates live in closePeriod/reopenPeriod (ADR D10),
+// so a close reached from a scheduler is gated the same as one reached from here.
 ledgerRoutes.post("/periods/:code/close", async (c) => {
   const ctx = ctxOf(c);
-  require_(ctx.actor, "ledger:periods:close", { tenantId: ctx.tenantId, module: "ledger" });
   const input = await body(
     c,
     z.object({ to: z.enum(["soft_closed", "hard_closed"]), force: z.boolean().default(false) })
@@ -200,7 +201,6 @@ ledgerRoutes.post("/periods/:code/close", async (c) => {
 
 ledgerRoutes.post("/periods/:code/reopen", async (c) => {
   const ctx = ctxOf(c);
-  require_(ctx.actor, "ledger:periods:close", { tenantId: ctx.tenantId, module: "ledger" });
   return c.json(await reopenPeriod(ctx, c.req.param("code")));
 });
 

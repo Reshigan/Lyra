@@ -100,7 +100,17 @@ function argsFor(code: string, r: () => number): Record<string, unknown> {
     { amountMinor: amount, feeMinor: Math.floor(amount * 0.02) },
     { amountMinor: amount, withholdingMinor: Math.floor(amount * 0.05) },
     { amountMinor: amount },
-    { netMinor: amount, taxMinor: tax }
+    { netMinor: amount, taxMinor: tax },
+    // Authored entries (docs/27 F2, F3): the caller supplies the lines, so the
+    // generator has to as well. Last, so no derived recipe matches these first.
+    {
+      lines: [
+        { accountCode: "5400", side: "debit", amountMinor: amount },
+        { accountCode: "2100", side: "credit", amountMinor: amount }
+      ],
+      reason: "fuzzed authored entry for the balance invariant"
+    },
+    { closingLines: [{ accountCode: "4000", side: "debit", amountMinor: amount }], fiscalYear: 2025 }
   ];
   for (const s of shapes) {
     if (spec.schema.safeParse({ ...spec.defaults, ...s }).success) return s;
@@ -397,8 +407,8 @@ describe("periods", () => {
   it("blocks a posting into a hard-closed period unless it is a contra batch", async () => {
     const code = periodCode(ctx.now);
     await ensurePeriod(ctx, code);
-    await closePeriod(ctx, code, "soft_closed");
-    await closePeriod(ctx, code, "hard_closed");
+    await closePeriod(ctx, code, "soft_closed", { preApproved: true });
+    await closePeriod(ctx, code, "hard_closed", { preApproved: true });
 
     await ctx.db.insert(schema.ledgerTxns).values(baseTxn("tx_late", "CMSN-ACCR", 1_000));
     await rejects(

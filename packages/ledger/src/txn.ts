@@ -11,6 +11,7 @@ import {
   type Ctx
 } from "@lyra/core";
 import { post, reverse, type PostInput, type PostingLine } from "./posting.js";
+import { TXN_PRECONDITIONS } from "./preconditions.js";
 import { autoApprovable, canTransition, txnType, type ActorKind, type TxnState } from "./types.js";
 
 // docs/19 §2, §3, §8. One envelope, one state machine, one place where a business
@@ -225,6 +226,9 @@ export interface RunOptions {
   event?: { name: string; payload?: Record<string, unknown> };
   /** Skips the approval gate — for replaying an already-approved transaction. */
   preApproved?: boolean;
+  /** The raw recipe arguments, for types with a ledger-state precondition. The
+   *  built lines cannot answer "which fiscal year is this", so the args travel. */
+  args?: Record<string, unknown>;
 }
 
 /**
@@ -246,6 +250,10 @@ export async function runTxn(ctx: Ctx, input: OpenTxnInput, opts: RunOptions = {
   try {
     let state = txn.state;
     if (state === "initiated") {
+      // Ledger-state preconditions run before anything is written, so a second
+      // opening balance or a double year-end close is refused rather than undone.
+      const precondition = TXN_PRECONDITIONS[def.code];
+      if (precondition) await precondition(ctx, opts.args ?? {});
       if (def.financial && !opts.recipe?.lines.length) {
         throw badRequest(`${def.code} is a financial transaction and needs journal lines`);
       }

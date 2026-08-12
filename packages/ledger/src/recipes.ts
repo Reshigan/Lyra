@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { account } from "@lyra/db";
 import { badRequest, splitCommission } from "@lyra/core";
 import type { PostingLine, Side } from "./posting.js";
 
@@ -348,6 +349,107 @@ export function chargebackWon(a: z.infer<typeof ChargebackArgs>): PostingLine[] 
   );
 }
 
+/* ------------------------------- H. manual & structural entries (F2, F3) */
+
+const AuthoredLine = z.object({
+  accountCode: z.string().regex(/^\d{4}$/, "account code is four digits"),
+  side: z.enum(["debit", "credit"]),
+  amountMinor: Pos,
+  memo: Memo,
+  dims: Dims
+});
+
+const AuthoredArgs = z.object({
+  lines: z.array(AuthoredLine).min(2),
+  /** A hand-written entry has no business event behind it; the reason is the
+   *  only thing an auditor can read. Ten characters is the floor for "why". */
+  reason: z.string().min(10).max(500),
+  dims: Dims
+});
+export type AuthoredArgs = z.infer<typeof AuthoredArgs>;
+
+/** Authored lines are the one shape whose balance nothing upstream guarantees. */
+function assertBalanced(ls: PostingLine[], what: string): void {
+  const debit = ls.filter((l) => l.side === "debit").reduce((s, l) => s + l.amountMinor, 0);
+  const credit = ls.filter((l) => l.side === "credit").reduce((s, l) => s + l.amountMinor, 0);
+  if (debit !== credit) {
+    throw badRequest(`${what} does not balance: debits ${debit} ≠ credits ${credit}`);
+  }
+}
+
+function authored(a: AuthoredArgs): PostingLine[] {
+  return a.lines.map((l) =>
+    line(l.accountCode, l.side, l.amountMinor, l.memo ?? a.reason, l.dims ?? a.dims)
+  );
+}
+
+/**
+ * docs/27 F2. The one instrument that can express any entry — accrual, reclass,
+ * correction — and therefore the one that must not be able to express the two
+ * things it would quietly destroy: segregated client money (CBUAE), and equity,
+ * which only the year-end close may move.
+ */
+export function manualJournal(a: AuthoredArgs): PostingLine[] {
+  for (const l of a.lines) {
+    if (account(l.accountCode)?.clientMoney) {
+      throw badRequest(`a manual journal may not touch client money account ${l.accountCode}`);
+    }
+    if (l.accountCode.startsWith("3")) {
+      throw badRequest(`a manual journal may not touch equity account ${l.accountCode}; use YEAR-END-CLOSE`);
+    }
+  }
+  const built = authored(a);
+  assertBalanced(built, "manual journal");
+  return built;
+}
+
+/**
+ * docs/27 F3. A broker migrating onto Lyra genuinely arrives with a client
+ * account balance and share capital, so the opening balance is the one authored
+ * entry allowed to state both — which is why it is once-per-tenant
+ * (`firstPeriodOnly` in preconditions.ts) rather than merely dual-controlled.
+ */
+export function openingBalance(a: AuthoredArgs): PostingLine[] {
+  const built = authored(a);
+  assertBalanced(built, "opening balance");
+  return built;
+}
+
+const YearEndArgs = z.object({
+  /** One leg per income/expense account, on the side that zeroes it. */
+  closingLines: z.array(AuthoredLine).min(1),
+  retainedEarningsAccount: z.string().regex(/^3\d{3}$/, "retained earnings must be an equity account").default("3100"),
+  fiscalYear: z.number().int().min(2000).max(2200),
+  memo: Memo,
+  dims: Dims
+});
+export type YearEndArgs = z.infer<typeof YearEndArgs>;
+
+/**
+ * docs/27 F3. The residual is computed here rather than passed in: a caller
+ * that could state retained earnings could state the wrong number, and the
+ * balance sheet would carry it forever. The entry balances by construction.
+ */
+export function yearEndClose(a: YearEndArgs): PostingLine[] {
+  for (const l of a.closingLines) {
+    if (!/^[45]/.test(l.accountCode)) {
+      throw badRequest(`year-end close may only close income and expense accounts, not ${l.accountCode}`);
+    }
+  }
+  const closing = a.closingLines.map((l) =>
+    line(l.accountCode, l.side, l.amountMinor, l.memo ?? `close ${a.fiscalYear}`, l.dims ?? a.dims)
+  );
+  const debit = closing.filter((l) => l.side === "debit").reduce((s, l) => s + l.amountMinor, 0);
+  const credit = closing.filter((l) => l.side === "credit").reduce((s, l) => s + l.amountMinor, 0);
+  const net = debit - credit;
+  const memo = `retained earnings ${a.fiscalYear}`;
+  return lines(
+    ...closing,
+    net > 0 ? line(a.retainedEarningsAccount, "credit", net, memo, a.dims) : null,
+    net < 0 ? line(a.retainedEarningsAccount, "debit", -net, memo, a.dims) : null
+  );
+}
+
 /* ------------------------------------------------------------ the registry */
 
 interface RecipeSpec {
@@ -433,7 +535,11 @@ export const RECIPES: Record<string, RecipeSpec> = {
   // marketing & content
   "MEDIA-SPEND": spec(AccrualArgs, expenseAccrual, { expenseAccount: "5100", payableAccount: "2250" }),
   BOOST: spec(AccrualArgs, expenseAccrual, { expenseAccount: "5100", payableAccount: "2250" }),
-  "CREATOR-SPEND": spec(AccrualArgs, expenseAccrual, { expenseAccount: "5150", payableAccount: "2150" })
+
+  // manual & structural (docs/27 F2, F3)
+  "MANUAL-JRNL": spec(AuthoredArgs, manualJournal),
+  "OPEN-BAL": spec(AuthoredArgs, openingBalance),
+  "YEAR-END-CLOSE": spec(YearEndArgs, yearEndClose)
 };
 
 /**
@@ -465,7 +571,9 @@ export function argFields(code: string): ArgField[] {
   return Object.entries(shape).flatMap(([name, field]) => {
     // Dimensions are free-form analysis tags, not a question with an answer.
     if (name === "dims") return [];
-    const kind = field.safeParse(1).success ? "integer" : field.safeParse("x").success ? "text" : null;
+    // The text probe has to clear a minimum length: a one-character sample would
+    // report an auditable-reason field as unrenderable rather than as text.
+    const kind = field.safeParse(1).success ? "integer" : field.safeParse("sample text").success ? "text" : null;
     if (!kind) return [];
     const blank = field.safeParse(undefined);
     const fallback = s.defaults?.[name] ?? (blank.success ? blank.data : undefined);

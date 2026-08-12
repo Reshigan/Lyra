@@ -201,6 +201,11 @@ export const PERMISSIONS = [
   "ledger:payments:read", "ledger:payments:create", "ledger:payments:refund",
   "ledger:payouts:approve",
   "ledger:client_money:read", "ledger:client_money:transfer",
+  // ledger — manual journals & equity (docs/27 F2, F3). Drafting is separated
+  // from posting, and the three period acts that can rewrite a closed result
+  // are separated from the routine close, so no single seat holds both halves.
+  "ledger:journals:draft", "ledger:journals:void",
+  "ledger:periods:force_close", "ledger:periods:reopen", "ledger:periods:year_end",
 
   // Running an agent is a per-module permission, not a global one: a marketer
   // who may invoke SIGNAL agents has no business invoking a LEDGER agent.
@@ -524,6 +529,9 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
   /* finance — money movement is separated from operations by design (docs/19 §7) */
   "finance.analyst": [
     ...readsOf("ledger"), "ledger:ai:invoke", "ledger:recon:run", "ledger:recon:export", "ledger:invoices:create",
+    // Drafts a manual journal but cannot post it — deliberately not
+    // `ledger:journals:post`, which is the whole point of the split.
+    "ledger:journals:draft",
     "analytics:reports:read", "analytics:reports:run", "analytics:exports:create", "analytics:exports:download",
     "dist:commissions:read", "dist:rates:read", "dist:channels:read"
   ],
@@ -534,6 +542,21 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     "dist:agreements:read", "core:onboarding:read",
     "analytics:*:read", "analytics:reports:run", "analytics:exports:create", "analytics:exports:download",
     "analytics:exports:unmasked", "compliance:evidence:read", "compliance:evidence:export"
+  ],
+  /**
+   * Dual control needs a second seat that is only a second seat. The director
+   * approves and posts what the analyst drafted, and cannot originate any of
+   * it — no `ledger:txns:create`, no `ledger:journals:draft`, no bank import.
+   * A tenant with a single finance seat therefore cannot post a manual journal,
+   * force a close or reopen a period: that is separation of duties as a
+   * property of the role graph, not a runtime check that can be configured off.
+   */
+  "finance.director": [
+    ...readsOf("ledger"), "core:approvals:read", "core:approvals:decide",
+    "ledger:journals:post", "ledger:periods:close", "ledger:periods:force_close",
+    "ledger:periods:reopen", "ledger:periods:year_end", "ledger:payouts:approve",
+    "ledger:invoices:approve", "ledger:client_money:transfer", "ledger:txns:reverse",
+    "analytics:*:read", "analytics:reports:run", "analytics:exports:create", "analytics:exports:download"
   ],
 
   /* developer */

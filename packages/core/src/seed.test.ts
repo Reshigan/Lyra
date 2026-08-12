@@ -345,6 +345,7 @@ describe("seed", () => {
     expect(byKey["quoting"]).toMatchObject({ module: "dist", tier: "standard", autonomyLevel: "suggest" });
     expect(byKey["copilot"]).toMatchObject({ module: "axis", tier: "standard", autonomyLevel: "act_with_approval" });
     expect(byKey["renewal"]).toMatchObject({ module: "orbit", tier: "fast", autonomyLevel: "suggest" });
+    expect(byKey["service"]).toMatchObject({ module: "orbit", tier: "fast", autonomyLevel: "suggest" });
     expect(byKey["creative"]).toMatchObject({ module: "signal", tier: "standard", autonomyLevel: "suggest" });
     expect(byKey["discovery"]).toMatchObject({ module: "scout", tier: "reasoning", autonomyLevel: "suggest" });
     expect(byKey["briefing"]).toMatchObject({ module: "north", tier: "reasoning", autonomyLevel: "suggest" });
@@ -360,7 +361,7 @@ describe("seed", () => {
     }
 
     const prompts = await db.select().from(schema.aiPrompts);
-    expect(prompts).toHaveLength(9);
+    expect(prompts).toHaveLength(10);
     const arPrompt = prompts.find((p) => p.locale === "ar");
     expect(arPrompt?.key).toBe("prompt.quoting.system");
     expect(arPrompt?.body).toContain("أنت تقارن عروض التأمين");

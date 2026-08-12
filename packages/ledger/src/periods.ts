@@ -1,6 +1,6 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { id, schema } from "@lyra/db";
-import { actorRef, audit, badRequest, conflict, type Ctx } from "@lyra/core";
+import { actorRef, audit, badRequest, conflict, gate, require_, type Ctx } from "@lyra/core";
 
 // docs/19 §6. open → soft_closed (adjustments, reason required) → hard_closed
 // (contra postings only). A period is created on first posting into it, so
@@ -170,8 +170,16 @@ export async function closePeriod(
   ctx: Ctx,
   code: string,
   to: "soft_closed" | "hard_closed",
-  opts: { force?: boolean } = {}
+  opts: { force?: boolean; preApproved?: boolean } = {}
 ): Promise<Period> {
+  // Authorisation first: a seat that may not close the month should be told so
+  // before it learns anything about the month's state.
+  if (!opts.preApproved) {
+    require_(ctx.actor, opts.force ? "ledger:periods:force_close" : "ledger:periods:close", {
+      tenantId: ctx.tenantId,
+      module: "ledger"
+    });
+  }
   const p = await ensurePeriod(ctx, code);
   if (p.state === "hard_closed") throw conflict(`period ${code} is already hard closed`);
   if (to === "hard_closed" && p.state !== "soft_closed") {
@@ -184,6 +192,18 @@ export async function closePeriod(
   // with the failing checks so the override is never invisible.
   if (failed.length && !opts.force) {
     throw conflict(`close checks failed: ${failed.map((c) => c.name).join(", ")}`);
+  }
+
+  // docs/specs/gap-finance-design.md D10. The gate lives here rather than in the
+  // route, because a close reached from a scheduler or a year-end run is the
+  // same act as a close reached from a button. Forcing is its own policy: it
+  // accepts a break the checklist found, which is a different decision from
+  // signing off a clean month.
+  if (!opts.preApproved) {
+    await gate(ctx, {
+      policyKey: opts.force ? "ledger.period_close_force" : "ledger.period_close",
+      subjectRef: `period:${code}`
+    });
   }
 
   await ctx.db
@@ -207,9 +227,17 @@ export async function closePeriod(
 }
 
 /** Reopen is a separate, higher-privilege act — never a side effect of posting. */
-export async function reopenPeriod(ctx: Ctx, code: string): Promise<Period> {
+export async function reopenPeriod(
+  ctx: Ctx,
+  code: string,
+  opts: { preApproved?: boolean } = {}
+): Promise<Period> {
   const p = await ensurePeriod(ctx, code);
   if (p.state === "open") return p;
+  if (!opts.preApproved) {
+    require_(ctx.actor, "ledger:periods:reopen", { tenantId: ctx.tenantId, module: "ledger" });
+    await gate(ctx, { policyKey: "ledger.period_reopen", subjectRef: `period:${code}` });
+  }
   await ctx.db
     .update(schema.ledgerPeriods)
     .set({ state: "open", closedBy: null, closedAt: null })

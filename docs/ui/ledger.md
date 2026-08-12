@@ -408,8 +408,14 @@ recipes and what they take:
   `amountMinor`, which must equal the commission earned or the API rejects it
   with "transfer amount X does not equal commission earned Y".
 - **Expense accrual** (`RSHARE-ACCR`, `RSHARE-ADJUST`, `SURPLUS-DIST`,
-  `MEDIA-SPEND`, `BOOST`, `CREATOR-SPEND`): `amountMinor`, `expenseAccount`,
-  `payableAccount`.
+  `MEDIA-SPEND`, `BOOST`): `amountMinor`, `expenseAccount`, `payableAccount`.
+- **Authored entries** (`MANUAL-JRNL`, `OPEN-BAL`): a `lines` array of
+  `{accountCode, side, amountMinor}` plus a `reason` of at least ten
+  characters. `argFields` cannot describe an array, so these two are the only
+  types with a bespoke composer instead of the generic form.
+- **Year-end close** (`YEAR-END-CLOSE`): `closingLines`, `fiscalYear`,
+  `retainedEarningsAccount` (default `3100`). The retained-earnings leg is
+  computed, never entered.
 - **Payout** (`PAYOUT-INSTRUCT`, `RSHARE-SETL`, `CREATOR-PAYOUT`,
   `SUPPLIER-PAY`): `amountMinor`, `payableAccount`, `cashAccount`,
   `withholdingMinor`.

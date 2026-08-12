@@ -49,6 +49,13 @@ export const APPROVAL_POLICIES: Record<string, ApprovalPolicy> = Object.fromEntr
     policy({ key: "ledger.success_fee", module: "ledger", decide: "ledger:invoices:approve", dualControl: "always", neverAutoApprove: true }),
     policy({ key: "ledger.period_close", module: "ledger", decide: "ledger:periods:close", dualControl: "above_threshold" }),
     policy({ key: "ledger.manual_journal", module: "ledger", decide: "ledger:journals:post", dualControl: "always", neverAutoApprove: true }),
+    // docs/27 F2, F3. These four rewrite a result that has already been
+    // reported, so none of them has an amount a threshold could compare — the
+    // gate is the act itself, and no tenant setting may automate it.
+    policy({ key: "ledger.opening_balance", module: "ledger", decide: "ledger:journals:post", dualControl: "always", neverAutoApprove: true }),
+    policy({ key: "ledger.year_end_close", module: "ledger", decide: "ledger:periods:year_end", dualControl: "always", neverAutoApprove: true }),
+    policy({ key: "ledger.period_close_force", module: "ledger", decide: "ledger:periods:force_close", dualControl: "always", neverAutoApprove: true }),
+    policy({ key: "ledger.period_reopen", module: "ledger", decide: "ledger:periods:reopen", dualControl: "always", neverAutoApprove: true }),
     policy({ key: "ledger.remit", module: "ledger", decide: "ledger:client_money:transfer", dualControl: "always", neverAutoApprove: true }),
     policy({ key: "ledger.surplus", module: "ledger", decide: "ledger:payouts:approve", dualControl: "always", neverAutoApprove: true }),
     policy({ key: "ledger.credit_note", module: "ledger", decide: "ledger:invoices:approve", dualControl: "above_threshold", defaultThresholdMinor: 1_000_00, neverAutoApprove: true }),

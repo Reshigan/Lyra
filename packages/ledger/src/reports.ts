@@ -362,6 +362,16 @@ export interface BalanceSheet {
   currency: string;
   assets: PnlSection;
   liabilities: PnlSection;
+  /** Posted 3xxx accounts only. Empty until the tenant's first year-end close. */
+  equity: PnlSection;
+  /**
+   * This year's income less expense, still sitting in 4xxx/5xxx because the year
+   * has not been closed. Rendered as a labelled line (i18n `equity.current_year_unposted`)
+   * so the statement balances without pretending the figure has been posted.
+   * YEAR-END-CLOSE moves it into retained earnings and this goes to zero.
+   */
+  currentYearUnpostedMinor: number;
+  /** Posted equity plus the unposted current year — what the statement must balance to. */
   equityMinor: number;
   balanced: boolean;
 }
@@ -376,18 +386,74 @@ export async function balanceSheet(ctx: Ctx, asOf?: number): Promise<BalanceShee
   };
   const assets = pick("asset", "Assets");
   const liabilities = pick("liability", "Liabilities");
+  const equity = pick("equity", "Equity");
   const income = tb.rows.filter((r) => r.type === "income").reduce((s, r) => s + r.balanceMinor, 0);
   const expense = tb.rows.filter((r) => r.type === "expense").reduce((s, r) => s + r.balanceMinor, 0);
-  // Retained earnings are derived, not posted: a closing journal would be a
-  // second source of truth for the same number.
-  const equityMinor = income - expense + tb.rows.filter((r) => r.type === "equity").reduce((s, r) => s + r.balanceMinor, 0);
+  const currentYearUnpostedMinor = income - expense;
+  const equityMinor = equity.totalMinor + currentYearUnpostedMinor;
   return {
     asOf: asOf ?? ctx.now,
     currency: ctx.policy.currency,
     assets,
     liabilities,
+    equity,
+    currentYearUnpostedMinor,
     equityMinor,
     balanced: assets.totalMinor === liabilities.totalMinor + equityMinor
+  };
+}
+
+export interface YearEndPreview {
+  fiscalYear: number;
+  currency: string;
+  incomeMinor: number;
+  expenseMinor: number;
+  netMinor: number;
+  retainedEarningsAccount: string;
+  /** The legs that zero every income and expense account, ready for YEAR-END-CLOSE. */
+  closingLines: { accountCode: string; name: string; side: "debit" | "credit"; amountMinor: number }[];
+}
+
+/**
+ * What a year-end close would post, without posting it. The balances are read
+ * cumulatively to the last instant of the year: after the prior year's close the
+ * income and expense accounts are already zero, so cumulative-to-date is exactly
+ * this year's movement.
+ */
+export async function yearEndPreview(
+  ctx: Ctx,
+  fiscalYear: number,
+  retainedEarningsAccount = "3100"
+): Promise<YearEndPreview> {
+  const tb = await trialBalance(ctx, { asOf: Date.UTC(fiscalYear + 1, 0, 1) - 1 });
+  const closingLines: YearEndPreview["closingLines"] = [];
+  let incomeMinor = 0;
+  let expenseMinor = 0;
+  for (const r of tb.rows) {
+    if (r.type !== "income" && r.type !== "expense") continue;
+    if (r.balanceMinor === 0) continue;
+    if (r.type === "income") incomeMinor += r.balanceMinor;
+    else expenseMinor += r.balanceMinor;
+    // balanceMinor is normal-side signed, so a contra balance flips the closing
+    // leg rather than posting a negative amount the ledger would refuse.
+    const normalClose = r.type === "income" ? "debit" : "credit";
+    const side: "debit" | "credit" =
+      r.balanceMinor > 0 ? normalClose : normalClose === "debit" ? "credit" : "debit";
+    closingLines.push({
+      accountCode: r.accountCode,
+      name: r.name,
+      side,
+      amountMinor: Math.abs(r.balanceMinor)
+    });
+  }
+  return {
+    fiscalYear,
+    currency: ctx.policy.currency,
+    incomeMinor,
+    expenseMinor,
+    netMinor: incomeMinor - expenseMinor,
+    retainedEarningsAccount,
+    closingLines
   };
 }
 

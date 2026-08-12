@@ -38,6 +38,13 @@ export const CHART_OF_ACCOUNTS: readonly AccountDef[] = [
   { code: "2350", en: "Customer Deposits", ar: "ودائع العملاء", type: "liability", normalSide: "credit" },
   { code: "2400", en: "Refunds Payable", ar: "مبالغ مستردة مستحقة الدفع", type: "liability", normalSide: "credit" },
 
+  // equity (docs/27 F3). Retained earnings are posted by YEAR-END-CLOSE, not
+  // derived: a derived plug makes the balance sheet un-auditable and leaves
+  // closePeriod with nothing to do but flip a status.
+  { code: "3000", en: "Share Capital", ar: "رأس المال", type: "equity", normalSide: "credit" },
+  { code: "3100", en: "Retained Earnings", ar: "الأرباح المحتجزة", type: "equity", normalSide: "credit" },
+  { code: "3200", en: "Owner Drawings", ar: "مسحوبات الملاك", type: "equity", normalSide: "credit" },
+
   // income
   { code: "4000", en: "Commission – New", ar: "عمولة – أعمال جديدة", type: "income", normalSide: "credit" },
   { code: "4010", en: "Commission – Renewal", ar: "عمولة – تجديد", type: "income", normalSide: "credit" },

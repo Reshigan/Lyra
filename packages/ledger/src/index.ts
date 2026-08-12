@@ -1,6 +1,7 @@
 export * from "./types.js";
 export * from "./periods.js";
 export * from "./posting.js";
+export * from "./preconditions.js";
 export * from "./txn.js";
 export * from "./recipes.js";
 export * from "./reports.js";

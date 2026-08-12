@@ -127,6 +127,16 @@ export const TXN_TYPES: Record<string, TxnTypeDef> = def([
   ["AD-PLACEMENT", true, null],
   ["SURPLUS-DIST", true, "ledger.surplus"],
 
+  // 4.4b manual & structural (docs/27 F2, F3). The three entries a controller
+  // cannot operate without, and the only ones whose lines are authored rather
+  // than derived from a business event — which is exactly why all three are
+  // dual-controlled and none may ever be auto-approved.
+  ["MANUAL-JRNL", true, "ledger.manual_journal"],
+  // Opening balances legitimately carry a client-account balance on day one,
+  // so the type is flagged: no tenant setting can auto-approve it.
+  ["OPEN-BAL", true, "ledger.opening_balance", { clientMoney: true }],
+  ["YEAR-END-CLOSE", true, "ledger.year_end_close"],
+
   // 4.5 subscriptions, usage & platform billing
   ["SUB-CREATE", false, null],
   ["SUB-INVOICE", true, null],
