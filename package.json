@@ -12,6 +12,7 @@
     "test": "turbo run test",
     "test:watch": "vitest",
     "e2e": "tsx e2e/global-setup.ts && playwright test",
+    "e2e:live": "playwright test -c playwright.live.config.ts",
     "e2e:sim": "playwright test --config playwright.staging.config.ts",
     "smoke:staging": "tsx scripts/lyra.ts staging smoke",
     "eval": "pnpm --filter @lyra/model-gateway eval",
