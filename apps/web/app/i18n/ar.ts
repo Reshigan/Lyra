@@ -10,6 +10,13 @@ export const ar: Messages = {
 
   "nav.primary": "التنقل الرئيسي",
 
+  "meridian.title": "خط اليوم",
+  "meridian.landed": "{count} اليوم",
+  "shift.title": "نوبتك",
+  "shift.cleared": "{done} من {total} منجزة",
+  "shift.left": "{count} بانتظارك",
+  "shift.clear": "لا شيء بانتظارك",
+
   "nav.breadcrumb": "أنت هنا",
   "nav.home": "الرئيسية",
   "nav.group.modules": "الوحدات",

@@ -220,7 +220,7 @@ export function Ref({ value, fallback = "—", className, title, ...props }: Ref
   );
 }
 
-export type DateTimePrecision = "day" | "minute" | "second";
+export type DateTimePrecision = "day" | "time" | "minute" | "second";
 
 export interface DateTimeProps extends Omit<React.ComponentPropsWithRef<"time">, "dateTime"> {
   value: Date | string | number;
@@ -235,6 +235,9 @@ export interface DateTimeProps extends Omit<React.ComponentPropsWithRef<"time">,
 
 const precisionOptions: Record<DateTimePrecision, Intl.DateTimeFormatOptions> = {
   day: { year: "numeric", month: "short", day: "2-digit" },
+  // The clock alone, for a surface that has already said which day it means —
+  // the day strip in the shell labels its dots with nothing but the hour.
+  time: { hour: "2-digit", minute: "2-digit" },
   minute: { year: "numeric", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" },
   second: {
     year: "numeric",

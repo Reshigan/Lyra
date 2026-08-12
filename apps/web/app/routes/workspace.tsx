@@ -9,8 +9,9 @@ import {
 } from "react-router";
 import { UiCalendarProvider, type CalendarPreference } from "@lyra/ui";
 import { cloudflare } from "../context";
-import { ApiError, fetchMe } from "../api.server";
+import { api, ApiError, fetchMe } from "../api.server";
 import { Shell } from "../components/shell";
+import type { Inbox } from "../components/shift";
 import { chosenLocale, translator } from "../i18n";
 import { DEFAULT_PACK } from "../modules/vocabulary";
 
@@ -52,6 +53,12 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     throw error;
   }
 
+  // The shell's day strip and shift block. Tolerant on purpose: this call is
+  // decoration around the work, and a queue that failed to load must not take
+  // the screen the actor asked for down with it. Both surfaces render nothing
+  // when it is null.
+  const inbox = await api<Inbox>("/v1/me/inbox", { env, request }).catch(() => null);
+
   // "/" used to redirect to the actor's primary workspace. It is now a real
   // screen (routes/home.tsx): what is waiting on me, how the business is doing,
   // where I go next — which beats being teleported into a list.
@@ -60,6 +67,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     // from that same cookie (root.tsx) and the two must not disagree. The pseudo
     // locale — which no profile can hold — is the case that makes it obvious.
     locale: chosenLocale(request) ?? me.locale,
+    inbox,
     nav: me.nav,
     permissions: me.permissions,
     brand: me.tenant.brand,
@@ -103,6 +111,7 @@ export default function Workspace() {
         brand={shell.brand}
         tenantName={shell.tenantName}
         actorName={shell.actorName}
+        inbox={shell.inbox}
       >
         <Outlet />
       </Shell>

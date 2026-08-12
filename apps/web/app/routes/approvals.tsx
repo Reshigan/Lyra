@@ -28,6 +28,7 @@ import { moduleName, translator, type Translate } from "../i18n";
 import { ConfirmButton } from "../components/confirm";
 import { WORKSPACES } from "../modules";
 import { humanise } from "../modules/spec";
+import { policyTitle } from "../policy";
 import { labelsFrom } from "./detail-kit";
 import { Problem } from "./module";
 import { useShellData } from "./workspace";
@@ -483,15 +484,10 @@ export default function Approvals() {
 
 type Item = Awaited<ReturnType<typeof loader>>["items"][number];
 
-/**
- * `axis.claim_payment` → "Claim payment". The heading of every card in the
- * queue was the policy key as stored, and the module it starts with is already
- * a line below it — so the prefix goes when it is this row's own module, and
- * stays when the key came from somewhere else.
- */
-export function policyTitle(policyKey: string, module: string): string {
-  return humanise(policyKey.startsWith(`${module}.`) ? policyKey.slice(module.length + 1) : policyKey);
-}
+// Said in one place (app/policy.ts) because the shell's shift rail says it too;
+// re-exported here so the screens that already read it from this route keep
+// working.
+export { policyTitle };
 
 function ApprovalCard({
   item,

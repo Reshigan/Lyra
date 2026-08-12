@@ -10,6 +10,14 @@ export const en = {
 
   "nav.primary": "Primary",
 
+  // The day strip and the shift block at the top of the rail.
+  "meridian.title": "Meridian",
+  "meridian.landed": "{count} today",
+  "shift.title": "Your shift",
+  "shift.cleared": "{done} of {total} cleared",
+  "shift.left": "{count} still waiting on you",
+  "shift.clear": "Nothing waiting on you",
+
   "nav.breadcrumb": "You are here",
   "nav.home": "Home",
   "nav.group.modules": "Modules",

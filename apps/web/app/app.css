@@ -202,3 +202,22 @@
     transform: translateX(400%);
   }
 }
+
+/* The day strip's sweep (components/meridian.tsx). Garnish, not information —
+   the reduced-motion reset in @lyra/ui tokens.css leaves it parked and unread. */
+@keyframes lyra-scan {
+  0% {
+    transform: translateX(-8%);
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  88% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(108%);
+    opacity: 0;
+  }
+}

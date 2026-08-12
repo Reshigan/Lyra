@@ -15,7 +15,10 @@ import type { Translate } from "../i18n";
 import { humanise } from "../modules/spec";
 import { isRouted } from "../routing";
 import { ConstellationMark } from "./mark";
+import { Meridian } from "./meridian";
 import { SearchPalette } from "./search";
+import { shiftFrom, type Inbox } from "./shift";
+import { ShiftRail } from "./shift-rail";
 import { ThemeToggle } from "./theme-toggle";
 
 // The frame every workspace renders inside: a 50px top bar carrying the tenant
@@ -102,6 +105,12 @@ export interface ShellProps {
   /** Falls back to the tenant's own name; the product name is never a literal. */
   tenantName: string;
   actorName: string | null;
+  /**
+   * What today has asked of this actor, for the day strip and the shift block
+   * at the top of the rail. Null when the inbox could not be read — both
+   * surfaces then render nothing rather than an invented zero.
+   */
+  inbox?: Inbox | null;
   children: React.ReactNode;
 }
 
@@ -152,7 +161,7 @@ export function crumbsFor(pathname: string, nav: NavItem[], t: Translate): Crumb
   ];
 }
 
-export function Shell({ t, nav, brand, tenantName, actorName, children }: ShellProps) {
+export function Shell({ t, nav, brand, tenantName, actorName, inbox = null, children }: ShellProps) {
   const { product: productName, tenant: servedName } = lockupNames(brand, tenantName);
   // The API returns every item this actor may open, including modules whose
   // screens have not shipped yet (and headings whose one real destination
@@ -287,6 +296,12 @@ export function Shell({ t, nav, brand, tenantName, actorName, children }: ShellP
           </div>
         </header>
 
+        {/* Today, before the work: the strip is the first thing under the bar
+            in the comp. It scrolls away rather than sticking — the rail below
+            is what has to stay put, and two sticky bands would eat a third of
+            a laptop screen before any content had been drawn. */}
+        <Meridian t={t} inbox={inbox} accent={accentFor(pathname)} />
+
         <div className="flex min-h-[calc(100vh-50px)] flex-col md:flex-row">
           <nav
             aria-label={t("nav.primary")}
@@ -305,6 +320,11 @@ export function Shell({ t, nav, brand, tenantName, actorName, children }: ShellP
             aria-label={t("nav.primary")}
             className="lyra-vt-rail hidden md:sticky md:top-[50px] md:flex md:h-[calc(100vh-50px)] md:w-60 md:shrink-0 md:flex-col md:gap-0.5 md:overflow-y-auto md:border-e md:border-border md:p-3"
           >
+            {/* The shift sits above the destinations, not instead of them: the
+                comp has no nav menu at all (its search overlay is the
+                navigation), but every screen still has to be reachable without
+                knowing its name. */}
+            <ShiftRail t={t} shift={shiftFrom(inbox)} />
             {groups.map((group, i) => (
               // Keyed by position: a heading's own `href` is "" (apps/api/src
               // /routes/me.ts) and `??` does not fall back on "", so every
