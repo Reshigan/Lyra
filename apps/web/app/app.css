@@ -140,6 +140,66 @@
     background-color: var(--accent);
     animation: nav-sweep 1.1s var(--ease-out) infinite;
   }
+
+  /* The cold open (ADR-0055): a veil over an already-rendered workspace, once
+     per sitting. It cannot be clicked, cannot be read, and cannot be waited
+     on — the shell beneath is interactive from the first frame, including
+     while this is still fading. The component removes it on animationend, so
+     the 1.2s here is the whole life of the element. */
+  .lyra-cold-open {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: grid;
+    place-items: center;
+    pointer-events: none;
+    background-color: var(--bg);
+    animation: cold-open-veil 1.2s var(--ease-observatory) both;
+  }
+
+  /* The mark assembles the way it was charted: the harp is drawn, its stars
+     come up behind the lines, and Vega — the bright one — lands last. The
+     `data-part` hooks are set in mark.tsx. Every delay here is chosen so the
+     figure is complete before the veil starts lifting at 900ms; a mark still
+     assembling when the workspace arrives reads as a stutter, not an opening. */
+  .lyra-cold-open [data-part="lines"] {
+    /* The four-sided figure plus the arm to Vega, measured in viewBox units;
+       one length for both paths, longer than either, so neither finishes early. */
+    --draw-length: 300;
+    stroke-dasharray: 300;
+    /* At 21px in the header the harp is a hairline in `--border-strong`; at
+       this size that same value disappears into the veil, so the lines take
+       the star colour and the mark reads as a chart. */
+    stroke: var(--star);
+    animation: draw 640ms var(--ease-out) 60ms both;
+  }
+
+  .lyra-cold-open [data-part="stars"] {
+    animation: fade var(--duration-slow) var(--ease-out) 440ms both;
+  }
+
+  .lyra-cold-open [data-part="vega"] {
+    animation: fade var(--duration-slow) var(--ease-out) 600ms both;
+  }
+
+  .lyra-cold-open [data-part="wordmark"] {
+    animation: var(--animate-rise);
+    animation-delay: 520ms;
+  }
+}
+
+/* Opaque until the mark has assembled, then it lifts. Holding full opacity
+   through the first three quarters is what makes it an opening rather than a
+   flash — and the fade is the last 300ms, so the workspace is never revealed
+   half-drawn. */
+@keyframes cold-open-veil {
+  0%,
+  75% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
 }
 
 /* ---- View transitions (docs/15 §3) ------------------------------------

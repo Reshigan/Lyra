@@ -14,6 +14,7 @@ import type { Brand, NavItem } from "../api.server";
 import type { Translate } from "../i18n";
 import { humanise } from "../modules/spec";
 import { isRouted } from "../routing";
+import { ColdOpen } from "./cold-open";
 import { ConstellationMark } from "./mark";
 import { Meridian } from "./meridian";
 import { SearchPalette } from "./search";
@@ -205,6 +206,10 @@ export function Shell({ t, nav, brand, tenantName, actorName, inbox = null, chil
     // feedback beside the work, and AI never toasts for itself.
     <ToastProvider dismissLabel={t("common.dismiss")}>
       <div className="lyra-field min-h-screen bg-bg text-text" style={brandStyle(brand)}>
+        {/* Mounted first in the tree but painted over everything (ADR-0055),
+            and only ever on the client — the workspace below is complete and
+            interactive whether or not this ever renders. */}
+        <ColdOpen name={productName} />
         <a
           href="#workspace"
           className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:m-2 focus:rounded-md focus:bg-surface-2 focus:px-3 focus:py-2 focus:text-13"
