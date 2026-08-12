@@ -45,6 +45,9 @@ export default [
     route("admin/staff", "routes/staff.tsx"),
     route("admin/staff/:id", "routes/staff-member.tsx"),
     route("platform", "routes/platform.tsx"),
+    // The design system explaining itself. Every role may read it — the doctrine
+    // is how the product behaves, not a staff tool.
+    route("design", "routes/design.tsx"),
     route("search", "routes/search.ts"),
     route("search/results", "routes/search-results.tsx"),
     // The checklist is the same screen for every subject; the pair of segments

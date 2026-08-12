@@ -19,6 +19,7 @@ export const en = {
   "shift.clear": "Nothing waiting on you",
 
   "nav.breadcrumb": "You are here",
+  "nav.doctrine": "Design doctrine",
   "nav.home": "Home",
   "nav.group.modules": "Modules",
   "nav.axis": "Operations",

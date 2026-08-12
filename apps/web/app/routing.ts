@@ -39,6 +39,7 @@ export const HIDDEN_ROUTES: Record<string, string> = {
   "/settings/:tab": "one settings section — profile, sign-in, brand, regional, data — reached from the tabs on /settings",
   "/approvals": "reached from the decisions-waiting panel on the home dashboard",
   "/search": "no UI of its own: the loader that feeds the command palette in the header",
+  "/design": "the design doctrine, reached from the link parked at the end of the status strip",
   "/admin/ai/console": "a screen inside the admin workspace, reached from its AI tabs",
   "/admin/ai/budget": "the AI spending ceilings, reached from the admin workspace tools list",
   "/admin/cost-explorer": "unit-cost drift report, reached from the admin workspace tools list",

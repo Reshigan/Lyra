@@ -377,22 +377,31 @@ export function Shell({ t, nav, brand, tenantName, actorName, inbox = null, chil
         </div>
 
         {/* The status strip: who you are working inside, in the same mono the
-            numbers use. Decorative in the accessibility tree — every fact on it
-            is already announced by the lockup and the nav's current item. */}
-        <footer
-          aria-hidden="true"
-          className="lyra-vt-status sticky bottom-0 z-20 hidden h-7 items-center gap-2 border-t border-border bg-surface-1 px-4 font-mono text-12 text-subtle sm:flex"
-        >
-          <span className="truncate">{productName}</span>
+            numbers use. The facts on it are decorative — every one is already
+            announced by the lockup and the nav's current item — so `aria-hidden`
+            sits on those spans rather than the footer, which would otherwise
+            take the doctrine link out of the accessibility tree with them. */}
+        <footer className="lyra-vt-status sticky bottom-0 z-20 hidden h-7 items-center gap-2 border-t border-border bg-surface-1 px-4 font-mono text-12 text-subtle sm:flex">
+          <span aria-hidden="true" className="truncate">
+            {productName}
+          </span>
           {/* Off-nav surfaces (search, a record opened by url) have no current
               item. The strip then names the product only — it used to print
               "Primary", the nav landmark's aria-label. */}
           {currentItem ? (
-            <>
+            <span aria-hidden="true" className="flex min-w-0 items-center gap-2">
               <span className="text-border-strong">/</span>
               <span className="truncate">{t(currentItem.labelKey)}</span>
-            </>
+            </span>
           ) : null}
+          {/* The one interactive thing down here, parked at the far end: the
+              design system explaining itself (routes/design.tsx). */}
+          <NavLink
+            to="/design"
+            className="ms-auto shrink-0 hover:text-text aria-[current=page]:text-text"
+          >
+            {t("nav.doctrine")}
+          </NavLink>
         </footer>
       </div>
     </ToastProvider>

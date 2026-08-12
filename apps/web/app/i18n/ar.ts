@@ -18,6 +18,7 @@ export const ar: Messages = {
   "shift.clear": "لا شيء بانتظارك",
 
   "nav.breadcrumb": "أنت هنا",
+  "nav.doctrine": "العقيدة التصميمية",
   "nav.home": "الرئيسية",
   "nav.group.modules": "الوحدات",
   "nav.axis": "العمليات",
