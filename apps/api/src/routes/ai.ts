@@ -17,6 +17,7 @@ import { AI_KILL_SWITCH, checkBudget, isKnownPurpose, setLimits, type Message } 
 import { body, intParam } from "../http.js";
 import { executeOrbitToolCalls, orbitToolsFor } from "../engines/orbit-tools.js";
 import { embedQuery } from "../engines/vectorize.js";
+import { agentByKey, activePrompt } from "../engines/ai-agent.js";
 import { must } from "../rows.js";
 import type { App } from "../env.js";
 
@@ -564,57 +565,3 @@ aiRoutes.get("/audit/spend", async (c) => {
   const data = [...by.values()].sort((a, b) => b.costMicro - a.costMicro);
   return c.json({ data, totals: data.reduce((t, r) => ({ calls: t.calls + r.calls, tokens: t.tokens + r.tokens, costMicro: t.costMicro + r.costMicro }), { calls: 0, tokens: 0, costMicro: 0 }) });
 });
-
-/* ------------------------------------------------------------------ helpers */
-
-async function agentByKey(ctx: Ctx, key: string): Promise<typeof schema.aiAgents.$inferSelect> {
-  const rows = await ctx.db
-    .select()
-    .from(schema.aiAgents)
-    .where(and(eq(schema.aiAgents.tenantId, ctx.tenantId), eq(schema.aiAgents.key, key)))
-    .limit(1);
-  const agent = rows[0];
-  if (!agent) throw notFound(`ai agent ${key}`);
-  return agent;
-}
-
-/**
- * Prompts live in `ai_prompts`, versioned. An inline prompt in application code
- * cannot be reviewed, diffed against the version that produced a bad answer, or
- * translated — so the agent row points at a key and this resolves it.
- */
-async function activePrompt(ctx: Ctx, promptRef: string | null): Promise<string> {
-  if (!promptRef) throw badRequest("agent has no prompt_ref");
-  const rows = await ctx.db
-    .select()
-    .from(schema.aiPrompts)
-    .where(
-      and(
-        eq(schema.aiPrompts.tenantId, ctx.tenantId),
-        eq(schema.aiPrompts.key, promptRef),
-        eq(schema.aiPrompts.status, "active"),
-        eq(schema.aiPrompts.locale, ctx.locale)
-      )
-    )
-    .orderBy(desc(schema.aiPrompts.version))
-    .limit(1);
-  const found =
-    rows[0] ??
-    (
-      await ctx.db
-        .select()
-        .from(schema.aiPrompts)
-        .where(
-          and(
-            eq(schema.aiPrompts.tenantId, ctx.tenantId),
-            eq(schema.aiPrompts.key, promptRef),
-            eq(schema.aiPrompts.status, "active"),
-            eq(schema.aiPrompts.locale, "en")
-          )
-        )
-        .orderBy(desc(schema.aiPrompts.version))
-        .limit(1)
-    )[0];
-  if (!found) throw notFound(`ai prompt ${promptRef}`);
-  return found.body;
-}

@@ -5,6 +5,7 @@ import { drainOutbox, deliverQueued } from "./dispatch.js";
 import { sweepPolicyLifecycle } from "./engines/axis-lifecycle.js";
 import { sweepRenewals } from "./engines/renewals.js";
 import { sweepRouting } from "./engines/orbit-routing.js";
+import { sweepConversationDrafts } from "./engines/orbit-draft.js";
 import { runSnapshotter } from "./engines/north-snapshotter.js";
 import { backupTenant } from "./engines/backup.js";
 import { anchorAudit } from "./engines/anchor.js";
@@ -14,7 +15,7 @@ import { expireDelegations } from "./engines/staff.js";
 import { allTenants, authRoutes, ctxFor, db, pruneSessions } from "./auth.js";
 import { mountAll } from "./crud.js";
 import { BY_MODULE } from "./resources.js";
-import { onError, withContext, withCors, withHeaders } from "./mw.js";
+import { gatewayFor, onError, withContext, withCors, withHeaders } from "./mw.js";
 import { openapi } from "./openapi.js";
 import { meRoutes } from "./routes/me.js";
 import { coreRoutes } from "./routes/core.js";
@@ -196,6 +197,10 @@ export default {
             // A delegation that has run out must stop showing as active, or every
             // admin screen lies about who currently holds the authority to approve.
             await expireDelegations(ctx);
+            // docs/27 F7. Drafts the next reply for every conversation waiting
+            // on us, so the inbox opens with something to approve instead of a
+            // blank box. Draft only — nothing is sent without a human.
+            await sweepConversationDrafts(ctx, gatewayFor(env));
             // docs/10 §6: nightly D1 -> R2 backup, one write per tenant per day.
             if (isBackupWindow) await backupTenant(ctx, env.EXPORTS);
             // docs/12 §1: tamper evidence for the audit chain, pinned outside D1.

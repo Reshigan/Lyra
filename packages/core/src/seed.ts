@@ -974,6 +974,27 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
         "and contact history given. Do not offer a discount that is not in the allowed list."
     },
     {
+      // docs/27 F7. The agent behind the pending drafts in the ORBIT inbox —
+      // apps/api/src/engines/orbit-draft.ts resolves this key on every tick and
+      // skips the sweep entirely when it is missing or paused, which is how an
+      // operator turns drafting off without a deploy.
+      key: "service",
+      module: "orbit",
+      tier: "fast",
+      autonomy: "suggest",
+      en: "Service agent",
+      ar: "وكيل الخدمة",
+      desc: "Drafts the next reply to a waiting customer for a human to approve before it is sent.",
+      tools: ["fetch_policy"],
+      prompt:
+        "You draft the next reply to an insurance customer who is waiting on us. Answer only from the " +
+        "context lines given: the customer's policies, claims and the conversation so far. Never state a " +
+        "premium, excess, date or reference that is not in the context — say you will confirm it instead. " +
+        "Never say a message has been sent, a payment taken or a change made: a human approves your draft " +
+        "before the customer sees it. No regulated advice, no promise of cover, no discount. Two to four " +
+        "sentences, in the customer's language, no greeting boilerplate beyond one line."
+    },
+    {
       key: "creative",
       module: "signal",
       tier: "standard",

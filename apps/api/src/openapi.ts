@@ -291,6 +291,7 @@ const HAND_WRITTEN: Op[] = [
   { method: "post", path: "/v1/channels/{connectorId}/webhook", summary: "Provider webhook delivery: signature-verified inbound messages and delivery receipts", tag: "orbit", requestBody: true, public: true },
   { method: "post", path: "/v1/orbit/renewals/sweep", summary: "Force the renewal sweep now (also runs on the scheduled tick)", permission: "orbit:renewals:update", tag: "orbit" },
   { method: "post", path: "/v1/orbit/routing/sweep", summary: "Force the routing sweep now — SLA breach escalation and absence reassignment (also runs on the scheduled tick)", permission: "orbit:conversations:assign", tag: "orbit" },
+  { method: "post", path: "/v1/orbit/drafts/sweep", summary: "Force the AI reply-draft sweep now — drafts a pending agent_ai reply for every conversation waiting on us (also runs on the scheduled tick)", permission: "orbit:ai:invoke", tag: "orbit" },
 
   // Signal. Brief in, N compliance-checked ar/en variants out — the
   // Meta/Google publish half is credential-blocked and out of scope.

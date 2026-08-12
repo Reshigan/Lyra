@@ -572,20 +572,27 @@ async function scoreSignal(dir: string): Promise<Metric[]> {
   ];
 }
 
-interface AxisCopilotCase {
+interface GroundednessCase {
   id: string;
   contextLines: string[];
   text: string;
   expectOk: boolean;
 }
-interface AxisCopilotThresholds {
+interface GroundednessThresholds {
   recallMin: number;
   falsePositiveMax: number;
 }
 
-async function scoreAxisCopilot(dir: string): Promise<Metric[]> {
-  const cases = await loadCases<AxisCopilotCase>(dir);
-  const thresholds = await loadThresholds<AxisCopilotThresholds>(dir);
+/**
+ * The gate for any surface whose rule is "state no number the context did not
+ * give you". Two golden sets run through it: AXIS's case copilot
+ * (routes/axis.ts) and ORBIT's reply drafter (engines/orbit-draft.ts), both of
+ * which call verifyGroundedness over their own context lines before a human
+ * ever sees the text — one scorer, because it is one function being scored.
+ */
+async function scoreGroundedness(dir: string): Promise<Metric[]> {
+  const cases = await loadCases<GroundednessCase>(dir);
+  const thresholds = await loadThresholds<GroundednessThresholds>(dir);
   const violations = cases.filter((c) => !c.expectOk);
   const clean = cases.filter((c) => c.expectOk);
   const caught = violations.filter((c) => !verifyGroundedness(c.text, c.contextLines).ok).length;
@@ -601,7 +608,8 @@ const SCORERS: Record<string, (dir: string) => Promise<Metric[]>> = {
   compliance: scoreCompliance,
   axis: scoreAxis,
   "axis-vision": scoreAxisVision,
-  "axis-copilot": scoreAxisCopilot,
+  "axis-copilot": scoreGroundedness,
+  "orbit-draft": scoreGroundedness,
   "axis-fnol-triage": scoreFnolTriage,
   "axis-reserve": scoreReserve,
   "axis-fraud": scoreFraud,

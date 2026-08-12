@@ -7,6 +7,7 @@ import { must } from "../rows.js";
 import { dispatchOutbound } from "../engines/orbit-channel-outbound.js";
 import { sweepRenewals } from "../engines/renewals.js";
 import { sweepRouting } from "../engines/orbit-routing.js";
+import { sweepConversationDrafts } from "../engines/orbit-draft.js";
 import type { App } from "../env.js";
 
 // docs/16 H3: the AgentRoom Durable Object seam. One room per conversation,
@@ -89,4 +90,18 @@ orbitRoutes.post("/routing/sweep", async (c) => {
   const ctx = ctxOf(c);
   require_(ctx.actor, "orbit:conversations:assign", { tenantId: ctx.tenantId, module: "orbit" });
   return c.json(await sweepRouting(ctx));
+});
+
+/**
+ * Force the draft sweep now (docs/27 F7). Same idiom again: the producer of the
+ * inbox's pending drafts otherwise only runs off the cron tick, which an
+ * operator demoing the approve/discard flow cannot wait for. Needs
+ * `ai:invoke` because that is exactly what it does — run an agent — and
+ * `conversations:reply` because a draft lands in the transcript.
+ */
+orbitRoutes.post("/drafts/sweep", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "orbit:ai:invoke", { tenantId: ctx.tenantId, module: "orbit" });
+  require_(ctx.actor, "orbit:conversations:reply", { tenantId: ctx.tenantId, module: "orbit" });
+  return c.json({ drafted: await sweepConversationDrafts(ctx, c.get("gateway")) });
 });

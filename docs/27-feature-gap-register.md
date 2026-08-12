@@ -65,13 +65,14 @@ reinstate and renew, with `sweepPolicyLifecycle` on the cron tick.
 (`orbit-channel-whatsapp.ts`, `orbit-channel-mailgun.ts`) and an outbound
 counterpart.
 
-**F7. No confirmed producer of AI draft replies.** `conversation.tsx` renders a
-trailing `agent_ai` draft and lets a human approve it, and `/v1/ai/runs` calls
-a model with ORBIT's tool registry — but nothing *writes* that draft outside
-`core/src/seed/orbit.ts`. No cron job, no inbound hook, no intent on the
-conversation screen produces one. The "AI drafts, human approves" loop — the
-product's core claim — still cannot be closed end to end on a live
-conversation.
+**F7. No confirmed producer of AI draft replies.** *Closed 2026-08-12
+(ADR-0058).* `engines/orbit-draft.ts` is the missing middle: a per-tenant sweep
+on the cron tick drafts the next reply for every conversation whose newest
+message is the customer's, which is also its idempotency key. Context is
+assembled from the database so `verifyGroundedness` can score it — an
+ungrounded draft is a `refused` `ai_runs` row, never an inbox entry — and the
+same scorer backs `evals/orbit-draft`. The seeded `service` agent is the off
+switch; `POST /v1/orbit/drafts/sweep` forces a run.
 
 **F8. Production never configures the model gateway.** *Closed.*
 `customerFacing` now comes from the purpose catalogue
@@ -276,12 +277,10 @@ technical reviewer will test:
 
 ## Suggested order
 
-F1, F4, F5, F6, F8, F9, F10, F11, F12 and F13 are closed; what is left of P0,
-in order:
+F1, F4, F5, F6, F7, F8, F9, F10, F11, F12 and F13 are closed; what is left of
+P0, in order:
 
-1. **F7** (a real draft producer) — the ORBIT claim. The consumer exists on
-   both ends; nothing writes the draft.
-2. **F2, F3** (manual journals, equity) — the accounting department. Opening
+1. **F2, F3** (manual journals, equity) — the accounting department. Opening
    balances need the 3xxx accounts, so these go together.
 
 Every item above is a finding, not an approved change. P0s that alter a
