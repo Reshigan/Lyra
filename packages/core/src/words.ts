@@ -21,6 +21,7 @@ const ACRONYMS = new Set([
   "kpi",
   "kyc",
   "llm",
+  "mfa",
   "ocr",
   "oidc",
   "pii",

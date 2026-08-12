@@ -98,7 +98,10 @@ describe("GET /v1/portal/:tenantSlug/site", () => {
     const res = await call("GET", "/v1/portal/gonxt/site");
     expect(res.status).toBe(200);
     expect(res.body.tenant.name).toBe("GONXT");
-    expect(res.body.tenant.brand.palette.accent).toBe("#3762C4");
+    // The demo tenant overrides no colour, so the portal carries the brand it
+    // does set and the site falls back to the product's own accent.
+    expect(res.body.tenant.brand.shortName).toBe("GONXT");
+    expect(res.body.tenant.brand.palette.accent).toBeUndefined();
     expect(res.body.products.length).toBeGreaterThan(0);
     expect(res.body.products.every((p: any) => typeof p.id === "string" && typeof p.name === "string")).toBe(true);
     // Never a PII/internal field on the public surface.

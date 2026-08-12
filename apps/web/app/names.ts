@@ -1,4 +1,5 @@
 import { shortRef } from "@lyra/ui";
+import { humanise } from "./modules/spec";
 
 // The client half of /v1/names. The fetch lives in api.server.ts (server only);
 // this is what a component renders with, so it may not import that file.
@@ -9,5 +10,15 @@ export type Names = Readonly<Record<string, string>>;
 /** Ref → the name a person expects, or the shortest honest thing we have. */
 export function who(ref: string | null | undefined, resolved: Names): string | null {
   if (!ref) return null;
-  return resolved[ref] ?? shortRef(ref);
+  const named = resolved[ref];
+  if (named) return named;
+  const short = shortRef(ref);
+  // An opaque id shortens to its head and tail; anything else comes back whole,
+  // and a whole `scope:key` is the shape /v1/names does not own — an engine that
+  // numbers its own subjects (`settlements:cedar-2512`, `ai_budget:signal`).
+  // Nobody reads a colon-joined key, so say the scope as words and leave the key
+  // it belongs to alone: that half is the business's own name for the thing.
+  if (short !== ref) return short;
+  const colon = ref.indexOf(":");
+  return colon < 0 ? ref : `${humanise(ref.slice(0, colon))} ${ref.slice(colon + 1)}`;
 }

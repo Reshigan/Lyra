@@ -142,14 +142,14 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
         name: "GONXT",
         shortName: "GONXT",
         domain: "gonxt.ae",
-        // `accent` also renders as `text-accent` link text directly on white/
-        // near-white surfaces (docs/07), which the original #5B8CFF (2.94:1 on
-        // #ffffff) failed AA on — axe caught it in e2e. accentContrast has to
-        // flip light-on-dark-blue rather than dark-on-light-blue for the same
-        // reason: #3762C4 vs white is 5.67:1 (button label + link text both
-        // clear 4.5:1); #2A4FA0 for hover is 7.71:1.
-        palette: { accent: "#3762C4", accentHover: "#2A4FA0", accentContrast: "#ffffff" },
-        font: "space-grotesk",
+        // No `palette` and no `font`: the demo tenant is the product showing
+        // itself, so it inherits Horizon's own accent and typefaces rather than
+        // painting over them. The five-property override contract (tokens.css
+        // §TENANT OVERRIDE CONTRACT) is exercised by settings-brand.test.ts and
+        // by the tenants that set it — a demo that overrides is a demo of
+        // somebody else's brand. Horizon's accent is two values, not one (olive
+        // on the daylight page, lime on the night one); a tenant override is a
+        // single value across both themes and so cannot express it.
         email: { from: "hello@gonxt.ae", replyTo: "support@gonxt.ae" },
         legal: { company: "GONXT Insurance Services LLC", privacyUrl: "https://gonxt.ae/privacy" }
       })

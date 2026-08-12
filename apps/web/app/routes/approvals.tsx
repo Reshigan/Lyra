@@ -94,7 +94,7 @@ function display(value: unknown): string {
  * of a spec's `api` — so the record route can be rebuilt from it. Anything that
  * does not resolve stays plain text: a link that 404s is worse than none.
  */
-function subjectOf(subjectRef: string): { text: string; href: string | null; unborn: boolean } {
+export function subjectOf(subjectRef: string): { text: string; href: string | null; unborn: boolean } {
   const first = subjectRef.indexOf(":");
   if (first < 0) return { text: subjectRef, href: null, unborn: false };
   const resource = subjectRef.slice(0, first);
@@ -113,8 +113,10 @@ function subjectOf(subjectRef: string): { text: string; href: string | null; unb
     }
   }
   // A hand-written engine (dist, ledger) names subjects its own way, and those
-  // have no generic record screen to point at.
-  return { text: subjectRef, href: null, unborn: false };
+  // have no generic record screen to point at. Said as words rather than as the
+  // stored ref: `ai_budget:signal` is "AI budget signal" on a screen, not a
+  // colon-joined key a reader has to decode.
+  return { text: `${humanise(resource)} ${rest}`, href: null, unborn: false };
 }
 
 /** A panel the actor may not read is missing, not fatal. 401 is the session's

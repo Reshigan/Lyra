@@ -30,6 +30,7 @@ import { cloudflare } from "../context";
 import { DEFAULT_LOCALE, pseudoText, translator } from "../i18n";
 import { humanise, titleText } from "../modules/spec";
 import { labelKeyFor, moduleOf } from "../routing";
+import { policyTitle } from "./approvals";
 import { useShellData } from "./workspace";
 
 // The landing screen for an actor whose roles point at no particular workspace.
@@ -591,10 +592,10 @@ export default function Home() {
           loaded.approvals.data.map((approval) => (
             <ApprovalStrip
               key={approval.id}
-              // ponytail: the policy key is the summary. Naming these in English
-              // here would hard-code the industry's nouns into the shell — that
-              // vocabulary belongs to the active domain pack (docs/21).
-              summary={approval.policyKey}
+              // The policy key said as words, the same way /approvals says it:
+              // the module owns the noun, so `axis.claim_reserve` reads as
+              // "Claim reserve" without the shell knowing what a claim is.
+              summary={policyTitle(approval.policyKey, approval.module)}
               consequence={label("approvals.subject", {
                 ref: who(approval.subjectRef, loaded.names) ?? ""
               })}
@@ -602,7 +603,7 @@ export default function Home() {
               // Each strip is a region landmark. Sharing one name with the
               // section around them makes a landmark list of identical entries
               // (axe landmark-unique), so each carries what it is waiting on.
-              label={`${label("approvals.title")}: ${approval.policyKey}`}
+              label={`${label("approvals.title")}: ${policyTitle(approval.policyKey, approval.module)}`}
               // A strip mid-decision explains why its buttons are gone rather
               // than offering a second click that would race the first.
               {...(busyId === approval.id

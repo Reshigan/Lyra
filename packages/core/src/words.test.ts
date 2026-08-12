@@ -10,6 +10,8 @@ describe("humanise", () => {
   it("keeps the initialisms a regulator reads", () => {
     expect(humanise("ai.agent.pause")).toBe("AI agent pause");
     expect(humanise("dsar_raised")).toBe("DSAR raised");
+    // The audit feed read "Core mfa verified" on the home screen.
+    expect(humanise("core.mfa.verified")).toBe("Core MFA verified");
   });
 });
 
