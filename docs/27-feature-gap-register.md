@@ -38,16 +38,24 @@ stamp into one `Write[]`, and hands the set to `atomically()`
 (`packages/db/src/tx.ts`) — the one capability D1 and libSQL share, so the
 posting lands whole or not at all on both homes.
 
-**F2. No manual journal.** Every line must come from a recipe keyed to a
-business event; `TXN_TYPES` (`ledger/src/types.ts:58-160`) has no manual,
-accrual, reclass, or opening-balance type. The approval policy
-`ledger.manual_journal` already exists at `core/src/approvals.ts:51` and is
-orphaned. No controller can operate without this.
+**F2. No manual journal.** *Closed 2026-08-12
+(`docs/specs/gap-finance-design.md`).* `MANUAL-JRNL` is a real transaction type
+whose recipe (`recipes.ts` `manualJournal()`) posts the lines the author wrote,
+and the orphaned `ledger.manual_journal` approval policy is now the gate on it:
+`ledger:journals:draft` opens the draft, a second seat approves, and only then
+does it post. The two things it may not express are refused rather than
+policed by convention — client-money accounts and any 3xxx equity row.
+`/ledger/journal` is the screen.
 
-**F3. No equity accounts, so no year-end close.** `AccountType` declares
-`"equity"` (`db/src/chart-of-accounts.ts:6`); the chart contains no 3xxx rows.
-`balanceSheet` (`ledger/src/reports.ts:369-392`) *derives* equity as a plug.
-`closePeriod` only flips a status.
+**F3. No equity accounts, so no year-end close.** *Closed 2026-08-12
+(`docs/specs/gap-finance-design.md`).* The chart carries 3000/3100/3200;
+`balanceSheet` reports posted equity plus the current year's unposted result
+instead of plugging the difference; and `YEAR-END-CLOSE` sweeps income and
+expense into retained earnings (3100) under the idempotency key
+`yearend:{year}`, so a second attempt is a 409 rather than a second posting.
+`TXN_PRECONDITIONS` refuses a year with any period still open, and
+`closePeriod`/`reopenPeriod` own the gates on the months themselves.
+`/ledger/year-end` is the screen.
 
 **F4. AXIS cannot bind.** *Closed.* `POST /v1/axis/quote-responses/:id/bind`
 issues the policy from the selected panel response, under an idempotency key;
@@ -277,11 +285,9 @@ technical reviewer will test:
 
 ## Suggested order
 
-F1, F4, F5, F6, F7, F8, F9, F10, F11, F12 and F13 are closed; what is left of
-P0, in order:
+All thirteen P0s are closed as of 2026-08-12. F2 and F3 went together, as
+predicted: opening balances need the 3xxx accounts. What remains is P1 and P2,
+which are depth rather than absence.
 
-1. **F2, F3** (manual journals, equity) — the accounting department. Opening
-   balances need the 3xxx accounts, so these go together.
-
-Every item above is a finding, not an approved change. P0s that alter a
+Every item above is a finding, not an approved change. P1s that alter a
 documented seam or add a third-party service need an ADR first.
