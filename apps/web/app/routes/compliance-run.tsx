@@ -26,8 +26,8 @@ import { ApiError, api, fetchMe } from "../api.server";
 import { refOptions } from "../refs.server";
 import { cloudflare } from "../context";
 import { useShellData } from "./workspace";
-import { pseudoText } from "../i18n";
 import { RefPicker, type RefOption } from "../components/ref-picker";
+import { labelsFrom } from "./detail-kit";
 
 // The three compliance capabilities that are runs rather than forms (docs/12
 // §3–§5, ADR-0002): a screening is a question put to a provider, an evidence
@@ -301,12 +301,10 @@ const LABELS: Record<string, Record<string, string>> = {
 
 type Label = (key: string) => string;
 
-/** Locale table, then English, then the key — a missing string looks wrong in
- *  review rather than invisible in production. */
-function labelIn(locale: string): Label {
-  const table = LABELS[locale] ?? LABELS.en!;
-  return (key) => pseudoText(locale, table[key] ?? LABELS.en![key] ?? key);
-}
+// Local table, then detail-kit's SHARED, then `common.*` — the same chain every
+// screen uses. This screen builds keys from enum values, and a hand-rolled table
+// cannot answer one it never wrote down (docs/ui.md §7 P3-14).
+const labelIn = labelsFrom(LABELS);
 
 /* ------------------------------------------------------------------- loader */
 

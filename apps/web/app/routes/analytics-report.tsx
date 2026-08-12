@@ -10,8 +10,9 @@ import { Badge, Button, DateTime, EmptyState, Field, Select, Table, type Column 
 import { ApiError, api, fetchMe } from "../api.server";
 import { Cell, FieldInput, toneFor } from "../components/fields";
 import { cloudflare } from "../context";
-import { pseudoText, translator } from "../i18n";
+import { translator } from "../i18n";
 import { bodyFrom, type FieldSpec, type Row } from "../modules/spec";
+import { labelsFrom } from "./detail-kit";
 import { Problem } from "./module";
 import { useShellData } from "./workspace";
 
@@ -258,18 +259,10 @@ const LABELS: Record<string, Record<string, string>> = {
   }
 };
 
-/** Local table first, then the shared `common.*` catalogue, then the raw key. */
-function labelsIn(locale: string): (key: string) => string {
-  const table = LABELS[locale] ?? LABELS.en ?? {};
-  const fallback = LABELS.en ?? {};
-  const t = translator(locale);
-  return (key: string): string => {
-    const local = table[key] ?? fallback[key];
-    if (local) return pseudoText(locale, local);
-    const shared = t(`common.${key}`);
-    return shared === `common.${key}` ? key : shared;
-  };
-}
+// Local table, then detail-kit's SHARED, then `common.*` — the same chain every
+// screen uses. A hand-rolled table cannot answer a key it never wrote down, and
+// these screens build keys from enum values (docs/ui.md §7 P3-14).
+const labelsIn = labelsFrom(LABELS);
 
 function parseJson<T>(raw: string | null | undefined, fallback: T): T {
   if (!raw) return fallback;
@@ -497,8 +490,8 @@ export default function AnalyticsReport() {
         {(
           [
             ["dataset", definition.dataset ?? "—"],
-            ["metrics", (definition.metrics ?? []).map(l).join(", ") || "—"],
-            ["dimensions", (definition.dimensions ?? []).map(l).join(", ") || "—"]
+            ["metrics", (definition.metrics ?? []).map((key) => l(key)).join(", ") || "—"],
+            ["dimensions", (definition.dimensions ?? []).map((key) => l(key)).join(", ") || "—"]
           ] as const
         ).map(([key, value]) => (
           <div key={key} className="flex flex-col gap-1">

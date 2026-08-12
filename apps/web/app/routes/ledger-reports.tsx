@@ -24,7 +24,8 @@ import {
 import { ApiError, api, fetchMe } from "../api.server";
 import { cloudflare } from "../context";
 import type { Env } from "../env";
-import { pseudoText, translator, type Translate } from "../i18n";
+import { translator, type Translate } from "../i18n";
+import { labelsFrom } from "./detail-kit";
 import { useShellData } from "./workspace";
 
 // The finance reporting surface: six reports from /v1/ledger/reports, one route.
@@ -363,12 +364,10 @@ const LABELS: Record<string, Record<string, string>> = {
 
 type Label = (key: string) => string;
 
-/** Locale table, then English, then the key — a missing string looks wrong in
- *  review rather than invisible in production. */
-function labelIn(locale: string): Label {
-  const table = LABELS[locale] ?? LABELS.en!;
-  return (key) => pseudoText(locale, table[key] ?? LABELS.en![key] ?? key);
-}
+// Local table, then detail-kit's SHARED, then `common.*` — the same chain every
+// screen uses. This screen builds keys from enum values, and a hand-rolled table
+// cannot answer one it never wrote down (docs/ui.md §7 P3-14).
+const labelIn = labelsFrom(LABELS);
 
 /* -------------------------------------------------------------------- loader */
 

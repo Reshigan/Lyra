@@ -36,6 +36,29 @@ describe("route label tables", () => {
     expect(restated).toEqual([]);
   });
 
+  // A key built from an enum value — `state.${row.state}` — can name a word the
+  // screen never wrote down: the approvals filter printed "state.approved"
+  // because its own table stopped at pending and rejected. Only a resolver that
+  // reaches SHARED can answer those, so a screen that builds keys may not
+  // hand-roll `LABELS[locale] ?? LABELS.en`.
+  it("resolves enum-built keys through the shared catalogue", () => {
+    const unreachable: string[] = [];
+    for (const file of files) {
+      const source = code(read(file));
+      if (!/LABELS\[locale\]/.test(source)) continue;
+      const own = new Set([...source.matchAll(/^\s*"?([A-Za-z0-9_.]+)"?:/gm)].map((m) => m[1]!));
+      const built = new Set(
+        [...source.matchAll(/\b(?:l|label)\(\s*`([A-Za-z0-9_.]+\.)\$\{/g)].map((m) => m[1]!)
+      );
+      for (const prefix of built) {
+        for (const key of SHARED.keys()) {
+          if (key.startsWith(prefix) && !own.has(key)) unreachable.push(`${file}: ${key}`);
+        }
+      }
+    }
+    expect(unreachable).toEqual([]);
+  });
+
   // <Gate> (module.tsx) says three shared words — approvalTitle, approvalBody,
   // approvalLink — through whatever resolver the screen hands it. A screen that
   // hand-rolls `LABELS[locale] ?? LABELS.en` never sees SHARED, so those words
@@ -51,6 +74,11 @@ describe("route label tables", () => {
 
 function read(file: string): string {
   return readFileSync(join(ROUTES, file), "utf8");
+}
+
+/** Source with comments removed — prose about a pattern is not the pattern. */
+function code(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 }
 
 /**

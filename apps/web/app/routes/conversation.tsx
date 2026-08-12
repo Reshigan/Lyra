@@ -31,8 +31,9 @@ import {
 import { ApiError, api, directory, fetchMe, type ApiOptions } from "../api.server";
 import { whoIs } from "../people";
 import { cloudflare } from "../context";
-import { pseudoText, translator } from "../i18n";
+import { translator } from "../i18n";
 import { humanise } from "../modules/spec";
+import { labelsFrom } from "./detail-kit";
 import { Problem } from "./module";
 import { useShellData } from "./workspace";
 
@@ -538,6 +539,8 @@ const LABELS: Record<string, Record<string, string>> = {
   }
 };
 
+const labelsIn = labelsFrom(LABELS);
+
 /** Customer names are `{ en, ar }` — or masked strings, when the actor lacks core:pii:view. */
 function nameOf(value: unknown): string | null {
   if (typeof value === "string") return value;
@@ -569,9 +572,10 @@ export default function ConversationThread() {
   const locale = shell?.locale ?? "en";
   const held = new Set(shell?.permissions ?? []);
   const t = translator(locale);
-  // Fall back to English for any key this locale has not been given yet.
-  const l = (key: string): string =>
-    pseudoText(locale, LABELS[locale]?.[key] ?? LABELS["en"]?.[key] ?? key);
+  // Through the shared catalogue, not this table alone: a conversation can be
+  // `closed` as well as bot|human (packages/db/src/schema/orbit.ts), and that
+  // word is one the platform already says (docs/ui.md §7 P3-14).
+  const l = labelsIn(locale, shell?.domainPack);
 
   const busy = navigation.state !== "idle";
   const conversation = loaded.conversation;
