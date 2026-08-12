@@ -9,6 +9,11 @@ This register is the synthesis. It is a *findings* document, not a plan — each
 P0/P1 needs an ADR or a spec update before it becomes work. Line references
 were accurate at the commit that closed the go-live remediation program.
 
+Findings that have since been fixed are marked *Closed* with what closed them,
+so the register stays a record of what was found rather than being rewritten.
+The P0 list was re-verified against the code on 2026-08-12; the verdict table
+below is the original synthesis and is not updated as items close.
+
 **One-line verdict per domain**
 
 | Domain | Verdict |
@@ -26,17 +31,12 @@ were accurate at the commit that closed the go-live remediation program.
 
 ## P0 — would fail in front of a paying customer
 
-**F1. The ledger posting path is not atomic.** `packages/ledger/src/posting.ts`
-performs five or more separate awaited writes with no `db.transaction()` and no
-D1 `batch()` — zero matches for either across `packages/ledger` and
-`packages/db`. A failure after the batch header insert (`:151-166`) but before
-the lines insert (`:176-193`) leaves a header with no lines, burns the
-`ledger_batches_txn_uq` key, and makes the retry throw
-`conflict("transaction X already has a posted batch")`. The money movement is
-lost and unretryable. A failure inside the `bumpBalances` loop (`:220-268`)
-leaves the balance cache torn — and that cache is what `closeChecks` reads for
-`trial_balance_zero` (`periods.ts:73-128`). Every in-memory invariant rests on
-this. Fix first.
+**F1. The ledger posting path is not atomic.** *Closed 2026-08-07 (`1093d7c`).*
+`post()` now decides everything before it writes, assembles the header, the
+lines, the balance upserts, the client-money check row and the transaction
+stamp into one `Write[]`, and hands the set to `atomically()`
+(`packages/db/src/tx.ts`) — the one capability D1 and libSQL share, so the
+posting lands whole or not at all on both homes.
 
 **F2. No manual journal.** Every line must come from a recipe keyed to a
 business event; `TXN_TYPES` (`ledger/src/types.ts:58-160`) has no manual,
@@ -49,50 +49,46 @@ orphaned. No controller can operate without this.
 `balanceSheet` (`ledger/src/reports.ts:369-392`) *derives* equity as a plug.
 `closePeriod` only flips a status.
 
-**F4. AXIS cannot bind.** `POST /v1/dist/quote-requests/:id/select`
-(`api/src/routes/dist.ts:258`) stamps `selectedAt` and stops. The zero-touch
-test hand-assembles a policy (`api/src/axis-zero-touch.test.ts:183`). There is
-no policy issuance path in production code.
+**F4. AXIS cannot bind.** *Closed.* `POST /v1/axis/quote-responses/:id/bind`
+issues the policy from the selected panel response, under an idempotency key;
+`api/src/axis-bind.test.ts` holds the replay and refusal cases.
 
-**F5. AXIS has no endorsement, cancellation, lapse, or renewal.**
-`policy-detail.tsx:281-299` POSTs a brand-new policy for an "endorsement", and
-the endorsement-history card (`:230-236`) is fed by *all* policies sharing a
-`customerId` — a motor and a medical policy render as versions of each other.
-`schema/axis.ts:124-153` has no `parentPolicyId`, `versionSeq`, or
-`endorsementNo`. `CANCEL`/`LAPSE`/`REINSTATE` are declared at
-`ledger/src/types.ts:66-68` with zero call sites.
+**F5. AXIS has no endorsement, cancellation, lapse, or renewal.** *Closed.*
+`axis_policy_versions` carries `versionSeq` and `endorsementNo`
+(`schema/axis.ts:195-225`); `engines/axis-endorse.ts` prices and applies a
+mid-term change and `engines/axis-lifecycle.ts` carries cancel, NTU, lapse,
+reinstate and renew, with `sweepPolicyLifecycle` on the cron tick.
 
-**F6. ORBIT has no inbound channel of any kind.** `api/src/routes/orbit.ts` is
-56 lines, two staff-RBAC endpoints, no public signature-verified webhook.
-WhatsApp BSP, Meta Graph, Twilio, SES, SendGrid, Mailgun: zero hits.
-`channel` is a display-only column. In the Middle East this is the headline —
-every channel dropdown that lists WhatsApp creates an expectation the product
-cannot meet.
+**F6. ORBIT has no inbound channel of any kind.** *Closed (ADR-0037/0038).*
+`engines/orbit-channel-inbound.ts` takes signature-verified inbound over the
+`Channel` adapter seam, with WhatsApp and Mailgun adapters
+(`orbit-channel-whatsapp.ts`, `orbit-channel-mailgun.ts`) and an outbound
+counterpart.
 
-**F7. No confirmed producer of AI draft replies.** `conversation.tsx` intents
-are `reply|approve|assign|handover|close|reopen` with no draft generation;
-`AgentRoom.turn()` (`engines/agent-room.ts:39-57`) appends, checkpoints and
-embeds but never calls a model; the cron handler
-(`api/src/index.ts:149-204`) has no ORBIT AI job. The "AI drafts, human
-approves" loop — the product's core claim — cannot be closed end to end.
+**F7. No confirmed producer of AI draft replies.** `conversation.tsx` renders a
+trailing `agent_ai` draft and lets a human approve it, and `/v1/ai/runs` calls
+a model with ORBIT's tool registry — but nothing *writes* that draft outside
+`core/src/seed/orbit.ts`. No cron job, no inbound hook, no intent on the
+conversation screen produces one. The "AI drafts, human approves" loop — the
+product's core claim — still cannot be closed end to end on a live
+conversation.
 
-**F8. Production never configures the model gateway.** `api/src/mw.ts:67-78`
-does `new Gateway({ env })` with no `overrides` and no `customerFacing`, so
-`regulated_claim` can never block (`guardrails.ts:66`, `:102-104` — the only
-rule that can block is `secret_in_output`) and the three Anthropic catalogue
-entries are unreachable (`models.ts:33-37`, `:57-79` — `standard` and
-`reasoning` both resolve to `llama-3.3-70b`).
+**F8. Production never configures the model gateway.** *Closed.*
+`customerFacing` now comes from the purpose catalogue
+(`model-gateway/src/purposes.ts`), which `gateway.ts:156` passes into the
+guardrails, so `regulated_claim` blocks on every customer-facing purpose
+without a per-tenant setting. `gatewayFor(env)` (`api/src/mw.ts`) passes the
+provider bindings it actually has; model choice stays with
+`ctx.policy.modelOverrides`.
 
-**F9. Retrieval is tenant-scoped, not subject-scoped.** `routes/ai.ts:81-90`
-filters only on `tenantId`, so another customer's ORBIT messages can be
-concatenated into a run about customer A. Not a tenancy breach; is a
-confidentiality one.
+**F9. Retrieval is tenant-scoped, not subject-scoped.** *Closed.*
+`routes/ai.ts` filters recall on `{ tenantId, conversationId: subjectRef }`
+and recalls nothing when there is no subject.
 
-**F10. No eval exercises a model.** All seven scorers in
-`model-gateway/evals/run.ts` run deterministic functions over canned strings
-(`scoreCxQuality:186` scores fixture judge replies). The suite cannot detect a
-prompt or model regression, which makes CLAUDE.md's eval-first rule
-unenforceable. `run.ts:336` silently skips an eval directory with no scorer.
+**F10. No eval exercises a model.** *Closed.* `evals/live.ts` holds the
+live scorers, gated behind `LYRA_EVAL_LIVE=1` (`pnpm eval:live`) so CI stays
+deterministic, and `run.ts` now fails — rather than skips — an eval directory
+with no scorer registered.
 
 **F11. SCOUT's cold-start Radar is broken by construction.**
 `sweepWhitespace` inserts `clusterId: null`
@@ -100,14 +96,16 @@ unenforceable. `run.ts:336` silently skips an eval directory with no scorer.
 `dots()` in `routes/scout.shared.ts:374` returns `[]` for exactly that shape.
 A new tenant sees an empty Radar forever.
 
-**F12. Three SCOUT routes are dead links.** `/scout/pricing`,
-`/scout/experiments`, `/scout/analytics` are linked from
-`scout-panel.tsx:147,150` and `scout-radar.tsx:158,286` but are not registered
-in `routes.ts:59-60`, stranding ~200 lines of `scout.shared.ts`.
+**F12. Three SCOUT routes are dead links.** *Closed 2026-08-12.* `/scout/pricing`,
+`/scout/experiments`, `/scout/analytics` were linked from `scout-panel.tsx` and
+`scout-radar.tsx` but not registered in `routes.ts`, stranding ~200 lines of
+`scout.shared.ts`. All three screens are now built, registered, and listed in
+the SCOUT workspace tools (`apps/web/app/modules/scout.ts`).
 
-**F13. `axis_quotes` is written only by the seed** (`core/src/seed.ts:791`)
-while the working fan-out writes `dist_quote_responses`. The AXIS quote desk
-can never show a real panel result.
+**F13. `axis_quotes` is written only by the seed.** *Closed.*
+`dist_quote_responses` is now the single source of quote truth — the desk, the
+bind path and the customer-facing comparison all read it, and
+`api/src/axis-quotes-source.test.ts` holds that line.
 
 ---
 
@@ -278,14 +276,14 @@ technical reviewer will test:
 
 ## Suggested order
 
-1. **F1** (atomic posting) — everything else in finance rests on it.
-2. **F8, F9, F37, F40** — the AI safety layer is currently unarmed in
-   production; these are small edits with large blast radius.
-3. **F10** — until one eval calls a model, no AI change is verifiable.
-4. **F4 + F5** (bind, endorse, cancel, renew) — without these AXIS is a demo.
-5. **F6 + F7** (one real channel, one real draft producer) — the ORBIT claim.
-6. **F2, F3** (manual journals, equity) — the accounting department.
-7. **F11, F12, F13** — cheap fixes that stop three modules looking empty.
+F1, F4, F5, F6, F8, F9, F10, F12 and F13 are closed; what is left of P0, in
+order:
+
+1. **F7** (a real draft producer) — the ORBIT claim. The consumer exists on
+   both ends; nothing writes the draft.
+2. **F11** — a new tenant's Radar is empty forever, and it is a two-field fix.
+3. **F2, F3** (manual journals, equity) — the accounting department. Opening
+   balances need the 3xxx accounts, so these go together.
 
 Every item above is a finding, not an approved change. P0s that alter a
 documented seam or add a third-party service need an ADR first.
