@@ -2205,6 +2205,47 @@ export const SEED_TENANT_SLUG = "gonxt";
  * be a deliberate narrowing (approvals.ts's grantsFor trusts it either way)
  * that this must not silently undo.
  */
+/**
+ * The chart of accounts is provisioned once, at seed time, so a code added to
+ * CHART_OF_ACCOUNTS afterwards never reaches a tenant that already exists —
+ * which is how the 3xxx equity accounts (docs/27 F3) would have left every
+ * deployed tenant unable to run a year-end close. This inserts whatever is
+ * missing and touches nothing else: an account a tenant added itself stays,
+ * and an existing row keeps whatever name or status it was given, since a
+ * renamed account is a tenant's decision, not drift to correct.
+ *
+ * Returns the codes it added, so a repeat run answers with an empty list.
+ */
+export async function syncChartOfAccounts(db: CoreDb, tenantId: string): Promise<string[]> {
+  const existing = new Set(
+    (
+      await db
+        .select({ code: schema.ledgerAccounts.code })
+        .from(schema.ledgerAccounts)
+        .where(eq(schema.ledgerAccounts.tenantId, tenantId))
+    ).map((row) => row.code)
+  );
+  const now = Date.now();
+  const added: string[] = [];
+  for (const acc of CHART_OF_ACCOUNTS) {
+    if (existing.has(acc.code)) continue;
+    await db.insert(schema.ledgerAccounts).values({
+      id: id("acc", now + added.length),
+      tenantId,
+      code: acc.code,
+      nameJson: JSON.stringify({ en: acc.en, ar: acc.ar }),
+      type: acc.type,
+      normalSide: acc.normalSide,
+      clientMoney: acc.clientMoney ?? false,
+      currency: "AED",
+      status: "active",
+      createdAt: now
+    });
+    added.push(acc.code);
+  }
+  return added;
+}
+
 export async function resyncSystemRolePermissions(db: CoreDb, tenantId: string): Promise<string[]> {
   const rows = await db
     .select({ id: schema.roles.id, key: schema.roles.key })

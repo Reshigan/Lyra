@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { CHART_OF_ACCOUNTS, schema } from "@lyra/db";
-import { seed, SEED_TENANT_SLUG } from "./seed.js";
+import { seed, SEED_TENANT_SLUG, syncChartOfAccounts } from "./seed.js";
 import { hashPassword, needsRehash, verifyPassword } from "./password.js";
 import { permissionsForRole } from "./rbac.js";
 import type { CoreDb } from "./context.js";
@@ -194,6 +194,38 @@ describe("seed", () => {
     // ledger relies on to segregate client funds, so its wiring must be exact.
     expect(byCode["1010"]).toMatchObject({ clientMoney: true });
     expect(byCode["1000"]).toMatchObject({ clientMoney: false });
+  });
+
+  it("backfills chart accounts a tenant was seeded before, and leaves the rest alone", async () => {
+    const r = await seed(db, { password: "gonxt-test-password" });
+
+    // The state an already-deployed tenant is in after the chart gained a row:
+    // everything present except the newcomer, plus one locally-added account
+    // that is not in the catalogue and must survive.
+    await db.delete(schema.ledgerAccounts).where(eq(schema.ledgerAccounts.code, "3100"));
+    await db.insert(schema.ledgerAccounts).values({
+      id: "acc_local_one",
+      tenantId: r.tenantId,
+      code: "9900",
+      nameJson: JSON.stringify({ en: "Suspense", ar: "معلق" }),
+      type: "asset",
+      normalSide: "debit",
+      clientMoney: false,
+      currency: "AED",
+      status: "active",
+      createdAt: 1
+    });
+
+    expect(await syncChartOfAccounts(db, r.tenantId)).toEqual(["3100"]);
+
+    const codes = (await db.select().from(schema.ledgerAccounts)).map((a) => a.code);
+    expect(codes).toContain("3100");
+    expect(codes).toContain("9900");
+    expect(codes).toHaveLength(CHART_OF_ACCOUNTS.length + 1);
+
+    // Idempotent: the second call is a no-op, so the post-deploy step is safe
+    // to repeat and safe to run on a tenant that never missed anything.
+    expect(await syncChartOfAccounts(db, r.tenantId)).toEqual([]);
   });
 
   it("seeds the panel with GONXT's own paper plus five external providers", async () => {

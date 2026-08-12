@@ -19,6 +19,7 @@ import {
   recoveryCodes,
   requiresMfa,
   resyncSystemRolePermissions,
+  syncChartOfAccounts,
   seed,
   sha256Hex,
   timingSafeEqual,
@@ -525,13 +526,19 @@ authRoutes.post("/demo/seed", async (c) => {
  * (approvals.ts's grantsFor trusts whatever is stored); this just refreshes
  * every system role's snapshot to match the current compiled table. Remove
  * this route once the 30-day exercise is done, same as /demo/seed.
+ *
+ * The chart of accounts has the same shape of staleness — provisioned once at
+ * seed time, so codes added later (the 3xxx equity rows) never arrive — and the
+ * same remedy, so both run here rather than behind a second route nobody would
+ * remember to call.
  */
 authRoutes.post("/demo/resync-roles", async (c) => {
   demoOnly(c.env);
   const database = db(c.env);
   const tenantId = await demoTenant(database);
   const updated = await resyncSystemRolePermissions(database as unknown as CoreDb, tenantId);
-  return c.json({ tenantId, updated });
+  const accounts = await syncChartOfAccounts(database as unknown as CoreDb, tenantId);
+  return c.json({ tenantId, updated, accounts });
 });
 
 /**
