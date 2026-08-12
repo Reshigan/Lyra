@@ -20,6 +20,16 @@ export default defineConfig({
   // Warming the route files at server start moves that cost off the clock of
   // whichever test happened to arrive first.
   server: { host: "127.0.0.1", warmup: { clientFiles: ["./app/routes/*.tsx", "./app/root.tsx"] } },
+  // radix-ui reaches the client only through packages/ui, so vite's scanner
+  // misses it and optimizes it in a second pass with a fresh browserHash. The
+  // page then holds two generations at once —
+  //   deps/radix-ui.js?v=3e9e5c5c  next to  deps/react-dom.js?v=8aff3b7b
+  // — which means two React copies, so the RouterContext a <Link> reads is not
+  // the one the mounted router provides. Clicking such a link fires no
+  // navigation, no request and no error; the test just waits out its timeout,
+  // and every retry hits the same server. That is CI run 31627230986 (four
+  // attempts, same three journeys). Declaring the dep pins one generation.
+  optimizeDeps: { include: ["radix-ui"] },
   environments: {
     client: { build: { outDir: "build/client" } },
     ssr: { build: { outDir: "build/server" } }

@@ -144,14 +144,16 @@ jobs:
 # FREQUENCY_CAP of 3 leaves no room to propose another. `rm -rf
 # $TMPDIR/lyra-e2e` before re-running. CI always starts empty.
 #
-# Known infra flake, seen once (run 31627230986, 2026-08-12, three journeys):
-# vite's dep optimizer re-bundled mid-run and the browser then asked for a
-# hashed chunk it had already deleted —
-#   [vite] Pre-transform error: The file does not exist at
-#   ".../apps/web/node_modules/.vite/deps/rolldown-runtime-*.js"
-# Once that happens the dev server stays broken for the rest of the run, so
-# `retries: 1` cannot save it and the failures look like three unrelated
-# navigation timeouts. The signature is that one log line; the remedy is
-# `gh run rerun <id> --failed`. Not seen in the 25 runs before it — if it
-# recurs, pre-bundle deps before Playwright starts rather than chasing the
-# individual specs.
+# Run 31627230986 failed four attempts running on the same three journeys —
+# axis-lifecycle.spec.ts:37, ops.spec.ts:157, ops.spec.ts:221 — each a
+# `waitForURL` timeout after a click that landed. It reproduced on no local
+# run. The cause was vite's dep optimizer, not the specs: radix-ui reaches the
+# client only through packages/ui, so the scanner missed it, a second
+# optimizer pass gave it a new browserHash, and the page ended up holding two
+# generations (`deps/radix-ui.js?v=3e9e5c5c` beside
+# `deps/react-dom.js?v=8aff3b7b`) — two React copies, so a <Link> read a
+# RouterContext the mounted router never provided and its click navigated
+# nothing. Fixed at the source with `optimizeDeps.include` in
+# apps/web/vite.config.ts. If this shape returns (navigation timeout, click
+# landed, zero network in the trace after it), check the trace for more than
+# one `?v=` hash before suspecting the test.
