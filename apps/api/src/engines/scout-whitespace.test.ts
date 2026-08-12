@@ -153,4 +153,44 @@ describe("sweepWhitespace", () => {
     expect(row).toBeDefined();
     expect(row!.description).toMatch(/^travel: demand momentum \d+ vs\. \d+ policies on the book$/);
   });
+
+  // docs/27 F11: the Radar plots a whitespace row against its cluster's
+  // momentum and drops any row missing either the link or a competition score.
+  // A cold-start sweep that writes both nulls is a Radar that is empty forever.
+  it("writes a plottable row: a real cluster link and a scored competition", async () => {
+    await seedQuoteCluster("marine", 20, ctx.now);
+    const { gw } = stubbedGateway({ replies: ["Marine demand is moving against a thin book."] });
+
+    expect(await sweepWhitespace(ctx, gw)).toBe(1);
+
+    const [row] = await ctx.db
+      .select()
+      .from(schema.scoutWhitespaces)
+      .where(and(eq(schema.scoutWhitespaces.tenantId, tenantId), eq(schema.scoutWhitespaces.category, "marine")));
+    expect(row!.clusterId).not.toBeNull();
+    expect(row!.competitionScore).not.toBeNull();
+    expect(row!.competitionScore).toBeGreaterThanOrEqual(0);
+    expect(row!.competitionScore).toBeLessThanOrEqual(100);
+
+    const [cluster] = await ctx.db
+      .select()
+      .from(schema.scoutClusters)
+      .where(and(eq(schema.scoutClusters.tenantId, tenantId), eq(schema.scoutClusters.id, row!.clusterId!)));
+    expect(cluster!.theme).toBe("marine");
+    expect(cluster!.momentumScore).toBe(row!.demandEstimate);
+    expect(cluster!.size).toBe(20);
+  });
+
+  // Re-running the sweep is the weekly Clusterer run: the category's cluster is
+  // the same row with fresher numbers, never a second one competing with it.
+  it("re-scores an existing cluster instead of inserting a duplicate", async () => {
+    const { gw } = stubbedGateway({ replies: ["Marine demand is still moving."] });
+    await sweepWhitespace(ctx, gw);
+
+    const clusters = await ctx.db
+      .select()
+      .from(schema.scoutClusters)
+      .where(and(eq(schema.scoutClusters.tenantId, tenantId), eq(schema.scoutClusters.theme, "marine")));
+    expect(clusters).toHaveLength(1);
+  });
 });
