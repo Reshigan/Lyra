@@ -59,6 +59,7 @@ const TEAM = { id: "tm_1", name: "Motor claims" };
 const CASE = { id: "cas_1", ref: "CASE-1042" };
 const PROVIDER = { id: "pv_1", name: "Oryx Insurance", code: "ORYX" };
 const CHANNEL = { id: "ch_1", nameJson: JSON.stringify({ en: "Broker Alpha", ar: "بروكر ألفا" }), key: "broker-alpha" };
+const HOLD = { id: "lgh_1", reason: "Regulator inquiry 2026/114", authority: "IA" };
 
 const rows = (table: unknown): unknown[] => {
   const name = String((table as { [k: symbol]: unknown })[Symbol.for("drizzle:Name")] ?? "");
@@ -69,6 +70,7 @@ const rows = (table: unknown): unknown[] => {
   if (name === "axis_cases") return [CASE];
   if (name === "core_providers") return [PROVIDER];
   if (name === "dist_channels") return [CHANNEL];
+  if (name === "compliance_legal_holds") return [HOLD];
   return [];
 };
 
@@ -94,6 +96,16 @@ describe("GET /v1/names", () => {
     const res = await app.fetch(new Request("http://api.test/?refs=cas_1"));
     const body = (await res.json()) as { names: Record<string, string> };
     expect(body.names.cas_1).toBe("CASE-1042");
+  });
+
+  it("falls back to why a row exists when it carries no name at all", async () => {
+    // A legal hold has no name, title or ref — only the reason it was placed,
+    // which is the sentence the compliance officer wrote and the only thing on
+    // the row a person can act on. Without it the audit feed read `lgh_01KE…`.
+    const app = router(baseCtx(fakeDb(rows), ["*:*:*"]));
+    const res = await app.fetch(new Request("http://api.test/?refs=lgh_1"));
+    const body = (await res.json()) as { names: Record<string, string> };
+    expect(body.names.lgh_1).toBe("Regulator inquiry 2026/114");
   });
 
   it("reads a localised name in the actor's locale", async () => {

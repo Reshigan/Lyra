@@ -256,6 +256,20 @@ interface AiRun {
 }
 
 /**
+ * Whether an audit row belongs on a panel headed "Your recent activity".
+ *
+ * Signing in is not work you did: six "Core session login" rows pushed every
+ * real change off the panel. The subject is what decides it, not the action
+ * code — `core.mfa.verified` is written under its own prefix and still carries
+ * a session id, and a session id is the one subject /v1/names can never resolve
+ * into something a person can act on. Session history stays where it belongs,
+ * on Settings › security.
+ */
+export function isOwnWork(entry: Pick<AuditRow, "action" | "subjectRef">): boolean {
+  return !entry.subjectRef?.startsWith("ses_") && !entry.action.startsWith("core.session.");
+}
+
+/**
  * What a panel knows about itself. "denied" is not a failure — the actor does
  * not hold the permission, so nothing is drawn and nothing is claimed. "error"
  * is a failure, and the difference has to survive to the screen: an empty panel
@@ -320,13 +334,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     counts: inbox.state === "ok" ? inbox.data.counts : null,
     economics: economics.state === "ok" ? summarise(rows) : null,
     areas: map(economics, () => byArea(rows)),
-    // Signing in is not work you did: six "Core session login" rows pushed
-    // every real change off the panel. The list endpoint filters on equality
-    // only, so the exclusion happens here — over-fetch 24, keep 6 changes.
-    // Session history stays where it belongs, on Settings › security.
-    activity: map(activity, (a) =>
-      a.data.filter((entry) => !entry.action.startsWith("core.session.")).slice(0, 6)
-    ),
+    // The list endpoint filters on equality only, so `isOwnWork` runs here —
+    // over-fetch 24, keep the 6 most recent changes.
+    activity: map(activity, (a) => a.data.filter(isOwnWork).slice(0, 6)),
     runs: map(runs, (r) => r.data)
   };
 }

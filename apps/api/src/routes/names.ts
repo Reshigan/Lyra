@@ -46,7 +46,12 @@ const DISPLAY_COLUMNS = [
   "code",
   "email",
   "key",
-  "slug"
+  "slug",
+  // Last resort, and only for the rows that carry nothing else: a legal hold is
+  // a subject, a reason and an authority, so the sentence the compliance
+  // officer wrote is the only part of it a person can read. Any table with a
+  // name, title or ref never reaches this.
+  "reason"
 ];
 
 /**
