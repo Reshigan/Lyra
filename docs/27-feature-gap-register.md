@@ -206,6 +206,75 @@ routes; no scenarios, decisions, driver-decomposition or forecast endpoint
 (**F51**). `VEC_MARKET` embeddings are written (`resources.ts:462-469`) and
 never queried (**F52**).
 
+### P1 re-verification, 2026-08-12
+
+The P1 prose above is the original synthesis and is not rewritten. This is what
+a read of the current code says about it. Items not listed were not re-checked
+and should be assumed to stand.
+
+*Closed.*
+
+- **F20** — both gates exist. `closePeriod` requires
+  `ledger:periods:force_close` rather than `ledger:periods:close` when `force`
+  is set (`packages/ledger/src/periods.ts:178`) and gates on
+  `ledger.period_close_force`; `reopenPeriod` (`:237-240`) requires
+  `ledger:periods:reopen` and gates on `ledger.period_reopen`.
+- **F24** — FNOL resolves coverage state before the claim exists:
+  `apps/api/src/engines/axis-fnol.ts:115-122` returns `in_force` and pins the
+  policy version, limits and deductible, or refuses.
+- **F26** — `apps/api/src/engines/axis-policy-document.ts` generates the policy
+  document; the analytics-PDF substitute is gone.
+- **F27** — `axis-claim-lifecycle.ts` and `axis-case-lifecycle.ts` are the state
+  machines.
+- **F29** — `apps/api/src/engines/orbit-routing.ts` is the routing and queueing
+  engine: `pickRoute`, `pickAssignee`, `routeConversation`, `sweepRouting`,
+  with `PRESENCE_STALE_MS` replacing the hardcoded badge threshold.
+- **F37** — the injection scan covers tool output:
+  `packages/model-gateway/src/gateway.ts:78` is
+  `m.role === "user" || m.role === "tool"`.
+
+*Partly closed.*
+
+- **F23** — `CLAIM-PAY` is a real recipe (`packages/ledger/src/recipes.ts:488`)
+  and the claim lifecycle owns reserve and settlement. The two-money-field
+  schema shape is unchanged.
+- **F25** — `paymentPlanJson` is read: `axis-lifecycle.ts:637-647` sweeps active
+  policies for a missed instalment. The tax/fee split on premium is still absent
+  and the column comment still reads `// H9 reserved`.
+- **F28** — five of the eight named surfaces ship, registered in
+  `apps/web/app/routes.ts:82-99`: FNOL intake, claims desk, renewal desk,
+  endorsement and cancellation. Underwriting referral desk, complaints register
+  and SIU queue are still absent.
+- **F31** — `ORBIT_TOOL_DEFS` carries six of the eight tools, not three.
+- **F39** — `autonomyLevel` has production reads now
+  (`signal-autopilot.ts:365` filters campaigns on it, `orbit-draft.ts:98`
+  carries it). The three enum vocabularies and the unimplemented
+  `AutonomyEnvelope` stand.
+
+*Stands, re-verified.*
+
+- **F14** — no recipe posts `1200 Premium Receivable` or `2000 Insurer Payable`;
+  the commission recipes default `receivableAccount` to `1100`.
+- **F16** — no CAMT, MT940 or OFX anywhere in the tree.
+- **F18** — no revaluation code.
+- **F19** — `decideMatch` (`recon.ts:297-330`) still only sets match state and
+  audits; it books nothing.
+- **F22** — `fast-check` is not a dependency of any package.
+- **F30** — `orbit-journeys.ts` exports `triggerJourney` and nothing else; no
+  advance step exists.
+- **F41** — the guardrail floors are still six English regexes
+  (`guardrails.ts:17-31`), no Arabic.
+- **F43** — no regional rail: Telr, PayFort, PayTabs, Network International,
+  mada and STC Pay have zero hits.
+- **F49** — `north-snapshotter.ts:107-120` still sums `axis_policies` for GWP
+  and commission and never reads the ledger.
+- **F50** — five NORTH API routes.
+- **F52** — `VEC_MARKET` is written at `resources.ts:608` and read nowhere.
+
+F48 changed shape rather than closing: the naive, seasonal-unaware threshold is
+now a recorded decision (ADR-0024, `north-snapshotter.ts:522-523`), so the
+finding is a known limitation rather than a defect.
+
 ---
 
 ## P2 — depth, not absence
