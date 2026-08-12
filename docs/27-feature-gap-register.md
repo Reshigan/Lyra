@@ -90,11 +90,11 @@ live scorers, gated behind `LYRA_EVAL_LIVE=1` (`pnpm eval:live`) so CI stays
 deterministic, and `run.ts` now fails — rather than skips — an eval directory
 with no scorer registered.
 
-**F11. SCOUT's cold-start Radar is broken by construction.**
-`sweepWhitespace` inserts `clusterId: null`
-(`engines/scout-whitespace.ts:131`) and `competitionScore: null` (`:136`);
-`dots()` in `routes/scout.shared.ts:374` returns `[]` for exactly that shape.
-A new tenant sees an empty Radar forever.
+**F11. SCOUT's cold-start Radar is broken by construction.** *Closed 2026-08-12.*
+The two nulls were the symptom; the cause was that nothing wrote `scout_clusters`
+outside the seed. `sweepWhitespace` is now the Clusterer run — it persists one
+cluster per category (re-scored in place on every sweep) and links each
+whitespace row to it, and scores competition as panel breadth.
 
 **F12. Three SCOUT routes are dead links.** *Closed 2026-08-12.* `/scout/pricing`,
 `/scout/experiments`, `/scout/analytics` were linked from `scout-panel.tsx` and
@@ -276,13 +276,12 @@ technical reviewer will test:
 
 ## Suggested order
 
-F1, F4, F5, F6, F8, F9, F10, F12 and F13 are closed; what is left of P0, in
-order:
+F1, F4, F5, F6, F8, F9, F10, F11, F12 and F13 are closed; what is left of P0,
+in order:
 
 1. **F7** (a real draft producer) — the ORBIT claim. The consumer exists on
    both ends; nothing writes the draft.
-2. **F11** — a new tenant's Radar is empty forever, and it is a two-field fix.
-3. **F2, F3** (manual journals, equity) — the accounting department. Opening
+2. **F2, F3** (manual journals, equity) — the accounting department. Opening
    balances need the 3xxx accounts, so these go together.
 
 Every item above is a finding, not an approved change. P0s that alter a
