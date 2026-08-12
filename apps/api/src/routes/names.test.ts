@@ -117,17 +117,18 @@ describe("GET /v1/names", () => {
     expect(queried).toEqual(["core_teams"]);
   });
 
-  it("names colleagues and teams for any signed-in actor, still masking PII", async () => {
+  it("names colleagues and teams in full for any signed-in actor", async () => {
     // The ORBIT console's WITH column and its handover FROM/TO read
     // `user:us_01KE…VNK5` at an agent, because orbit.agent holds no
     // core:users:read — nobody grants staff-admin rights to answer a chat.
     // Who is holding your conversation is not an admin fact; the directory is
-    // readable to anyone signed in, with the same masking as every other read.
+    // readable to anyone signed in — and readable means the whole name, not
+    // "Layla A•• M•••••••" (ADR-0056).
     const app = router(baseCtx(fakeDb(rows), ["orbit:conversations:read"]));
     const res = await app.fetch(new Request("http://api.test/?refs=user:us_1,team:tm_1,cu_1"));
     const body = (await res.json()) as { names: Record<string, string> };
     expect(body.names).toEqual({
-      "user:us_1": "Layla A•• M•••••••",
+      "user:us_1": "Layla Al Mansouri",
       "team:tm_1": "Motor claims"
     });
   });
@@ -152,12 +153,22 @@ describe("GET /v1/names", () => {
     expect(body.names["channel:ch_1"]).toBe("Broker Alpha");
   });
 
-  it("masks a PII display name without core:pii:view, and never leaks a secret column", async () => {
+  it("never leaks a secret column while naming a colleague", async () => {
     const app = router(baseCtx(fakeDb(rows), ["core:users:read"]));
     const res = await app.fetch(new Request("http://api.test/?refs=user:us_1"));
     const body = (await res.json()) as { names: Record<string, string> };
-    expect(body.names["user:us_1"]).toBe("Layla A•• M•••••••");
+    expect(body.names["user:us_1"]).toBe("Layla Al Mansouri");
     expect(JSON.stringify(body)).not.toContain("SECRET-HASH");
+    expect(JSON.stringify(body)).not.toContain("layla@gonxt.ae");
+  });
+
+  it("still masks a data subject's name without core:pii:view", async () => {
+    // The directory carve-out is the tenant's own org chart. A customer is a
+    // data subject, not a colleague: minimisation (docs/12 §2) still applies.
+    const app = router(baseCtx(fakeDb(rows), ["core:customers:read"]));
+    const res = await app.fetch(new Request("http://api.test/?refs=cu_1"));
+    const body = (await res.json()) as { names: Record<string, string> };
+    expect(body.names.cu_1).toBe("Falcon F••••••");
   });
 
   it("resolves users minted under the legacy `usr_` prefix", async () => {

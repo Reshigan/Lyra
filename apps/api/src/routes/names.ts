@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { getTableColumns, inArray } from "drizzle-orm";
 import type { SQLiteColumn } from "drizzle-orm/sqlite-core";
-import { badRequest, can, mask, scoped, type Ctx } from "@lyra/core";
+import { badRequest, can, mask, scoped, type Ctx, type PiiKind, type PiiMap } from "@lyra/core";
 import { REGISTRY } from "../crud.js";
 import type { App } from "../env.js";
 
@@ -83,8 +83,24 @@ const ALIASES: Record<string, string> = {
  * analyst holds. The panel table listed six `pv_01KE…` ids under a column
  * headed "Carrier"; the settlement queue listed `channel:ch_01KE…` under
  * "Counterparty" (ADR-0048).
+ *
+ * These names are also the ones minimisation does not reach: a colleague is
+ * not a data subject, and "Requested by Layla H•••••" on a decisions queue
+ * masks the org chart from the org (ADR-0056). Only the display column, only
+ * inside the tenant — a customer stays masked below.
  */
 const DIRECTORY = new Set(["users", "teams", "providers", "products", "channels", "offerings"]);
+
+/**
+ * The PII kind guarding a display column. A `*Json` column declares itself per
+ * locale (`nameJson.en`), so a lookup on the bare column name finds nothing and
+ * handed every customer's real name to an actor holding no `core:pii:view` —
+ * while the list beside it, which masks on the hydrated row, showed the mask.
+ */
+function piiKind(pii: PiiMap | undefined, column: string): PiiKind | undefined {
+  if (!pii) return undefined;
+  return pii[column] ?? Object.entries(pii).find(([path]) => path.startsWith(`${column}.`))?.[1];
+}
 
 interface Parsed {
   /** The ref exactly as asked, so the caller can look up the string it holds. */
@@ -165,7 +181,7 @@ nameRoutes.get("/", async (c) => {
         .where(scoped(ctx, resource.table as never, inArray(idCol, ids)))
         .limit(ids.length)) as Record<string, unknown>[];
 
-      const kind = resource.pii?.[column];
+      const kind = DIRECTORY.has(resource.path) ? undefined : piiKind(resource.pii, column);
       const labels = new Map<string, string>();
       for (const row of rows) {
         // A row the actor may not see is a row whose name they may not read
