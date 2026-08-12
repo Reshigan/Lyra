@@ -238,6 +238,15 @@ export interface RunOptions {
  */
 export async function runTxn(ctx: Ctx, input: OpenTxnInput, opts: RunOptions = {}): Promise<TxnRow> {
   const def = txnType(input.type);
+
+  // Ledger-state preconditions run before the transaction is even opened. A
+  // precondition is a "not yet" — the year still has an open month, an opening
+  // balance already exists — and refusing it must leave no trace: opening first
+  // would burn the idempotency key on a `failed` row, so the retry after the
+  // months are closed would hit "already failed" forever.
+  const precondition = TXN_PRECONDITIONS[def.code];
+  if (precondition) await precondition(ctx, opts.args ?? {});
+
   const txn = await openTxn(ctx, input);
 
   // Replay: a settled transaction is returned untouched. This is what makes
@@ -250,10 +259,6 @@ export async function runTxn(ctx: Ctx, input: OpenTxnInput, opts: RunOptions = {
   try {
     let state = txn.state;
     if (state === "initiated") {
-      // Ledger-state preconditions run before anything is written, so a second
-      // opening balance or a double year-end close is refused rather than undone.
-      const precondition = TXN_PRECONDITIONS[def.code];
-      if (precondition) await precondition(ctx, opts.args ?? {});
       if (def.financial && !opts.recipe?.lines.length) {
         throw badRequest(`${def.code} is a financial transaction and needs journal lines`);
       }

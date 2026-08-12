@@ -2677,6 +2677,8 @@ export interface Operations {
   "GET /v1/ledger/txns/{id}": Op<{ id: string }, never, never, LedgerTxns>;
   "GET /v1/ledger/usage-meters": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<LedgerUsageMeters>>;
   "GET /v1/ledger/usage-meters/{id}": Op<{ id: string }, never, never, LedgerUsageMeters>;
+  "GET /v1/ledger/year-end/{year}": Op<{ year: string }, never, never, Record<string, unknown>>;
+  "POST /v1/ledger/year-end/{year}": Op<{ year: string }, never, never, Record<string, unknown>>;
   "GET /v1/me": Op<never, never, never, Record<string, unknown>>;
   "PATCH /v1/me": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/me/approvals/{id}/decide": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
@@ -2751,6 +2753,7 @@ export interface Operations {
   "PATCH /v1/orbit/conversations/{id}": Op<{ id: string }, never, OrbitConversations, OrbitConversations>;
   "POST /v1/orbit/conversations/{id}/reply": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/orbit/conversations/{id}/turns": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
+  "POST /v1/orbit/drafts/sweep": Op<never, never, never, Record<string, unknown>>;
   "GET /v1/orbit/handover-notes": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<OrbitHandoverNotes>>;
   "POST /v1/orbit/handover-notes": Op<never, never, OrbitHandoverNotes, OrbitHandoverNotes>;
   "GET /v1/orbit/handover-notes/{id}": Op<{ id: string }, never, never, OrbitHandoverNotes>;
@@ -3361,6 +3364,8 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "GET /v1/ledger/txns/{id}": { tag: "ledger", summary: "Fetch one txn", permission: "ledger:txns:read", public: false },
   "GET /v1/ledger/usage-meters": { tag: "ledger", summary: "List usage-meters", permission: "admin:billing:read", public: false },
   "GET /v1/ledger/usage-meters/{id}": { tag: "ledger", summary: "Fetch one usage meter", permission: "admin:billing:read", public: false },
+  "GET /v1/ledger/year-end/{year}": { tag: "ledger", summary: "The entry that would zero income and expense into retained earnings", permission: "ledger:journals:read", public: false },
+  "POST /v1/ledger/year-end/{year}": { tag: "ledger", summary: "Post the year-end close (dual control)", permission: "ledger:periods:year_end", public: false },
   "GET /v1/me": { tag: "me", summary: "Bootstrap: actor, tenant, roles, permissions, entitlements, policy and navigation", permission: null, public: false },
   "PATCH /v1/me": { tag: "me", summary: "Update the caller's own profile", permission: null, public: false },
   "POST /v1/me/approvals/{id}/decide": { tag: "me", summary: "Approve or reject a pending approval (permission comes from the approval policy)", permission: null, public: false },
@@ -3435,6 +3440,7 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "PATCH /v1/orbit/conversations/{id}": { tag: "orbit", summary: "Update a conversation", permission: "orbit:conversations:assign", public: false },
   "POST /v1/orbit/conversations/{id}/reply": { tag: "orbit", summary: "Send a reply out over the conversation's channel connector", permission: "orbit:messages:send", public: false },
   "POST /v1/orbit/conversations/{id}/turns": { tag: "orbit", summary: "Append a turn to a conversation, checkpointed to orbit_messages", permission: "orbit:messages:send", public: false },
+  "POST /v1/orbit/drafts/sweep": { tag: "orbit", summary: "Force the AI reply-draft sweep now — drafts a pending agent_ai reply for every conversation waiting on us (also runs on the scheduled tick)", permission: "orbit:ai:invoke", public: false },
   "GET /v1/orbit/handover-notes": { tag: "orbit", summary: "List handover-notes", permission: "orbit:handover:read", public: false },
   "POST /v1/orbit/handover-notes": { tag: "orbit", summary: "Create a handover note", permission: "orbit:handover:write", public: false },
   "GET /v1/orbit/handover-notes/{id}": { tag: "orbit", summary: "Fetch one handover note", permission: "orbit:handover:read", public: false },

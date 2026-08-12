@@ -173,6 +173,8 @@ const HAND_WRITTEN: Op[] = [
   { method: "get", path: "/v1/ledger/period/{code}", summary: "One accounting period and its close checklist", permission: "ledger:periods:read", tag: "ledger" },
   { method: "post", path: "/v1/ledger/periods/{code}/close", summary: "Soft or hard close a period (dual control)", permission: "ledger:periods:close", tag: "ledger", requestBody: true },
   { method: "post", path: "/v1/ledger/periods/{code}/reopen", summary: "Reopen a soft-closed period", permission: "ledger:periods:close", tag: "ledger" },
+  { method: "get", path: "/v1/ledger/year-end/{year}", summary: "The entry that would zero income and expense into retained earnings", permission: "ledger:journals:read", tag: "ledger" },
+  { method: "post", path: "/v1/ledger/year-end/{year}", summary: "Post the year-end close (dual control)", permission: "ledger:periods:year_end", tag: "ledger" },
   { method: "get", path: "/v1/ledger/reports/trial-balance", summary: "Trial balance as at a moment", permission: "ledger:journals:read", tag: "ledger" },
   { method: "get", path: "/v1/ledger/reports/pnl", summary: "Profit and loss for a period", permission: "ledger:journals:read", tag: "ledger" },
   { method: "get", path: "/v1/ledger/reports/balance-sheet", summary: "Balance sheet as at a moment", permission: "ledger:journals:read", tag: "ledger" },

@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
-import { actorRef, audit, badRequest, notFound, require_, scoped, sha256Hex, withIdempotency, type Ctx } from "@lyra/core";
+import { actorRef, audit, badRequest, can, notFound, require_, scoped, sha256Hex, withIdempotency, type Ctx } from "@lyra/core";
 import { id, schema } from "@lyra/db";
 import {
   RECIPES,
@@ -32,9 +32,11 @@ import {
   transition,
   trialBalance,
   trialBalanceTable,
+  TXN_PRECONDITIONS,
   txnType,
   valueFlow,
   valueFlowLines,
+  yearEndPreview,
   type MatchProposer,
   type ReportTable,
   type TxnState
@@ -80,7 +82,14 @@ ledgerRoutes.post("/txn/:type", async (c) => {
   const ctx = ctxOf(c);
   const type = c.req.param("type").toUpperCase();
   const def = txnType(type); // throws 400 for an unknown code
-  require_(ctx.actor, "ledger:txns:create", { tenantId: ctx.tenantId, module: "ledger" });
+  // docs/27 F2. Drafting is the analyst's half of dual control: a transaction
+  // that cannot settle without a second seat's approval may be *originated* by a
+  // drafter, and nothing else may. Everything that settles on its own still
+  // needs the full create permission.
+  const subject = { tenantId: ctx.tenantId, module: "ledger" };
+  if (!(def.approval && can(ctx.actor, "ledger:journals:draft", subject))) {
+    require_(ctx.actor, "ledger:txns:create", subject);
+  }
   const input = await body(c, RunBody);
 
   const currency = input.currency ?? ctx.policy.currency;
@@ -113,6 +122,9 @@ ledgerRoutes.post("/txn/:type", async (c) => {
       },
       {
         recipe,
+        // The recipe arguments travel with the run: built lines cannot answer
+        // "which fiscal year is this", which is what a precondition asks.
+        args: input.args,
         event: { name: `ledger.txn.${type.toLowerCase()}.settled` }
       }
     )
@@ -202,6 +214,72 @@ ledgerRoutes.post("/periods/:code/close", async (c) => {
 ledgerRoutes.post("/periods/:code/reopen", async (c) => {
   const ctx = ctxOf(c);
   return c.json(await reopenPeriod(ctx, c.req.param("code")));
+});
+
+/* ---------------------------------------------------------------- year end */
+
+// docs/27 F3. One transaction zeroes every income and expense account into
+// retained earnings. The closing lines are read out of the ledger on both
+// routes rather than accepted from the caller: the preview a controller signs
+// off and the entry that posts have to be the same read, and a browser that
+// could state retained earnings could state it wrong.
+
+function fiscalYear(raw: string): number {
+  const year = Number(raw);
+  if (!Number.isInteger(year) || year < 2000 || year > 2200) throw badRequest(`bad fiscal year ${raw}`);
+  return year;
+}
+
+ledgerRoutes.get("/year-end/:year", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "ledger:journals:read", { tenantId: ctx.tenantId, module: "ledger" });
+  return c.json(await yearEndPreview(ctx, fiscalYear(c.req.param("year"))));
+});
+
+ledgerRoutes.post("/year-end/:year", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "ledger:periods:year_end", { tenantId: ctx.tenantId, module: "ledger" });
+  const year = fiscalYear(c.req.param("year"));
+  const preview = await yearEndPreview(ctx, year);
+  // "Nothing to close" is only true for a year that was never traded. A year
+  // that was closed already also reads as empty here, and the caller is owed
+  // that answer instead — so let the precondition inside runTxn speak first.
+  if (!preview.closingLines.length) {
+    await TXN_PRECONDITIONS["YEAR-END-CLOSE"]?.(ctx, { fiscalYear: year });
+    throw badRequest(`fiscal year ${year} has nothing to close`);
+  }
+
+  const args = {
+    fiscalYear: year,
+    retainedEarningsAccount: preview.retainedEarningsAccount,
+    closingLines: preview.closingLines.map((l) => ({
+      accountCode: l.accountCode,
+      side: l.side,
+      amountMinor: l.amountMinor,
+      memo: `year-end close ${year}: ${l.name}`
+    }))
+  };
+  const currency = preview.currency;
+
+  // `yearend:{year}` is the key on purpose: a replay is a no-op through the
+  // unique index, whoever sends it and however many times (D8).
+  const txn = await runTxn(
+    ctx,
+    { type: "YEAR-END-CLOSE", idempotencyKey: `yearend:${year}`, currency, actorKind: ctx.actor.kind },
+    {
+      // The year's months are soft closed by the time this runs — that is the
+      // precondition — so the entry states its adjustment reason, as any posting
+      // into a frozen month must (docs/19 §6).
+      recipe: {
+        lines: buildRecipe("YEAR-END-CLOSE", { ...args, currency }),
+        currency,
+        reason: `year-end close ${year}`
+      },
+      args,
+      event: { name: "ledger.txn.year-end-close.settled" }
+    }
+  );
+  return c.json({ txn, preview }, 201);
 });
 
 /* ----------------------------------------------------------------- reports */
@@ -419,9 +497,11 @@ const REPORT_EXPORTS: Record<string, ExportSpec> = {
           rows: [
             ...sectionRows(bs.assets),
             ...sectionRows(bs.liabilities),
-            // Equity is derived from the journal rather than posted, so it is a
-            // line of its own and not a section with accounts under it.
-            { section: "Equity", accountCode: "", name: "Equity", amountMinor: bs.equityMinor }
+            ...sectionRows(bs.equity),
+            // The year's result is not equity until the year is closed, so it is
+            // its own line and says so (docs/27 F3).
+            { section: "Equity", accountCode: "", name: "Current year (not yet closed)", amountMinor: bs.currentYearUnpostedMinor },
+            { section: "Equity", accountCode: "", name: "Total equity", amountMinor: bs.equityMinor }
           ],
           currency: bs.currency,
           generatedAt: bs.asOf
