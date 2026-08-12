@@ -1,5 +1,6 @@
 import { id, schema } from "@lyra/db";
 import { DAY, HOUR, MINUTE, type SeedContext } from "./context.js";
+import { dayName, monthKey, monthName } from "./period.js";
 
 // SIGNAL is the demand side of the same story the core seed already tells. The
 // motor search campaign below is what Rania Haddad clicked, the quote request
@@ -23,6 +24,10 @@ export async function seedSignal(ctx: SeedContext): Promise<void> {
 
   // Noor Jamal owns growth (she is also the owner of `cac_per_policy` in NORTH)
   // and Khalid Al Rashed is the compliance reviewer whose name goes on a block.
+  // Campaign names and the autopilot's reasons name their month in prose; a
+  // demo seeded in July must not have a campaign called "December brand".
+  const thisMonthName = monthName(now);
+  const lastMonthName = monthName(now, -1);
   const growthLead = `user:${ctx.users["signal.lead"]!}`;
   const complianceOfficer = `user:${ctx.users["tenant.compliance"]!}`;
   // The autopilot acts under its own actor ref so an operator reading the
@@ -217,7 +222,7 @@ export async function seedSignal(ctx: SeedContext): Promise<void> {
       channelsJson: JSON.stringify(["google_search", "bing_search"]),
       budgetJson: JSON.stringify({
         currency: "AED",
-        period: "2026-01",
+        period: monthKey(now),
         dailyMinor: 350_000,
         capMinor: 10_850_000,
         // The uplift is the December brand money the growth lead approved into
@@ -243,13 +248,13 @@ export async function seedSignal(ctx: SeedContext): Promise<void> {
       // Paused, not ended: NORTH's December decision was to stop spending here
       // and move the money to search, and the campaign stays paused so the
       // decision can be reversed if January's cost per policy climbs back.
-      name: "December brand — social",
+      name: `${lastMonthName} brand — social`,
       objective: "acq",
       audienceId: audiences.motorNoHealth,
       channelsJson: JSON.stringify(["meta", "instagram"]),
       budgetJson: JSON.stringify({
         currency: "AED",
-        period: "2025-12",
+        period: monthKey(now, -1),
         dailyMinor: 420_000,
         capMinor: 13_020_000,
         // What the moves below have already taken out. The 2,400,000 still
@@ -276,7 +281,7 @@ export async function seedSignal(ctx: SeedContext): Promise<void> {
       channelsJson: JSON.stringify(["email"]),
       budgetJson: JSON.stringify({
         currency: "AED",
-        period: "2026-01",
+        period: monthKey(now),
         dailyMinor: 20_000,
         capMinor: 620_000,
         autopilotBoundMinor: 100_000
@@ -299,7 +304,7 @@ export async function seedSignal(ctx: SeedContext): Promise<void> {
       channelsJson: JSON.stringify(["email", "push"]),
       budgetJson: JSON.stringify({
         currency: "AED",
-        period: "2026-01",
+        period: monthKey(now),
         dailyMinor: 15_000,
         capMinor: 465_000,
         autopilotBoundMinor: 100_000
@@ -328,7 +333,7 @@ export async function seedSignal(ctx: SeedContext): Promise<void> {
       channelsJson: JSON.stringify(["email", "google_search"]),
       budgetJson: JSON.stringify({
         currency: "AED",
-        period: "2026-02",
+        period: monthKey(now, 1),
         dailyMinor: 12_000,
         capMinor: 372_000,
         autopilotBoundMinor: 100_000
@@ -353,7 +358,7 @@ export async function seedSignal(ctx: SeedContext): Promise<void> {
       channelsJson: JSON.stringify(["google_search", "meta"]),
       budgetJson: JSON.stringify({
         currency: "AED",
-        period: "2025-12",
+        period: monthKey(now, -1),
         dailyMinor: 180_000,
         capMinor: 7_200_000,
         unspentMinor: 250_000
@@ -378,7 +383,7 @@ export async function seedSignal(ctx: SeedContext): Promise<void> {
       channelsJson: JSON.stringify(["meta", "youtube"]),
       budgetJson: JSON.stringify({
         currency: "AED",
-        period: "2026-06",
+        period: monthKey(now, 5),
         dailyMinor: 200_000,
         capMinor: 6_000_000,
         autopilotBoundMinor: 1_000_000
@@ -764,7 +769,7 @@ export async function seedSignal(ctx: SeedContext): Promise<void> {
       toRef: searchGoogle,
       amountMinor: 800_000,
       currency: "AED",
-      reason: "Marginal cost per policy on search ran AED 174 below social for six days straight, so the rest of the December brand budget followed the cheaper policies.",
+      reason: `Marginal cost per policy on search ran AED 174 below social for six days straight, so the rest of the ${lastMonthName} brand budget followed the cheaper policies.`,
       evidenceJson: JSON.stringify({
         window: { from: day(now - 38 * DAY), to: day(now - 33 * DAY) },
         marginalCacMinor: { google_search: 16_800, meta: 34_200 },
@@ -816,7 +821,7 @@ export async function seedSignal(ctx: SeedContext): Promise<void> {
       toRef: searchGoogle,
       amountMinor: 250_000,
       currency: "AED",
-      reason: "The winter travel flight closed on 24 December with this much unspent, and budget sitting in an ended campaign buys nothing.",
+      reason: `The winter travel flight closed on ${dayName(now - 13 * DAY)} with this much unspent, and budget sitting in an ended campaign buys nothing.`,
       evidenceJson: JSON.stringify({
         campaignEndedAt: day(now - 13 * DAY),
         capMinor: 7_200_000,
@@ -836,13 +841,13 @@ export async function seedSignal(ctx: SeedContext): Promise<void> {
       toRef: searchGoogle,
       amountMinor: 1_500_000,
       currency: "AED",
-      reason: "Search closed December at AED 189 per policy against brand's AED 342, so January opened with the brand budget behind search.",
+      reason: `Search closed ${lastMonthName} at AED 189 per policy against brand's AED 342, so ${thisMonthName} opened with the brand budget behind search.`,
       evidenceJson: JSON.stringify({
         window: { from: day(now - 36 * DAY), to: day(now - 6 * DAY) },
         cacPerPolicyMinor: { google_search: 18_900, meta: 34_200 },
         boundMinor: 1_000_000,
         // Over the autopilot bound, which is why this one went to a person.
-        decisionRef: "north: pause the December brand campaign and move the budget to search"
+        decisionRef: `north: pause the ${lastMonthName} brand campaign and move the budget to search`
       }),
       // A human ref, not "auto": the amount cleared the bound, so the move
       // waited for the growth lead's approval before any money shifted.
@@ -859,7 +864,7 @@ export async function seedSignal(ctx: SeedContext): Promise<void> {
       toRef: searchGoogle,
       amountMinor: 180_000,
       currency: "AED",
-      reason: "Bing's cost per policy sat a fifth above Google's across the first four days of January.",
+      reason: `Bing's cost per policy sat a fifth above Google's across the first four days of ${thisMonthName}.`,
       evidenceJson: JSON.stringify({
         window: { from: day(now - 5 * DAY), to: day(now - 2 * DAY) },
         cacPerPolicyMinor: { google_search: 20_700, bing_search: 22_800 },
@@ -915,7 +920,7 @@ export async function seedSignal(ctx: SeedContext): Promise<void> {
       requestedAt: now - 6 * DAY - 2 * HOUR,
       decidedBy: growthLead,
       decision: "approved",
-      reason: "December's numbers make the case. Approved for January only — revisit if cost per policy goes back above AED 220.",
+      reason: `${lastMonthName}'s numbers make the case. Approved for ${thisMonthName} only — revisit if cost per policy goes back above AED 220.`,
       contextJson: JSON.stringify({
         amountMinor: 1_500_000,
         currency: "AED",

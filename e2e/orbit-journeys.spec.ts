@@ -104,12 +104,11 @@ async function runRenewalsSweep(): Promise<string> {
     .where(eq(schema.tenants.slug, TENANT_SLUG));
   if (!tenant) throw new Error(`no tenant with slug ${TENANT_SLUG}`);
 
-  // seed.ts anchors every fixture date off its own fixed T0 (2026-01-06), not
-  // the real wall clock, so the renewal-eligible policy's endAt drifts further
-  // into the past every day this repo ages. Read the soonest-expiring active
-  // policy's own endAt and sweep as of that moment, instead of Date.now(),
-  // so the window check (endAt in [now, now+45d]) holds regardless of today's
-  // real date.
+  // Every fixture date hangs off the clock the database was seeded on, which
+  // is the moment `pnpm e2e` ran — not necessarily this moment. Read the
+  // soonest-expiring active policy's own endAt and sweep as of that instant
+  // rather than Date.now(), so the window check (endAt in [now, now+45d])
+  // holds however long the seeded database has been sitting around.
   const [soonest] = await db
     .select({ endAt: schema.axisPolicies.endAt })
     .from(schema.axisPolicies)

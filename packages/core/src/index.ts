@@ -21,6 +21,7 @@ export * from "./password.js";
 export * from "./signal-compliance.js";
 export * from "./totp.js";
 export * from "./seed.js";
+export * from "./seed/period.js";
 export * from "./whitespace.js";
 export * from "./words.js";
 export * from "./wording-diff.js";

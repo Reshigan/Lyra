@@ -1,5 +1,6 @@
 import { id, schema } from "@lyra/db";
 import { DAY, HOUR, MINUTE, type SeedContext } from "./context.js";
+import { monthName } from "./period.js";
 
 // The analytics workspace in the demo tenant. Every row here reports on data the
 // core seed has already written — Rania Haddad's motor quote, the four
@@ -787,7 +788,7 @@ export async function seedAnalytics(ctx: SeedContext): Promise<void> {
       // Dual control is the whole point: the analyst asked, the compliance
       // officer agreed, and the artefact says both.
       piiMasked: false,
-      piiJustification: "Regulator sample request REG-2026-014: named policyholders for the January motor book.",
+      piiJustification: `Regulator sample request REG-2026-014: named policyholders for the ${monthName(now)} motor book.`,
       watermark: `${ref("north.analyst")} · ${new Date(now - 30 * MINUTE).toISOString().slice(0, 19)}`,
       requestedBy: ref("north.analyst"),
       approvedBy: ref("tenant.compliance"),

@@ -509,6 +509,9 @@ authRoutes.post("/demo/clock", async (c) => {
 authRoutes.post("/demo/seed", async (c) => {
   demoOnly(c.env);
   const result = await seed(db(c.env) as unknown as CoreDb, {
+    // Seed on the real clock, not `seed()`'s fixed test default: a deployment
+    // people sign into needs its rolling windows to contain this week.
+    now: Date.now(),
     ...(c.env.ENVIRONMENT !== undefined ? { environment: c.env.ENVIRONMENT } : {})
   });
   return c.json({ tenantId: result.tenantId }, 201);

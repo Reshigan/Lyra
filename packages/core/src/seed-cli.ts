@@ -9,5 +9,11 @@ const db = makeLibsqlDb(
   process.env.DATABASE_AUTH_TOKEN
 ) as unknown as CoreDb;
 
-const result = await seed(db, process.env.SEED_PASSWORD ? { password: process.env.SEED_PASSWORD } : {});
+// `seed()` defaults to a fixed clock so unit tests get the same ULIDs every
+// run. A database someone signs into wants the opposite: the demo's rolling
+// windows ("this week", "last month") are empty if the fixture is a year old.
+const result = await seed(db, {
+  now: Date.now(),
+  ...(process.env.SEED_PASSWORD ? { password: process.env.SEED_PASSWORD } : {})
+});
 console.log(`seeded GONXT: ${result.tenantId}`);

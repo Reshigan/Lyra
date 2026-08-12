@@ -17,6 +17,7 @@ import { seedAxis } from "./seed/axis.js";
 import { seedCompliance } from "./seed/compliance.js";
 import { seedLedger } from "./seed/ledger.js";
 import { seedOnboarding } from "./seed/onboarding.js";
+import { dayKey, dayStart, monthKey, monthName, monthStart, quarterKey } from "./seed/period.js";
 import { seedOrbit } from "./seed/orbit.js";
 import { seedPlatform } from "./seed/platform.js";
 import { seedScout } from "./seed/scout.js";
@@ -1118,9 +1119,9 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
   // units (fils); every percent and ratio is basis points, and the scale is
   // carried in `targetJson` because the registry has no scale column.
   //
-  // Periods are literal strings for the same reason the case ref above is
-  // "GNX-2601-0001": the dataset is a January 2026 demo. Timestamps stay
-  // derived from `now` so an overridden clock still lands in order.
+  // Periods are derived from `now` (seed/period.ts), not written down: a demo
+  // provisioned in August must not narrate January, and a rolling window on a
+  // screen is empty if the data behind it is a year old.
   const BPS = "bps";
 
   const METRICS: ReadonlyArray<{
@@ -1423,14 +1424,12 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
   // The nightly rollup runs at 02:00Z: a daily period is written the morning
   // after it closes, a monthly period on the 1st, and the open month is
   // rewritten every night. Both are expressed as an offset from `now`.
-  const MONTHS = ["2025-10", "2025-11", "2025-12", "2026-01"] as const;
-  const MONTH_ROLLUP_DAYS_AGO: Record<(typeof MONTHS)[number], number> = {
-    "2025-10": 66,
-    "2025-11": 36,
-    "2025-12": 5,
-    "2026-01": 0 // month to date, rewritten this morning
-  };
-  const DAYS = ["2026-01-01", "2026-01-02", "2026-01-03", "2026-01-04", "2026-01-05"] as const;
+  // The three closed months plus the open one, and the five closed days.
+  const MONTHS = [monthKey(now, -3), monthKey(now, -2), monthKey(now, -1), monthKey(now)];
+  const DAYS = [5, 4, 3, 2, 1].map((back) => dayKey(now, -back));
+  /** A closed month lands on the 1st of the next; the open one is this morning's rerun. */
+  const monthRollupAt = (i: number): number =>
+    (i === MONTHS.length - 1 ? dayStart(now) : monthStart(now, i - 2)) + 2 * HOUR;
 
   const MONTHLY: Record<string, readonly [number, number, number, number]> = {
     gwp: [186_400_000, 201_750_000, 238_900_000, 74_300_000],
@@ -1457,9 +1456,9 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
       .map(([k, v]) => `${k}=${v}`)
       .join("&");
 
-  // December by channel and by underwriter — both sum to the December total,
-  // so drilling into the metric never disagrees with the headline.
-  const DECEMBER_SPLITS: ReadonlyArray<{ dims: Record<string, string>; value: number }> = [
+  // The last closed month by channel and by underwriter — both sum to that
+  // month's total, so drilling into the metric never disagrees with the headline.
+  const LAST_MONTH_SPLITS: ReadonlyArray<{ dims: Record<string, string>; value: number }> = [
     { dims: { channel: "gonxt-web" }, value: 96_420_000 },
     { dims: { channel: "gonxt-app" }, value: 41_880_000 },
     { dims: { channel: "gonxt-call" }, value: 14_320_000 },
@@ -1497,16 +1496,16 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
 
   for (const [key, series] of Object.entries(MONTHLY)) {
     MONTHS.forEach((period, i) => {
-      snapshot(key, "month", period, series[i]!, now - MONTH_ROLLUP_DAYS_AGO[period] * DAY - 6 * HOUR);
+      snapshot(key, "month", period!, series[i]!, monthRollupAt(i));
     });
   }
   for (const [key, series] of Object.entries(DAILY)) {
     DAYS.forEach((period, i) => {
-      snapshot(key, "day", period, series[i]!, now - (4 - i) * DAY - 6 * HOUR);
+      snapshot(key, "day", period!, series[i]!, dayStart(now, i - 4) + 2 * HOUR);
     });
   }
-  for (const split of DECEMBER_SPLITS) {
-    snapshot("gwp", "month", "2025-12", split.value, now - 5 * DAY - 6 * HOUR, split.dims);
+  for (const split of LAST_MONTH_SPLITS) {
+    snapshot("gwp", "month", MONTHS[2]!, split.value, monthRollupAt(2), split.dims);
   }
   await db.insert(schema.northSnapshots).values(snapshotRows);
 
@@ -1537,17 +1536,28 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
     callCentre: id("dec", now + 5)
   };
 
+  // Every label a briefing reads is relative to the seed clock — the demo is
+  // provisioned whenever it is provisioned, and must narrate that month rather
+  // than the one this file was written in.
+  const lastMonth = monthKey(now, -1);
+  const lastMonthName = monthName(now, -1);
+  const priorMonthName = monthName(now, -2);
+  const lastMonthAr = monthName(now, -1, "ar-AE");
+  const priorMonthAr = monthName(now, -2, "ar-AE");
+  const thisQuarter = quarterKey(now).slice(5);
+  const lastQuarter = quarterKey(now, -1).slice(5);
+
   await db.insert(schema.northBriefings).values([
     {
       id: briefingIds.jan05En,
       tenantId,
-      // 2026-01-06/exec/en is deliberately left free: J-E1 generates that
-      // briefing at runtime and the unique index would reject a second one.
-      date: "2026-01-05",
+      // Today/exec/en is deliberately left free: J-E1 generates that briefing at
+      // runtime and the unique index would reject a second one.
+      date: dayKey(now, -1),
       audience: "exec",
       locale: "en",
-      narrativeRef: `December closed at AED 2,389,000 of gross written premium, the best month \
-of the year and 18.4% above November. Motor on the web and app channels drove \
+      narrativeRef: `${lastMonthName} closed at AED 2,389,000 of gross written premium, the best month \
+of the year and 18.4% above ${priorMonthName}. Motor on the web and app channels drove \
 almost all of the increase; nothing in the mix suggests a one-off.
 
 Broker share reached 36.1% of premium. Alpha Brokers and the Meridian embed \
@@ -1560,21 +1570,21 @@ owner yet.`,
       highlightsJson: JSON.stringify([
         {
           metricKey: "gwp",
-          period: "2025-12",
+          period: lastMonth,
           value: 238_900_000,
           deltaBps: 1_841,
-          note: "December closed above every prior month, led by motor on the web and app channels."
+          note: `${lastMonthName} closed above every prior month, led by motor on the web and app channels.`
         },
         {
           metricKey: "broker_channel_share",
-          period: "2025-12",
+          period: lastMonth,
           value: 3_611,
           deltaBps: 683,
           note: "Alpha Brokers and the Meridian embed together wrote just over a third of premium."
         },
         {
           metricKey: "quote_to_bind_rate",
-          period: "2026-01-05",
+          period: dayKey(now, -1),
           value: 1_890,
           deltaBps: -1_923,
           note: "Yesterday's conversion fell well below the five-day average; see the open anomaly."
@@ -1590,11 +1600,11 @@ owner yet.`,
     {
       id: briefingIds.jan05Ar,
       tenantId,
-      date: "2026-01-05",
+      date: dayKey(now, -1),
       audience: "exec",
       locale: "ar",
-      narrativeRef: `أغلق ديسمبر عند 2,389,000 درهم من إجمالي الأقساط المكتتبة، وهو أفضل شهر في \
-السنة وبزيادة 18.4% عن نوفمبر. جاء معظم النمو من تأمين المركبات عبر الموقع \
+      narrativeRef: `أغلق ${lastMonthAr} عند 2,389,000 درهم من إجمالي الأقساط المكتتبة، وهو أفضل شهر في \
+السنة وبزيادة 18.4% عن ${priorMonthAr}. جاء معظم النمو من تأمين المركبات عبر الموقع \
 والتطبيق.
 
 تحسّن الاحتفاظ عند التجديد إلى 83.1% للشهر الثالث على التوالي، ويعود ذلك في \
@@ -1605,14 +1615,14 @@ owner yet.`,
       highlightsJson: JSON.stringify([
         {
           metricKey: "gwp",
-          period: "2025-12",
+          period: lastMonth,
           value: 238_900_000,
           deltaBps: 1_841,
-          note: "أغلق ديسمبر أعلى من كل الأشهر السابقة، بقيادة تأمين المركبات عبر الموقع والتطبيق."
+          note: `أغلق ${lastMonthAr} أعلى من كل الأشهر السابقة، بقيادة تأمين المركبات عبر الموقع والتطبيق.`
         },
         {
           metricKey: "renewal_retention",
-          period: "2025-12",
+          period: lastMonth,
           value: 8_310,
           deltaBps: 323,
           note: "تحسّن الاحتفاظ عند التجديد للشهر الثالث على التوالي."
@@ -1628,7 +1638,7 @@ owner yet.`,
     {
       id: briefingIds.jan04En,
       tenantId,
-      date: "2026-01-04",
+      date: dayKey(now, -2),
       audience: "exec",
       locale: "en",
       narrativeRef: `Sixty-one policies issued yesterday, the strongest issuing day of the new \
@@ -1641,14 +1651,14 @@ panel and is the whole of the gap.`,
       highlightsJson: JSON.stringify([
         {
           metricKey: "policies_issued",
-          period: "2026-01-04",
+          period: dayKey(now, -2),
           value: 61,
           deltaBps: 1_731,
           note: "Best issuing day of the new year so far, mostly motor renewals coming back."
         },
         {
           metricKey: "quote_latency_p95",
-          period: "2026-01-04",
+          period: dayKey(now, -2),
           value: 3_040,
           deltaBps: 3_160,
           note: "Panel latency drifted above target; the manual-priced Oryx row is the slowest leg."
@@ -1664,40 +1674,40 @@ panel and is the whole of the gap.`,
     {
       id: briefingIds.jan02Board,
       tenantId,
-      date: "2026-01-02",
+      date: dayKey(now, -4),
       audience: "board",
       locale: "en",
-      narrativeRef: `Q4 finished ahead of plan on premium and slightly behind on acquisition \
-cost. December alone wrote AED 2,389,000, up 18.4% on the prior month.
+      narrativeRef: `${lastQuarter} finished ahead of plan on premium and slightly behind on acquisition \
+cost. ${lastMonthName} alone wrote AED 2,389,000, up 18.4% on the prior month.
 
 The book grew in every month of the quarter and ended at 4,608 active \
 policies, up 5.7%.
 
 The one item for the board is the own-paper loss ratio, which widened to \
-64.2% in December. It is one month, not a trend, but it is the number that \
-would change the Q1 plan if it holds. This draft is in review and has not \
+64.2% in ${lastMonthName}. It is one month, not a trend, but it is the number that \
+would change the ${thisQuarter} plan if it holds. This draft is in review and has not \
 been circulated.`,
       highlightsJson: JSON.stringify([
         {
           metricKey: "gwp",
-          period: "2025-12",
+          period: lastMonth,
           value: 238_900_000,
           deltaBps: 1_841,
-          note: "Q4 finished ahead of plan on premium and slightly behind on acquisition cost."
+          note: `${lastQuarter} finished ahead of plan on premium and slightly behind on acquisition cost.`
         },
         {
           metricKey: "active_policies",
-          period: "2025-12",
+          period: lastMonth,
           value: 4_608,
           deltaBps: 566,
           note: "The book grew every month of the quarter."
         },
         {
           metricKey: "loss_ratio",
-          period: "2025-12",
+          period: lastMonth,
           value: 6_420,
           deltaBps: 736,
-          note: "Own-paper loss ratio widened in December and is worth a closer look in Q1."
+          note: `Own-paper loss ratio widened in ${lastMonthName} and is worth a closer look in ${thisQuarter}.`
         }
       ]),
       anomaliesJson: JSON.stringify([anomalyIds.december]),
@@ -1710,28 +1720,28 @@ been circulated.`,
     {
       id: briefingIds.dec31Investor,
       tenantId,
-      date: "2025-12-31",
+      date: dayKey(now, -6),
       audience: "investor",
       locale: "en",
-      narrativeRef: `Retained commission for December was AED 226,950, tracking premium at 18.4% \
+      narrativeRef: `Retained commission for ${lastMonthName} was AED 226,950, tracking premium at 18.4% \
 growth. The shift toward b2b volume did not dilute the margin, which is the \
 question this mix shift was always going to raise.
 
 Acquisition cost per policy improved for the third consecutive month to \
 AED 189. The improvement is organic — paid spend was flat over the quarter.
 
-This is a draft and the December figures are unaudited.`,
+This is a draft and the ${lastMonthName} figures are unaudited.`,
       highlightsJson: JSON.stringify([
         {
           metricKey: "net_commission",
-          period: "2025-12",
+          period: lastMonth,
           value: 22_695_000,
           deltaBps: 1_842,
           note: "Retained commission tracked premium; the b2b mix shift did not dilute the margin."
         },
         {
           metricKey: "cac_per_policy",
-          period: "2025-12",
+          period: lastMonth,
           value: 18_900,
           deltaBps: -620,
           note: "Acquisition cost per policy improved for the third month."
@@ -1754,7 +1764,7 @@ This is a draft and the December figures are unaudited.`,
       id: anomalyIds.bindRate,
       tenantId,
       metricKey: "quote_to_bind_rate",
-      window: "2026-01-05",
+      window: dayKey(now, -1),
       magnitude: -1_923,
       expected: 2_340,
       actual: 1_890,
@@ -1776,7 +1786,7 @@ This is a draft and the December figures are unaudited.`,
       id: anomalyIds.panelResponse,
       tenantId,
       metricKey: "panel_response_rate",
-      window: "2026-01-01..2026-01-05",
+      window: `${dayKey(now, -5)}..${dayKey(now, -1)}`,
       magnitude: -861,
       expected: 9_640,
       actual: 8_810,
@@ -1798,13 +1808,13 @@ This is a draft and the December figures are unaudited.`,
       id: anomalyIds.cac,
       tenantId,
       metricKey: "cac_per_policy",
-      window: "2026-01",
+      window: monthKey(now),
       magnitude: 2_813,
       expected: 19_200,
       actual: 24_600,
       driverAnalysisJson: JSON.stringify({
         method: "period_over_period",
-        baseline: "2025-12",
+        baseline: lastMonth,
         drivers: [
           { dimension: "channel", key: "gonxt-web", contributionBps: 1_940 },
           { dimension: "channel", key: "gonxt-app", contributionBps: 873 }
@@ -1819,7 +1829,7 @@ This is a draft and the December figures are unaudited.`,
       id: anomalyIds.december,
       tenantId,
       metricKey: "gwp",
-      window: "2025-12",
+      window: lastMonth,
       magnitude: 1_269,
       expected: 212_000_000,
       actual: 238_900_000,
@@ -1827,7 +1837,7 @@ This is a draft and the December figures are unaudited.`,
         method: "seasonal",
         baseline: "trailing_12_month_seasonal",
         drivers: [{ dimension: "line", key: "motor", contributionBps: 1_104 }],
-        note: "December renewals land in the same week every year."
+        note: `${lastMonthName} renewals land in the same week every year.`
       }),
       state: "dismissed",
       linkedActionRef: null,
@@ -1838,7 +1848,7 @@ This is a draft and the December figures are unaudited.`,
       id: anomalyIds.latency,
       tenantId,
       metricKey: "quote_latency_p95",
-      window: "2026-01-04",
+      window: dayKey(now, -2),
       magnitude: 6_606,
       expected: 2_180,
       actual: 3_620,
@@ -1931,7 +1941,7 @@ This is a draft and the December figures are unaudited.`,
         quoteLatencyP95DeltaMs: -980,
         quoteToBindRateDeltaBps: 140,
         gwpDeltaMinor: 7_200_000,
-        note: "Recovers most of the response-rate drift seen across the first week of January."
+        note: `Recovers most of the response-rate drift seen across the first week of ${monthName(now)}.`
       }),
       author: "rana.hadid",
       sharedWithJson: JSON.stringify(["dana.aziz"]),
@@ -1947,8 +1957,8 @@ This is a draft and the December figures are unaudited.`,
     {
       id: boardpackIds.q4,
       tenantId,
-      period: "2025-Q4",
-      title: "Q4 2025 board pack",
+      period: quarterKey(now, -1),
+      title: `${quarterKey(now, -1).slice(5)} ${quarterKey(now, -1).slice(0, 4)} board pack`,
       sectionsJson: JSON.stringify([
         { key: "growth", metricKeys: ["gwp", "policies_issued", "active_policies"] },
         { key: "distribution_mix", metricKeys: ["broker_channel_share"] },
@@ -1971,8 +1981,8 @@ This is a draft and the December figures are unaudited.`,
     {
       id: boardpackIds.q1,
       tenantId,
-      period: "2026-Q1",
-      title: "Q1 2026 board pack",
+      period: quarterKey(now),
+      title: `${thisQuarter} ${quarterKey(now).slice(0, 4)} board pack`,
       sectionsJson: JSON.stringify([
         { key: "growth", metricKeys: ["gwp", "policies_issued", "active_policies"] },
         { key: "panel_health", metricKeys: ["panel_response_rate", "quote_latency_p95"] },
@@ -2048,7 +2058,7 @@ This is a draft and the December figures are unaudited.`,
     {
       id: decisionIds.campaign,
       tenantId,
-      title: "Pause the December brand campaign and move the budget to search",
+      title: `Pause the ${lastMonthName} brand campaign and move the budget to search`,
       contextRef: `north_briefing:${briefingIds.dec31Investor}`,
       optionsJson: JSON.stringify([
         { key: "move_to_search", label: "Move the remaining budget to search" },
@@ -2089,7 +2099,7 @@ This is a draft and the December figures are unaudited.`,
         before: 5_980,
         after: 6_420,
         verdict: "mixed",
-        note: "The band stayed profitable but the December loss ratio is worth watching in Q1."
+        note: `The band stayed profitable but the ${lastMonthName} loss ratio is worth watching in ${thisQuarter}.`
       }),
       status: "reviewed",
       createdAt: now - 30 * DAY,

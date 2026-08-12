@@ -2,6 +2,7 @@ import { id, schema } from "@lyra/db";
 import { splitCommission } from "../commission.js";
 import { canonicalJson, sha256Hex } from "../crypto.js";
 import { DAY, HOUR, MINUTE, type SeedContext } from "./context.js";
+import { dayName } from "./period.js";
 
 // ORBIT is the service side of the same story the core seed tells: Rania Haddad
 // bought motor cover on Cedar's row through the web channel, and last year's
@@ -37,6 +38,10 @@ export async function seedOrbit(ctx: SeedContext): Promise<void> {
     misfire: id("aia", now + 4)
   };
   const renewalWindow = ctx.now + 4 * DAY; // the retention desk works the book on day 4
+  // The two dates the retention thread talks about, read off the policies
+  // themselves so the conversation and the record never disagree.
+  const coverEnds = dayName(now + 20 * DAY);
+  const boughtOn = dayName(ctx.issuedAt);
 
   const hash = async (value: unknown): Promise<string> => sha256Hex(canonicalJson(value));
 
@@ -404,7 +409,7 @@ export async function seedOrbit(ctx: SeedContext): Promise<void> {
       tenantId,
       conversationId: conv.renewal,
       role: "system",
-      content: "Renewal sweep raised CDR-MOT-2501-664118. Cover ends 26 January; retention owns the outreach.",
+      content: `Renewal sweep raised CDR-MOT-2501-664118. Cover ends ${coverEnds}; retention owns the outreach.`,
       ts: renewalWindow
     },
     {
@@ -413,7 +418,7 @@ export async function seedOrbit(ctx: SeedContext): Promise<void> {
       conversationId: conv.renewal,
       role: "agent_ai",
       content:
-        "Hello Rania — your motor cover CDR-MOT-2501-664118 ends on 26 January. I can hold your current price for seven days, or bring you three fresh quotes from the panel. Which would you prefer?",
+        `Hello Rania — your motor cover CDR-MOT-2501-664118 ends on ${coverEnds}. I can hold your current price for seven days, or bring you three fresh quotes from the panel. Which would you prefer?`,
       aiAuditId: audit.outreach,
       deliveryStatus: "read",
       externalRef: "wamid.HBgMOTcxNTAxMjM0NTY3AA01",
@@ -435,7 +440,7 @@ export async function seedOrbit(ctx: SeedContext): Promise<void> {
       conversationId: conv.renewal,
       role: "agent_human",
       content:
-        "You don't — the cover you bought on 8 January (CDR-MOT-2601-778201) starts before the old one ends, so we'll let CDR-MOT-2501-664118 run to its expiry date and close it there. Nothing to pay.",
+        `You don't — the cover you bought on ${boughtOn} (CDR-MOT-2601-778201) starts before the old one ends, so we'll let CDR-MOT-2501-664118 run to its expiry date and close it there. Nothing to pay.`,
       deliveryStatus: "delivered",
       externalRef: "wamid.HBgMOTcxNTAxMjM0NTY3AA03",
       ts: renewalWindow + 46 * MINUTE
@@ -550,7 +555,7 @@ export async function seedOrbit(ctx: SeedContext): Promise<void> {
     outputRef: audit.closingDraft,
     confidence: 78,
     evidenceJson: JSON.stringify([
-      { kind: "policy", ref: ctx.renewalPolicyId, label: "CDR-MOT-2501-664118 expires 26 Jan" },
+      { kind: "policy", ref: ctx.renewalPolicyId, label: `CDR-MOT-2501-664118 expires ${coverEnds}` },
       { kind: "policy", ref: ctx.policyId, label: "CDR-MOT-2601-778201 already in force" },
       { kind: "nbo", ref: ctx.customerId, label: "motor → home, score 72" }
     ]),
@@ -595,7 +600,7 @@ export async function seedOrbit(ctx: SeedContext): Promise<void> {
       fromRef: sara,
       toRef: yusuf,
       summary:
-        "Rania re-bought on the web on 8 January. Treat CDR-MOT-2501-664118 as replaced, confirm the NCD carried, don't re-quote.",
+        `Rania re-bought on the web on ${boughtOn}. Treat CDR-MOT-2501-664118 as replaced, confirm the NCD carried, don't re-quote.`,
       factsJson: JSON.stringify({
         newPolicy: "CDR-MOT-2601-778201",
         expiringPolicy: "CDR-MOT-2501-664118",

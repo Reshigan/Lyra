@@ -313,7 +313,7 @@ describe("seedOrbit — orbit_messages", () => {
     ]);
     // Opening system message: no aiAuditId, no deliveryStatus, no externalRef.
     expect(rows[0]!.content).toBe(
-      "Renewal sweep raised CDR-MOT-2501-664118. Cover ends 26 January; retention owns the outreach."
+      "Renewal sweep raised CDR-MOT-2501-664118. Cover ends 9 April; retention owns the outreach."
     );
     expect(rows[0]!.aiAuditId).toBeNull();
     expect(rows[0]!.deliveryStatus).toBeNull();
@@ -425,7 +425,7 @@ describe("seedOrbit — ai_runs", () => {
     );
 
     expect(JSON.parse(row.evidenceJson!)).toEqual([
-      { kind: "policy", ref: RENEWAL_POLICY_ID, label: "CDR-MOT-2501-664118 expires 26 Jan" },
+      { kind: "policy", ref: RENEWAL_POLICY_ID, label: "CDR-MOT-2501-664118 expires 9 April" },
       { kind: "policy", ref: POLICY_ID, label: "CDR-MOT-2601-778201 already in force" },
       { kind: "nbo", ref: CUSTOMER_ID, label: "motor → home, score 72" }
     ]);

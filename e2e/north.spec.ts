@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { dayKey } from "@lyra/core";
 import { expectNoA11yViolations } from "./a11y.js";
 import { chooseOption, goto, loginAsNorthExec } from "./fixtures.js";
 
@@ -24,11 +25,14 @@ test("J-E1 exec reads the morning briefing on a phone and assigns an action on t
   // ambiguity.
   // The kind column reads as words now (core `humanise`), so the row says
   // "Executive", not the stored `exec`.
-  const briefingRow = page.getByRole("row", { name: /2026-01-05 Executive en/ });
+  // The seed clock is the clock the database was seeded on, so the briefing
+  // date moves with it: yesterday, whenever `pnpm e2e` runs.
+  const yesterday = dayKey(Date.now(), -1);
+  const briefingRow = page.getByRole("row", { name: new RegExp(`${yesterday} Executive en`) });
   await expect(briefingRow).toBeVisible();
   await expect(briefingRow.getByText("Published")).toBeVisible();
-  await briefingRow.getByRole("link", { name: "2026-01-05" }).click();
-  await expect(page.getByRole("heading", { name: "2026-01-05", level: 1 })).toBeVisible();
+  await briefingRow.getByRole("link", { name: yesterday }).click();
+  await expect(page.getByRole("heading", { name: yesterday, level: 1 })).toBeVisible();
   await expectNoA11yViolations(page);
 
   await goto(page, "/north/anomalies");

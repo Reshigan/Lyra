@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { monthKey } from "@lyra/core";
 import { goto, loginAsAxisLead, loginAsFinanceController } from "./fixtures.js";
 
 // J-X2 "the save desk" (docs/06-roles-and-journeys.md): the acceptance test
@@ -53,15 +54,16 @@ test("J-X2 an above-threshold policy is refused for dual control (axis.bind) @jo
 // form for a brand-new channel has no commission entries, hence net AED 0.00
 // and no Approve button. The seed already carries one non-zero draft —
 // packages/core/src/seed/settlement.ts's `stlDraft`, channel brokerAlpha,
-// period "2026-01" (the seed clock's `now`, not the real date) — so this
-// opens that row instead of drafting a fresh, entry-less one.
+// period = the month the database was seeded in — so this opens that row
+// instead of drafting a fresh, entry-less one.
 test("J-X2 approving a settlement run is always refused for dual control (dist.settlement_run) @journey:J-X2", async ({
   page
 }) => {
   await loginAsFinanceController(page);
 
   await goto(page, "/ledger/settlement");
-  const row = page.getByRole("row", { name: /2026-01/ }).filter({ hasText: "Draft" });
+  // The draft settlement run is always the seed clock's current month.
+  const row = page.getByRole("row", { name: new RegExp(monthKey(Date.now())) }).filter({ hasText: "Draft" });
   await expect(row).toBeVisible();
   await row.getByRole("link", { name: "Open" }).click();
 

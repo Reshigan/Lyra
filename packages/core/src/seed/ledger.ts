@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { id, schema } from "@lyra/db";
 import { applyPpm, splitCommission } from "../commission.js";
 import { DAY, HOUR, MINUTE, accountByCode, type SeedContext } from "./context.js";
+import { monthKey, monthName, monthStart as utcMonthStart } from "./period.js";
 
 // docs/19 — the money the rest of the demo implies. Axis sells Rania Haddad a
 // motor policy; that sale is not real until the premium sits in client money,
@@ -52,14 +53,14 @@ export async function seedLedger(ctx: SeedContext): Promise<void> {
   // Periods are created on first posting in production; the seed opens the three
   // months its batches land in so the close screen has an open month, a month
   // waiting on adjustments and a frozen one.
-  const monthStart = (delta: number): number => {
-    const d = new Date(now);
-    return Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + delta, 1);
-  };
-  const codeOf = (at: number): string => new Date(at).toISOString().slice(0, 7);
-  const thisMonth = codeOf(now);
-  const lastMonth = codeOf(monthStart(-1));
-  const monthBefore = codeOf(monthStart(-2));
+  const monthStart = (delta: number): number => utcMonthStart(now, delta);
+  const thisMonth = monthKey(now);
+  const lastMonth = monthKey(now, -1);
+  const monthBefore = monthKey(now, -2);
+  // Memos and invoice lines name their month in prose, and a statement that
+  // says December while the period chip beside it says 2026-07 is a bug report.
+  const thisMonthName = monthName(now);
+  const lastMonthName = monthName(now, -1);
 
   const checklist = (code: string): string =>
     JSON.stringify([
@@ -78,7 +79,7 @@ export async function seedLedger(ctx: SeedContext): Promise<void> {
     [0, "open"],
     [1, "open"]
   ] as const) {
-    const code = codeOf(monthStart(delta));
+    const code = monthKey(now, delta);
     const periodId = nid("per");
     periodIds[code] = periodId;
     await db.insert(schema.ledgerPeriods).values({
@@ -624,7 +625,7 @@ export async function seedLedger(ctx: SeedContext): Promise<void> {
       postedBy: "system:scheduler",
       postedAt: decMid + MINUTE,
       lines: [
-        { code: "1100", side: "debit", amountMinor: 386_400, memo: "December commission due from Cedar", dims: cedarDims },
+        { code: "1100", side: "debit", amountMinor: 386_400, memo: `${lastMonthName} commission due from Cedar`, dims: cedarDims },
         { code: "4000", side: "credit", amountMinor: 331_200, memo: "new business commission", dims: cedarDims },
         { code: "4010", side: "credit", amountMinor: 55_200, memo: "renewal commission", dims: cedarDims }
       ]
@@ -640,7 +641,7 @@ export async function seedLedger(ctx: SeedContext): Promise<void> {
       lines: [
         { code: "1000", side: "debit", amountMinor: 384_120, memo: "Cedar remittance received", dims: cedarDims },
         { code: "5300", side: "debit", amountMinor: 2_280, memo: "bank handling fee", dims: cedarDims },
-        { code: "1100", side: "credit", amountMinor: 386_400, memo: "December receivable cleared", dims: cedarDims }
+        { code: "1100", side: "credit", amountMinor: 386_400, memo: `${lastMonthName} receivable cleared`, dims: cedarDims }
       ]
     },
     {
@@ -680,7 +681,7 @@ export async function seedLedger(ctx: SeedContext): Promise<void> {
       txnId: txPremCollect,
       currency: BASE,
       fxRatePpm: 1_000_000,
-      periodCode: codeOf(issuedAt),
+      periodCode: monthKey(issuedAt),
       postedBy: `customer:${ctx.customerId}`,
       postedAt: issuedAt + 5 * MINUTE,
       lines: [
@@ -693,7 +694,7 @@ export async function seedLedger(ctx: SeedContext): Promise<void> {
       txnId: txBindRania,
       currency: BASE,
       fxRatePpm: 1_000_000,
-      periodCode: codeOf(issuedAt),
+      periodCode: monthKey(issuedAt),
       postedBy: agent,
       postedAt: issuedAt + 6 * MINUTE,
       lines: [
@@ -706,7 +707,7 @@ export async function seedLedger(ctx: SeedContext): Promise<void> {
       txnId: txPremRemit,
       currency: BASE,
       fxRatePpm: 1_000_000,
-      periodCode: codeOf(issuedAt),
+      periodCode: monthKey(issuedAt),
       postedBy: "system:scheduler",
       postedAt: issuedAt + 3 * HOUR + MINUTE,
       lines: [
@@ -724,7 +725,7 @@ export async function seedLedger(ctx: SeedContext): Promise<void> {
       postedAt: now + HOUR + MINUTE,
       lines: [
         { code: "1160", side: "debit", amountMinor: 472_500, memo: "INV-2026-0051 Alpha Brokers portal" },
-        { code: "2300", side: "credit", amountMinor: 450_000, memo: "January subscription, not yet earned" },
+        { code: "2300", side: "credit", amountMinor: 450_000, memo: `${thisMonthName} subscription, not yet earned` },
         { code: "2200", side: "credit", amountMinor: 22_500, memo: "VAT at 5%" }
       ]
     },
@@ -737,7 +738,7 @@ export async function seedLedger(ctx: SeedContext): Promise<void> {
       postedBy: "system:billing",
       postedAt: now + 2 * HOUR + MINUTE,
       lines: [
-        { code: "2300", side: "debit", amountMinor: 450_000, memo: "January portion earned" },
+        { code: "2300", side: "debit", amountMinor: 450_000, memo: `${thisMonthName} portion earned` },
         { code: "4040", side: "credit", amountMinor: 450_000, memo: "subscription revenue recognised" }
       ]
     },
@@ -1072,7 +1073,7 @@ export async function seedLedger(ctx: SeedContext): Promise<void> {
       taxMinor: 22_500,
       totalMinor: 472_500,
       currency: BASE,
-      linesJson: JSON.stringify([line("Broker portal, growth — December", 1, 450_000)]),
+      linesJson: JSON.stringify([line(`Broker portal, growth — ${lastMonthName}`, 1, 450_000)]),
       state: "paid",
       dueAt: monthStart(0) - DAY,
       issuedAt: monthStart(-1) + DAY,
@@ -1090,7 +1091,7 @@ export async function seedLedger(ctx: SeedContext): Promise<void> {
       taxMinor: 22_500,
       totalMinor: 472_500,
       currency: BASE,
-      linesJson: JSON.stringify([line("Broker portal, growth — January", 1, 450_000)]),
+      linesJson: JSON.stringify([line(`Broker portal, growth — ${thisMonthName}`, 1, 450_000)]),
       state: "issued",
       dueAt: now + 9 * DAY,
       issuedAt: now + HOUR,
@@ -1108,7 +1109,7 @@ export async function seedLedger(ctx: SeedContext): Promise<void> {
       taxMinor: 90_000,
       totalMinor: 1_890_000,
       currency: BASE,
-      linesJson: JSON.stringify([line("Embedded distribution, enterprise — January", 1, 1_800_000)]),
+      linesJson: JSON.stringify([line(`Embedded distribution, enterprise — ${thisMonthName}`, 1, 1_800_000)]),
       state: "issued",
       dueAt: now + 24 * DAY,
       issuedAt: now + HOUR,
@@ -1127,7 +1128,7 @@ export async function seedLedger(ctx: SeedContext): Promise<void> {
       taxMinor: 6_000,
       totalMinor: 126_000,
       currency: BASE,
-      linesJson: JSON.stringify([line("Insurer portal, standard — January", 1, 120_000)]),
+      linesJson: JSON.stringify([line(`Insurer portal, standard — ${thisMonthName}`, 1, 120_000)]),
       state: "draft",
       createdAt: now + HOUR,
       updatedAt: now + HOUR
@@ -1161,7 +1162,7 @@ export async function seedLedger(ctx: SeedContext): Promise<void> {
       taxMinor: 4_750,
       totalMinor: 99_750,
       currency: BASE,
-      linesJson: JSON.stringify([line("Insurer portal, standard — January", 1, 95_000)]),
+      linesJson: JSON.stringify([line(`Insurer portal, standard — ${thisMonthName}`, 1, 95_000)]),
       state: "overdue",
       dueAt: now - 3 * DAY,
       issuedAt: now - 18 * DAY,
@@ -1231,7 +1232,7 @@ export async function seedLedger(ctx: SeedContext): Promise<void> {
       tenantId,
       invoiceId: invFalcon,
       accountCode: "4060",
-      period: codeOf(monthStart(1)),
+      period: monthKey(now, 1),
       plannedMinor: 40_000,
       recognizedMinor: 0,
       currency: "USD",
@@ -1242,7 +1243,7 @@ export async function seedLedger(ctx: SeedContext): Promise<void> {
       tenantId,
       invoiceId: invFalcon,
       accountCode: "4060",
-      period: codeOf(monthStart(2)),
+      period: monthKey(now, 2),
       plannedMinor: 40_000,
       recognizedMinor: 0,
       currency: "USD",
@@ -1254,7 +1255,7 @@ export async function seedLedger(ctx: SeedContext): Promise<void> {
       tenantId,
       invoiceId: invMeridianJan,
       accountCode: "4040",
-      period: codeOf(monthStart(1)),
+      period: monthKey(now, 1),
       plannedMinor: 1_800_000,
       recognizedMinor: 0,
       currency: BASE,

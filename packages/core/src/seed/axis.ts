@@ -1,5 +1,6 @@
 import { id, schema } from "@lyra/db";
 import { DAY, HOUR, MINUTE, type SeedContext } from "./context.js";
+import { monthKey } from "./period.js";
 
 // AXIS is the operations floor, and the core seed has already put the one case
 // that matters on it: GNX-2601-0001, Rania Haddad's motor bind, won on Cedar's
@@ -484,7 +485,7 @@ export async function seedAxis(ctx: SeedContext): Promise<void> {
       // `closedBy` on its own would be a claim with no evidence behind it.
       id: escrowNovCedar,
       tenantId,
-      period: "2025-11",
+      period: monthKey(now, -2),
       providerId: ctx.providers.cedar,
       expectedMinor: 3_482_500,
       receivedMinor: 3_482_500,
@@ -503,7 +504,7 @@ export async function seedAxis(ctx: SeedContext): Promise<void> {
       // hit the pending approval rather than write through it.
       id: escrowDecCedar,
       tenantId,
-      period: "2025-12",
+      period: monthKey(now, -1),
       providerId: ctx.providers.cedar,
       expectedMinor: 4_115_000,
       receivedMinor: 4_115_000,
@@ -515,7 +516,7 @@ export async function seedAxis(ctx: SeedContext): Promise<void> {
     {
       id: id("esc", now - 32 * DAY + 1),
       tenantId,
-      period: "2025-12",
+      period: monthKey(now, -1),
       providerId: ctx.providers.falcon,
       expectedMinor: 2_248_000,
       receivedMinor: 2_229_500,
@@ -531,7 +532,7 @@ export async function seedAxis(ctx: SeedContext): Promise<void> {
     {
       id: id("esc", now - 32 * DAY + 2),
       tenantId,
-      period: "2025-12",
+      period: monthKey(now, -1),
       providerId: ctx.providers.gulfHealth,
       expectedMinor: 5_640_000,
       receivedMinor: 3_120_000,
@@ -544,7 +545,7 @@ export async function seedAxis(ctx: SeedContext): Promise<void> {
       // The month in flight: premiums are accruing, nothing has been remitted.
       id: id("esc", now - 5 * DAY),
       tenantId,
-      period: "2026-01",
+      period: monthKey(now),
       providerId: ctx.providers.cedar,
       expectedMinor: 1_236_500,
       currency: "AED",
@@ -555,7 +556,7 @@ export async function seedAxis(ctx: SeedContext): Promise<void> {
     {
       id: id("esc", now - 5 * DAY + 1),
       tenantId,
-      period: "2026-01",
+      period: monthKey(now),
       providerId: ctx.providers.falcon,
       expectedMinor: 892_000,
       currency: "AED",

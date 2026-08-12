@@ -1,6 +1,7 @@
 import { id, schema } from "@lyra/db";
 import { sha256Hex } from "../crypto.js";
 import { DAY, HOUR, MINUTE, type SeedContext } from "./context.js";
+import { dayKey, monthName } from "./period.js";
 
 // The admin workspace is where an operator answers "what did this platform
 // actually do?". Empty tables answer nothing, so every screen under /admin gets
@@ -216,7 +217,7 @@ export async function seedAdmin(ctx: SeedContext): Promise<void> {
       requestedAt: now - 5 * DAY,
       decidedBy: admin,
       decision: "approved",
-      reason: "December commission statement reconciles to the ledger with no unmatched lines.",
+      reason: `${monthName(now, -1)} commission statement reconciles to the ledger with no unmatched lines.`,
       contextJson: JSON.stringify({ amountMinor: 1_284_000, currency: "AED", dualControl: true }),
       decidedAt: now - 4 * DAY
     },
@@ -652,7 +653,7 @@ export async function seedAdmin(ctx: SeedContext): Promise<void> {
       userId: exec,
       kind: "report",
       titleKey: "north.briefing.ready",
-      paramsJson: JSON.stringify({ period: "2026-01-04" }),
+      paramsJson: JSON.stringify({ period: dayKey(now, -2) }),
       subjectRef: `north-briefings:2026-01-04`,
       readAt: now - 3 * DAY + HOUR,
       createdAt: now - 3 * DAY

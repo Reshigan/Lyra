@@ -1,5 +1,6 @@
 import { id, schema } from "@lyra/db";
 import { DAY, HOUR, MINUTE, type SeedContext } from "./context.js";
+import { monthKey, monthName } from "./period.js";
 
 // SCOUT is the only workspace whose rows are all inferences, so the seed has to
 // show its working: every number below is something GONXT computed from its own
@@ -115,7 +116,7 @@ export async function seedScout(ctx: SeedContext): Promise<void> {
       // theme being re-drafted as a whitespace every quarter.
       theme: "Competitor brand advertising",
       summary:
-        "A December spike in competitor brand terms that has not recurred. Kept as a closed theme so the next spike is compared against it instead of being read as new.",
+        `A ${monthName(now, -1)} spike in competitor brand terms that has not recurred. Kept as a closed theme so the next spike is compared against it instead of being read as new.`,
       momentumScore: 9,
       size: 41,
       firstSeen: now - 45 * DAY,
@@ -234,7 +235,7 @@ export async function seedScout(ctx: SeedContext): Promise<void> {
         by: "tariq.mansour",
         at: now - 25 * DAY,
         reason:
-          "The spike is GONXT's own December brand campaign showing up in its own harvester. It is our spend, not market demand, so the weight is zero and the signal is unclustered."
+          `The spike is GONXT's own ${monthName(now, -1)} brand campaign showing up in its own harvester. It is our spend, not market demand, so the weight is zero and the signal is unclustered.`
       }
     })
   ]);
@@ -434,41 +435,41 @@ export async function seedScout(ctx: SeedContext): Promise<void> {
   await db.insert(schema.scoutPanelBench).values([
     // Two periods for the motor rows so the trend the negotiation packs quote
     // is actually in the table rather than asserted in prose.
-    bench(0, ctx.providers.cedar, "motor", "2026-01", 9_420, 10_000, 44, 1_812, [
+    bench(0, ctx.providers.cedar, "motor", monthKey(now), 9_420, 10_000, 44, 1_812, [
       { term: "agency_repair", ours: false, panelMedian: true, note: "The cheapest row is cheapest partly because of this." },
       { term: "roadside", ours: false, panelMedian: true }
     ], now - 6 * HOUR),
-    bench(1, ctx.providers.falcon, "motor", "2026-01", 10_380, 10_000, 27, 1_640, [
+    bench(1, ctx.providers.falcon, "motor", monthKey(now), 10_380, 10_000, 27, 1_640, [
       { term: "excess", oursMinor: 50_000, panelMedianMinor: 100_000, note: "Better cover at a higher index — the value score, not the price rank, is what sells it." }
     ], now - 6 * HOUR),
-    bench(2, ctx.providers.gonxt, "motor", "2026-01", 10_110, 10_000, 19, 1_704, [
+    bench(2, ctx.providers.gonxt, "motor", monthKey(now), 10_110, 10_000, 19, 1_704, [
       { term: "agency_repair", ours: false, panelMedian: true, note: "Own paper is mid-price without agency repair, which is where the 19% comes from." }
     ], now - 6 * HOUR),
-    bench(3, ctx.providers.oryx, "motor", "2026-01", 10_640, 10_000, 6, 388, [
+    bench(3, ctx.providers.oryx, "motor", monthKey(now), 10_640, 10_000, 6, 388, [
       { term: "quote_latency", oursSeconds: 118, panelMedianSeconds: 3, note: "Priced by hand against a 120s SLA, so most requests are decided before the row arrives." }
     ], now - 6 * HOUR),
-    bench(4, ctx.providers.cedar, "motor", "2025-12", 9_510, 10_000, 47, 1_996, [
+    bench(4, ctx.providers.cedar, "motor", monthKey(now, -1), 9_510, 10_000, 47, 1_996, [
       { term: "agency_repair", ours: false, panelMedian: true }
     ], now - 5 * DAY),
-    bench(5, ctx.providers.falcon, "motor", "2025-12", 10_220, 10_000, 31, 1_733, [
+    bench(5, ctx.providers.falcon, "motor", monthKey(now, -1), 10_220, 10_000, 31, 1_733, [
       { term: "excess", oursMinor: 50_000, panelMedianMinor: 100_000 }
     ], now - 5 * DAY),
-    bench(6, ctx.providers.oryx, "motor", "2025-12", 10_450, 10_000, 11, 502, [
+    bench(6, ctx.providers.oryx, "motor", monthKey(now, -1), 10_450, 10_000, 11, 502, [
       { term: "quote_latency", oursSeconds: 96, panelMedianSeconds: 3 }
     ], now - 5 * DAY),
-    bench(7, ctx.providers.gulfHealth, "health", "2026-01", 9_880, 10_000, 34, 41, [
+    bench(7, ctx.providers.gulfHealth, "health", monthKey(now), 9_880, 10_000, 34, 41, [
       { term: "maternity_waiting_days", ours: 365, panelMedian: null, note: "Nothing to compare against: Gulf Health is the only health row on the panel." }
     ], now - 6 * HOUR),
-    bench(8, ctx.providers.gonxt, "travel", "2026-01", 9_240, 10_000, 61, 623, [
+    bench(8, ctx.providers.gonxt, "travel", monthKey(now), 9_240, 10_000, 61, 623, [
       { term: "trip_basis", ours: "annual_only", panelMedian: "single_trip", note: "Feeds the visa-trip whitespace." }
     ], now - 6 * HOUR),
-    bench(9, ctx.providers.cedar, "home", "2026-01", 10_050, 10_000, 52, 214, [], now - 6 * HOUR),
-    bench(10, ctx.providers.oryx, "life", "2026-01", null, null, 38, 76, [
+    bench(9, ctx.providers.cedar, "home", monthKey(now), 10_050, 10_000, 52, 214, [], now - 6 * HOUR),
+    bench(10, ctx.providers.oryx, "life", monthKey(now), null, null, 38, 76, [
       { term: "pricing_mode", ours: "manual", note: "Manual pricing with no second life row means there is no median to index against." }
     ], now - 6 * HOUR),
     // Meridian is a financier, not an underwriter: the referral has no premium,
     // so the price columns stay empty and only the funnel numbers are readable.
-    bench(11, ctx.providers.meridian, "loan", "2026-01", null, null, 71, 132, [
+    bench(11, ctx.providers.meridian, "loan", monthKey(now), null, null, 71, 132, [
       { term: "index", ours: null, note: "A loan referral has no premium to index. Win rate here is referrals accepted, not price competitiveness." }
     ], now - 6 * HOUR)
   ]);
