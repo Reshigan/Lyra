@@ -305,6 +305,7 @@ const HAND_WRITTEN: Op[] = [
   // coverage (docs/8 clause 1); wording diffs and the negotiation pack both
   // feed the panel-bench negotiation workflow (docs §2.3, §2.5).
   { method: "post", path: "/v1/scout/whitespaces/compute", summary: "Run the whitespace sweep now against real quote demand vs. policy coverage", permission: "scout:whitespaces:promote", tag: "scout" },
+  { method: "post", path: "/v1/scout/signals/similar", summary: "Nearest signals to a phrase, from the market embedding index", permission: "scout:signals:read", tag: "scout", requestBody: true },
   { method: "post", path: "/v1/scout/wording-diff", summary: "Word-level diff of two coverage-wording texts (PDF extraction deferred, see ADR-0016)", permission: "scout:panel_bench:read", tag: "scout", requestBody: true },
   { method: "get", path: "/v1/scout/panel-bench/negotiation-pack", summary: "Bench + whitespace negotiation pack as a downloadable PDF", permission: "scout:whitespaces:promote", tag: "scout" },
 

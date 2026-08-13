@@ -60,6 +60,7 @@ export const PURPOSES: Record<string, PurposeDef> = {
   "radar.summarise": { module: "scout", customerFacing: false },
   "whitespace.describe": { module: "scout", customerFacing: false },
   "scout.signal.embed": { module: "scout", customerFacing: false },
+  "scout.signal.similar": { module: "scout", customerFacing: false },
 
   // north — executive briefing. Internal.
   "briefing.generate": { module: "north", customerFacing: false },

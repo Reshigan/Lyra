@@ -140,7 +140,32 @@ beforeAll(async () => {
     APP_ORIGIN: "http://localhost:5173",
     // Workers AI, stubbed at the binding rather than inside the gateway, so the
     // budget, the guardrails and the audit row are all still exercised.
-    AI: { run: async () => ({ response: "Suggested: renew at the same premium." }) },
+    AI: {
+      run: async (_model: string, input: { text?: string[] }) =>
+        input?.text
+          ? { data: input.text.map(() => [0.1, 0.2, 0.3]) }
+          : { response: "Suggested: renew at the same premium." }
+    },
+    // ponytail: Vectorize as a Map — upsert then filter then take topK. Every
+    // vector scores the same, so what this proves is the round trip (ingest
+    // embeds, search joins the match back to its row) and the tenant filter,
+    // never the ranking, which is Cloudflare's.
+    VEC_MARKET: (() => {
+      const vectors = new Map<string, { id: string; metadata?: Record<string, unknown> }>();
+      return {
+        upsert: async (rows: { id: string; metadata?: Record<string, unknown> }[]) => {
+          for (const row of rows) vectors.set(row.id, row);
+        },
+        query: async (_values: number[], opts: { topK: number; filter?: Record<string, unknown> }) => ({
+          matches: [...vectors.values()]
+            .filter((one) =>
+              Object.entries(opts.filter ?? {}).every(([key, want]) => one.metadata?.[key] === want)
+            )
+            .slice(0, opts.topK)
+            .map((one) => ({ id: one.id, score: 1, metadata: one.metadata }))
+        })
+      };
+    })(),
     // ponytail: a Map is the whole of R2 that exports use — put then get.
     // Without it every export lands in state "failed" and the download leg of
     // J-CO1 can never be walked here.
@@ -1032,6 +1057,37 @@ describe("J-S1 whitespace from the tenant's own book", () => {
       })
     );
     expect(diff.spans.some((s: { type: string }) => s.type !== "equal")).toBe(true);
+  });
+
+  it("resolves nearest signals back to their rows, and only this tenant's", async () => {
+    // Ingest writes the vector (resources.ts SCOUT signals beforeWrite) and the
+    // seed records the ids the harvester would have written; both leave the
+    // index holding embedding_ref keys. Prime the stub with those, plus two
+    // vectors that must not come back: one belonging to another tenant, one
+    // whose row no longer exists.
+    const signals = await database.select().from(schema.scoutSignals).limit(3);
+    expect(signals.length).toBeGreaterThan(0);
+    await (env.VEC_MARKET as never as { upsert(rows: unknown[]): Promise<void> }).upsert([
+      ...signals.map((one) => ({
+        id: one.embeddingRef,
+        metadata: { tenantId: one.tenantId, source: one.source }
+      })),
+      { id: "vec:another-tenant", metadata: { tenantId: "ten_someone_else", source: "news" } },
+      { id: "vec:deleted-row", metadata: { tenantId, source: "news" } }
+    ]);
+
+    const found = ok(
+      await call("scout.lead", "POST", "/v1/scout/signals/similar", { text: "EV cover withdrawn", topK: 20 })
+    );
+    const ids = found.matches.map((one: { id: string }) => one.id);
+    for (const one of signals) expect(ids).toContain(one.id);
+    // A match is served as the signal's own columns, never as a bare vector id.
+    expect(ids).not.toContain("vec:another-tenant");
+    expect(ids).not.toContain("vec:deleted-row");
+    expect(found.matches[0].source).toBeTruthy();
+
+    const denied = await call("signal.lead", "POST", "/v1/scout/signals/similar", { text: "EV cover" });
+    expect(denied.status).toBe(403);
   });
 
   it("downloads the negotiation pack as a PDF", async () => {

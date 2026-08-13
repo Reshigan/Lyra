@@ -6,6 +6,7 @@ import { actorRef, audit, require_, diffWords, type Ctx } from "@lyra/core";
 import type { WhitespaceCandidate } from "@lyra/core";
 import { body } from "../http.js";
 import { sweepWhitespace, coveragePerLine } from "../engines/scout-whitespace.js";
+import { embedQuery } from "../engines/vectorize.js";
 import { buildNegotiationPackTables } from "../engines/export/negotiation-pack.js";
 import { toPdf } from "../engines/export/pdf.js";
 import type { App } from "../env.js";
@@ -32,6 +33,55 @@ scoutRoutes.post("/wording-diff", async (c) => {
   require_(ctx.actor, "scout:panel_bench:read", { tenantId: ctx.tenantId, module: "scout" });
   const input = await body(c, WordingDiffBody);
   return c.json({ spans: diffWords(input.textA, input.textB) });
+});
+
+const SimilarBody = z.object({ text: z.string().min(1).max(4_000), topK: z.number().int().min(1).max(20).default(10) });
+
+// Signals are embedded into VEC_MARKET on ingest (resources.ts SCOUT signals
+// beforeWrite). This is the read side of that index: the nearest neighbours of
+// a phrase, so an integrator can see whether what they ingest lands near what
+// the harvester already holds. The tenant filter is not optional — one index
+// carries every tenant's vectors.
+scoutRoutes.post("/signals/similar", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "scout:signals:read", { tenantId: ctx.tenantId, module: "scout" });
+  const input = await body(c, SimilarBody);
+  const matches = await embedQuery(ctx, c.get("gateway"), c.env.VEC_MARKET, {
+    module: "scout",
+    purpose: "scout.signal.similar",
+    text: input.text,
+    topK: input.topK,
+    filter: { tenantId: ctx.tenantId }
+  });
+  // Vectorize holds the vector id, not the row: the signal's own columns come
+  // from the database, and a match whose row has been deleted is dropped
+  // rather than served as a bare id.
+  const rows = matches.length
+    ? await ctx.db
+        .select({
+          id: schema.scoutSignals.id,
+          source: schema.scoutSignals.source,
+          observedAt: schema.scoutSignals.observedAt,
+          embeddingRef: schema.scoutSignals.embeddingRef
+        })
+        .from(schema.scoutSignals)
+        .where(
+          and(
+            eq(schema.scoutSignals.tenantId, ctx.tenantId),
+            inArray(
+              schema.scoutSignals.embeddingRef,
+              matches.map((one) => one.id)
+            )
+          )
+        )
+    : [];
+  const byRef = new Map(rows.map((row) => [row.embeddingRef, row]));
+  return c.json({
+    matches: matches.flatMap((one) => {
+      const row = byRef.get(one.id);
+      return row ? [{ id: row.id, source: row.source, observedAt: row.observedAt, score: one.score }] : [];
+    })
+  });
 });
 
 scoutRoutes.get("/panel-bench/negotiation-pack", async (c) => {
