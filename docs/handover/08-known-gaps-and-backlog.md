@@ -74,7 +74,7 @@ still missing.
 | **F41** | Six guardrail regexes are English-only | Arabic content bypasses those six guardrails. Relevant for any Arabic-speaking tenant |
 | **F43** | Zero regional payment rails | Confirms §5 of file 07: no PSP of any kind |
 | **F49** | NORTH sums `axis_policies` and never reads the ledger | Executive revenue figures are derived from policy rows, not from the books. **NORTH and LEDGER can legitimately disagree** — this is why |
-| **F50** | 2 of 8 NORTH screens built | Six documented executive screens do not exist in the UI |
+| **F50** | NORTH has no forecast endpoint | All eight screens and the driver decomposition now exist; a forecast series is the one documented capability still missing, so "what does next quarter look like" has no answer |
 | **F52** | `VEC_MARKET` is written but never queried | SCOUT stores vectors it never searches |
 
 ### 2.3 Open, not re-checked on the last pass

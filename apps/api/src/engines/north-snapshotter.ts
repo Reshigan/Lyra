@@ -524,6 +524,90 @@ function anomalyThresholdBp(unit: string): number {
   return unit === "percent" || unit === "ratio" ? 500 : 1_500;
 }
 
+/* ---------------------------------------------------------- driver analysis */
+
+/** Same key shape seed.ts writes, so seeded and computed slices share one key space. */
+const dimsHashOf = (dims: Record<string, string>): string =>
+  Object.entries(dims)
+    .map(([k, v]) => `${k}=${v}`)
+    .join("&");
+
+interface Slice {
+  key: string;
+  value: number;
+}
+
+/**
+ * Sum the same policy rows the grand total sums, grouped by one dimension.
+ * Rows with no value for that dimension are left out on purpose: a single
+ * "unassigned" bucket explains nothing, and a driver list should only claim
+ * the part of a move it can actually attribute.
+ */
+const policiesBy =
+  (column: typeof schema.axisPolicies.channelId, value: ReturnType<typeof sql<number>>) =>
+  async (ctx: Ctx, p: Period): Promise<Slice[]> => {
+    const rows = await ctx.db
+      .select({ key: column, value })
+      .from(schema.axisPolicies)
+      .where(
+        and(
+          eq(schema.axisPolicies.tenantId, ctx.tenantId),
+          isNotNull(column),
+          gte(schema.axisPolicies.createdAt, p.since),
+          lt(schema.axisPolicies.createdAt, p.until)
+        )
+      )
+      .groupBy(column);
+    return rows.map((row) => ({ key: String(row.key), value: Number(row.value ?? 0) }));
+  };
+
+/**
+ * Metrics whose movement decomposes additively. Without these the anomaly card
+ * can say a number moved but never which channel moved it. Ratios are
+ * deliberately absent: a ratio's parts don't sum to the whole, so decomposing
+ * one needs a stated method, not a group-by.
+ */
+const SLICED: Record<string, { dimension: string; slice: (ctx: Ctx, p: Period) => Promise<Slice[]> }> = {
+  policies_issued: { dimension: "channel", slice: policiesBy(schema.axisPolicies.channelId, sql<number>`count(*)`) },
+  gwp: {
+    dimension: "channel",
+    slice: policiesBy(schema.axisPolicies.channelId, sql<number>`coalesce(sum(${schema.axisPolicies.premiumMinor}), 0)`)
+  },
+  net_commission: {
+    dimension: "channel",
+    slice: policiesBy(schema.axisPolicies.channelId, sql<number>`coalesce(sum(${schema.axisPolicies.commissionMinor}), 0)`)
+  }
+};
+
+/** ponytail: a card shows a handful of bars; the long tail is noise. */
+const MAX_DRIVERS = 5;
+
+interface Driver {
+  dimension: string;
+  key: string;
+  contributionBps: number;
+}
+
+/** Each dimension value's share of the grand-total move, in bp of the prior total — same basis as the anomaly's magnitude. */
+function driversOf(dimension: string, prior: Map<string, number>, current: Slice[], prevTotal: number): Driver[] {
+  const drivers: Driver[] = [];
+  const seen = new Set<string>();
+  const push = (key: string, delta: number): void => {
+    const contributionBps = Math.round((delta / Math.abs(prevTotal)) * 10_000);
+    if (contributionBps !== 0) drivers.push({ dimension, key, contributionBps });
+  };
+  for (const slice of current) {
+    const key = slice.key;
+    seen.add(key);
+    push(key, slice.value - (prior.get(key) ?? 0));
+  }
+  // A value that vanished moved the total too.
+  for (const [key, value] of prior) {
+    if (!seen.has(key)) push(key, -value);
+  }
+  return drivers.sort((a, b) => Math.abs(b.contributionBps) - Math.abs(a.contributionBps)).slice(0, MAX_DRIVERS);
+}
+
 function breaches(operator: string, value: number, threshold: number): boolean {
   switch (operator) {
     case "gt":
@@ -575,18 +659,18 @@ export async function runSnapshotter(ctx: Ctx): Promise<{ written: number; anoma
       const value = await compute(ctx, p);
       if (value === null) continue;
 
-      const [existing] = await ctx.db
-        .select({ id: schema.northSnapshots.id, value: schema.northSnapshots.value })
+      const rows = await ctx.db
+        .select({ id: schema.northSnapshots.id, value: schema.northSnapshots.value, dimsHash: schema.northSnapshots.dimsHash })
         .from(schema.northSnapshots)
         .where(
           and(
             eq(schema.northSnapshots.tenantId, ctx.tenantId),
             eq(schema.northSnapshots.metricKey, metric.key),
             eq(schema.northSnapshots.grain, p.grain),
-            eq(schema.northSnapshots.period, p.period),
-            eq(schema.northSnapshots.dimsHash, "")
+            eq(schema.northSnapshots.period, p.period)
           )
         );
+      const existing = rows.find((row) => row.dimsHash === "");
 
       if (existing) {
         await ctx.db
@@ -605,7 +689,42 @@ export async function runSnapshotter(ctx: Ctx): Promise<{ written: number; anoma
           ts: ctx.now
         });
       }
+      // `written` counts grand totals; the slices below are the same numbers cut up.
       written++;
+
+      // Dimensional slices of the same number, so an anomaly can name what moved.
+      const sliced = SLICED[metric.key];
+      const prior = new Map<string, number>();
+      let current: Slice[] = [];
+      if (sliced) {
+        const prefix = `${sliced.dimension}=`;
+        const priorRows = new Map(rows.filter((row) => row.dimsHash.startsWith(prefix)).map((row) => [row.dimsHash, row]));
+        for (const [hash, row] of priorRows) prior.set(hash.slice(prefix.length), row.value);
+        current = await sliced.slice(ctx, p);
+        for (const slice of current) {
+          const dims = { [sliced.dimension]: slice.key };
+          const hash = dimsHashOf(dims);
+          const before = priorRows.get(hash);
+          if (before) {
+            await ctx.db
+              .update(schema.northSnapshots)
+              .set({ value: slice.value, ts: ctx.now })
+              .where(eq(schema.northSnapshots.id, before.id));
+          } else {
+            await ctx.db.insert(schema.northSnapshots).values({
+              id: newId("snp", ctx.now),
+              tenantId: ctx.tenantId,
+              metricKey: metric.key,
+              grain: p.grain,
+              period: p.period,
+              dimsJson: JSON.stringify(dims),
+              dimsHash: hash,
+              value: slice.value,
+              ts: ctx.now
+            });
+          }
+        }
+      }
 
       for (const rule of rules) {
         if (rule.metricKey !== metric.key || rule.windowGrain !== p.grain) continue;
@@ -635,6 +754,7 @@ export async function runSnapshotter(ctx: Ctx): Promise<{ written: number; anoma
               )
             );
           if (!openAnomaly) {
+            const drivers = sliced ? driversOf(sliced.dimension, prior, current, prevValue) : [];
             await ctx.db.insert(schema.northAnomalies).values({
               id: newId("anm", ctx.now),
               tenantId: ctx.tenantId,
@@ -644,6 +764,10 @@ export async function runSnapshotter(ctx: Ctx): Promise<{ written: number; anoma
               expected: prevValue,
               actual: value,
               state: "new",
+              // The basis is the previous run of the same period, not the previous period — say so.
+              driverAnalysisJson: drivers.length
+                ? JSON.stringify({ method: "dimensional_delta", baseline: "previous_snapshot", drivers })
+                : null,
               detectedAt: ctx.now
             });
             anomalies++;

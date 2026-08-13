@@ -143,16 +143,20 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const metric = metrics.find((row) => row.key === asked) ?? metrics[0] ?? null;
   const grain = GRAINS.find((one) => one === url.searchParams.get("grain")) ?? metric?.grain ?? "day";
 
-  const snapshots = metric
-    ? ((
-        await readable(
-          api<Page<Snapshot>>(
-            `/v1/north/snapshots?metricKey=${encodeURIComponent(metric.key)}&grain=${grain}&sort=period&order=asc&limit=${WINDOW}`,
-            opts
-          )
+  // Newest first, then flipped for the chart: a tenant with more history than
+  // WINDOW wants the recent end of it, not the first 90 periods it ever had.
+  // Dimensional rows (dims_hash != "") are slices of a period, not extra
+  // points, and the list API can't exclude them — an empty filter value is
+  // dropped — so over-fetch and drop them here.
+  const page = metric
+    ? await readable(
+        api<Page<Snapshot>>(
+          `/v1/north/snapshots?metricKey=${encodeURIComponent(metric.key)}&grain=${grain}&sort=period&order=desc&limit=${WINDOW * 4}`,
+          opts
         )
-      )?.data ?? null)
-    : [];
+      )
+    : { data: [] as Snapshot[] };
+  const snapshots = page ? page.data.filter((row) => !row.dimsHash).slice(0, WINDOW).reverse() : null;
 
   return { metrics, metric, grain, snapshots };
 }

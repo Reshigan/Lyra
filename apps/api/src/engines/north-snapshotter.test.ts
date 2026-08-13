@@ -314,6 +314,59 @@ describe("runSnapshotter: anomaly detection", () => {
     expect(anomaly!.state).toBe("new");
     expect(anomaly!.magnitude).toBeGreaterThan(0);
   });
+
+  it("decomposes the swing into the channel that caused it", async () => {
+    await seedMetric("gwp", "month");
+    await seedProviderAndCustomer();
+
+    const policy = (id: string, channelId: string, premiumMinor: number, at: number) => ({
+      id,
+      tenantId: ctx.tenantId,
+      customerId: "cu_1",
+      providerId: "prov_1",
+      policyNo: id,
+      channelId,
+      startAt: at,
+      endAt: at + 365 * DAY,
+      premiumMinor,
+      currency: "AED",
+      status: "active" as const,
+      createdAt: at,
+      updatedAt: at
+    });
+
+    // Two channels, evenly split — nothing to explain yet.
+    await ctx.db
+      .insert(schema.axisPolicies)
+      .values([policy("pol_web", "ch_web", 1_000_000, NOW - DAY), policy("pol_brk", "ch_broker", 1_000_000, NOW - DAY)]);
+    await runSnapshotter(ctx);
+
+    // Broker channel alone blows the month up.
+    ctx.now = NOW + 3_600_000;
+    await ctx.db.insert(schema.axisPolicies).values(policy("pol_brk2", "ch_broker", 10_000_000, ctx.now - 1));
+    await runSnapshotter(ctx);
+
+    const [anomaly] = await ctx.db
+      .select()
+      .from(schema.northAnomalies)
+      .where(and(eq(schema.northAnomalies.tenantId, ctx.tenantId), eq(schema.northAnomalies.metricKey, "gwp")));
+    const analysis = JSON.parse(anomaly!.driverAnalysisJson ?? "null") as {
+      drivers: Array<{ dimension: string; key: string; contributionBps: number }>;
+    };
+    expect(analysis.drivers[0]).toEqual({ dimension: "channel", key: "ch_broker", contributionBps: 50_000 });
+    // The decomposition has to add up to the move it explains.
+    const total = analysis.drivers.reduce((sum, d) => sum + d.contributionBps, 0);
+    expect(total).toBe(anomaly!.magnitude);
+
+    // The slices are kept as their own snapshot rows, keyed the way seed.ts keys them.
+    const slices = await ctx.db
+      .select()
+      .from(schema.northSnapshots)
+      .where(and(eq(schema.northSnapshots.tenantId, ctx.tenantId), eq(schema.northSnapshots.dimsHash, "channel=ch_broker")));
+    expect(slices).toHaveLength(1);
+    expect(slices[0]!.value).toBe(11_000_000);
+    expect(JSON.parse(slices[0]!.dimsJson ?? "null")).toEqual({ channel: "ch_broker" });
+  });
 });
 
 describe("runSnapshotter: loss_ratio", () => {

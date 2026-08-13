@@ -196,9 +196,10 @@ fire and month-grain anomalies cry wolf at every month start (**F48**). NORTH's
 financial metrics sum `axis_policies` directly (`:105-114`) and never read the
 ledger, so the AI briefing narrates a figure that can never be tied to the
 trial balance — and `verifyNumericClaims` then verifies the narrative against
-that unverified source (**F49**). Two of eight specified screens exist; five API
-routes; no scenarios, decisions, driver-decomposition or forecast endpoint
-(**F50**).
+that unverified source (**F49**). All eight specified screens now exist, on six
+bespoke plus eight CRUD routes, including scenarios, decisions and a
+channel-level driver decomposition on anomalies; only the forecast endpoint is
+still absent (**F50**).
 
 *SCOUT.* No source ingestion, no live clustering
 (`core/src/seed/scout.ts:31` is seed-only), no Bench Builder
@@ -271,7 +272,8 @@ and should be assumed to stand.
   mada and STC Pay have zero hits.
 - **F49** — `north-snapshotter.ts:107-120` still sums `axis_policies` for GWP
   and commission and never reads the ledger.
-- **F50** — five NORTH API routes.
+- **F50** — closed except the forecast endpoint: 8/8 screens, 6 bespoke + 8
+  CRUD routes, drivers written by `north-snapshotter.ts`'s `SLICED` map.
 - **F52** — `VEC_MARKET` is written at `resources.ts:608` and read nowhere.
 
 F48 changed shape rather than closing: the naive, seasonal-unaware threshold is

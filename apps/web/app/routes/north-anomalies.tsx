@@ -164,6 +164,9 @@ interface DriverAnalysis {
 
 /* ----------------------------------------------------------------- helpers */
 
+/** `period_over_period` is a column name, not a sentence. */
+export const words = (value: string): string => value.replace(/_/g, " ");
+
 /**
  * Driver bars are drawn against the largest contribution in the same card, not
  * against the anomaly's own magnitude: the parts of a deviation do not have to
@@ -405,8 +408,8 @@ function AnomalyCard({
               {analysis.method || analysis.baseline ? (
                 <p className="font-mono text-11 uppercase tracking-[0.12em] text-subtle">
                   {[
-                    analysis.method ? `${l("drivers.method")}: ${analysis.method}` : null,
-                    analysis.baseline ? `${l("drivers.baseline")}: ${analysis.baseline}` : null
+                    analysis.method ? `${l("drivers.method")}: ${words(analysis.method)}` : null,
+                    analysis.baseline ? `${l("drivers.baseline")}: ${words(analysis.baseline)}` : null
                   ]
                     .filter(Boolean)
                     .join(" · ")}
