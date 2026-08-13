@@ -732,7 +732,52 @@ const LABELS: Record<string, Record<string, string>> = {
     "adm.source.abandonment": "Abandonment",
     "adm.source.reviews": "Reviews",
     "adm.source.news": "News",
-    "adm.source.regulatory": "Regulatory"
+    "adm.source.regulatory": "Regulatory",
+
+    /* dev */
+    "dev.title": "SCOUT for integrators",
+    "dev.lede":
+      "The two SCOUT calls that are not plain CRUD, run against this tenant's own data so what you see here is what your key returns.",
+    "dev.similar": "Nearest signals",
+    "dev.similarWhy":
+      "Every ingested signal is embedded into the market index. This asks that index which stored signals sit closest to a phrase — the check to run before ingesting, to see whether the harvester already holds it.",
+    "dev.text": "Phrase",
+    "dev.textHint": "Up to {max} characters. The endpoint embeds it; it is not stored.",
+    "dev.topK": "Neighbours",
+    "dev.topKHint": "A whole number from 1 to {max}.",
+    "dev.run": "Find neighbours",
+    "dev.matchesCaption": "Stored signals nearest the phrase, closest first.",
+    "dev.col.signal": "Signal",
+    "dev.col.source": "Source",
+    "dev.col.observed": "Observed",
+    "dev.col.score": "Distance",
+    "dev.noMatches": "Nothing near that phrase",
+    "dev.noMatchesWhy":
+      "Either the index holds nothing like it, or the signals it matched have since been deleted — a match without a row is dropped rather than served as a bare id.",
+    "dev.raw": "Raw response",
+    "dev.ran.similar": "Query ran against the live index.",
+    "dev.ran.diff": "Wording compared.",
+    "dev.diff": "Wording differ",
+    "dev.diffWhy":
+      "The same word-level comparison the panel bench uses to show what a carrier changed between two versions of a wording. Paste plain text — extracting text from a PDF is not done here (ADR-0016).",
+    "dev.textA": "Before",
+    "dev.textB": "After",
+    "dev.diffRun": "Compare",
+    "dev.diffCounts": "{added} words added · {removed} removed · {kept} unchanged.",
+    "dev.curl": "The same calls from your own client",
+    "dev.curlWhy": "Bearer authentication with an API key; the tenant comes from the key, never from the body.",
+    "dev.ingestWhy":
+      "Ingesting is not offered on this screen: writing a signal needs scout:signals:ingest, which belongs to a harvester key rather than to a person signed in here. The contract is:",
+    "dev.keys": "Mint the key in the developer portal — it is never shown here.",
+    "dev.noEvents": "SCOUT publishes no events",
+    "dev.noEventsWhy":
+      "Nothing in this module emits onto the event bus, so there is no topic to subscribe a webhook to. Poll the reads, or subscribe to the module that acts on a promoted opportunity.",
+    "dev.openRadar": "Open the radar",
+    "dev.openPanel": "Open the panel bench",
+    "problem.both_texts": "Both versions of the wording are needed to compare them.",
+    "problem.text_required": "Type a phrase to search for.",
+    "problem.text_too_long": "That phrase is longer than the endpoint accepts.",
+    "problem.bad_topk": "Neighbours must be a whole number from 1 to 20."
   },
   ar: {
     /* shared */
@@ -1009,7 +1054,52 @@ const LABELS: Record<string, Record<string, string>> = {
     "adm.source.abandonment": "التخلي عن الطلب",
     "adm.source.reviews": "المراجعات",
     "adm.source.news": "الأخبار",
-    "adm.source.regulatory": "تنظيمي"
+    "adm.source.regulatory": "تنظيمي",
+
+    /* dev */
+    "dev.title": "سكاوت للمطوِّرين",
+    "dev.lede":
+      "نداءا سكاوت اللذان ليسا عمليات سجلات عادية، يعملان على بيانات هذا المستأجر نفسها، فما تراه هنا هو ما يُعيده مفتاحك.",
+    "dev.similar": "أقرب الإشارات",
+    "dev.similarWhy":
+      "كل إشارة مُستقبَلة تُضمَّن في فهرس السوق. هذا يسأل الفهرس أي الإشارات المخزَّنة أقرب إلى عبارة — الفحص قبل الإرسال، لترى إن كان الحاصد يملكها أصلًا.",
+    "dev.text": "العبارة",
+    "dev.textHint": "حتى {max} حرفًا. تُضمَّن في المتجه ولا تُخزَّن.",
+    "dev.topK": "عدد الجيران",
+    "dev.topKHint": "عدد صحيح من 1 إلى {max}.",
+    "dev.run": "ابحث عن الجيران",
+    "dev.matchesCaption": "الإشارات المخزَّنة الأقرب إلى العبارة، الأقرب أولًا.",
+    "dev.col.signal": "الإشارة",
+    "dev.col.source": "المصدر",
+    "dev.col.observed": "لوحظت",
+    "dev.col.score": "المسافة",
+    "dev.noMatches": "لا شيء قريب من تلك العبارة",
+    "dev.noMatchesWhy":
+      "إما أن الفهرس لا يحمل ما يشبهها، أو أن الإشارات المطابِقة حُذفت منذ ذلك الحين — المطابقة بلا صف تُسقَط ولا تُقدَّم كمعرِّف مجرد.",
+    "dev.raw": "الاستجابة الخام",
+    "dev.ran.similar": "نُفِّذ الاستعلام على الفهرس الحي.",
+    "dev.ran.diff": "قُورنت الصياغة.",
+    "dev.diff": "مقارِن الصياغات",
+    "dev.diffWhy":
+      "المقارنة الكلمية نفسها التي تستخدمها منصة اللوحة لإظهار ما غيّرته شركة التأمين بين نسختين من صياغة. الصق نصًا عاديًا — استخراج النص من ملف PDF غير متاح هنا (ADR-0016).",
+    "dev.textA": "قبل",
+    "dev.textB": "بعد",
+    "dev.diffRun": "قارن",
+    "dev.diffCounts": "{added} كلمة مضافة · {removed} محذوفة · {kept} دون تغيير.",
+    "dev.curl": "النداءان نفسهما من عميلك",
+    "dev.curlWhy": "استيثاق بحامل مفتاح واجهة برمجة؛ المستأجر يأتي من المفتاح لا من جسم الطلب أبدًا.",
+    "dev.ingestWhy":
+      "الإرسال غير متاح في هذه الشاشة: كتابة إشارة تتطلب scout:signals:ingest، وهي صلاحية مفتاح حاصد لا شخص مسجَّل دخوله هنا. العقد هو:",
+    "dev.keys": "أنشئ المفتاح في بوابة المطوِّرين — لا يُعرض هنا أبدًا.",
+    "dev.noEvents": "سكاوت لا تنشر أحداثًا",
+    "dev.noEventsWhy":
+      "لا شيء في هذه الوحدة يبثّ على ناقل الأحداث، فلا موضوع يُشترك فيه خطاف الويب. استعلم القراءات دوريًا، أو اشترك في الوحدة التي تتصرف بناءً على فرصة مُرقّاة.",
+    "dev.openRadar": "افتح الرادار",
+    "dev.openPanel": "افتح منصة اللوحة",
+    "problem.both_texts": "المقارنة تحتاج نسختي الصياغة كلتيهما.",
+    "problem.text_required": "اكتب عبارة للبحث عنها.",
+    "problem.text_too_long": "تلك العبارة أطول مما يقبله النداء.",
+    "problem.bad_topk": "عدد الجيران عدد صحيح من 1 إلى 20."
   }
 };
 

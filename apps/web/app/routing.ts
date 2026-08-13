@@ -148,6 +148,8 @@ export const HIDDEN_ROUTES: Record<string, string> = {
     "the data-product catalogue, its subscribers and the k-anonymity monitor, linked from the SCOUT workspace tools list",
   "/scout/admin":
     "the module's own settings — source health, suppression floors, policy thresholds and approval gates, linked from the SCOUT workspace tools list",
+  "/scout/dev":
+    "the market-index and wording-diff consoles with their curl equivalents, linked from the SCOUT workspace tools list",
   "/:module": "the generic workspace list; the rail links the real paths",
   "/:module/:resource": "a resource tab inside a workspace, linked from its tab strip",
   "/:module/:resource/:id": "a single record, linked from the list that holds it"
