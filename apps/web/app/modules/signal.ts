@@ -20,7 +20,8 @@ export const signal: WorkspaceSpec = {
     { href: "/signal/experiments", labelKey: "link.experiments", permission: "signal:experiments:read" },
     { href: "/signal/budget", labelKey: "link.budget", permission: "signal:budget_moves:read" },
     { href: "/signal/analytics", labelKey: "link.analytics", permission: "signal:spend:read" },
-    { href: "/signal/admin", labelKey: "link.admin", permission: "signal:campaigns:read" }
+    { href: "/signal/admin", labelKey: "link.admin", permission: "signal:campaigns:read" },
+    { href: "/signal/dev", labelKey: "link.dev", permission: "signal:spend:read" }
   ],
   labels: {
     en: {
@@ -135,7 +136,8 @@ export const signal: WorkspaceSpec = {
       "link.experiments": "Experiments",
       "link.budget": "Budget and bounds",
       "link.analytics": "Growth analytics",
-      "link.admin": "SIGNAL admin"
+      "link.admin": "SIGNAL admin",
+      "link.dev": "Developer bench"
     },
     ar: {
       audiences: "الجماهير",
@@ -249,7 +251,8 @@ export const signal: WorkspaceSpec = {
       "link.experiments": "التجارب",
       "link.budget": "الميزانية والحدود",
       "link.analytics": "تحليلات النمو",
-      "link.admin": "إدارة SIGNAL"
+      "link.admin": "إدارة SIGNAL",
+      "link.dev": "منصّة المطوّرين"
     }
   },
   tabs: [

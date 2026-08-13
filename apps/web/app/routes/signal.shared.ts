@@ -1138,6 +1138,9 @@ const LABELS: Record<string, Record<string, string>> = {
     "problem.hypothesis_required": "Write what you expect to happen.",
     "problem.metric_required": "Say which metric is being measured.",
     "problem.arms_required": "Name both arms.",
+    "problem.resource_required": "Choose which records to read.",
+    "problem.limit_required": "Ask for between one and a hundred rows.",
+    "problem.hook_required": "Pick the endpoint to ping.",
 
     /* admin */
     "admin.title": "SIGNAL admin",
@@ -1225,7 +1228,65 @@ const LABELS: Record<string, Record<string, string>> = {
     "admin.gapTitle": "Not configured here yet",
     "admin.gapLede": "Two things the spec asks of this screen have nowhere to be stored yet, so this screen does not pretend to hold them.",
     "admin.gapChannels": "Channel connections. Ad-account OAuth is not modelled — campaigns name their channels as slugs and spend is recorded against them, but no credential is held.",
-    "admin.gapUtm": "UTM schema. Campaign links are tagged by whoever builds them; there is no tenant-wide pattern to enforce."
+    "admin.gapUtm": "UTM schema. Campaign links are tagged by whoever builds them; there is no tenant-wide pattern to enforce.",
+
+    /* dev */
+    "dev.title": "SIGNAL dev",
+    "dev.kicker": "The integrator's bench",
+    "dev.lede":
+      "Read what SIGNAL actually stores, ping a webhook endpoint, and move a day of sandbox spend. Nothing here is a mock — every console calls the endpoint your code will call.",
+    "dev.readTitle": "Read console",
+    "dev.readLede":
+      "Every SIGNAL record is a REST list under /v1/signal. Pick one and see exactly what your code gets back. Only the resources your role may read are offered.",
+    "dev.resource": "Records",
+    "dev.limit": "Rows",
+    "dev.limitHint": "Between 1 and 100.",
+    "dev.read": "Read the records",
+    "dev.rows": "Rows returned",
+    "dev.raw": "Response body",
+    "dev.readEmpty": "That list is empty for this tenant. Nothing is broken — nothing has been written yet.",
+    "dev.res.audiences": "Audiences",
+    "dev.res.campaigns": "Campaigns",
+    "dev.res.creatives": "Creatives",
+    "dev.res.signal-experiments": "Experiments",
+    "dev.res.budget-moves": "Budget moves",
+    "dev.res.aeo-pages": "Answer pages",
+    "dev.res.attribution-events": "Attribution touches",
+    "dev.res.spend": "Spend ledger",
+    "dev.pixelTitle": "Checking whether a touch landed",
+    "dev.pixelLede":
+      "There is no browser pixel or tag to install. SIGNAL records a touch server-side when a module event says one happened — a bind writes one in the same request — so the way to debug attribution is to read the touches back. The ledger is append-only and has no ingest route, so nothing outside the platform can post to it.",
+    "dev.feedTitle": "Catalogue feeds",
+    "dev.feedLede":
+      "Answer pages are the catalogue SIGNAL publishes, and the console above reads them. They are served behind tenant authentication, so there is no anonymous feed URL to hand an ad platform yet.",
+    "dev.curlTitle": "The same call from your code",
+    "dev.curlLede": "The console above sends exactly this. Mint the key in the developer portal — it is never shown here.",
+    "dev.keysOpen": "Open the developer portal",
+    "dev.hooksTitle": "Webhook tester",
+    "dev.hooksLede":
+      "Endpoints subscribed to a SIGNAL event. A test ping is a signed delivery to the same URL your production traffic uses, and reports what came back.",
+    "dev.hooksEmpty": "No endpoint subscribes to a SIGNAL event yet.",
+    "dev.hookUrl": "Endpoint",
+    "dev.hookEvents": "Events",
+    "dev.hookStatus": "State",
+    "dev.hookCaption": "Endpoints subscribed to a SIGNAL event",
+    "dev.hookTest": "Send a test ping",
+    "dev.pingOk": "Delivered — {status}",
+    "dev.pingFailed": "Not delivered",
+    "dev.topicsTitle": "Events SIGNAL publishes",
+    "dev.topicsLede":
+      "Subscribe by name. The ones marked planned are named by the module spec, but nothing emits them yet — subscribing is not an error, the endpoint will simply never fire.",
+    "dev.topicLive": "emitted",
+    "dev.topicPlanned": "planned",
+    "dev.sandboxTitle": "Sandbox ad platform",
+    "dev.sandboxLede":
+      "No live ad account is connected. This writes one day of synthetic spend across the running campaigns' channels, exactly as a platform sync would, so the cockpit, the bounds and the autopilot have something to read. Never available in production.",
+    "dev.sandboxRun": "Tick a day of spend",
+    "dev.sandboxDone": "{inserted} spend rows written.",
+    "dev.denied": "Your role does not include reading SIGNAL records. Ask a tenant administrator for SIGNAL access.",
+    "dev.saved.read": "Read.",
+    "dev.saved.ping": "Ping sent.",
+    "dev.saved.tick": "Sandbox ticked."
   },
   ar: {
     /* shared */
@@ -1554,6 +1615,9 @@ const LABELS: Record<string, Record<string, string>> = {
     "problem.hypothesis_required": "اكتب ما تتوقّع حدوثه.",
     "problem.metric_required": "حدّد المقياس المقاس.",
     "problem.arms_required": "سمِّ الذراعين.",
+    "problem.resource_required": "اختر السجلات المطلوب قراءتها.",
+    "problem.limit_required": "اطلب بين صف واحد ومئة صف.",
+    "problem.hook_required": "اختر نقطة النهاية المطلوب اختبارها.",
 
     /* admin */
     "admin.title": "إدارة SIGNAL",
@@ -1641,7 +1705,65 @@ const LABELS: Record<string, Record<string, string>> = {
     "admin.gapTitle": "غير مهيّأ هنا بعد",
     "admin.gapLede": "أمران تطلبهما المواصفة من هذه الشاشة لا مكان لتخزينهما بعد، فلا تدّعي الشاشة أنها تحفظهما.",
     "admin.gapChannels": "ربط القنوات. لا يوجد نموذج لتفويض حسابات الإعلانات — الحملات تسمي قنواتها كرموز ويُسجَّل الإنفاق عليها، لكن لا يُحفظ أي اعتماد.",
-    "admin.gapUtm": "مخطط UTM. تُوسم روابط الحملات بمن يبنيها، ولا يوجد نمط موحّد على مستوى المستأجر يُفرض."
+    "admin.gapUtm": "مخطط UTM. تُوسم روابط الحملات بمن يبنيها، ولا يوجد نمط موحّد على مستوى المستأجر يُفرض.",
+
+    /* dev */
+    "dev.title": "مطوّرو SIGNAL",
+    "dev.kicker": "منضدة المتكامِل",
+    "dev.lede":
+      "اقرأ ما يخزّنه SIGNAL فعلًا، واختبر نقطة ويب هوك، وحرّك يومًا من إنفاق بيئة التجربة. لا شيء هنا محاكاة — كل وحدة تنادي نفس نقطة النهاية التي سينادينها كودك.",
+    "dev.readTitle": "وحدة القراءة",
+    "dev.readLede":
+      "كل سجل في SIGNAL قائمة REST تحت /v1/signal. اختر واحدة وشاهد ما سيعود إلى كودك بالضبط. لا تُعرض إلا السجلات التي يسمح دورك بقراءتها.",
+    "dev.resource": "السجلات",
+    "dev.limit": "عدد الصفوف",
+    "dev.limitHint": "بين 1 و100.",
+    "dev.read": "اقرأ السجلات",
+    "dev.rows": "الصفوف المُعادة",
+    "dev.raw": "جسم الاستجابة",
+    "dev.readEmpty": "هذه القائمة فارغة لهذا المستأجر. لا شيء معطّل — لم يُكتب شيء بعد.",
+    "dev.res.audiences": "الجماهير",
+    "dev.res.campaigns": "الحملات",
+    "dev.res.creatives": "المواد الإبداعية",
+    "dev.res.signal-experiments": "الاختبارات",
+    "dev.res.budget-moves": "تحويلات الميزانية",
+    "dev.res.aeo-pages": "صفحات الإجابة",
+    "dev.res.attribution-events": "لمسات الإسناد",
+    "dev.res.spend": "سجل الإنفاق",
+    "dev.pixelTitle": "التحقق من وصول لمسة",
+    "dev.pixelLede":
+      "لا يوجد بكسل أو وسم يُركّب في المتصفح. يسجّل SIGNAL اللمسة على الخادم حين يقول حدث وحدة إنها وقعت — الربط يكتب واحدة في النداء نفسه — فطريقة تتبّع الإسناد هي قراءة اللمسات. السجل للإلحاق فقط ولا منفذ إدخال له، فلا شيء خارج المنصة يستطيع الكتابة فيه.",
+    "dev.feedTitle": "تغذيات الكتالوج",
+    "dev.feedLede":
+      "صفحات الإجابة هي الكتالوج الذي ينشره SIGNAL، والوحدة أعلاه تقرأها. تُقدَّم خلف مصادقة المستأجر، فلا يوجد بعد رابط تغذية مجهول يُسلَّم لمنصة إعلانات.",
+    "dev.curlTitle": "النداء نفسه من كودك",
+    "dev.curlLede": "الوحدة أعلاه ترسل هذا بالضبط. أصدر المفتاح من بوابة المطوّرين — لا يُعرض هنا أبدًا.",
+    "dev.keysOpen": "افتح بوابة المطوّرين",
+    "dev.hooksTitle": "اختبار الويب هوك",
+    "dev.hooksLede":
+      "نقاط النهاية المشتركة في حدث من SIGNAL. الاختبار تسليم موقّع إلى نفس الرابط الذي يستقبل حركة الإنتاج، ويُبلّغ بما عاد منه.",
+    "dev.hooksEmpty": "لا نقطة نهاية مشتركة في حدث من SIGNAL بعد.",
+    "dev.hookUrl": "نقطة النهاية",
+    "dev.hookEvents": "الأحداث",
+    "dev.hookStatus": "الحالة",
+    "dev.hookCaption": "نقاط النهاية المشتركة في حدث من SIGNAL",
+    "dev.hookTest": "أرسل اختبارًا",
+    "dev.pingOk": "وصل — {status}",
+    "dev.pingFailed": "لم يصل",
+    "dev.topicsTitle": "الأحداث التي ينشرها SIGNAL",
+    "dev.topicsLede":
+      "اشترك بالاسم. المعلَّمة بـ«مخطّط لها» تسمّيها مواصفة الوحدة لكن لا شيء يطلقها بعد — الاشتراك بها ليس خطأ، لكن نقطة النهاية لن تُنادى.",
+    "dev.topicLive": "يُطلق",
+    "dev.topicPlanned": "مخطّط له",
+    "dev.sandboxTitle": "منصة إعلانات تجريبية",
+    "dev.sandboxLede":
+      "لا حساب إعلانات حقيقي مربوط. هذا يكتب يومًا من الإنفاق الاصطناعي على قنوات الحملات العاملة، تمامًا كما تفعل مزامنة المنصة، ليجد المركز والحدود والطيّار الآلي ما يقرأونه. غير متاح في الإنتاج أبدًا.",
+    "dev.sandboxRun": "حرّك يوم إنفاق",
+    "dev.sandboxDone": "كُتب {inserted} صفًا من الإنفاق.",
+    "dev.denied": "لا يشمل دورك قراءة سجلات SIGNAL. اطلب من مدير المستأجر صلاحية SIGNAL.",
+    "dev.saved.read": "تمت القراءة.",
+    "dev.saved.ping": "أُرسل الاختبار.",
+    "dev.saved.tick": "حُرّكت بيئة التجربة."
   }
 };
 

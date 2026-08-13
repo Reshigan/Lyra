@@ -102,6 +102,8 @@ export const HIDDEN_ROUTES: Record<string, string> = {
     "CAC, LTV and cohort retention with the spend export, linked from the signal workspace tools list and from the cockpit",
   "/signal/admin":
     "the brand kit, guardrails, budget bounds, approval thresholds and suppression lists everything sent from SIGNAL is checked against, linked from the signal workspace tools list",
+  "/signal/dev":
+    "the SIGNAL read console, webhook tester and sandbox spend tick, linked from the signal workspace tools list",
   "/admin/customers/:id/360": "opens everything known about one customer from the customers list",
   "/admin/products/:id/detail": "opens one product definition from the products list",
   "/axis/policies/:id/detail": "opens one policy with its history from the policies list",
