@@ -138,6 +138,7 @@ export function ErrorBoundary() {
         inbox={shell.inbox}
         names={shell.names}
         roles={shell.roles}
+        permissions={shell.permissions}
       >
         {panel}
       </Shell>
@@ -162,6 +163,7 @@ export default function Workspace() {
         inbox={shell.inbox}
         names={shell.names}
         roles={shell.roles}
+        permissions={shell.permissions}
       >
         <Outlet />
       </Shell>

@@ -15,6 +15,7 @@ import type { Translate } from "../i18n";
 import { humanise } from "../modules/spec";
 import { isRouted, landingFor } from "../routing";
 import { ColdOpen } from "./cold-open";
+import { Companion } from "./companion";
 import { ConstellationMark } from "./mark";
 import { Meridian } from "./meridian";
 import { SearchPalette } from "./search";
@@ -118,6 +119,8 @@ export interface ShellProps {
   names?: Names;
   /** Every role key this actor holds, for the role pill (docs/07 §3 personas). */
   roles?: readonly string[];
+  /** Expanded permission keys, for the chrome that is absent without them. */
+  permissions?: readonly string[];
   children: React.ReactNode;
 }
 
@@ -213,6 +216,7 @@ export function Shell({
   inbox = null,
   names = {},
   roles = [],
+  permissions = [],
   children
 }: ShellProps) {
   const { product: productName, tenant: servedName } = lockupNames(brand, tenantName);
@@ -246,6 +250,11 @@ export function Shell({
   const roleKey = profiles.find((profile) => profile.active)?.role ?? roles[0] ?? null;
   const navigate = useNavigate();
   const submit = useSubmit();
+  // The rail is absent, not disabled, for an actor who cannot read agent runs —
+  // the same rule the posture chips follow. It opens closed: the activity is
+  // context, and the work is what the screen is for.
+  const [companion, setCompanion] = useState(false);
+  const mayCompanion = permissions.includes("ai:runs:read");
   // docs/07 latency doctrine: a wait under 400ms is answered by holding still —
   // a skeleton that flashes reads as a fault. Past it the screen the actor asked
   // for is drawn as its shape while its data lands, so the wait has somewhere to
@@ -322,6 +331,20 @@ export function Shell({
           <div className="ms-auto flex shrink-0 items-center gap-1">
             <PostureChips posture={inbox?.posture} t={t} />
             <ThemeToggle t={t} />
+            {mayCompanion ? (
+              <button
+                type="button"
+                aria-expanded={companion}
+                aria-label={t(companion ? "companion.close" : "companion.open")}
+                title={t(companion ? "companion.close" : "companion.open")}
+                onClick={() => setCompanion((open) => !open)}
+                className="hidden size-8 shrink-0 place-items-center rounded-md text-13 text-muted transition-colors duration-150 hover:bg-surface-2 hover:text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent aria-expanded:text-accent lg:grid"
+              >
+                {/* The same ✦ every AI artifact carries (docs/15) — the rail is
+                    where all of them are listed. */}
+                <span aria-hidden="true">&#10022;</span>
+              </button>
+            ) : null}
             {/* The pill is the menu's trigger: it already says who is acting, so
                 the account actions hang off it instead of spending header width
                 as two flat controls (docs/ui.md §7.4). */}
@@ -439,6 +462,8 @@ export function Shell({
             {crumbs.length ? <Breadcrumbs items={crumbs} label={t("nav.breadcrumb")} /> : null}
             {slow ? <PageSkeleton label={t("common.loading")} /> : children}
           </main>
+
+          {mayCompanion && companion ? <Companion t={t} /> : null}
         </div>
 
         {/* The status strip: who you are working inside, in the same mono the

@@ -51,6 +51,8 @@ export default [
     // is how the product behaves, not a staff tool.
     route("design", "routes/design.tsx"),
     route("search", "routes/search.ts"),
+    // Feeds the shell's companion rail; no screen of its own (routes/companion.ts).
+    route("companion", "routes/companion.ts"),
     route("search/results", "routes/search-results.tsx"),
     // The checklist is the same screen for every subject; the pair of segments
     // is what it is about (partners|channels|staff, then the subject's id).
