@@ -26,6 +26,7 @@ export const north: WorkspaceSpec = {
       "link.whatif": "What-if",
       "link.board": "Board pack",
     "link.decisions": "Decisions",
+    "link.admin": "NORTH admin",
       "link.health": "Data health",
       "link.semantic": "Semantic model",
       "link.usage": "Adoption & cost",
@@ -143,6 +144,7 @@ export const north: WorkspaceSpec = {
       "link.whatif": "ماذا لو",
       "link.board": "حزمة مجلس الإدارة",
     "link.decisions": "القرارات",
+    "link.admin": "إدارة نورث",
       "link.health": "سلامة البيانات",
       "link.semantic": "النموذج الدلالي",
       "link.usage": "الاستخدام والتكلفة",
@@ -530,6 +532,7 @@ export const north: WorkspaceSpec = {
     { href: "/north/whatif", labelKey: "link.whatif", permission: "north:scenarios:read" },
     { href: "/north/board", labelKey: "link.board", permission: "north:boardpacks:read" },
     { href: "/north/decisions", labelKey: "link.decisions", permission: "north:decisions:read" },
+    { href: "/north/admin", labelKey: "link.admin", permission: "north:metrics:write" },
     // ponytail: health / semantic / usage were
     // linked before their screens existed and shipped 404s into the nav. The
     // tabs below already list snapshots, scenarios and board packs; re-add a
