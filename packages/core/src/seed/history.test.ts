@@ -199,6 +199,49 @@ describe("seedHistory", () => {
     expect(txns).toHaveLength(DAYS * 2 * 3);
   });
 
+  it("measures every day it writes, so the metric screens open on the same book", async () => {
+    await seedPeriods();
+    const result = await seedHistory(db, TENANT, { days: DAYS, now: NOW });
+
+    // One unit-economics row per trading day: the home KPI wall reads this
+    // table for the last 30 days and shows nothing without it.
+    const econ = await db.select().from(schema.unitEconomics).where(eq(schema.unitEconomics.tenantId, TENANT));
+    expect(econ).toHaveLength(DAYS);
+    expect(result.unitEconomics).toBe(DAYS);
+    expect(econ.every((r) => r.volume === 2 && r.revenueMinor > 0)).toBe(true);
+
+    const snaps = await db.select().from(schema.northSnapshots).where(eq(schema.northSnapshots.tenantId, TENANT));
+    // Four daily metrics on every day, eight monthly ones on each month touched.
+    const months = new Set(snaps.filter((s) => s.grain === "month").map((s) => s.period));
+    expect(snaps.filter((s) => s.grain === "day")).toHaveLength(DAYS * 4);
+    expect(snaps.filter((s) => s.grain === "month")).toHaveLength(months.size * 8);
+    expect(result.snapshots).toBe(snaps.length);
+
+    // The measurements are the postings, not a parallel invention: the month's
+    // gwp is the premium the ledger actually collected in it, net of tax.
+    const august = snaps.find((s) => s.metricKey === "gwp" && s.period === "2026-08")!;
+    const lines = await db
+      .select()
+      .from(schema.ledgerJournalLines)
+      .where(and(eq(schema.ledgerJournalLines.tenantId, TENANT), eq(schema.ledgerJournalLines.accountCode, "1010")));
+    const collectedInAugust = lines
+      .filter((l) => l.side === "debit" && new Date(l.postedAt).toISOString().startsWith("2026-08"))
+      .reduce((n, l) => n + l.amountMinor, 0);
+    // Gross collected is premium + 5% VAT; gwp is the premium alone.
+    expect(august.value).toBe(Math.round(collectedInAugust / 1.05));
+  });
+
+  it("does not duplicate measurements on a second run", async () => {
+    await seedPeriods();
+    await seedHistory(db, TENANT, { days: 30, now: NOW });
+    const again = await seedHistory(db, TENANT, { days: 30, now: NOW });
+
+    expect(again.unitEconomics).toBe(0);
+    expect(again.snapshots).toBe(0);
+    const econ = await db.select().from(schema.unitEconomics).where(eq(schema.unitEconomics.tenantId, TENANT));
+    expect(econ).toHaveLength(30);
+  });
+
   it("stays inside one tenant", async () => {
     await seedPeriods();
     await seedHistory(db, TENANT, { days: 10, now: NOW });
