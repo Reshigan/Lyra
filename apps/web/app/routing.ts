@@ -144,6 +144,8 @@ export const HIDDEN_ROUTES: Record<string, string> = {
   "/scout/pricing": "price position by line and where we lose, linked from the SCOUT workspace tools list",
   "/scout/experiments": "the experiment board and its decisions, linked from the SCOUT workspace tools list",
   "/scout/analytics": "pricing elasticity and adequacy, linked from the SCOUT workspace tools list",
+  "/scout/data-products":
+    "the data-product catalogue, its subscribers and the k-anonymity monitor, linked from the SCOUT workspace tools list",
   "/:module": "the generic workspace list; the rail links the real paths",
   "/:module/:resource": "a resource tab inside a workspace, linked from its tab strip",
   "/:module/:resource/:id": "a single record, linked from the list that holds it"

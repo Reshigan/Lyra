@@ -75,7 +75,8 @@ export const scout: WorkspaceSpec = {
       "link.panel": "Panel benchmarks",
       "link.pricing": "Price benchmarks",
       "link.experiments": "Experiments",
-      "link.analytics": "Pricing analytics"
+      "link.analytics": "Pricing analytics",
+      "link.dataProducts": "Data products"
     },
     ar: {
       signals: "الإشارات",
@@ -144,7 +145,8 @@ export const scout: WorkspaceSpec = {
       "link.panel": "مقارنة المزودين",
       "link.pricing": "مقارنة الأسعار",
       "link.experiments": "التجارب",
-      "link.analytics": "تحليلات التسعير"
+      "link.analytics": "تحليلات التسعير",
+      "link.dataProducts": "المنتجات المعرفية"
     }
   },
   links: [
@@ -152,7 +154,8 @@ export const scout: WorkspaceSpec = {
     { href: "/scout/panel", labelKey: "link.panel", permission: "scout:panel_bench:read" },
     { href: "/scout/pricing", labelKey: "link.pricing", permission: "scout:panel_bench:read" },
     { href: "/scout/experiments", labelKey: "link.experiments", permission: "scout:experiments:read" },
-    { href: "/scout/analytics", labelKey: "link.analytics", permission: "scout:panel_bench:read" }
+    { href: "/scout/analytics", labelKey: "link.analytics", permission: "scout:panel_bench:read" },
+    { href: "/scout/data-products", labelKey: "link.dataProducts", permission: "scout:data_products:read" }
   ],
   tabs: [
     {

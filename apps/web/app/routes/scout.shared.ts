@@ -32,6 +32,9 @@ export const PERM = {
   experimentsRead: "scout:experiments:read",
   experimentsCreate: "scout:experiments:create",
   experimentsDecide: "scout:experiments:decide",
+  dataProductsRead: "scout:data_products:read",
+  /** Publish *and* suspend — resources.ts gates every update on this one. */
+  dataProductsPublish: "scout:data_products:publish",
   exportCreate: "analytics:exports:create"
 } as const;
 
@@ -488,6 +491,9 @@ const LABELS: Record<string, Record<string, string>> = {
     "problem.dataset_required": "Choose what to export.",
     "problem.experiment_required": "That experiment is missing.",
     "problem.transition_required": "A card cannot move there from where it is.",
+    "problem.product_required": "That data product is missing.",
+    "problem.floor_too_low":
+      "The suppression floor on that cut is below the module's k-anonymity floor, so it cannot be published from here.",
 
     /* radar */
     "radar.title": "Radar",
@@ -626,7 +632,63 @@ const LABELS: Record<string, Record<string, string>> = {
     "an.benchNotExportable": "The bench itself is not exportable",
     "an.benchNotExportableWhy":
       "The report engine has no price-bench table registered, so the index and win-rate figures above cannot be rendered as a file. The negotiation pack is the export that carries them.",
-    "an.openPanel": "Panel intelligence"
+    "an.openPanel": "Panel intelligence",
+
+    /* data products */
+    "dtp.title": "Data products",
+    "dtp.lede":
+      "Insight packaged and sold back to the panel. Every cut names its consent basis and the floor below which its cells are suppressed.",
+    "dtp.empty": "No data product has been defined yet.",
+    "dtp.monitor": "K-anonymity monitor",
+    "dtp.monitorHint": "The floor is the promise. A cut that can name one counterparty is flagged however high its floor.",
+    "dtp.published": "Published",
+    "dtp.floor": "Module floor",
+    "dtp.subscribing": "Subscribing carriers",
+    "dtp.flagged": "Flagged",
+    "dtp.catalogue": "Catalogue",
+    "dtp.catalogueHint": "Most recently changed first.",
+    "dtp.cutHint": "The cut as the builder defined it — not recomputed here.",
+    "dtp.source": "Source",
+    "dtp.window": "Window",
+    "dtp.dimensions": "Dimensions",
+    "dtp.measures": "Measures",
+    "dtp.consent": "Consent basis",
+    "dtp.k": "k ≥ {floor}",
+    "dtp.kHint": "Cells below this count are suppressed, not rounded.",
+    "dtp.cadence": "Rebuilds {cadence}.",
+    "dtp.noCadence": "No rebuild cadence set.",
+    "dtp.buildFailed": "The last build did not complete",
+    "dtp.subscribers": "Subscribers",
+    "dtp.subscribersHint": "Read from the product's own subscriber list, suspensions included.",
+    "dtp.noSubscribers": "Nobody subscribes to this product yet.",
+    "dtp.active": "Active",
+    "dtp.suspendedOn": "Suspended",
+    "dtp.deliveries": "Delivery log",
+    "dtp.deliveriesHint": "Cuts of this product rendered by the platform's report engine.",
+    "dtp.noDeliveries": "No cut of this product has been rendered yet.",
+    "dtp.move": "Change status",
+    "dtp.moveHint": "Publishing exposes the cut to its subscribers. Suspending withdraws it without deleting it.",
+    "dtp.moveDenied": "Publishing a data product needs the SCOUT publish permission.",
+    "dtp.noMoves": "This product has no status left to move to.",
+    "dtp.target": "New status",
+    "dtp.moved": "Moved to {status}.",
+    "dtp.status.draft": "Draft",
+    "dtp.status.published": "Published",
+    "dtp.status.suspended": "Suspended",
+    "dtp.delivery.api": "API feed",
+    "dtp.delivery.report": "Report",
+    "dtp.refresh.fresh": "Last built",
+    "dtp.refresh.stale": "Stale since",
+    "dtp.refresh.never_run": "Never built.",
+    "dtp.refresh.halted": "Halted at",
+    "dtp.warn.belowFloor": "Floor below the module minimum",
+    "dtp.warnWhy.belowFloor": "This cut suppresses below the module's floor of {floor}, so thin cells could reach a subscriber.",
+    "dtp.warn.singleCounterparty": "Keyed on one counterparty",
+    "dtp.warnWhy.singleCounterparty":
+      "Every cell of a cut keyed on the carrier names that carrier, whatever the floor is set to.",
+    "dtp.warn.staleFeed": "Published on a feed that is not building",
+    "dtp.warnWhy.staleFeed": "Subscribers are reading a cut older than its own cadence claims.",
+    "dtp.openRadar": "Back to the radar"
   },
   ar: {
     /* shared */
@@ -668,6 +730,8 @@ const LABELS: Record<string, Record<string, string>> = {
     "problem.dataset_required": "اختر ما تريد تصديره.",
     "problem.experiment_required": "هذه التجربة غير موجودة.",
     "problem.transition_required": "لا يمكن نقل البطاقة إلى تلك الحالة من حالتها الراهنة.",
+    "problem.product_required": "هذا المنتج المعرفي غير موجود.",
+    "problem.floor_too_low": "حد الإخفاء في هذا التقطيع أقل من حد إخفاء الهوية للوحدة، لذا لا يمكن نشره من هنا.",
 
     /* radar */
     "radar.title": "الرادار",
@@ -803,7 +867,61 @@ const LABELS: Record<string, Record<string, string>> = {
     "an.benchNotExportable": "جدول المقارنة نفسه غير قابل للتصدير",
     "an.benchNotExportableWhy":
       "محرك التقارير لا يسجّل جدول مقارنة الأسعار، لذا لا يمكن إخراج أرقام المؤشر ومعدل الفوز أعلاه كملف. ملف التفاوض هو التصدير الذي يحملها.",
-    "an.openPanel": "معلومات قائمة الجهات المسعّرة"
+    "an.openPanel": "معلومات قائمة الجهات المسعّرة",
+
+    /* data products */
+    "dtp.title": "المنتجات المعرفية",
+    "dtp.lede": "رؤى مُعبّأة وتُباع لقائمة الجهات المسعّرة. كل تقطيع يذكر أساس الموافقة والحد الذي تُخفى دونه الخانات.",
+    "dtp.empty": "لم يُعرَّف أي منتج معرفي بعد.",
+    "dtp.monitor": "مراقب إخفاء الهوية",
+    "dtp.monitorHint": "الحد هو الوعد. أي تقطيع يمكنه تسمية طرف واحد يُعلَّم مهما ارتفع حده.",
+    "dtp.published": "منشور",
+    "dtp.floor": "حد الوحدة",
+    "dtp.subscribing": "الجهات المشتركة",
+    "dtp.flagged": "مُعلَّم",
+    "dtp.catalogue": "الفهرس",
+    "dtp.catalogueHint": "الأحدث تغييرًا أولًا.",
+    "dtp.cutHint": "التقطيع كما عرّفه المُنشئ — لا يُعاد حسابه هنا.",
+    "dtp.source": "المصدر",
+    "dtp.window": "النافذة",
+    "dtp.dimensions": "الأبعاد",
+    "dtp.measures": "المقاييس",
+    "dtp.consent": "أساس الموافقة",
+    "dtp.k": "ك ≥ {floor}",
+    "dtp.kHint": "الخانات دون هذا العدد تُخفى ولا تُقرَّب.",
+    "dtp.cadence": "يُعاد بناؤه {cadence}.",
+    "dtp.noCadence": "لا وتيرة إعادة بناء محددة.",
+    "dtp.buildFailed": "آخر بناء لم يكتمل",
+    "dtp.subscribers": "المشتركون",
+    "dtp.subscribersHint": "مقروء من قائمة مشتركي المنتج نفسها، بما فيها التعليقات.",
+    "dtp.noSubscribers": "لا أحد مشترك في هذا المنتج بعد.",
+    "dtp.active": "نشط",
+    "dtp.suspendedOn": "معلَّق",
+    "dtp.deliveries": "سجل التسليم",
+    "dtp.deliveriesHint": "نسخ من هذا المنتج أنتجها محرك التقارير في المنصة.",
+    "dtp.noDeliveries": "لم تُنتج أي نسخة من هذا المنتج بعد.",
+    "dtp.move": "تغيير الحالة",
+    "dtp.moveHint": "النشر يكشف التقطيع لمشتركيه. التعليق يسحبه دون حذفه.",
+    "dtp.moveDenied": "نشر منتج معرفي يحتاج صلاحية النشر في سكاوت.",
+    "dtp.noMoves": "لا حالة أخرى ينتقل إليها هذا المنتج.",
+    "dtp.target": "الحالة الجديدة",
+    "dtp.moved": "انتقل إلى {status}.",
+    "dtp.status.draft": "مسودة",
+    "dtp.status.published": "منشور",
+    "dtp.status.suspended": "معلَّق",
+    "dtp.delivery.api": "تغذية برمجية",
+    "dtp.delivery.report": "تقرير",
+    "dtp.refresh.fresh": "آخر بناء",
+    "dtp.refresh.stale": "متقادم منذ",
+    "dtp.refresh.never_run": "لم يُبنَ قط.",
+    "dtp.refresh.halted": "توقف عند",
+    "dtp.warn.belowFloor": "الحد أقل من حد الوحدة",
+    "dtp.warnWhy.belowFloor": "هذا التقطيع يخفي دون حد الوحدة البالغ {floor}، فقد تصل خانات رقيقة إلى مشترك.",
+    "dtp.warn.singleCounterparty": "مُفهرس على طرف واحد",
+    "dtp.warnWhy.singleCounterparty": "كل خانة في تقطيع مُفهرس على الجهة المسعّرة تسمي تلك الجهة مهما كان الحد.",
+    "dtp.warn.staleFeed": "منشور على تغذية لا تُبنى",
+    "dtp.warnWhy.staleFeed": "المشتركون يقرؤون تقطيعًا أقدم مما تدّعيه وتيرته.",
+    "dtp.openRadar": "العودة إلى الرادار"
   }
 };
 
