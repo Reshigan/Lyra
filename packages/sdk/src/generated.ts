@@ -2702,6 +2702,7 @@ export interface Operations {
   "GET /v1/north/boardpacks": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<NorthBoardpacks>>;
   "POST /v1/north/boardpacks": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/north/boardpacks/{id}": Op<{ id: string }, never, never, NorthBoardpacks>;
+  "GET /v1/north/boardpacks/{id}/file": Op<{ id: string }, never, never, Record<string, unknown>>;
   "GET /v1/north/briefings": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<NorthBriefings>>;
   "POST /v1/north/briefings/generate": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/north/briefings/{id}": Op<{ id: string }, never, never, NorthBriefings>;
@@ -2836,6 +2837,7 @@ export interface Operations {
   "PATCH /v1/scout/scout-experiments/{id}": Op<{ id: string }, never, ScoutScoutExperiments, ScoutScoutExperiments>;
   "GET /v1/scout/signals": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<ScoutSignals>>;
   "POST /v1/scout/signals": Op<never, never, ScoutSignals, ScoutSignals>;
+  "POST /v1/scout/signals/similar": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/scout/signals/{id}": Op<{ id: string }, never, never, ScoutSignals>;
   "GET /v1/scout/whitespaces": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<ScoutWhitespaces>>;
   "POST /v1/scout/whitespaces/compute": Op<never, never, never, Record<string, unknown>>;
@@ -3389,6 +3391,7 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "GET /v1/north/boardpacks": { tag: "north", summary: "List boardpacks", permission: "north:boardpacks:read", public: false },
   "POST /v1/north/boardpacks": { tag: "north", summary: "Assemble a board pack PDF from the latest briefing, period metrics and open decisions", permission: "north:boardpacks:generate", public: false },
   "GET /v1/north/boardpacks/{id}": { tag: "north", summary: "Fetch one boardpack", permission: "north:boardpacks:read", public: false },
+  "GET /v1/north/boardpacks/{id}/file": { tag: "north", summary: "Download the rendered board pack PDF", permission: "north:boardpacks:read", public: false },
   "GET /v1/north/briefings": { tag: "north", summary: "List briefings", permission: "north:briefings:read", public: false },
   "POST /v1/north/briefings/generate": { tag: "north", summary: "Generate an executive briefing from live metric snapshots, numeric claims verified against the input", permission: "north:briefings:generate", public: false },
   "GET /v1/north/briefings/{id}": { tag: "north", summary: "Fetch one briefing", permission: "north:briefings:read", public: false },
@@ -3523,6 +3526,7 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "PATCH /v1/scout/scout-experiments/{id}": { tag: "scout", summary: "Update a scout experiment", permission: "scout:experiments:decide", public: false },
   "GET /v1/scout/signals": { tag: "scout", summary: "List signals", permission: "scout:signals:read", public: false },
   "POST /v1/scout/signals": { tag: "scout", summary: "Create a signal", permission: "scout:signals:ingest", public: false },
+  "POST /v1/scout/signals/similar": { tag: "scout", summary: "Nearest signals to a phrase, from the market embedding index", permission: "scout:signals:read", public: false },
   "GET /v1/scout/signals/{id}": { tag: "scout", summary: "Fetch one signal", permission: "scout:signals:read", public: false },
   "GET /v1/scout/whitespaces": { tag: "scout", summary: "List whitespaces", permission: "scout:whitespaces:read", public: false },
   "POST /v1/scout/whitespaces/compute": { tag: "scout", summary: "Run the whitespace sweep now against real quote demand vs. policy coverage", permission: "scout:whitespaces:promote", public: false },

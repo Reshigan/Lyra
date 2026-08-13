@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { dayKey } from "@lyra/core";
 import { expectNoA11yViolations } from "./a11y.js";
-import { chooseOption, goto, loginAsNorthExec } from "./fixtures.js";
+import { goto, loginAsNorthExec } from "./fixtures.js";
 
 // J-E1 "The 7am read (mobile)" (docs/06-roles-and-journeys.md §Executive): a
 // north.exec opens the already-published briefing on a phone, reads it in
@@ -35,21 +35,23 @@ test("J-E1 exec reads the morning briefing on a phone and assigns an action on t
   await expect(page.getByRole("heading", { name: yesterday, level: 1 })).toBeVisible();
   await expectNoA11yViolations(page);
 
+  // Anomalies is a card queue now (docs/modules/north.md §4 screen 3), not a
+  // record list: no row to open, the decision is on the card itself. The card
+  // is titled by the metric's display name, so it says "Acquisition cost per
+  // policy" rather than the stored `cac_per_policy` key.
   await goto(page, "/north/anomalies");
-  const anomalyRow = page.getByRole("row", { name: /cac_per_policy/ });
-  await expect(anomalyRow).toBeVisible();
-  await anomalyRow.getByRole("link", { name: "cac_per_policy" }).click();
+  const card = page.locator("section").filter({ hasText: "Acquisition cost per policy" });
+  await expect(card).toBeVisible();
 
-  await chooseOption(page, "State", "Action created");
-  await page.getByLabel("Linked action", { exact: true }).fill("J-E1-follow-up");
-  await page.getByRole("button", { name: "Save changes" }).click();
-  // A plain field edit (as opposed to a declared action, record.tsx line 141)
-  // has no "Saved" toast — the definition list re-rendering with the new
-  // state is the confirmation, same convention as e2e/ops.spec.ts's J-O1.
-  // Scoped to the <dl>: the edit form's own Select re-renders below it with
-  // the same selected-option text ("Action created"), which would otherwise
-  // make this a strict-mode ambiguous match.
-  await expect(page.locator("dl").getByText("Action created")).toBeVisible();
+  // "Take it on" is the assign close: it writes state=action_created with the
+  // reader's name against it, and the linked reference is the action itself.
+  await card.getByLabel("Your name", { exact: true }).fill("Hala Zayed");
+  await card.getByLabel("Linked work", { exact: true }).fill("J-E1-follow-up");
+  await card.getByRole("button", { name: "Take it on" }).click();
+  await expect(page.getByRole("status")).toHaveText("Recorded as yours.");
+  // The reload behind the banner is the proof it persisted: the card's badge
+  // has moved off "Unowned".
+  await expect(card.getByText("Being worked")).toBeVisible();
 });
 
 // J-E3 "What-if" (docs/06-roles-and-journeys.md §Executive): a north.exec asks
