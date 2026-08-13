@@ -13,7 +13,7 @@ import {
 import type { Brand, NavItem } from "../api.server";
 import type { Translate } from "../i18n";
 import { humanise } from "../modules/spec";
-import { isRouted } from "../routing";
+import { isRouted, landingFor } from "../routing";
 import { ColdOpen } from "./cold-open";
 import { ConstellationMark } from "./mark";
 import { Meridian } from "./meridian";
@@ -116,7 +116,45 @@ export interface ShellProps {
   inbox?: Inbox | null;
   /** Display names for the approval subjects the rail lists. */
   names?: Names;
+  /** Every role key this actor holds, for the role pill (docs/07 §3 personas). */
+  roles?: readonly string[];
   children: React.ReactNode;
+}
+
+/** One switchable view in the role pill: the role key, where that role lands,
+ *  and whether it is the one being looked at now. */
+export interface Profile {
+  role: string;
+  href: string;
+  active: boolean;
+}
+
+/**
+ * The profiles the pill offers. The design's role pill "switches the view, never
+ * the permissions" — so a profile is nothing more than the workspace that role
+ * lands on, and `landingFor` already refuses to name one the nav does not offer.
+ *
+ * A single-role actor gets no choices, and neither does one whose roles all land
+ * on the same workspace: a menu with one destination is a menu that lies about
+ * having an alternative.
+ */
+export function profilesFor(
+  roles: readonly string[],
+  nav: NavItem[],
+  pathname: string
+): Profile[] {
+  const byHref = new Map<string, Profile>();
+  for (const role of roles) {
+    const href = landingFor([role], nav);
+    if (byHref.has(href)) continue;
+    byHref.set(href, {
+      role,
+      href,
+      active: pathname === href || pathname.startsWith(`${href}/`)
+    });
+  }
+  const profiles = [...byHref.values()];
+  return profiles.length > 1 ? profiles : [];
 }
 
 /**
@@ -166,7 +204,17 @@ export function crumbsFor(pathname: string, nav: NavItem[], t: Translate): Crumb
   ];
 }
 
-export function Shell({ t, nav, brand, tenantName, actorName, inbox = null, names = {}, children }: ShellProps) {
+export function Shell({
+  t,
+  nav,
+  brand,
+  tenantName,
+  actorName,
+  inbox = null,
+  names = {},
+  roles = [],
+  children
+}: ShellProps) {
   const { product: productName, tenant: servedName } = lockupNames(brand, tenantName);
   // The API returns every item this actor may open, including modules whose
   // screens have not shipped yet (and headings whose one real destination
@@ -192,6 +240,10 @@ export function Shell({ t, nav, brand, tenantName, actorName, inbox = null, name
     .filter((item) => (item.href === "/" ? pathname === "/" : pathname.startsWith(item.href)))
     .sort((a, b) => b.href.length - a.href.length)[0];
   const crumbs = crumbsFor(pathname, nav, t);
+  // The pill names the role whose workspace is on screen, falling back to the
+  // first one held — an actor sitting on /settings is still someone's agent.
+  const profiles = profilesFor(roles, nav, pathname);
+  const roleKey = profiles.find((profile) => profile.active)?.role ?? roles[0] ?? null;
   const navigate = useNavigate();
   const submit = useSubmit();
   // docs/07 latency doctrine: a wait under 400ms is answered by holding still —
@@ -278,7 +330,8 @@ export function Shell({ t, nav, brand, tenantName, actorName, inbox = null, name
               items={accountMenuItems(
                 t,
                 (href) => void navigate(href),
-                () => void submit(null, { method: "post", action: "/logout" })
+                () => void submit(null, { method: "post", action: "/logout" }),
+                profiles
               )}
               trigger={
                 <button
@@ -297,8 +350,15 @@ export function Shell({ t, nav, brand, tenantName, actorName, inbox = null, name
                   >
                     {actorName ? initialsOf(actorName) : "\u2022"}
                   </span>
-                  <span className="hidden max-w-40 truncate font-ui text-12 text-muted sm:inline">
-                    {actorName ?? t("header.account")}
+                  {/* The design's pill states the role, not the name: the circle
+                      already says who, and which hat they are wearing is the
+                      thing that changes what the next screen shows. The name
+                      stays on the tooltip and in the menu's own label. */}
+                  <span className="hidden max-w-40 truncate font-mono text-12 text-muted sm:inline">
+                    {roleKey ?? actorName ?? t("header.account")}
+                  </span>
+                  <span aria-hidden="true" className="text-11 text-subtle">
+                    &#9662;
                   </span>
                 </button>
               }
@@ -421,9 +481,20 @@ export function Shell({ t, nav, brand, tenantName, actorName, inbox = null, name
 export function accountMenuItems(
   t: Translate,
   open: (href: string) => void,
-  signOut: () => void
+  signOut: () => void,
+  profiles: readonly Profile[] = []
 ): MenuItem[] {
   return [
+    // The role key is the label, the way login.tsx already names a persona: a
+    // profile is identified by the key its permissions are granted under, and
+    // inventing a prose name per role would be a second vocabulary to keep true.
+    ...profiles.map((profile) => ({
+      id: `profile:${profile.role}`,
+      label: profile.role,
+      shortcut: t(profile.active ? "header.viewing" : "header.viewAs"),
+      disabled: profile.active,
+      onSelect: () => open(profile.href)
+    })),
     { id: "settings", label: t("header.settings"), onSelect: () => open("/settings") },
     { id: "signOut", label: t("header.signOut"), tone: "danger", onSelect: signOut }
   ];

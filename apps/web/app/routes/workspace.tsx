@@ -80,6 +80,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     inbox,
     names: subjects,
     nav: me.nav,
+    roles: me.roles,
     permissions: me.permissions,
     brand: me.tenant.brand,
     tenantName: me.tenant.name,
@@ -136,6 +137,7 @@ export function ErrorBoundary() {
         actorName={shell.actorName}
         inbox={shell.inbox}
         names={shell.names}
+        roles={shell.roles}
       >
         {panel}
       </Shell>
@@ -159,6 +161,7 @@ export default function Workspace() {
         actorName={shell.actorName}
         inbox={shell.inbox}
         names={shell.names}
+        roles={shell.roles}
       >
         <Outlet />
       </Shell>

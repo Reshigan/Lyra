@@ -43,6 +43,8 @@ export const ar: Messages = {
   "header.signedInAs": "تسجيل الدخول باسم {name}",
   "header.settings": "الإعدادات",
   "header.signOut": "تسجيل الخروج",
+  "header.viewAs": "عرض بصفة",
+  "header.viewing": "المعروض حالياً",
   "header.clientMoney": "أموال العملاء المحتفظ بها",
   "header.period": "الفترة المحاسبية",
   "period.open": "مفتوحة",

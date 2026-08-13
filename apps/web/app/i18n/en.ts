@@ -46,6 +46,8 @@ export const en = {
   "header.signedInAs": "Signed in as {name}",
   "header.settings": "Settings",
   "header.signOut": "Sign out",
+  "header.viewAs": "View as",
+  "header.viewing": "Viewing",
   "header.clientMoney": "Client money held",
   "header.period": "Accounting period",
   "period.open": "open",
