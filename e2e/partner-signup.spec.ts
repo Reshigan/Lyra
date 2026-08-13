@@ -2,12 +2,13 @@ import { expect, test } from "@playwright/test";
 import { API_ORIGIN } from "./env.js";
 
 // J-X3 "partner integration" (docs/06-roles-and-journeys.md): "portal signup
-// -> sandbox key -> mock quote in <30 min". No web UI exists for this door
-// (apps/web/app/routes.ts has no onboarding/partner route) — it is API-only
-// by design, already covered end to end against an in-memory app in
-// apps/api/src/partner-signup.test.ts. This spec exercises the same contract
-// against the real running API server (webServer in playwright.config.ts),
-// the one gap that vitest run can't close.
+// -> sandbox key -> mock quote in <30 min". The web door is
+// /portal/:tenantSlug/partners (routes/portal.$tenantSlug.partners.tsx), which
+// posts this exact endpoint and then calls back with the returned key — so the
+// contract below is what that screen stands on, and is also covered against an
+// in-memory app in apps/api/src/partner-signup.test.ts. This spec exercises it
+// against the real running API server (webServer in playwright.config.ts), the
+// one gap that vitest run can't close.
 
 test("J-X3 partner portal signup mints a sandbox key scoped to sandbox use @journey:J-X3 @accept:M3", async ({ request }) => {
   const email = `jx3-${Date.now()}@acme.example`;

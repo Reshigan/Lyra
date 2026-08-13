@@ -41,6 +41,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "portal.form.error.challenge": "The security check did not pass. Reload the page and try again.",
     "portal.form.error.generic": "Something went wrong. Please try again.",
     "portal.privacy": "Your privacy rights",
+    "portal.partners": "Partner with us",
     "portal.quick": "Quick quote — three details, real prices.",
     "portal.slow": "Leave your details and a specialist prices this one for you.",
     "portal.form.age": "Your age",
@@ -75,6 +76,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "portal.form.error.challenge": "لم يجتز فحص الأمان. أعد تحميل الصفحة وحاول مرة أخرى.",
     "portal.form.error.generic": "حدث خطأ ما. حاول مرة أخرى.",
     "portal.privacy": "حقوقك في الخصوصية",
+    "portal.partners": "كن شريكًا معنا",
     "portal.quick": "عرض سعر سريع — ثلاث معلومات وأسعار حقيقية.",
     "portal.slow": "اترك بياناتك وسيقوم مختص بتسعير هذا المنتج لك.",
     "portal.form.age": "عمرك",
@@ -345,9 +347,14 @@ export default function Portal() {
 
         {/* J-C4's door has to be findable from the public site, or the right is
             theoretical. */}
-        <footer className="mt-10 border-t border-border pt-4 text-13">
+        <footer className="mt-10 flex flex-wrap gap-x-6 gap-y-2 border-t border-border pt-4 text-13">
           <a className="text-accent underline" href={`/portal/${tenantSlug}/privacy`}>
             {l("portal.privacy")}
+          </a>
+          {/* Same reason for J-X3: a partner who cannot find the sign-up door
+              is a partner who emails someone instead. */}
+          <a className="text-accent underline" href={`/portal/${tenantSlug}/partners`}>
+            {l("portal.partners")}
           </a>
         </footer>
       </div>

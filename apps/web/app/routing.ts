@@ -34,6 +34,8 @@ export const HIDDEN_ROUTES: Record<string, string> = {
     "public DSAR intake, no session and no shell — linked from the storefront footer (ADR-0042)",
   "/portal/:tenantSlug/quotes/:id":
     "public quote comparison, no session and no shell — reached only with the one-time token in the link (ADR-0043)",
+  "/portal/:tenantSlug/partners":
+    "public partner sign-up and sandbox console, no session and no shell — the key itself authenticates it (docs/modules/orbit.md §4 screen 5)",
   "/logout": "action only, no UI",
   "/settings": "reached from the account menu in the header, not the module rail",
   "/settings/:tab": "one settings section — profile, sign-in, brand, regional, data — reached from the tabs on /settings",
