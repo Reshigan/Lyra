@@ -79,6 +79,7 @@ export default [
     route("north/dev", "routes/north-dev.tsx"),
 
     route("scout/radar", "routes/scout-radar.tsx"),
+    route("scout/whitespace/:id", "routes/scout-whitespace.tsx"),
     route("scout/panel", "routes/scout-panel.tsx"),
     route("scout/pricing", "routes/scout-pricing.tsx"),
     route("scout/experiments", "routes/scout-experiments.tsx"),

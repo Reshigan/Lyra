@@ -259,6 +259,13 @@ export default function ScoutRadar() {
                 </ul>
               ) : null}
 
+              <Link
+                to={`/scout/whitespace/${encodeURIComponent(chosen.id)}`}
+                className="font-ui text-13 text-accent underline-offset-2 hover:underline"
+              >
+                {l("radar.openCard")}
+              </Link>
+
               {may.has(PERM.experimentsCreate) ? (
                 <Form method="post" className="flex flex-col gap-2 border-t border-line pt-3">
                   <input type="hidden" name="intent" value="experiment" />

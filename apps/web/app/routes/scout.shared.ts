@@ -465,6 +465,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "status.candidate": "Candidate",
     "status.validating": "Validating",
     "status.validated": "Validated",
+    "status.promoted": "Promoted",
     "status.parked": "Parked",
     why: "Why",
     evidence: "Evidence",
@@ -486,6 +487,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "problem.format_required": "Choose a file format.",
     "problem.dataset_required": "Choose what to export.",
     "problem.experiment_required": "That experiment is missing.",
+    "problem.transition_required": "A card cannot move there from where it is.",
 
     /* radar */
     "radar.title": "Radar",
@@ -512,6 +514,33 @@ const LABELS: Record<string, Record<string, string>> = {
     "radar.experimentHint": "Creates a draft experiment against this theme. Nothing goes live until you start it.",
     "radar.created": "Draft experiment created.",
     "radar.openBoard": "Experiment board",
+    "radar.openCard": "Open the whitespace card",
+
+    /* whitespace card */
+    "wsp.title": "Whitespace card",
+    "wsp.lede": "The whole case for one theme: what was observed, what it is estimated to be worth, what has been tried, and every move anyone has made on it.",
+    "wsp.missing": "No whitespace with that reference on this board.",
+    "wsp.openRadar": "Back to the radar",
+    "wsp.case": "The case",
+    "wsp.promotedOn": "Promoted",
+    "wsp.experiments": "Experiments",
+    "wsp.experimentsHint": "Every bounded test run against this theme, newest first.",
+    "wsp.noExperiments": "Nothing has been tested against this theme yet.",
+    "wsp.flags": "Regulatory flags",
+    "wsp.flagsHint":
+      "Items the circular feed raised on this cluster and who has to read them. A flag records that an item appeared — never what it requires.",
+    "wsp.noFlags": "No regulatory items raised on this cluster.",
+    "wsp.decisions": "Decision log",
+    "wsp.decisionsHint": "Every write against this card, from the audit log. Append-only.",
+    "wsp.noDecisions": "No moves recorded yet.",
+    "wsp.decisionsWithheld": "Reading the audit log needs the audit permission.",
+    "wsp.move": "Move this card",
+    "wsp.moveHint": "Promoting or parking a card is an approved change, so it queues for a second pair of eyes.",
+    "wsp.moveDenied": "Moving a card needs the promote permission.",
+    "wsp.noMoves": "This card is in a state with nowhere to move.",
+    "wsp.target": "Move to",
+    "wsp.ownerHint": "Who carries it from here. Leave as-is to keep the current owner.",
+    "wsp.moved": "Moved to {status}.",
 
     /* panel */
     "panel.title": "Panel intelligence",
@@ -617,6 +646,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "status.candidate": "مرشحة",
     "status.validating": "قيد التحقق",
     "status.validated": "مُثبتة",
+    "status.promoted": "معتمدة",
     "status.parked": "موقوفة",
     why: "السبب",
     evidence: "الأدلة",
@@ -637,6 +667,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "problem.format_required": "اختر صيغة الملف.",
     "problem.dataset_required": "اختر ما تريد تصديره.",
     "problem.experiment_required": "هذه التجربة غير موجودة.",
+    "problem.transition_required": "لا يمكن نقل البطاقة إلى تلك الحالة من حالتها الراهنة.",
 
     /* radar */
     "radar.title": "الرادار",
@@ -662,6 +693,33 @@ const LABELS: Record<string, Record<string, string>> = {
     "radar.experimentHint": "ينشئ تجربة مسودة على هذه الفكرة. لا شيء ينطلق قبل أن تبدأها.",
     "radar.created": "تم إنشاء تجربة مسودة.",
     "radar.openBoard": "لوحة التجارب",
+    "radar.openCard": "فتح بطاقة الفرصة",
+
+    /* whitespace card */
+    "wsp.title": "بطاقة الفرصة",
+    "wsp.lede": "الملف الكامل لفرصة واحدة: ما رُصد، وما تقدير قيمته، وما جُرّب، وكل خطوة اتخذها أحد بشأنه.",
+    "wsp.missing": "لا توجد فرصة بهذا المرجع على هذه اللوحة.",
+    "wsp.openRadar": "العودة إلى الرادار",
+    "wsp.case": "الملف",
+    "wsp.promotedOn": "اعتُمدت",
+    "wsp.experiments": "التجارب",
+    "wsp.experimentsHint": "كل اختبار محدود جرى على هذه الفرصة، الأحدث أولاً.",
+    "wsp.noExperiments": "لم يُختبر شيء على هذه الفرصة بعد.",
+    "wsp.flags": "تنبيهات تنظيمية",
+    "wsp.flagsHint":
+      "البنود التي رصدها موجز التعاميم على هذه المجموعة ومَن عليه قراءتها. التنبيه يسجّل ظهور البند فقط، لا ما يقتضيه.",
+    "wsp.noFlags": "لا بنود تنظيمية على هذه المجموعة.",
+    "wsp.decisions": "سجل القرارات",
+    "wsp.decisionsHint": "كل تعديل على هذه البطاقة، من سجل التدقيق. للإضافة فقط.",
+    "wsp.noDecisions": "لم تُسجّل أي خطوة بعد.",
+    "wsp.decisionsWithheld": "قراءة سجل التدقيق تحتاج صلاحية التدقيق.",
+    "wsp.move": "نقل البطاقة",
+    "wsp.moveHint": "اعتماد البطاقة أو إيقافها تغيير خاضع للموافقة، لذا ينتظر مراجعة ثانية.",
+    "wsp.moveDenied": "نقل البطاقة يحتاج صلاحية الاعتماد.",
+    "wsp.noMoves": "هذه البطاقة في حالة لا نقل منها.",
+    "wsp.target": "النقل إلى",
+    "wsp.ownerHint": "من يتولاها من هنا. اتركه كما هو للإبقاء على المسؤول الحالي.",
+    "wsp.moved": "نُقلت إلى {status}.",
 
     /* panel */
     "panel.title": "معلومات قائمة الجهات المسعّرة",

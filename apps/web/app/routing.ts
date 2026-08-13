@@ -139,6 +139,7 @@ export const HIDDEN_ROUTES: Record<string, string> = {
   "/north/admin": "metric definitions and briefing cadence, linked from the NORTH workspace tools list",
   "/north/dev": "the metric sandbox and developer links, linked from the NORTH workspace tools list",
   "/scout/radar": "the opportunity radar over clusters and whitespace, linked from the SCOUT workspace tools list",
+  "/scout/whitespace/:id": "the dossier for one theme, opened from a dot on the radar",
   "/scout/panel": "panel benchmarks and the negotiation pack, linked from the SCOUT workspace tools list",
   "/scout/pricing": "price position by line and where we lose, linked from the SCOUT workspace tools list",
   "/scout/experiments": "the experiment board and its decisions, linked from the SCOUT workspace tools list",
