@@ -298,6 +298,8 @@ const HAND_WRITTEN: Op[] = [
   // Signal. Brief in, N compliance-checked ar/en variants out — the
   // Meta/Google publish half is credential-blocked and out of scope.
   { method: "post", path: "/v1/signal/creatives/generate", summary: "Generate ad-copy variants from a brief, compliance-checked and audited per locale", permission: "signal:creatives:generate", tag: "signal", requestBody: true },
+  { method: "post", path: "/v1/signal/creatives/image", summary: "Generate a hero/post image from a prompt (ADR-0060); stores bytes to R2 and returns a data URL for immediate preview", permission: "signal:creatives:generate", tag: "signal", requestBody: true },
+  { method: "get", path: "/v1/signal/creatives/{id}/image", summary: "Re-stream a previously generated creative image's bytes", permission: "signal:creatives:read", tag: "signal" },
   { method: "post", path: "/v1/signal/autopilot/pause", summary: "Pause the budget autopilot kill switch", permission: "signal:autopilot:pause", tag: "signal" },
   { method: "post", path: "/v1/signal/autopilot/resume", summary: "Resume the budget autopilot", permission: "signal:autopilot:pause", tag: "signal" },
 

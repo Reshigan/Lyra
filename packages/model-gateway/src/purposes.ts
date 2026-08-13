@@ -53,6 +53,7 @@ export const PURPOSES: Record<string, PurposeDef> = {
   // the very draft a human is meant to inspect (engines/signal-creative.ts).
   "creative.generate": { module: "signal", customerFacing: false },
   "creative.variant": { module: "signal", customerFacing: false },
+  "creative.image_generate": { module: "signal", customerFacing: false },
   "aeo.draft": { module: "signal", customerFacing: false },
 
   // scout — market intelligence. Internal analysis.

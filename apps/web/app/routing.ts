@@ -92,6 +92,7 @@ export const HIDDEN_ROUTES: Record<string, string> = {
   "/signal/cockpit": "the growth read across the SIGNAL ledgers, linked from the signal workspace tools list",
   "/signal/studio":
     "creates a campaign and drafts its content, linked from the signal workspace tools list and from the cockpit when nothing is running",
+  "/signal/creatives/:id/image": "streams one generated creative's image, opened from the studio's creative list",
   "/signal/audience-value": "value against cost per audience, linked from the signal workspace tools list",
   "/signal/answer-engines": "answer-engine coverage and citation share, linked from the signal workspace tools list",
   "/signal/experiments":

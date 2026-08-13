@@ -104,11 +104,35 @@ export interface EmbedResponse {
   usage: Usage;
 }
 
+export interface ImageRequest {
+  module: string;
+  purpose: string;
+  /** The creative brief. Screened by checkInput before the provider call (ADR-0060). */
+  prompt: string;
+  /** What the image is about — an id the audit trail can join on. */
+  subjectRef?: string;
+}
+
+export interface ImageResponse {
+  /** Raw image bytes — the caller writes them to R2 and hashes them. */
+  bytes: Uint8Array;
+  contentType: string;
+  model: string;
+  provider: ProviderName;
+  usage: Usage;
+  /** Guardrail rules that fired on the prompt. Empty on a clean call. */
+  flags: string[];
+  /** ai_audit_log row id — the handle for explainability surfaces. */
+  auditId: string;
+}
+
 /** What every provider adapter must implement. Adding one is a new file, not a branch. */
 export interface Provider {
   name: ProviderName;
   complete(req: ModelRequest, model: string, env: ProviderEnv): Promise<ProviderResult>;
   embed?(req: EmbedRequest, model: string, env: ProviderEnv): Promise<{ vectors: number[][]; usage: Usage }>;
+  /** Only Workers AI implements this today (ADR-0060) — optional so other adapters need no stub method. */
+  generateImage?(prompt: string, model: string, env: ProviderEnv): Promise<{ bytes: Uint8Array; contentType: string }>;
 }
 
 export interface ProviderResult {

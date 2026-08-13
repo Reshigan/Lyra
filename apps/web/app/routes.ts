@@ -104,6 +104,7 @@ export default [
 
     route("signal/cockpit", "routes/signal-cockpit.tsx"),
     route("signal/studio", "routes/signal-studio.tsx"),
+    route("signal/creatives/:id/image", "routes/signal-creative-image.tsx"),
     route("signal/audience-value", "routes/signal-audience-value.tsx"),
     route("signal/answer-engines", "routes/signal-answer-engines.tsx"),
     route("signal/experiments", "routes/signal-experiments.tsx"),

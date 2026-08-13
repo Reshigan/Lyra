@@ -3,7 +3,7 @@ import { actorRef, hashObject, sha256Hex, type Ctx } from "@lyra/core";
 import { assertBudget, charge } from "./budget.js";
 import { assertNotKilled } from "./kill.js";
 import { blocked, checkInput, checkOutput, recordGuardrails, type GuardrailHit } from "./guardrails.js";
-import { CATALOGUE, EMBED_MODEL, costMicro, resolveModel } from "./models.js";
+import { CATALOGUE, EMBED_MODEL, IMAGE_CATALOGUE, IMAGE_MODEL, costMicro, resolveModel } from "./models.js";
 import { resolvePurpose } from "./purposes.js";
 import { rehydrate, scrubMessages } from "./scrub.js";
 import { anthropic } from "./providers/anthropic.js";
@@ -12,6 +12,8 @@ import { workersAi } from "./providers/workers-ai.js";
 import type {
   EmbedRequest,
   EmbedResponse,
+  ImageRequest,
+  ImageResponse,
   ModelRequest,
   ModelResponse,
   Provider,
@@ -227,11 +229,118 @@ export class Gateway {
     };
   }
 
+  /**
+   * ADR-0060. One round trip, no conversational output — closer to embed()
+   * than complete(): no checkOutput, no retry loop. checkInput still screens
+   * the prompt, same function complete() runs on user turns, but a hit only
+   * flags — it never blocks (checkInput's hits are all severity "warn").
+   * ponytail: Workers AI cloud only, no on-prem image model yet.
+   */
+  async generateImage(ctx: Ctx, req: ImageRequest): Promise<ImageResponse> {
+    const started = Date.now();
+    const def = IMAGE_CATALOGUE[IMAGE_MODEL.cloud];
+    if (!def) throw new Error(`no image model ${IMAGE_MODEL.cloud}`);
+
+    const preHits = checkInput(req.prompt);
+    const flags = new Set(preHits.map((h) => h.rule));
+
+    const purpose = resolvePurpose(req.module, req.purpose);
+    for (const f of purpose.flags) flags.add(f);
+
+    const inputHash = await hashObject({ model: def.model, prompt: req.prompt });
+    const auditId = id("aia", ctx.now);
+    const audit: Pick<ModelRequest, "module" | "purpose" | "tier" | "subjectRef"> = {
+      module: req.module,
+      purpose: req.purpose,
+      tier: "standard",
+      ...(req.subjectRef !== undefined ? { subjectRef: req.subjectRef } : {})
+    };
+
+    for (const [outcome, check] of [
+      ["killed", () => assertNotKilled(ctx, req.module)],
+      ["budget_exceeded", () => assertBudget(ctx, req.module)]
+    ] as const) {
+      try {
+        await check();
+      } catch (err) {
+        await this.writeAudit(ctx, {
+          auditId,
+          req: audit,
+          def,
+          inputHash,
+          outputHash: null,
+          tokensIn: 0,
+          tokensOut: 0,
+          cost: 0,
+          latencyMs: Date.now() - started,
+          toolCalls: [],
+          flags: [...flags, outcome],
+          outcome
+        });
+        throw err;
+      }
+    }
+
+    const provider = this.pick(def.provider);
+    if (!provider.generateImage) throw new Error(`${def.provider} cannot generate images`);
+
+    let result;
+    try {
+      result = await provider.generateImage(req.prompt, def.model, this.opts.env);
+    } catch (err) {
+      await this.writeAudit(ctx, {
+        auditId,
+        req: audit,
+        def,
+        inputHash,
+        outputHash: null,
+        tokensIn: 0,
+        tokensOut: 0,
+        cost: 0,
+        latencyMs: Date.now() - started,
+        toolCalls: [],
+        flags: [...flags, "provider_error"],
+        outcome: "error"
+      });
+      throw err instanceof Error ? err : new Error("image generation failed");
+    }
+
+    const cost = def.costMicroPerImage;
+    const outputHash = await sha256Hex(result.bytes);
+
+    await this.writeAudit(ctx, {
+      auditId,
+      req: audit,
+      def,
+      inputHash,
+      outputHash,
+      tokensIn: 0,
+      tokensOut: 0,
+      cost,
+      latencyMs: Date.now() - started,
+      toolCalls: [],
+      flags: [...flags],
+      outcome: "ok"
+    });
+    await recordGuardrails(ctx, preHits, req.subjectRef ? { subjectRef: req.subjectRef } : {});
+    await charge(ctx, { tokensIn: 0, tokensOut: 0, costMicro: cost }, req.module);
+
+    return {
+      bytes: result.bytes,
+      contentType: result.contentType,
+      model: def.model,
+      provider: def.provider,
+      usage: { tokensIn: 0, tokensOut: 0, costMicro: cost },
+      flags: [...flags],
+      auditId
+    };
+  }
+
   private async writeAudit(
     ctx: Ctx,
     a: {
       auditId: string;
-      req: ModelRequest;
+      req: Pick<ModelRequest, "module" | "purpose" | "tier" | "subjectRef">;
       def: { model: string; provider: ProviderName };
       inputHash: string;
       outputHash: string | null;

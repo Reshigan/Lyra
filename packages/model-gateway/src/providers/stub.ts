@@ -14,14 +14,20 @@ export interface StubScript {
   toolCalls?: ProviderResult["toolCalls"];
   finishReason?: ProviderResult["finishReason"];
   fail?: Error;
+  /** Bytes returned by generateImage. Defaults to a 1-byte placeholder. */
+  imageBytes?: Uint8Array;
 }
 
-export function makeStub(script: StubScript = {}): Provider & { calls: ModelRequest[] } {
+export function makeStub(
+  script: StubScript = {}
+): Provider & { calls: ModelRequest[]; imageCalls: string[] } {
   const calls: ModelRequest[] = [];
+  const imageCalls: string[] = [];
   let n = 0;
   return {
     name: "stub",
     calls,
+    imageCalls,
     async complete(req) {
       calls.push(req);
       if (script.fail) throw script.fail;
@@ -46,6 +52,11 @@ export function makeStub(script: StubScript = {}): Provider & { calls: ModelRequ
       });
       const tokensIn = req.texts.reduce((s, t) => s + approxTokens(t), 0);
       return { vectors, usage: { tokensIn, tokensOut: 0, costMicro: 0 } };
+    },
+    async generateImage(prompt) {
+      imageCalls.push(prompt);
+      if (script.fail) throw script.fail;
+      return { bytes: script.imageBytes ?? new Uint8Array([1]), contentType: "image/png" };
     }
   };
 }

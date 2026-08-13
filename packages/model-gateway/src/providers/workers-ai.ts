@@ -11,6 +11,16 @@ interface RunResult {
   tool_calls?: { name: string; arguments?: Record<string, unknown> }[];
   usage?: { prompt_tokens?: number; completion_tokens?: number };
   data?: number[][];
+  /** flux-1-schnell's response shape: base64-encoded PNG bytes. */
+  image?: string;
+}
+
+/** `atob` is a Workers-global; no Buffer in this runtime. */
+export function base64ToBytes(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
 }
 
 export function textOf(out: RunResult): string {
@@ -76,6 +86,13 @@ export const workersAi: Provider = {
       vectors,
       usage: { tokensIn: estimate(req.texts.join(" ")), tokensOut: 0, costMicro: 0 }
     };
+  },
+
+  async generateImage(prompt: string, model: string, env: ProviderEnv): Promise<{ bytes: Uint8Array; contentType: string }> {
+    if (!env.AI) throw new Error("workers-ai: AI binding missing");
+    const out = (await env.AI.run(model, { prompt })) as RunResult;
+    if (!out.image) throw new Error("workers-ai: no image in response");
+    return { bytes: base64ToBytes(out.image), contentType: "image/png" };
   }
 };
 

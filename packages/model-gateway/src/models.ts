@@ -45,6 +45,23 @@ export const ONPREM_ROUTES: Record<Tier, string> = {
 
 export const EMBED_MODEL = { cloud: "bge-m3", onprem: "internal-embed" } as const;
 
+export interface ImageModelDef {
+  provider: ProviderName;
+  model: string;
+  /** micro-USD per image — one round trip, no input/output token split (ADR-0060). */
+  costMicroPerImage: number;
+}
+
+// Cloudflare's published FLUX.1 [schnell] price is $0.0000528 per step at the
+// model's fixed 4 steps — the same $0.000211/image quoted in Workers AI
+// pricing docs at the time of writing. Re-check against current pricing if
+// the catalogue price and Cloudflare's invoiced usage ever diverge.
+export const IMAGE_CATALOGUE: Record<string, ImageModelDef> = {
+  "flux-schnell": { provider: "workers-ai", model: "@cf/black-forest-labs/flux-1-schnell", costMicroPerImage: 211 }
+};
+
+export const IMAGE_MODEL = { cloud: "flux-schnell" } as const;
+
 export interface RouteOptions {
   /** PolicyJson.dataResidency === "on-prem" pins every tier internal. */
   onPrem?: boolean;

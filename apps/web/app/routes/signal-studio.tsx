@@ -102,6 +102,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const url = new URL(request.url);
   const campaignId = url.searchParams.get("campaignId") ?? "";
   const generated = Number(url.searchParams.get("generated") ?? "");
+  const generatedImage = url.searchParams.get("generatedImage") === "1";
   // Arrived from SCOUT's whitespace screen: the brief opens with the finding
   // rather than blank. A dead id is not an error — the screen still works.
   const opportunityId = url.searchParams.get("opportunityId") ?? "";
@@ -153,6 +154,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     opportunity,
     assignees,
     generated: Number.isFinite(generated) && generated > 0 ? generated : 0,
+    generatedImage,
     audiences: audiences.data,
     drafts: recent.data.filter((row) => DRAFT_STATES.includes(row.state)),
     creatives: creatives.data,
@@ -270,6 +272,22 @@ export async function action({ request, context }: ActionFunctionArgs): Promise<
         throw redirect(
           `/signal/studio?campaignId=${encodeURIComponent(campaignId)}&generated=${result.variants.length}`
         );
+      }
+
+      case "generate-image": {
+        const campaignId = text(form, "campaignId");
+        if (!campaignId) return refuse("campaign_required");
+        const prompt = text(form, "prompt");
+        if (prompt.length < 10) return refuse("brief_required");
+
+        await api<{ id: string }>("/v1/signal/creatives/image", {
+          env,
+          request,
+          method: "POST",
+          headers,
+          body: { campaignId, prompt }
+        });
+        throw redirect(`/signal/studio?campaignId=${encodeURIComponent(campaignId)}&generatedImage=1`);
       }
 
       case "edit-variant": {
@@ -459,6 +477,11 @@ export default function CampaignStudio() {
       {loaded.generated > 0 ? (
         <p className="font-ui text-13 text-success">
           {AGENT_MARK} {l("studio.generated", { n: String(loaded.generated) })}
+        </p>
+      ) : null}
+      {loaded.generatedImage ? (
+        <p className="font-ui text-13 text-success">
+          {AGENT_MARK} {l("studio.imageGenerated")}
         </p>
       ) : null}
       {result?.done === "launch" ? (
@@ -652,6 +675,27 @@ export default function CampaignStudio() {
             </Card>
           ) : null}
 
+          {may.has(PERM.creativesGenerate) ? (
+            <Card title={l("studio.image")} description={l("studio.imageHint")}>
+              <Form method="post" className="flex flex-col gap-4">
+                <input type="hidden" name="intent" value="generate-image" />
+                <input type="hidden" name="key" value={loaded.key} />
+                <input type="hidden" name="campaignId" value={campaign.id} />
+                <Field label={l("studio.imagePrompt")} labelHidden required>
+                  <Textarea name="prompt" rows={3} required minLength={10} maxLength={2000} />
+                </Field>
+                <div className="flex items-center gap-3">
+                  <Button type="submit" variant="primary" disabled={busy}>
+                    {busy ? l("studio.imageGenerating") : `${AGENT_MARK} ${l("studio.imageGenerate")}`}
+                  </Button>
+                  <EvidenceLink source="/docs/15-ai-ux-patterns.md" sourceLabel={l("why")}>
+                    {l("studio.whyDraft")}
+                  </EvidenceLink>
+                </div>
+              </Form>
+            </Card>
+          ) : null}
+
           <Card title={l("studio.variants")} description={l("studio.whyDraft")}>
             {mine.length === 0 ? (
               <EmptyState title={l("studio.noVariants")} />
@@ -681,47 +725,78 @@ export default function CampaignStudio() {
                       />
                     ) : null}
 
-                    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
-                    <Form method="post" className="flex flex-col gap-2">
-                      <input type="hidden" name="key" value={loaded.key} />
-                      <input type="hidden" name="creativeId" value={creative.id} />
-                      <Field label={l("studio.editVariant")} labelHidden>
-                        <Textarea
-                          name="contentRef"
-                          rows={3}
-                          defaultValue={creative.contentRef}
-                          readOnly={!may.has(PERM.creativesApprove)}
-                          aria-label={l("studio.editVariant")}
+                    {creative.kind === "image" ? (
+                      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
+                        <img
+                          src={`/signal/creatives/${creative.id}/image`}
+                          alt={l("studio.imageAlt")}
+                          className="w-full max-w-[260px] rounded-lg border border-border"
                         />
-                      </Field>
-                      {may.has(PERM.creativesApprove) ? (
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Button type="submit" name="intent" value="edit-variant" disabled={busy}>
-                            {l("save")}
-                          </Button>
-                          <Button
-                            type="submit"
-                            name="intent"
-                            value="clear-variant"
-                            variant="primary"
-                            disabled={busy || creative.complianceStatus === "passed"}
-                          >
-                            {creative.complianceStatus === "passed" ? l("studio.approved") : l("studio.approve")}
-                          </Button>
-                          <Button type="submit" name="intent" value="discard-variant" variant="ghost" disabled={busy}>
-                            {l("studio.discard")}
-                          </Button>
-                        </div>
-                      ) : null}
-                    </Form>
-                      <PostArt
-                        copy={creative.contentRef}
-                        kicker={campaign.name}
-                        contentLocale={creative.locale}
-                        brand={shell?.brand}
-                        l={l}
-                      />
-                    </div>
+                        {may.has(PERM.creativesApprove) ? (
+                          <Form method="post" className="flex items-start gap-2">
+                            <input type="hidden" name="key" value={loaded.key} />
+                            <input type="hidden" name="creativeId" value={creative.id} />
+                            <Button
+                              type="submit"
+                              name="intent"
+                              value="discard-variant"
+                              variant="ghost"
+                              disabled={busy}
+                            >
+                              {l("studio.discard")}
+                            </Button>
+                          </Form>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
+                        <Form method="post" className="flex flex-col gap-2">
+                          <input type="hidden" name="key" value={loaded.key} />
+                          <input type="hidden" name="creativeId" value={creative.id} />
+                          <Field label={l("studio.editVariant")} labelHidden>
+                            <Textarea
+                              name="contentRef"
+                              rows={3}
+                              defaultValue={creative.contentRef}
+                              readOnly={!may.has(PERM.creativesApprove)}
+                              aria-label={l("studio.editVariant")}
+                            />
+                          </Field>
+                          {may.has(PERM.creativesApprove) ? (
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Button type="submit" name="intent" value="edit-variant" disabled={busy}>
+                                {l("save")}
+                              </Button>
+                              <Button
+                                type="submit"
+                                name="intent"
+                                value="clear-variant"
+                                variant="primary"
+                                disabled={busy || creative.complianceStatus === "passed"}
+                              >
+                                {creative.complianceStatus === "passed" ? l("studio.approved") : l("studio.approve")}
+                              </Button>
+                              <Button
+                                type="submit"
+                                name="intent"
+                                value="discard-variant"
+                                variant="ghost"
+                                disabled={busy}
+                              >
+                                {l("studio.discard")}
+                              </Button>
+                            </div>
+                          ) : null}
+                        </Form>
+                        <PostArt
+                          copy={creative.contentRef}
+                          kicker={campaign.name}
+                          contentLocale={creative.locale}
+                          brand={shell?.brand}
+                          l={l}
+                        />
+                      </div>
+                    )}
                   </li>
                 ))}
               </ul>

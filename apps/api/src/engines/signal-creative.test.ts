@@ -7,7 +7,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { EntitlementsJson, PolicyJson, schema } from "@lyra/db";
 import { permissionsForRole, seed, type Ctx } from "@lyra/core";
 import { Gateway, makeStub } from "@lyra/model-gateway";
-import { checkCompliance, generateCreatives, parseVariants } from "./signal-creative.js";
+import { checkCompliance, generateCreativeImage, generateCreatives, parseVariants } from "./signal-creative.js";
 
 // Same libSQL/drizzle in-memory harness as narrator.test.ts: run every
 // migration once, seed the demo tenant, and reuse one Ctx across tests.
@@ -59,6 +59,62 @@ const lines = (n: number, label: string): string =>
   Array.from({ length: n }, (_, i) => `${label} variant ${i + 1}: cover that fits your car, quote in minutes.`).join(
     "\n"
   );
+
+/** Same fake-bucket idiom as analytics.test.ts's `bucket` — a Map-backed R2Bucket double. */
+function fakeBucket(): { bucket: R2Bucket; stored: Map<string, Uint8Array> } {
+  const stored = new Map<string, Uint8Array>();
+  const bucket = {
+    put: async (key: string, bytes: Uint8Array) => {
+      stored.set(key, bytes);
+    }
+  } as unknown as R2Bucket;
+  return { bucket, stored };
+}
+
+describe("generateCreativeImage", () => {
+  it("generates an image, writes it to R2/files, and persists a signal_creatives row of kind image", async () => {
+    const stub = makeStub({ imageBytes: new Uint8Array([1, 2, 3, 4]) });
+    const gw = new Gateway({ env: {}, providers: { "workers-ai": stub } });
+    const { bucket, stored } = fakeBucket();
+
+    const result = await generateCreativeImage(ctx, gw, bucket, {
+      campaignId: null,
+      prompt: "A warm hero image of a family reviewing a motor policy at home."
+    });
+
+    expect(stub.imageCalls).toEqual(["A warm hero image of a family reviewing a motor policy at home."]);
+    expect(result.bytes).toEqual(new Uint8Array([1, 2, 3, 4]));
+    expect(stored.get(result.r2Key)).toEqual(new Uint8Array([1, 2, 3, 4]));
+
+    const [fileRow] = await ctx.db.select().from(schema.files).where(eq(schema.files.id, result.fileId));
+    expect(fileRow).toBeDefined();
+    expect(fileRow!.r2Key).toBe(result.r2Key);
+    expect(fileRow!.contentType).toBe(result.contentType);
+
+    const [creativeRow] = await ctx.db
+      .select()
+      .from(schema.signalCreatives)
+      .where(eq(schema.signalCreatives.id, result.id));
+    expect(creativeRow).toBeDefined();
+    expect(creativeRow!.kind).toBe("image");
+    expect(creativeRow!.contentRef).toBe(result.fileId);
+    expect(creativeRow!.generatedBy).toBe("ai");
+    expect(creativeRow!.aiAuditId).toBe(result.aiAuditId);
+
+    const [audit] = await ctx.db.select().from(schema.aiAuditLog).where(eq(schema.aiAuditLog.id, result.aiAuditId));
+    expect(audit).toBeDefined();
+    expect(audit!.purpose).toBe("creative.image_generate");
+  });
+
+  it("throws rather than persisting a creative row with no bytes when no bucket is bound", async () => {
+    const stub = makeStub({ imageBytes: new Uint8Array([1]) });
+    const gw = new Gateway({ env: {}, providers: { "workers-ai": stub } });
+
+    await expect(generateCreativeImage(ctx, gw, undefined, { prompt: "a logo" })).rejects.toThrow(
+      "FILES bucket not bound"
+    );
+  });
+});
 
 describe("checkCompliance", () => {
   it("passes copy with no banned claim", () => {

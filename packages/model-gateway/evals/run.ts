@@ -605,6 +605,7 @@ async function scoreGroundedness(dir: string): Promise<Metric[]> {
 
 const SCORERS: Record<string, (dir: string) => Promise<Metric[]>> = {
   injection: scoreInjection,
+  "creative-image": scoreInjection,
   compliance: scoreCompliance,
   axis: scoreAxis,
   "axis-vision": scoreAxisVision,

@@ -1,10 +1,12 @@
 import { Hono, type Context } from "hono";
 import { and, eq, inArray, isNull } from "drizzle-orm";
-import { require_, audit, emit, type Ctx } from "@lyra/core";
+import { require_, audit, emit, notFound, type Ctx } from "@lyra/core";
 import { schema, PolicyJson, toJson, parseJson, id as newId } from "@lyra/db";
 import { z } from "zod";
 import { body } from "../http.js";
-import { generateCreatives } from "../engines/signal-creative.js";
+import { must } from "../rows.js";
+import { meterEgress } from "../engines/egress.js";
+import { generateCreativeImage, generateCreatives } from "../engines/signal-creative.js";
 import { runBudgetAutopilot } from "../engines/signal-autopilot.js";
 import { demoOnly } from "../auth.js";
 import type { App } from "../env.js";
@@ -42,6 +44,64 @@ signalRoutes.post("/creatives/generate", async (c) => {
     ...(input.count !== undefined ? { count: input.count } : {})
   });
   return c.json(result, 201);
+});
+
+/** Chunk-safe bytes->base64 — a spread into String.fromCharCode blows the call
+ *  stack on a real image; same loop as axis-document-render.ts's toBase64. */
+function toBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]!);
+  return btoa(binary);
+}
+
+const ImageBody = z.object({
+  campaignId: z.string().optional(),
+  prompt: z.string().min(1).max(2_000),
+  locale: z.enum(["en", "ar"]).optional()
+});
+
+// ADR-0060: AI hero/post imagery, alongside the SVG post-card PostArt already
+// renders client-side (apps/web's signal-studio.tsx). Bytes come back inline
+// as a data URL for immediate preview; the R2 write inside generateCreativeImage
+// is the durable copy the signal_creatives row actually points at.
+signalRoutes.post("/creatives/image", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "signal:creatives:generate", { tenantId: ctx.tenantId, module: "signal" });
+  const input = await body(c, ImageBody);
+  const result = await generateCreativeImage(ctx, c.get("gateway"), c.env.FILES, {
+    campaignId: input.campaignId ?? null,
+    prompt: input.prompt,
+    ...(input.locale !== undefined ? { locale: input.locale } : {})
+  });
+  return c.json(
+    {
+      id: result.id,
+      fileId: result.fileId,
+      contentType: result.contentType,
+      dataUrl: `data:${result.contentType};base64,${toBase64(result.bytes)}`,
+      aiAuditId: result.aiAuditId
+    },
+    201
+  );
+});
+
+// Re-fetch after a reload — the POST above only hands back bytes at the
+// moment of generation. Same idiom as north.ts's /boardpacks/:id/file:
+// resolve the creative's file row inside the tenant, meter egress, stream it.
+signalRoutes.get("/creatives/:id/image", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "signal:creatives:read", { tenantId: ctx.tenantId, module: "signal" });
+  const creative = await must(ctx, schema.signalCreatives, c.req.param("id"), "creative");
+  if (creative.kind !== "image") throw notFound("creative image");
+
+  const file = await must(ctx, schema.files, creative.contentRef, "creative image");
+  const object = await c.env.FILES?.get(file.r2Key);
+  if (!object) throw notFound("creative image");
+
+  await meterEgress(ctx, file.sizeBytes ?? object.size);
+  return new Response(object.body, {
+    headers: { "content-type": file.contentType ?? "application/octet-stream", "cache-control": "no-store" }
+  });
 });
 
 // docs/modules/signal.md §8 clause 2: "one-click global pause" — a tenant-wide

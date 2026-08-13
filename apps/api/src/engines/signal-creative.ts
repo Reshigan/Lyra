@@ -1,5 +1,5 @@
 import { id as newId, schema } from "@lyra/db";
-import { checkCompliance, type Ctx, type ComplianceFinding, type ComplianceResult } from "@lyra/core";
+import { checkCompliance, sha256Hex, type Ctx, type ComplianceFinding, type ComplianceResult } from "@lyra/core";
 import type { Gateway } from "@lyra/model-gateway";
 
 // docs/modules/signal.md §2.1 + §8 acceptance: "Brief -> 20 compliant ar/en
@@ -14,7 +14,11 @@ import type { Gateway } from "@lyra/model-gateway";
 // packages/core/src/signal-compliance.ts — pure and DB-free, so
 // packages/model-gateway/evals/signal scores the exact same function.
 
-export type CreativeKind = "ad" | "lp" | "email" | "social" | "video_script";
+// "image" is a storage-side kind only — it never goes through generateCreatives'
+// copy prompt, just generateCreativeImage below. `kind` has no CHECK constraint
+// (schema/signal.ts's comment lists ad|lp|email|social|video_script for the
+// text pathway), so adding this needs no migration.
+export type CreativeKind = "ad" | "lp" | "email" | "social" | "video_script" | "image";
 export type CreativeLocale = "en" | "ar";
 
 export interface CreativeBrief {
@@ -154,4 +158,83 @@ export async function generateCreatives(
   }
 
   return { variants, auditIds };
+}
+
+export interface ImageBrief {
+  campaignId?: string | null;
+  /** What to depict — the human-authored input, screened by gateway.generateImage's checkInput. */
+  prompt: string;
+  locale?: CreativeLocale;
+}
+
+export interface GeneratedImage {
+  id: string;
+  fileId: string;
+  r2Key: string;
+  contentType: string;
+  bytes: Uint8Array;
+  aiAuditId: string;
+}
+
+/**
+ * ADR-0060. Brief -> gateway.generateImage (module "signal", purpose
+ * "creative.image_generate") -> bytes to R2 + a `files` row, same pattern as
+ * analytics.ts's storeExport() -> a `signal_creatives` row of kind "image"
+ * whose contentRef is the file id, not inline text. No checkCompliance here:
+ * that scanner reads generated ad copy for banned claims, and there is no
+ * generated text on this path to scan.
+ */
+export async function generateCreativeImage(
+  ctx: Ctx,
+  gateway: Gateway,
+  bucket: R2Bucket | undefined,
+  brief: ImageBrief
+): Promise<GeneratedImage> {
+  const res = await gateway.generateImage(ctx, {
+    module: "signal",
+    purpose: "creative.image_generate",
+    ...(brief.campaignId ? { subjectRef: brief.campaignId } : {}),
+    prompt: brief.prompt
+  });
+
+  if (!bucket) throw new Error("FILES bucket not bound");
+
+  const id = newId("crv", ctx.now);
+  const fileId = newId("file", ctx.now);
+  const ext = res.contentType === "image/png" ? "png" : "bin";
+  const r2Key = `signal-creatives/${ctx.tenantId}/${fileId}.${ext}`;
+  await bucket.put(r2Key, res.bytes, { httpMetadata: { contentType: res.contentType } });
+
+  await ctx.db.insert(schema.files).values({
+    id: fileId,
+    tenantId: ctx.tenantId,
+    r2Key,
+    kind: "signal_creative_image",
+    subjectRef: id,
+    sha256: await sha256Hex(res.bytes),
+    sizeBytes: res.bytes.length,
+    contentType: res.contentType,
+    piiLevel: "none",
+    createdAt: ctx.now,
+    deletedAt: null
+  });
+
+  await ctx.db.insert(schema.signalCreatives).values({
+    id,
+    tenantId: ctx.tenantId,
+    campaignId: brief.campaignId ?? null,
+    kind: "image",
+    locale: brief.locale ?? "en",
+    contentRef: fileId,
+    variantGroup: null,
+    complianceStatus: "passed",
+    complianceNotesJson: null,
+    performanceJson: null,
+    generatedBy: "ai",
+    aiAuditId: res.auditId,
+    createdAt: ctx.now,
+    updatedAt: ctx.now
+  });
+
+  return { id, fileId, r2Key, contentType: res.contentType, bytes: res.bytes, aiAuditId: res.auditId };
 }
