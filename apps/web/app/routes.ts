@@ -70,6 +70,7 @@ export default [
     route("north/whatif", "routes/north-whatif.tsx"),
     route("north/board", "routes/north-board.tsx"),
     route("north/board/:id/file", "routes/north-board-file.tsx"),
+    route("north/decisions", "routes/north-decisions.tsx"),
 
     route("scout/radar", "routes/scout-radar.tsx"),
     route("scout/panel", "routes/scout-panel.tsx"),
