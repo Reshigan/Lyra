@@ -151,6 +151,51 @@ export function dayEvents(inbox: Inbox | null | undefined, now: number, minGap =
   });
 }
 
+/**
+ * Where a pointer sits along the strip: 0 at the track's start edge, 1 at its
+ * end, clamped so a drag that leaves the strip parks at midnight rather than
+ * running off the day. `rtl` because the strip is laid out with logical
+ * properties — in an Arabic tenant the day starts at the right edge.
+ */
+export function scrubFraction(clientX: number, rect: { left: number; width: number }, rtl = false): number {
+  if (rect.width <= 0) return 0;
+  const from = rtl ? rect.left + rect.width - clientX : clientX - rect.left;
+  return Math.max(0, Math.min(1, from / rect.width));
+}
+
+export type MeridianState = "live" | "replay" | "projection";
+
+/**
+ * What the playhead is looking at. `tolerance` is a fraction of the day — a
+ * playhead within about a quarter-hour of now is reading the present, not
+ * replaying it, and the strip says so rather than flickering between states on
+ * a pixel of drag.
+ */
+export function meridianState(cursor: number, now: number, tolerance = 0.01): MeridianState {
+  if (Math.abs(cursor - now) <= tolerance) return "live";
+  return cursor < now ? "replay" : "projection";
+}
+
+/**
+ * The queue as it stood at a moment: everything that had arrived by then, and
+ * nothing that had not. This is what the playhead moves — drag it back an hour
+ * and the shift rail lists the shift as it was an hour ago.
+ *
+ * ponytail: `clearedToday` is a day total the API reports once, so it stays put.
+ * Splitting it across the day would mean inventing when each clear happened.
+ */
+export function inboxAsOf(inbox: Inbox | null | undefined, at: number): Inbox | null {
+  if (!inbox) return null;
+  const approvals = inbox.approvals.filter((a) => a.requestedAt <= at);
+  const notifications = inbox.notifications.filter((n) => n.createdAt <= at);
+  return {
+    ...inbox,
+    approvals,
+    notifications,
+    counts: { ...inbox.counts, approvals: approvals.length, notifications: notifications.length }
+  };
+}
+
 /** Same calendar day in the reader's zone — not the same 24 hours. */
 export function sameDay(a: number, b: number): boolean {
   const one = new Date(a);

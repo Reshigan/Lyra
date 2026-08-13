@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { dayEvents, dayFraction, moduleOfKind, ringDash, sameDay, shiftFrom, type Inbox } from "./shift";
+import {
+  dayEvents,
+  dayFraction,
+  inboxAsOf,
+  meridianState,
+  moduleOfKind,
+  ringDash,
+  sameDay,
+  scrubFraction,
+  shiftFrom,
+  type Inbox
+} from "./shift";
 
 // The shift rail and the day strip both read /v1/me/inbox. What is worth
 // testing is not the markup but the three judgements underneath: how far the
@@ -159,5 +170,71 @@ describe("moduleOfKind", () => {
   it("takes the hue from the segment that names a module", () => {
     expect(moduleOfKind("axis.case.assigned")).toBe("axis");
     expect(moduleOfKind("welcome")).toBe("welcome");
+  });
+});
+
+describe("scrubFraction", () => {
+  const rect = { left: 100, width: 400 };
+
+  it("reads the pointer as a position in the day", () => {
+    expect(scrubFraction(100, rect)).toBe(0);
+    expect(scrubFraction(300, rect)).toBe(0.5);
+    expect(scrubFraction(500, rect)).toBe(1);
+  });
+
+  it("clamps a drag that leaves the strip instead of running off the day", () => {
+    expect(scrubFraction(-40, rect)).toBe(0);
+    expect(scrubFraction(9000, rect)).toBe(1);
+  });
+
+  it("starts the day at the right edge when the tenant reads right to left", () => {
+    expect(scrubFraction(500, rect, true)).toBe(0);
+    expect(scrubFraction(100, rect, true)).toBe(1);
+  });
+
+  it("does not divide by a strip that has not been laid out yet", () => {
+    expect(scrubFraction(120, { left: 0, width: 0 })).toBe(0);
+  });
+});
+
+describe("meridianState", () => {
+  it("calls the present live rather than a replay of the last minute", () => {
+    expect(meridianState(0.5, 0.5)).toBe("live");
+    expect(meridianState(0.505, 0.5)).toBe("live");
+  });
+
+  it("names which side of now the playhead is on", () => {
+    expect(meridianState(0.2, 0.5)).toBe("replay");
+    expect(meridianState(0.8, 0.5)).toBe("projection");
+  });
+});
+
+describe("inboxAsOf", () => {
+  const at = today(11);
+  const full = inbox({
+    approvals: [
+      { id: "early", policyKey: "axis.bind", module: "axis", requestedAt: today(9) },
+      { id: "late", policyKey: "axis.bind", module: "axis", requestedAt: today(15) }
+    ],
+    notifications: [
+      { id: "seen", kind: "orbit.x", titleKey: "n.x", createdAt: today(10) },
+      { id: "unseen", kind: "orbit.x", titleKey: "n.x", createdAt: today(14) }
+    ],
+    counts: { approvals: 2, notifications: 2, clearedToday: 5 }
+  });
+
+  it("shows the queue as it stood, not as it ended up", () => {
+    const past = inboxAsOf(full, at)!;
+    expect(past.approvals.map((a) => a.id)).toEqual(["early"]);
+    expect(past.notifications.map((n) => n.id)).toEqual(["seen"]);
+    expect(past.counts.approvals).toBe(1);
+  });
+
+  it("leaves the day's cleared total alone rather than inventing when each clear landed", () => {
+    expect(inboxAsOf(full, at)!.counts.clearedToday).toBe(5);
+  });
+
+  it("stays null when the inbox could not be read", () => {
+    expect(inboxAsOf(null, at)).toBeNull();
   });
 });

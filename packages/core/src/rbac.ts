@@ -595,7 +595,12 @@ const EXTERNAL_ROLE_PREFIXES = ["partner.", "provider.", "customer"];
 export function requiresMfa(roleKeys: readonly string[]): boolean {
   // Any internal role means MFA; only a purely external account is exempt.
   // No roles at all fails closed to staff (see doc comment above).
-  return roleKeys.length === 0 || roleKeys.some((key) => !EXTERNAL_ROLE_PREFIXES.some((p) => key.startsWith(p)));
+  return roleKeys.length === 0 || roleKeys.some(isInternalRole);
+}
+
+/** Staff, as opposed to the portal roles a customer or partner signs in with. */
+export function isInternalRole(roleKey: string): boolean {
+  return !EXTERNAL_ROLE_PREFIXES.some((p) => roleKey.startsWith(p));
 }
 
 /** Roles provisioned into every new tenant (platform.* live outside tenants). */

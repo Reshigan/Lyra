@@ -21,7 +21,7 @@ import { Meridian } from "./meridian";
 import { SearchPalette } from "./search";
 import type { Names } from "../names";
 import { PostureChips } from "./posture";
-import { shiftFrom, type Inbox } from "./shift";
+import { inboxAsOf, shiftFrom, type Inbox } from "./shift";
 import { ShiftRail } from "./shift-rail";
 import { ThemeToggle } from "./theme-toggle";
 
@@ -254,6 +254,9 @@ export function Shell({
   // the same rule the posture chips follow. It opens closed: the activity is
   // context, and the work is what the screen is for.
   const [companion, setCompanion] = useState(false);
+  // Where the Meridian's playhead is parked. null while it follows now, which
+  // is the only state in which the rail shows the live queue.
+  const [asOf, setAsOf] = useState<number | null>(null);
   const mayCompanion = permissions.includes("ai:runs:read");
   // docs/07 latency doctrine: a wait under 400ms is answered by holding still —
   // a skeleton that flashes reads as a fault. Past it the screen the actor asked
@@ -393,7 +396,7 @@ export function Shell({
             in the comp. It scrolls away rather than sticking — the rail below
             is what has to stay put, and two sticky bands would eat a third of
             a laptop screen before any content had been drawn. */}
-        <Meridian t={t} inbox={inbox} accent={accentFor(pathname)} />
+        <Meridian t={t} inbox={inbox} accent={accentFor(pathname)} onScrub={setAsOf} />
 
         <div className="flex min-h-[calc(100vh-50px)] flex-col md:flex-row">
           <nav
@@ -417,7 +420,7 @@ export function Shell({
                 comp has no nav menu at all (its search overlay is the
                 navigation), but every screen still has to be reachable without
                 knowing its name. */}
-            <ShiftRail t={t} shift={shiftFrom(inbox, names)} />
+            <ShiftRail t={t} shift={shiftFrom(asOf === null ? inbox : inboxAsOf(inbox, asOf), names)} />
             {groups.map((group, i) => (
               // Keyed by position: a heading's own `href` is "" (apps/api/src
               // /routes/me.ts) and `??` does not fall back on "", so every

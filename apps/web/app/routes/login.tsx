@@ -71,6 +71,8 @@ interface Persona {
   email: string;
   name: string;
   roleKey: string;
+  /** How many roles the seat holds; the demo administrator holds them all. */
+  roleCount?: number;
 }
 
 type ActionData = {
@@ -539,7 +541,11 @@ export default function Login() {
                   <span>{persona.name}</span>
                   {/* The role is the point of the persona — it says which
                       permissions the demo lands in. */}
-                  <span className="font-mono text-12 text-muted">{persona.roleKey}</span>
+                  <span className="font-mono text-12 text-muted">
+                    {persona.roleCount && persona.roleCount > 1
+                      ? t("auth.demo.allRoles", { count: String(persona.roleCount) })
+                      : persona.roleKey}
+                  </span>
                 </Button>
               ))}
             </Form>

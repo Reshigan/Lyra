@@ -450,10 +450,19 @@ authRoutes.get("/demo/personas", async (c) => {
     .where(and(eq(schema.users.tenantId, tenantId), eq(schema.users.status, "active"), isNull(schema.users.deletedAt)));
 
   // One row per person: a seat is named by its first role, which is the one the
-  // persona exists to demonstrate.
-  const byEmail = new Map<string, { email: string; name: string; locale: string; roleKey: string }>();
-  for (const r of rows) if (!byEmail.has(r.email)) byEmail.set(r.email, r);
-  return c.json({ data: [...byEmail.values()].sort((a, b) => a.roleKey.localeCompare(b.roleKey)) });
+  // persona exists to demonstrate. The demo administrator holds every internal
+  // role at once, so it carries a count instead and the UI says so.
+  const byEmail = new Map<string, { email: string; name: string; locale: string; roleKey: string; roleCount: number }>();
+  for (const r of rows) {
+    const seen = byEmail.get(r.email);
+    if (seen) seen.roleCount += 1;
+    else byEmail.set(r.email, { ...r, roleCount: 1 });
+  }
+  // Most roles first, so the all-access demo seat is the one at the top.
+  const data = [...byEmail.values()].sort(
+    (a, b) => b.roleCount - a.roleCount || a.roleKey.localeCompare(b.roleKey)
+  );
+  return c.json({ data });
 });
 
 authRoutes.post("/demo/login", async (c) => {

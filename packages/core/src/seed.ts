@@ -7,7 +7,7 @@ import {
   id,
   schema
 } from "@lyra/db";
-import { ROLES, TENANT_ROLE_KEYS, requiresMfa } from "./rbac.js";
+import { ROLES, TENANT_ROLE_KEYS, isInternalRole, requiresMfa } from "./rbac.js";
 import { hashPassword } from "./password.js";
 import { splitCommission } from "./commission.js";
 import type { CoreDb } from "./context.js";
@@ -116,6 +116,19 @@ const PEOPLE: ReadonlyArray<{ local: string; name: string; role: string; locale?
   // other role having a persona for journey/e2e coverage.
   { local: "yasmin.faris", name: "Yasmin Faris", role: "provider.viewer" }
 ];
+
+/**
+ * The one login a demo is given: every internal role at once, so a single
+ * account can walk the whole platform without signing out between screens.
+ * The named personas above still exist — they are what the journey tests use,
+ * and they are what proves a role sees only its own share. This account proves
+ * the opposite, and is deliberately the only one like it.
+ *
+ * External roles (customer, partner.*, provider.*) are left off: they are not
+ * more permission, they are a different shell (the portal), and granting them
+ * to a staff login would make the account's own module scope ambiguous.
+ */
+const DEMO_ADMIN = { local: "demo", name: "Demo Administrator" };
 
 export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResult> {
   if (opts.environment === "production" && !opts.password) {
@@ -243,6 +256,33 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
       createdAt: now
     });
   }
+
+  const demoRoles = TENANT_ROLE_KEYS.filter(isInternalRole);
+  const demoId = id("us", now + u++);
+  await db.insert(schema.users).values({
+    id: demoId,
+    tenantId,
+    email: `${DEMO_ADMIN.local}@gonxt.ae`,
+    name: DEMO_ADMIN.name,
+    locale: "en",
+    status: "active",
+    authProvider: "password",
+    passwordHash,
+    mfaEnrolled: Boolean(opts.mfaSecret),
+    mfaSecret: opts.mfaSecret ?? null,
+    createdAt: now,
+    updatedAt: now
+  });
+  await db.insert(schema.userRoles).values(
+    demoRoles.map((key, i) => ({
+      id: id("ur", now + u + i),
+      tenantId,
+      userId: demoId,
+      roleId: roleIds[key]!,
+      scopeJson: null,
+      createdAt: now
+    }))
+  );
 
   /* --------------------------------------------------- ledger accounts */
   let a = 0;

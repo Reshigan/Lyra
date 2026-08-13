@@ -7,7 +7,7 @@ import { eq } from "drizzle-orm";
 import { CHART_OF_ACCOUNTS, schema } from "@lyra/db";
 import { seed, SEED_TENANT_SLUG, syncChartOfAccounts } from "./seed.js";
 import { hashPassword, needsRehash, verifyPassword } from "./password.js";
-import { permissionsForRole } from "./rbac.js";
+import { TENANT_ROLE_KEYS, isInternalRole, permissionsForRole } from "./rbac.js";
 import type { CoreDb } from "./context.js";
 
 const MIGRATIONS = join(import.meta.dirname, "..", "..", "db", "migrations");
@@ -160,6 +160,22 @@ describe("seed", () => {
     expect(await roleKeyFor("nadia.rahman@gonxt.ae")).toEqual({ name: "Nadia Rahman", role: "finance.controller" });
     expect(await roleKeyFor("mona.idris@gonxt.ae")).toEqual({ name: "Mona Idris", role: "finance.analyst" });
     expect(await roleKeyFor("raed.samir@gonxt.ae")).toEqual({ name: "Raed Samir", role: "dev.admin" });
+  });
+
+  it("gives the demo login every internal role and no portal role", async () => {
+    await seed(db, { password: "gonxt-test-password" });
+
+    const [user] = await db.select().from(schema.users).where(eq(schema.users.email, "demo@gonxt.ae"));
+    const held = await db
+      .select({ key: schema.roles.key })
+      .from(schema.userRoles)
+      .innerJoin(schema.roles, eq(schema.roles.id, schema.userRoles.roleId))
+      .where(eq(schema.userRoles.userId, user!.id));
+    const keys = held.map((r) => r.key).sort();
+
+    expect(user!.name).toBe("Demo Administrator");
+    expect(keys).toEqual(TENANT_ROLE_KEYS.filter(isInternalRole).slice().sort());
+    expect(keys.some((k) => !isInternalRole(k))).toBe(false);
   });
 
   it("opens the three desks scoped to their owning module", async () => {
