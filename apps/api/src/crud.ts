@@ -8,6 +8,7 @@ import {
   assertTenant,
   audit,
   badRequest,
+  canSeePii,
   conflict,
   emit,
   gate,
@@ -213,6 +214,25 @@ function column(cols: Columns, key: string | undefined): SQLiteColumn | undefine
   return col;
 }
 
+/**
+ * The columns `?q=` (and routes/search.ts) may actually match for this actor.
+ *
+ * A partially-masked column stays searchable: "Layla A•••" still shows the
+ * first name, so matching on it tells a caller nothing the row already told
+ * them. A `text` column is different — mask() redacts it whole precisely
+ * because no prefix of free text is safe — so matching it would answer
+ * "does this message contain <term>" for a caller who may not read the
+ * message. Those columns drop out unless the actor holds core:pii:view.
+ */
+export function searchableFor(r: Pick<Resource, "searchable" | "pii">, ctx: Ctx): readonly string[] {
+  const cols = r.searchable ?? [];
+  if (!r.pii || canSeePii(ctx.actor, ctx.tenantId)) return cols;
+  const redacted = Object.entries(r.pii)
+    .filter(([, kind]) => kind === "text")
+    .map(([path]) => path.split(".")[0]);
+  return cols.filter((k) => !redacted.includes(k));
+}
+
 /** Exact-match filters, with `a,b` meaning "either" and `!x` meaning "not". */
 function filterSql(cols: Columns, filters: Record<string, string>): SQL[] {
   const parts: SQL[] = [];
@@ -320,11 +340,13 @@ export function crudRouter(r: Resource): Hono<App> {
 
     if (list.q && r.searchable?.length) {
       const term = `%${list.q.replace(/[%_]/g, "")}%`;
-      const searches = r.searchable
+      const searches = searchableFor(r, ctx)
         .map((k) => column(cols, k))
         .filter((col): col is SQLiteColumn => Boolean(col))
         .map((col) => like(col, term));
-      if (searches.length) parts.push(or(...searches) as SQL);
+      // No surviving column means the term can't match anything the caller may
+      // see — an empty filter would quietly hand back the unfiltered list.
+      parts.push(searches.length ? (or(...searches) as SQL) : sql`0 = 1`);
     } else if (list.q) {
       throw badRequest(`${r.path} is not searchable`);
     }

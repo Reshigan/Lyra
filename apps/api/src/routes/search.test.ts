@@ -102,6 +102,38 @@ describe("GET /v1/search", () => {
     expect(text).not.toContain("passwordHash");
   });
 
+  it("masks PII columns for a caller without core:pii:view (regression: search bypassed crud's mask())", async () => {
+    const db = fakeDb(async () => [{ id: "us_1", name: "Jamie Okonkwo", email: "jamie@example.com" }]);
+
+    const ctx = baseCtx(db, ["core:search:read", "core:users:read"]);
+    const res = await router(ctx).fetch(new Request("http://api.test/?q=jamie"));
+    const body = (await res.json()) as { results: { row: Record<string, unknown> }[] };
+    const hit = body.results[0]?.row;
+    expect(hit).toBeDefined();
+    expect(hit?.email).not.toBe("jamie@example.com");
+    expect(JSON.stringify(body)).not.toContain("Okonkwo");
+  });
+
+  it("skips a `text` PII column entirely rather than matching what it would redact", async () => {
+    const messages = REGISTRY.find((r) => r.path === "messages");
+    expect(messages?.searchable).toEqual(["content"]);
+    expect(messages?.pii?.content).toBe("text");
+
+    const db = fakeDb(async () => [{ id: "msg_1", content: "my card number is 4111" }]);
+    const blind = baseCtx(db, ["core:search:read", "orbit:messages:read"]);
+    const seeing = baseCtx(db, ["core:search:read", "orbit:messages:read", "core:pii:view"]);
+
+    const withoutPii = (await (await router(blind).fetch(new Request("http://api.test/?q=4111"))).json()) as {
+      results: unknown[];
+    };
+    expect(withoutPii.results).toEqual([]);
+
+    const withPii = (await (await router(seeing).fetch(new Request("http://api.test/?q=4111"))).json()) as {
+      results: { resource: string }[];
+    };
+    expect(withPii.results.some((hit) => hit.resource === "messages")).toBe(true);
+  });
+
   it("400s a blank query and requires core:search:read at all", async () => {
     const db = fakeDb(async () => []);
     const withPerm = router(baseCtx(db, ["core:search:read"]));

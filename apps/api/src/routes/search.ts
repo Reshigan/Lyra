@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import { getTableColumns, like, or, type SQL } from "drizzle-orm";
 import type { SQLiteColumn } from "drizzle-orm/sqlite-core";
-import { badRequest, can, require_, scoped, type Ctx } from "@lyra/core";
-import { REGISTRY } from "../crud.js";
+import { badRequest, can, mask, require_, scoped, type Ctx } from "@lyra/core";
+import { REGISTRY, searchableFor } from "../crud.js";
 import type { App } from "../env.js";
 
 // docs/24 Phase 2 item 10: no new table. Fans out over every already-registered
@@ -16,6 +16,7 @@ import type { App } from "../env.js";
 export const searchRoutes = new Hono<App>();
 
 const ctxOf = (c: { get(k: "ctx"): Ctx }): Ctx => c.get("ctx");
+
 
 searchRoutes.get("/", async (c) => {
   const ctx = ctxOf(c);
@@ -34,10 +35,13 @@ searchRoutes.get("/", async (c) => {
     if (!can(ctx.actor, r.perms.read, { tenantId: ctx.tenantId, module: r.module })) return [];
 
     const cols = getTableColumns(r.table) as Record<string, SQLiteColumn>;
-    const clauses = r.searchable.map((k) => cols[k]).filter((col): col is SQLiteColumn => Boolean(col)).map((col) => like(col, term));
+    const clauses = searchableFor(r, ctx)
+      .map((k) => cols[k])
+      .filter((col): col is SQLiteColumn => Boolean(col))
+      .map((col) => like(col, term));
     if (!clauses.length) return [];
 
-    return [{ resource: r.path, module: r.module, secret: new Set(r.secretColumns ?? []), clauses, table: r.table }];
+    return [{ resource: r.path, module: r.module, secret: new Set(r.secretColumns ?? []), pii: r.pii, clauses, table: r.table }];
   });
 
   const perResource = await Promise.all(
@@ -51,7 +55,8 @@ searchRoutes.get("/", async (c) => {
       return rows.map((row) => {
         const out = { ...(row as Record<string, unknown>) };
         for (const key of entry.secret) delete out[key];
-        return { resource: entry.resource, module: entry.module, row: out };
+        const shown = entry.pii ? mask(ctx.actor, out, entry.pii, ctx.tenantId) : out;
+        return { resource: entry.resource, module: entry.module, row: shown };
       });
     })
   );

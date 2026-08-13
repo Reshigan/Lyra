@@ -401,6 +401,11 @@ export const ORBIT = register(
     // readable without `core:pii:view` — a masking rule that masked no column.
   }, {
     immutable: true,
+    // docs/modules/orbit.md §4 screen 7 "transcript search (redaction-aware)".
+    // `content` is PII, so routes/search.ts only searches it for an actor
+    // holding core:pii:view and masks it for everyone else — a redaction-aware
+    // search is exactly a search that skips the column it cannot show.
+    searchable: ["content"],
     pii: { content: "text" },
     // `ts` is the message's own arrival time; no caller — including the
     // generic "New — Messages" panel, which has no field for it — has a
