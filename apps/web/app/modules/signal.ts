@@ -19,7 +19,8 @@ export const signal: WorkspaceSpec = {
     { href: "/signal/answer-engines", labelKey: "link.answer-engines", permission: "signal:aeo:read" },
     { href: "/signal/experiments", labelKey: "link.experiments", permission: "signal:experiments:read" },
     { href: "/signal/budget", labelKey: "link.budget", permission: "signal:budget_moves:read" },
-    { href: "/signal/analytics", labelKey: "link.analytics", permission: "signal:spend:read" }
+    { href: "/signal/analytics", labelKey: "link.analytics", permission: "signal:spend:read" },
+    { href: "/signal/admin", labelKey: "link.admin", permission: "signal:campaigns:read" }
   ],
   labels: {
     en: {
@@ -133,7 +134,8 @@ export const signal: WorkspaceSpec = {
       "link.answer-engines": "Answer engines",
       "link.experiments": "Experiments",
       "link.budget": "Budget and bounds",
-      "link.analytics": "Growth analytics"
+      "link.analytics": "Growth analytics",
+      "link.admin": "SIGNAL admin"
     },
     ar: {
       audiences: "الجماهير",
@@ -246,7 +248,8 @@ export const signal: WorkspaceSpec = {
       "link.answer-engines": "محرّكات الإجابات",
       "link.experiments": "التجارب",
       "link.budget": "الميزانية والحدود",
-      "link.analytics": "تحليلات النمو"
+      "link.analytics": "تحليلات النمو",
+      "link.admin": "إدارة SIGNAL"
     }
   },
   tabs: [

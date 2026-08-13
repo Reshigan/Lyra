@@ -105,6 +105,7 @@ export default [
     route("signal/experiments", "routes/signal-experiments.tsx"),
     route("signal/budget", "routes/signal-budget.tsx"),
     route("signal/analytics", "routes/signal-analytics.tsx"),
+    route("signal/admin", "routes/signal-admin.tsx"),
 
     // Record screens: a static last segment, so each still ranks above the
     // generic `:module/:resource/:id`.

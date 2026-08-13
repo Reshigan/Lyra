@@ -1,7 +1,7 @@
 import { vocabulary } from "../modules/vocabulary";
 import { pseudoText } from "../i18n";
 
-// The seven bespoke SIGNAL screens share one labeller and one set of
+// The bespoke SIGNAL screens share one labeller and one set of
 // derivations, for the same reason ledger.shared.ts exists: the cockpit, the
 // studio, the budget bounds, the growth numbers, the audience value view, the
 // experiments and the answer-engine coverage all read the same four ledgers
@@ -75,6 +75,8 @@ export interface CampaignRow {
    *  objects — except when the stored text was unparseable, hence `unknown`. */
   channelsJson: unknown;
   budgetJson: unknown;
+  /** Absent until the compliance pass has run over the campaign at least once. */
+  guardrailChecksJson?: unknown;
   state: string;
   autonomyLevel: string;
   startAt: number | null;
@@ -708,6 +710,99 @@ export function metricLabel(slug: string, l: Label): string {
   return named === key ? humanise(slug) : named;
 }
 
+/* --------------------------------------------------------------------- admin */
+
+/** `signal_campaigns.guardrail_checks_json`, as the compliance pass writes it. */
+export interface Guardrails {
+  suppressionAudienceApplied?: boolean;
+  frequencyCapPerWeek?: number;
+  quietHours?: { from?: string; to?: string; tz?: string };
+  brandKit?: string;
+  bannedClaims?: string;
+  checkedAt?: number;
+}
+
+/**
+ * A campaign that has not been checked has no record at all, not an empty one —
+ * so this returns null rather than `{}` and the admin screen can tell "checked,
+ * clean" apart from "never checked".
+ */
+export function guardrailsOf(campaign: CampaignRow): Guardrails | null {
+  const bag = asJson<Guardrails | null>(campaign.guardrailChecksJson, null);
+  return bag && typeof bag === "object" && !Array.isArray(bag) ? bag : null;
+}
+
+/** States in which a campaign is already reaching people, so its checks bind now. */
+export const REACHING_STATES: readonly string[] = ["scheduled", "live"];
+
+/** The autonomy levels that spend without asking (packages/db/src/json.ts). */
+const UNSUPERVISED: readonly string[] = ["act", "act_and_report"];
+
+/** The audience this one subtracts before it sends. */
+export function excludedAudienceId(audience: AudienceRow): string | null {
+  const def = asJson<Record<string, unknown>>(audience.definitionJson, {});
+  return typeof def.excludeAudienceId === "string" && def.excludeAudienceId ? def.excludeAudienceId : null;
+}
+
+/**
+ * The audiences that exist to be subtracted: one that asks for no consent
+ * purpose at all, or one another audience already excludes. Either way it is a
+ * suppression source and must not itself be required to carry an exclusion.
+ */
+export function suppressionIds(audiences: readonly AudienceRow[]): Set<string> {
+  const ids = new Set<string>();
+  for (const row of audiences) {
+    if (row.consentPurposes === "none") ids.add(row.id);
+    const excluded = excludedAudienceId(row);
+    if (excluded) ids.add(excluded);
+  }
+  return ids;
+}
+
+/**
+ * What is wrong when the campaign, guardrail and audience config are read
+ * together. Each of these is invisible in the per-table list an admin would
+ * otherwise be editing, and each lets a send reach somebody it should not or
+ * lets an agent spend with no ceiling.
+ */
+export function adminFaults(input: {
+  campaigns: readonly CampaignRow[];
+  audiences: readonly AudienceRow[];
+}): Array<{ key: string; ref: string }> {
+  const faults: Array<{ key: string; ref: string }> = [];
+
+  for (const campaign of input.campaigns) {
+    const guardrails = guardrailsOf(campaign);
+    if (REACHING_STATES.includes(campaign.state)) {
+      if (!guardrails) faults.push({ key: "admin.fault.unchecked", ref: campaign.name });
+      else {
+        if (guardrails.bannedClaims && guardrails.bannedClaims !== "pass") {
+          faults.push({ key: "admin.fault.bannedClaims", ref: campaign.name });
+        }
+        if (guardrails.brandKit && guardrails.brandKit !== "pass") {
+          faults.push({ key: "admin.fault.brandKit", ref: campaign.name });
+        }
+        if (guardrails.suppressionAudienceApplied === false) {
+          faults.push({ key: "admin.fault.noSuppressionApplied", ref: campaign.name });
+        }
+      }
+    }
+    if (UNSUPERVISED.includes(campaign.autonomyLevel) && !budgetOf(campaign).autopilotBoundMinor) {
+      faults.push({ key: "admin.fault.unbounded", ref: campaign.name });
+    }
+  }
+
+  const suppression = suppressionIds(input.audiences);
+  if (input.audiences.length > 0 && suppression.size === 0) {
+    faults.push({ key: "admin.fault.noSuppressionSource", ref: "" });
+  }
+  for (const audience of input.audiences) {
+    if (suppression.has(audience.id)) continue;
+    if (!excludedAudienceId(audience)) faults.push({ key: "admin.fault.noExclusion", ref: audience.name });
+  }
+  return faults;
+}
+
 /* -------------------------------------------------------------------- labels */
 
 const LABELS: Record<string, Record<string, string>> = {
@@ -1042,7 +1137,95 @@ const LABELS: Record<string, Record<string, string>> = {
     "problem.verdict_required": "Record the verdict when you stop a test.",
     "problem.hypothesis_required": "Write what you expect to happen.",
     "problem.metric_required": "Say which metric is being measured.",
-    "problem.arms_required": "Name both arms."
+    "problem.arms_required": "Name both arms.",
+
+    /* admin */
+    "admin.title": "SIGNAL admin",
+    "admin.lede": "The brand, the claims, the ceilings and the lists everything sent from here is checked against.",
+    "admin.denied": "Your role does not include the SIGNAL settings.",
+    "admin.readyTitle": "Nothing is stranded.",
+    "admin.readyBody": "Every running campaign passed its checks, every agent that spends has a ceiling, and every audience subtracts a suppression list.",
+    "admin.fault.unchecked": "Reaching people without ever having passed the brand and claims checks.",
+    "admin.fault.bannedClaims": "Running with a claims check that did not pass.",
+    "admin.fault.brandKit": "Running with a brand check that did not pass.",
+    "admin.fault.noSuppressionApplied": "Running without the suppression list subtracted.",
+    "admin.fault.unbounded": "The agents may act on this one, and no per-move ceiling stops them.",
+    "admin.fault.noSuppressionSource": "No suppression list exists, so nothing is being held back.",
+    "admin.fault.noExclusion": "This audience subtracts no suppression list.",
+    "admin.brandTitle": "Brand kit",
+    "admin.brandLede": "The name, mark and colour every draft is written and rendered in.",
+    "admin.brandName": "Product name",
+    "admin.brandAccent": "Accent colour",
+    "admin.brandLogos": "Marks supplied",
+    "admin.brandDefault": "Platform default",
+    "admin.brandEdit": "Edit the brand kit",
+    "admin.brandHint": "Settings owns this, and checks the accent for readable contrast before it saves.",
+    "admin.guardTitle": "Guardrails and banned claims",
+    "admin.guardLede": "What each campaign was checked against, and when it was last checked.",
+    "admin.guardCaption": "Guardrail checks per campaign",
+    "admin.guardEmpty": "No campaign yet.",
+    "admin.guardNone": "Never checked",
+    "admin.claims": "Claims",
+    "admin.brandCheck": "Brand",
+    "admin.suppressionApplied": "Suppression",
+    "admin.cap": "Frequency cap",
+    "admin.capValue": "{n} per week",
+    "admin.quiet": "Quiet hours",
+    "admin.checkedAt": "Last checked",
+    "admin.pass": "Pass",
+    "admin.fail": "Fail",
+    "admin.applied": "Applied",
+    "admin.notApplied": "Not applied",
+    "admin.boundsTitle": "Budget bounds and approvals",
+    "admin.boundsLede": "How far the agents may go alone, and what waits for a person.",
+    "admin.boundsCaption": "Daily budget, per-move ceiling and autonomy per campaign",
+    "admin.boundsEmpty": "No campaign yet.",
+    "admin.noBound": "No ceiling",
+    "admin.paused": "Autopilot is paused for the whole tenant.",
+    "admin.running": "Autopilot is running.",
+    "admin.boundsEdit": "Change the bounds",
+    "admin.policyTitle": "Approval thresholds",
+    "admin.policyLede": "The decisions SIGNAL cannot take alone, and who is allowed to take them.",
+    "admin.policyCaption": "SIGNAL approval policies",
+    "admin.policyKey": "Decision",
+    "admin.policyDecide": "Approver needs",
+    "admin.policyDual": "Second pair of eyes",
+    "admin.policyThreshold": "Above",
+    "admin.policyAuto": "Auto-approved by this tenant",
+    "admin.dual.never": "Not required",
+    "admin.dual.above_threshold": "Above the threshold",
+    "admin.dual.always": "Always",
+    "admin.policy.signal.budget_move": "Move budget between campaigns",
+    "admin.policy.signal.campaign_launch": "Launch a campaign",
+    "admin.policy.signal.creative_publish": "Publish a creative",
+    "admin.policy.signal.budget_commit": "Commit spend",
+    "admin.policy.signal.boost": "Boost a running campaign",
+    "admin.policy.signal.creator_brief": "Send a creator brief",
+    "admin.policyEdit": "Open approvals",
+    "admin.suppressionTitle": "Suppression sources",
+    "admin.suppressionLede": "Who is held back from every send, and which audiences subtract them.",
+    "admin.suppressionCaption": "Audiences, their consent basis and the list each one subtracts",
+    "admin.suppressionEmpty": "No audience yet.",
+    "admin.audienceName": "Audience",
+    "admin.consent": "Consent basis",
+    "admin.excludes": "Subtracts",
+    "admin.isSuppression": "Suppression list",
+    "admin.size": "Size",
+    "admin.refresh": "Refreshed",
+    "admin.suppressionEdit": "Edit audiences",
+    "admin.discTitle": "Disclosure wordings",
+    "admin.discLede": "The wordings presented to customers, per line and channel. The log is what was shown, and cannot be edited after the fact.",
+    "admin.discCaption": "Disclosure wordings in use",
+    "admin.discEmpty": "No disclosure has been presented yet.",
+    "admin.discKey": "Wording",
+    "admin.discLocale": "Language",
+    "admin.discChannel": "Channel",
+    "admin.discCount": "Times presented",
+    "admin.discEdit": "Open the disclosure log",
+    "admin.gapTitle": "Not configured here yet",
+    "admin.gapLede": "Two things the spec asks of this screen have nowhere to be stored yet, so this screen does not pretend to hold them.",
+    "admin.gapChannels": "Channel connections. Ad-account OAuth is not modelled — campaigns name their channels as slugs and spend is recorded against them, but no credential is held.",
+    "admin.gapUtm": "UTM schema. Campaign links are tagged by whoever builds them; there is no tenant-wide pattern to enforce."
   },
   ar: {
     /* shared */
@@ -1370,14 +1553,102 @@ const LABELS: Record<string, Record<string, string>> = {
     "problem.verdict_required": "سجّل الحكم عند إيقاف الاختبار.",
     "problem.hypothesis_required": "اكتب ما تتوقّع حدوثه.",
     "problem.metric_required": "حدّد المقياس المقاس.",
-    "problem.arms_required": "سمِّ الذراعين."
+    "problem.arms_required": "سمِّ الذراعين.",
+
+    /* admin */
+    "admin.title": "إدارة SIGNAL",
+    "admin.lede": "العلامة والادعاءات والسقوف والقوائم التي يُقاس عليها كل ما يُرسل من هنا.",
+    "admin.denied": "دورك لا يشمل إعدادات SIGNAL.",
+    "admin.readyTitle": "لا شيء معطّل.",
+    "admin.readyBody": "كل حملة تعمل اجتازت فحوصها، ولكل وكيل ينفق سقف، وكل جمهور يطرح قائمة استبعاد.",
+    "admin.fault.unchecked": "تصل إلى الناس دون أن تجتاز فحص العلامة والادعاءات ولو مرة.",
+    "admin.fault.bannedClaims": "تعمل وفحص الادعاءات لم يُجتَز.",
+    "admin.fault.brandKit": "تعمل وفحص العلامة لم يُجتَز.",
+    "admin.fault.noSuppressionApplied": "تعمل دون طرح قائمة الاستبعاد.",
+    "admin.fault.unbounded": "الوكلاء يتصرفون فيها بلا سقف لكل حركة يوقفهم.",
+    "admin.fault.noSuppressionSource": "لا توجد قائمة استبعاد، فلا أحد يُستبعد.",
+    "admin.fault.noExclusion": "هذا الجمهور لا يطرح أي قائمة استبعاد.",
+    "admin.brandTitle": "هوية العلامة",
+    "admin.brandLede": "الاسم والشعار واللون الذي تُكتب وتُعرض به كل المسودات.",
+    "admin.brandName": "اسم المنتج",
+    "admin.brandAccent": "لون التمييز",
+    "admin.brandLogos": "الشعارات المتوفرة",
+    "admin.brandDefault": "الافتراضي للمنصة",
+    "admin.brandEdit": "تحرير هوية العلامة",
+    "admin.brandHint": "الإعدادات تملك هذا، وتتحقق من تباين اللون قبل الحفظ.",
+    "admin.guardTitle": "الضوابط والادعاءات الممنوعة",
+    "admin.guardLede": "ما فُحصت عليه كل حملة، ومتى كان آخر فحص.",
+    "admin.guardCaption": "فحوص الضوابط لكل حملة",
+    "admin.guardEmpty": "لا توجد حملة بعد.",
+    "admin.guardNone": "لم تُفحص قط",
+    "admin.claims": "الادعاءات",
+    "admin.brandCheck": "العلامة",
+    "admin.suppressionApplied": "الاستبعاد",
+    "admin.cap": "سقف التكرار",
+    "admin.capValue": "{n} أسبوعيًا",
+    "admin.quiet": "ساعات الهدوء",
+    "admin.checkedAt": "آخر فحص",
+    "admin.pass": "اجتاز",
+    "admin.fail": "لم يجتز",
+    "admin.applied": "مطبّق",
+    "admin.notApplied": "غير مطبّق",
+    "admin.boundsTitle": "حدود الميزانية والموافقات",
+    "admin.boundsLede": "إلى أي مدى يمضي الوكلاء وحدهم، وما الذي ينتظر إنسانًا.",
+    "admin.boundsCaption": "الميزانية اليومية وسقف الحركة ومستوى الاستقلالية لكل حملة",
+    "admin.boundsEmpty": "لا توجد حملة بعد.",
+    "admin.noBound": "بلا سقف",
+    "admin.paused": "الطيار الآلي متوقف للمستأجر بأكمله.",
+    "admin.running": "الطيار الآلي يعمل.",
+    "admin.boundsEdit": "تغيير الحدود",
+    "admin.policyTitle": "عتبات الموافقة",
+    "admin.policyLede": "القرارات التي لا تتخذها SIGNAL وحدها، ومن يحق له اتخاذها.",
+    "admin.policyCaption": "سياسات موافقة SIGNAL",
+    "admin.policyKey": "القرار",
+    "admin.policyDecide": "صلاحية المُوافِق",
+    "admin.policyDual": "مراجعة ثانية",
+    "admin.policyThreshold": "فوق",
+    "admin.policyAuto": "يوافق عليه هذا المستأجر تلقائيًا",
+    "admin.dual.never": "غير مطلوبة",
+    "admin.dual.above_threshold": "فوق العتبة",
+    "admin.dual.always": "دائمًا",
+    "admin.policy.signal.budget_move": "نقل ميزانية بين الحملات",
+    "admin.policy.signal.campaign_launch": "إطلاق حملة",
+    "admin.policy.signal.creative_publish": "نشر مادة إبداعية",
+    "admin.policy.signal.budget_commit": "الالتزام بإنفاق",
+    "admin.policy.signal.boost": "تعزيز حملة قائمة",
+    "admin.policy.signal.creator_brief": "إرسال موجز لصانع محتوى",
+    "admin.policyEdit": "فتح الموافقات",
+    "admin.suppressionTitle": "مصادر الاستبعاد",
+    "admin.suppressionLede": "من يُستبعد من كل إرسال، وأي الجماهير تطرحهم.",
+    "admin.suppressionCaption": "الجماهير وأساس الموافقة والقائمة التي يطرحها كل منها",
+    "admin.suppressionEmpty": "لا يوجد جمهور بعد.",
+    "admin.audienceName": "الجمهور",
+    "admin.consent": "أساس الموافقة",
+    "admin.excludes": "يطرح",
+    "admin.isSuppression": "قائمة استبعاد",
+    "admin.size": "الحجم",
+    "admin.refresh": "آخر تحديث",
+    "admin.suppressionEdit": "تحرير الجماهير",
+    "admin.discTitle": "صيغ الإفصاح",
+    "admin.discLede": "الصيغ المعروضة على العملاء لكل خط وقناة. السجل هو ما عُرض فعلًا، ولا يُعدّل لاحقًا.",
+    "admin.discCaption": "صيغ الإفصاح المستخدمة",
+    "admin.discEmpty": "لم يُعرض أي إفصاح بعد.",
+    "admin.discKey": "الصيغة",
+    "admin.discLocale": "اللغة",
+    "admin.discChannel": "القناة",
+    "admin.discCount": "مرات العرض",
+    "admin.discEdit": "فتح سجل الإفصاح",
+    "admin.gapTitle": "غير مهيّأ هنا بعد",
+    "admin.gapLede": "أمران تطلبهما المواصفة من هذه الشاشة لا مكان لتخزينهما بعد، فلا تدّعي الشاشة أنها تحفظهما.",
+    "admin.gapChannels": "ربط القنوات. لا يوجد نموذج لتفويض حسابات الإعلانات — الحملات تسمي قنواتها كرموز ويُسجَّل الإنفاق عليها، لكن لا يُحفظ أي اعتماد.",
+    "admin.gapUtm": "مخطط UTM. تُوسم روابط الحملات بمن يبنيها، ولا يوجد نمط موحّد على مستوى المستأجر يُفرض."
   }
 };
 
 export type Label = (key: string, vars?: Record<string, string>) => string;
 
 /**
- * The labeller for all seven screens. The domain pack answers first (CLAUDE.md
+ * The labeller for every SIGNAL screen. The domain pack answers first (CLAUDE.md
  * §14) so a retail tenant's nouns land here too, then the local table, then the
  * key itself — a missing label renders as its key rather than as nothing.
  */
