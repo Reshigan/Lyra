@@ -102,6 +102,7 @@ export default [
     route("signal/studio", "routes/signal-studio.tsx"),
     route("signal/audience-value", "routes/signal-audience-value.tsx"),
     route("signal/answer-engines", "routes/signal-answer-engines.tsx"),
+    route("signal/experiments", "routes/signal-experiments.tsx"),
     route("signal/budget", "routes/signal-budget.tsx"),
     route("signal/analytics", "routes/signal-analytics.tsx"),
 

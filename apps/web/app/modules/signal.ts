@@ -17,6 +17,7 @@ export const signal: WorkspaceSpec = {
     { href: "/signal/studio", labelKey: "link.studio", permission: "signal:campaigns:read" },
     { href: "/signal/audience-value", labelKey: "link.audience-value", permission: "signal:audiences:read" },
     { href: "/signal/answer-engines", labelKey: "link.answer-engines", permission: "signal:aeo:read" },
+    { href: "/signal/experiments", labelKey: "link.experiments", permission: "signal:experiments:read" },
     { href: "/signal/budget", labelKey: "link.budget", permission: "signal:budget_moves:read" },
     { href: "/signal/analytics", labelKey: "link.analytics", permission: "signal:spend:read" }
   ],
@@ -130,6 +131,7 @@ export const signal: WorkspaceSpec = {
       "link.studio": "Campaign studio",
       "link.audience-value": "Audiences and value",
       "link.answer-engines": "Answer engines",
+      "link.experiments": "Experiments",
       "link.budget": "Budget and bounds",
       "link.analytics": "Growth analytics"
     },
@@ -242,6 +244,7 @@ export const signal: WorkspaceSpec = {
       "link.studio": "استوديو الحملات",
       "link.audience-value": "الجماهير والقيمة",
       "link.answer-engines": "محرّكات الإجابات",
+      "link.experiments": "التجارب",
       "link.budget": "الميزانية والحدود",
       "link.analytics": "تحليلات النمو"
     }

@@ -94,6 +94,8 @@ export const HIDDEN_ROUTES: Record<string, string> = {
     "creates a campaign and drafts its content, linked from the signal workspace tools list and from the cockpit when nothing is running",
   "/signal/audience-value": "value against cost per audience, linked from the signal workspace tools list",
   "/signal/answer-engines": "answer-engine coverage and citation share, linked from the signal workspace tools list",
+  "/signal/experiments":
+    "the experiment registry and the reading each test stopped on, linked from the signal workspace tools list",
   "/signal/budget":
     "the spend ceiling and the autopilot's bounds, linked from the signal workspace tools list and from the cockpit's autopilot panel",
   "/signal/analytics":

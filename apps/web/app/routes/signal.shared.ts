@@ -1,16 +1,17 @@
 import { vocabulary } from "../modules/vocabulary";
 import { pseudoText } from "../i18n";
 
-// The six bespoke SIGNAL screens share one labeller and one set of derivations,
-// for the same reason ledger.shared.ts exists: the cockpit, the studio, the
-// budget bounds, the growth numbers, the audience value view and the answer-
-// engine coverage all read the same four ledgers (spend, attribution, campaigns,
-// budget moves) and would otherwise each grow their own copy of CAC.
+// The seven bespoke SIGNAL screens share one labeller and one set of
+// derivations, for the same reason ledger.shared.ts exists: the cockpit, the
+// studio, the budget bounds, the growth numbers, the audience value view, the
+// experiments and the answer-engine coverage all read the same four ledgers
+// (spend, attribution, campaigns, budget moves) and would otherwise each grow
+// their own copy of CAC.
 //
 // Labels are local rather than app/i18n: those catalogues are shared across
 // agents and these words belong to these screens. Keys are namespaced by screen
-// (`cockpit.*`, `studio.*`, `budget.*`, `growth.*`, `aud.*`, `aeo.*`); the
-// unnamespaced ones are shared by all six.
+// (`cockpit.*`, `studio.*`, `budget.*`, `growth.*`, `aud.*`, `aeo.*`, `exp.*`);
+// the unnamespaced ones are shared by all seven.
 //
 // The API has no CAC/LTV endpoint — the autopilot computes both internally
 // (apps/api/src/engines/signal-autopilot.ts) and exposes neither — so the
@@ -27,6 +28,9 @@ export const PERM = {
   creativesGenerate: "signal:creatives:generate",
   creativesApprove: "signal:creatives:approve",
   audiencesRead: "signal:audiences:read",
+  experimentsRead: "signal:experiments:read",
+  experimentsCreate: "signal:experiments:create",
+  experimentsDecide: "signal:experiments:decide",
   movesRead: "signal:budget_moves:read",
   movesApprove: "signal:budget_moves:approve",
   aeoRead: "signal:aeo:read",
@@ -144,6 +148,49 @@ export interface AeoRow {
   updatedAt: number;
 }
 
+export interface ExperimentRow {
+  id: string;
+  campaignId: string | null;
+  hypothesis: string;
+  variantsJson: unknown;
+  metric: string;
+  minSample: number | null;
+  /** draft | running | concluded | abandoned (packages/db/src/schema/signal.ts). */
+  state: string;
+  resultJson: unknown;
+  concludedAt: number | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** One arm of a test. `splitBps` is its share of traffic, 10 000 = all of it. */
+export interface Variant {
+  key: string;
+  label?: string;
+  creativeId?: string;
+  splitBps?: number;
+}
+
+/**
+ * What was written when the test stopped. Two shapes live in this column: a
+ * measured stop carries samples and rates, an abandoned one carries the reason
+ * it never got there. Every field is optional because both are the same column.
+ */
+export interface ExperimentResult {
+  verdict?: string;
+  winner?: string | null;
+  samples?: Record<string, number>;
+  rateBps?: Record<string, number>;
+  upliftBps?: number;
+  probabilityToBeatControlBps?: number;
+  stoppedBy?: string;
+  note?: string;
+  /** Abandoned tests only. */
+  reason?: string;
+  reachableShareBps?: number;
+  abandonedBy?: string;
+}
+
 /** The campaign's `budgetJson`, as the autopilot reads it. */
 export interface Budget {
   dailyMinor?: number;
@@ -224,11 +271,16 @@ export const SIGNAL_CHANNELS: ReadonlyArray<{ slug: string; en: string; ar: stri
   { slug: "push", en: "Push", ar: "إشعار" }
 ];
 
+/** `quote_start_rate` → "Quote Start Rate". A slug nobody named is still words. */
+export function humanise(slug: string): string {
+  return slug.replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 /** A channel slug as a person reads it — `google_search` → "Google Search". */
 export function channelLabel(slug: string, locale = "en"): string {
   const known = SIGNAL_CHANNELS.find((channel) => channel.slug === slug);
   if (known) return locale.startsWith("ar") ? known.ar : known.en;
-  return slug.replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  return humanise(slug);
 }
 
 /**
@@ -589,6 +641,73 @@ export function canLaunch(campaign: CampaignRow, creatives: readonly CreativeRow
   return creatives.some((creative) => creative.campaignId === campaign.id && isPublishable(creative));
 }
 
+/* --------------------------------------------------------------- experiments */
+
+/** The arms of a test. The column holds a bare array; a wrapped `{variants:[…]}`
+ *  is read too so a hand-written row does not render an empty test. */
+export function variantsOf(row: ExperimentRow): Variant[] {
+  const raw = asJson<unknown>(row.variantsJson, []);
+  const list = Array.isArray(raw) ? raw : ((raw as { variants?: unknown }).variants ?? []);
+  return Array.isArray(list) ? (list as Variant[]) : [];
+}
+
+export function resultOf(row: ExperimentRow): ExperimentResult | null {
+  if (row.resultJson === null || row.resultJson === undefined) return null;
+  const parsed = asJson<ExperimentResult | null>(row.resultJson, null);
+  return parsed && typeof parsed === "object" ? parsed : null;
+}
+
+/** How many observations the stop was called on, across every arm. */
+export function samplesSeen(result: ExperimentResult | null): number {
+  return Object.values(result?.samples ?? {}).reduce((sum, n) => sum + (Number.isFinite(n) ? n : 0), 0);
+}
+
+/** Progress towards `minSample`, 0-100. Null when nobody set a target. */
+export function samplePct(row: ExperimentRow): number | null {
+  if (!row.minSample) return null;
+  const seen = samplesSeen(resultOf(row));
+  return Math.min(100, Math.round((seen / row.minSample) * 100));
+}
+
+/** A test only ever moves forward. Mirrors what the decide form may offer;
+ *  the API takes any state, so this is the client's own discipline. */
+export const EXPERIMENT_TRANSITIONS: Record<string, readonly string[]> = {
+  draft: ["running", "abandoned"],
+  running: ["concluded", "abandoned"],
+  concluded: [],
+  abandoned: []
+};
+
+export function nextExperimentStates(state: string): readonly string[] {
+  return EXPERIMENT_TRANSITIONS[state] ?? [];
+}
+
+/** 95% probability-to-beat-control, in basis points: the line a sequential test
+ *  has to cross before a stop counts as a decision rather than a peek. */
+export const DECISION_BOUNDARY_BPS = 9_500;
+
+export function crossedBoundary(result: ExperimentResult | null): boolean {
+  const p = result?.probabilityToBeatControlBps;
+  return typeof p === "number" && p >= DECISION_BOUNDARY_BPS;
+}
+
+/** won -> success, lost -> danger, abandoned -> neutral, still open -> info. */
+export function verdictTone(row: ExperimentRow): "success" | "danger" | "warning" | "neutral" | "info" {
+  const verdict = resultOf(row)?.verdict;
+  if (verdict === "won") return "success";
+  if (verdict === "lost") return "danger";
+  if (verdict === "inconclusive") return "warning";
+  if (verdict === "abandoned") return "neutral";
+  return "info";
+}
+
+/** `quote_start_rate` -> its label, or title-case when this pack never named it. */
+export function metricLabel(slug: string, l: Label): string {
+  const key = `exp.metric.${slug}`;
+  const named = l(key);
+  return named === key ? humanise(slug) : named;
+}
+
 /* -------------------------------------------------------------------- labels */
 
 const LABELS: Record<string, Record<string, string>> = {
@@ -736,6 +855,78 @@ const LABELS: Record<string, Record<string, string>> = {
     "aeo.openPages": "Manage answer pages",
     "aeo.staleWarning": "{n} published page(s) have not been verified in 30 days.",
 
+    /* experiments */
+    "exp.title": "Experiments",
+    "exp.lede": "Every test we ran, what it was for, and what it decided.",
+    "exp.caption": "Experiments by state, with the metric each one moves",
+    "exp.runningNow": "Running now",
+    "exp.decidedCount": "Decided",
+    "exp.wonCount": "Won",
+    "exp.hypothesis": "Hypothesis",
+    "exp.metric": "Metric",
+    "exp.state": "State",
+    "exp.arms": "Arms",
+    "exp.sample": "Sample",
+    "exp.verdict": "Verdict",
+    "exp.concluded": "Stopped",
+    "exp.open": "Open",
+    "exp.none": "No experiments yet.",
+    "exp.pending": "Still open",
+    "exp.noWinner": "No single arm",
+    "exp.noTarget": "No target set",
+    "exp.state.draft": "Draft",
+    "exp.state.running": "Running",
+    "exp.state.concluded": "Concluded",
+    "exp.state.abandoned": "Abandoned",
+    "exp.verdict.won": "Won",
+    "exp.verdict.lost": "Lost",
+    "exp.verdict.inconclusive": "Inconclusive",
+    "exp.verdict.abandoned": "Dropped",
+    "exp.detail": "The test in detail",
+    "exp.variants": "The arms of this test",
+    "exp.variant": "Arm",
+    "exp.split": "Traffic share",
+    "exp.rate": "Rate",
+    "exp.samples": "Observations",
+    "exp.control": "Control",
+    "exp.winner": "Winner",
+    "exp.uplift": "Uplift on control",
+    "exp.probability": "Probability it beats control",
+    "exp.boundary": "Stopping line at 95%",
+    "exp.crossed": "Crossed the line — read this as a decision.",
+    "exp.notCrossed": "Short of the line — read this as a lean, not a decision.",
+    "exp.stoppedBy": "Stopped by",
+    "exp.note": "What we did about it",
+    "exp.reason": "Why it was dropped",
+    "exp.reach": "Audience it could reach",
+    "exp.progress": "Towards {n} observations",
+    "exp.noReading": "No reading yet — it is still collecting.",
+    "exp.chart": "Sequential test",
+    "exp.chartHint": "The reading at the stop, not the path to it: interim snapshots are not kept.",
+    "exp.decide": "Record the decision",
+    "exp.decideHint":
+      "Moving a test out of running writes the verdict with it. Stopping without one leaves the log unreadable later.",
+    "exp.newState": "Move it to",
+    "exp.verdictField": "Verdict",
+    "exp.winnerField": "Which arm won",
+    "exp.noteField": "Note for the log",
+    "exp.decideSaved": "Decision recorded.",
+    "exp.new": "Start a test",
+    "exp.newHint": "Two arms, one metric, and the number of observations you will not stop before.",
+    "exp.hypothesisField": "What you expect to happen",
+    "exp.metricField": "Metric it moves",
+    "exp.minSampleField": "Do not stop before",
+    "exp.campaignField": "Campaign (optional)",
+    "exp.controlField": "Control arm",
+    "exp.challengerField": "Challenger arm",
+    "exp.create": "Start it",
+    "exp.created": "Test created as a draft.",
+    "exp.unattached": "No campaign",
+    "exp.metric.quote_start_rate": "Quote start rate",
+    "exp.metric.click_to_bind_rate": "Click-to-bind rate",
+    "exp.metric.renewal_accept_rate": "Renewal acceptance rate",
+    "exp.metric.aeo_citation_share": "Answer-engine citation share",
+
     /* budget */
     "budget.title": "Budget and bounds",
     "budget.lede": "The ceiling on the spend, and how far the agents may move it without asking.",
@@ -845,7 +1036,13 @@ const LABELS: Record<string, Record<string, string>> = {
     "problem.content_required": "A draft cannot be saved empty.",
     "problem.status_required": "Choose the state to move the page to.",
     "problem.page_required": "Pick an answer page first.",
-    "problem.format_required": "Choose a file format."
+    "problem.format_required": "Choose a file format.",
+    "problem.experiment_required": "Pick a test first.",
+    "problem.state_required": "Choose the state to move the test to.",
+    "problem.verdict_required": "Record the verdict when you stop a test.",
+    "problem.hypothesis_required": "Write what you expect to happen.",
+    "problem.metric_required": "Say which metric is being measured.",
+    "problem.arms_required": "Name both arms."
   },
   ar: {
     /* shared */
@@ -991,6 +1188,77 @@ const LABELS: Record<string, Record<string, string>> = {
     "aeo.openPages": "إدارة صفحات الإجابات",
     "aeo.staleWarning": "{n} صفحة منشورة لم تُتحقّق منها خلال ٣٠ يومًا.",
 
+    /* experiments */
+    "exp.title": "التجارب",
+    "exp.lede": "كل اختبار أجريناه، وغرضه، وما انتهى إليه.",
+    "exp.caption": "التجارب حسب الحالة والمقياس الذي تحرّكه",
+    "exp.runningNow": "تعمل الآن",
+    "exp.decidedCount": "محسومة",
+    "exp.wonCount": "رابحة",
+    "exp.hypothesis": "الفرضية",
+    "exp.metric": "المقياس",
+    "exp.state": "الحالة",
+    "exp.arms": "الأذرع",
+    "exp.sample": "العيّنة",
+    "exp.verdict": "الحكم",
+    "exp.concluded": "توقّفت",
+    "exp.open": "فتح",
+    "exp.none": "لا توجد تجارب بعد.",
+    "exp.pending": "ما زالت مفتوحة",
+    "exp.noWinner": "لا ذراع فائزة",
+    "exp.noTarget": "لا هدف محدّد",
+    "exp.state.draft": "مسودة",
+    "exp.state.running": "قيد التشغيل",
+    "exp.state.concluded": "منتهية",
+    "exp.state.abandoned": "متروكة",
+    "exp.verdict.won": "ربحت",
+    "exp.verdict.lost": "خسرت",
+    "exp.verdict.inconclusive": "غير حاسمة",
+    "exp.verdict.abandoned": "أُسقطت",
+    "exp.detail": "تفاصيل الاختبار",
+    "exp.variants": "أذرع هذا الاختبار",
+    "exp.variant": "الذراع",
+    "exp.split": "حصة الزيارات",
+    "exp.rate": "المعدّل",
+    "exp.samples": "المشاهدات",
+    "exp.control": "الضابطة",
+    "exp.winner": "الفائز",
+    "exp.uplift": "الفارق عن الضابطة",
+    "exp.probability": "احتمال تفوّقها على الضابطة",
+    "exp.boundary": "خط التوقّف عند ٩٥٪",
+    "exp.crossed": "تجاوزت الخط — اقرأها قرارًا.",
+    "exp.notCrossed": "دون الخط — اقرأها ميلًا لا قرارًا.",
+    "exp.stoppedBy": "أوقفها",
+    "exp.note": "ما فعلناه بناءً عليها",
+    "exp.reason": "سبب تركها",
+    "exp.reach": "الجمهور الذي يمكن بلوغه",
+    "exp.progress": "من أصل {n} مشاهدة",
+    "exp.noReading": "لا قراءة بعد — ما زالت تجمع.",
+    "exp.chart": "الاختبار التتابعي",
+    "exp.chartHint": "القراءة عند التوقّف لا مسارها: اللقطات المرحلية لا تُحفظ.",
+    "exp.decide": "سجّل القرار",
+    "exp.decideHint": "إخراج الاختبار من التشغيل يكتب الحكم معه. التوقّف دون حكم يترك السجل غير مفهوم لاحقًا.",
+    "exp.newState": "انقله إلى",
+    "exp.verdictField": "الحكم النهائي",
+    "exp.winnerField": "الذراع الفائزة",
+    "exp.noteField": "ملاحظة للسجل",
+    "exp.decideSaved": "سُجّل القرار.",
+    "exp.new": "ابدأ اختبارًا",
+    "exp.newHint": "ذراعان، ومقياس واحد، وعدد مشاهدات لن تتوقّف قبله.",
+    "exp.hypothesisField": "ما تتوقّع حدوثه",
+    "exp.metricField": "المقياس الذي تحرّكه",
+    "exp.minSampleField": "لا تتوقّف قبل",
+    "exp.campaignField": "الحملة (اختياري)",
+    "exp.controlField": "اسم الذراع الضابطة",
+    "exp.challengerField": "اسم الذراع المنافسة",
+    "exp.create": "ابدأها",
+    "exp.created": "أُنشئ الاختبار كمسودة.",
+    "exp.unattached": "بلا حملة",
+    "exp.metric.quote_start_rate": "معدّل بدء التسعير",
+    "exp.metric.click_to_bind_rate": "معدّل التحوّل من نقرة إلى تعاقد",
+    "exp.metric.renewal_accept_rate": "معدّل قبول التجديد",
+    "exp.metric.aeo_citation_share": "نسبة الاقتباس في محرّكات الإجابة",
+
     /* budget */
     "budget.title": "الميزانية والحدود",
     "budget.lede": "سقف الإنفاق، وإلى أي حد يحرّكه الوكلاء دون سؤال.",
@@ -1096,14 +1364,20 @@ const LABELS: Record<string, Record<string, string>> = {
     "problem.content_required": "لا يمكن حفظ مسودة فارغة.",
     "problem.status_required": "اختر الوضع الذي تنقل الصفحة إليه.",
     "problem.page_required": "اختر صفحة إجابة أولًا.",
-    "problem.format_required": "اختر صيغة الملف."
+    "problem.format_required": "اختر صيغة الملف.",
+    "problem.experiment_required": "اختر اختبارًا أولًا.",
+    "problem.state_required": "اختر الحالة التي تنقل الاختبار إليها.",
+    "problem.verdict_required": "سجّل الحكم عند إيقاف الاختبار.",
+    "problem.hypothesis_required": "اكتب ما تتوقّع حدوثه.",
+    "problem.metric_required": "حدّد المقياس المقاس.",
+    "problem.arms_required": "سمِّ الذراعين."
   }
 };
 
 export type Label = (key: string, vars?: Record<string, string>) => string;
 
 /**
- * The labeller for all six screens. The domain pack answers first (CLAUDE.md
+ * The labeller for all seven screens. The domain pack answers first (CLAUDE.md
  * §14) so a retail tenant's nouns land here too, then the local table, then the
  * key itself — a missing label renders as its key rather than as nothing.
  */
