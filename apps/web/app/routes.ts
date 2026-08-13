@@ -59,6 +59,7 @@ export default [
     route("onboarding/:kind/:ref", "routes/onboarding.tsx"),
 
     route("orbit/console", "routes/orbit-console.tsx"),
+    route("orbit/supervisor", "routes/orbit-supervisor.tsx"),
     route("orbit/save", "routes/orbit-save.tsx"),
     route("orbit/pipeline", "routes/orbit-pipeline.tsx"),
     route("orbit/quality", "routes/orbit-quality.tsx"),

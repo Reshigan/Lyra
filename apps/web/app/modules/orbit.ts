@@ -13,6 +13,7 @@ export const orbit: WorkspaceSpec = {
       thread: "Open thread",
       builder: "Open builder",
       "link.console": "Live console",
+      "link.supervisor": "Supervisor wall",
       "link.save": "Save desk",
       "link.pipeline": "Renewal pipeline",
       "link.quality": "Conversation quality",
@@ -192,6 +193,7 @@ export const orbit: WorkspaceSpec = {
       thread: "فتح المحادثة",
       builder: "فتح المحرّر",
       "link.console": "لوحة المحادثات الحية",
+      "link.supervisor": "لوحة المشرف",
       "link.save": "مكتب الاستبقاء",
       "link.pipeline": "خط التجديدات",
       "link.quality": "جودة المحادثات",
@@ -817,6 +819,7 @@ export const orbit: WorkspaceSpec = {
   // so an actor who would only be told no is not offered the door.
   links: [
     { href: "/orbit/console", labelKey: "link.console", permission: "orbit:conversations:read" },
+    { href: "/orbit/supervisor", labelKey: "link.supervisor", permission: "orbit:presence:read" },
     { href: "/orbit/save", labelKey: "link.save", permission: "orbit:renewals:read" },
     { href: "/orbit/pipeline", labelKey: "link.pipeline", permission: "orbit:renewals:read" },
     { href: "/orbit/quality", labelKey: "link.quality", permission: "orbit:qa:read" },

@@ -112,6 +112,8 @@ export const HIDDEN_ROUTES: Record<string, string> = {
   "/search/results": "the full result page behind the command palette, opened from its last row",
   "/onboarding/:kind/:ref": "one subject's onboarding checklist, opened from that partner, channel or staff record",
   "/orbit/console": "the live conversation console, linked from the ORBIT workspace tools list",
+  "/orbit/supervisor":
+    "the supervisor wall over the whole room, with barge and whisper, linked from the ORBIT workspace tools list",
   "/orbit/save": "the retention save desk, linked from the ORBIT workspace tools list",
   "/orbit/pipeline": "the renewal pipeline, linked from the ORBIT workspace tools list",
   "/orbit/quality": "conversation quality review, linked from the ORBIT workspace tools list",
