@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Form,
   Link,
@@ -27,8 +28,11 @@ import {
   Stat,
   Table,
   Textarea,
+  POST_RATIOS,
+  postCardSvg,
   type BadgeTone,
-  type Column
+  type Column,
+  type PostRatio
 } from "@lyra/ui";
 import { ApiError, api, directory } from "../api.server";
 import { cloudflare } from "../context";
@@ -36,6 +40,7 @@ import { Gate } from "./staff";
 import { useShellData } from "./workspace";
 import {
   PERM,
+  briefFromOpportunity,
   budgetOf,
   canLaunch,
   SIGNAL_CHANNELS,
@@ -47,11 +52,13 @@ import {
   nextStates,
   rollByChannel,
   safe,
+  splitCopy,
   totalSpendMinor,
   type AudienceRow,
   type CampaignRow,
   type ChannelRoll,
   type CreativeRow,
+  type OpportunityRow,
   type Page,
   type Problemish,
   type SpendRow,
@@ -95,6 +102,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const url = new URL(request.url);
   const campaignId = url.searchParams.get("campaignId") ?? "";
   const generated = Number(url.searchParams.get("generated") ?? "");
+  // Arrived from SCOUT's whitespace screen: the brief opens with the finding
+  // rather than blank. A dead id is not an error — the screen still works.
+  const opportunityId = url.searchParams.get("opportunityId") ?? "";
 
   const [recent, audiences] = await Promise.all([
     safe(
@@ -108,9 +118,14 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     safe(() => api<Page<AudienceRow>>("/v1/signal/audiences?limit=50", { env, request }), empty<AudienceRow>())
   ]);
 
-  const campaign = campaignId
-    ? await safe(() => api<CampaignRow>(`/v1/signal/campaigns/${campaignId}`, { env, request }), null)
-    : null;
+  const [campaign, opportunity] = await Promise.all([
+    campaignId
+      ? safe(() => api<CampaignRow>(`/v1/signal/campaigns/${campaignId}`, { env, request }), null)
+      : Promise.resolve(null),
+    opportunityId
+      ? safe(() => api<OpportunityRow>(`/v1/scout/whitespaces/${opportunityId}`, { env, request }), null)
+      : Promise.resolve(null)
+  ]);
 
   const scope = campaign ? `?campaignId=${encodeURIComponent(campaign.id)}&limit=100` : "";
   const [creatives, spend, touches] = await Promise.all([
@@ -135,6 +150,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   return {
     campaign,
+    opportunity,
     assignees,
     generated: Number.isFinite(generated) && generated > 0 ? generated : 0,
     audiences: audiences.data,
@@ -216,8 +232,13 @@ export async function action({ request, context }: ActionFunctionArgs): Promise<
           }
         });
         // A redirect, not a result: the next read is a GET, so a refresh cannot
-        // create a second campaign.
-        throw redirect(`/signal/studio?campaignId=${encodeURIComponent(created.id)}`);
+        // create a second campaign. The opportunity rides along so a marketer who
+        // came from SCOUT still gets the finding in the brief on the next screen.
+        const from = text(form, "opportunityId");
+        throw redirect(
+          `/signal/studio?campaignId=${encodeURIComponent(created.id)}` +
+            (from ? `&opportunityId=${encodeURIComponent(from)}` : "")
+        );
       }
 
       case "generate": {
@@ -318,6 +339,79 @@ function toneOf(status: string): BadgeTone {
   return "neutral";
 }
 
+/**
+ * The variant as the thing a marketer actually posts.
+ *
+ * The studio wrote the words and stopped there, so "social" copy lived as a
+ * paragraph in a form field and someone rebuilt the post by hand in another
+ * tool. The preview and the download are the same SVG bytes
+ * (packages/ui/src/post-card.ts), so what is on screen is what lands on disk.
+ * ponytail: SVG, not PNG — the browser rasterises it and nothing new ships.
+ */
+function PostArt({
+  copy,
+  kicker,
+  contentLocale,
+  brand,
+  l
+}: {
+  copy: string;
+  kicker: string;
+  contentLocale: string;
+  brand?: { name?: string; palette?: { accent?: string; accentContrast?: string } } | null | undefined;
+  l: (key: string, vars?: Record<string, string>) => string;
+}) {
+  const [ratio, setRatio] = useState<PostRatio>("square");
+  const { headline, body } = splitCopy(copy);
+  const svg = postCardSvg({
+    headline,
+    body,
+    kicker,
+    brandName: brand?.name ?? "",
+    accent: brand?.palette?.accent,
+    accentContrast: brand?.palette?.accentContrast,
+    locale: contentLocale,
+    ratio
+  });
+  const href = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  const box = POST_RATIOS[ratio];
+
+  return (
+    <figure className="flex flex-col gap-2">
+      <figcaption className="font-ui text-12 uppercase tracking-[0.14em] text-subtle">
+        {l("studio.art")}
+      </figcaption>
+      <img
+        src={href}
+        width={box.w}
+        height={box.h}
+        alt={l("studio.artHint")}
+        className="w-full max-w-[260px] rounded-lg border border-border"
+      />
+      <div className="flex items-center gap-2">
+        <Select
+          value={ratio}
+          onValueChange={(next) => setRatio(next as PostRatio)}
+          size="sm"
+          aria-label={l("studio.art")}
+          options={[
+            { value: "square", label: l("studio.square") },
+            { value: "portrait", label: l("studio.portrait") },
+            { value: "story", label: l("studio.story") }
+          ]}
+        />
+        <a
+          href={href}
+          download={`${(brand?.name ?? "post").toLowerCase().replace(/\W+/g, "-")}-${ratio}.svg`}
+          className="font-ui text-12 text-accent underline-offset-2 hover:underline"
+        >
+          {l("studio.download")}
+        </a>
+      </div>
+    </figure>
+  );
+}
+
 export default function CampaignStudio() {
   const loaded = useLoaderData<typeof loader>();
   const result = useActionData<typeof action>();
@@ -376,6 +470,9 @@ export default function CampaignStudio() {
           <Form method="post" className="flex flex-col gap-4">
             <input type="hidden" name="intent" value="create-campaign" />
             <input type="hidden" name="key" value={loaded.key} />
+            {loaded.opportunity ? (
+              <input type="hidden" name="opportunityId" value={loaded.opportunity.id} />
+            ) : null}
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label={l("studio.name")} required>
                 <Input name="name" required maxLength={120} />
@@ -493,13 +590,27 @@ export default function CampaignStudio() {
           </Card>
 
           {may.has(PERM.creativesGenerate) ? (
-            <Card title={l("studio.brief")} description={l("studio.briefHint")}>
+            <Card
+              title={l("studio.brief")}
+              description={
+                loaded.opportunity ? l("studio.fromOpportunity") : l("studio.briefHint")
+              }
+            >
               <Form method="post" className="flex flex-col gap-4">
                 <input type="hidden" name="intent" value="generate" />
                 <input type="hidden" name="key" value={loaded.key} />
                 <input type="hidden" name="campaignId" value={campaign.id} />
                 <Field label={l("studio.brief")} labelHidden required>
-                  <Textarea name="brief" rows={4} required minLength={10} maxLength={4000} />
+                  <Textarea
+                    name="brief"
+                    rows={loaded.opportunity ? 6 : 4}
+                    required
+                    minLength={10}
+                    maxLength={4000}
+                    defaultValue={
+                      loaded.opportunity ? briefFromOpportunity(loaded.opportunity, l) : undefined
+                    }
+                  />
                 </Field>
                 <div className="grid gap-4 sm:grid-cols-3">
                   <Field label={l("studio.kind")} required>
@@ -570,6 +681,7 @@ export default function CampaignStudio() {
                       />
                     ) : null}
 
+                    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
                     <Form method="post" className="flex flex-col gap-2">
                       <input type="hidden" name="key" value={loaded.key} />
                       <input type="hidden" name="creativeId" value={creative.id} />
@@ -602,6 +714,14 @@ export default function CampaignStudio() {
                         </div>
                       ) : null}
                     </Form>
+                      <PostArt
+                        copy={creative.contentRef}
+                        kicker={campaign.name}
+                        contentLocale={creative.locale}
+                        brand={shell?.brand}
+                        l={l}
+                      />
+                    </div>
                   </li>
                 ))}
               </ul>

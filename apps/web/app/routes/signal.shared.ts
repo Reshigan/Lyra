@@ -759,6 +759,52 @@ export function suppressionIds(audiences: readonly AudienceRow[]): Set<string> {
   return ids;
 }
 
+/* ------------------------------------------------------- opportunity → words */
+
+/**
+ * A SCOUT whitespace, read over the wire by the studio. Declared here rather
+ * than imported from scout.shared so SIGNAL's screens keep no compile-time
+ * dependency on another module's UI (CLAUDE.md §6) — the coupling is one HTTP
+ * read, the same as any other consumer of the API.
+ */
+export interface OpportunityRow {
+  id: string;
+  description: string;
+  category?: string | null;
+  demandEstimate?: number | null;
+  competitionScore?: number | null;
+}
+
+/**
+ * The brief the studio opens with when it was reached from an opportunity.
+ * SCOUT could say "here is an unserved segment" and the marketer then retyped
+ * it into a brief by hand, which is where the demand and competition numbers
+ * fell out of the ask. It is a prefill, not a lock: the field stays editable.
+ */
+export function briefFromOpportunity(row: OpportunityRow, l: Label): string {
+  const facts = [
+    row.category ? `${l("category")}: ${row.category}` : "",
+    typeof row.demandEstimate === "number" ? `${l("demand")}: ${row.demandEstimate}` : "",
+    typeof row.competitionScore === "number" ? `${l("competition")}: ${row.competitionScore}/100` : ""
+  ].filter(Boolean);
+  return [row.description, facts.join(" · ")].filter(Boolean).join("\n\n");
+}
+
+/**
+ * The first sentence carries the card; the rest is the supporting line. A
+ * variant is one line of prose (apps/api/src/engines/signal-creative.ts parses
+ * one per line), so this is the only split available without asking the model
+ * for structure it was never told to produce.
+ */
+export function splitCopy(text: string): { headline: string; body: string } {
+  const trimmed = text.trim();
+  // Arabic full stop and question mark included: an `ar` variant breaks on its
+  // own punctuation, not on the Latin set.
+  const at = trimmed.search(/[.!?؟۔](\s|$)/);
+  if (at <= 0 || at >= trimmed.length - 2) return { headline: trimmed, body: "" };
+  return { headline: trimmed.slice(0, at + 1), body: trimmed.slice(at + 1).trim() };
+}
+
 /**
  * What is wrong when the campaign, guardrail and audience config are read
  * together. Each of these is invisible in the per-table list an admin would
@@ -907,6 +953,16 @@ const LABELS: Record<string, Record<string, string>> = {
     "studio.launchBlocked": "Clear at least one draft before launching.",
     "studio.launched": "The campaign is live.",
     "studio.whyDraft": "Drafted from your brief, the audience definition and the compliance rules for this content type.",
+    "studio.art": "How it will look",
+    "studio.artHint": "The cleared words on your own brand. Download the frame you need.",
+    "studio.download": "Download",
+    "studio.square": "Feed (1:1)",
+    "studio.portrait": "Feed (4:5)",
+    "studio.story": "Story (9:16)",
+    "studio.fromOpportunity": "From an opportunity SCOUT found",
+    category: "Category",
+    demand: "Estimated demand",
+    competition: "Competition",
     "studio.pickCampaign": "Or continue a draft",
     "studio.open": "Open",
     "studio.performance": "How it is doing",
@@ -1389,6 +1445,16 @@ const LABELS: Record<string, Record<string, string>> = {
     "studio.launchBlocked": "اعتمد مسودة واحدة على الأقل قبل الإطلاق.",
     "studio.launched": "الحملة مباشرة الآن.",
     "studio.whyDraft": "كُتبت من موجزك وتعريف الجمهور وقواعد الامتثال لهذا النوع من المحتوى.",
+    "studio.art": "كيف ستبدو",
+    "studio.artHint": "الكلمات المعتمدة على هويتك. نزّل المقاس الذي تحتاجه.",
+    "studio.download": "تنزيل",
+    "studio.square": "منشور (1:1)",
+    "studio.portrait": "منشور (4:5)",
+    "studio.story": "قصة (9:16)",
+    "studio.fromOpportunity": "من فرصة رصدها سكاوت",
+    category: "الفئة",
+    demand: "الطلب المقدَّر",
+    competition: "المنافسة",
     "studio.pickCampaign": "أو أكمل مسودة قائمة",
     "studio.open": "فتح",
     "studio.performance": "كيف تسير",

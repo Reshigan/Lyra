@@ -1,3 +1,4 @@
+import { POST_RATIOS, postCardSvg, type PostRatio } from "@lyra/ui";
 import { labelsFrom } from "./detail-kit";
 import { useShellData } from "./workspace";
 
@@ -125,7 +126,12 @@ const LABELS: Labels = {
     "hand.card.secondary": "Why this",
     "hand.footer": "Approvals and evidence stay on the phone; anything consequential still waits for you to press it.",
     "hand.tab1": "Shift",
-    "hand.tab2": "Records"
+    "hand.tab2": "Records",
+    "post.heading": "The post itself",
+    "post.note": "A cleared SIGNAL variant rendered at the three frames the networks take, from the tenant\u2019s own brand. Preview and download are the same bytes.",
+    "post.headline": "Cover the gap before renewal.",
+    "post.body": "Two minutes, no paperwork, and your no-claim year stays yours.",
+    "post.kicker": "Renewal save"
   },
   ar: {
     eyebrow: "Horizon — العقيدة التصميمية",
@@ -189,11 +195,25 @@ const LABELS: Labels = {
     "hand.card.secondary": "لماذا",
     "hand.footer": "الموافقات والأدلة تبقى على الهاتف؛ وكل ما له أثر ينتظر ضغطتك.",
     "hand.tab1": "النوبة",
-    "hand.tab2": "السجلات"
+    "hand.tab2": "السجلات",
+    "post.heading": "المنشور نفسه",
+    "post.note": "نسخة معتمدة من سيجنال بمقاسات المنصات الثلاثة، بهوية العميل نفسه. المعاينة والتنزيل ملف واحد.",
+    "post.headline": "غطِّ الفجوة قبل التجديد.",
+    "post.body": "دقيقتان دون أوراق، وخصمك يبقى لك.",
+    "post.kicker": "حملة التجديد"
   }
 };
 
-export function Doctrine({ locale }: { locale: string }) {
+export function Doctrine({
+  locale,
+  brandName = "",
+  accent
+}: {
+  locale: string;
+  /** The tenant's own name on the post specimen — never a literal (CLAUDE.md §5). */
+  brandName?: string;
+  accent?: string | undefined;
+}) {
   const l = labelsFrom(LABELS)(locale);
 
   return (
@@ -333,10 +353,54 @@ export function Doctrine({ locale }: { locale: string }) {
           </div>
         </div>
       </section>
+
+      {/* The one artifact the platform emits as a file rather than a screen, so
+          it is the one specimen that has to be drawn from its real renderer —
+          packages/ui/src/post-card.ts, the same call the studio and the
+          download make. Locale drives the face and the direction. */}
+      <section className="flex flex-col gap-4 border-t border-line2 pt-7">
+        <div className="flex flex-col gap-3">
+          <h2 className="font-display text-16 font-600 text-tx">{l("post.heading")}</h2>
+          <p className="max-w-[60ch] text-13 leading-body text-tx4">{l("post.note")}</p>
+        </div>
+        <ul className="flex flex-wrap items-start gap-5">
+          {(Object.keys(POST_RATIOS) as PostRatio[]).map((ratio) => (
+            <li key={ratio} className="flex flex-col gap-2">
+              <img
+                src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(
+                  postCardSvg({
+                    headline: l("post.headline"),
+                    body: l("post.body"),
+                    kicker: l("post.kicker"),
+                    brandName: brandName,
+                    accent,
+                    locale,
+                    ratio
+                  })
+                )}`}
+                alt={l("post.headline")}
+                width={POST_RATIOS[ratio].w}
+                height={POST_RATIOS[ratio].h}
+                className="w-[200px] rounded-md border border-line2"
+              />
+              <span className="font-mono text-12 text-tx5" dir="ltr">
+                {POST_RATIOS[ratio].w}×{POST_RATIOS[ratio].h}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </section>
     </div>
   );
 }
 
 export default function DesignRoute() {
-  return <Doctrine locale={useShellData()?.locale ?? "en"} />;
+  const shell = useShellData();
+  return (
+    <Doctrine
+      locale={shell?.locale ?? "en"}
+      brandName={shell?.brand?.name ?? ""}
+      accent={shell?.brand?.palette?.accent}
+    />
+  );
 }

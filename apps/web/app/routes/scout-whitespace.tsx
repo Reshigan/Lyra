@@ -491,6 +491,13 @@ export default function ScoutWhitespace() {
         <Link to="/scout/panel" className="font-ui text-13 text-accent underline-offset-2 hover:underline">
           {l("panel.title")}
         </Link>
+        {/* The finding was retyped into a brief by hand; this carries it over. */}
+        <Link
+          to={`/signal/studio?opportunityId=${encodeURIComponent(card.id)}`}
+          className="font-ui text-13 text-accent underline-offset-2 hover:underline"
+        >
+          {l("wsp.draftCreative")}
+        </Link>
       </footer>
     </div>
   );

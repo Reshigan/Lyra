@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { citationsOf, engineName, mainCurrency, moveEndpoint, totalSpendMinor } from "./signal.shared";
+import {
+  briefFromOpportunity,
+  citationsOf,
+  engineName,
+  labelsIn,
+  mainCurrency,
+  moveEndpoint,
+  splitCopy,
+  totalSpendMinor
+} from "./signal.shared";
 import type { AeoRow, CampaignRow, SpendRow } from "./signal.shared";
 
 // The budget screen's "Moves made" table printed
@@ -84,5 +93,58 @@ describe("citationsOf", () => {
 describe("engineName", () => {
   it("titles an engine nobody spelled for it", () => {
     expect(engineName("some_new_engine")).toBe("Some New Engine");
+  });
+});
+
+// A variant is one line of prose, and the post card needs a headline and a
+// supporting line — this is the only split available without asking the model
+// for structure it was never told to produce.
+describe("splitCopy", () => {
+  it("takes the first sentence as the headline", () => {
+    expect(splitCopy("Cover the gap. Renew before the 30th and keep your no-claim year.")).toEqual({
+      headline: "Cover the gap.",
+      body: "Renew before the 30th and keep your no-claim year."
+    });
+  });
+
+  it("breaks Arabic on its own punctuation", () => {
+    const { headline, body } = splitCopy("هل فاتك التجديد؟ جدّد اليوم واحتفظ بخصمك.");
+    expect(headline).toBe("هل فاتك التجديد؟");
+    expect(body).toBe("جدّد اليوم واحتفظ بخصمك.");
+  });
+
+  it("keeps a one-sentence variant whole", () => {
+    expect(splitCopy("  Renew today.  ")).toEqual({ headline: "Renew today.", body: "" });
+  });
+});
+
+describe("briefFromOpportunity", () => {
+  const l = labelsIn("en");
+
+  it("carries the finding and its numbers into the brief", () => {
+    const brief = briefFromOpportunity(
+      {
+        id: "wsp_1",
+        description: "Gig drivers have no day-rate cover",
+        category: "motor",
+        demandEstimate: 4200,
+        competitionScore: 18
+      },
+      l
+    );
+    expect(brief).toContain("Gig drivers have no day-rate cover");
+    expect(brief).toContain("motor");
+    expect(brief).toContain("4200");
+    expect(brief).toContain("18/100");
+  });
+
+  // A whitespace is allowed to be a sentence and nothing else; the brief must
+  // not open with a trailing separator.
+  it("drops the facts line when the row carries none", () => {
+    expect(briefFromOpportunity({ id: "wsp_2", description: "Only words" }, l)).toBe("Only words");
+  });
+
+  it("keeps a zero score rather than reading it as missing", () => {
+    expect(briefFromOpportunity({ id: "wsp_3", description: "d", competitionScore: 0 }, l)).toContain("0/100");
   });
 });
