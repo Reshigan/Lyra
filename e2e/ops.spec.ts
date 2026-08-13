@@ -6,6 +6,14 @@ import { chooseOption, confirmAction, content, goto, loginAsAxisAgent, loginAsAx
 // status=failed — and clears one by moving it off "failed". The queue drops
 // it immediately, no separate refresh step.
 test("J-O1 axis agent filters the exceptions queue and clears a failed case @journey:J-O1 @accept:M2", async ({ page }) => {
+  // Clicking into a record is a client-side navigation, and React Router does
+  // not commit the URL until the route module has loaded — under `vite dev`
+  // that means waiting out the first compile of case-detail.tsx and its whole
+  // graph. On a two-core runner this journey lost its entire 120s budget
+  // inside the `waitForURL` below (runs 31662772921, 31681…), never at an
+  // assertion. Triple the budget for the two journeys that enter a cold record
+  // screen rather than raise it for the suite, which does not need it.
+  test.slow();
   await loginAsAxisAgent(page);
 
   await goto(page, "/axis/cases");
@@ -139,6 +147,10 @@ test("J-O3 finance controller runs a reconciliation and decides an exception wit
 // referrals, never silence (apps/api/src/journeys.test.ts covers the API
 // side; this proves the same path through the actual UI).
 test("J-O2 axis lead shops a new risk and the panel answers @journey:J-O2 @accept:M2", async ({ page }) => {
+  // Two cold record screens (product detail, channel detail) plus a re-login
+  // and the quote comparison — same cold-compile cost as J-O1 above, twice
+  // over.
+  test.slow();
   // Seed IDs are ULIDs assigned at run time (packages/db/src/ids.ts), so the
   // real productId/channelId can't be computed — look them up once. axis.lead
   // has no core:products:read, so tenant.admin (core:*:* + dist:*:read) does
