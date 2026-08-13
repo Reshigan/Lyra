@@ -24,6 +24,28 @@ describe("search hit to palette item", () => {
     expect(hitToItem({ resource: "t", module: "m", row: { id: "1", name: "  " } })?.label).toBe("1");
   });
 
+  it("opens a message hit in the thread it was said in, labelled by what was said", () => {
+    // docs/modules/orbit.md §4 screen 7, transcript search. A message has no
+    // record screen — /orbit/messages/<id> is not a route — so linking one
+    // like any other row would hand the palette a dead end.
+    const hit = {
+      resource: "messages",
+      module: "orbit",
+      row: { id: "msg_1", conversationId: "cnv_7", content: "my policy renews next month" }
+    };
+    expect(hitToItem(hit)).toEqual({
+      id: "msg_1",
+      label: "my policy renews next month",
+      hint: "messages",
+      href: "/orbit/conversations/cnv_7/thread"
+    });
+  });
+
+  it("falls back to the generic record link when a message hit has no conversation", () => {
+    const hit = { resource: "messages", module: "orbit", row: { id: "msg_1", content: "orphan" } };
+    expect(hitToItem(hit)?.href).toBe("/orbit/messages/msg_1");
+  });
+
   it("drops a hit with no id, because there is nothing to open", () => {
     expect(hitToItem({ resource: "t", module: "m", row: { name: "orphan" } })).toBeNull();
   });

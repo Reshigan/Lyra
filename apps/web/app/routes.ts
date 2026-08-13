@@ -64,6 +64,7 @@ export default [
     route("orbit/quality", "routes/orbit-quality.tsx"),
     route("orbit/analytics", "routes/orbit-analytics.tsx"),
     route("orbit/admin", "routes/orbit-admin.tsx"),
+    route("orbit/dev", "routes/orbit-dev.tsx"),
 
     route("north/brief", "routes/north-brief.tsx"),
     route("north/explorer", "routes/north-explorer.tsx"),

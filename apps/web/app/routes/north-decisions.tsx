@@ -84,9 +84,12 @@ const LABELS: Labels = {
     "col.review": "Review",
     "col.status": "Status",
     "col.chosen": "Chosen",
-    open: "Open",
-    reviewed: "Reviewed",
-    reversed: "Reversed",
+    // Statuses, not verbs: the shared catalogue's `open` is the action
+    // ("Open" a record) and reads فتح in Arabic, where this column means
+    // مفتوح — the state a decision is still in.
+    "status.open": "Open",
+    "status.reviewed": "Reviewed",
+    "status.reversed": "Reversed",
     "record.eyebrow": "Record a decision",
     "record.lede": "One line on what was decided, who owns it, and when it gets looked at again.",
     "record.title": "Decision",
@@ -149,9 +152,9 @@ const LABELS: Labels = {
     "col.review": "المراجعة",
     "col.status": "الحالة",
     "col.chosen": "المختار",
-    open: "مفتوح",
-    reviewed: "مُراجَع",
-    reversed: "معكوس",
+    "status.open": "مفتوح",
+    "status.reviewed": "مُراجَع",
+    "status.reversed": "معكوس",
     "record.eyebrow": "سجّل قراراً",
     "record.lede": "سطر واحد عمّا تقرّر، ومن يملكه، ومتى يُعاد النظر فيه.",
     "record.title": "القرار",
@@ -407,7 +410,7 @@ export default function NorthDecisions() {
     {
       key: "status",
       header: l("col.status"),
-      render: (row) => <Badge tone={row.status === "open" ? "neutral" : "success"}>{l(row.status)}</Badge>
+      render: (row) => <Badge tone={row.status === "open" ? "neutral" : "success"}>{l(`status.${row.status}`)}</Badge>
     },
     { key: "chosen", header: l("col.chosen"), render: (row) => row.chosen ?? <span className="text-subtle">—</span> }
   ];

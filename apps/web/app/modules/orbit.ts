@@ -18,6 +18,7 @@ export const orbit: WorkspaceSpec = {
       "link.quality": "Conversation quality",
       "link.analytics": "Customer analytics",
       "link.admin": "ORBIT admin",
+      "link.dev": "Developer tools",
       messages: "Messages",
       renewals: "Renewals",
       journeys: "Journeys",
@@ -196,6 +197,7 @@ export const orbit: WorkspaceSpec = {
       "link.quality": "جودة المحادثات",
       "link.analytics": "تحليلات العملاء",
       "link.admin": "إدارة ORBIT",
+      "link.dev": "أدوات المطوّرين",
       messages: "الرسائل",
       renewals: "التجديدات",
       journeys: "الرحلات",
@@ -819,6 +821,7 @@ export const orbit: WorkspaceSpec = {
     { href: "/orbit/pipeline", labelKey: "link.pipeline", permission: "orbit:renewals:read" },
     { href: "/orbit/quality", labelKey: "link.quality", permission: "orbit:qa:read" },
     { href: "/orbit/analytics", labelKey: "link.analytics", permission: "orbit:conversations:read" },
-    { href: "/orbit/admin", labelKey: "link.admin", permission: "orbit:teams:write" }
+    { href: "/orbit/admin", labelKey: "link.admin", permission: "orbit:teams:write" },
+    { href: "/orbit/dev", labelKey: "link.dev", permission: "orbit:messages:send" }
   ]
 };
