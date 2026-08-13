@@ -385,9 +385,15 @@ export function Select({
   // instead of submitting a made-up token.
   const [chosen, setChosen] = React.useState(defaultValue ?? "");
   const current = value ?? chosen;
+  // Encoded on the way in as well as on the items, or "" matches no item and
+  // Radix reads it as "nothing chosen" — the trigger then renders the "…"
+  // placeholder over a row the screen has actually selected. Only when an
+  // empty row exists: a Select without one uses "" to mean unset, and handing
+  // Radix a sentinel it cannot resolve blanks the trigger instead.
+  const hasEmptyOption = options.some((o) => o.value === "");
   return (
     <RSelect.Root
-      value={current}
+      value={hasEmptyOption ? toSelectValue(current) : current}
       onValueChange={(next) => {
         const decoded = fromSelectValue(next);
         setChosen(decoded);

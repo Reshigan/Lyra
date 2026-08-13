@@ -38,3 +38,38 @@ describe("control width", () => {
     expect(classesOf(capped)).toContain("w-full");
   });
 });
+
+/**
+ * A filter whose "no filter" row is selected has to say so.
+ *
+ * The empty option travels to Radix under EMPTY_SENTINEL, but the value handed
+ * to the Root did not — so "" matched no item, Radix read it as "nothing
+ * chosen", and the trigger rendered the "…" placeholder. NORTH's anomaly queue
+ * shipped that way: a "Show" filter whose only readable text was an ellipsis.
+ */
+describe("select placeholder", () => {
+  const options = [
+    { value: "", label: "Everything" },
+    { value: "new", label: "Unowned" }
+  ];
+
+  it("reads back the empty row's label, not the placeholder", () => {
+    const markup = renderToStaticMarkup(<Select aria-label="Show" defaultValue="" options={options} />);
+    expect(markup).not.toContain("data-placeholder");
+    expect(markup).not.toContain("…");
+  });
+
+  it("still shows the placeholder when no empty row exists", () => {
+    const markup = renderToStaticMarkup(
+      <Select aria-label="Show" defaultValue="" options={[{ value: "new", label: "Unowned" }]} />
+    );
+    expect(markup).toContain("data-placeholder");
+  });
+
+  // The sentinel is a rendering detail of the Radix tree; what the form posts
+  // is the decoded value, and picking "Everything" has to clear the filter.
+  it("submits the decoded value", () => {
+    const markup = renderToStaticMarkup(<Select name="state" aria-label="Show" defaultValue="" options={options} />);
+    expect(markup).toContain('name="state" value=""');
+  });
+});
