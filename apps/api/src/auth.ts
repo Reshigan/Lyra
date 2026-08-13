@@ -7,6 +7,7 @@ import {
   badRequest,
   can,
   emit,
+  ensureDemoAdmin,
   entitledGrants,
   forbidden,
   grantsFor,
@@ -547,7 +548,11 @@ authRoutes.post("/demo/resync-roles", async (c) => {
   const tenantId = await demoTenant(database);
   const updated = await resyncSystemRolePermissions(database as unknown as CoreDb, tenantId);
   const accounts = await syncChartOfAccounts(database as unknown as CoreDb, tenantId);
-  return c.json({ tenantId, updated, accounts });
+  // Same shape of staleness again: the all-access demo login (seed.ts
+  // DEMO_ADMIN) arrived after this tenant was provisioned, and every role added
+  // to rbac.ts since then is a role it does not hold yet.
+  const demo = await ensureDemoAdmin(database as unknown as CoreDb, tenantId);
+  return c.json({ tenantId, updated, accounts, demo });
 });
 
 /**

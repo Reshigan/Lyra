@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { CHART_OF_ACCOUNTS, schema } from "@lyra/db";
-import { seed, SEED_TENANT_SLUG, syncChartOfAccounts } from "./seed.js";
+import { ensureDemoAdmin, seed, SEED_TENANT_SLUG, syncChartOfAccounts } from "./seed.js";
 import { hashPassword, needsRehash, verifyPassword } from "./password.js";
 import { TENANT_ROLE_KEYS, isInternalRole, permissionsForRole } from "./rbac.js";
 import type { CoreDb } from "./context.js";
@@ -176,6 +176,23 @@ describe("seed", () => {
     expect(user!.name).toBe("Demo Administrator");
     expect(keys).toEqual(TENANT_ROLE_KEYS.filter(isInternalRole).slice().sort());
     expect(keys.some((k) => !isInternalRole(k))).toBe(false);
+  });
+
+  it("tops up a tenant seeded before the demo login existed, and adds nothing twice", async () => {
+    const { tenantId } = await seed(db, { password: "gonxt-test-password" });
+
+    // The state an already-deployed tenant is in: the account and its grants
+    // gone, as if it had been provisioned before either existed.
+    const [user] = await db.select().from(schema.users).where(eq(schema.users.email, "demo@gonxt.ae"));
+    await db.delete(schema.userRoles).where(eq(schema.userRoles.userId, user!.id));
+    await db.delete(schema.users).where(eq(schema.users.id, user!.id));
+
+    const first = await ensureDemoAdmin(db, tenantId);
+    expect(first.created).toBe(true);
+    expect(first.granted.slice().sort()).toEqual(TENANT_ROLE_KEYS.filter(isInternalRole).slice().sort());
+
+    const second = await ensureDemoAdmin(db, tenantId);
+    expect(second).toMatchObject({ created: false, userId: first.userId, granted: [] });
   });
 
   it("opens the three desks scoped to their owning module", async () => {

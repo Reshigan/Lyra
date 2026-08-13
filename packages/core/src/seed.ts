@@ -257,32 +257,11 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
     });
   }
 
-  const demoRoles = TENANT_ROLE_KEYS.filter(isInternalRole);
-  const demoId = id("us", now + u++);
-  await db.insert(schema.users).values({
-    id: demoId,
-    tenantId,
-    email: `${DEMO_ADMIN.local}@gonxt.ae`,
-    name: DEMO_ADMIN.name,
-    locale: "en",
-    status: "active",
-    authProvider: "password",
+  await ensureDemoAdmin(db, tenantId, {
+    now: now + u,
     passwordHash,
-    mfaEnrolled: Boolean(opts.mfaSecret),
-    mfaSecret: opts.mfaSecret ?? null,
-    createdAt: now,
-    updatedAt: now
+    ...(opts.mfaSecret !== undefined ? { mfaSecret: opts.mfaSecret } : {})
   });
-  await db.insert(schema.userRoles).values(
-    demoRoles.map((key, i) => ({
-      id: id("ur", now + u + i),
-      tenantId,
-      userId: demoId,
-      roleId: roleIds[key]!,
-      scopeJson: null,
-      createdAt: now
-    }))
-  );
 
   /* --------------------------------------------------- ledger accounts */
   let a = 0;
@@ -2284,6 +2263,77 @@ export async function syncChartOfAccounts(db: CoreDb, tenantId: string): Promise
     added.push(acc.code);
   }
   return added;
+}
+
+/**
+ * Provision (or top up) the all-access demo login. Idempotent, and safe on a
+ * tenant that was seeded before this account existed: it creates the user only
+ * if the address is free, then adds whichever internal roles the account is
+ * still missing. It never removes a role and never rewrites the password of an
+ * account that is already there.
+ *
+ * Returns the role keys it granted, so a repeat run answers with an empty list.
+ */
+export async function ensureDemoAdmin(
+  db: CoreDb,
+  tenantId: string,
+  opts: { now?: number; passwordHash?: string; mfaSecret?: string } = {}
+): Promise<{ userId: string; created: boolean; granted: string[] }> {
+  const now = opts.now ?? Date.now();
+  const email = `${DEMO_ADMIN.local}@gonxt.ae`;
+  const [found] = await db
+    .select({ id: schema.users.id })
+    .from(schema.users)
+    .where(and(eq(schema.users.tenantId, tenantId), eq(schema.users.email, email)))
+    .limit(1);
+
+  let userId = found?.id;
+  if (!userId) {
+    userId = id("us", now);
+    await db.insert(schema.users).values({
+      id: userId,
+      tenantId,
+      email,
+      name: DEMO_ADMIN.name,
+      locale: "en",
+      status: "active",
+      authProvider: "password",
+      passwordHash: opts.passwordHash ?? (await hashPassword(DEFAULT_PASSWORD)),
+      mfaEnrolled: Boolean(opts.mfaSecret),
+      mfaSecret: opts.mfaSecret ?? null,
+      createdAt: now,
+      updatedAt: now
+    });
+  }
+
+  const roles = await db
+    .select({ id: schema.roles.id, key: schema.roles.key })
+    .from(schema.roles)
+    .where(eq(schema.roles.tenantId, tenantId));
+  const held = new Set(
+    (
+      await db
+        .select({ roleId: schema.userRoles.roleId })
+        .from(schema.userRoles)
+        .where(eq(schema.userRoles.userId, userId))
+    ).map((r) => r.roleId)
+  );
+
+  const wanted = new Set(TENANT_ROLE_KEYS.filter(isInternalRole));
+  const granted: string[] = [];
+  for (const role of roles) {
+    if (!wanted.has(role.key) || held.has(role.id)) continue;
+    await db.insert(schema.userRoles).values({
+      id: id("ur", now + granted.length + 1),
+      tenantId,
+      userId,
+      roleId: role.id,
+      scopeJson: null,
+      createdAt: now
+    });
+    granted.push(role.key);
+  }
+  return { userId, created: !found, granted };
 }
 
 export async function resyncSystemRolePermissions(db: CoreDb, tenantId: string): Promise<string[]> {
