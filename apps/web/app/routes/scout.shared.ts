@@ -688,7 +688,51 @@ const LABELS: Record<string, Record<string, string>> = {
       "Every cell of a cut keyed on the carrier names that carrier, whatever the floor is set to.",
     "dtp.warn.staleFeed": "Published on a feed that is not building",
     "dtp.warnWhy.staleFeed": "Subscribers are reading a cut older than its own cadence claims.",
-    "dtp.openRadar": "Back to the radar"
+    "dtp.openRadar": "Back to the radar",
+
+    /* screen 6 — SCOUT admin */
+    "adm.title": "SCOUT settings",
+    "adm.lede":
+      "What governs the module, and where each number lives. Some of these are tenant settings; the rest are the module's own code, and this screen says which is which rather than pretending otherwise.",
+    "adm.sources": "Signal sources",
+    "adm.sourcesHint":
+      "Counted from the signals themselves. A source with nothing in the last {days} days reads as quiet, whether it stopped or never started.",
+    "adm.live": "Ingesting",
+    "adm.quiet": "Quiet",
+    "adm.neverIngested": "Never ingested",
+    "adm.noConnectors": "Connectors are not configured here",
+    "adm.noConnectorsWhy":
+      "The harvester's crawl politeness, robots handling and per-source credentials live with the harvester, not in a tenant setting. This panel reports what arrived; it cannot turn a source on.",
+    "adm.floors": "Suppression floors",
+    "adm.floorsHint": "The k-anonymity guarantee behind every data product and every panel benchmark.",
+    "adm.defaultFloor": "Module floor",
+    "adm.defaultFloorWhy":
+      "Compiled into the module, not a tenant setting: cuts below it are suppressed before a reader sees them. Changing it is a code change with an ADR, so it cannot drift per tenant.",
+    "adm.overrides": "Products with their own floor",
+    "adm.noOverrides": "Every data product uses the module floor.",
+    "adm.thresholds": "SCOUT policy thresholds",
+    "adm.thresholdsHint": "Versioned in the compliance threshold store. A change is a new version, never an edit.",
+    "adm.version": "v{version}",
+    "adm.dualControl": "Dual control",
+    "adm.setBy": "Set by {who},",
+    "adm.noThresholds": "SCOUT has no policy threshold set",
+    "adm.noThresholdsWhy":
+      "Whitespace detection compares each category against the panel's own mean rather than a fixed number, so there is no momentum threshold to tune. Nothing else in the module reads a numeric limit.",
+    "adm.approvals": "Approval gates",
+    "adm.approvalsHint":
+      "Promoting a whitespace to a validated opportunity is the module's one gated move; publishing a data product carries the same permission check.",
+    "adm.pending": "{count} awaiting a decision.",
+    "adm.noApprovals": "No SCOUT change has been sent for approval.",
+    "adm.noLibrary": "Hypothesis templates are not stored",
+    "adm.noLibraryWhy":
+      "Experiments are written against a whitespace row rather than instantiated from a library, so there is no template set to edit. Copy an experiment that worked instead.",
+    "adm.openProducts": "Open the data products",
+    "adm.source.search": "Search demand",
+    "adm.source.quotes": "Quote flow",
+    "adm.source.abandonment": "Abandonment",
+    "adm.source.reviews": "Reviews",
+    "adm.source.news": "News",
+    "adm.source.regulatory": "Regulatory"
   },
   ar: {
     /* shared */
@@ -921,7 +965,51 @@ const LABELS: Record<string, Record<string, string>> = {
     "dtp.warnWhy.singleCounterparty": "كل خانة في تقطيع مُفهرس على الجهة المسعّرة تسمي تلك الجهة مهما كان الحد.",
     "dtp.warn.staleFeed": "منشور على تغذية لا تُبنى",
     "dtp.warnWhy.staleFeed": "المشتركون يقرؤون تقطيعًا أقدم مما تدّعيه وتيرته.",
-    "dtp.openRadar": "العودة إلى الرادار"
+    "dtp.openRadar": "العودة إلى الرادار",
+
+    /* الشاشة ٦ — إعدادات سكاوت */
+    "adm.title": "إعدادات سكاوت",
+    "adm.lede":
+      "ما الذي يحكم الوحدة، وأين يعيش كل رقم. بعضها إعدادات للمستأجر، وبقيتها في شفرة الوحدة نفسها، وهذه الشاشة تقول أيّها أيّ.",
+    "adm.sources": "مصادر الإشارات",
+    "adm.sourcesHint":
+      "محسوبة من الإشارات ذاتها. مصدر بلا شيء خلال {days} يومًا يُقرأ هادئًا، سواء توقف أم لم يبدأ أصلًا.",
+    "adm.live": "يستقبل",
+    "adm.quiet": "هادئ",
+    "adm.neverIngested": "لم يستقبل قط",
+    "adm.noConnectors": "الموصلات لا تُضبط هنا",
+    "adm.noConnectorsWhy":
+      "أدب الزحف ومعالجة robots وبيانات اعتماد كل مصدر تعيش مع الحاصد لا في إعداد للمستأجر. هذه اللوحة تُبلغ بما وصل، ولا تستطيع تشغيل مصدر.",
+    "adm.floors": "حدود الكبت",
+    "adm.floorsHint": "ضمان إخفاء الهوية خلف كل منتج معرفي وكل مقارنة لوحة.",
+    "adm.defaultFloor": "حد الوحدة",
+    "adm.defaultFloorWhy":
+      "مُدمج في الوحدة لا إعدادًا للمستأجر: ما دونه يُكبت قبل أن يراه قارئ. تغييره تغيير شفرة بقرار معماري، فلا ينحرف بين المستأجرين.",
+    "adm.overrides": "منتجات لها حدّها الخاص",
+    "adm.noOverrides": "كل منتج معرفي يستخدم حد الوحدة.",
+    "adm.thresholds": "حدود سياسة سكاوت",
+    "adm.thresholdsHint": "مُصدَّرة في مخزن حدود الامتثال. التغيير نسخة جديدة، لا تعديل.",
+    "adm.version": "ن{version}",
+    "adm.dualControl": "رقابة مزدوجة",
+    "adm.setBy": "ضبطها {who}،",
+    "adm.noThresholds": "لا حد سياسة مضبوطًا لسكاوت",
+    "adm.noThresholdsWhy":
+      "كشف الفجوات يقارن كل فئة بمتوسط اللوحة نفسه لا برقم ثابت، فلا حدّ زخم يُضبط. ولا شيء آخر في الوحدة يقرأ حدًا عدديًا.",
+    "adm.approvals": "بوابات الموافقة",
+    "adm.approvalsHint":
+      "ترقية فجوة إلى فرصة مُتحقَّقة هي الخطوة المحكومة الوحيدة في الوحدة؛ ونشر منتج معرفي يحمل التحقق ذاته من الصلاحية.",
+    "adm.pending": "{count} بانتظار قرار.",
+    "adm.noApprovals": "لم يُرسل أي تغيير في سكاوت للموافقة.",
+    "adm.noLibrary": "قوالب الفرضيات غير مخزَّنة",
+    "adm.noLibraryWhy":
+      "التجارب تُكتب على صف فجوة لا تُنشأ من مكتبة، فلا مجموعة قوالب تُحرَّر. انسخ تجربة نجحت بدلًا من ذلك.",
+    "adm.openProducts": "افتح المنتجات المعرفية",
+    "adm.source.search": "طلب البحث",
+    "adm.source.quotes": "مسار التسعير",
+    "adm.source.abandonment": "التخلي عن الطلب",
+    "adm.source.reviews": "المراجعات",
+    "adm.source.news": "الأخبار",
+    "adm.source.regulatory": "تنظيمي"
   }
 };
 
