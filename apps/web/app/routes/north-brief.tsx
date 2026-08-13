@@ -177,8 +177,10 @@ export interface Briefing {
   locale: string;
   status: string;
   narrativeRef: string | null;
-  highlightsJson: string | null;
-  anomaliesJson: string | null;
+  // `*Json` columns: objects from the generic CRUD, text from a module route.
+  // Read with parsed() (north-shared), never JSON.parse().
+  highlightsJson: unknown;
+  anomaliesJson: unknown;
   generatedBy: string | null;
   aiAuditId: string | null;
   approvedBy: string | null;

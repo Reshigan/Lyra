@@ -68,13 +68,15 @@ export type MetricUnit = "count" | "money" | "percent" | "ratio" | "duration_ms"
 export interface Metric {
   id: string;
   key: string;
-  nameJson: string | null;
+  // A `*Json` column: an object from the generic CRUD, text from a module
+  // route. Read it with parsed(), never JSON.parse().
+  nameJson: unknown;
   definitionSqlRef: string | null;
   unit: MetricUnit;
   currency: string | null;
   grain: "day" | "week" | "month";
   owner: string | null;
-  targetJson: string | null;
+  targetJson: unknown;
   sensitivity: string;
   direction: string;
   updatedAt: number;
@@ -101,7 +103,7 @@ export interface Anomaly {
   expected: number | null;
   actual: number | null;
   state: string;
-  driverAnalysisJson: string | null;
+  driverAnalysisJson: unknown;
   linkedActionRef: string | null;
   explainedBy: string | null;
   detectedAt: number;
@@ -109,18 +111,21 @@ export interface Anomaly {
 
 /** The metric's name in this locale, falling back to the key it is stored under. */
 export function metricName(metric: Pick<Metric, "key" | "nameJson">, locale: string): string {
-  if (!metric.nameJson) return metric.key;
-  try {
-    const names = JSON.parse(metric.nameJson) as Record<string, string>;
-    return names[locale] ?? names.en ?? metric.key;
-  } catch {
-    return metric.key;
-  }
+  const names = parsed<Record<string, string> | null>(metric.nameJson, null);
+  return names?.[locale] ?? names?.en ?? metric.key;
 }
 
-/** Parses a JSON column without letting one bad row take the screen down. */
-export function parsed<T>(raw: string | null | undefined, fallback: T): T {
-  if (!raw) return fallback;
+/**
+ * Reads a JSON column without letting one bad row take the screen down, and
+ * without caring which of the two shapes it arrived in: the generic CRUD
+ * hydrates every `*Json` column into an object (apps/api/src/crud.ts hydrate),
+ * while a bespoke module route hands the raw text through. Calling JSON.parse
+ * on the hydrated object stringifies it to "[object Object]" and throws, which
+ * silently cost NORTH its metric names, its targets and its driver bars.
+ */
+export function parsed<T>(raw: unknown, fallback: T): T {
+  if (raw === null || raw === undefined || raw === "") return fallback;
+  if (typeof raw !== "string") return raw as T;
   try {
     return JSON.parse(raw) as T;
   } catch {
