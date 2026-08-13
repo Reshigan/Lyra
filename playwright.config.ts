@@ -1,5 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
-import { API_ORIGIN, API_PORT, FILES_DIR, LIBSQL_URL, WEB_ORIGIN } from "./e2e/env.js";
+import { API_ORIGIN, API_PORT, FILES_DIR, LIBSQL_URL, WEB_ORIGIN, WEB_PORT } from "./e2e/env.js";
 
 // docs/13-testing-quality.md §2: "the journey catalogue IS the e2e catalogue".
 // DB wipe + migrate + seed live in ./e2e/global-setup.ts, run directly by the
@@ -13,7 +13,8 @@ export default defineConfig({
   // config's local stack — running it here signs into 127.0.0.1 and fails.
   testIgnore: "live/**",
   fullyParallel: true,
-  // The web target here is `vite dev`, which compiles a route's module graph
+  // The local web target is `vite dev` (CI builds instead — see webServer),
+  // which compiles a route's module graph
   // the first time any test reaches it — a first visit to a cold screen costs
   // seconds that a built bundle would not. Playwright's 30s default budgets
   // for the assertions, not for the compiler, so give the whole test twice
@@ -68,11 +69,24 @@ export default defineConfig({
       timeout: 30_000,
       stdout: "pipe"
     },
+    // Locally this is the dev server, for HMR and a fast edit loop. On CI it is
+    // the built worker under `wrangler dev` — the same artefact `pnpm
+    // deploy:staging` ships, with `.dev.vars` (gitignored, absent on a runner)
+    // replaced by an explicit `--var`. `vite dev` compiles a route's module
+    // graph on first reach, and on a two-core runner already carrying the API
+    // and two Playwright workers that cost showed up as navigations that began
+    // — nav progress bar up, `navigation.state` stuck off idle — and then
+    // issued no network at all for the whole test budget (J-O1, J-O2, neither
+    // reproducible locally). The built server has no compile step in the
+    // request path: the same two journeys run in 4.0s/5.4s against it, against
+    // 11.0s/15.3s under `vite dev`.
     {
-      command: "pnpm --filter @lyra/web dev",
+      command: process.env.CI
+        ? `pnpm --filter @lyra/web build && pnpm --filter @lyra/web exec wrangler dev -c build/server/wrangler.json --port ${WEB_PORT} --ip 127.0.0.1 --var API_ORIGIN:${API_ORIGIN}`
+        : "pnpm --filter @lyra/web dev",
       url: WEB_ORIGIN,
       reuseExistingServer: !process.env.CI,
-      timeout: 60_000,
+      timeout: 300_000,
       stdout: "pipe"
     }
   ]

@@ -159,3 +159,11 @@ jobs:
 # apps/web/react-router.config.ts — the full manifest ships with the document
 # and there is no discovery request to lose. If this shape returns, decode the
 # `__manifest` requests in the trace before suspecting the test.
+#
+# The shape did return (ops.spec.ts:43/169/233), and this time the trace had no
+# `__manifest` request to blame — `mode: "initial"` was doing its job. What was
+# left in the request path was `vite dev` itself, compiling route modules on
+# first reach on a runner with two cores, the API process and two Playwright
+# workers on it. `pnpm e2e` on CI now builds apps/web and serves the built
+# worker under `wrangler dev` (playwright.config.ts), so the runner exercises
+# the artefact that deploys and no compiler sits between a click and its route.
