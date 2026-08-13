@@ -3,8 +3,10 @@ import { z } from "zod";
 import { and, eq, inArray, max } from "drizzle-orm";
 import type { ReportTable } from "@lyra/ledger";
 import { id, schema } from "@lyra/db";
-import { actorRef, audit, require_, sha256Hex, type Ctx } from "@lyra/core";
+import { actorRef, audit, notFound, require_, sha256Hex, type Ctx } from "@lyra/core";
 import { body } from "../http.js";
+import { must } from "../rows.js";
+import { meterEgress } from "../engines/egress.js";
 import { generateBriefing } from "../engines/narrator.js";
 import { runSnapshotter } from "../engines/north-snapshotter.js";
 import { assembleBoardpackSections } from "../engines/north-boardpack.js";
@@ -101,6 +103,35 @@ northRoutes.post("/boardpacks", async (c) => {
   await pushToActor(c.env, ctx.tenantId, ctx.actor.id, "north.boardpack.generated", { id: boardpackId }, ctx.now);
 
   return c.json(row, 201);
+});
+
+// The rendered pack itself. Assembly stores an R2 key; without this the board
+// screen can only show that a PDF exists, which is not a board pack.
+// Same idiom as ledger.ts's evidence-bundle download: gate, resolve the file
+// row inside the tenant, meter the egress, stream it.
+northRoutes.get("/boardpacks/:id/file", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "north:boardpacks:read", { tenantId: ctx.tenantId, module: "north" });
+  const pack = await must(ctx, schema.northBoardpacks, c.req.param("id"), "board pack");
+  if (!pack.pdfFileId) throw notFound("board pack file");
+
+  const file = await must(ctx, schema.files, pack.pdfFileId, "board pack file");
+  const object = await c.env.FILES?.get(file.r2Key);
+  if (!object) throw notFound("board pack file");
+
+  await audit(ctx, {
+    action: "north.boardpack.download",
+    subjectRef: pack.id,
+    after: { period: pack.period, fileId: file.id }
+  });
+  await meterEgress(ctx, file.sizeBytes ?? object.size);
+  return new Response(object.body, {
+    headers: {
+      "content-type": "application/pdf",
+      "content-disposition": `attachment; filename="boardpack-${pack.period}.pdf"`,
+      "cache-control": "no-store"
+    }
+  });
 });
 
 // Manual trigger, same idiom as orbit.ts's /renewals/sweep and staff.ts's

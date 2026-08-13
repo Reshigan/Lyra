@@ -526,7 +526,8 @@ export const north: WorkspaceSpec = {
     { href: "/north/explorer", labelKey: "link.explorer", permission: "north:snapshots:read" },
     { href: "/north/anomalies", labelKey: "link.anomalies", permission: "north:anomalies:read" },
     { href: "/north/whatif", labelKey: "link.whatif", permission: "north:scenarios:read" },
-    // ponytail: board / health / semantic / usage were
+    { href: "/north/board", labelKey: "link.board", permission: "north:boardpacks:read" },
+    // ponytail: health / semantic / usage were
     // linked before their screens existed and shipped 404s into the nav. The
     // tabs below already list snapshots, scenarios and board packs; re-add a
     // link the day its bespoke screen lands (spec.routes.test.ts enforces it).

@@ -121,6 +121,7 @@ export const HIDDEN_ROUTES: Record<string, string> = {
   "/north/explorer": "one metric, its series and its definition, linked from the NORTH workspace tools list",
   "/north/anomalies": "the anomaly wall and its driver breakdowns, linked from the NORTH workspace tools list",
   "/north/whatif": "the scenario ask bar and saved library, linked from the NORTH workspace tools list",
+  "/north/board/:id/file": "streams one board pack's rendered PDF, opened from the board pack list",
   "/scout/radar": "the opportunity radar over clusters and whitespace, linked from the SCOUT workspace tools list",
   "/scout/panel": "panel benchmarks and the negotiation pack, linked from the SCOUT workspace tools list",
   "/scout/pricing": "price position by line and where we lose, linked from the SCOUT workspace tools list",

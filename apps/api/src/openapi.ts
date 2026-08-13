@@ -312,6 +312,7 @@ const HAND_WRITTEN: Op[] = [
   // pipelines, gated ahead of generic CRUD so neither accepts a fabricated body.
   { method: "post", path: "/v1/north/briefings/generate", summary: "Generate an executive briefing from live metric snapshots, numeric claims verified against the input", permission: "north:briefings:generate", tag: "north", requestBody: true },
   { method: "post", path: "/v1/north/boardpacks", summary: "Assemble a board pack PDF from the latest briefing, period metrics and open decisions", permission: "north:boardpacks:generate", tag: "north", requestBody: true },
+  { method: "get", path: "/v1/north/boardpacks/{id}/file", summary: "Download the rendered board pack PDF", permission: "north:boardpacks:read", tag: "north" },
   // Guarded on `write` on purpose: the drafter asks, and the
   // `dist.agreement_sign` approval — decided by `dist:agreements:sign` — binds.
   { method: "post", path: "/v1/onboarding/agreements/{id}/sign", summary: "Countersign an agreement (dual control; supersedes the previous version)", permission: "dist:agreements:write", tag: "onboarding", requestBody: true },
