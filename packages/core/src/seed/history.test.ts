@@ -286,7 +286,7 @@ describe("seedHistory", () => {
       expect(txn.settledAt).toBe(txn.createdAt + MINUTE);
     }
     // 310_000 premium, 5% VAT on top, 15% commission out of the premium.
-    expect(txns.map((t) => JSON.parse(t.amountsJson))).toEqual([
+    expect(txns.map((t) => JSON.parse(t.amountsJson!))).toEqual([
       { gross: 325_500, net: 310_000, tax: 15_500 },
       { gross: 46_500, net: 46_500, tax: 0 },
       { gross: 325_500, commission: 46_500, net: 279_000 }
