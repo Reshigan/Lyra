@@ -17,6 +17,7 @@ export const orbit: WorkspaceSpec = {
       "link.pipeline": "Renewal pipeline",
       "link.quality": "Conversation quality",
       "link.analytics": "Customer analytics",
+      "link.admin": "ORBIT admin",
       messages: "Messages",
       renewals: "Renewals",
       journeys: "Journeys",
@@ -25,6 +26,12 @@ export const orbit: WorkspaceSpec = {
       "partner-txns": "Partner transactions",
       "handover-notes": "Handover notes",
       "qa-scores": "Quality scores",
+      "channel-connectors": "Channels",
+      teams: "Teams",
+      "team-members": "Team members",
+      "routing-rules": "Routing rules",
+      "sla-policies": "SLA policies",
+      "agent-presence": "Agent presence",
 
       externalRef: "External reference",
       customerId: "Customer",
@@ -146,7 +153,38 @@ export const orbit: WorkspaceSpec = {
       terminated: "Terminated",
       "riskRating.low": "Low",
       "riskRating.medium": "Medium",
-      "riskRating.high": "High"
+      "riskRating.high": "High",
+
+      createdAt: "Created",
+      updatedAt: "Updated",
+      provider: "Provider",
+      transport: "Carries",
+      label: "Name",
+      configJson: "Settings",
+      secretsJson: "Credentials",
+      "secretsJson.hint": "One JSON object of provider secrets. Stored sealed and never shown again.",
+      "provider.whatsapp-cloud-api": "WhatsApp Cloud API",
+      "provider.mailgun-email": "Mailgun",
+      isDefault: "Default team",
+      "isDefault.hint": "Where a conversation lands when no routing rule matches.",
+      userId: "Person",
+      skillsJson: "Skills",
+      "skillsJson.hint": "A JSON list of skill tags, e.g. [\"arabic\", \"claims\"].",
+      maxConcurrent: "Concurrent limit",
+      "maxConcurrent.hint": "How many conversations this person may hold at once.",
+      activeCount: "Open now",
+      seq: "Order",
+      "seq.hint": "Rules are read in this order and the first match wins.",
+      enabled: "Enabled",
+      conditionsJson: "Conditions",
+      "conditionsJson.hint": "A JSON object of channel, intent and sentimentBelow. Empty matches everything.",
+      frtMinutes: "First reply target",
+      "frtMinutes.hint": "Minutes allowed before the first human or AI reply.",
+      resolutionMinutes: "Resolution target",
+      disabled: "Disabled",
+      available: "Available",
+      away: "Away",
+      offline: "Offline"
     },
     ar: {
       conversations: "المحادثات",
@@ -157,6 +195,7 @@ export const orbit: WorkspaceSpec = {
       "link.pipeline": "خط التجديدات",
       "link.quality": "جودة المحادثات",
       "link.analytics": "تحليلات العملاء",
+      "link.admin": "إدارة ORBIT",
       messages: "الرسائل",
       renewals: "التجديدات",
       journeys: "الرحلات",
@@ -165,6 +204,12 @@ export const orbit: WorkspaceSpec = {
       "partner-txns": "معاملات الشركاء",
       "handover-notes": "ملاحظات التسليم",
       "qa-scores": "درجات الجودة",
+      "channel-connectors": "القنوات",
+      teams: "الفرق",
+      "team-members": "أعضاء الفريق",
+      "routing-rules": "قواعد التوجيه",
+      "sla-policies": "سياسات مستوى الخدمة",
+      "agent-presence": "حضور الوكلاء",
 
       externalRef: "المرجع الخارجي",
       customerId: "العميل",
@@ -285,7 +330,38 @@ export const orbit: WorkspaceSpec = {
       terminated: "منتهٍ",
       "riskRating.low": "منخفض",
       "riskRating.medium": "متوسط",
-      "riskRating.high": "مرتفع"
+      "riskRating.high": "مرتفع",
+
+      createdAt: "أُنشئ",
+      updatedAt: "حُدّث",
+      provider: "المزود",
+      transport: "يحمل",
+      label: "الاسم",
+      configJson: "الإعدادات",
+      secretsJson: "بيانات الاعتماد",
+      "secretsJson.hint": "كائن JSON واحد يضم أسرار المزود. يُخزَّن مشفّرًا ولا يُعرض مرة أخرى.",
+      "provider.whatsapp-cloud-api": "واتساب كلاود API",
+      "provider.mailgun-email": "ميلغن",
+      isDefault: "الفريق الافتراضي",
+      "isDefault.hint": "الوجهة التي تصل إليها المحادثة عند عدم تطابق أي قاعدة توجيه.",
+      userId: "الشخص",
+      skillsJson: "المهارات",
+      "skillsJson.hint": "قائمة JSON بوسوم المهارات، مثل [\"arabic\", \"claims\"].",
+      maxConcurrent: "الحد المتزامن",
+      "maxConcurrent.hint": "عدد المحادثات التي يمكن لهذا الشخص التعامل معها في وقت واحد.",
+      activeCount: "مفتوحة الآن",
+      seq: "الترتيب",
+      "seq.hint": "تُقرأ القواعد بهذا الترتيب ويفوز أول تطابق.",
+      enabled: "مفعّل",
+      conditionsJson: "الشروط",
+      "conditionsJson.hint": "كائن JSON يضم channel وintent وsentimentBelow. الكائن الفارغ يطابق كل شيء.",
+      frtMinutes: "هدف أول رد",
+      "frtMinutes.hint": "عدد الدقائق المسموح بها قبل أول رد بشري أو آلي.",
+      resolutionMinutes: "هدف الإغلاق",
+      disabled: "معطّل",
+      available: "متاح",
+      away: "بعيد",
+      offline: "غير متصل"
     }
   },
   tabs: [
@@ -574,6 +650,165 @@ export const orbit: WorkspaceSpec = {
         { name: "breakdownJson", type: "json" },
         { name: "flagsJson", type: "json" }
       ]
+    },
+    // The five tables engines/orbit-routing.ts reads and nothing rendered: a
+    // tenant could not see, let alone edit, the roster and rules that decide
+    // where a conversation lands. Plain CRUD, so plain tabs — /orbit/admin is
+    // the read on whether they hang together, not a second editor.
+    {
+      key: "channel-connectors",
+      api: "/v1/orbit/channel-connectors",
+      read: "orbit:channels:read",
+      create: "orbit:channels:write",
+      update: "orbit:channels:write",
+      remove: "orbit:channels:write",
+      filters: [
+        { name: "transport", options: ["whatsapp", "email", "web", "voice", "agent"] },
+        { name: "status", options: ["active", "disabled"] }
+      ],
+      columns: [
+        { name: "label", type: "text" },
+        { name: "provider", type: "text" },
+        { name: "transport", type: "text", badge: true },
+        { name: "status", type: "text", badge: true },
+        { name: "updatedAt", type: "datetime", sortable: true }
+      ],
+      fields: [
+        { name: "label", type: "text", required: true },
+        { name: "provider", type: "select", options: ["whatsapp-cloud-api", "mailgun-email"], required: true },
+        { name: "transport", type: "select", options: ["whatsapp", "email", "web", "voice", "agent"], required: true },
+        // Sealed by resources.ts's beforeWrite before it reaches SQLite, and
+        // never read back — the list has no `secretsJson` column for that reason.
+        { name: "secretsJson", type: "json", required: true, hintKey: "secretsJson.hint" },
+        { name: "configJson", type: "json" }
+      ],
+      editable: [
+        { name: "label", type: "text" },
+        { name: "status", type: "select", options: ["active", "disabled"] },
+        { name: "secretsJson", type: "json", hintKey: "secretsJson.hint" },
+        { name: "configJson", type: "json" }
+      ]
+    },
+    {
+      key: "teams",
+      api: "/v1/orbit/teams",
+      read: "orbit:teams:read",
+      create: "orbit:teams:write",
+      update: "orbit:teams:write",
+      remove: "orbit:teams:write",
+      filters: [{ name: "status", options: ["active", "disabled"] }],
+      columns: [
+        { name: "key", type: "text" },
+        { name: "nameJson", type: "text" },
+        { name: "isDefault", type: "boolean" },
+        { name: "status", type: "text", badge: true },
+        { name: "updatedAt", type: "datetime", sortable: true }
+      ],
+      fields: [
+        { name: "key", type: "text", required: true },
+        { name: "nameJson", type: "json", required: true },
+        { name: "isDefault", type: "boolean", hintKey: "isDefault.hint" }
+      ],
+      editable: [
+        { name: "nameJson", type: "json" },
+        { name: "isDefault", type: "boolean", hintKey: "isDefault.hint" },
+        { name: "status", type: "select", options: ["active", "disabled"] }
+      ]
+    },
+    {
+      key: "team-members",
+      api: "/v1/orbit/team-members",
+      read: "orbit:teams:read",
+      create: "orbit:teams:write",
+      update: "orbit:teams:write",
+      remove: "orbit:teams:write",
+      columns: [
+        { name: "teamId", type: "text" },
+        { name: "userId", type: "text" },
+        { name: "skillsJson", type: "text" },
+        { name: "maxConcurrent", type: "number" },
+        { name: "createdAt", type: "datetime", sortable: true }
+      ],
+      fields: [
+        { name: "teamId", type: "text", required: true },
+        { name: "userId", type: "text", required: true },
+        { name: "skillsJson", type: "json", hintKey: "skillsJson.hint" },
+        { name: "maxConcurrent", type: "number", hintKey: "maxConcurrent.hint" }
+      ],
+      editable: [
+        { name: "skillsJson", type: "json", hintKey: "skillsJson.hint" },
+        { name: "maxConcurrent", type: "number", hintKey: "maxConcurrent.hint" }
+      ]
+    },
+    {
+      key: "routing-rules",
+      api: "/v1/orbit/routing-rules",
+      read: "orbit:teams:read",
+      create: "orbit:teams:write",
+      update: "orbit:teams:write",
+      remove: "orbit:teams:write",
+      sort: "seq",
+      columns: [
+        { name: "seq", type: "number", sortable: true },
+        { name: "teamId", type: "text" },
+        { name: "conditionsJson", type: "text" },
+        { name: "enabled", type: "boolean" },
+        { name: "updatedAt", type: "datetime", sortable: true }
+      ],
+      fields: [
+        { name: "seq", type: "number", required: true, hintKey: "seq.hint" },
+        { name: "teamId", type: "text", required: true },
+        { name: "conditionsJson", type: "json", hintKey: "conditionsJson.hint" },
+        { name: "enabled", type: "boolean" }
+      ],
+      editable: [
+        { name: "seq", type: "number", hintKey: "seq.hint" },
+        { name: "teamId", type: "text" },
+        { name: "conditionsJson", type: "json", hintKey: "conditionsJson.hint" },
+        { name: "enabled", type: "boolean" }
+      ]
+    },
+    {
+      key: "sla-policies",
+      api: "/v1/orbit/sla-policies",
+      read: "orbit:teams:read",
+      create: "orbit:teams:write",
+      update: "orbit:teams:write",
+      remove: "orbit:teams:write",
+      columns: [
+        { name: "key", type: "text" },
+        { name: "frtMinutes", type: "number" },
+        { name: "resolutionMinutes", type: "number" },
+        { name: "updatedAt", type: "datetime", sortable: true }
+      ],
+      fields: [
+        { name: "key", type: "text", required: true },
+        { name: "frtMinutes", type: "number", required: true, hintKey: "frtMinutes.hint" },
+        { name: "resolutionMinutes", type: "number", required: true }
+      ],
+      editable: [
+        { name: "frtMinutes", type: "number", hintKey: "frtMinutes.hint" },
+        { name: "resolutionMinutes", type: "number" }
+      ]
+    },
+    {
+      key: "agent-presence",
+      api: "/v1/orbit/agent-presence",
+      read: "orbit:presence:read",
+      create: "orbit:presence:write",
+      update: "orbit:presence:write",
+      filters: [{ name: "status", options: ["available", "away", "offline"] }],
+      columns: [
+        { name: "userId", type: "text" },
+        { name: "status", type: "text", badge: true },
+        { name: "activeCount", type: "number" },
+        { name: "updatedAt", type: "datetime", sortable: true }
+      ],
+      fields: [
+        { name: "userId", type: "text", required: true },
+        { name: "status", type: "select", options: ["available", "away", "offline"], required: true }
+      ],
+      editable: [{ name: "status", type: "select", options: ["available", "away", "offline"] }]
     }
   ],
   // The bespoke ORBIT screens. Each names the permission its own loader gates on,
@@ -583,6 +818,7 @@ export const orbit: WorkspaceSpec = {
     { href: "/orbit/save", labelKey: "link.save", permission: "orbit:renewals:read" },
     { href: "/orbit/pipeline", labelKey: "link.pipeline", permission: "orbit:renewals:read" },
     { href: "/orbit/quality", labelKey: "link.quality", permission: "orbit:qa:read" },
-    { href: "/orbit/analytics", labelKey: "link.analytics", permission: "orbit:conversations:read" }
+    { href: "/orbit/analytics", labelKey: "link.analytics", permission: "orbit:conversations:read" },
+    { href: "/orbit/admin", labelKey: "link.admin", permission: "orbit:teams:write" }
   ]
 };
