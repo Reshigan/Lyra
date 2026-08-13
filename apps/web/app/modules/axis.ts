@@ -24,6 +24,8 @@ export const axis: WorkspaceSpec = {
       "process-events": "Process events",
       "case-approvals": "Case approvals",
       "ops-policies": "Operating policies",
+      complaints: "Complaints",
+      "siu-referrals": "Fraud investigations",
 
       ref: "Reference",
       kind: "Kind",
@@ -174,6 +176,47 @@ export const axis: WorkspaceSpec = {
       "locale.en": "English",
       "locale.ar": "Arabic",
 
+      // Conduct registers (docs/27 §D.8).
+      channel: "Channel",
+      categoryCode: "Category",
+      summarySealed: "What happened",
+      receivedAt: "Received",
+      acknowledgedAt: "Acknowledged",
+      resolvedAt: "Resolved",
+      rootCauseCode: "Root cause",
+      redressMinor: "Redress",
+      regulatorRef: "Regulator reference",
+      score: "Score",
+      reasonsJson: "Indicators",
+      assignedTo: "Investigator",
+      savedMinor: "Leakage prevented",
+      openedAt: "Opened",
+      "complaints.summaryHint": "Sealed at rest: only staff with the complaint permission can read it back.",
+      "complaints.redressHint": "Anything above zero needs a second approver before it saves.",
+      "siu.savedHint": "What the investigation stopped going out the door.",
+      "channel.web": "Web",
+      "channel.phone": "Phone",
+      "channel.email": "Email",
+      "channel.whatsapp": "WhatsApp",
+      "channel.regulator": "Regulator",
+      "channel.social": "Social",
+      "state.received": "Received",
+      "state.investigating": "Investigating",
+      "state.awaiting_customer": "Awaiting customer",
+      "state.resolved": "Resolved",
+      "state.escalated": "Escalated",
+      "state.closed": "Closed",
+      "state.substantiated": "Substantiated",
+      "state.unsubstantiated": "Cleared",
+      "outcome.upheld": "Upheld",
+      "outcome.partly_upheld": "Partly upheld",
+      "outcome.not_upheld": "Not upheld",
+      "outcome.withdrawn": "Withdrawn",
+      "source.model": "Model",
+      "source.handler": "Handler",
+      "source.insurer": "Insurer",
+      "source.tip": "Tip-off",
+
       // Record actions the API owns (apps/api/src/routes/axis.ts).
       "documents.verify": "Verify",
       "documents.verify.confirm":
@@ -209,7 +252,10 @@ export const axis: WorkspaceSpec = {
       "link.rulepacks": "Automation rules",
       "link.ruleApplications": "Rule applications",
       "link.admin": "AXIS admin",
-      "link.processMap": "Process map"
+      "link.processMap": "Process map",
+      "link.claimsDesk": "Claims desk",
+      "link.renewals": "Renewal desk",
+      "link.referrals": "Referral desk"
     },
     ar: {
       cases: "الحالات",
@@ -223,6 +269,8 @@ export const axis: WorkspaceSpec = {
       "process-events": "أحداث العملية",
       "case-approvals": "موافقات الحالة",
       "ops-policies": "سياسات التشغيل",
+      complaints: "الشكاوى",
+      "siu-referrals": "تحقيقات الاحتيال",
 
       ref: "المرجع",
       kind: "النوع",
@@ -371,6 +419,46 @@ export const axis: WorkspaceSpec = {
       "locale.en": "الإنجليزية",
       "locale.ar": "العربية",
 
+      channel: "القناة",
+      categoryCode: "التصنيف",
+      summarySealed: "ماذا حدث",
+      receivedAt: "تاريخ الاستلام",
+      acknowledgedAt: "تاريخ الإقرار",
+      resolvedAt: "تاريخ الحل",
+      rootCauseCode: "السبب الجذري",
+      redressMinor: "التعويض",
+      regulatorRef: "مرجع الجهة الرقابية",
+      score: "الدرجة",
+      reasonsJson: "المؤشرات",
+      assignedTo: "المحقق",
+      savedMinor: "الخسائر المُتفاداة",
+      openedAt: "تاريخ الفتح",
+      "complaints.summaryHint": "مُشفَّرة عند التخزين: لا يقرؤها إلا من يملك صلاحية الشكاوى.",
+      "complaints.redressHint": "أي مبلغ فوق الصفر يحتاج موافقة ثانية قبل الحفظ.",
+      "siu.savedHint": "ما منع التحقيق خروجه من الشركة.",
+      "channel.web": "الويب",
+      "channel.phone": "الهاتف",
+      "channel.email": "البريد الإلكتروني",
+      "channel.whatsapp": "واتساب",
+      "channel.regulator": "الجهة الرقابية",
+      "channel.social": "التواصل الاجتماعي",
+      "state.received": "مستلمة",
+      "state.investigating": "قيد التحقيق",
+      "state.awaiting_customer": "بانتظار العميل",
+      "state.resolved": "محلولة",
+      "state.escalated": "مُصعَّدة",
+      "state.closed": "مغلقة",
+      "state.substantiated": "مثبتة",
+      "state.unsubstantiated": "غير مثبتة",
+      "outcome.upheld": "مقبولة",
+      "outcome.partly_upheld": "مقبولة جزئيًا",
+      "outcome.not_upheld": "غير مقبولة",
+      "outcome.withdrawn": "مسحوبة",
+      "source.model": "النموذج",
+      "source.handler": "الموظف المسؤول",
+      "source.insurer": "شركة التأمين",
+      "source.tip": "بلاغ",
+
       "documents.verify": "التحقق",
       "documents.verify.confirm":
         "يُسجَّل التحقق باسمك ولا يمكن الرجوع عنه. هل تريد التحقق من هذا المستند؟",
@@ -402,7 +490,10 @@ export const axis: WorkspaceSpec = {
       "link.rulepacks": "قواعد الأتمتة",
       "link.ruleApplications": "تطبيقات القواعد",
       "link.admin": "إدارة AXIS",
-      "link.processMap": "خريطة العملية"
+      "link.processMap": "خريطة العملية",
+      "link.claimsDesk": "مكتب المطالبات",
+      "link.renewals": "مكتب التجديدات",
+      "link.referrals": "مكتب الإحالات"
     }
   },
   // Nothing here is a duplicate of a tab: reconciliation lives in the ledger and
@@ -426,6 +517,12 @@ export const axis: WorkspaceSpec = {
       labelKey: "link.docIntel",
       permission: "axis:documents:read"
     },
+    // routing.ts described these three as "linked from the AXIS workspace tools
+    // list" long before any of them was in this array — the desks were reachable
+    // only from a policy detail page, or not at all.
+    { href: "/axis/claims/desk", labelKey: "link.claimsDesk", permission: "axis:claims:read" },
+    { href: "/axis/renewals", labelKey: "link.renewals", permission: "axis:policies:read" },
+    { href: "/axis/referrals", labelKey: "link.referrals", permission: "axis:policies:decide_referral" },
     { href: "/axis/analytics", labelKey: "link.analytics", permission: "axis:metrics:read" },
     { href: "/axis/process-map", labelKey: "link.processMap", permission: "axis:metrics:read" },
     { href: "/ledger/recon", labelKey: "link.recon", permission: "ledger:recon:read" },
@@ -786,6 +883,112 @@ export const axis: WorkspaceSpec = {
         // Settling is consequential: the API routes this through an approval
         // (resources.ts, axis.claim_settlement) rather than writing it directly.
         { name: "settledMinor", type: "money" }
+      ]
+    },
+    // docs/27 §D.8. Both registers already had tables, permissions, transition
+    // guards and a generic resource — only the screen was missing.
+    {
+      key: "complaints",
+      api: "/v1/axis/complaints",
+      read: "axis:complaints:read",
+      create: "axis:complaints:write",
+      update: "axis:complaints:write",
+      // Soonest deadline first: a complaint's clock is regulatory, not a queue
+      // preference.
+      sort: "dueAt",
+      order: "asc",
+      filters: [
+        {
+          name: "state",
+          options: ["received", "investigating", "awaiting_customer", "resolved", "escalated", "closed"]
+        },
+        { name: "channel", options: ["web", "phone", "email", "whatsapp", "regulator", "social"] },
+        { name: "outcome", options: ["upheld", "partly_upheld", "not_upheld", "withdrawn"] }
+      ],
+      columns: [
+        { name: "ref", type: "text", sortable: true },
+        { name: "channel", type: "text", badge: true },
+        { name: "categoryCode", type: "text" },
+        { name: "state", type: "text", badge: true },
+        { name: "dueAt", type: "datetime", sortable: true },
+        { name: "outcome", type: "text", badge: true },
+        { name: "redressMinor", type: "money", currencyFrom: "currency" },
+        { name: "ownerRef", type: "text" }
+      ],
+      fields: [
+        { name: "ref", type: "text", required: true },
+        {
+          name: "channel",
+          type: "select",
+          required: true,
+          options: ["web", "phone", "email", "whatsapp", "regulator", "social"]
+        },
+        { name: "categoryCode", type: "text", required: true },
+        { name: "customerId", type: "text" },
+        { name: "policyId", type: "text" },
+        { name: "claimId", type: "text" },
+        { name: "caseId", type: "text" },
+        { name: "summarySealed", type: "textarea", hintKey: "complaints.summaryHint" },
+        { name: "receivedAt", type: "datetime", required: true },
+        { name: "dueAt", type: "datetime", required: true },
+        { name: "ownerRef", type: "text" },
+        { name: "regulatorRef", type: "text" },
+        { name: "currency", type: "text" }
+      ],
+      editable: [
+        // Only the moves COMPLAINT_TRANSITIONS allows exist as options; the API
+        // is still the authority on which are legal from the current state.
+        {
+          name: "state",
+          type: "select",
+          options: ["received", "investigating", "awaiting_customer", "resolved", "escalated", "closed"]
+        },
+        {
+          name: "outcome",
+          type: "select",
+          options: ["upheld", "partly_upheld", "not_upheld", "withdrawn"]
+        },
+        { name: "rootCauseCode", type: "text" },
+        // Above zero this trips dual control (axis.claim_exgratia): the save
+        // comes back as an approval refusal, not a write.
+        { name: "redressMinor", type: "money", hintKey: "complaints.redressHint" },
+        { name: "ownerRef", type: "text" },
+        { name: "acknowledgedAt", type: "datetime" },
+        { name: "resolvedAt", type: "datetime" },
+        { name: "regulatorRef", type: "text" }
+      ]
+    },
+    {
+      key: "siu-referrals",
+      api: "/v1/axis/siu-referrals",
+      read: "axis:siu:read",
+      update: "axis:siu:write",
+      // Highest score first — the queue is a triage order, not a diary.
+      sort: "score",
+      order: "desc",
+      filters: [
+        { name: "state", options: ["open", "investigating", "substantiated", "unsubstantiated", "closed"] },
+        { name: "source", options: ["model", "handler", "insurer", "tip"] }
+      ],
+      columns: [
+        { name: "claimId", type: "text" },
+        { name: "score", type: "number", sortable: true },
+        { name: "state", type: "text", badge: true },
+        { name: "source", type: "text", badge: true },
+        { name: "assignedTo", type: "text" },
+        { name: "savedMinor", type: "money", currencyFrom: "currency" },
+        { name: "openedAt", type: "datetime", sortable: true }
+      ],
+      editable: [
+        {
+          name: "state",
+          type: "select",
+          options: ["open", "investigating", "substantiated", "unsubstantiated", "closed"]
+        },
+        { name: "assignedTo", type: "text" },
+        { name: "outcome", type: "text" },
+        { name: "savedMinor", type: "money", hintKey: "siu.savedHint" },
+        { name: "closedAt", type: "datetime" }
       ]
     },
     {

@@ -82,6 +82,7 @@ export default [
     route("axis/claims/new", "routes/fnol-intake.tsx"),
     route("axis/claims/desk", "routes/claims-desk.tsx"),
     route("axis/renewals", "routes/renewal-desk.tsx"),
+    route("axis/referrals", "routes/referral-desk.tsx"),
 
     route("signal/cockpit", "routes/signal-cockpit.tsx"),
     route("signal/studio", "routes/signal-studio.tsx"),

@@ -101,6 +101,8 @@ export const HIDDEN_ROUTES: Record<string, string> = {
   "/axis/policies/:id/endorse": "prices and confirms a mid-term change, linked from a policy's detail page",
   "/axis/policies/:id/cancel": "prices and confirms a cancellation, linked from a policy's detail page",
   "/axis/renewals": "the renewal desk over upcoming and offered renewals, linked from the AXIS workspace tools list",
+  "/axis/referrals":
+    "the underwriting referral desk over risks outside delegated authority, linked from the AXIS workspace tools list",
   "/axis/claims/new": "opens a first notice of loss intake form, linked from the claims list",
   "/axis/claims/desk": "the claims handling desk, linked from the AXIS workspace tools list",
   "/axis/claims/:id/detail": "opens one claim for assessment from the claims list",

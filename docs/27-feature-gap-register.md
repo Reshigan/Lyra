@@ -229,6 +229,13 @@ and should be assumed to stand.
 - **F29** — `apps/api/src/engines/orbit-routing.ts` is the routing and queueing
   engine: `pickRoute`, `pickAssignee`, `routeConversation`, `sweepRouting`,
   with `PRESENCE_STALE_MS` replacing the hardcoded badge threshold.
+- **F28** — closed. The last three surfaces ship: the underwriting referral desk
+  as a bespoke route (`apps/web/app/routes/referral-desk.tsx`, `/axis/referrals`
+  — bespoke because the decide body carries its own `intent`, which the
+  declarative `ActionSpec` path cannot express), and the complaints register and
+  SIU queue as declarative tabs on the AXIS workspace. All eight named surfaces
+  are now reachable from the workspace tools list, including the claims desk and
+  renewal desk, which had descriptions in `routing.ts` but no link.
 - **F37** — the injection scan covers tool output:
   `packages/model-gateway/src/gateway.ts:78` is
   `m.role === "user" || m.role === "tool"`.
@@ -241,10 +248,6 @@ and should be assumed to stand.
 - **F25** — `paymentPlanJson` is read: `axis-lifecycle.ts:637-647` sweeps active
   policies for a missed instalment. The tax/fee split on premium is still absent
   and the column comment still reads `// H9 reserved`.
-- **F28** — five of the eight named surfaces ship, registered in
-  `apps/web/app/routes.ts:82-99`: FNOL intake, claims desk, renewal desk,
-  endorsement and cancellation. Underwriting referral desk, complaints register
-  and SIU queue are still absent.
 - **F31** — `ORBIT_TOOL_DEFS` carries six of the eight tools, not three.
 - **F39** — `autonomyLevel` has production reads now
   (`signal-autopilot.ts:365` filters campaigns on it, `orbit-draft.ts:98`
