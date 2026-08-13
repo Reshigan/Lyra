@@ -43,6 +43,11 @@ export const ar: Messages = {
   "header.signedInAs": "تسجيل الدخول باسم {name}",
   "header.settings": "الإعدادات",
   "header.signOut": "تسجيل الخروج",
+  "header.clientMoney": "أموال العملاء المحتفظ بها",
+  "header.period": "الفترة المحاسبية",
+  "period.open": "مفتوحة",
+  "period.soft_closed": "مغلقة مبدئياً",
+  "period.hard_closed": "مغلقة",
   "header.themeDark": "التبديل إلى السمة الداكنة",
   "header.themeLight": "التبديل إلى السمة الفاتحة",
 

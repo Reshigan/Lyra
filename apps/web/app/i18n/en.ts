@@ -46,6 +46,11 @@ export const en = {
   "header.signedInAs": "Signed in as {name}",
   "header.settings": "Settings",
   "header.signOut": "Sign out",
+  "header.clientMoney": "Client money held",
+  "header.period": "Accounting period",
+  "period.open": "open",
+  "period.soft_closed": "soft closed",
+  "period.hard_closed": "closed",
   "header.themeDark": "Switch to the dark theme",
   "header.themeLight": "Switch to the light theme",
 

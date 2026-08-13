@@ -27,10 +27,18 @@ export interface InboxNotification {
   createdAt: number;
 }
 
+/** The two facts the header chips state. Each half is null when the caller may
+ *  not read it, and the chip is then absent rather than empty (docs/07 §3). */
+export interface Posture {
+  clientMoney: { heldMinor: number; currency: string; breach: boolean } | null;
+  period: { code: string; state: string } | null;
+}
+
 export interface Inbox {
   approvals: InboxApproval[];
   notifications: InboxNotification[];
   counts: { approvals: number; notifications: number; clearedToday: number };
+  posture?: Posture | null;
 }
 
 export interface ShiftItem {

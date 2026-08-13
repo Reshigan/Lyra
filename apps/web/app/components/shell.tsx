@@ -19,6 +19,7 @@ import { ConstellationMark } from "./mark";
 import { Meridian } from "./meridian";
 import { SearchPalette } from "./search";
 import type { Names } from "../names";
+import { PostureChips } from "./posture";
 import { shiftFrom, type Inbox } from "./shift";
 import { ShiftRail } from "./shift-rail";
 import { ThemeToggle } from "./theme-toggle";
@@ -267,6 +268,7 @@ export function Shell({ t, nav, brand, tenantName, actorName, inbox = null, name
           />
 
           <div className="ms-auto flex shrink-0 items-center gap-1">
+            <PostureChips posture={inbox?.posture} t={t} />
             <ThemeToggle t={t} />
             {/* The pill is the menu's trigger: it already says who is acting, so
                 the account actions hang off it instead of spending header width

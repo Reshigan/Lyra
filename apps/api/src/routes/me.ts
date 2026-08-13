@@ -19,6 +19,7 @@ import {
   verifyPassword,
   type Ctx
 } from "@lyra/core";
+import { periodCode } from "@lyra/ledger";
 import { body } from "../http.js";
 import { must } from "../rows.js";
 import type { App } from "../env.js";
@@ -256,9 +257,64 @@ meRoutes.get("/inbox", async (c) => {
       approvals: approvals.length,
       notifications: notifications.length,
       clearedToday: cleared.length
-    }
+    },
+    posture: await posture(ctx)
   });
 });
+
+/**
+ * The two facts the header chips state: how much client money is held right
+ * now, and whether this month's ledger is still open. Both ride on the inbox
+ * because the shell already fetches it — a chip is not worth two more round
+ * trips before first paint.
+ *
+ * Each half is null when the caller may not read it, and the chip is then
+ * absent rather than empty: docs/07 §3 says a closed door is not shown as a
+ * disabled one.
+ */
+async function posture(ctx: Ctx): Promise<{
+  clientMoney: { heldMinor: number; currency: string; breach: boolean } | null;
+  period: { code: string; state: string } | null;
+}> {
+  const scope = { tenantId: ctx.tenantId, module: "ledger" };
+  // ponytail: the newest check row, not a fresh balance sweep. `post()` writes
+  // one on every posting that touches client money (packages/ledger/src/
+  // posting.ts), so the latest row is the position as of the last movement.
+  const check = can(ctx.actor, "ledger:client_money:read", scope)
+    ? (
+        await ctx.db
+          .select()
+          .from(schema.ledgerClientMoneyChecks)
+          .where(eq(schema.ledgerClientMoneyChecks.tenantId, ctx.tenantId))
+          .orderBy(desc(schema.ledgerClientMoneyChecks.ts))
+          .limit(1)
+      )[0]
+    : undefined;
+  const period = can(ctx.actor, "ledger:periods:read", scope)
+    ? (
+        await ctx.db
+          .select()
+          .from(schema.ledgerPeriods)
+          .where(
+            and(
+              eq(schema.ledgerPeriods.tenantId, ctx.tenantId),
+              eq(schema.ledgerPeriods.code, periodCode(ctx.now))
+            )
+          )
+          .limit(1)
+      )[0]
+    : undefined;
+  return {
+    clientMoney: check
+      ? { heldMinor: check.assetMinor, currency: check.currency, breach: check.breach }
+      : null,
+    // No row yet means nothing has posted this month, which is an open period —
+    // `ensurePeriod` creates it lazily on the first posting.
+    period: can(ctx.actor, "ledger:periods:read", scope)
+      ? { code: periodCode(ctx.now), state: period?.state ?? "open" }
+      : null
+  };
+}
 
 /**
  * Decide an approval from the inbox. Without this an approval-gated action —
