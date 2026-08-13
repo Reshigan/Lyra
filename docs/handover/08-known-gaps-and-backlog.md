@@ -119,6 +119,12 @@ Worth knowing because they surprise people:
   [`apps/api/src/engines/`](../../apps/api/src/engines). Do not go looking for
   the directories in the repository layout diagram.
 - Several module screens are thinner than their specifications.
+- **The SIGNAL post card is web-only.** `packages/ui/src/post-card.ts` renders a
+  cleared creative as a branded SVG in the web studio and the `/design`
+  playground. Mobile has no creative-variant surface at all
+  (`apps/mobile/app/j/campaigns.tsx` lists campaigns, not variants) and no SVG
+  renderer on its dependency list, so parity here is a new mobile journey plus
+  `react-native-svg`, not a port. Deliberately not built.
 
 ---
 
