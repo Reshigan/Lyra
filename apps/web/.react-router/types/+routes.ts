@@ -162,6 +162,9 @@ type Pages = {
   "/search": {
     params: {};
   };
+  "/companion": {
+    params: {};
+  };
   "/search/results": {
     params: {};
   };
@@ -240,6 +243,9 @@ type Pages = {
     params: {};
   };
   "/axis/renewals": {
+    params: {};
+  };
+  "/axis/referrals": {
     params: {};
   };
   "/signal/cockpit": {
@@ -334,7 +340,7 @@ type Pages = {
 type RouteFiles = {
   "root.tsx": {
     id: "root";
-    page: "/" | "/login" | "/logout" | "/portal/:tenantSlug" | "/portal/:tenantSlug/privacy" | "/portal/:tenantSlug/quotes/:id" | "/settings" | "/settings/:tab" | "/approvals" | "/admin/ai/console" | "/admin/ai/budget" | "/admin/ai/runs/:id" | "/admin/cost-explorer" | "/ledger/reports/:report" | "/ledger/money-map" | "/ledger/transactions" | "/ledger/transactions/:id" | "/ledger/period-close" | "/ledger/year-end" | "/ledger/journal" | "/ledger/statement" | "/ledger/recon" | "/analytics/report/:id" | "/analytics/dashboard/:id" | "/distribution/quote-requests/:id/compare" | "/orbit/conversations/:id/thread" | "/distribution/commission-entries/statement" | "/distribution/commission-entries/:id/clawback" | "/distribution/next-best-offers/suggest" | "/compliance/run/:kind" | "/ledger/settlement" | "/ledger/settlements/:id" | "/admin/permissions" | "/admin/developer" | "/admin/security" | "/admin/staff" | "/admin/staff/:id" | "/platform" | "/design" | "/search" | "/search/results" | "/onboarding/:kind/:ref" | "/orbit/console" | "/orbit/save" | "/orbit/pipeline" | "/orbit/quality" | "/orbit/analytics" | "/north/brief" | "/scout/radar" | "/scout/panel" | "/scout/pricing" | "/scout/experiments" | "/scout/analytics" | "/axis/exceptions" | "/axis/board" | "/axis/quote-desk" | "/axis/doc-intelligence" | "/axis/documents/:id/file" | "/axis/analytics" | "/axis/admin" | "/axis/dev" | "/axis/process-map" | "/axis/claims/new" | "/axis/claims/desk" | "/axis/renewals" | "/signal/cockpit" | "/signal/studio" | "/signal/audience-value" | "/signal/answer-engines" | "/signal/budget" | "/signal/analytics" | "/admin/customers/:id/360" | "/admin/products/:id/detail" | "/axis/policies/:id/detail" | "/axis/policies/:id/endorse" | "/axis/policies/:id/cancel" | "/axis/claims/:id/detail" | "/axis/cases/:id/evidence-bundles/:bundleId/download" | "/axis/cases/:id/detail" | "/distribution/channels/:id/detail" | "/orbit/journeys/:id/builder" | "/:module" | "/:module/:resource" | "/:module/:resource/:id";
+    page: "/" | "/login" | "/logout" | "/portal/:tenantSlug" | "/portal/:tenantSlug/privacy" | "/portal/:tenantSlug/quotes/:id" | "/settings" | "/settings/:tab" | "/approvals" | "/admin/ai/console" | "/admin/ai/budget" | "/admin/ai/runs/:id" | "/admin/cost-explorer" | "/ledger/reports/:report" | "/ledger/money-map" | "/ledger/transactions" | "/ledger/transactions/:id" | "/ledger/period-close" | "/ledger/year-end" | "/ledger/journal" | "/ledger/statement" | "/ledger/recon" | "/analytics/report/:id" | "/analytics/dashboard/:id" | "/distribution/quote-requests/:id/compare" | "/orbit/conversations/:id/thread" | "/distribution/commission-entries/statement" | "/distribution/commission-entries/:id/clawback" | "/distribution/next-best-offers/suggest" | "/compliance/run/:kind" | "/ledger/settlement" | "/ledger/settlements/:id" | "/admin/permissions" | "/admin/developer" | "/admin/security" | "/admin/staff" | "/admin/staff/:id" | "/platform" | "/design" | "/search" | "/companion" | "/search/results" | "/onboarding/:kind/:ref" | "/orbit/console" | "/orbit/save" | "/orbit/pipeline" | "/orbit/quality" | "/orbit/analytics" | "/north/brief" | "/scout/radar" | "/scout/panel" | "/scout/pricing" | "/scout/experiments" | "/scout/analytics" | "/axis/exceptions" | "/axis/board" | "/axis/quote-desk" | "/axis/doc-intelligence" | "/axis/documents/:id/file" | "/axis/analytics" | "/axis/admin" | "/axis/dev" | "/axis/process-map" | "/axis/claims/new" | "/axis/claims/desk" | "/axis/renewals" | "/axis/referrals" | "/signal/cockpit" | "/signal/studio" | "/signal/audience-value" | "/signal/answer-engines" | "/signal/budget" | "/signal/analytics" | "/admin/customers/:id/360" | "/admin/products/:id/detail" | "/axis/policies/:id/detail" | "/axis/policies/:id/endorse" | "/axis/policies/:id/cancel" | "/axis/claims/:id/detail" | "/axis/cases/:id/evidence-bundles/:bundleId/download" | "/axis/cases/:id/detail" | "/distribution/channels/:id/detail" | "/orbit/journeys/:id/builder" | "/:module" | "/:module/:resource" | "/:module/:resource/:id";
   };
   "routes/login.tsx": {
     id: "routes/login";
@@ -358,7 +364,7 @@ type RouteFiles = {
   };
   "routes/workspace.tsx": {
     id: "routes/workspace";
-    page: "/" | "/settings" | "/settings/:tab" | "/approvals" | "/admin/ai/console" | "/admin/ai/budget" | "/admin/ai/runs/:id" | "/admin/cost-explorer" | "/ledger/reports/:report" | "/ledger/money-map" | "/ledger/transactions" | "/ledger/transactions/:id" | "/ledger/period-close" | "/ledger/year-end" | "/ledger/journal" | "/ledger/statement" | "/ledger/recon" | "/analytics/report/:id" | "/analytics/dashboard/:id" | "/distribution/quote-requests/:id/compare" | "/orbit/conversations/:id/thread" | "/distribution/commission-entries/statement" | "/distribution/commission-entries/:id/clawback" | "/distribution/next-best-offers/suggest" | "/compliance/run/:kind" | "/ledger/settlement" | "/ledger/settlements/:id" | "/admin/permissions" | "/admin/developer" | "/admin/security" | "/admin/staff" | "/admin/staff/:id" | "/platform" | "/design" | "/search" | "/search/results" | "/onboarding/:kind/:ref" | "/orbit/console" | "/orbit/save" | "/orbit/pipeline" | "/orbit/quality" | "/orbit/analytics" | "/north/brief" | "/scout/radar" | "/scout/panel" | "/scout/pricing" | "/scout/experiments" | "/scout/analytics" | "/axis/exceptions" | "/axis/board" | "/axis/quote-desk" | "/axis/doc-intelligence" | "/axis/documents/:id/file" | "/axis/analytics" | "/axis/admin" | "/axis/dev" | "/axis/process-map" | "/axis/claims/new" | "/axis/claims/desk" | "/axis/renewals" | "/signal/cockpit" | "/signal/studio" | "/signal/audience-value" | "/signal/answer-engines" | "/signal/budget" | "/signal/analytics" | "/admin/customers/:id/360" | "/admin/products/:id/detail" | "/axis/policies/:id/detail" | "/axis/policies/:id/endorse" | "/axis/policies/:id/cancel" | "/axis/claims/:id/detail" | "/axis/cases/:id/evidence-bundles/:bundleId/download" | "/axis/cases/:id/detail" | "/distribution/channels/:id/detail" | "/orbit/journeys/:id/builder" | "/:module" | "/:module/:resource" | "/:module/:resource/:id";
+    page: "/" | "/settings" | "/settings/:tab" | "/approvals" | "/admin/ai/console" | "/admin/ai/budget" | "/admin/ai/runs/:id" | "/admin/cost-explorer" | "/ledger/reports/:report" | "/ledger/money-map" | "/ledger/transactions" | "/ledger/transactions/:id" | "/ledger/period-close" | "/ledger/year-end" | "/ledger/journal" | "/ledger/statement" | "/ledger/recon" | "/analytics/report/:id" | "/analytics/dashboard/:id" | "/distribution/quote-requests/:id/compare" | "/orbit/conversations/:id/thread" | "/distribution/commission-entries/statement" | "/distribution/commission-entries/:id/clawback" | "/distribution/next-best-offers/suggest" | "/compliance/run/:kind" | "/ledger/settlement" | "/ledger/settlements/:id" | "/admin/permissions" | "/admin/developer" | "/admin/security" | "/admin/staff" | "/admin/staff/:id" | "/platform" | "/design" | "/search" | "/companion" | "/search/results" | "/onboarding/:kind/:ref" | "/orbit/console" | "/orbit/save" | "/orbit/pipeline" | "/orbit/quality" | "/orbit/analytics" | "/north/brief" | "/scout/radar" | "/scout/panel" | "/scout/pricing" | "/scout/experiments" | "/scout/analytics" | "/axis/exceptions" | "/axis/board" | "/axis/quote-desk" | "/axis/doc-intelligence" | "/axis/documents/:id/file" | "/axis/analytics" | "/axis/admin" | "/axis/dev" | "/axis/process-map" | "/axis/claims/new" | "/axis/claims/desk" | "/axis/renewals" | "/axis/referrals" | "/signal/cockpit" | "/signal/studio" | "/signal/audience-value" | "/signal/answer-engines" | "/signal/budget" | "/signal/analytics" | "/admin/customers/:id/360" | "/admin/products/:id/detail" | "/axis/policies/:id/detail" | "/axis/policies/:id/endorse" | "/axis/policies/:id/cancel" | "/axis/claims/:id/detail" | "/axis/cases/:id/evidence-bundles/:bundleId/download" | "/axis/cases/:id/detail" | "/distribution/channels/:id/detail" | "/orbit/journeys/:id/builder" | "/:module" | "/:module/:resource" | "/:module/:resource/:id";
   };
   "routes/home.tsx": {
     id: "routes/home";
@@ -499,6 +505,10 @@ type RouteFiles = {
     id: "routes/search";
     page: "/search";
   };
+  "routes/companion.ts": {
+    id: "routes/companion";
+    page: "/companion";
+  };
   "routes/search-results.tsx": {
     id: "routes/search-results";
     page: "/search/results";
@@ -598,6 +608,10 @@ type RouteFiles = {
   "routes/renewal-desk.tsx": {
     id: "routes/renewal-desk";
     page: "/axis/renewals";
+  };
+  "routes/referral-desk.tsx": {
+    id: "routes/referral-desk";
+    page: "/axis/referrals";
   };
   "routes/signal-cockpit.tsx": {
     id: "routes/signal-cockpit";
@@ -719,6 +733,7 @@ type RouteModules = {
   "routes/platform": typeof import("./app/routes/platform.tsx");
   "routes/design": typeof import("./app/routes/design.tsx");
   "routes/search": typeof import("./app/routes/search.ts");
+  "routes/companion": typeof import("./app/routes/companion.ts");
   "routes/search-results": typeof import("./app/routes/search-results.tsx");
   "routes/onboarding": typeof import("./app/routes/onboarding.tsx");
   "routes/orbit-console": typeof import("./app/routes/orbit-console.tsx");
@@ -744,6 +759,7 @@ type RouteModules = {
   "routes/fnol-intake": typeof import("./app/routes/fnol-intake.tsx");
   "routes/claims-desk": typeof import("./app/routes/claims-desk.tsx");
   "routes/renewal-desk": typeof import("./app/routes/renewal-desk.tsx");
+  "routes/referral-desk": typeof import("./app/routes/referral-desk.tsx");
   "routes/signal-cockpit": typeof import("./app/routes/signal-cockpit.tsx");
   "routes/signal-studio": typeof import("./app/routes/signal-studio.tsx");
   "routes/signal-audience-value": typeof import("./app/routes/signal-audience-value.tsx");

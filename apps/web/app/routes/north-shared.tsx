@@ -90,6 +90,23 @@ export interface Snapshot {
   ts: number;
 }
 
+export interface Anomaly {
+  id: string;
+  metricKey: string;
+  window: string;
+  /** Signed basis points against what the detector expected. */
+  magnitude: number;
+  // Nullable in north_anomalies: a detector that fired on shape rather than on a
+  // pair of values has neither, and rendering "null" at a person is a defect.
+  expected: number | null;
+  actual: number | null;
+  state: string;
+  driverAnalysisJson: string | null;
+  linkedActionRef: string | null;
+  explainedBy: string | null;
+  detectedAt: number;
+}
+
 /** The metric's name in this locale, falling back to the key it is stored under. */
 export function metricName(metric: Pick<Metric, "key" | "nameJson">, locale: string): string {
   if (!metric.nameJson) return metric.key;
@@ -109,6 +126,14 @@ export function parsed<T>(raw: string | null | undefined, fallback: T): T {
   } catch {
     return fallback;
   }
+}
+
+/**
+ * A nullable stored integer inside a sentence, where a component cannot go.
+ * An em dash rather than the string "null" when the detector recorded neither.
+ */
+export function num(value: number | null | undefined, locale: string): string {
+  return typeof value === "number" ? new Intl.NumberFormat(locale).format(value) : "—";
 }
 
 /** Basis points → the percent a person reads. `null` when there is no prior. */

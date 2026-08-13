@@ -31,12 +31,14 @@ import {
   MetricValue,
   labelsFrom,
   metricName,
+  num,
   parsed,
   pct,
   readable,
   refuse,
   refused,
   type ActionResult,
+  type Anomaly,
   type Labels,
   type Metric,
   type Page
@@ -182,19 +184,6 @@ export interface Briefing {
   approvedBy: string | null;
   publishedAt: number | null;
   createdAt: number;
-}
-
-export interface Anomaly {
-  id: string;
-  metricKey: string;
-  window: string;
-  magnitude: number;
-  expected: number;
-  actual: number;
-  state: string;
-  driverAnalysisJson: string | null;
-  explainedBy: string | null;
-  detectedAt: number;
 }
 
 interface Highlight {
@@ -453,8 +442,8 @@ export default function NorthBrief() {
                 title={l("anomaly.title")}
                 reason={l("anomaly.reason", {
                   metric: name(anomaly.metricKey),
-                  expected: String(anomaly.expected),
-                  actual: String(anomaly.actual),
+                  expected: num(anomaly.expected, locale),
+                  actual: num(anomaly.actual, locale),
                   window: anomaly.window
                 })}
                 action={

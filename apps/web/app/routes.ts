@@ -65,6 +65,8 @@ export default [
     route("orbit/analytics", "routes/orbit-analytics.tsx"),
 
     route("north/brief", "routes/north-brief.tsx"),
+    route("north/explorer", "routes/north-explorer.tsx"),
+    route("north/anomalies", "routes/north-anomalies.tsx"),
 
     route("scout/radar", "routes/scout-radar.tsx"),
     route("scout/panel", "routes/scout-panel.tsx"),

@@ -118,6 +118,8 @@ export const HIDDEN_ROUTES: Record<string, string> = {
   "/orbit/analytics": "service and retention analytics, linked from the ORBIT workspace tools list",
   "/orbit/journeys/:id/builder": "opens one journey's steps from the journeys list",
   "/north/brief": "the executive briefing, linked from the NORTH workspace tools list",
+  "/north/explorer": "one metric, its series and its definition, linked from the NORTH workspace tools list",
+  "/north/anomalies": "the anomaly wall and its driver breakdowns, linked from the NORTH workspace tools list",
   "/scout/radar": "the opportunity radar over clusters and whitespace, linked from the SCOUT workspace tools list",
   "/scout/panel": "panel benchmarks and the negotiation pack, linked from the SCOUT workspace tools list",
   "/scout/pricing": "price position by line and where we lose, linked from the SCOUT workspace tools list",

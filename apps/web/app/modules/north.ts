@@ -22,6 +22,7 @@ export const north: WorkspaceSpec = {
       "link.metric": "Open the trend",
       "thresholdValue.hint": "In the metric's own units — minor units for money, basis points for a ratio.",
       "link.explorer": "Explorer",
+      "link.anomalies": "Anomalies",
       "link.whatif": "What-if",
       "link.board": "Board pack",
       "link.health": "Data health",
@@ -137,6 +138,7 @@ export const north: WorkspaceSpec = {
       "link.metric": "فتح المنحنى",
       "thresholdValue.hint": "بوحدات المؤشر نفسه — الوحدات الصغرى للمبالغ، ونقاط الأساس للنسب.",
       "link.explorer": "المستكشف",
+      "link.anomalies": "الحالات الشاذة",
       "link.whatif": "ماذا لو",
       "link.board": "حزمة مجلس الإدارة",
       "link.health": "سلامة البيانات",
@@ -521,7 +523,9 @@ export const north: WorkspaceSpec = {
   // for the whole product (apps/web/app/routes/analytics-dashboard.tsx).
   links: [
     { href: "/north/brief", labelKey: "link.brief", permission: "north:briefings:read" },
-    // ponytail: explorer / whatif / board / health / semantic / usage were
+    { href: "/north/explorer", labelKey: "link.explorer", permission: "north:snapshots:read" },
+    { href: "/north/anomalies", labelKey: "link.anomalies", permission: "north:anomalies:read" },
+    // ponytail: whatif / board / health / semantic / usage were
     // linked before their screens existed and shipped 404s into the nav. The
     // tabs below already list snapshots, scenarios and board packs; re-add a
     // link the day its bespoke screen lands (spec.routes.test.ts enforces it).
