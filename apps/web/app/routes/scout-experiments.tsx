@@ -48,6 +48,15 @@ import {
 
 const LIMIT = 200;
 
+/** The one sentence the board opens with — the state already on every row, no
+ *  ✦ (arithmetic, not an agent's finding, CLAUDE.md §11). */
+export function experimentsHeadline(rows: ExperimentRow[], l: Label): string {
+  if (rows.length === 0) return l("xp.empty");
+  const running = rows.filter((row) => row.state === "running").length;
+  if (running > 0) return l("xp.headlineRunning", { n: String(running), total: String(rows.length) });
+  return l("xp.headlineCount", { n: String(rows.length) });
+}
+
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = context.get(cloudflare).env;
 
@@ -121,9 +130,11 @@ export default function ScoutExperiments() {
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-1">
-        <h1 className="font-serif text-22 leading-[1.2] text-text">{l("xp.title")}</h1>
-        <p className="max-w-prose font-ui text-13 text-muted">{l("xp.lede")}</p>
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <h1 className="font-serif text-22 leading-[1.2] text-text">{experimentsHeadline(loaded.rows, l)}</h1>
+          <p className="font-ui text-13 text-muted">{l("xp.lede")}</p>
+        </div>
       </header>
 
       {result?.problem ? <Gate problem={explain(result.problem, l)} l={l} /> : null}

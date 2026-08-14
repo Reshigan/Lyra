@@ -6,6 +6,7 @@ import {
   action,
   ageIn,
   bySeverity,
+  headlineFor,
   labelsIn,
   phrase,
   severityOf,
@@ -97,6 +98,11 @@ describe("labelsIn", () => {
       "days",
       "hours",
       "minutes",
+      "headline.clear",
+      "headline.breached",
+      "headline.urgent",
+      "headline.waiting",
+      "headline.open",
       "approvalTitle",
       "approvalBody",
       "approvalLink",
@@ -183,6 +189,26 @@ describe("ageIn", () => {
 
   it("carries the locale's own unit letters", () => {
     expect(ageIn(3 * DAY, labelsIn("ar"))).toBe("3ي");
+  });
+});
+
+describe("headlineFor", () => {
+  const l = labelsIn("en");
+
+  it("says nothing is stuck when the queue is empty, whatever breached or urgent say", () => {
+    expect(headlineFor({ total: 0, breached: 0, urgent: 0 }, l)).toBe(l("headline.clear"));
+  });
+
+  it("leads with a breach over a merely urgent case", () => {
+    expect(headlineFor({ total: 3, breached: 1, urgent: 2 }, l)).toBe(l("headline.breached"));
+  });
+
+  it("calls out urgent when nothing has breached yet", () => {
+    expect(headlineFor({ total: 2, breached: 0, urgent: 1 }, l)).toBe(l("headline.urgent"));
+  });
+
+  it("falls back to plain waiting when nothing is breached or urgent", () => {
+    expect(headlineFor({ total: 1, breached: 0, urgent: 0 }, l)).toBe(l("headline.waiting"));
   });
 });
 

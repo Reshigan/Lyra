@@ -127,7 +127,11 @@ const LABELS: Record<string, Record<string, string>> = {
     "empty.body": "No case was opened in this window.",
     "problem.bad_intent": "The form did not carry an action this screen knows.",
     "problem.format_required": "Pick a file format to export.",
-    "problem.hidden": "You do not have the reporting permission this screen needs."
+    "problem.hidden": "You do not have the reporting permission this screen needs.",
+    "headline.clear": "No case was opened in this window",
+    "headline.exceptions": "{pct}% of cases hit an exception in this window",
+    "headline.normal": "{opened} cases opened, running clean",
+    "headline.open": "Open the exception queue"
   },
   ar: {
     title: "تحليلات العمليات",
@@ -176,7 +180,11 @@ const LABELS: Record<string, Record<string, string>> = {
     "empty.body": "لم تُفتح أي حالة في هذا النطاق.",
     "problem.bad_intent": "لم يحمل النموذج إجراءً تعرفه هذه الشاشة.",
     "problem.format_required": "اختر صيغة ملف للتصدير.",
-    "problem.hidden": "لا تملك صلاحية التقارير التي تحتاجها هذه الشاشة."
+    "problem.hidden": "لا تملك صلاحية التقارير التي تحتاجها هذه الشاشة.",
+    "headline.clear": "لم تُفتح أي حالة في هذا النطاق",
+    "headline.exceptions": "{pct}٪ من الحالات واجهت استثناءً في هذا النطاق",
+    "headline.normal": "فُتحت {opened} حالة، والسير سليم",
+    "headline.open": "افتح قائمة الاستثناءات"
   }
 };
 
@@ -323,6 +331,18 @@ export const asPercent = (share: number | null, locale: string): string =>
   share === null
     ? "—"
     : new Intl.NumberFormat(locale, { style: "percent", maximumFractionDigits: 1 }).format(share);
+
+/** Above this an exception rate is worth calling out by itself, not just tabled. */
+export const EXCEPTION_ALERT = 0.2;
+
+// Arithmetic on counts the caller already has, not an agent, so it never
+// carries the ✦ mark (CLAUDE.md §11).
+export function headlineFor(counts: { opened: number; exceptionRate: number }, l: Label): string {
+  if (counts.opened === 0) return l("headline.clear");
+  if (counts.exceptionRate >= EXCEPTION_ALERT)
+    return l("headline.exceptions", { pct: String(Math.round(counts.exceptionRate * 100)) });
+  return l("headline.normal", { opened: String(counts.opened) });
+}
 
 async function safe<T>(call: Promise<T>, fallback: T): Promise<T> {
   try {
@@ -480,6 +500,8 @@ export default function AxisAnalytics() {
   const cycle = cycleStats(loaded.sample);
   const sla = slaStats(loaded.sample, loaded.now);
   const exported = result?.exported ?? null;
+  const rate = exceptionRate(statuses);
+  const headline = headlineFor({ opened, exceptionRate: rate }, l);
 
   const statusColumns: Column<StatusRow>[] = [
     {
@@ -519,8 +541,13 @@ export default function AxisAnalytics() {
     <div className="flex flex-col gap-6">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-col gap-1">
-          <h1 className="font-serif text-22 leading-[1.2] text-text">{l("title")}</h1>
+          <h1 className="font-serif text-22 leading-[1.2] text-text">{headline}</h1>
           <p className="max-w-prose font-ui text-13 text-subtle">{l("intro")}</p>
+          {rate >= EXCEPTION_ALERT ? (
+            <Link to="/axis/exceptions" className="w-fit font-ui text-13 text-accent underline">
+              {l("headline.open")}
+            </Link>
+          ) : null}
         </div>
         <nav aria-label={l("window")} className="flex items-center gap-2">
           {WINDOWS.map((days) => (

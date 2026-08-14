@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LABELS, coverage, labelsIn, providerTone, roleName, signInMethod } from "./admin-security";
+import { LABELS, coverage, labelsIn, providerTone, roleName, securityLede, signInMethod } from "./admin-security";
 
 // The security posture screen is read-only by design (MFA is a platform floor,
 // not tenant policy), so there is no action reducer to test. What can go wrong
@@ -39,6 +39,30 @@ describe("providerTone", () => {
   it("does not warn about a disabled provider — it cannot sign anyone in", () => {
     expect(providerTone({ enabled: false, mfaAsserted: false })).toBe("neutral");
     expect(providerTone({ enabled: false, mfaAsserted: true })).toBe("neutral");
+  });
+});
+
+describe("securityLede", () => {
+  const l = labelsIn("en");
+
+  it("reports the coverage gap when it can name it", () => {
+    const posture = { mfa: { required: 8, enrolled: 7, gaps: [{}], gapsWithheld: false }, sso: { gaps: [] } } as never;
+    expect(securityLede(posture, l)).toBe("1 people still need a second factor (88% coverage).");
+  });
+
+  it("defers to the withheld notice when it cannot name the gap", () => {
+    const posture = { mfa: { required: 8, enrolled: 7, gaps: [], gapsWithheld: true }, sso: { gaps: [] } } as never;
+    expect(securityLede(posture, l)).toBe(LABELS.en?.gapsWithheld);
+  });
+
+  it("falls to the SSO gap once the second-factor floor is met", () => {
+    const posture = { mfa: { required: 3, enrolled: 3, gaps: [], gapsWithheld: false }, sso: { gaps: [{}] } } as never;
+    expect(securityLede(posture, l)).toBe("1 sign-in provider(s) let people in without asserting a second factor.");
+  });
+
+  it("reads all-clear when nothing is outstanding", () => {
+    const posture = { mfa: { required: 0, enrolled: 0, gaps: [], gapsWithheld: false }, sso: { gaps: [] } } as never;
+    expect(securityLede(posture, l)).toBe(LABELS.en?.introClear);
   });
 });
 

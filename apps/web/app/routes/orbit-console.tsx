@@ -79,6 +79,26 @@ export function waitLabel(ms: number, l: Label): string {
   return l("waitDays", { n: String(Math.floor(hours / 24)) });
 }
 
+/** Whoever has waited longest — the one conversation an operator opens first. */
+export function mostUrgent(rows: LiveConversation[], now: number): LiveConversation | null {
+  return rows.reduce<LiveConversation | null>(
+    (worst, row) => (!worst || waitingMs(row, now) > waitingMs(worst, now) ? row : worst),
+    null
+  );
+}
+
+/**
+ * The one sentence the console opens with. Arithmetic on the two queues and
+ * the wait-clock already on the KPI wall — no ✦, this is not an agent's
+ * finding (CLAUDE.md §11).
+ */
+export function consoleHeadline(botCount: number, humanCount: number, waitingLong: number, l: Label): string {
+  if (waitingLong > 0) return l("headlineOverdue", { n: String(waitingLong) });
+  if (botCount > 0) return l("headlineAgent", { n: String(botCount) });
+  if (humanCount > 0) return l("headlineHuman", { n: String(humanCount) });
+  return l("headlineClear");
+}
+
 /** Sentiment is −100…100 from the runtime; three buckets is all an operator reads. */
 export function moodTone(sentiment: number | null): BadgeTone {
   if (sentiment === null) return "neutral";
@@ -100,6 +120,10 @@ export const LABELS: Labels = {
   en: {
     title: "Live console",
     lede: "A snapshot of every open conversation. Refresh to pull the current state.",
+    headlineOverdue: "{n} have been waiting over 15 minutes.",
+    headlineAgent: "The agent is holding {n} conversations.",
+    headlineHuman: "Your team is holding {n} conversations.",
+    headlineClear: "Nothing is open right now.",
     refresh: "Refresh",
     asOf: "As of",
     active: "Open conversations",
@@ -153,6 +177,10 @@ export const LABELS: Labels = {
   ar: {
     title: "لوحة المتابعة الحية",
     lede: "لمحة عن كل محادثة مفتوحة. حدّث الصفحة لجلب الحالة الحالية.",
+    headlineOverdue: "{n} ينتظرون منذ أكثر من ١٥ دقيقة.",
+    headlineAgent: "الوكيل الذكي يحمل {n} محادثة.",
+    headlineHuman: "فريقك يحمل {n} محادثة.",
+    headlineClear: "لا شيء مفتوح الآن.",
     refresh: "تحديث",
     asOf: "حتى",
     active: "المحادثات المفتوحة",
@@ -304,9 +332,9 @@ export default function OrbitConsole() {
   const navigation = useNavigation();
   const l = labelsIn(loaded.locale);
   const busy = navigation.state === "submitting";
-  const waitingLong = [...loaded.bot.data, ...loaded.human.data].filter(
-    (row) => waitingMs(row, loaded.now) >= SLOW_MS
-  ).length;
+  const live = [...loaded.bot.data, ...loaded.human.data];
+  const waitingLong = live.filter((row) => waitingMs(row, loaded.now) >= SLOW_MS).length;
+  const urgent = mostUrgent(live, loaded.now);
 
   const problemMessage: Record<string, string> = {
     unknown_intent: l("unknownIntent"),
@@ -318,8 +346,23 @@ export default function OrbitConsole() {
     <div className="flex flex-col gap-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-col gap-1">
-          <h1 className="font-serif text-22 leading-[1.2] text-text">{l("title")}</h1>
+          <h1 className="font-serif text-22 leading-[1.2] text-text">
+            {consoleHeadline(
+              loaded.bot.total ?? loaded.bot.data.length,
+              loaded.human.total ?? loaded.human.data.length,
+              waitingLong,
+              l
+            )}
+          </h1>
           <p className="font-ui text-13 text-muted">{l("lede")}</p>
+          {urgent ? (
+            <Link
+              to={`/orbit/conversations/${urgent.id}/thread`}
+              className="w-fit font-ui text-13 text-accent underline"
+            >
+              {l("openThread")}
+            </Link>
+          ) : null}
         </div>
         <Form method="get" replace className="flex items-center gap-3">
           <span className="font-ui text-12 text-subtle">

@@ -130,6 +130,8 @@ export const LABELS: Record<string, Record<string, string>> = {
   en: {
     intro: "Where this work item stands, the steps behind it, and what is still waiting on someone.",
     back: "Back to the queue",
+    heroLede: "{status} · {priority} priority",
+    heroLedeDue: "{status} · {priority} priority · due {due}",
     standingTitle: "Where it stands",
     value: "Value",
     sla: "Due",
@@ -205,6 +207,8 @@ export const LABELS: Record<string, Record<string, string>> = {
   ar: {
     intro: "موقف بند العمل، والخطوات التي أوصلته، وما لا يزال بانتظار أحد.",
     back: "العودة إلى قائمة العمل",
+    heroLede: "{status} · أولوية {priority}",
+    heroLedeDue: "{status} · أولوية {priority} · الاستحقاق {due}",
     standingTitle: "الموقف",
     value: "القيمة",
     sla: "الاستحقاق",
@@ -280,6 +284,17 @@ export const LABELS: Record<string, Record<string, string>> = {
 };
 
 export const labelsIn = labelsFrom(LABELS);
+
+/** The line under the case ref: its status and priority, and the SLA due date
+ * when there is one to show. No ✦ (read straight off the loaded record, not a
+ * model finding, CLAUDE.md §11). */
+export function caseLede(workItem: Pick<Case, "status" | "priority" | "slaDueAt">, l: Label, locale: string): string {
+  const status = tag(l, "status", workItem.status);
+  const priority = tag(l, "priority", workItem.priority);
+  if (!workItem.slaDueAt) return l("heroLede", { status, priority });
+  const fmt = new Intl.DateTimeFormat(locale, { year: "numeric", month: "short", day: "numeric" });
+  return l("heroLedeDue", { status, priority, due: fmt.format(new Date(workItem.slaDueAt)) });
+}
 
 /**
  * The copilot's answer region, and the wait before it. A model round trip is
@@ -555,11 +570,15 @@ export default function CaseDetail() {
 
   return (
     <div className="flex flex-col gap-6">
-      <Header title={workItem.ref} intro={l("intro")} />
-
-      <Link to="/axis/cases" className="font-ui text-12 text-accent underline-offset-2 hover:underline">
-        {l("back")}
-      </Link>
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <h1 className="font-serif text-22 leading-[1.2] text-text">{workItem.ref}</h1>
+          <p className="font-ui text-13 text-muted">{caseLede(workItem, l, locale)}</p>
+          <Link to="/axis/cases" className="w-fit font-ui text-13 text-accent underline">
+            {l("back")}
+          </Link>
+        </div>
+      </header>
 
       <Card
         title={l("standingTitle")}

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import type { Env } from "../env";
-import { PERM, action, labelsIn, loader, parseTerms, phrase } from "./referral-desk";
+import { DAYS_LEFT_DANGER, PERM, action, headlineFor, labelsIn, loader, parseTerms, phrase } from "./referral-desk";
 
 // §A.4/§D.6: the underwriter's side of the referral gate.ts opens on the bind
 // path. One read (open referrals, soonest SLA first) and one write — POST
@@ -114,7 +114,11 @@ describe("labelsIn", () => {
       "problem.missing_reason",
       "problem.missing_terms",
       "problem.bad_terms",
-      "problem.unknown_intent"
+      "problem.unknown_intent",
+      "headline.clear",
+      "headline.urgent",
+      "headline.waiting",
+      "headline.open"
     ];
 
     for (const key of keys) {
@@ -126,6 +130,25 @@ describe("labelsIn", () => {
 
   it("falls back to English rather than showing a raw key", () => {
     expect(labelsIn("de")("title")).toBe(labelsIn("en")("title"));
+  });
+});
+
+describe("headlineFor", () => {
+  const l = labelsIn("en");
+  it("says nothing is waiting when the desk is empty", () => {
+    expect(headlineFor({ total: 0, urgent: 0 }, l)).toBe(l("headline.clear"));
+  });
+  it("leads with urgent referrals over a plain count", () => {
+    expect(headlineFor({ total: 5, urgent: 2 }, l)).toBe(l("headline.urgent", { count: "2" }));
+  });
+  it("falls back to a plain count when nothing is due within a day", () => {
+    expect(headlineFor({ total: 5, urgent: 0 }, l)).toBe(l("headline.waiting", { count: "5" }));
+  });
+});
+
+describe("DAYS_LEFT_DANGER", () => {
+  it("matches the threshold the days-left column badges danger at", () => {
+    expect(DAYS_LEFT_DANGER).toBe(1);
   });
 });
 

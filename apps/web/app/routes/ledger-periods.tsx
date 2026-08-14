@@ -27,7 +27,7 @@ import { translator } from "../i18n";
 import { ConfirmButton } from "../components/confirm";
 import { Problem } from "./module";
 import { useShellData } from "./workspace";
-import { PERM, checkName, labelIn, periodTone } from "./ledger.shared";
+import { PERM, checkName, labelIn, periodHeadline, periodTone } from "./ledger.shared";
 
 // Closing a period is the moment a month stops being editable, so the checks
 // that block it are the screen — not a message that appears after the press.
@@ -196,9 +196,13 @@ export default function LedgerPeriods() {
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-2">
-        <h1 className="font-serif text-22 leading-[1.2] text-text">{l("period.title")}</h1>
-        <p className="max-w-prose font-ui text-13 text-subtle">{l("period.intro")}</p>
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <h1 className="font-serif text-22 leading-[1.2] text-text">
+            {periodHeadline(period, failed.length, l)}
+          </h1>
+          <p className="font-ui text-13 text-muted">{l("period.intro")}</p>
+        </div>
       </header>
 
       <Form method="get" aria-label={l("period.lookup")} className="flex flex-wrap items-end gap-3">

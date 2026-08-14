@@ -104,7 +104,11 @@ const LABELS: Record<string, Record<string, string>> = {
       "The churn score is written by the retention model on the renewal record. It is a ranking aid, not a decision.",
     "problem.missing_renewal": "Pick a renewal first.",
     "problem.missing_policy": "Pick a policy first.",
-    "problem.unknown_intent": "That control is not available."
+    "problem.unknown_intent": "That control is not available.",
+    "headline.clear": "No terms expiring in the next 60 days",
+    "headline.risk": "{count} expiring terms are flagged high churn risk",
+    "headline.moving": "{count} terms expiring, none flagged high risk",
+    "headline.open": "Open the soonest-expiring policy — {ref}"
   },
   ar: {
     title: "مكتب التجديد",
@@ -131,7 +135,11 @@ const LABELS: Record<string, Record<string, string>> = {
     riskWhyBody: "درجة التسرب يكتبها نموذج الاستبقاء على سجل التجديد. هي مساعدة في الترتيب وليست قرارًا.",
     "problem.missing_renewal": "اختر تجديدًا أولًا.",
     "problem.missing_policy": "اختر وثيقة أولًا.",
-    "problem.unknown_intent": "هذا الإجراء غير متاح."
+    "problem.unknown_intent": "هذا الإجراء غير متاح.",
+    "headline.clear": "لا توجد وثائق تنتهي خلال 60 يومًا القادمة",
+    "headline.risk": "{count} من الوثائق المنتهية القريبة معرضة لخطر تسرب مرتفع",
+    "headline.moving": "{count} وثيقة على وشك الانتهاء، ولا شيء منها عالي الخطورة",
+    "headline.open": "افتح الوثيقة الأقرب لانتهاء الصلاحية — {ref}"
   }
 };
 
@@ -140,6 +148,19 @@ export type Label = (key: string, vars?: Record<string, string>) => string;
 /** The shared resolver: the route's own table, then the shared catalogue, then
  *  the platform's `common.*` words (docs/ui.md §7 P3-14). */
 export const labelsIn = labelsFrom(LABELS);
+
+/** The churn-risk cut the desk already badges rows at (the `risk` column). */
+export const CHURN_RISK = 65;
+
+// Arithmetic on counts the caller already has, not an agent, so it never
+// carries the ✦ mark (CLAUDE.md §11). The churn score itself IS agent output
+// (the retention model, `AGENT_MARK` on the badge below) — this only counts
+// rows already above the desk's own risk cut.
+export function headlineFor(counts: { total: number; highRisk: number }, l: Label): string {
+  if (counts.total === 0) return l("headline.clear");
+  if (counts.highRisk > 0) return l("headline.risk", { count: String(counts.highRisk) });
+  return l("headline.moving", { count: String(counts.total) });
+}
 
 /* ------------------------------------------------------------------ loader */
 
@@ -247,11 +268,23 @@ export default function RenewalDesk() {
     return <EmptyState title={l("title")} body={l("empty")} />;
   }
 
+  const highRisk = loaded.rows.filter((row) => (row.renewal.churnScore ?? 0) >= CHURN_RISK).length;
+  const headline = headlineFor({ total: loaded.rows.length, highRisk }, l);
+  const soonest = loaded.rows[0];
+
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-1">
-        <h1 className="font-serif text-22 leading-[1.2] text-text">{l("title")}</h1>
+        <h1 className="font-serif text-22 leading-[1.2] text-text">{headline}</h1>
         <p className="font-ui text-13 text-muted">{l("intro")}</p>
+        {soonest?.policy ? (
+          <Link
+            to={`/axis/policies/${soonest.policy.id}/detail`}
+            className="w-fit font-ui text-13 text-accent underline"
+          >
+            {l("headline.open", { ref: soonest.policy.policyNo })}
+          </Link>
+        ) : null}
       </header>
 
       {result?.problem ? <Gate problem={phrase(result.problem, l)} l={l} /> : null}

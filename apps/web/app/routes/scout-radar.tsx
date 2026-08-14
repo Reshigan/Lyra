@@ -54,6 +54,16 @@ import {
 
 const LIMIT = 200;
 
+/** The one sentence the radar opens with — arithmetic over the plotted dots
+ *  already on the page, no ✦ (this is not an agent's finding, CLAUDE.md §11). */
+export function radarHeadline(plotted: Dot[], unplottedCount: number, l: Label): string {
+  const pursue = plotted.filter((dot) => dot.fit > 50 && dot.momentum > 50).length;
+  if (pursue > 0) return l("radar.headlinePursue", { n: String(pursue) });
+  if (plotted.length > 0) return l("radar.headlinePlotted", { n: String(plotted.length) });
+  if (unplottedCount > 0) return l("radar.headlineUnplotted", { n: String(unplottedCount) });
+  return l("radar.empty");
+}
+
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = context.get(cloudflare).env;
   const selected = new URL(request.url).searchParams.get("w");
@@ -151,9 +161,13 @@ export default function ScoutRadar() {
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-1">
-        <h1 className="font-serif text-22 leading-[1.2] text-text">{l("radar.title")}</h1>
-        <p className="max-w-prose font-ui text-13 text-muted">{l("radar.lede")}</p>
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <h1 className="font-serif text-22 leading-[1.2] text-text">
+            {radarHeadline(loaded.dots, loaded.unplotted, l)}
+          </h1>
+          <p className="font-ui text-13 text-muted">{l("radar.lede")}</p>
+        </div>
       </header>
 
       {result?.problem ? <Gate problem={explain(result.problem, l)} l={l} /> : null}

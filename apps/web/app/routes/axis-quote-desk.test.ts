@@ -8,6 +8,7 @@ import {
   byPressure,
   deskCustomers,
   deskGroups,
+  deskHeadlineKey,
   epochOf,
   expiryOf,
   flagsOf,
@@ -96,6 +97,10 @@ describe("labelsIn", () => {
       "stat.quotes",
       "stat.expiring",
       "stat.silent",
+      "headline.silent",
+      "headline.expiring",
+      "headline.clear",
+      "headline.open",
       "group.silent",
       "group.best",
       "group.spread",
@@ -142,6 +147,11 @@ describe("labelsIn", () => {
   it("interpolates the gating policy in both locales", () => {
     expect(labelsIn("en")("approvalBody", { policy: "axis.bind" })).toContain("axis.bind");
     expect(labelsIn("ar")("approvalBody", { policy: "axis.bind" })).toContain("axis.bind");
+  });
+
+  it("interpolates the case ref the hero link opens", () => {
+    expect(labelsIn("en")("headline.open", { ref: "C-0001" })).toContain("C-0001");
+    expect(labelsIn("ar")("headline.open", { ref: "C-0001" })).toContain("C-0001");
   });
 
   it("falls back to English rather than showing a raw key", () => {
@@ -231,6 +241,27 @@ describe("byPressure", () => {
       NOW
     );
     expect([...groups].sort(byPressure).map((g) => g.case.id)).toEqual(["silent", "urgent", "quiet"]);
+  });
+});
+
+describe("deskHeadlineKey", () => {
+  it("narrates nothing when the desk is empty", () => {
+    expect(deskHeadlineKey([], 0, 0)).toBe("");
+  });
+
+  it("puts an unanswered case ahead of one merely expiring", () => {
+    const groups = deskGroups([kase({ id: "silent" })], [], NOW);
+    expect(deskHeadlineKey(groups, 1, 3)).toBe("headline.silent");
+  });
+
+  it("falls to expiring pressure once every case has an answer", () => {
+    const groups = deskGroups([kase()], [quote({ validUntil: NOW + DAY })], NOW);
+    expect(deskHeadlineKey(groups, 0, 1)).toBe("headline.expiring");
+  });
+
+  it("reads as clear once nothing is silent or expiring soon", () => {
+    const groups = deskGroups([kase()], [quote()], NOW);
+    expect(deskHeadlineKey(groups, 0, 0)).toBe("headline.clear");
   });
 });
 

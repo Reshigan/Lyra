@@ -83,7 +83,9 @@ export const LABELS: Record<string, Record<string, string>> = {
     "problem.missing_policy": "Pick a policy first.",
     "problem.missing_date": "Date of loss is required.",
     "problem.bad_amount": "Estimated amount has to be a number.",
-    "problem.bad_intent": "The form did not carry an action this screen recognises."
+    "problem.bad_intent": "The form did not carry an action this screen recognises.",
+    "headline.none": "No active policy is available to claim against",
+    "headline.ready": "{count} active policies ready to pick from"
   },
   ar: {
     title: "بلاغ حادث جديد",
@@ -129,7 +131,9 @@ export const LABELS: Record<string, Record<string, string>> = {
     "problem.missing_policy": "اختر وثيقة أولًا.",
     "problem.missing_date": "تاريخ الحادث مطلوب.",
     "problem.bad_amount": "المبلغ التقديري يجب أن يكون رقمًا.",
-    "problem.bad_intent": "لم يحمل النموذج إجراءً تعرفه هذه الشاشة."
+    "problem.bad_intent": "لم يحمل النموذج إجراءً تعرفه هذه الشاشة.",
+    "headline.none": "لا توجد وثيقة سارية للمطالبة بموجبها",
+    "headline.ready": "{count} وثيقة سارية جاهزة للاختيار"
   }
 };
 
@@ -185,6 +189,14 @@ async function safe<T>(call: Promise<T>, fallback: T): Promise<T> {
     if (error instanceof ApiError && (error.status === 403 || error.status === 404)) return fallback;
     throw error;
   }
+}
+
+// Arithmetic on a count the caller already has, not an agent, so it never
+// carries the ✦ mark (CLAUDE.md §11). There is no queue here to summarise —
+// this is an intake form — so the one real thing worth saying up front is
+// whether there is a policy to register the claim against at all.
+export function headlineFor(policyCount: number, l: Label): string {
+  return policyCount === 0 ? l("headline.none") : l("headline.ready", { count: String(policyCount) });
 }
 
 /** A date input gives "2026-08-04"; the schema wants epoch millis. */
@@ -355,12 +367,13 @@ export default function FnolIntake() {
 
   const coverage = result?.coverage;
   const registerable = coverage?.coverageState === "in_force";
+  const headline = headlineFor(policies.length, l);
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-xl font-semibold">{l("title")}</h1>
-        <p className="text-sm text-[var(--color-fg-muted)]">{l("intro")}</p>
+      <header className="flex flex-col gap-1">
+        <h1 className="font-serif text-22 leading-[1.2] text-text">{headline}</h1>
+        <p className="max-w-prose font-ui text-13 text-subtle">{l("intro")}</p>
       </header>
 
       {result?.problem ? <Gate problem={phrase(result.problem, l)} l={l} /> : null}

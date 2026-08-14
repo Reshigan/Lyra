@@ -61,6 +61,7 @@ describe("labelsIn", () => {
       "title",
       "intro",
       "back",
+      "heroLede",
       "field.reasonCode",
       "field.refundMethod",
       "field.refundMethod.credit",

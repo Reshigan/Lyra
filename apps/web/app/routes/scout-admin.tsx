@@ -8,6 +8,7 @@ import {
   emptyPage,
   labelsIn,
   safe,
+  type Label,
   type Page
 } from "./scout.shared";
 
@@ -104,6 +105,16 @@ export function currentThresholds(rows: ThresholdRow[]): ThresholdRow[] {
 export const floorOverrides = (rows: ProductRow[]): ProductRow[] =>
   rows.filter((row) => row.aggregationMin !== K_FLOOR).sort((a, b) => a.aggregationMin - b.aggregationMin);
 
+/** The one sentence admin opens with — pending approvals and quiet sources
+ *  already on the loader, no ✦ (arithmetic, not an agent's finding, CLAUDE.md
+ *  §11). */
+export function adminHeadline(pending: number, sources: SourceHealth[], l: Label): string {
+  if (pending > 0) return l("adm.headlinePending", { n: String(pending) });
+  const quiet = sources.filter((source) => source.quiet).length;
+  if (quiet > 0) return l("adm.headlineQuiet", { n: String(quiet) });
+  return l("adm.title");
+}
+
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = context.get(cloudflare).env;
   const now = Date.now();
@@ -158,9 +169,13 @@ export default function ScoutAdmin() {
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-1">
-        <h1 className="font-serif text-22 leading-[1.2] text-text">{l("adm.title")}</h1>
-        <p className="max-w-prose font-ui text-13 text-muted">{l("adm.lede")}</p>
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <h1 className="font-serif text-22 leading-[1.2] text-text">
+            {adminHeadline(loaded.pending, loaded.sources, l)}
+          </h1>
+          <p className="font-ui text-13 text-muted">{l("adm.lede")}</p>
+        </div>
       </header>
 
       <Card title={l("adm.sources")} description={l("adm.sourcesHint", { days: String(QUIET_AFTER_DAYS) })}>

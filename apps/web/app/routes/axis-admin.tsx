@@ -7,13 +7,13 @@ import {
   type ActionFunctionArgs,
   type LoaderFunctionArgs
 } from "react-router";
-import { Badge, Button, Card, EmptyState, PageHeader, Stat, Table, type BadgeTone, type Column } from "@lyra/ui";
+import { Badge, Button, Card, EmptyState, Stat, Table, type BadgeTone, type Column } from "@lyra/ui";
 import { ApiError, api, fetchMe, type Problem } from "../api.server";
 import { cloudflare } from "../context";
 import { translator } from "../i18n";
 import { axis } from "../modules/axis";
 import { labelsFor, optionLabel } from "../modules/spec";
-import { labelsFrom, tag } from "./detail-kit";
+import { labelsFrom, tag, type Label } from "./detail-kit";
 import { Gate } from "./staff";
 import { useShellData } from "./workspace";
 
@@ -87,6 +87,18 @@ export function connectorTone(row: Pick<HealthRow, "dead" | "failed">): BadgeTon
   return "success";
 }
 
+// Arithmetic on counts the caller already has, not an agent, so it never
+// carries the ✦ mark (CLAUDE.md §11).
+export function headlineFor(
+  counts: { dead: number; failed: number; pendingSops: number },
+  l: Label
+): string {
+  if (counts.dead > 0) return l("headline.dead", { count: String(counts.dead) });
+  if (counts.failed > 0) return l("headline.failing", { count: String(counts.failed) });
+  if (counts.pendingSops > 0) return l("headline.pending", { count: String(counts.pendingSops) });
+  return l("headline.healthy");
+}
+
 /* ----------------------------------------------------------------- labels */
 
 export const LABELS: Record<string, Record<string, string>> = {
@@ -115,7 +127,12 @@ export const LABELS: Record<string, Record<string, string>> = {
     colFailed: "Failed",
     colDead: "Dead",
     colPending: "Pending",
-    hooksManage: "Manage webhooks in the developer console"
+    hooksManage: "Manage webhooks in the developer console",
+    "headline.dead": "{count} webhooks have stopped delivering",
+    "headline.failing": "{count} webhooks are failing deliveries",
+    "headline.pending": "{count} procedures are waiting to be published",
+    "headline.healthy": "Procedures are published and connectors are healthy",
+    "headline.open": "Manage webhooks in the developer console"
   },
   ar: {
     title: "إدارة AXIS",
@@ -142,7 +159,12 @@ export const LABELS: Record<string, Record<string, string>> = {
     colFailed: "فشل",
     colDead: "متوقف",
     colPending: "قيد الانتظار",
-    hooksManage: "إدارة الويب هوك في وحدة تحكم المطورين"
+    hooksManage: "إدارة الويب هوك في وحدة تحكم المطورين",
+    "headline.dead": "توقف {count} ويب هوك عن التسليم",
+    "headline.failing": "يفشل {count} ويب هوك في التسليم",
+    "headline.pending": "{count} إجراءات بانتظار النشر",
+    "headline.healthy": "الإجراءات منشورة والموصلات سليمة",
+    "headline.open": "إدارة الويب هوك في وحدة تحكم المطورين"
   }
 };
 
@@ -247,7 +269,10 @@ export default function AxisAdmin() {
   if (!loaded.may.sopsRead && !loaded.may.hooksRead) {
     return (
       <div className="flex flex-col gap-6">
-        <PageHeader title={l("title")} description={l("intro")} />
+        <header className="flex flex-col gap-1">
+          <h1 className="font-serif text-22 leading-[1.2] text-text">{l("title")}</h1>
+          <p className="max-w-prose font-ui text-13 text-subtle">{l("intro")}</p>
+        </header>
         <EmptyState title={l("deniedTitle")} body={t("error.forbidden")} />
       </div>
     );
@@ -304,9 +329,25 @@ export default function AxisAdmin() {
     { key: "pending", header: l("colPending"), numeric: true, render: (row) => row.pending }
   ];
 
+  const counts = {
+    dead: loaded.health.reduce((sum, row) => sum + row.dead, 0),
+    failed: loaded.health.reduce((sum, row) => sum + row.failed, 0),
+    pendingSops: loaded.sops.filter((row) => row.status !== "active").length
+  };
+  const headline = headlineFor(counts, l);
+  const connectorTrouble = counts.dead > 0 || counts.failed > 0;
+
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title={l("title")} description={l("intro")} />
+      <header className="flex flex-col gap-1">
+        <h1 className="font-serif text-22 leading-[1.2] text-text">{headline}</h1>
+        <p className="max-w-prose font-ui text-13 text-subtle">{l("intro")}</p>
+        {loaded.may.hooksRead && connectorTrouble ? (
+          <Link to="/admin/developer" className="w-fit font-ui text-13 text-accent underline">
+            {l("headline.open")}
+          </Link>
+        ) : null}
+      </header>
 
       {result?.problem ? <Gate problem={result.problem} l={l} /> : null}
 

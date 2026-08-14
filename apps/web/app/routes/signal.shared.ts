@@ -429,6 +429,92 @@ export function dailySpend(rows: readonly SpendRow[]): Array<{ day: string; amou
     .map(([day, amountMinor]) => ({ day, amountMinor }));
 }
 
+/**
+ * The cockpit's headline: an autopilot move outranks a plan overrun, which
+ * outranks activity, which outranks quiet — "what changed while you were
+ * away" is what an operator wants first. Arithmetic over counts the loader
+ * already computed, so the caller adds no ✦ (docs/15 §11: the mark is for
+ * text an agent produced, and a move's own `reason` is a template the
+ * autopilot engine fills in — apps/api/src/engines/signal-autopilot.ts —
+ * not a model-gateway call).
+ */
+export function cockpitHeadline(
+  l: Label,
+  input: { movesCount: number; planPct: number; runningCount: number }
+): string {
+  if (input.movesCount > 0) return l("cockpit.answer.moved", { n: String(input.movesCount) });
+  if (input.planPct > 100) return l("cockpit.answer.overPlan", { n: String(input.planPct) });
+  if (input.runningCount > 0) return l("cockpit.answer.running", { n: String(input.runningCount) });
+  return l("cockpit.answer.quiet");
+}
+
+/**
+ * The studio's headline: which of the five steps this campaign is on, named
+ * after it — "The words" reads as an answer where the static title did not.
+ * No campaign yet keeps the plain title; there is nothing to report.
+ */
+export function studioHeadline(l: Label, campaign: CampaignRow | null, step: number): string {
+  if (!campaign) return l("studio.title");
+  return `${campaign.name} · ${l(`studio.step${step}`)}`;
+}
+
+/**
+ * The audience-value headline: an audience losing money outranks a leader to
+ * report — that's the one that needs a decision — which outranks nothing
+ * measured yet.
+ */
+export function audValueHeadline(l: Label, locale: string, input: { best: AudienceValue | null; losing: number }): string {
+  if (input.losing > 0) return l("aud.answer.losing", { n: String(input.losing) });
+  if (input.best && input.best.multiple !== null) {
+    return l("aud.answer.best", {
+      name: input.best.audience.name,
+      multiple: multipleText(locale, input.best.multiple)
+    });
+  }
+  return l("aud.answer.none");
+}
+
+/** The answer-engines headline: a page going stale outranks the citation share. */
+export function aeoHeadline(l: Label, input: { staleCount: number; published: number; citationSharePct: number }): string {
+  if (input.staleCount > 0) return l("aeo.staleWarning", { n: String(input.staleCount) });
+  if (input.published > 0) return l("aeo.answer.share", { pct: String(input.citationSharePct) });
+  return l("aeo.answer.none");
+}
+
+/** The experiments headline: a decided winner outranks one still running. */
+export function expHeadline(l: Label, input: { won: number; running: number }): string {
+  if (input.won > 0) return l("exp.answer.won", { n: String(input.won) });
+  if (input.running > 0) return l("exp.answer.running", { n: String(input.running) });
+  return l("exp.none");
+}
+
+/** The budget headline: headroom or overspend, in the campaigns' own currency. */
+export function budgetHeadline(l: Label, locale: string, input: { headroomMinor: number; currency: string }): string {
+  const amount = new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency: input.currency,
+    maximumFractionDigits: 0
+  }).format(Math.abs(input.headroomMinor) / 100);
+  return input.headroomMinor < 0 ? l("budget.answer.over", { amount }) : l("budget.answer.under", { amount });
+}
+
+/** The analytics headline: LTV:CAC as the one number that says whether growth pays. */
+export function growthHeadline(l: Label, locale: string, ratio: number | null): string {
+  return ratio === null ? l("growth.answer.none") : l("growth.answer.ratio", { multiple: multipleText(locale, ratio) });
+}
+
+/** The admin headline: `adminFaults().length` — nothing stranded reuses that empty state's own title. */
+export function adminHeadline(l: Label, faultCount: number): string {
+  return faultCount === 0 ? l("admin.readyTitle") : l("admin.answer.faults", { n: String(faultCount) });
+}
+
+/** The dev headline: what this role can read, and how many endpoints are listening for it. */
+export function devHeadline(l: Label, input: { readable: number; hooks: number }): string {
+  return input.readable === 0
+    ? l("dev.denied")
+    : l("dev.answer.ready", { n: String(input.readable), hooks: String(input.hooks) });
+}
+
 /** The windows every SIGNAL screen offers. 7 is a week's noise, 90 is a quarter. */
 export const WINDOWS = [7, 30, 90] as const;
 
@@ -888,6 +974,10 @@ const LABELS: Record<string, Record<string, string>> = {
     /* cockpit */
     "cockpit.title": "Growth cockpit",
     "cockpit.lede": "What the money bought this window, and what the agents changed while you were away.",
+    "cockpit.answer.moved": "The autopilot moved budget {n} time(s) this window.",
+    "cockpit.answer.overPlan": "Spend is {n}% over plan this window.",
+    "cockpit.answer.running": "{n} campaign(s) running, nothing moved yet.",
+    "cockpit.answer.quiet": "Nothing running and nothing moved this window.",
     "cockpit.spendToDate": "Spent this window",
     "cockpit.againstPlan": "Against plan",
     "cockpit.pipeline": "Pipeline by channel",
@@ -992,6 +1082,9 @@ const LABELS: Record<string, Record<string, string>> = {
     "aud.unmeasured": "No campaign has aimed at this audience yet.",
     "aud.thin": "Too few signings to trust this number.",
     "aud.openAudiences": "Manage audiences",
+    "aud.answer.best": "{name} leads at {multiple}.",
+    "aud.answer.losing": "{n} audience(s) are costing more than they return.",
+    "aud.answer.none": "Not enough signings yet to say what pays.",
 
     /* answer engines */
     "aeo.title": "Answer engines",
@@ -1011,6 +1104,8 @@ const LABELS: Record<string, Record<string, string>> = {
     "aeo.retire": "Retire",
     "aeo.noPages": "No answer pages yet.",
     "aeo.openPages": "Manage answer pages",
+    "aeo.answer.share": "{pct}% of citations trace back to you.",
+    "aeo.answer.none": "No answer pages published yet.",
     "aeo.staleWarning": "{n} published page(s) have not been verified in 30 days.",
 
     /* experiments */
@@ -1084,6 +1179,8 @@ const LABELS: Record<string, Record<string, string>> = {
     "exp.metric.click_to_bind_rate": "Click-to-bind rate",
     "exp.metric.renewal_accept_rate": "Renewal acceptance rate",
     "exp.metric.aeo_citation_share": "Answer-engine citation share",
+    "exp.answer.won": "{n} test(s) have already paid off.",
+    "exp.answer.running": "{n} test(s) running now.",
 
     /* budget */
     "budget.title": "Budget and bounds",
@@ -1109,6 +1206,8 @@ const LABELS: Record<string, Record<string, string>> = {
     "budget.overspend": "Over plan",
     "budget.autoApproved": "Inside its bounds",
     "budget.needsApproval": "Needed an approver",
+    "budget.answer.over": "{amount} over plan for this window.",
+    "budget.answer.under": "{amount} of headroom left this window.",
 
     /* analytics */
     "growth.title": "Growth analytics",
@@ -1137,6 +1236,8 @@ const LABELS: Record<string, Record<string, string>> = {
     "growth.last90": "Last 90 days",
     "growth.noSpend": "No spend recorded in this window.",
     "growth.efficiency": "Cost per click",
+    "growth.answer.ratio": "{multiple} value for every unit spent.",
+    "growth.answer.none": "Not enough binds yet to price the return.",
     /* option values, so a screen never renders a raw enum */
     xlsx: "Excel",
     pdf: "PDF",
@@ -1219,6 +1320,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "admin.fault.unbounded": "The agents may act on this one, and no per-move ceiling stops them.",
     "admin.fault.noSuppressionSource": "No suppression list exists, so nothing is being held back.",
     "admin.fault.noExclusion": "This audience subtracts no suppression list.",
+    "admin.answer.faults": "{n} thing(s) need attention.",
     "admin.brandTitle": "Brand kit",
     "admin.brandLede": "The name, mark and colour every draft is written and rendered in.",
     "admin.brandName": "Product name",
@@ -1350,7 +1452,8 @@ const LABELS: Record<string, Record<string, string>> = {
     "dev.denied": "Your role does not include reading SIGNAL records. Ask a tenant administrator for SIGNAL access.",
     "dev.saved.read": "Read.",
     "dev.saved.ping": "Ping sent.",
-    "dev.saved.tick": "Sandbox ticked."
+    "dev.saved.tick": "Sandbox ticked.",
+    "dev.answer.ready": "{n} resource(s) you can read, {hooks} webhook(s) listening."
   },
   ar: {
     /* shared */
@@ -1388,6 +1491,10 @@ const LABELS: Record<string, Record<string, string>> = {
     /* cockpit */
     "cockpit.title": "مركز قيادة النمو",
     "cockpit.lede": "ماذا حقّق الإنفاق في هذه الفترة، وما غيّره الوكلاء في غيابك.",
+    "cockpit.answer.moved": "حرّك الطيار الآلي الميزانية {n} مرة (مرات) في هذه الفترة.",
+    "cockpit.answer.overPlan": "الإنفاق يتجاوز الخطة بنسبة {n}٪ في هذه الفترة.",
+    "cockpit.answer.running": "{n} حملة (حملات) تعمل الآن، ولم يُنفَّذ أي تحويل بعد.",
+    "cockpit.answer.quiet": "لا شيء يعمل ولم يُنفَّذ أي تحويل في هذه الفترة.",
     "cockpit.spendToDate": "المنفق في هذه الفترة",
     "cockpit.againstPlan": "مقابل الخطة",
     "cockpit.pipeline": "المسار حسب القناة",
@@ -1492,6 +1599,9 @@ const LABELS: Record<string, Record<string, string>> = {
     "aud.unmeasured": "لم توجّه أي حملة إلى هذا الجمهور بعد.",
     "aud.thin": "التعاقدات أقل من أن يُعتمد عليها.",
     "aud.openAudiences": "إدارة الجماهير",
+    "aud.answer.best": "{name} يتصدّر بمعدّل {multiple}.",
+    "aud.answer.losing": "{n} جمهور يكلّف أكثر مما يعيد.",
+    "aud.answer.none": "لا تعاقدات كافية بعد لمعرفة ما يُجدي.",
 
     /* answer engines */
     "aeo.title": "محرّكات الإجابة",
@@ -1511,6 +1621,8 @@ const LABELS: Record<string, Record<string, string>> = {
     "aeo.retire": "سحب",
     "aeo.noPages": "لا صفحات إجابات بعد.",
     "aeo.openPages": "إدارة صفحات الإجابات",
+    "aeo.answer.share": "{pct}% من الاقتباسات ترجع إليك.",
+    "aeo.answer.none": "لا صفحات إجابات منشورة بعد.",
     "aeo.staleWarning": "{n} صفحة منشورة لم تُتحقّق منها خلال ٣٠ يومًا.",
 
     /* experiments */
@@ -1583,6 +1695,8 @@ const LABELS: Record<string, Record<string, string>> = {
     "exp.metric.click_to_bind_rate": "معدّل التحوّل من نقرة إلى تعاقد",
     "exp.metric.renewal_accept_rate": "معدّل قبول التجديد",
     "exp.metric.aeo_citation_share": "نسبة الاقتباس في محرّكات الإجابة",
+    "exp.answer.won": "{n} تجربة أثبتت جدواها بالفعل.",
+    "exp.answer.running": "{n} تجربة تعمل الآن.",
 
     /* budget */
     "budget.title": "الميزانية والحدود",
@@ -1608,6 +1722,8 @@ const LABELS: Record<string, Record<string, string>> = {
     "budget.overspend": "تجاوز الخطة",
     "budget.autoApproved": "داخل حدوده",
     "budget.needsApproval": "احتاج موافقًا",
+    "budget.answer.over": "{amount} تجاوزًا للخطة في هذه الفترة.",
+    "budget.answer.under": "{amount} متبقٍّ في هذه الفترة.",
 
     /* analytics */
     "growth.title": "تحليلات النمو",
@@ -1636,6 +1752,8 @@ const LABELS: Record<string, Record<string, string>> = {
     "growth.last90": "آخر ٩٠ يومًا",
     "growth.noSpend": "لا إنفاق مسجّل في هذه الفترة.",
     "growth.efficiency": "تكلفة النقرة",
+    "growth.answer.ratio": "{multiple} قيمة مقابل كل وحدة تُنفق.",
+    "growth.answer.none": "لا تعاقدات كافية بعد لتقدير العائد.",
     xlsx: "إكسل",
     pdf: "بي دي إف",
     csv: "سي إس في",
@@ -1714,6 +1832,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "admin.fault.unbounded": "الوكلاء يتصرفون فيها بلا سقف لكل حركة يوقفهم.",
     "admin.fault.noSuppressionSource": "لا توجد قائمة استبعاد، فلا أحد يُستبعد.",
     "admin.fault.noExclusion": "هذا الجمهور لا يطرح أي قائمة استبعاد.",
+    "admin.answer.faults": "{n} أمر يحتاج انتباهًا.",
     "admin.brandTitle": "هوية العلامة",
     "admin.brandLede": "الاسم والشعار واللون الذي تُكتب وتُعرض به كل المسودات.",
     "admin.brandName": "اسم المنتج",
@@ -1845,7 +1964,8 @@ const LABELS: Record<string, Record<string, string>> = {
     "dev.denied": "لا يشمل دورك قراءة سجلات SIGNAL. اطلب من مدير المستأجر صلاحية SIGNAL.",
     "dev.saved.read": "تمت القراءة.",
     "dev.saved.ping": "أُرسل الاختبار.",
-    "dev.saved.tick": "حُرّكت بيئة التجربة."
+    "dev.saved.tick": "حُرّكت بيئة التجربة.",
+    "dev.answer.ready": "{n} مورد يمكنك قراءته، و{hooks} واجهة استدعاء تستمع."
   }
 };
 

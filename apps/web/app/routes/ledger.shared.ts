@@ -1,5 +1,5 @@
 // What the four bespoke ledger screens agree on: the state machine they may
-import { minorFromMajor } from "@lyra/ui";
+import { formatMoney, minorFromMajor } from "@lyra/ui";
 import { humanise } from "../modules/spec";
 import { vocabulary } from "../modules/vocabulary";
 import { pseudoText } from "../i18n";
@@ -368,11 +368,15 @@ export const LABELS: Record<string, Record<string, string>> = {
     "txn.moved": "Moved to {state}.",
     "txn.reversedAs": "Reversal posted as {id}.",
     "txn.statement": "Open the account statement",
+    "txn.headline": "{type} — {amount}, {state}.",
 
     /* opening a transaction */
     "open.title": "Open a transaction",
     "open.intro":
       "Money moves by running a transaction type. Pick the type, give it its arguments, and the ledger posts the recipe.",
+    "open.headline": "{count} transaction type(s) ready to run.",
+    "open.headlineGated": "{count} transaction type(s) ready to run; {gated} need approval first.",
+    "open.headlineEmpty": "No transaction types are published yet.",
     "open.type": "Transaction type",
     "open.financial": "Posts a journal",
     "open.nonFinancial": "No journal",
@@ -426,6 +430,10 @@ export const LABELS: Record<string, Record<string, string>> = {
     "period.title": "Period close",
     "period.intro":
       "A period closes when its checks pass. Soft close first: it stops ordinary posting and still allows an adjustment with a reason.",
+    "period.headlineNone": "No period is selected yet.",
+    "period.headlineBlocked": "{code} has {count} check(s) still blocking close.",
+    "period.headlineReady": "{code} is ready to close.",
+    "period.headlineState": "{code} is {state}.",
     "period.code": "Period",
     "period.checks": "Checks",
     "period.checksCaption": "Close checks for this period",
@@ -461,6 +469,8 @@ export const LABELS: Record<string, Record<string, string>> = {
     "ye.title": "Year-end close",
     "ye.intro":
       "One entry zeroes every income and expense account into retained earnings. The lines are read out of the journal, not typed: what is previewed here is exactly what posts.",
+    "ye.headlineEmpty": "Fiscal year {year} has nothing to close.",
+    "ye.headline": "Fiscal year {year} nets {amount}.",
     "ye.year": "Fiscal year",
     "ye.preview": "The entry that would post",
     "ye.previewCaption": "Closing lines for the fiscal year",
@@ -532,6 +542,9 @@ export const LABELS: Record<string, Record<string, string>> = {
     /* account statement */
     "account.title": "Account statement",
     "account.intro": "Every line posted to this account, with the balance it left behind.",
+    "account.headlineNone": "Enter an account code to see its statement.",
+    "account.headlineDrift": "Account {code}'s cached balance disagrees with the journal.",
+    "account.headline": "Account {code} closes at {amount}.",
     "account.code": "Account",
     "account.opening": "Opening",
     "account.closing": "Closing",
@@ -557,6 +570,9 @@ export const LABELS: Record<string, Record<string, string>> = {
     "recon.title": "Reconciliation",
     "recon.intro":
       "Match a counterparty statement against what we settled. Nothing posts here — a match is a judgement, and it is recorded as one.",
+    "recon.headlineNone": "{count} recent reconciliation run(s). Pick one to see its detail.",
+    "recon.headlineOpen": "{process} has {count} match(es) awaiting a decision.",
+    "recon.headlineMatched": "{process} is matched, nothing awaiting a decision.",
     "recon.process": "Process",
     "recon.period": "Period",
     "recon.counterparty": "Counterparty",
@@ -669,6 +685,7 @@ export const LABELS: Record<string, Record<string, string>> = {
 
     "txn.title": "المعاملة",
     "txn.intro": "معاملة واحدة، وقيودها، وكل ما جرى عليها.",
+    "txn.headline": "{type} — {amount}، {state}.",
     "txn.type": "النوع",
     "txn.gross": "الإجمالي",
     "txn.correlation": "معرّف الارتباط",
@@ -719,6 +736,9 @@ export const LABELS: Record<string, Record<string, string>> = {
 
     "open.title": "فتح معاملة",
     "open.intro": "المال يتحرك بتشغيل نوع معاملة. اختر النوع وأدخل معاملاته، ويُرحّل الدفتر الوصفة.",
+    "open.headline": "{count} نوع معاملة جاهز للتشغيل.",
+    "open.headlineGated": "{count} نوع معاملة جاهز للتشغيل؛ {gated} منها يحتاج موافقة أولاً.",
+    "open.headlineEmpty": "لم يُنشر أي نوع معاملة بعد.",
     "open.type": "نوع المعاملة",
     "open.financial": "تُرحّل قيدًا",
     "open.nonFinancial": "بلا قيد",
@@ -768,6 +788,10 @@ export const LABELS: Record<string, Record<string, string>> = {
     "period.title": "إقفال الفترة",
     "period.intro":
       "تُقفل الفترة عندما تنجح فحوصها. ابدأ بالإقفال المبدئي: يوقف الترحيل الاعتيادي ويسمح بالتسويات المسبّبة.",
+    "period.headlineNone": "لم يتم اختيار فترة بعد.",
+    "period.headlineBlocked": "{code} لديها {count} فحصًا لا يزال يمنع الإقفال.",
+    "period.headlineReady": "{code} جاهزة للإقفال.",
+    "period.headlineState": "{code} حالتها {state}.",
     "period.code": "الفترة",
     "period.checks": "الفحوص",
     "period.checksCaption": "فحوص إقفال هذه الفترة",
@@ -802,6 +826,8 @@ export const LABELS: Record<string, Record<string, string>> = {
     "ye.title": "إقفال نهاية السنة",
     "ye.intro":
       "قيد واحد يصفّر كل حسابات الإيرادات والمصروفات في الأرباح المحتجزة. السطور تُقرأ من الدفتر ولا تُكتب يدويًا: ما تراه هنا هو ما يُرحّل.",
+    "ye.headlineEmpty": "السنة المالية {year} ليس فيها ما يُقفل.",
+    "ye.headline": "صافي السنة المالية {year} هو {amount}.",
     "ye.year": "السنة المالية",
     "ye.preview": "القيد الذي سيُرحّل",
     "ye.previewCaption": "سطور إقفال السنة المالية",
@@ -868,6 +894,9 @@ export const LABELS: Record<string, Record<string, string>> = {
 
     "account.title": "كشف حساب",
     "account.intro": "كل سطر رُحّل إلى هذا الحساب والرصيد الذي تركه.",
+    "account.headlineNone": "أدخل رقم حساب لعرض كشفه.",
+    "account.headlineDrift": "الرصيد المخزَّن للحساب {code} يختلف عن دفتر اليومية.",
+    "account.headline": "يُقفل الحساب {code} على {amount}.",
     "account.code": "الحساب",
     "account.opening": "الرصيد الافتتاحي",
     "account.closing": "الرصيد الختامي",
@@ -891,6 +920,9 @@ export const LABELS: Record<string, Record<string, string>> = {
 
     "recon.title": "التسوية",
     "recon.intro": "طابق كشف الطرف المقابل مع ما سوّيناه. لا ترحيل هنا — المطابقة حكم، وتُسجّل كذلك.",
+    "recon.headlineNone": "{count} تشغيلة تسوية حديثة. اختر واحدة لعرض تفاصيلها.",
+    "recon.headlineOpen": "لدى {process} {count} فرقًا بانتظار قرار.",
+    "recon.headlineMatched": "طابقت {process} بالكامل — لا شيء بانتظار قرار.",
     "recon.process": "العملية",
     "recon.period": "الفترة",
     "recon.counterparty": "الطرف المقابل",
@@ -1015,4 +1047,75 @@ export function checkName(name: string, l: Label): string {
   const key = name.includes("@") ? name.slice(0, name.indexOf("@")) : name;
   const said = l(`check.${key}`);
   return said === `check.${key}` ? humanise(key) : said;
+}
+
+// Hero headlines: each is a pure function of a screen's already-loaded data,
+// feeding the dynamic <h1> per the orbit-console pattern. No ✦, none of this
+// is an agent's finding (CLAUDE.md §11) — it's the loader's own numbers said
+// back in a sentence.
+
+export function openHeadline(types: readonly { approval: string | null }[], l: Label): string {
+  if (types.length === 0) return l("open.headlineEmpty");
+  const gated = types.filter((type) => type.approval).length;
+  return gated > 0
+    ? l("open.headlineGated", { count: types.length, gated })
+    : l("open.headline", { count: types.length });
+}
+
+export function txnHeadline(
+  txn: { type: string; state: string; grossMinor: number; currency: string },
+  l: Label,
+  locale: string
+): string {
+  return l("txn.headline", {
+    type: txn.type,
+    amount: formatMoney(txn.grossMinor, txn.currency, locale),
+    state: l(`state.${txn.state}`)
+  });
+}
+
+export function periodHeadline(
+  period: { code: string; state: string } | null,
+  failed: number,
+  l: Label
+): string {
+  if (!period) return l("period.headlineNone");
+  if (failed > 0) return l("period.headlineBlocked", { code: period.code, count: failed });
+  if (period.state === "open") return l("period.headlineReady", { code: period.code });
+  return l("period.headlineState", { code: period.code, state: l(`state.${period.state}`) });
+}
+
+export function yearEndHeadline(
+  year: string,
+  preview: { netMinor: number; currency: string; closingLines: readonly unknown[] },
+  l: Label,
+  locale: string
+): string {
+  if (preview.closingLines.length === 0) return l("ye.headlineEmpty", { year });
+  return l("ye.headline", { year, amount: formatMoney(preview.netMinor, preview.currency, locale) });
+}
+
+export function accountHeadline(
+  statement: { accountCode: string; closingMinor: number } | null,
+  currency: string,
+  drift: boolean,
+  l: Label,
+  locale: string
+): string {
+  if (!statement) return l("account.headlineNone");
+  if (drift) return l("account.headlineDrift", { code: statement.accountCode });
+  return l("account.headline", {
+    code: statement.accountCode,
+    amount: formatMoney(statement.closingMinor, currency, locale)
+  });
+}
+
+export function reconHeadline(
+  summary: { process: string; open: number } | null,
+  runsCount: number,
+  l: Label
+): string {
+  if (!summary) return l("recon.headlineNone", { count: runsCount });
+  if (summary.open > 0) return l("recon.headlineOpen", { process: summary.process, count: summary.open });
+  return l("recon.headlineMatched", { process: summary.process });
 }

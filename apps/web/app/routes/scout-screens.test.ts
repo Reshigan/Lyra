@@ -5,15 +5,25 @@ import {
   DECISIONS,
   adequacy,
   elasticities,
+  labelsIn,
   latestPeriod,
   losses,
   rollByLine,
   verdictKey,
+  type Dot,
   type ExperimentRow,
-  type PanelRow
+  type LineBench,
+  type Loss,
+  type PanelRow,
+  type ProviderRoll
 } from "./scout.shared";
-import { action as experimentsAction } from "./scout-experiments";
-import { action as analyticsAction } from "./scout-analytics";
+import { action as experimentsAction, experimentsHeadline } from "./scout-experiments";
+import { action as analyticsAction, analyticsHeadline } from "./scout-analytics";
+import { radarHeadline } from "./scout-radar";
+import { panelHeadline } from "./scout-panel";
+import { priceHeadline } from "./scout-pricing";
+
+const l = labelsIn("en");
 
 // The three SCOUT screens that read the panel bench and the experiment board.
 // Only one of them writes — concluding an experiment is a decision about a build
@@ -237,5 +247,123 @@ describe("scout-analytics action", () => {
     const body = JSON.parse(calls[0]!.body!) as { definition: { dataset: string; metrics: string[] } };
     expect(body.definition.dataset).toBe("whitespaces");
     expect(body.definition.metrics.length).toBeGreaterThan(0);
+  });
+});
+
+/* ------------------------------------------------------------------ headlines */
+
+const dot = (over: Partial<Dot> = {}): Dot => ({
+  id: "sws_1",
+  label: "Motor for gig drivers",
+  fit: 30,
+  momentum: 30,
+  evidence: 5,
+  status: "candidate",
+  selected: false,
+  ...over
+});
+
+describe("radarHeadline", () => {
+  it("leads with the pursue-quadrant count when any dot clears both axes", () => {
+    const dots = [dot({ fit: 80, momentum: 80 }), dot({ fit: 20, momentum: 20 })];
+    expect(radarHeadline(dots, 0, l)).toBe(l("radar.headlinePursue", { n: "1" }));
+  });
+
+  it("falls back to the plotted count with nothing in the pursue quadrant", () => {
+    const dots = [dot({ fit: 20, momentum: 20 })];
+    expect(radarHeadline(dots, 0, l)).toBe(l("radar.headlinePlotted", { n: "1" }));
+  });
+
+  it("reports the unclustered count with nothing plotted at all", () => {
+    expect(radarHeadline([], 4, l)).toBe(l("radar.headlineUnplotted", { n: "4" }));
+  });
+
+  it("falls back to the empty state with nothing plotted or unclustered", () => {
+    expect(radarHeadline([], 0, l)).toBe(l("radar.empty"));
+  });
+});
+
+const roll = (over: Partial<ProviderRoll> = {}): ProviderRoll => ({
+  providerId: "prv_1",
+  volume: 100,
+  share: 1,
+  winRate: 30,
+  ourIdx: 10_000,
+  marketIdx: 10_000,
+  lines: ["motor"],
+  gaps: 0,
+  ...over
+});
+
+describe("panelHeadline", () => {
+  it("leads with the cheaper-than-median count", () => {
+    const rolls = [roll({ ourIdx: 9_000, marketIdx: 10_000 }), roll({ ourIdx: 10_000, marketIdx: 10_000 })];
+    expect(panelHeadline(rolls, l)).toBe(l("panel.headlineCheaper", { n: "1", total: "2" }));
+  });
+
+  it("falls back to the roll count with nobody priced below the median", () => {
+    const rolls = [roll({ ourIdx: 10_000, marketIdx: 10_000 })];
+    expect(panelHeadline(rolls, l)).toBe(l("panel.headlineCount", { n: "1" }));
+  });
+
+  it("falls back to the title with no rolls at all", () => {
+    expect(panelHeadline([], l)).toBe(l("panel.title"));
+  });
+});
+
+const line = (over: Partial<LineBench> = {}): LineBench => ({
+  line: "motor",
+  volume: 100,
+  ourIdx: 10_000,
+  marketIdx: 10_000,
+  pct: 0,
+  ...over
+});
+
+const loss = (over: Partial<Loss> = {}): Loss => ({ providerId: "prv_1", line: "motor", pct: 5, volume: 100, ...over });
+
+describe("priceHeadline", () => {
+  it("leads with the loss count when the panel is beating us somewhere", () => {
+    expect(priceHeadline([line(), line({ line: "home" })], [loss()], l)).toBe(
+      l("price.headlineLosses", { n: "1", lines: "2" })
+    );
+  });
+
+  it("falls back to the line count with no losses", () => {
+    expect(priceHeadline([line()], [], l)).toBe(l("price.headlineCount", { n: "1" }));
+  });
+
+  it("falls back to the title with nothing priced", () => {
+    expect(priceHeadline([], [], l)).toBe(l("price.title"));
+  });
+});
+
+describe("experimentsHeadline", () => {
+  it("leads with the running count", () => {
+    const rows = [experiment({ state: "running" }), experiment({ state: "draft" })];
+    expect(experimentsHeadline(rows, l)).toBe(l("xp.headlineRunning", { n: "1", total: "2" }));
+  });
+
+  it("falls back to the row count with nothing running", () => {
+    const rows = [experiment({ state: "draft" })];
+    expect(experimentsHeadline(rows, l)).toBe(l("xp.headlineCount", { n: "1" }));
+  });
+
+  it("falls back to the empty state with no experiments", () => {
+    expect(experimentsHeadline([], l)).toBe(l("xp.empty"));
+  });
+});
+
+describe("analyticsHeadline", () => {
+  it("leads with the adequacy share when there is one", () => {
+    expect(analyticsHeadline(3, 62.4, l)).toBe(l("an.headlineAdequacy", { pct: "62", periods: "3" }));
+  });
+
+  it("falls back to the period count with no adequacy share", () => {
+    expect(analyticsHeadline(3, null, l)).toBe(l("an.headlineCount", { n: "3" }));
+  });
+
+  it("falls back to the title with no periods on the bench", () => {
+    expect(analyticsHeadline(0, null, l)).toBe(l("an.title"));
   });
 });

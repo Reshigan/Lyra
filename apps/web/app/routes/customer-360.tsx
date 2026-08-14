@@ -195,6 +195,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     title: "Customer",
     intro: "Everything on file: cover held, claims made, conversations, consent and what to offer next.",
     back: "Back to customers",
+    heroLede: "{type} customer · {kyc}",
     profileTitle: "Profile",
     type: "Type",
     kyc: "Identity check",
@@ -259,6 +260,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     title: "العميل",
     intro: "كل ما هو مسجّل: التغطية القائمة، المطالبات، المحادثات، الموافقات، وما يُعرض تاليًا.",
     back: "العودة إلى العملاء",
+    heroLede: "عميل {type} · {kyc}",
     profileTitle: "الملف",
     type: "النوع",
     kyc: "التحقق من الهوية",
@@ -322,6 +324,13 @@ export const LABELS: Record<string, Record<string, string>> = {
 };
 
 export const labelsIn = labelsFrom(LABELS);
+
+/** The line under the customer's name: what kind of customer this is and
+ * where their identity check stands — the two facts a desk reads first, no ✦
+ * (arithmetic on the loaded record, not a model finding, CLAUDE.md §11). */
+export function customerLede(customer: Pick<Customer, "type" | "kycStatus">, l: Label): string {
+  return l("heroLede", { type: tag(l, "type", customer.type), kyc: tag(l, "kycStatus", customer.kycStatus) });
+}
 
 /* ------------------------------------------------------------------ loader */
 
@@ -692,11 +701,15 @@ export default function Customer360() {
 
   return (
     <div className="flex flex-col gap-6">
-      <Header title={l("title")} intro={l("intro")} />
-
-      <Link to="/admin/customers" className="font-ui text-12 text-accent underline-offset-2 hover:underline">
-        {l("back")}
-      </Link>
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <h1 className="font-serif text-22 leading-[1.2] text-text">{nameOf(customer.nameJson, locale, customer.id)}</h1>
+          <p className="font-ui text-13 text-muted">{customerLede(customer, l)}</p>
+          <Link to="/admin/customers" className="w-fit font-ui text-13 text-accent underline">
+            {l("back")}
+          </Link>
+        </div>
+      </header>
 
       <Card
         title={l("profileTitle")}
@@ -706,7 +719,6 @@ export default function Customer360() {
           </Badge>
         }
       >
-        <p className="mb-3 font-serif text-18 leading-[1.3] text-text">{nameOf(customer.nameJson, locale, customer.id)}</p>
         <Facts>
           <Entry term={l("type")}>{tag(l, "type", customer.type)}</Entry>
           <Entry term={l("kyc")}>{tag(l, "kycStatus", customer.kycStatus)}</Entry>

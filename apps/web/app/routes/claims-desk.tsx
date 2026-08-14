@@ -111,7 +111,11 @@ const LABELS: Record<string, Record<string, string>> = {
     "problem.missing_claim": "Pick a claim first.",
     "problem.missing_handler": "Name a handler before assigning.",
     "problem.bad_transition": "That outcome is not open from this claim's current state.",
-    "problem.bad_intent": "The form did not carry an action this screen knows."
+    "problem.bad_intent": "The form did not carry an action this screen knows.",
+    "headline.clear": "The desk is empty",
+    "headline.breached": "{count} claims are past their SLA",
+    "headline.moving": "{count} claims open, none overdue",
+    "headline.open": "Open the top-priority claim — {ref}"
   },
   ar: {
     title: "مكتب المطالبات",
@@ -162,7 +166,11 @@ const LABELS: Record<string, Record<string, string>> = {
     "problem.missing_claim": "اختر مطالبة أولًا.",
     "problem.missing_handler": "حدّد معالجًا قبل التعيين.",
     "problem.bad_transition": "تلك النتيجة غير متاحة من حالة المطالبة الحالية.",
-    "problem.bad_intent": "لم يحمل النموذج إجراءً تعرفه هذه الشاشة."
+    "problem.bad_intent": "لم يحمل النموذج إجراءً تعرفه هذه الشاشة.",
+    "headline.clear": "المكتب فارغ",
+    "headline.breached": "{count} مطالبة تجاوزت مهلة الخدمة",
+    "headline.moving": "{count} مطالبة مفتوحة، لا شيء متأخر",
+    "headline.open": "افتح المطالبة الأعلى أولوية — {ref}"
   }
 };
 
@@ -264,6 +272,14 @@ export function byPriority(now: number, weights: typeof WEIGHTS = WEIGHTS) {
     if (dueDiff !== 0) return dueDiff;
     return a.reportedAt - b.reportedAt;
   };
+}
+
+// Arithmetic on counts the caller already has, not an agent, so it never
+// carries the ✦ mark (CLAUDE.md §11).
+export function headlineFor(counts: { total: number; breached: number }, l: Label): string {
+  if (counts.total === 0) return l("headline.clear");
+  if (counts.breached > 0) return l("headline.breached", { count: String(counts.breached) });
+  return l("headline.moving", { count: String(counts.total) });
 }
 
 async function safe<T>(call: Promise<T>, fallback: T): Promise<T> {
@@ -452,12 +468,19 @@ export default function ClaimsDesk() {
   const now = loaded.now;
 
   const rows = [...loaded.claims].sort(byPriority(now));
+  const breached = rows.filter((row) => row.slaDueAt !== null && row.slaDueAt < now).length;
+  const headline = headlineFor({ total: rows.length, breached }, l);
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-xl font-semibold">{l("title")}</h1>
-        <p className="text-sm text-[var(--color-fg-muted)]">{l("intro")}</p>
+      <header className="flex flex-col gap-1">
+        <h1 className="font-serif text-22 leading-[1.2] text-text">{headline}</h1>
+        <p className="max-w-prose font-ui text-13 text-subtle">{l("intro")}</p>
+        {rows[0] ? (
+          <Link to={`/axis/claims/${rows[0].id}/detail`} className="w-fit font-ui text-13 text-accent underline">
+            {l("headline.open", { ref: rows[0].claimNo })}
+          </Link>
+        ) : null}
       </header>
 
       {result?.problem ? <Gate problem={phrase(result.problem, l)} l={l} /> : null}

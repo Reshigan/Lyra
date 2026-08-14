@@ -118,7 +118,11 @@ const LABELS: Record<string, Record<string, string>> = {
     "autonomy.suggest": "Suggest only",
     "autonomy.act_with_approval": "Act with approval",
     "autonomy.act_within_limits": "Act within limits",
-    "autonomy.autonomous": "Autonomous"
+    "autonomy.autonomous": "Autonomous",
+    "lede.succeeded": "This run finished and its output is ready below.",
+    "lede.running": "This run is still in progress.",
+    "lede.refused": "This run refused to act — see why below.",
+    "lede.cancelled": "This run was cancelled before it finished."
   },
   ar: {
     back: "كل تشغيلات الوكلاء",
@@ -189,7 +193,11 @@ const LABELS: Record<string, Record<string, string>> = {
     "autonomy.suggest": "اقتراح فقط",
     "autonomy.act_with_approval": "التنفيذ بموافقة",
     "autonomy.act_within_limits": "التنفيذ ضمن حدود",
-    "autonomy.autonomous": "مستقل"
+    "autonomy.autonomous": "مستقل",
+    "lede.succeeded": "اكتمل هذا التشغيل ومخرجه جاهز أدناه.",
+    "lede.running": "هذا التشغيل ما زال جاريًا.",
+    "lede.refused": "رفض هذا التشغيل التصرف — السبب أدناه.",
+    "lede.cancelled": "أُلغي هذا التشغيل قبل اكتماله."
   }
 };
 
@@ -317,6 +325,27 @@ const STATE_TONES: Record<string, BadgeTone> = {
 };
 
 const toneOf = (value: string): BadgeTone => STATE_TONES[value] ?? "neutral";
+
+/**
+ * A one-line status for the hero — only for states that have nothing else on
+ * the page explaining them. `awaiting_approval`, `budget_stopped` and `failed`
+ * already get their own notice further down (stopped.*, failed.*, approval.*);
+ * repeating that here would be the same sentence twice.
+ */
+export function runLede(state: string, L: Label): string | null {
+  switch (state) {
+    case "succeeded":
+      return L("lede.succeeded");
+    case "running":
+      return L("lede.running");
+    case "refused":
+      return L("lede.refused");
+    case "cancelled":
+      return L("lede.cancelled");
+    default:
+      return null;
+  }
+}
 
 /** term/detail pairs, so the "why" reads as a record rather than a paragraph. */
 function Pair({ term, detail }: { term: string; detail: React.ReactNode }) {
@@ -459,6 +488,9 @@ export default function AiRun() {
           </h1>
           <Badge tone={toneOf(run.state)}>{L(`state.${run.state}`, run.state)}</Badge>
         </div>
+        {runLede(run.state, L) ? (
+          <p className="max-w-prose font-ui text-13 text-muted">{runLede(run.state, L)}</p>
+        ) : null}
         <p className="font-ui text-13 text-subtle">
           <DateTime value={run.startedAt} locale={locale} precision="second" />
           {" · "}

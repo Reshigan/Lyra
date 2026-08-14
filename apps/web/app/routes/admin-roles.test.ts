@@ -9,6 +9,7 @@ import {
   keptGrants,
   labelsIn,
   matrixOf,
+  rolesLede,
   type RoleRow
 } from "./admin-roles";
 
@@ -97,6 +98,19 @@ describe("labelsIn", () => {
 
   it("interpolates the policy name the approval notice quotes", () => {
     expect(labelsIn("en")("approvalBody", { policy: "role.change" })).toContain("role.change");
+  });
+});
+
+describe("rolesLede", () => {
+  const l = labelsIn("en");
+
+  it("reads empty when the organisation has no roles", () => {
+    expect(rolesLede([], l)).toBe(LABELS.en?.introEmpty);
+  });
+
+  it("counts roles and only the custom ones", () => {
+    const roles = [{ system: true }, { system: false }, { system: false }];
+    expect(rolesLede(roles, l)).toBe("3 role(s), 2 of them custom.");
   });
 });
 

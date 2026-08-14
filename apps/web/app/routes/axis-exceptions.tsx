@@ -86,6 +86,15 @@ const LABELS: Record<string, Record<string, string>> = {
     unassigned: "Nobody",
     "empty.title": "Nothing is stuck",
     "empty.body": "No case, document, task or escrow batch is waiting on a person right now.",
+    // Horizon's opening move: the screen says what the state of play is before
+    // showing a single number. Count-free like home.tsx's `answer` (docs/15
+    // §4) — Arabic has five plural forms, and the count is one row below on
+    // the KPI wall regardless.
+    "headline.clear": "Nothing is waiting on a person right now.",
+    "headline.breached": "Something has missed its deadline.",
+    "headline.urgent": "Nothing has missed its deadline, but something is urgent.",
+    "headline.waiting": "Something is waiting on a person.",
+    "headline.open": "Open the worst case: {ref}",
     "denied.title": "Partly hidden",
     "denied.body":
       "Some queues are missing from this page because your roles do not include their read permission.",
@@ -125,6 +134,11 @@ const LABELS: Record<string, Record<string, string>> = {
     unassigned: "بلا مسؤول",
     "empty.title": "لا شيء متعطل",
     "empty.body": "لا توجد حالة أو مستند أو مهمة أو دفعة ضمان تنتظر شخصًا الآن.",
+    "headline.clear": "لا شيء ينتظر شخصًا الآن.",
+    "headline.breached": "هناك ما تجاوز موعده النهائي.",
+    "headline.urgent": "لم يتجاوز أي شيء موعده النهائي، لكن هناك ما هو عاجل.",
+    "headline.waiting": "هناك ما ينتظر شخصًا.",
+    "headline.open": "افتح أسوأ حالة: {ref}",
     "denied.title": "معروض جزئيًا",
     "denied.body": "بعض الطوابير غائبة عن هذه الصفحة لأن أدوارك لا تتضمن صلاحية قراءتها.",
     "claim.title": "تولّي المسؤولية",
@@ -231,6 +245,20 @@ export function bySeverity(now: number) {
     const due = (a.slaDueAt ?? Number.MAX_SAFE_INTEGER) - (b.slaDueAt ?? Number.MAX_SAFE_INTEGER);
     return due !== 0 ? due : a.createdAt - b.createdAt;
   };
+}
+
+/**
+ * The one sentence the screen opens with, before a single number. Count-free
+ * like home.tsx's `answer` (docs/15 §4) — Arabic has five plural forms, and
+ * the count is one row below on the KPI wall regardless. Arithmetic on counts
+ * the caller already has, not an agent, so it never carries the ✦ mark
+ * (CLAUDE.md §11).
+ */
+export function headlineFor(counts: { total: number; breached: number; urgent: number }, l: Label): string {
+  if (counts.total === 0) return l("headline.clear");
+  if (counts.breached) return l("headline.breached");
+  if (counts.urgent) return l("headline.urgent");
+  return l("headline.waiting");
 }
 
 /** Elapsed time as one coarse unit. Precision nobody acts on is noise. */
@@ -415,11 +443,21 @@ export default function AxisExceptions() {
   // A queue the actor cannot fully see is stated, not silently short.
   const hidden = [PERM.cases, PERM.documents, PERM.tasks, PERM.escrow, PERM.complaints].some((p) => !held.has(p));
 
+  const headline = headlineFor({ total, breached, urgent }, l);
+
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-1">
-        <h1 className="font-serif text-22 leading-[1.2] text-text">{l("title")}</h1>
+        <h1 className="font-serif text-22 leading-[1.2] text-text">{headline}</h1>
         <p className="max-w-prose font-ui text-13 text-subtle">{l("intro")}</p>
+        {cases[0] ? (
+          <Link
+            to={`/axis/cases/${cases[0].id}`}
+            className="w-fit font-ui text-13 text-accent underline"
+          >
+            {l("headline.open", { ref: cases[0].ref })}
+          </Link>
+        ) : null}
       </header>
 
       {result?.problem ? <Gate problem={phrase(result.problem, l)} l={l} /> : null}

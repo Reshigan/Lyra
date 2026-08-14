@@ -26,7 +26,7 @@ import { translator } from "../i18n";
 import { ConfirmButton } from "../components/confirm";
 import { Problem } from "./module";
 import { useShellData } from "./workspace";
-import { PERM, argsFromForm, labelIn, mintKey, type ArgField } from "./ledger.shared";
+import { PERM, argsFromForm, labelIn, mintKey, openHeadline, type ArgField } from "./ledger.shared";
 
 // Opening a transaction is the only way money starts moving, so it is a form
 // with a catalogue rather than a row in a table: the type decides the recipe,
@@ -195,9 +195,11 @@ export default function LedgerOpenTxn() {
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-2">
-        <h1 className="font-serif text-22 leading-[1.2] text-text">{l("open.title")}</h1>
-        <p className="max-w-prose font-ui text-13 text-subtle">{l("open.intro")}</p>
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <h1 className="font-serif text-22 leading-[1.2] text-text">{openHeadline(loaded.types, l)}</h1>
+          <p className="font-ui text-13 text-muted">{l("open.intro")}</p>
+        </div>
       </header>
 
       {result?.approval !== null && result?.approval !== undefined ? (

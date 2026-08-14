@@ -1,5 +1,6 @@
 import {
   Form,
+  Link,
   useActionData,
   useLoaderData,
   useNavigation,
@@ -49,6 +50,14 @@ const LABELS: Labels = {
     kicker: "The quarter, assembled once and sent to the people who decide",
     intro:
       "A pack is the latest executive briefing, the period's metric snapshots and the open decision log, rendered together. Assembly is one click; sending it is not.",
+    "link.brief": "The Brief",
+    // The hero narrates the open pack's real assembly state rather than
+    // restating the title (CLAUDE.md rule 11) — arithmetic on the loaded row,
+    // never a count (a count needs a plural rule per locale; see home.tsx).
+    "headline.draft": "The {period} pack has not been assembled yet.",
+    "headline.review": "The {period} pack is assembled and waiting on distribution.",
+    "headline.final": "The {period} pack is finalised.",
+    "headline.distributed": "The {period} pack has gone out to the board.",
     "assemble.title": "Assemble a pack",
     "assemble.period": "Period",
     "assemble.period.hint": "The period the snapshots are stored under — 2026-07 for a month, 2026-Q3 for a quarter.",
@@ -91,6 +100,11 @@ const LABELS: Labels = {
     kicker: "الربع، يُجمَّع مرة ويُرسَل إلى من يقرر",
     intro:
       "الحزمة هي آخر ملخص تنفيذي، ولقطات مؤشرات الفترة، وسجل القرارات المفتوحة، مُخرجة معاً. التجميع بنقرة واحدة، أما الإرسال فلا.",
+    "link.brief": "الموجز",
+    "headline.draft": "حزمة {period} لم تُجمَّع بعد.",
+    "headline.review": "حزمة {period} مُجمَّعة وتنتظر التوزيع.",
+    "headline.final": "حزمة {period} نهائية.",
+    "headline.distributed": "حزمة {period} أُرسلت إلى المجلس.",
     "assemble.title": "جمِّع حزمة",
     "assemble.period": "الفترة",
     "assemble.period.hint": "الفترة المحفوظة بها اللقطات — 2026-07 للشهر، و2026-Q3 للربع.",
@@ -186,6 +200,19 @@ const TONE: Record<string, "neutral" | "warning" | "success"> = {
   distributed: "success"
 };
 
+/**
+ * What the hero says about the pack currently open: its real assembly state,
+ * not the title restated. Arithmetic on the loaded row's own `status` column —
+ * no ✦, this is not an agent's sentence (unlike The Brief's narrator text).
+ */
+export function headline(
+  open: Pick<Boardpack, "period" | "status"> | null,
+  l: (key: string, vars?: Record<string, string>) => string
+): string {
+  if (!open) return l("title");
+  return l(`headline.${open.status}`, { period: open.period });
+}
+
 /* ------------------------------------------------------------------ loader */
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
@@ -255,8 +282,21 @@ export default function NorthBoard() {
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-2">
         <span className="font-mono text-12 uppercase tracking-[0.14em] text-subtle">{l("kicker")}</span>
-        <h1 className="font-serif text-22 leading-[1.2] text-text">{l("title")}</h1>
+        {/* The headline narrates the open pack's own assembly state rather
+            than repeating the eyebrow's "Board packs" label — see headline()
+            above. Lede's classes rather than <Lede>: the page needs a real h1
+            in the outline, and the component is a <p>. */}
+        <h1 className="font-serif text-22 leading-[1.2] text-text">{headline(open, l)}</h1>
         <p className="max-w-[68ch] font-ui text-13 text-subtle">{l("intro")}</p>
+        {/* routing.ts documents /north/brief as reached from the workspace
+            tools list; The Brief itself links back to /north/board, so this
+            closes the loop the same way north-brief.tsx already does. */}
+        <Link
+          to="/north/brief"
+          className="w-fit font-ui text-12 text-accent underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+        >
+          {l("link.brief")}
+        </Link>
       </header>
 
       {shown ? <Gate problem={shown} l={l} /> : null}

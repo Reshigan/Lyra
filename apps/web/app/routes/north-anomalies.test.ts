@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { driverWidth, tone } from "./north-anomalies";
+import { driverWidth, headline, tone } from "./north-anomalies";
 
 const drivers = [
   { dimension: "channel", key: "alpha-brokers", contributionBps: -1180 },
@@ -38,5 +38,25 @@ describe("tone", () => {
 
   it("has no opinion on a metric that did not move", () => {
     expect(tone(0, "down")).toBe("neutral");
+  });
+});
+
+describe("headline", () => {
+  const l = (key: string) => key;
+
+  it("says access is missing when the list could not be read", () => {
+    expect(headline(null, l)).toBe("headline.denied");
+  });
+
+  it("says nothing moved when the list is empty", () => {
+    expect(headline([], l)).toBe("headline.clear");
+  });
+
+  it("flags an unowned anomaly even when others are already closed", () => {
+    expect(headline([{ state: "explained" }, { state: "new" }], l)).toBe("headline.open");
+  });
+
+  it("says every anomaly has an owner when none are unowned", () => {
+    expect(headline([{ state: "explained" }, { state: "dismissed" }], l)).toBe("headline.owned");
   });
 });

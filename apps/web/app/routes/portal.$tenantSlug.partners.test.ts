@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { firstCall, usageTotals, type PartnerTxn } from "./portal.$tenantSlug.partners";
+import { LABELS, firstCall, usageTotals, type PartnerTxn } from "./portal.$tenantSlug.partners";
 
 // docs/modules/orbit.md §4 screen 5. The only logic on the page is the money:
 // what the partner has written, what their share of it is, and what has not
@@ -64,5 +64,19 @@ describe("firstCall", () => {
     const command = firstCall("https://api.lyra.example", "qvk_test_ABCDEF");
     expect(command).toContain("Authorization: Bearer qvk_test_ABCDEF");
     expect(command).toContain("https://api.lyra.example/v1/dist/offerings");
+  });
+});
+
+describe("this screen's own labels speak both locales", () => {
+  it("has the same keys in en and ar", () => {
+    expect(Object.keys(LABELS.ar ?? {}).sort()).toEqual(Object.keys(LABELS.en ?? {}).sort());
+  });
+
+  it("never leaves an Arabic string empty or identical to the English", () => {
+    for (const [key, english] of Object.entries(LABELS.en ?? {})) {
+      const arabic = LABELS.ar?.[key] ?? "";
+      expect(arabic.trim(), key).not.toBe("");
+      expect(arabic, key).not.toBe(english);
+    }
   });
 });

@@ -207,6 +207,12 @@ export function paragraphs(text: string | null | undefined): string[] {
     .filter(Boolean);
 }
 
+/** The finding a hero can headline with, without running the whole paragraph on. */
+export function firstSentence(paragraph: string | undefined): string | null {
+  if (!paragraph) return null;
+  return paragraph.split(/(?<=[.!?])\s+/)[0] ?? paragraph;
+}
+
 /** The briefing being read: the one asked for, else the most recent. */
 export function chosen(rows: readonly Briefing[] | null, id: string | null): Briefing | null {
   if (!rows?.length) return null;
@@ -386,7 +392,13 @@ export default function NorthBrief() {
         </header>
 
         <div className="flex flex-col gap-2">
-          <h1 className="font-serif text-22 leading-[1.2] text-text">{l("title")}</h1>
+          {/* The headline narrates the brief's own first finding rather than
+              repeating the eyebrow's "The Brief" label — the sentence is
+              the model's own text (paragraphs() splits on its own blank-line
+              breaks), so it carries the same ✦ the kicker below already does. */}
+          <h1 className="font-serif text-22 leading-[1.2] text-text">
+            {firstSentence(paragraphs(brief?.narrativeRef).at(0)) ?? l("title")}
+          </h1>
           {/* docs/15: one ✦ per AI artifact, and the "why" one interaction away. */}
           <p className="font-ui text-13 text-subtle">
             <EvidenceLink

@@ -25,7 +25,7 @@ import { cloudflare } from "../context";
 import { translator } from "../i18n";
 import { Gate } from "./staff";
 import { useShellData } from "./workspace";
-import { labelsFrom } from "./detail-kit";
+import { labelsFrom, type Label } from "./detail-kit";
 
 // The developer portal (docs/10 §6). Three things an integrator needs that no
 // generated list can give them:
@@ -136,12 +136,22 @@ export function keyTone(row: Pick<KeyRow, "mode" | "revokedAt">): BadgeTone {
   return row.revokedAt ? "neutral" : (KEY_TONES[row.mode] ?? "neutral");
 }
 
+/** The one line under the title: what is actually live right now, not the static blurb. */
+export function devLede(keys: readonly KeyRow[], hooks: readonly HookRow[], l: Label): string {
+  const liveKeys = keys.filter((row) => !row.revokedAt && row.mode === "live").length;
+  const activeHooks = hooks.filter((row) => row.status === "active").length;
+  if (liveKeys === 0 && activeHooks === 0) return l("introEmpty");
+  return l("introSummary", { keys: String(liveKeys), hooks: String(activeHooks) });
+}
+
 /* ----------------------------------------------------------------- labels */
 
 export const LABELS: Record<string, Record<string, string>> = {
   en: {
     title: "Developer portal",
     intro: "The API surface, the credentials that call it, and the secret every delivery is signed with.",
+    introEmpty: "No live keys or active webhooks yet — everything running is in test mode.",
+    introSummary: "{keys} live key(s) and {hooks} active webhook(s) are calling this API right now.",
     deniedTitle: "You cannot read developer settings",
     surfaceTitle: "API surface",
     surfaceIntro: "Generated from the running API, so it can never describe an endpoint that is not there.",
@@ -194,6 +204,8 @@ export const LABELS: Record<string, Record<string, string>> = {
   ar: {
     title: "بوابة المطوّرين",
     intro: "سطح الواجهة البرمجية، والاعتمادات التي تستدعيه، والسر الذي يُوقَّع به كل تسليم.",
+    introEmpty: "لا مفاتيح حية أو ويب هوك نشط بعد — كل ما يعمل الآن في وضع الاختبار.",
+    introSummary: "{keys} مفتاح حي (مفاتيح) و{hooks} ويب هوك نشط يستدعون هذه الواجهة الآن.",
     deniedTitle: "لا يمكنك قراءة إعدادات المطوّرين",
     surfaceTitle: "سطح الواجهة البرمجية",
     surfaceIntro: "مُولَّد من الواجهة العاملة، فلا يمكن أن يصف مسارًا غير موجود.",
@@ -448,7 +460,7 @@ export default function AdminDeveloper() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title={l("title")} description={l("intro")} />
+      <PageHeader eyebrow={l("title")} title={devLede(loaded.keys, loaded.hooks, l)} description={l("intro")} />
 
       {result?.error ? (
         <p role="alert" className="font-ui text-13 text-danger">

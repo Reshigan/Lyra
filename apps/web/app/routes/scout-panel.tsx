@@ -50,6 +50,17 @@ import {
 
 const LIMIT = 200;
 
+/** The one sentence the bench opens with — volume-weighted index already on
+ *  every roll, no ✦ (arithmetic, not an agent's finding, CLAUDE.md §11). */
+export function panelHeadline(rolls: ProviderRoll[], l: Label): string {
+  if (rolls.length === 0) return l("panel.title");
+  const cheaper = rolls.filter(
+    (roll) => positionOf(deltaPct(roll.ourIdx, roll.marketIdx)).key === "panel.cheaper"
+  ).length;
+  if (cheaper > 0) return l("panel.headlineCheaper", { n: String(cheaper), total: String(rolls.length) });
+  return l("panel.headlineCount", { n: String(rolls.length) });
+}
+
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = context.get(cloudflare).env;
   const bench = await safe(
@@ -109,11 +120,11 @@ export default function ScoutPanel() {
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-1">
-        <h1 className="font-serif text-22 leading-[1.2] text-text">{l("panel.title")}</h1>
-        <p className="max-w-prose font-ui text-13 text-muted">
-          {l("panel.lede", { period: loaded.period ?? l("none") })}
-        </p>
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <h1 className="font-serif text-22 leading-[1.2] text-text">{panelHeadline(loaded.rolls, l)}</h1>
+          <p className="font-ui text-13 text-muted">{l("panel.lede", { period: loaded.period ?? l("none") })}</p>
+        </div>
       </header>
 
       {problem ? <Gate problem={explain(problem, l)} l={l} /> : null}

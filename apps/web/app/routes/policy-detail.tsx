@@ -12,6 +12,7 @@ import {
   rowsOf,
   safe,
   tag,
+  type Label,
   type Page
 } from "./detail-kit";
 import { useShellData } from "./workspace";
@@ -107,6 +108,7 @@ export const LABELS: Record<string, Record<string, string>> = {
   en: {
     intro: "What is covered, what it costs, what has been claimed against it, and the paper behind it.",
     back: "Back to the register",
+    heroLede: "{status} · {from} – {to}",
     coverTitle: "The agreement",
     term: "Term",
     holder: "Held by",
@@ -148,6 +150,7 @@ export const LABELS: Record<string, Record<string, string>> = {
   ar: {
     intro: "ما هو مغطّى، وتكلفته، والمطالبات المسجّلة عليه، والمستندات المرتبطة به.",
     back: "العودة إلى السجل",
+    heroLede: "{status} · من {from} إلى {to}",
     coverTitle: "الاتفاقية",
     term: "المدة",
     holder: "صاحب التغطية",
@@ -188,6 +191,18 @@ export const LABELS: Record<string, Record<string, string>> = {
 };
 
 export const labelsIn = labelsFrom(LABELS);
+
+/** The line under the policy number: its status and its cover term — is it
+ * still running, and until when — no ✦, formatting of the loaded record's
+ * own dates, not a model finding (CLAUDE.md §11). */
+export function policyLede(policy: Pick<Policy, "status" | "startAt" | "endAt">, l: Label, locale: string): string {
+  const fmt = new Intl.DateTimeFormat(locale, { year: "numeric", month: "short", day: "numeric" });
+  return l("heroLede", {
+    status: tag(l, "status", policy.status),
+    from: fmt.format(new Date(policy.startAt)),
+    to: fmt.format(new Date(policy.endAt))
+  });
+}
 
 /* ------------------------------------------------------------------ loader */
 
@@ -388,11 +403,15 @@ export default function PolicyDetail() {
 
   return (
     <div className="flex flex-col gap-6">
-      <Header title={`${l("policyId")} ${policy.policyNo}`} intro={l("intro")} />
-
-      <Link to="/axis/policies" className="font-ui text-12 text-accent underline-offset-2 hover:underline">
-        {l("back")}
-      </Link>
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <h1 className="font-serif text-22 leading-[1.2] text-text">{`${l("policyId")} ${policy.policyNo}`}</h1>
+          <p className="font-ui text-13 text-muted">{policyLede(policy, l, locale)}</p>
+          <Link to="/axis/policies" className="w-fit font-ui text-13 text-accent underline">
+            {l("back")}
+          </Link>
+        </div>
+      </header>
 
       <Card
         title={l("coverTitle")}

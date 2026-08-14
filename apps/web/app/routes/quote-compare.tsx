@@ -300,6 +300,12 @@ const LABELS: Record<string, Record<string, string>> = {
   }
 };
 
+/** Past its expiry the API refuses a selection (routes/dist.ts returns 409) — pulled
+ *  out of the component so the header and the button read the same clock. */
+export function requestExpired(expiresAt: number | null, now: number): boolean {
+  return expiresAt !== null && expiresAt <= now;
+}
+
 /** Local catalogue, English fallback, then the raw key — same contract as i18n.ts. */
 function labeller(locale: string) {
   const table = LABELS[locale] ?? LABELS.en ?? {};
@@ -472,7 +478,7 @@ export default function QuoteCompare() {
   const alreadySelected = quotes.some((quote) => quote.selectedAt !== null);
   // Past its expiry the API refuses a selection (routes/dist.ts returns 409), so
   // the button says so up front rather than letting the click find out.
-  const expired = request.expiresAt !== null && request.expiresAt <= loaded.now;
+  const expired = requestExpired(request.expiresAt, loaded.now);
   const closed = alreadySelected || expired || request.state === "converted";
   // Two different silences: still out with the panel, versus answered with a no.
   const awaiting = loaded.unavailable.filter((entry) => entry.state === "pending");
@@ -480,34 +486,36 @@ export default function QuoteCompare() {
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-2">
-        <Link to={listPath} className="font-ui text-12 text-subtle underline-offset-2 hover:underline">
-          {t("common.back")}
-        </Link>
-        <h1 className="font-serif text-22 leading-[1.2] text-text">{L("title")}</h1>
-        <p className="flex flex-wrap items-center gap-2 font-ui text-12 text-subtle">
-          <Ref value={request.id} />
-          <Badge tone={toneFor(request.state)} size="sm" dot>
-            {L(`state.${request.state}`)}
-          </Badge>
-          <span>
-            {L("responded", {
-              responded: String(request.respondedCount ?? quotes.length),
-              fanout: String(request.fanoutCount ?? quotes.length)
-            })}
-          </span>
-          {request.expiresAt !== null ? (
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <Link to={listPath} className="w-fit font-ui text-12 text-subtle underline-offset-2 hover:underline">
+            {t("common.back")}
+          </Link>
+          <h1 className="font-serif text-22 leading-[1.2] text-text">{L("title")}</h1>
+          <p className="flex flex-wrap items-center gap-2 font-ui text-12 text-subtle">
+            <Ref value={request.id} />
+            <Badge tone={toneFor(request.state)} size="sm" dot>
+              {L(`state.${request.state}`)}
+            </Badge>
             <span>
-              {expired ? L("expired") : L("expires")} ·{" "}
-              <DateTime value={request.expiresAt} locale={locale} precision="minute" />
+              {L("responded", {
+                responded: String(request.respondedCount ?? quotes.length),
+                fanout: String(request.fanoutCount ?? quotes.length)
+              })}
             </span>
-          ) : null}
-          {request.sharedWithCustomerAt ? (
-            <span>
-              {L("sharedAt")} · <DateTime value={request.sharedWithCustomerAt} locale={locale} precision="minute" />
-            </span>
-          ) : null}
-        </p>
+            {request.expiresAt !== null ? (
+              <span>
+                {expired ? L("expired") : L("expires")} ·{" "}
+                <DateTime value={request.expiresAt} locale={locale} precision="minute" />
+              </span>
+            ) : null}
+            {request.sharedWithCustomerAt ? (
+              <span>
+                {L("sharedAt")} · <DateTime value={request.sharedWithCustomerAt} locale={locale} precision="minute" />
+              </span>
+            ) : null}
+          </p>
+        </div>
       </header>
 
       {expired ? <GuardrailNotice title={L("expired")} reason={L("expiredBody")} /> : null}

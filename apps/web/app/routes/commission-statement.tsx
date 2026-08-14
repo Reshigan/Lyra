@@ -87,7 +87,7 @@ export interface CurrencyTotals {
 }
 
 /** `GET /v1/dist/commission-entries/statement`. */
-interface Statement {
+export interface Statement {
   /** Every matching entry, grouped — not just the page in `entries`. */
   totals: CurrencyTotals[];
   count: number;
@@ -134,6 +134,8 @@ const LABELS: Record<string, Record<string, string>> = {
     intro:
       "Every commission entry that matches these filters, and the position they add up to. Figures are the entries themselves — nothing here is an estimate.",
     backToEntries: "Back to commission entries",
+    "headline.filtered": "{count} entries match these filters.",
+    "headline.all": "{count} entries in the position.",
     providerId: "Provider",
     channelId: "Channel",
     state: "State",
@@ -186,6 +188,8 @@ const LABELS: Record<string, Record<string, string>> = {
     intro:
       "كل قيود العمولة المطابقة لهذه المرشحات، والمركز الذي تصل إليه. الأرقام هي القيود نفسها — لا شيء هنا تقديري.",
     backToEntries: "العودة إلى قيود العمولة",
+    "headline.filtered": "{count} قيد يطابق هذه المرشحات.",
+    "headline.all": "{count} قيد في المركز.",
     providerId: "المزود",
     channelId: "القناة",
     state: "الوضع",
@@ -268,6 +272,18 @@ export function canClawBack(
  */
 export function totalsRow(totals: CurrencyTotals): Row {
   return { ...totals, __currency: totals.currency };
+}
+
+/** Header line for the statement screen: how many entries this position holds,
+ *  and whether that count is already narrowed by the filter form. No `null`
+ *  case — the caller only reaches here once a statement was actually loaded. */
+export function statementHeadline(
+  statement: Pick<Statement, "count">,
+  filtered: boolean,
+  l: (key: string, vars?: Record<string, string>) => string
+): string {
+  const key = filtered ? "headline.filtered" : "headline.all";
+  return l(key, { count: String(statement.count) });
 }
 
 /* ------------------------------------------------------------------ loader */
@@ -470,7 +486,7 @@ export default function CommissionStatement() {
 
   return (
     <div className="flex flex-col gap-6">
-      <Header l={l} />
+      <Header l={l} description={statementHeadline(statement, filtered, l)} />
 
       <Form method="get" className="flex flex-wrap items-end gap-3" aria-label={l("filters")}>
         <Field label={l("providerId")} labelHidden className="w-56">
@@ -628,20 +644,25 @@ export default function CommissionStatement() {
   );
 }
 
-function Header({ l }: { l: (key: string, vars?: Record<string, string>) => string }) {
-  return (
-    <PageHeader
-      title={l("title")}
-      description={l("intro")}
-      back={
-        <Link
-          to="/distribution/commission-entries"
-          className="font-ui text-12 text-subtle underline-offset-2 hover:underline"
-        >
-          {l("backToEntries")}
-        </Link>
-      }
-    />
+function Header({
+  l,
+  description
+}: {
+  l: (key: string, vars?: Record<string, string>) => string;
+  description?: string;
+}) {
+  const back = (
+    <Link
+      to="/distribution/commission-entries"
+      className="font-ui text-12 text-subtle underline-offset-2 hover:underline"
+    >
+      {l("backToEntries")}
+    </Link>
+  );
+  return description ? (
+    <PageHeader eyebrow={l("title")} title={description} description={l("intro")} back={back} />
+  ) : (
+    <PageHeader title={l("title")} description={l("intro")} back={back} />
   );
 }
 

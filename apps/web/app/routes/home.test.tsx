@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isOwnWork } from "./home";
+import { hasApprovalsLink, isOwnWork } from "./home";
 
 // The activity panel is headed "Your recent activity", which is a promise: it
 // lists what this person changed. Signing in is not a change, and the audit log
@@ -24,5 +24,20 @@ describe("what counts as your recent activity", () => {
 
   it("keeps an event with no subject at all", () => {
     expect(isOwnWork({ action: "core.settings.update", subjectRef: null })).toBe(true);
+  });
+});
+
+describe("hasApprovalsLink", () => {
+  it("shows the link when something is waiting", () => {
+    expect(hasApprovalsLink({ approvals: 1 })).toBe(true);
+  });
+
+  it("hides it once the queue is empty", () => {
+    expect(hasApprovalsLink({ approvals: 0 })).toBe(false);
+  });
+
+  it("hides it when the inbox never loaded", () => {
+    expect(hasApprovalsLink(null)).toBe(false);
+    expect(hasApprovalsLink(undefined)).toBe(false);
   });
 });

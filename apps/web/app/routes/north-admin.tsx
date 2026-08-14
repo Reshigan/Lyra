@@ -115,6 +115,9 @@ const LABELS: Labels = {
     "alerts.lede": "Alert rules watch a metric against a threshold and are managed in the NORTH workspace.",
     "alerts.open": "Open alert rules",
     denied: "You do not have permission to read the metric registry. Ask a tenant administrator for NORTH metric access.",
+    "headline.denied": "You do not have access to the metric registry.",
+    "headline.fresh": "Every metric is fed.",
+    "headline.unfed": "{count} metrics have gone quiet.",
     "saved.metric": "Metric definition saved.",
     "saved.snapshot": "Snapshotter run — the registry below reads the new snapshots.",
     approvalTitle: "Queued for approval",
@@ -178,6 +181,9 @@ const LABELS: Labels = {
     "alerts.lede": "قواعد التنبيه تراقب مقياساً مقابل عتبة، وتُدار في مساحة عمل نورث.",
     "alerts.open": "افتح قواعد التنبيه",
     denied: "لا تملك صلاحية قراءة سجل المقاييس. اطلب من مدير المستأجر صلاحية مقاييس نورث.",
+    "headline.denied": "لا تملك صلاحية الوصول إلى سجل المقاييس.",
+    "headline.fresh": "كل مقياس مُغذّى.",
+    "headline.unfed": "{count} مقاييس صمتت.",
     "saved.metric": "حُفظ تعريف المقياس.",
     "saved.snapshot": "شُغّل المُلقِط — السجل أدناه يقرأ اللقطات الجديدة.",
     approvalTitle: "في انتظار الموافقة",
@@ -248,6 +254,27 @@ export function targetFrom(text: string, previous: Target | null): Target | null
     ...(previous?.scale === undefined ? {} : { scale: previous.scale }),
     ...(previous?.currency === undefined ? {} : { currency: previous.currency })
   };
+}
+
+/**
+ * The registry's own headline: how many metrics the snapshotter has stopped
+ * feeding, judged by each metric's own freshness() — the same read behind
+ * the "Last snapshot" column. Arithmetic on stored timestamps, not a model's
+ * reading, so it carries no ✦ mark (CLAUDE.md §11).
+ */
+export function headline(
+  metrics: readonly Pick<Metric, "key" | "grain">[] | null,
+  health: readonly Pick<HealthRow, "metricKey" | "lastSnapshotAt">[],
+  now: number,
+  l: (key: string, vars?: Record<string, string>) => string
+): string {
+  if (metrics === null) return l("headline.denied");
+  if (metrics.length === 0) return l("title");
+  const freshByKey = new Map(health.map((row) => [row.metricKey, row]));
+  const unfed = metrics.filter(
+    (metric) => freshness(freshByKey.get(metric.key)?.lastSnapshotAt ?? null, metric.grain, now) !== "fresh"
+  );
+  return unfed.length === 0 ? l("headline.fresh") : l("headline.unfed", { count: String(unfed.length) });
 }
 
 const FRESH_TONE: Record<"fresh" | "late" | "missing", BadgeTone> = {
@@ -425,7 +452,7 @@ export default function NorthAdmin() {
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-2">
         <span className="font-mono text-12 uppercase tracking-[0.14em] text-subtle">{l("kicker")}</span>
-        <h1 className="font-serif text-22 leading-[1.2] text-text">{l("title")}</h1>
+        <h1 className="font-serif text-22 leading-[1.2] text-text">{headline(metrics, health, now, l)}</h1>
         <p className="max-w-[68ch] font-ui text-13 text-subtle">{l("intro")}</p>
       </header>
 

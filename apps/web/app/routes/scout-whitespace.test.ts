@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ActionFunctionArgs } from "react-router";
 import type { Env } from "../env";
-import { action, flagOf, nextWhitespaceStates, type SignalRow } from "./scout-whitespace";
+import { action, flagOf, nextWhitespaceStates, wspLede, type SignalRow } from "./scout-whitespace";
+import { labelsIn } from "./scout.shared";
+
+const l = labelsIn("en");
 
 // The card is the only screen that moves a whitespace's state, so what is worth
 // asserting is that it cannot move one sideways — a target the card cannot
@@ -180,5 +183,25 @@ describe("moving a card", () => {
     expect(result.problem?.code).toBe("approval_required");
     expect(result.problem?.policy_key).toBe("scout.whitespace_promote");
     expect(result.done).toBeNull();
+  });
+});
+
+/* ------------------------------------------------------------------- lede */
+
+describe("wspLede", () => {
+  it("names both counts when the card has flags and experiments", () => {
+    expect(wspLede(2, 3, l)).toBe(l("wsp.ledeBoth", { flags: "2", experiments: "3" }));
+  });
+
+  it("names only the flags with no experiments", () => {
+    expect(wspLede(2, 0, l)).toBe(l("wsp.ledeFlags", { flags: "2" }));
+  });
+
+  it("names only the experiments with no flags", () => {
+    expect(wspLede(0, 3, l)).toBe(l("wsp.ledeExperiments", { experiments: "3" }));
+  });
+
+  it("falls back to the generic lede with neither", () => {
+    expect(wspLede(0, 0, l)).toBe(l("wsp.lede"));
   });
 });

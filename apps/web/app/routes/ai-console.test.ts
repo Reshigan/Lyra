@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ActionFunctionArgs } from "react-router";
 import type { Env } from "../env";
-import { action, agentNames, autonomyRung, ruleLabel } from "./ai-console";
+import { action, agentNames, autonomyRung, consoleHeadline, ruleLabel } from "./ai-console";
 
 // docs/12 §4: "Kill switches: per-agent, per-module, per-tenant, global — all
 // one click, all logged". The per-agent tier is covered next door in
@@ -156,5 +156,41 @@ describe("ruleLabel", () => {
 
   it("humanises a rule a tenant wrote for itself", () => {
     expect(ruleLabel(L, "own_brand_tone")).toBe("Own brand tone");
+  });
+});
+
+describe("consoleHeadline", () => {
+  const L = (key: string, fallback?: string) => fallback ?? key;
+
+  it("leads with a global pause, ahead of the roster", () => {
+    expect(consoleHeadline({ global: true, tenant: false }, [{ status: "active" }], L)).toBe(
+      "kill.globalOn"
+    );
+  });
+
+  it("leads with a tenant pause once there is no global one", () => {
+    expect(consoleHeadline({ global: false, tenant: true }, [{ status: "active" }], L)).toBe(
+      "kill.tenantOn"
+    );
+  });
+
+  it("says so when the roster could not be read", () => {
+    expect(consoleHeadline(null, null, L)).toBe("agents.unavailable");
+  });
+
+  it("says so when no agent is configured", () => {
+    expect(consoleHeadline(null, [], L)).toBe("headline.noAgents");
+  });
+
+  it("counts the agents actually active", () => {
+    expect(
+      consoleHeadline(null, [{ status: "active" }, { status: "paused" }, { status: "active" }], L)
+    ).toBe("2 headline.agentsActive");
+  });
+
+  it("says so when every agent is paused", () => {
+    expect(consoleHeadline(null, [{ status: "paused" }, { status: "retired" }], L)).toBe(
+      "headline.allPaused"
+    );
   });
 });

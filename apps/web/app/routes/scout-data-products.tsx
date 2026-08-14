@@ -178,6 +178,17 @@ export function nextProductStates(from: string): string[] {
   }
 }
 
+/** The one sentence the catalogue opens with — publish and warning counts
+ *  already on every row, no ✦ (arithmetic, not an agent's finding, CLAUDE.md
+ *  §11). */
+export function dtpHeadline(rows: DataProductRow[], l: Label): string {
+  if (rows.length === 0) return l("dtp.title");
+  const published = rows.filter((row) => row.status === "published").length;
+  const flagged = rows.filter((row) => warningsFor(row).length > 0).length;
+  if (flagged > 0) return l("dtp.headlineFlagged", { n: String(flagged), total: String(rows.length) });
+  return l("dtp.headlinePublished", { n: String(published), total: String(rows.length) });
+}
+
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = context.get(cloudflare).env;
   const chosen = new URL(request.url).searchParams.get("product") ?? "";
@@ -274,9 +285,11 @@ export default function ScoutDataProducts() {
   if (loaded.rows.length === 0 || product === null) {
     return (
       <div className="flex flex-col gap-6">
-        <header className="flex flex-col gap-1">
-          <h1 className="font-serif text-22 leading-[1.2] text-text">{l("dtp.title")}</h1>
-          <p className="max-w-prose font-ui text-13 text-muted">{l("dtp.lede")}</p>
+        <header className="flex flex-wrap items-end justify-between gap-3">
+          <div className="flex flex-col gap-1">
+            <h1 className="font-serif text-22 leading-[1.2] text-text">{dtpHeadline(loaded.rows, l)}</h1>
+            <p className="font-ui text-13 text-muted">{l("dtp.lede")}</p>
+          </div>
         </header>
         <EmptyState title={l("dtp.empty")} />
       </div>

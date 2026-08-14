@@ -4,10 +4,12 @@ import {
   LABELS as consoleLabels,
   SLOW_MS,
   action as takeOver,
+  consoleHeadline,
   labelsIn as consoleLabelsIn,
   loader as consoleLoader,
   moodKey,
   moodTone,
+  mostUrgent,
   waitLabel,
   waitingMs,
   type LiveConversation
@@ -22,6 +24,7 @@ import {
   labelsIn as saveLabelsIn,
   loader as saveLoader,
   riskTone,
+  saveHeadline,
   type Renewal
 } from "./orbit-save";
 import {
@@ -30,12 +33,14 @@ import {
   action as sweepAction,
   labelsIn as pipelineLabelsIn,
   loader as pipelineLoader,
+  pipelineHeadline,
   urgency
 } from "./orbit-pipeline";
 import {
   LABELS as journeyLabels,
   action as journeyAction,
   blockers,
+  journeyLede,
   labelsIn as journeyLabelsIn,
   mutate,
   nameOf,
@@ -54,11 +59,13 @@ import {
   labelsIn as qualityLabelsIn,
   loader as qualityLoader,
   mean,
+  qualityHeadline,
   type QaScore
 } from "./orbit-quality";
 import {
   LABELS as analyticsLabels,
   action as analyticsAction,
+  analyticsHeadline,
   containment,
   definitionOf,
   labelsIn as analyticsLabelsIn,
@@ -234,6 +241,20 @@ describe("who is waiting", () => {
     expect([moodKey(0), moodTone(0)]).toEqual(["moodNeutral", "warning"]);
     expect([moodKey(60), moodTone(60)]).toEqual(["moodPositive", "success"]);
   });
+
+  it("picks whoever has waited longest as the one to open first", () => {
+    const older = { ...live, id: "cnv_02", lastMessageAt: 500_000 };
+    expect(mostUrgent([live, older], 1_000_000)?.id).toBe("cnv_02");
+    expect(mostUrgent([], 1_000_000)).toBeNull();
+  });
+
+  it("opens the console with whichever queue state is most urgent, not static copy", () => {
+    const l = consoleLabelsIn("en");
+    expect(consoleHeadline(3, 0, 2, l)).toBe(l("headlineOverdue", { n: "2" }));
+    expect(consoleHeadline(3, 1, 0, l)).toBe(l("headlineAgent", { n: "3" }));
+    expect(consoleHeadline(0, 4, 0, l)).toBe(l("headlineHuman", { n: "4" }));
+    expect(consoleHeadline(0, 0, 0, l)).toBe(l("headlineClear"));
+  });
 });
 
 describe("the live console loader", () => {
@@ -355,6 +376,13 @@ describe("the save queue's rules", () => {
     expect(canResolve({ ...renewal, state: "offered" })).toBe(true);
     expect(canResolve({ ...renewal, state: "accepted" })).toBe(false);
   });
+
+  it("leads with the risky head of the queue over a plain queue count", () => {
+    const l = saveLabelsIn("en");
+    expect(saveHeadline(2, 5, l)).toBe(l("headlineRisk", { n: "2" }));
+    expect(saveHeadline(0, 5, l)).toBe(l("headlineQueue", { n: "5" }));
+    expect(saveHeadline(0, 0, l)).toBe(l("headlineClear"));
+  });
 });
 
 describe("the save desk loader", () => {
@@ -462,6 +490,14 @@ describe("days to expiry", () => {
     expect(urgency(-1)).toBe("gone");
     expect(urgency(0)).toBe("now");
     expect(urgency(40)).toBe("later");
+  });
+
+  it("leads with what is overdue over what is soon over a plain open count", () => {
+    const l = pipelineLabelsIn("en");
+    expect(pipelineHeadline(2, 3, 10, l)).toBe(l("headlineOverdue", { n: "2" }));
+    expect(pipelineHeadline(0, 3, 10, l)).toBe(l("headlineSoon", { n: "3" }));
+    expect(pipelineHeadline(0, 0, 10, l)).toBe(l("headlineOpen", { n: "10" }));
+    expect(pipelineHeadline(0, 0, 0, l)).toBe(l("headlineClear"));
   });
 });
 
@@ -592,6 +628,13 @@ describe("editing a journey graph", () => {
     expect(nameOf(journey, "fr")).toBe("Win back");
     expect(nameOf({ ...journey, nameJson: null } as Journey, "en")).toBe("winback");
   });
+
+  it("says a journey has no start before it says it is blocked before the generic lede", () => {
+    const l = journeyLabelsIn("en");
+    expect(journeyLede(2, false, l)).toBe(l("startsNowhere"));
+    expect(journeyLede(2, true, l)).toBe(l("ledeBlocked", { n: "2" }));
+    expect(journeyLede(0, true, l)).toBe(l("lede"));
+  });
 });
 
 describe("the journey builder action", () => {
@@ -703,6 +746,13 @@ describe("reading an AI score", () => {
   it("averages the sampled scores", () => {
     expect(mean([score, { ...score, score: 76 }])).toBe(75);
     expect(mean([])).toBe(0);
+  });
+
+  it("leads with what is flagged, else the running average, else nothing scored yet", () => {
+    const l = qualityLabelsIn("en");
+    expect(qualityHeadline(2, 70, 10, l)).toBe(l("headlineFlagged", { n: "2" }));
+    expect(qualityHeadline(0, 70, 10, l)).toBe(l("headlineClean", { n: "70" }));
+    expect(qualityHeadline(0, 0, 0, l)).toBe(l("headlineNone"));
   });
 });
 
@@ -818,6 +868,12 @@ describe("the derived analytics figures", () => {
     expect(windowDays("90")).toBe(90);
     expect(windowDays("4000")).toBe(30);
     expect(windowDays(null)).toBe(30);
+  });
+
+  it("leads with the containment rate for the window, or says there is no data", () => {
+    const l = analyticsLabelsIn("en");
+    expect(analyticsHeadline(0.8, 30, l)).toBe(l("headlineContainment", { n: "80", days: "30" }));
+    expect(analyticsHeadline(null, 7, l)).toBe(l("headlineNoData", { n: "7" }));
   });
 
   it("builds one definition the run and the export both use", () => {

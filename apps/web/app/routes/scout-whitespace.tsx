@@ -39,6 +39,7 @@ import {
   verdictKey,
   type ClusterRow,
   type ExperimentRow,
+  type Label,
   type Page,
   type Problemish,
   type WhitespaceRow
@@ -134,6 +135,16 @@ export function flagOf(row: SignalRow): Flag {
     ref: row.sourceRef,
     observedAt: row.observedAt
   };
+}
+
+/** The card's own lede — flag and experiment counts already on the loader, no
+ *  ✦ (arithmetic, not an agent's finding, CLAUDE.md §11). */
+export function wspLede(flagCount: number, experimentCount: number, l: Label): string {
+  if (flagCount > 0 && experimentCount > 0)
+    return l("wsp.ledeBoth", { flags: String(flagCount), experiments: String(experimentCount) });
+  if (flagCount > 0) return l("wsp.ledeFlags", { flags: String(flagCount) });
+  if (experimentCount > 0) return l("wsp.ledeExperiments", { experiments: String(experimentCount) });
+  return l("wsp.lede");
 }
 
 export async function loader({ params, request, context }: LoaderFunctionArgs) {
@@ -262,10 +273,12 @@ export default function ScoutWhitespace() {
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-1">
-        <p className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">{l("wsp.title")}</p>
-        <h1 className="font-serif text-22 leading-[1.2] text-text">{loaded.cluster?.theme ?? card.description}</h1>
-        <p className="max-w-prose font-ui text-13 text-muted">{l("wsp.lede")}</p>
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <p className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">{l("wsp.title")}</p>
+          <h1 className="font-serif text-22 leading-[1.2] text-text">{loaded.cluster?.theme ?? card.description}</h1>
+          <p className="font-ui text-13 text-muted">{wspLede(loaded.flags.length, loaded.experiments.length, l)}</p>
+        </div>
       </header>
 
       {result?.problem ? <Gate problem={explain(result.problem, l)} l={l} /> : null}

@@ -9,13 +9,16 @@ import {
   bboxOf,
   confidenceOf,
   fieldsOf,
+  headlineFor,
   isSealedValue,
   labelsIn,
   mergeCorrections,
   needsReview,
   phrase,
   statusTone,
-  typedFrom
+  typedFrom,
+  worstDoc,
+  type DocRow
 } from "./axis-doc-intel";
 
 // This screen shows a model's guesses next to a human's box, and the one thing it
@@ -111,7 +114,12 @@ describe("labelsIn", () => {
       "problem.missing_doc",
       "problem.missing_text",
       "problem.no_change",
-      "problem.conflict"
+      "problem.conflict",
+      "headline.clear",
+      "headline.review",
+      "headline.rejected",
+      "headline.reading",
+      "headline.open"
     ];
 
     for (const key of keys) {
@@ -182,6 +190,68 @@ describe("confidenceOf / needsReview", () => {
   it("asks for review below the floor and not at it", () => {
     expect(needsReview({ extractionConfidence: REVIEW_FLOOR * 100 })).toBe(false);
     expect(needsReview({ extractionConfidence: REVIEW_FLOOR * 100 - 1 })).toBe(true);
+  });
+});
+
+const doc = (over: Partial<DocRow> = {}): DocRow => ({
+  id: "doc_1",
+  caseId: null,
+  fileId: "file_1",
+  docType: "id_card",
+  status: "extracted",
+  extractionJson: null,
+  extractionConfidence: null,
+  extractionModel: null,
+  verifiedBy: null,
+  verifiedAt: null,
+  createdAt: 1_770_000_000_000,
+  ...over
+});
+
+describe("headlineFor", () => {
+  const l = labelsIn("en");
+
+  it("says nothing is waiting when the desk is empty", () => {
+    expect(headlineFor({ open: 0, needsReview: 0, rejected: 0 }, l)).toBe(l("headline.clear"));
+  });
+
+  it("leads with low-confidence rows over rejections", () => {
+    expect(headlineFor({ open: 4, needsReview: 2, rejected: 1 }, l)).toBe(
+      l("headline.review", { count: "2" })
+    );
+  });
+
+  it("calls out rejections when nothing needs a closer look", () => {
+    expect(headlineFor({ open: 3, needsReview: 0, rejected: 1 }, l)).toBe(
+      l("headline.rejected", { count: "1" })
+    );
+  });
+
+  it("falls back to reading when nothing needs review or was rejected", () => {
+    expect(headlineFor({ open: 3, needsReview: 0, rejected: 0 }, l)).toBe(l("headline.reading"));
+  });
+});
+
+describe("worstDoc", () => {
+  it("picks the lowest-confidence row over a merely unread one", () => {
+    const rows = [
+      doc({ id: "received", status: "received" }),
+      doc({ id: "weak", status: "extracted", extractionConfidence: 10 })
+    ];
+    expect(worstDoc(rows)?.id).toBe("weak");
+  });
+
+  it("falls back to the first extracted row when nothing is below the floor", () => {
+    const rows = [
+      doc({ id: "received", status: "received" }),
+      doc({ id: "extracted", status: "extracted", extractionConfidence: 95 })
+    ];
+    expect(worstDoc(rows)?.id).toBe("extracted");
+  });
+
+  it("returns null when nothing is waiting on a person", () => {
+    expect(worstDoc([doc({ status: "received" })])).toBeNull();
+    expect(worstDoc([])).toBeNull();
   });
 });
 

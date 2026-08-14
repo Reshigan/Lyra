@@ -106,12 +106,23 @@ export function canResolve(row: Renewal): boolean {
   return row.state === "scheduled" || row.state === "offered";
 }
 
+/** What the desk needs worked first: the risky head of the queue, else whatever else is waiting. */
+export function saveHeadline(riskyCount: number, queueCount: number, l: Label): string {
+  if (riskyCount > 0) return l("headlineRisk", { n: String(riskyCount) });
+  if (queueCount > 0) return l("headlineQueue", { n: String(queueCount) });
+  return l("headlineClear");
+}
+
 /* ------------------------------------------------------------------ labels */
 
 export const LABELS: Labels = {
   en: {
     title: "Save desk",
     lede: "Renewals the churn model flagged, the offer that went out, and how it ended.",
+    headlineRisk: "{n} renewals at high risk of churn",
+    headlineQueue: "{n} renewals waiting on us",
+    headlineClear: "Nothing waiting on us right now",
+    openRenewal: "Open the highest-risk renewal",
     atRisk: "High churn risk",
     scheduledCount: "Waiting on us",
     offeredCount: "Offer out",
@@ -177,6 +188,10 @@ export const LABELS: Labels = {
   ar: {
     title: "مكتب الاستبقاء",
     lede: "التجديدات التي رصدها نموذج التسرب، والعرض الذي أُرسل، وكيف انتهى.",
+    headlineRisk: "{n} تجديد بخطر تسرب مرتفع",
+    headlineQueue: "{n} تجديد بانتظار إجراء منّا",
+    headlineClear: "لا شيء بانتظارنا الآن",
+    openRenewal: "افتح التجديد الأعلى خطرًا",
     atRisk: "خطر تسرب مرتفع",
     scheduledCount: "بانتظار إجراء منّا",
     offeredCount: "عرض قائم",
@@ -367,8 +382,15 @@ export default function SaveDesk() {
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-1">
-        <h1 className="font-serif text-22 leading-[1.2] text-text">{l("title")}</h1>
+        <h1 className="font-serif text-22 leading-[1.2] text-text">
+          {saveHeadline(risky.length, loaded.queue.total ?? loaded.queue.data.length, l)}
+        </h1>
         <p className="font-ui text-13 text-muted">{l("lede")}</p>
+        {risky[0] ? (
+          <Link to={`/orbit/renewals/${risky[0].id}`} className="w-fit font-ui text-13 text-accent underline">
+            {l("openRenewal")}
+          </Link>
+        ) : null}
       </header>
 
       {local ? (

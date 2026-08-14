@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { formatMoney } from "@lyra/ui";
 import type { LoaderFunctionArgs } from "react-router";
 import type { Env } from "../env";
-import { layoutMap, loader } from "./ledger-money-map";
+import { LABELS, labelsIn, layoutMap, loader, moneyMapHeadline } from "./ledger-money-map";
 
 // Two things are worth pinning here: what the loader is willing to ask the API
 // for (a role that cannot read client money still gets the map), and the
@@ -149,5 +150,33 @@ describe("layoutMap", () => {
     const laid = layoutMap(map, 800, 400);
     expect(laid.nodes.find((n) => n.key === "still-held")!.drillable).toBe(false);
     expect(laid.nodes.find((n) => n.key === "premium-in")!.drillable).toBe(true);
+  });
+});
+
+describe("moneyMapHeadline", () => {
+  const l = labelsIn("en");
+
+  it("puts a client-money breach above everything else", () => {
+    expect(moneyMapHeadline(MAP, [{ currency: "AED" }, { currency: "ZAR" }], l, "en")).toBe(
+      "2 currency breach(es) in client money."
+    );
+  });
+
+  it("says the map's own net figure when nothing is breached", () => {
+    const withNet = { ...MAP, nodes: [{ key: "net", amountMinor: 5_000 }] };
+    expect(moneyMapHeadline(withNet, [], l, "en")).toBe(
+      `Net to the business for 2026-06: ${formatMoney(5_000, "AED", "en")}.`
+    );
+  });
+
+  it("falls back to the empty-period copy when there is no net node", () => {
+    expect(moneyMapHeadline(MAP, [], l, "en")).toBe("Nothing was posted in this period");
+  });
+});
+
+describe("ledger-money-map labelsIn", () => {
+  it("translates every English key into Arabic", () => {
+    const missing = Object.keys(LABELS.en!).filter((key) => !(key in LABELS.ar!));
+    expect(missing).toEqual([]);
   });
 });

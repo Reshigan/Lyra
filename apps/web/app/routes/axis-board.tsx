@@ -131,7 +131,12 @@ const LABELS: Record<string, Record<string, string>> = {
     "transition.submit": "Move",
     "problem.bad_intent": "The form did not carry an action this screen knows.",
     "problem.missing_owner": "Name both the case and the owner before assigning it.",
-    "problem.missing_target": "Choose the state to move this case to."
+    "problem.missing_target": "Choose the state to move this case to.",
+    "headline.clear": "The board is empty",
+    "headline.breached": "{count} cases are past their deadline",
+    "headline.congested": "{count} lanes are holding more than they should",
+    "headline.moving": "Every lane is moving",
+    "headline.open": "Open the most urgent case — {ref}"
   },
   ar: {
     title: "لوحة الإنتاج",
@@ -170,7 +175,12 @@ const LABELS: Record<string, Record<string, string>> = {
     "transition.submit": "نقل",
     "problem.bad_intent": "لم يحمل النموذج إجراءً تعرفه هذه الشاشة.",
     "problem.missing_owner": "حدّد الحالة والمسؤول قبل التعيين.",
-    "problem.missing_target": "اختر الحالة التي تريد نقل هذه الحالة إليها."
+    "problem.missing_target": "اختر الحالة التي تريد نقل هذه الحالة إليها.",
+    "headline.clear": "اللوحة فارغة",
+    "headline.breached": "{count} حالة تجاوزت موعدها النهائي",
+    "headline.congested": "{count} مسارات تحمل أكثر مما ينبغي",
+    "headline.moving": "كل مسار يتحرك بسلاسة",
+    "headline.open": "افتح الحالة الأكثر إلحاحاً — {ref}"
   }
 };
 
@@ -254,6 +264,18 @@ export function byUrgency(now: number) {
 
 export const isLate = (row: { slaDueAt?: number | null }, now: number): boolean =>
   typeof row.slaDueAt === "number" && row.slaDueAt < now;
+
+// Arithmetic on counts the caller already has, not an agent, so it never
+// carries the ✦ mark (CLAUDE.md §11).
+export function headlineFor(
+  counts: { total: number; breached: number; congested: number },
+  l: Label
+): string {
+  if (counts.total === 0) return l("headline.clear");
+  if (counts.breached > 0) return l("headline.breached", { count: String(counts.breached) });
+  if (counts.congested > 0) return l("headline.congested", { count: String(counts.congested) });
+  return l("headline.moving");
+}
 
 /** What to shout about one card, or nothing. Overdue outranks the priority flag. */
 export function flagOf(
@@ -447,12 +469,24 @@ export default function AxisBoard() {
 
   const lanes = laneViews(loaded.cases, now, loaded.counts, loaded.wipWarn);
   const total = lanes.reduce((sum, lane) => sum + lane.open, 0);
+  const breached = lanes.reduce(
+    (sum, lane) => sum + lane.cards.filter((card) => isLate(card, now)).length,
+    0
+  );
+  const congested = lanes.filter((lane) => lane.congested).length;
+  const worst = lanes.flatMap((lane) => lane.cards).sort(byUrgency(now))[0];
+  const headline = headlineFor({ total, breached, congested }, l);
 
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-1">
-        <h1 className="font-serif text-22 leading-[1.2] text-text">{l("title")}</h1>
+        <h1 className="font-serif text-22 leading-[1.2] text-text">{headline}</h1>
         <p className="max-w-prose font-ui text-13 text-subtle">{l("intro")}</p>
+        {worst ? (
+          <Link to={`/axis/cases/${worst.id}`} className="w-fit font-ui text-13 text-accent underline">
+            {l("headline.open", { ref: worst.ref })}
+          </Link>
+        ) : null}
       </header>
 
       {result?.problem ? <Gate problem={phrase(result.problem, l)} l={l} /> : null}

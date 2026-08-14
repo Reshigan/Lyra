@@ -362,6 +362,11 @@ function map<T, U>(from: Panel<T>, to: (value: T) => U): Panel<U> {
   return from.state === "ok" ? { state: "ok", data: to(from.data) } : from;
 }
 
+/** Whether the header's decisions-waiting link is worth showing at all. */
+export function hasApprovalsLink(counts: { approvals: number } | null | undefined): boolean {
+  return Boolean(counts?.approvals);
+}
+
 /**
  * Unit economics arrive as one row per day/module/unit. The dashboard wants the
  * window, so it is folded here rather than in the browser: the client has no
@@ -536,11 +541,20 @@ export default function Home() {
       <header className="flex flex-col gap-2">
         {/* Eyebrow names who is reading; the serif line answers them. The
             greeting stops being the headline because "Welcome back" is not an
-            answer to anything. */}
+            answer to anything. Lede's classes rather than <Lede>: the page
+            needs a real h1 in the outline (same reasoning as the Eyebrow
+            stand-in below), and the component is a <p>. No ✦ here either —
+            that mark is reserved for text an agent produced, and this
+            sentence is arithmetic on the inbox counts (see `answer` above). */}
         <Eyebrow>{actorName ? label("greeting", { name: actorName }) : label("greeting.anon")}</Eyebrow>
         <h1 className="max-w-[46ch] font-serif text-28 leading-[1.25] text-text">{answer}</h1>
         {brand ? (
           <p className="font-ui text-13 text-subtle">{label("subtitle", { brand })}</p>
+        ) : null}
+        {hasApprovalsLink(loaded.counts) ? (
+          <Link to="/approvals" className="w-fit font-ui text-13 text-accent underline">
+            {label("approvals.all")}
+          </Link>
         ) : null}
       </header>
 

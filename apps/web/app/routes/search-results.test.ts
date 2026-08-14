@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LoaderFunctionArgs } from "react-router";
 import type { Env } from "../env";
 import { WORKSPACES } from "../modules";
-import { groupHits, labelsIn, loader, specFor } from "./search-results";
+import { groupHits, labelsIn, loader, resultsLede, specFor, type SearchGroup } from "./search-results";
 import type { SearchHit } from "./search";
 
 // The full results page has no writes, so there is no action to reduce: what can
@@ -60,6 +60,30 @@ describe("labelsIn", () => {
   it("interpolates the counts the summary line reports", () => {
     expect(labelsIn("en")("count", { count: "34", areas: "5" })).toContain("34");
     expect(labelsIn("en")("count", { count: "34", areas: "5" })).toContain("5");
+  });
+});
+
+describe("resultsLede", () => {
+  const l = labelsIn("en");
+  const group = (n: number): SearchGroup => ({
+    resource: "customers",
+    module: "core",
+    items: Array.from({ length: n }, (_, i) => ({ id: `cus_${i}`, label: "x", hint: "", href: "/x" }))
+  });
+
+  it("leads with the refusal when the search itself was denied", () => {
+    expect(resultsLede("mansoori", [group(3)], true, l)).toBe(l("denied"));
+  });
+
+  it("falls to the static intro below the query floor or with nothing found", () => {
+    expect(resultsLede("a", [], false, l)).toBe(l("intro"));
+    expect(resultsLede("mansoori", [], false, l)).toBe(l("intro"));
+  });
+
+  it("reports the count and area total once there are hits", () => {
+    expect(resultsLede("mansoori", [group(2), group(1)], false, l)).toBe(
+      l("count", { count: "3", areas: "2" })
+    );
   });
 });
 

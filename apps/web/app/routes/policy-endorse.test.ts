@@ -80,6 +80,7 @@ describe("labelsIn", () => {
       "title",
       "intro",
       "back",
+      "heroLede",
       "field.changes",
       "field.changesHint",
       "field.effectiveFrom",

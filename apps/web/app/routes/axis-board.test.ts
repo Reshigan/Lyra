@@ -7,6 +7,7 @@ import {
   action,
   byUrgency,
   flagOf,
+  headlineFor,
   isLate,
   labelsIn,
   laneViews,
@@ -136,7 +137,12 @@ describe("labelsIn", () => {
       "approvalBody",
       "approvalLink",
       "problem.bad_intent",
-      "problem.missing_owner"
+      "problem.missing_owner",
+      "headline.clear",
+      "headline.breached",
+      "headline.congested",
+      "headline.moving",
+      "headline.open"
     ];
 
     for (const key of keys) {
@@ -149,6 +155,30 @@ describe("labelsIn", () => {
   it("interpolates the lane depth and the limit it passed", () => {
     expect(labelsIn("en")("wip.congested", { open: "20", limit: "12" })).toContain("20");
     expect(labelsIn("ar")("wip.congested", { open: "20", limit: "12" })).toContain("12");
+  });
+});
+
+describe("headlineFor", () => {
+  const l = labelsIn("en");
+
+  it("says the board is empty when there is no work", () => {
+    expect(headlineFor({ total: 0, breached: 0, congested: 0 }, l)).toBe(l("headline.clear"));
+  });
+
+  it("leads with a breach over congestion", () => {
+    expect(headlineFor({ total: 5, breached: 2, congested: 1 }, l)).toBe(
+      l("headline.breached", { count: "2" })
+    );
+  });
+
+  it("calls out congestion when nothing has breached", () => {
+    expect(headlineFor({ total: 5, breached: 0, congested: 1 }, l)).toBe(
+      l("headline.congested", { count: "1" })
+    );
+  });
+
+  it("falls back to moving when nothing is breached or congested", () => {
+    expect(headlineFor({ total: 5, breached: 0, congested: 0 }, l)).toBe(l("headline.moving"));
   });
 });
 

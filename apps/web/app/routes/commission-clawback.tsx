@@ -72,6 +72,8 @@ const LABELS: Record<string, Record<string, string>> = {
     intro:
       "Writes a second entry that mirrors this one with the signs reversed, and moves this entry to clawed back. Nothing is deleted — both entries stay on the statement.",
     back: "Back to the statement",
+    "headline.ready": "Reversing the commission entry for {policy}.",
+    "headline.blocked": "{policy}: this reversal is blocked.",
     entry: "The entry standing today",
     preview: "What will be written",
     providerId: "Provider",
@@ -115,6 +117,8 @@ const LABELS: Record<string, Record<string, string>> = {
     intro:
       "يكتب قيدًا ثانيًا يعكس هذا القيد بإشارات معاكسة، وينقل هذا القيد إلى حالة الاسترداد. لا يُحذف شيء — يبقى القيدان في الكشف.",
     back: "العودة إلى الكشف",
+    "headline.ready": "جارٍ عكس قيد العمولة الخاص بـ {policy}.",
+    "headline.blocked": "{policy}: هذا القيد العكسي محظور.",
     entry: "القيد القائم حاليًا",
     preview: "ما سيتم كتابته",
     providerId: "المزود",
@@ -194,6 +198,16 @@ export function blockedReason(
   if (entry.reversalOf !== null) return "blockedReversal";
   if (entry.state === "clawed_back") return "blockedClawedBack";
   return null;
+}
+
+/** Header line: which policy this reversal is against, and — when
+ *  `blockedReason` found a reason — that it cannot be written. */
+export function clawbackHeadline(
+  policyLabel: string,
+  blocked: string | null,
+  l: (key: string, vars?: Record<string, string>) => string,
+): string {
+  return l(blocked ? "headline.blocked" : "headline.ready", { policy: policyLabel });
 }
 
 /**
@@ -316,9 +330,10 @@ export default function CommissionClawback() {
   const blocked = blockedReason(entry, loaded.may.adjust);
   const approval = approvalOf(result?.problem);
   const preview = reversalPreview(entry);
+  const policyLabel = loaded.policyName ?? shortRef(entry.policyId);
 
   return (
-    <Shell l={l}>
+    <Shell l={l} description={clawbackHeadline(policyLabel, blocked, l)}>
       {/* The entry and its mirror are one thing to read, so they share one
           surface: the facts above, the side-by-side reversal below. */}
       <Panel>
@@ -328,7 +343,7 @@ export default function CommissionClawback() {
               to={`/distribution/policies/${entry.policyId}`}
               className="font-ui text-12 text-accent underline-offset-2 hover:underline"
             >
-              {loaded.policyName ?? shortRef(entry.policyId)}
+              {policyLabel}
             </Link>
           </Facet>
           <Facet term={l("providerId")}>
@@ -469,24 +484,30 @@ export default function CommissionClawback() {
 
 function Shell({
   l,
+  description,
   children,
 }: {
   l: (key: string, vars?: Record<string, string>) => string;
+  description?: string;
   children: React.ReactNode;
 }) {
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-2">
-        <Link
-          to="/distribution/commission-entries/statement"
-          className="font-ui text-12 text-subtle underline-offset-2 hover:underline"
-        >
-          {l("back")}
-        </Link>
-        <h1 className="font-serif text-22 leading-[1.2] text-text">
-          {l("title")}
-        </h1>
-        <p className="max-w-prose font-ui text-13 text-muted">{l("intro")}</p>
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <Link
+            to="/distribution/commission-entries/statement"
+            className="w-fit font-ui text-12 text-subtle underline-offset-2 hover:underline"
+          >
+            {l("back")}
+          </Link>
+          <h1 className="font-serif text-22 leading-[1.2] text-text">
+            {l("title")}
+          </h1>
+          <p className="max-w-prose font-ui text-13 text-muted">
+            {description ?? l("intro")}
+          </p>
+        </div>
       </header>
       {children}
     </div>

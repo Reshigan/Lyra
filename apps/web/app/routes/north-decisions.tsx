@@ -1,5 +1,6 @@
 import {
   Form,
+  Link,
   useActionData,
   useLoaderData,
   useNavigation,
@@ -63,6 +64,10 @@ const LABELS: Labels = {
     kicker: "What was decided, and what it did",
     intro:
       "Every significant call, the options it was weighed against, and the date somebody promised to look again. NORTH raises the ones that are due; the verdict is yours to write.",
+    "headline.overdue": "{count} decision reviews are overdue.",
+    "headline.due": "{count} decision reviews are due.",
+    "headline.soon": "{count} decision reviews are coming up.",
+    "headline.clear": "Nothing is due for review.",
     "queue.title": "Open",
     "queue.body": "Open decisions, soonest review first.",
     "log.title": "The log",
@@ -131,6 +136,10 @@ const LABELS: Labels = {
     kicker: "ما تقرّر، وما الذي فعله",
     intro:
       "كل قرار مهم، والخيارات التي وُزن أمامها، والتاريخ الذي وعد فيه أحدهم بالمراجعة. نورث يذكّر بما حان موعده؛ والحكم عليك أن تكتبه.",
+    "headline.overdue": "{count} مراجعات قرارات متأخرة.",
+    "headline.due": "{count} مراجعات قرارات مستحقة الآن.",
+    "headline.soon": "{count} مراجعات قرارات تقترب.",
+    "headline.clear": "لا شيء يستحق المراجعة الآن.",
     "queue.title": "المفتوحة",
     "queue.body": "القرارات المفتوحة، الأقرب موعداً أولاً.",
     "log.title": "السجل",
@@ -277,6 +286,24 @@ const TONE: Record<"overdue" | "due" | "soon", "danger" | "warning" | "info"> = 
   soon: "info"
 };
 
+/**
+ * How the open queue tallies by urgency — the same read `queueState` gives
+ * each card, rolled up for the header's headline.
+ */
+export function dueCounts(
+  open: Pick<Decision, "status" | "reviewAt">[],
+  now: number
+): Record<"overdue" | "due" | "soon", number> {
+  return open.reduce(
+    (acc, decision) => {
+      const state = queueState(decision, now);
+      if (state) acc[state] += 1;
+      return acc;
+    },
+    { overdue: 0, due: 0, soon: 0 } as Record<"overdue" | "due" | "soon", number>
+  );
+}
+
 /* ------------------------------------------------------------------ loader */
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
@@ -394,6 +421,19 @@ export default function NorthDecisions() {
     .filter((row) => row.status === "open")
     .sort((a, b) => (a.reviewAt ?? Number.POSITIVE_INFINITY) - (b.reviewAt ?? Number.POSITIVE_INFINITY));
 
+  // The headline narrates today's queue rather than repeating the title above
+  // it. It's arithmetic over `queueState` — the same read each card below
+  // performs — not an agent's judgement, so it carries no ✦ (CLAUDE.md §11
+  // reserves the mark for AI-authored text).
+  const counts = dueCounts(open, now);
+  const headline = counts.overdue
+    ? l("headline.overdue", { count: String(counts.overdue) })
+    : counts.due
+      ? l("headline.due", { count: String(counts.due) })
+      : counts.soon
+        ? l("headline.soon", { count: String(counts.soon) })
+        : l("headline.clear");
+
   const columns: Column<Decision>[] = [
     { key: "title", header: l("col.title"), render: (row) => row.title },
     { key: "owner", header: l("col.owner"), render: (row) => row.owner },
@@ -419,8 +459,13 @@ export default function NorthDecisions() {
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-2">
         <span className="font-mono text-12 uppercase tracking-[0.14em] text-subtle">{l("kicker")}</span>
-        <h1 className="font-serif text-22 leading-[1.2] text-text">{l("title")}</h1>
+        <h1 className="font-serif text-22 leading-[1.2] text-text">{headline}</h1>
         <p className="max-w-[68ch] font-ui text-13 text-subtle">{l("intro")}</p>
+        {open.length > 0 ? (
+          <Link to="/approvals" className="w-fit font-ui text-13 text-accent underline">
+            {l("approvalLink")}
+          </Link>
+        ) : null}
       </header>
 
       {shown ? <Gate problem={shown} l={l} /> : null}

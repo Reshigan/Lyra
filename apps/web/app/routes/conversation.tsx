@@ -604,26 +604,28 @@ export default function ConversationThread() {
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-2">
-        <Link
-          to="/orbit/conversations"
-          className="font-ui text-12 text-subtle underline-offset-2 hover:underline"
-        >
-          {t("common.back")}
-        </Link>
-        <h1 className="font-serif text-22 leading-[1.2] text-text">
-          {loaded.customerName ?? l("conversation")}
-        </h1>
-        <p className="flex flex-wrap items-center gap-2 font-ui text-12 text-subtle">
-          <Badge tone="neutral">{l(`channel.${conversation.channel}`)}</Badge>
-          <Badge tone={conversation.state === "closed" ? "neutral" : "accent"}>
-            {l(`state.${conversation.state}`)}
-          </Badge>
-          <Ref value={conversation.id} />
-        </p>
-        {conversation.summary ? (
-          <p className="max-w-prose font-ui text-13 text-muted">{conversation.summary}</p>
-        ) : null}
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <Link
+            to="/orbit/conversations"
+            className="w-fit font-ui text-12 text-subtle underline-offset-2 hover:underline"
+          >
+            {t("common.back")}
+          </Link>
+          <h1 className="font-serif text-22 leading-[1.2] text-text">
+            {loaded.customerName ?? l("conversation")}
+          </h1>
+          <p className="flex flex-wrap items-center gap-2 font-ui text-12 text-subtle">
+            <Badge tone="neutral">{l(`channel.${conversation.channel}`)}</Badge>
+            <Badge tone={conversation.state === "closed" ? "neutral" : "accent"}>
+              {l(`state.${conversation.state}`)}
+            </Badge>
+            <Ref value={conversation.id} />
+          </p>
+          {conversation.summary ? (
+            <p className="max-w-prose font-ui text-13 text-muted">{conversation.summary}</p>
+          ) : null}
+        </div>
       </header>
 
       {held.has(CAN.assign) ? (
@@ -950,7 +952,7 @@ function Fact({ term, children }: { term: string; children?: ReactNode }) {
  * heard of is echoed raw rather than translated into a guess — reporting "sent"
  * for a row that only reached the queue is the one lie this screen must not tell.
  */
-function deliveryLabel(status: string | null, l: (key: string) => string): string {
+export function deliveryLabel(status: string | null, l: (key: string) => string): string {
   if (status === null) return l("delivery.none");
   return status in DELIVERY_TONE ? l(`delivery.${status}`) : status;
 }

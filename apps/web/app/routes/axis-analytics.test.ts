@@ -12,6 +12,7 @@ import {
   durationIn,
   statusLabel,
   exceptionRate,
+  headlineFor,
   isException,
   labelsIn,
   percentile,
@@ -119,7 +120,11 @@ describe("labelsIn", () => {
       "approvalLink",
       "problem.bad_intent",
       "problem.format_required",
-      "problem.hidden"
+      "problem.hidden",
+      "headline.clear",
+      "headline.exceptions",
+      "headline.normal",
+      "headline.open"
     ];
     for (const key of keys) {
       expect(en(key), `en ${key}`).not.toBe(key);
@@ -214,6 +219,26 @@ describe("exceptionRate", () => {
   it("counts every listed exception status", () => {
     for (const status of EXCEPTION_STATUSES) expect(isException(status)).toBe(true);
     expect(isException("issued")).toBe(false);
+  });
+});
+
+describe("headlineFor", () => {
+  const l = labelsIn("en");
+
+  it("says nothing opened when the window is empty", () => {
+    expect(headlineFor({ opened: 0, exceptionRate: 0 }, l)).toBe(l("headline.clear"));
+  });
+
+  it("calls out a high exception rate over a plain count", () => {
+    expect(headlineFor({ opened: 40, exceptionRate: 0.25 }, l)).toBe(
+      l("headline.exceptions", { pct: "25" })
+    );
+  });
+
+  it("reports the plain opened count when the exception rate is low", () => {
+    expect(headlineFor({ opened: 40, exceptionRate: 0.05 }, l)).toBe(
+      l("headline.normal", { opened: "40" })
+    );
   });
 });
 

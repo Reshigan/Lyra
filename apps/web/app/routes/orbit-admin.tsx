@@ -5,7 +5,7 @@ import { cloudflare } from "../context";
 import { translator } from "../i18n";
 import { orbit } from "../modules/orbit";
 import { labelsFor, optionLabel } from "../modules/spec";
-import { labelsFrom, nameOf, rowsOf, safe, tag, type Page } from "./detail-kit";
+import { labelsFrom, nameOf, rowsOf, safe, tag, type Label, type Page } from "./detail-kit";
 import { useShellData } from "./workspace";
 
 // docs/modules/orbit.md §4 screen 6. The five config tables ORBIT routes on
@@ -161,12 +161,21 @@ export function faultsOf(input: {
   return faults;
 }
 
+/** What the admin should read first: stranded routing, else the live reach. */
+export function adminHeadline(faultCount: number, liveChannels: number, activeTeams: number, l: Label): string {
+  if (faultCount > 0) return l("headlineFaults", { n: String(faultCount) });
+  return l("headlineOk", { channels: String(liveChannels), teams: String(activeTeams) });
+}
+
 /* ----------------------------------------------------------------- labels */
 
 export const LABELS: Record<string, Record<string, string>> = {
   en: {
     title: "ORBIT admin",
     intro: "Read the channels, teams and routing rules together, then fix what is stranded.",
+    headlineFaults: "{n} things are stranded",
+    headlineOk: "{channels} live channels, {teams} active teams, nothing stranded",
+    fixStranded: "Fix routing rules",
     deniedTitle: "You cannot read ORBIT admin settings",
     reachTitle: "Reach",
     reachIntro: "Whether an arriving conversation has a live channel to arrive on and a person to reach.",
@@ -219,6 +228,9 @@ export const LABELS: Record<string, Record<string, string>> = {
   ar: {
     title: "إدارة ORBIT",
     intro: "اقرأ القنوات والفرق وقواعد التوجيه معًا، ثم عالِج ما هو معطّل.",
+    headlineFaults: "{n} أمور معطّلة",
+    headlineOk: "{channels} قناة حيّة، {teams} فريق نشط، لا شيء معطّل",
+    fixStranded: "أصلح قواعد التوجيه",
     deniedTitle: "لا يمكنك قراءة إعدادات إدارة ORBIT",
     reachTitle: "الوصول",
     reachIntro: "هل تجد المحادثة الواردة قناة حيّة تصل عبرها وشخصًا تصل إليه.",
@@ -445,7 +457,18 @@ export default function OrbitAdmin() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title={l("title")} description={l("intro")} />
+      <PageHeader
+        eyebrow={l("title")}
+        title={adminHeadline(loaded.faults.length, liveChannels, activeTeams, l)}
+        description={l("intro")}
+        meta={
+          loaded.faults.length > 0 && loaded.may.teams ? (
+            <Link to="/orbit/routing-rules" className="w-fit font-ui text-13 text-accent underline underline-offset-2">
+              {l("fixStranded")}
+            </Link>
+          ) : null
+        }
+      />
 
       <Card title={l("reachTitle")} description={l("reachIntro")}>
         <div className="flex flex-col gap-4">

@@ -33,7 +33,7 @@ import { who, type Names } from "../names";
 import { translator } from "../i18n";
 import { Gate } from "./module";
 import { useShellData } from "./workspace";
-import { labelsFrom } from "./detail-kit";
+import { labelsFrom, type Label } from "./detail-kit";
 
 // Gate is re-exported rather than duplicated: this file's version was byte-
 // identical to routes/module.tsx's (UX audit 2026-08-10, gap G6), so a fix to
@@ -119,6 +119,13 @@ export function delegationTone(status: string): BadgeTone {
   return DELEG_TONES[status] ?? "neutral";
 }
 
+/** The one line under the title: headcount, and how many are covering for someone. */
+export function staffLede(users: readonly StaffUser[], delegations: readonly Delegation[], l: Label): string {
+  if (users.length === 0) return l("introEmpty");
+  const active = delegations.filter((row) => row.status === "active").length;
+  return l("introCount", { count: String(users.length), delegations: String(active) });
+}
+
 /* ----------------------------------------------------------------- labels */
 
 export const LABELS: Record<string, Record<string, string>> = {
@@ -126,6 +133,8 @@ export const LABELS: Record<string, Record<string, string>> = {
     title: "Staff",
     intro: "Who works here, what they are trusted with, and who is covering for whom.",
     deniedTitle: "You cannot read staff",
+    introEmpty: "No one matches this workspace yet.",
+    introCount: "{count} people, {delegations} active delegation(s) in place.",
     directoryTitle: "Directory",
     directoryCaption: "People with access to this workspace",
     apply: "Search",
@@ -200,6 +209,8 @@ export const LABELS: Record<string, Record<string, string>> = {
     title: "الموظفون",
     intro: "من يعمل هنا، بماذا يُؤتمن، وعمّن ينوب.",
     deniedTitle: "لا يمكنك عرض الموظفين",
+    introEmpty: "لا أحد في مساحة العمل هذه بعد.",
+    introCount: "{count} شخص، {delegations} تفويض نشط قائم.",
     directoryTitle: "الدليل",
     directoryCaption: "الأشخاص الذين لديهم وصول إلى مساحة العمل هذه",
     apply: "بحث",
@@ -576,7 +587,7 @@ export default function Staff() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title={l("title")} description={l("intro")} />
+      <PageHeader eyebrow={l("title")} title={staffLede(loaded.users, loaded.delegations, l)} description={l("intro")} />
 
       <Form method="get" className="flex flex-wrap items-end gap-3" aria-label={l("search")}>
         <Field label={l("search")}>

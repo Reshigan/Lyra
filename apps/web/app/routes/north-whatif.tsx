@@ -1,5 +1,6 @@
 import {
   Form,
+  Link,
   useActionData,
   useLoaderData,
   useNavigation,
@@ -61,6 +62,7 @@ const LABELS: Labels = {
   en: {
     title: "Scenarios",
     kicker: "What if — asked once, kept for the next person who asks it",
+    "link.brief": "The Brief",
     intro:
       "A scenario is a question plus the assumptions it rests on. Both are stored so the answer can be argued with later, which is the only kind of answer worth keeping.",
     "ask.title": "Ask a what-if",
@@ -107,6 +109,7 @@ const LABELS: Labels = {
   ar: {
     title: "السيناريوهات",
     kicker: "ماذا لو — يُسأل مرة، ويبقى لمن يسأل بعدك",
+    "link.brief": "الموجز",
     intro:
       "السيناريو سؤال مع الافتراضات التي يقوم عليها. كلاهما محفوظ حتى يمكن مناقشة الإجابة لاحقاً، وهي وحدها الإجابة التي تستحق الحفظ.",
     "ask.title": "اطرح سؤال ماذا لو",
@@ -226,6 +229,17 @@ export function readAssumptions(text: string): Record<string, string | number> |
   return out;
 }
 
+/**
+ * The hero's headline: whichever scenario is open, in its own words. A
+ * stored question is the one thing on this screen that is never generic —
+ * unlike the answer, which the action() above refuses to compute, so there
+ * is no delta to narrate with yet. Not AI-authored text, so no ✦ (CLAUDE.md
+ * §11): a person typed this question, nothing summarised it.
+ */
+export function headlineFor(open: { question: string } | null, l: (key: string) => string): string {
+  return open?.question ?? l("title");
+}
+
 /* ------------------------------------------------------------------ loader */
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
@@ -300,8 +314,18 @@ export default function NorthWhatIf() {
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-2">
-        <span className="font-mono text-12 uppercase tracking-[0.14em] text-subtle">{l("kicker")}</span>
-        <h1 className="font-serif text-22 leading-[1.2] text-text">{l("title")}</h1>
+        <div className="flex flex-wrap items-baseline justify-between gap-3">
+          <span className="font-mono text-12 uppercase tracking-[0.14em] text-subtle">{l("kicker")}</span>
+          <Link
+            to="/north/brief"
+            className="font-ui text-12 text-accent underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          >
+            {l("link.brief")}
+          </Link>
+        </div>
+        {/* The headline narrates whichever scenario is open rather than
+            repeating the "Scenarios" eyebrow — see headlineFor() above. */}
+        <h1 className="font-serif text-22 leading-[1.2] text-text">{headlineFor(open, l)}</h1>
         <p className="max-w-[68ch] font-ui text-13 text-subtle">{l("intro")}</p>
       </header>
 

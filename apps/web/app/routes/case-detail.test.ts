@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ActionFunctionArgs } from "react-router";
 import type { Env } from "../env";
-import { LABELS, STATES, action, labelsIn } from "./case-detail";
+import { LABELS, STATES, action, caseLede, labelsIn } from "./case-detail";
 
 // The work item's two transitions are the only writes: move the state machine,
 // or mark one document verified. Both are the API's own state changes, so the
@@ -68,6 +68,24 @@ describe("labelsIn", () => {
 
   it("answers the chrome Gate needs, with the rule interpolated", () => {
     expect(labelsIn("en")("approvalBody", { policy: "axis.case_transition" })).toContain("axis.case_transition");
+  });
+});
+
+describe("caseLede", () => {
+  it("states the status and priority from the loaded record", () => {
+    const lede = caseLede({ status: "review", priority: "high", slaDueAt: null }, labelsIn("en"), "en");
+    expect(lede).toBe("Review · High priority");
+  });
+
+  it("adds the SLA due date when the record has one", () => {
+    const lede = caseLede(
+      { status: "awaiting_docs", priority: "urgent", slaDueAt: Date.parse("2026-09-01T00:00:00Z") },
+      labelsIn("en"),
+      "en"
+    );
+    expect(lede).toContain("Awaiting documents");
+    expect(lede).toContain("Urgent priority");
+    expect(lede).toContain("2026");
   });
 });
 

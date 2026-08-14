@@ -31,6 +31,7 @@ import {
   DECISION_BOUNDARY_BPS,
   PERM,
   crossedBoundary,
+  expHeadline,
   explain,
   labelsIn,
   metricLabel,
@@ -206,11 +207,12 @@ export default function Experiments() {
   const names = new Map(loaded.campaigns.map((campaign) => [campaign.id, campaign.name]));
   const decided = loaded.rows.filter((row) => row.state === "concluded");
   const won = decided.filter((row) => resultOf(row)?.verdict === "won");
+  const running = loaded.rows.filter((row) => row.state === "running").length;
 
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-1">
-        <h1 className="font-serif text-22 leading-[1.2] text-text">{l("exp.title")}</h1>
+        <h1 className="font-serif text-22 leading-[1.2] text-text">{expHeadline(l, { won: won.length, running })}</h1>
         <p className="max-w-prose font-ui text-13 text-muted">{l("exp.lede")}</p>
       </header>
 
@@ -220,7 +222,7 @@ export default function Experiments() {
       ) : null}
 
       <KPIWall>
-        <Stat label={l("exp.runningNow")} value={String(loaded.rows.filter((row) => row.state === "running").length)} />
+        <Stat label={l("exp.runningNow")} value={String(running)} />
         <Stat label={l("exp.decidedCount")} value={String(decided.length)} />
         <Stat label={l("exp.wonCount")} value={String(won.length)} />
       </KPIWall>

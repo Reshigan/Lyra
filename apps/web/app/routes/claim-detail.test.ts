@@ -7,6 +7,7 @@ import {
   PERM,
   RESERVE_BASES,
   action,
+  claimLede,
   hopsFor,
   labelsIn,
   loader,
@@ -133,6 +134,14 @@ describe("labelsIn", () => {
 
   it("renames the claim noun for a non-insurance pack", () => {
     expect(labelsIn("en", "retail-ecom")("claims")).not.toBe(labelsIn("en")("claims"));
+  });
+});
+
+describe("claimLede", () => {
+  it("states the status and what the claim has cost so far, from the loaded record", () => {
+    const lede = claimLede({ status: "assessing" }, 132_000, "AED", labelsIn("en"), "en");
+    expect(lede).toContain("Assessing");
+    expect(lede).toContain("1,320.00");
   });
 });
 

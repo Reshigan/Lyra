@@ -1,7 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LoaderFunctionArgs } from "react-router";
 import type { Env } from "../env";
-import { ROW_HEIGHT, flowFrom, flowHeight, layoutFlow, loader, type FlowEvent } from "./axis-process-map";
+import {
+  ROW_HEIGHT,
+  flowFrom,
+  flowHeight,
+  headlineFor,
+  labelsIn,
+  layoutFlow,
+  loader,
+  worstBottleneck,
+  type FlowEvent
+} from "./axis-process-map";
 
 // The map is process mining across every case, not one case's timeline
 // (case-detail.tsx already tables that) — these tests pin the two arithmetic
@@ -88,6 +98,43 @@ describe("flowFrom", () => {
     const flow = flowFrom([{ caseId: "c1", step: "intake", ts: 1 }]);
     expect(flow.links).toEqual([]);
     expect(flow.nodes).toEqual([{ step: "intake", rank: 0, total: 1 }]);
+  });
+});
+
+describe("worstBottleneck", () => {
+  it("picks the transition with the highest average duration", () => {
+    const links = [
+      { from: "intake", to: "review", count: 2, avgMs: 250 },
+      { from: "review", to: "issued", count: 1, avgMs: 900 }
+    ];
+    expect(worstBottleneck(links)).toEqual({ from: "review", to: "issued", count: 1, avgMs: 900 });
+  });
+
+  it("returns null when there are no links", () => {
+    expect(worstBottleneck([])).toBeNull();
+  });
+});
+
+describe("headlineFor", () => {
+  const l = labelsIn("en");
+
+  it("says nothing is recorded when the flow is empty", () => {
+    expect(headlineFor({ nodes: [], links: [] }, l)).toBe(l("headline.empty"));
+  });
+
+  it("calls out the slowest transition when one exists", () => {
+    const flow = flowFrom([
+      { caseId: "c1", step: "intake", ts: 1, durationMs: 100 },
+      { caseId: "c1", step: "review", ts: 2, durationMs: 900 }
+    ]);
+    expect(headlineFor(flow, l)).toBe(
+      l("headline.bottleneck", { from: "Intake", to: "Review" })
+    );
+  });
+
+  it("falls back to moving when steps exist but nothing pools", () => {
+    const flow = { nodes: [{ step: "intake", rank: 0, total: 1 }], links: [] };
+    expect(headlineFor(flow, l)).toBe(l("headline.moving"));
   });
 });
 

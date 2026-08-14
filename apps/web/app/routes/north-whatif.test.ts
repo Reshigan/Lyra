@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { humanKey, readAssumptions, unitOf } from "./north-whatif";
+import { headlineFor, humanKey, readAssumptions, unitOf } from "./north-whatif";
 
 // Scenario keys come out of the model, not out of a registry, so the unit and
 // the label are both read off the name. These are the shapes the seed writes
@@ -31,6 +31,18 @@ describe("humanKey", () => {
 
   it("leaves a key it cannot split alone", () => {
     expect(humanKey("line")).toBe("Line");
+  });
+});
+
+describe("headlineFor", () => {
+  it("narrates the open scenario's own question rather than a generic title", () => {
+    expect(headlineFor({ question: "What if we raise premiums 5%?" }, (key) => key)).toBe(
+      "What if we raise premiums 5%?"
+    );
+  });
+
+  it("falls back to the page title when nothing is open yet", () => {
+    expect(headlineFor(null, (key) => key)).toBe("title");
   });
 });
 

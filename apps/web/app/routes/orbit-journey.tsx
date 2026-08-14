@@ -183,6 +183,13 @@ export function blockers(graph: JourneyGraph): string[] {
   return found;
 }
 
+/** What to say about readiness before the generic lede: blocked beats vague. */
+export function journeyLede(blockerCount: number, hasStart: boolean, l: Label): string {
+  if (!hasStart) return l("startsNowhere");
+  if (blockerCount > 0) return l("ledeBlocked", { n: String(blockerCount) });
+  return l("lede");
+}
+
 export function statusTone(status: string): BadgeTone {
   if (status === "active") return "success";
   if (status === "paused") return "warning";
@@ -202,6 +209,7 @@ export const LABELS: Labels = {
   en: {
     title: "Journey builder",
     lede: "Steps, the trigger, and the branches between them. Every edit is saved as you make it.",
+    ledeBlocked: "{n} thing(s) keep this journey from starting.",
     version: "Version {n}",
     startsAt: "A run starts at {node}",
     startsNowhere: "This journey has no first step yet.",
@@ -275,6 +283,7 @@ export const LABELS: Labels = {
   ar: {
     title: "منشئ الرحلات",
     lede: "الخطوات والمُشغِّل والتفرعات بينها. كل تعديل يُحفظ لحظة إجرائه.",
+    ledeBlocked: "{n} أمر يمنع بدء هذه الرحلة.",
     version: "الإصدار {n}",
     startsAt: "تبدأ الرحلة عند {node}",
     startsNowhere: "لا توجد خطوة أولى لهذه الرحلة بعد.",
@@ -470,7 +479,7 @@ export default function JourneyBuilder() {
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-col gap-1">
           <h1 className="font-serif text-22 leading-[1.2] text-text">{nameOf(loaded.journey, loaded.locale)}</h1>
-          <p className="font-ui text-13 text-muted">{l("lede")}</p>
+          <p className="font-ui text-13 text-muted">{journeyLede(notReady.length, start !== null, l)}</p>
           <p className="font-ui text-12 text-subtle">
             <span className="font-mono">{loaded.journey.key}</span>{" "}
             {l("version", { n: String(loaded.journey.version) })}

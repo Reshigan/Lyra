@@ -542,7 +542,7 @@ export default function Onboarding() {
 
   return (
     <div className="flex flex-col gap-8">
-      <Header l={l} loaded={loaded} />
+      <Header l={l} loaded={loaded} lede={onboardingLede(steps, target, l)} />
 
       {approval ? (
         <GuardrailNotice
@@ -620,21 +620,36 @@ export default function Onboarding() {
   );
 }
 
-function Header({ l, loaded }: { l: Label; loaded: Awaited<ReturnType<typeof loader>> }) {
-  return (
-    <PageHeader
-      title={loaded.partner?.name ?? l(`onb.subject.${loaded.subjectKind}`)}
-      description={l("onb.intro")}
-      back={
-        <Link
-          to="/orbit/partners"
-          className="font-ui text-12 text-subtle underline-offset-2 hover:underline"
-        >
-          {l("onb.back")}
-        </Link>
-      }
-      meta={<p className="font-mono text-12 text-subtle">{loaded.ref}</p>}
-    />
+/** The one line under the title: how much of the required checklist is actually cleared. */
+export function onboardingLede(steps: readonly Step[], target: string | null, l: Label): string {
+  const required = steps.filter((step) => step.required);
+  const done = required.filter((step) => CLEARED.has(step.state)).length;
+  const total = required.length;
+  if (total === 0) return l("onboardingNoSteps");
+  if (target) return l("onboardingProgressStage", { done: String(done), total: String(total), stage: optionLabel(l, "stage", target) });
+  return l("onboardingProgress", { done: String(done), total: String(total) });
+}
+
+function Header({
+  l,
+  loaded,
+  lede
+}: {
+  l: Label;
+  loaded: Awaited<ReturnType<typeof loader>>;
+  lede?: string;
+}) {
+  const back = (
+    <Link to="/orbit/partners" className="font-ui text-12 text-subtle underline-offset-2 hover:underline">
+      {l("onb.back")}
+    </Link>
+  );
+  const meta = <p className="font-mono text-12 text-subtle">{loaded.ref}</p>;
+  const subjectLabel = loaded.partner?.name ?? l(`onb.subject.${loaded.subjectKind}`);
+  return lede ? (
+    <PageHeader eyebrow={subjectLabel} title={lede} description={l("onb.intro")} back={back} meta={meta} />
+  ) : (
+    <PageHeader title={subjectLabel} description={l("onb.intro")} back={back} meta={meta} />
   );
 }
 

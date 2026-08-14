@@ -620,6 +620,8 @@ export function Card({
 }
 
 export interface PageHeaderProps {
+  /** Small static label above the headline, e.g. a category name. */
+  eyebrow?: React.ReactNode;
   title: React.ReactNode;
   description?: React.ReactNode;
   /** Caller renders its own router `<Link>` — this package doesn't depend on react-router. */
@@ -629,10 +631,13 @@ export interface PageHeaderProps {
   className?: string;
 }
 
-export function PageHeader({ title, description, back, meta, className }: PageHeaderProps) {
+export function PageHeader({ eyebrow, title, description, back, meta, className }: PageHeaderProps) {
   return (
     <header className={cn("flex flex-col", back ? "gap-2" : "gap-1", className)}>
       {back}
+      {eyebrow ? (
+        <span className="font-mono text-12 uppercase tracking-[0.14em] text-subtle">{eyebrow}</span>
+      ) : null}
       <h1 className="font-serif text-22 leading-[1.2] text-text">{title}</h1>
       {description ? <p className="max-w-prose font-ui text-13 text-muted">{description}</p> : null}
       {meta}

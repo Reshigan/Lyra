@@ -34,6 +34,7 @@ import {
   WINDOWS,
   budgetOf,
   cacMinor,
+  cockpitHeadline,
   dailySpend,
   explain,
   labelsIn,
@@ -168,11 +169,18 @@ export default function GrowthCockpit() {
   const planPct = loaded.plannedMinor > 0 ? Math.round((spent / loaded.plannedMinor) * 100) : 0;
   const currency = loaded.currency;
 
+  const headline = cockpitHeadline(l, {
+    movesCount: loaded.moves.length,
+    planPct,
+    runningCount: loaded.running.length
+  });
+
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-col gap-1">
-          <h1 className="font-serif text-22 leading-[1.2] text-text">{l("cockpit.title")}</h1>
+          <span className="font-mono text-12 uppercase tracking-[0.14em] text-subtle">{l("cockpit.title")}</span>
+          <h1 className="font-serif text-22 leading-[1.2] text-text">{headline}</h1>
           <p className="max-w-prose font-ui text-13 text-muted">{l("cockpit.lede")}</p>
         </div>
         <nav aria-label={l("growth.window")} className="flex items-center gap-2">

@@ -5,11 +5,14 @@ import {
   ALL_MODULES,
   SET_LIMITS_PERMISSION,
   action as setLimitsAction,
+  budgetHeadline,
   canSetLimits,
   ceilingsFor,
   limitFrom,
   type BudgetRow
 } from "./ai-budget";
+
+const L = (key: string, fallback?: string) => fallback ?? key;
 import { action as consoleAction } from "./ai-console";
 
 // The AI spend ceiling is a consequential control (CLAUDE.md §4): who may move
@@ -153,6 +156,26 @@ describe("set-limits action", () => {
 
     expect(result.saved).toBeNull();
     expect(result.problem?.status).toBe(403);
+  });
+});
+
+describe("budgetHeadline", () => {
+  it("leads with a stopped module, ahead of anything else", () => {
+    const ceilings = [row({ id: "b1", stoppedAt: 1_770_000_000_000 }), row({ id: "b2", module: "orbit" })];
+    expect(budgetHeadline(ceilings, L)).toBe("1 headline.stopped");
+  });
+
+  it("says so when the tenant has never set a budget", () => {
+    expect(budgetHeadline([], L)).toBe("headline.none");
+  });
+
+  it("flags an uncapped module once nothing has stopped", () => {
+    const ceilings = [row({ tokensLimit: 0, costMicroLimit: 0 })];
+    expect(budgetHeadline(ceilings, L)).toBe("headline.uncapped");
+  });
+
+  it("reports on track once every module has a real ceiling and nothing stopped", () => {
+    expect(budgetHeadline([row()], L)).toBe("headline.onTrack");
   });
 });
 

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { formatMoney } from "@lyra/ui";
 import {
   LABELS,
   PERM,
+  accountHeadline,
   argsFromForm,
   statementFromCsv,
   TRANSITIONS,
@@ -10,7 +12,12 @@ import {
   checkName,
   labelIn,
   nextStates,
+  openHeadline,
+  periodHeadline,
+  reconHeadline,
   txnActions,
+  txnHeadline,
+  yearEndHeadline,
   type ArgField
 } from "./ledger.shared";
 
@@ -311,5 +318,119 @@ describe("statementFromCsv", () => {
 
   it("says nothing for an empty paste", () => {
     expect(statementFromCsv("   ", "ZAR")).toEqual({ lines: [], rejected: [] });
+  });
+});
+
+// The six hero headlines: each says back a number the loader already
+// computed, never one made up for the occasion.
+describe("openHeadline", () => {
+  const l = labelIn("en");
+
+  it("says nothing is published yet", () => {
+    expect(openHeadline([], l)).toBe("No transaction types are published yet.");
+  });
+
+  it("counts the types when none are gated", () => {
+    expect(openHeadline([{ approval: null }, { approval: null }], l)).toBe(
+      "2 transaction type(s) ready to run."
+    );
+  });
+
+  it("calls out how many need approval first", () => {
+    expect(openHeadline([{ approval: null }, { approval: "manager" }], l)).toBe(
+      "2 transaction type(s) ready to run; 1 need approval first."
+    );
+  });
+});
+
+describe("txnHeadline", () => {
+  it("names the type, the amount, and the state in one sentence", () => {
+    const txn = { type: "PREMIUM-COLLECT", state: "settled", grossMinor: 150055, currency: "ZAR" };
+    expect(txnHeadline(txn, labelIn("en"), "en")).toBe(
+      `PREMIUM-COLLECT — ${formatMoney(150055, "ZAR", "en")}, Settled.`
+    );
+  });
+});
+
+describe("periodHeadline", () => {
+  const l = labelIn("en");
+
+  it("says no period is picked yet", () => {
+    expect(periodHeadline(null, 0, l)).toBe("No period is selected yet.");
+  });
+
+  it("blocks on the checks still failing", () => {
+    expect(periodHeadline({ code: "2026-08", state: "open" }, 2, l)).toBe(
+      "2026-08 has 2 check(s) still blocking close."
+    );
+  });
+
+  it("says a clean open period is ready to close", () => {
+    expect(periodHeadline({ code: "2026-08", state: "open" }, 0, l)).toBe("2026-08 is ready to close.");
+  });
+
+  it("names any other state directly", () => {
+    expect(periodHeadline({ code: "2026-08", state: "hard_closed" }, 0, l)).toBe(
+      "2026-08 is Hard closed."
+    );
+  });
+});
+
+describe("yearEndHeadline", () => {
+  const l = labelIn("en");
+
+  it("says a fiscal year has nothing to close", () => {
+    expect(yearEndHeadline("2026", { netMinor: 0, currency: "ZAR", closingLines: [] }, l, "en")).toBe(
+      "Fiscal year 2026 has nothing to close."
+    );
+  });
+
+  it("nets the year in one figure", () => {
+    const preview = { netMinor: 500000, currency: "ZAR", closingLines: [{}] };
+    expect(yearEndHeadline("2026", preview, l, "en")).toBe(
+      `Fiscal year 2026 nets ${formatMoney(500000, "ZAR", "en")}.`
+    );
+  });
+});
+
+describe("accountHeadline", () => {
+  const l = labelIn("en");
+
+  it("asks for a code when nothing is loaded", () => {
+    expect(accountHeadline(null, "ZAR", false, l, "en")).toBe("Enter an account code to see its statement.");
+  });
+
+  it("flags a cached balance that disagrees with the journal", () => {
+    const statement = { accountCode: "1000", closingMinor: 500 };
+    expect(accountHeadline(statement, "ZAR", true, l, "en")).toBe(
+      "Account 1000's cached balance disagrees with the journal."
+    );
+  });
+
+  it("closes the account at its balance", () => {
+    const statement = { accountCode: "1000", closingMinor: 500000 };
+    expect(accountHeadline(statement, "ZAR", false, l, "en")).toBe(
+      `Account 1000 closes at ${formatMoney(500000, "ZAR", "en")}.`
+    );
+  });
+});
+
+describe("reconHeadline", () => {
+  const l = labelIn("en");
+
+  it("counts recent runs when none is picked", () => {
+    expect(reconHeadline(null, 3, l)).toBe("3 recent reconciliation run(s). Pick one to see its detail.");
+  });
+
+  it("counts matches still awaiting a decision", () => {
+    expect(reconHeadline({ process: "Bank feed", open: 4 }, 3, l)).toBe(
+      "Bank feed has 4 match(es) awaiting a decision."
+    );
+  });
+
+  it("says a run is fully matched", () => {
+    expect(reconHeadline({ process: "Bank feed", open: 0 }, 3, l)).toBe(
+      "Bank feed is matched, nothing awaiting a decision."
+    );
   });
 });

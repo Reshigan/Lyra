@@ -173,6 +173,9 @@ const LABELS: Record<string, Record<string, string>> = {
       "The level shown above is the one the API still holds. It changes only once the approval is granted.",
     "agents.noControls": "Your roles do not include changing agents.",
     "agents.unavailable": "You do not have access to the agent roster.",
+    "headline.noAgents": "No agents are configured for this tenant.",
+    "headline.agentsActive": "agent(s) are active.",
+    "headline.allPaused": "Every configured agent is paused.",
     "autonomy.suggest": "Suggests only",
     "autonomy.act_with_approval": "Acts with approval",
     "autonomy.act_within_limits": "Acts within limits",
@@ -317,6 +320,9 @@ const LABELS: Record<string, Record<string, string>> = {
       "المستوى المعروض أعلاه هو ما تحتفظ به الواجهة البرمجية، ولا يتغير إلا بعد منح الموافقة.",
     "agents.noControls": "أدوارك لا تشمل تغيير الوكلاء.",
     "agents.unavailable": "لا تملك صلاحية الاطلاع على قائمة الوكلاء.",
+    "headline.noAgents": "لا يوجد وكلاء مهيّأون لهذا المستأجر.",
+    "headline.agentsActive": "وكيل نشط.",
+    "headline.allPaused": "كل وكيل مهيّأ متوقف مؤقتًا.",
     "autonomy.suggest": "يقترح فقط",
     "autonomy.act_with_approval": "يتصرف بموافقة",
     "autonomy.act_within_limits": "يتصرف ضمن حدود",
@@ -701,6 +707,26 @@ export function agentNames(
  */
 export const ruleLabel = (L: Label, rule: string): string => L(`rule.${rule}`, humanise(rule));
 
+/**
+ * One true line for the hero. A tenant- or global-level pause outranks
+ * anything else on the roster — nothing below runs while it stands. Whether
+ * the budget is over or near is already its own notice right under the hero,
+ * so the headline stays on what the roster itself says rather than repeating
+ * that notice.
+ */
+export function consoleHeadline(
+  kill: { global: boolean; tenant: boolean } | null,
+  agents: readonly { status: string }[] | null,
+  L: Label
+): string {
+  if (kill?.global) return L("kill.globalOn");
+  if (kill?.tenant) return L("kill.tenantOn");
+  if (!agents) return L("agents.unavailable");
+  if (agents.length === 0) return L("headline.noAgents");
+  const active = agents.filter((agent) => agent.status === "active").length;
+  return active > 0 ? `${active} ${L("headline.agentsActive")}` : L("headline.allPaused");
+}
+
 const STATE_TONES: Record<string, BadgeTone> = {
   succeeded: "success",
   running: "info",
@@ -918,10 +944,8 @@ export default function AiConsole() {
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-1">
-        <h1 className="font-serif text-22 leading-[1.2] text-text">
-          <span aria-hidden="true">{AGENT_MARK}</span> {L("title")}
-        </h1>
-        <p className="font-ui text-13 text-subtle">{L("intro")}</p>
+        <h1 className="font-serif text-22 leading-[1.2] text-text">{L("title")}</h1>
+        <p className="font-ui text-13 text-muted">{consoleHeadline(loaded.kill, loaded.agents, L)}</p>
       </header>
 
       {/* Over budget is the first thing an operator must read, before any chart:

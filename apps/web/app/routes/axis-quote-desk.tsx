@@ -74,6 +74,13 @@ const LABELS: Record<string, Record<string, string>> = {
     "stat.quotes": "Live quotes",
     "stat.expiring": "Expiring within a week",
     "stat.silent": "Awaiting a first response",
+    // The hero headline: arithmetic on the same groups the KPI wall counts, not
+    // a count itself — a count in the sentence would need a plural rule per
+    // locale to stay grammatical (Arabic has five), same reasoning as home.tsx.
+    "headline.silent": "Some cases on the desk have not heard from a provider yet.",
+    "headline.expiring": "A live quote on the desk is expiring within the week.",
+    "headline.clear": "Every case on the desk has a live quote.",
+    "headline.open": "Open {ref}",
     "group.silent": "No provider has priced this yet",
     "group.best": "Best live price",
     "group.spread": "Spread to the next price",
@@ -122,6 +129,10 @@ const LABELS: Record<string, Record<string, string>> = {
     "stat.quotes": "عروض سارية",
     "stat.expiring": "تنتهي خلال أسبوع",
     "stat.silent": "بانتظار أول رد",
+    "headline.silent": "بعض الحالات على المكتب لم تتلقَّ ردًا من أي مزوّد بعد.",
+    "headline.expiring": "أحد العروض السارية على المكتب ينتهي خلال الأسبوع.",
+    "headline.clear": "كل حالة على المكتب لديها عرض سارٍ.",
+    "headline.open": "فتح {ref}",
     "group.silent": "لم يسعّرها أي مزوّد بعد",
     "group.best": "أفضل سعر ساري",
     "group.spread": "الفارق عن السعر التالي",
@@ -269,6 +280,19 @@ export function byPressure(a: BidGroup, b: BidGroup): number {
   if (silent !== 0) return silent;
   const soon = b.expiringSoon - a.expiringSoon;
   return soon !== 0 ? soon : a.case.ref.localeCompare(b.case.ref);
+}
+
+/**
+ * The hero's headline, as a label key: the desk's own pressure, in the same
+ * priority `byPressure` already sorts by — a case nobody has answered outranks
+ * one merely expiring. `""` means there is nothing on the desk to narrate, and
+ * the screen falls back to its plain title.
+ */
+export function deskHeadlineKey(groups: BidGroup[], silent: number, expiringSoon: number): string {
+  if (groups.length === 0) return "";
+  if (silent > 0) return "headline.silent";
+  if (expiringSoon > 0) return "headline.expiring";
+  return "headline.clear";
 }
 
 export function flagsOf(bid: Bid): { key: string; tone: BadgeTone }[] {
@@ -536,12 +560,30 @@ export default function AxisQuoteDesk() {
   const expiring = loaded.quotes.filter((quote) => expiryOf(quote, now) === "soon");
   const silent = groups.filter((entry) => entry.bids.length === 0);
   const picked = loaded.quotes.filter((quote) => quote.winFlag);
+  // `groups` is already sorted by pressure, so its head is the same case the
+  // headline is talking about whenever there is one worth narrating.
+  const headlineKey = deskHeadlineKey(groups, silent.length, expiring.length);
+  const urgent = headlineKey === "headline.silent" || headlineKey === "headline.expiring" ? groups[0] : null;
 
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-1">
-        <h1 className="font-serif text-22 leading-[1.2] text-text">{l(group ? "title.group" : "title")}</h1>
+        {/* Horizon: the desk answers rather than announces itself. The headline
+            is arithmetic on the same groups the KPI wall below counts, not text
+            an agent produced, so it carries no ✦ (CLAUDE.md §11). Falls back to
+            the plain title once there is nothing on the desk to narrate. */}
+        <h1 className="font-serif text-22 leading-[1.2] text-text">
+          {headlineKey ? l(headlineKey) : l(group ? "title.group" : "title")}
+        </h1>
         <p className="max-w-prose font-ui text-13 text-subtle">{l(group ? "intro.group" : "intro")}</p>
+        {urgent ? (
+          <Link
+            to={`/axis/cases/${urgent.case.id}`}
+            className="w-fit font-mono text-13 text-accent underline underline-offset-2"
+          >
+            {l("headline.open", { ref: urgent.case.ref })}
+          </Link>
+        ) : null}
       </header>
 
       {result?.problem ? <Gate problem={phrase(result.problem, l)} l={l} /> : null}

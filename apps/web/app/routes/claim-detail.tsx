@@ -20,6 +20,7 @@ import {
   Select,
   Stat,
   Table,
+  formatMoney,
   type Column
 } from "@lyra/ui";
 import { ApiError, api, fetchMe, names, type Problem } from "../api.server";
@@ -27,7 +28,7 @@ import { RefPicker, type RefOption } from "../components/ref-picker";
 import { cloudflare } from "../context";
 import { translator } from "../i18n";
 import { humanise } from "../modules/spec";
-import { Entry, Facts, Header, Payload, labelsFrom, rowsOf, safe, tag, type Page } from "./detail-kit";
+import { Entry, Facts, Header, Payload, labelsFrom, rowsOf, safe, tag, type Label, type Page } from "./detail-kit";
 import { Gate } from "./staff";
 import { useShellData } from "./workspace";
 
@@ -218,6 +219,7 @@ export const LABELS: Record<string, Record<string, string>> = {
   en: {
     intro: "What was reported, what it is reserved at, the paper behind it, and who signed off.",
     back: "Back to the register",
+    heroLede: "{status} · {incurred} incurred",
     fnolTitle: "First notice",
     fnolCaption: "The report as it was taken, unedited.",
     summaryTitle: "The claim",
@@ -350,6 +352,7 @@ export const LABELS: Record<string, Record<string, string>> = {
   ar: {
     intro: "ما تم الإبلاغ عنه، والمبلغ المحتجز، والمستندات المرتبطة، ومن اعتمده.",
     back: "العودة إلى السجل",
+    heroLede: "{status} · متكبد {incurred}",
     fnolTitle: "الإشعار الأول",
     fnolCaption: "البلاغ كما استُلم، دون تعديل.",
     summaryTitle: "المطالبة",
@@ -482,6 +485,20 @@ export const LABELS: Record<string, Record<string, string>> = {
 };
 
 export const labelsIn = labelsFrom(LABELS);
+
+/** The line under the claim number: its status and what it has cost so far —
+ * reserved plus paid less recovered, the same figure the summary Stat shows.
+ * No ✦ (arithmetic and formatting on the loaded record, not a model finding,
+ * CLAUDE.md §11). */
+export function claimLede(
+  claim: Pick<Claim, "status">,
+  incurredMinor: number,
+  currency: string,
+  l: Label,
+  locale: string
+): string {
+  return l("heroLede", { status: tag(l, "status", claim.status), incurred: formatMoney(incurredMinor, currency, locale) });
+}
 
 /* ------------------------------------------------------------------ loader */
 
@@ -777,11 +794,15 @@ export default function ClaimDetail() {
 
   return (
     <div className="flex flex-col gap-6">
-      <Header title={`${l("claimNo")} ${claim.claimNo}`} intro={l("intro")} />
-
-      <Link to="/axis/claims" className="font-ui text-12 text-accent underline-offset-2 hover:underline">
-        {l("back")}
-      </Link>
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <h1 className="font-serif text-22 leading-[1.2] text-text">{`${l("claimNo")} ${claim.claimNo}`}</h1>
+          <p className="font-ui text-13 text-muted">{claimLede(claim, incurredMinor, claim.currency, l, locale)}</p>
+          <Link to="/axis/claims" className="w-fit font-ui text-13 text-accent underline">
+            {l("back")}
+          </Link>
+        </div>
+      </header>
 
       <Card
         title={l("summaryTitle")}

@@ -14,6 +14,7 @@ import {
   DateTime,
   EmptyState,
   Field,
+  formatMoney,
   Input,
   KPIWall,
   Money,
@@ -196,9 +197,15 @@ const FORMATS = ["xlsx", "pdf", "csv", "json"] as const;
 // This screen owns its own strings: the shared catalogue (i18n/en.ts, ar.ts) is
 // another author's file. Generic words still come from `translator`, so "Apply"
 // is the same word here as on every list.
-const LABELS: Record<string, Record<string, string>> = {
+export const LABELS: Record<string, Record<string, string>> = {
   en: {
     title: "Finance reports",
+    "headline.balanced": "{name} balances.",
+    "headline.outBy": "{name} is out by {amount}.",
+    "headline.pnl": "{name} nets {amount}.",
+    "headline.count": "{name}: {count} row(s).",
+    "headline.cmBreach": "{name}: {count} currency breach(es).",
+    "headline.cmClear": "{name} is clear — no breach.",
     "report.trial-balance": "Trial balance",
     "report.pnl": "Profit and loss",
     "report.balance-sheet": "Balance sheet",
@@ -286,6 +293,12 @@ const LABELS: Record<string, Record<string, string>> = {
   },
   ar: {
     title: "التقارير المالية",
+    "headline.balanced": "{name} متوازن.",
+    "headline.outBy": "{name} يختلف بمقدار {amount}.",
+    "headline.pnl": "صافي {name}: {amount}.",
+    "headline.count": "{name}: {count} صف.",
+    "headline.cmBreach": "{name}: {count} تجاوز في العملة.",
+    "headline.cmClear": "{name} سليم — لا تجاوز.",
     "report.trial-balance": "ميزان المراجعة",
     "report.pnl": "الأرباح والخسائر",
     "report.balance-sheet": "الميزانية العمومية",
@@ -371,12 +384,53 @@ const LABELS: Record<string, Record<string, string>> = {
   }
 };
 
-type Label = (key: string) => string;
+type Label = (key: string, vars?: Record<string, string>) => string;
 
 // Local table, then detail-kit's SHARED, then `common.*` — the same chain every
 // screen uses. This screen builds keys from enum values, and a hand-rolled table
 // cannot answer one it never wrote down (docs/ui.md §7 P3-14).
-const labelIn = labelsFrom(LABELS);
+export const labelIn = labelsFrom(LABELS);
+
+// Hero headline: the report's own name plus the one figure it already
+// computed — never a fabricated number. No ✦, this is not an agent's finding
+// (CLAUDE.md §11). Null (a denied load) falls back to the screen's static
+// title; the nav below still lets an actor pick a report they do hold.
+export function reportsHeadline(report: Report | null, l: Label, locale: string): string {
+  if (!report) return l("title");
+  const name = l(`report.${report.key}`);
+  switch (report.key) {
+    case "trial-balance": {
+      const { balanced, totalDebitMinor, totalCreditMinor, currency } = report.data;
+      return balanced
+        ? l("headline.balanced", { name })
+        : l("headline.outBy", {
+            name,
+            amount: formatMoney(Math.abs(totalDebitMinor - totalCreditMinor), currency, locale)
+          });
+    }
+    case "pnl": {
+      const { grossMarginMinor, currency } = report.data;
+      return l("headline.pnl", { name, amount: formatMoney(grossMarginMinor, currency, locale) });
+    }
+    case "balance-sheet": {
+      const { balanced, assets, liabilities, equity, currency } = report.data;
+      const difference = assets.totalMinor - (liabilities.totalMinor + equity.totalMinor);
+      return balanced
+        ? l("headline.balanced", { name })
+        : l("headline.outBy", { name, amount: formatMoney(Math.abs(difference), currency, locale) });
+    }
+    case "aged":
+      return l("headline.count", { name, count: String(report.data.data.length) });
+    case "commission":
+      return l("headline.count", { name, count: String(report.data.data.length) });
+    case "client-money": {
+      const breached = report.data.data.filter((row) => row.breach).length;
+      return breached > 0
+        ? l("headline.cmBreach", { name, count: String(breached) })
+        : l("headline.cmClear", { name });
+    }
+  }
+}
 
 /* -------------------------------------------------------------------- loader */
 
@@ -481,31 +535,37 @@ export default function LedgerReports() {
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-4">
-        <h1 className="font-serif text-22 leading-[1.2] text-text">{l("title")}</h1>
-        <nav aria-label={t("common.tabs")}>
-          <ul className="flex flex-wrap gap-1">
-            {ORDER.map((key) => {
-              const current = key === loaded.key;
-              return (
-                <li key={key}>
-                  <Link
-                    to={`/ledger/reports/${key}`}
-                    aria-current={current ? "page" : undefined}
-                    className={
-                      current
-                        ? "inline-flex h-8 items-center rounded-md bg-surface-2 px-3 font-ui text-13 text-text"
-                        : "inline-flex h-8 items-center rounded-md px-3 font-ui text-13 text-subtle hover:bg-surface-2 hover:text-text"
-                    }
-                  >
-                    {l(`report.${key}`)}
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        </nav>
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <h1 className="font-serif text-22 leading-[1.2] text-text">
+            {reportsHeadline(loaded.denied ? null : loaded.report, l, locale)}
+          </h1>
+          <p className="font-ui text-13 text-muted">{l("title")}</p>
+        </div>
       </header>
+
+      <nav aria-label={t("common.tabs")}>
+        <ul className="flex flex-wrap gap-1">
+          {ORDER.map((key) => {
+            const current = key === loaded.key;
+            return (
+              <li key={key}>
+                <Link
+                  to={`/ledger/reports/${key}`}
+                  aria-current={current ? "page" : undefined}
+                  className={
+                    current
+                      ? "inline-flex h-8 items-center rounded-md bg-surface-2 px-3 font-ui text-13 text-text"
+                      : "inline-flex h-8 items-center rounded-md px-3 font-ui text-13 text-subtle hover:bg-surface-2 hover:text-text"
+                  }
+                >
+                  {l(`report.${key}`)}
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
 
       <Form
         key={loaded.key}

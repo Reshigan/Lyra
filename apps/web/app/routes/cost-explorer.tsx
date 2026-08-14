@@ -51,7 +51,10 @@ const LABELS: Record<string, Record<string, string>> = {
     "usage.title": "Storage and egress",
     "usage.window": "Storage is what this tenant holds right now; egress is bytes downloaded over the last 30 days.",
     "usage.storage": "Stored",
-    "usage.egress": "Egress, last 30 days"
+    "usage.egress": "Egress, last 30 days",
+    "headline.drifting": `unit(s) costing ${DRIFT_THRESHOLD_PCT}% or more above their ${DRIFT_BASELINE_DAYS}-day baseline.`,
+    "headline.onTrack": `No unit is drifting above its ${DRIFT_BASELINE_DAYS}-day baseline.`,
+    "headline.none": "No cost data has rolled up yet."
   },
   ar: {
     title: "مستكشف التكلفة",
@@ -70,7 +73,10 @@ const LABELS: Record<string, Record<string, string>> = {
     "usage.title": "التخزين والنقل الخارج",
     "usage.window": "التخزين هو ما تحتفظ به هذه المؤسسة الآن؛ والنقل الخارجي هو البايتات المُنزَّلة خلال آخر 30 يومًا.",
     "usage.storage": "المُخزَّن",
-    "usage.egress": "النقل الخارج، آخر 30 يومًا"
+    "usage.egress": "النقل الخارج، آخر 30 يومًا",
+    "headline.drifting": `وحدة (أو أكثر) تكلف الآن ${DRIFT_THRESHOLD_PCT}% أو أكثر فوق خط الأساس لـ ${DRIFT_BASELINE_DAYS} أيام.`,
+    "headline.onTrack": `لا توجد وحدة تتجاوز خط الأساس لـ ${DRIFT_BASELINE_DAYS} أيام.`,
+    "headline.none": "لم تُجمَّع بيانات التكلفة بعد."
   }
 };
 
@@ -176,6 +182,15 @@ export function formatBytes(bytes: number, locale: string): string {
   return `${nf.format(value)} ${units[unit]}`;
 }
 
+/** One true line for the hero: denied, drifting, empty, or on track — in that
+ *  order, since a denied read makes the rest of the sentence moot. */
+export function costHeadline(rows: readonly UnitEconRow[] | null, drifts: readonly Drift[], L: Label): string {
+  if (rows === null) return L("table.denied");
+  if (drifts.length > 0) return `${drifts.length} ${L("headline.drifting")}`;
+  if (rows.length === 0) return L("headline.none");
+  return L("headline.onTrack");
+}
+
 async function readable<T>(call: Promise<T>): Promise<T | null> {
   try {
     return await call;
@@ -239,7 +254,7 @@ export default function CostExplorer() {
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-1">
         <h1 className="font-serif text-22 leading-[1.2] text-text">{L("title")}</h1>
-        <p className="max-w-prose font-ui text-13 text-subtle">{L("intro")}</p>
+        <p className="max-w-prose font-ui text-13 text-muted">{costHeadline(loaded.rows, drifts, L)}</p>
       </header>
 
       {drifts.length > 0 ? (

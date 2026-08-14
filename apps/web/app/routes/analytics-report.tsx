@@ -41,6 +41,27 @@ const FORMATS = ["xlsx", "pdf", "csv", "json"] as const;
 /** Run states that mean "no figures yet", not "no figures ever". */
 const PENDING = new Set(["queued", "running"]);
 
+export type ReportStatus = "running" | "ranNow" | "inProgress" | "lastFailed" | "stale" | "neverRun";
+
+/**
+ * Which line the status paragraph shows. Pure so the branch order — a run in
+ * flight beats a fresh result beats history — is a one-line test, not an
+ * inspection of the JSX.
+ */
+export function reportStatus(
+  running: boolean,
+  ran: boolean,
+  pending: boolean,
+  lastRunState: string | null
+): ReportStatus {
+  if (running) return "running";
+  if (ran) return "ranNow";
+  if (pending) return "inProgress";
+  if (lastRunState === "failed") return "lastFailed";
+  if (lastRunState) return "stale";
+  return "neverRun";
+}
+
 /**
  * The overrides POST /reports/:id/run accepts, as spec fields so `FieldInput`
  * and `bodyFrom` do the rendering and the coercion. Only those a report's own
@@ -395,6 +416,7 @@ export default function AnalyticsReport() {
   const runs = loaded.runs;
   const lastRun = runs[0] ?? null;
   const pending = Boolean(lastRun && PENDING.has(lastRun.state));
+  const status = reportStatus(busy && submitting === "run", Boolean(ran), pending, lastRun?.state ?? null);
 
   // The window inputs a report actually has. Anything it does not declare is
   // not the actor's to override.
@@ -480,10 +502,34 @@ export default function AnalyticsReport() {
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-2">
-        <p className="font-ui text-12 text-subtle">{l("report")}</p>
-        <h1 className="font-serif text-22 leading-[1.2] text-text">{name}</h1>
-        {description ? <p className="font-ui text-13 text-muted">{description}</p> : null}
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <h1 className="font-serif text-22 leading-[1.2] text-text">{name}</h1>
+          <p role="status" aria-live="polite" className="font-ui text-13 text-muted">
+            {status === "running" ? (
+              l("running")
+            ) : status === "ranNow" && ran ? (
+              <>
+                {l("ranNow")} {t("common.rows", { count: String(ran.rowCount) })} ·{" "}
+                <DateTime value={ran.generatedAt} locale={locale} precision="minute" />
+              </>
+            ) : status === "inProgress" ? (
+              l("inProgress")
+            ) : (status === "lastFailed" || status === "stale") && lastRun ? (
+              <>
+                {status === "lastFailed" ? l("lastFailed") : l("stale")}{" "}
+                <Badge tone={toneFor(lastRun.state)} size="sm" dot>
+                  {l(`state.${lastRun.state}`)}
+                </Badge>{" "}
+                {l("lastRunAt")}{" "}
+                <DateTime value={lastRun.startedAt} locale={locale} precision="minute" />
+              </>
+            ) : (
+              l("neverRun")
+            )}
+          </p>
+          {description ? <p className="font-ui text-13 text-muted">{description}</p> : null}
+        </div>
       </header>
 
       <dl className="grid gap-x-8 gap-y-3 sm:grid-cols-3">
@@ -516,30 +562,6 @@ export default function AnalyticsReport() {
           <p className="max-w-prose font-ui text-13 text-muted">{l(`pii.${report.piiLevel}`)}</p>
         </div>
       )}
-
-      <p role="status" aria-live="polite" className="font-ui text-13 text-muted">
-        {busy && submitting === "run" ? (
-          l("running")
-        ) : ran ? (
-          <>
-            {l("ranNow")} {t("common.rows", { count: String(ran.rowCount) })} ·{" "}
-            <DateTime value={ran.generatedAt} locale={locale} precision="minute" />
-          </>
-        ) : pending ? (
-          l("inProgress")
-        ) : lastRun ? (
-          <>
-            {lastRun.state === "failed" ? l("lastFailed") : l("stale")}{" "}
-            <Badge tone={toneFor(lastRun.state)} size="sm" dot>
-              {l(`state.${lastRun.state}`)}
-            </Badge>{" "}
-            {l("lastRunAt")}{" "}
-            <DateTime value={lastRun.startedAt} locale={locale} precision="minute" />
-          </>
-        ) : (
-          l("neverRun")
-        )}
-      </p>
 
       {result?.problem ? <Problem problem={result.problem} /> : null}
 

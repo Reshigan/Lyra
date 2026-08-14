@@ -72,12 +72,24 @@ const URGENCY_CLASS: Record<ReturnType<typeof urgency>, string> = {
   later: "border-line bg-surface-1"
 };
 
+/** What the board needs read first: overdue, then this week's expiries, then the rest. */
+export function pipelineHeadline(gone: number, soon: number, openTotal: number, l: Label): string {
+  if (gone > 0) return l("headlineOverdue", { n: String(gone) });
+  if (soon > 0) return l("headlineSoon", { n: String(soon) });
+  if (openTotal > 0) return l("headlineOpen", { n: String(openTotal) });
+  return l("headlineClear");
+}
+
 /* ------------------------------------------------------------------ labels */
 
 export const LABELS: Labels = {
   en: {
     title: "Renewal pipeline",
     lede: "Every renewal by stage, soonest expiry first. Cards move as decisions are recorded.",
+    headlineOverdue: "{n} renewals past expiry, still undecided",
+    headlineSoon: "{n} renewals expiring within 7 days",
+    headlineOpen: "{n} renewals open",
+    headlineClear: "Nothing open on the pipeline",
     inFlight: "Open renewals",
     expiringWeek: "Expiring within 7 days",
     overdue: "Past expiry, undecided",
@@ -108,6 +120,10 @@ export const LABELS: Labels = {
   ar: {
     title: "مسار التجديدات",
     lede: "كل تجديد حسب مرحلته، الأقرب انتهاءً أولًا. تنتقل البطاقات مع تسجيل القرارات.",
+    headlineOverdue: "{n} تجديد تجاوز الانتهاء دون قرار",
+    headlineSoon: "{n} تجديد ينتهي خلال ٧ أيام",
+    headlineOpen: "{n} تجديد مفتوح",
+    headlineClear: "لا شيء مفتوح في المسار",
     inFlight: "التجديدات المفتوحة",
     expiringWeek: "تنتهي خلال ٧ أيام",
     overdue: "تجاوزت الانتهاء دون قرار",
@@ -239,7 +255,9 @@ export default function RenewalPipeline() {
     <div className="flex flex-col gap-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-col gap-1">
-          <h1 className="font-serif text-22 leading-[1.2] text-text">{l("title")}</h1>
+          <h1 className="font-serif text-22 leading-[1.2] text-text">
+            {pipelineHeadline(gone, soon, openTotal, l)}
+          </h1>
           <p className="font-ui text-13 text-muted">{l("lede")}</p>
         </div>
         <div className="flex items-center gap-3">

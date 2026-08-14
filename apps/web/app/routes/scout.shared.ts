@@ -521,6 +521,9 @@ const LABELS: Record<string, Record<string, string>> = {
     "radar.created": "Draft experiment created.",
     "radar.openBoard": "Experiment board",
     "radar.openCard": "Open the whitespace card",
+    "radar.headlinePursue": "{n} whitespace themes are worth pursuing right now.",
+    "radar.headlinePlotted": "{n} whitespace themes are plotted on the radar.",
+    "radar.headlineUnplotted": "{n} signals have not clustered into a theme yet.",
 
     /* whitespace card */
     "wsp.title": "Whitespace card",
@@ -548,6 +551,9 @@ const LABELS: Record<string, Record<string, string>> = {
     "wsp.target": "Move to",
     "wsp.ownerHint": "Who carries it from here. Leave as-is to keep the current owner.",
     "wsp.moved": "Moved to {status}.",
+    "wsp.ledeBoth": "{flags} regulatory flags and {experiments} experiments recorded against this theme.",
+    "wsp.ledeFlags": "{flags} regulatory flags recorded against this theme.",
+    "wsp.ledeExperiments": "{experiments} experiments recorded against this theme.",
 
     /* panel */
     "panel.title": "Panel intelligence",
@@ -563,6 +569,8 @@ const LABELS: Record<string, Record<string, string>> = {
     "panel.packHint": "Volume delivered, competitive index and the wording gaps, as a PDF.",
     "panel.packDenied": "The pack quotes counterparty numbers, so it needs the promote permission.",
     "panel.openPricing": "Price benchmarks",
+    "panel.headlineCheaper": "{n} of {total} carriers are priced below the median.",
+    "panel.headlineCount": "{n} carriers are on the bench for this period.",
 
     /* price benchmarks */
     "price.title": "Price benchmarks",
@@ -575,6 +583,8 @@ const LABELS: Record<string, Record<string, string>> = {
     "price.below": "{pct}% below",
     "price.empty": "Nothing priced in this period.",
     "price.allBelow": "Every priced cut sits at or below the median.",
+    "price.headlineLosses": "{n} of {lines} lines are losing to the panel this period.",
+    "price.headlineCount": "{n} lines are on the bench for this period.",
 
     /* experiments */
     "xp.title": "Experiments",
@@ -603,6 +613,8 @@ const LABELS: Record<string, Record<string, string>> = {
     "xp.decided": "Decision recorded.",
     "xp.empty": "No experiments yet.",
     "xp.openRadar": "Radar",
+    "xp.headlineRunning": "{n} of {total} experiments are running right now.",
+    "xp.headlineCount": "{n} experiments are on the board.",
 
     /* analytics */
     "an.title": "Pricing analytics",
@@ -634,6 +646,8 @@ const LABELS: Record<string, Record<string, string>> = {
     "an.benchNotExportableWhy":
       "The report engine has no price-bench table registered, so the index and win-rate figures above cannot be rendered as a file. The negotiation pack is the export that carries them.",
     "an.openPanel": "Panel intelligence",
+    "an.headlineAdequacy": "{pct}% of priced volume sits at or below the median, across {periods} periods.",
+    "an.headlineCount": "{n} periods are on the bench.",
 
     /* data products */
     "dtp.title": "Data products",
@@ -690,6 +704,8 @@ const LABELS: Record<string, Record<string, string>> = {
     "dtp.warn.staleFeed": "Published on a feed that is not building",
     "dtp.warnWhy.staleFeed": "Subscribers are reading a cut older than its own cadence claims.",
     "dtp.openRadar": "Back to the radar",
+    "dtp.headlineFlagged": "{n} of {total} data products are flagged for review.",
+    "dtp.headlinePublished": "{n} of {total} data products are published.",
 
     /* screen 6 — SCOUT admin */
     "adm.title": "SCOUT settings",
@@ -723,6 +739,8 @@ const LABELS: Record<string, Record<string, string>> = {
     "adm.approvalsHint":
       "Promoting a whitespace to a validated opportunity is the module's one gated move; publishing a data product carries the same permission check.",
     "adm.pending": "{count} awaiting a decision.",
+    "adm.headlinePending": "{n} SCOUT changes are awaiting a decision.",
+    "adm.headlineQuiet": "{n} signal sources have gone quiet.",
     "adm.noApprovals": "No SCOUT change has been sent for approval.",
     "adm.noLibrary": "Hypothesis templates are not stored",
     "adm.noLibraryWhy":
@@ -848,6 +866,9 @@ const LABELS: Record<string, Record<string, string>> = {
     "radar.created": "تم إنشاء تجربة مسودة.",
     "radar.openBoard": "لوحة التجارب",
     "radar.openCard": "فتح بطاقة الفرصة",
+    "radar.headlinePursue": "{n} من فرص الفراغ التسويقي تستحق المتابعة الآن.",
+    "radar.headlinePlotted": "{n} من فرص الفراغ التسويقي مرسومة على الرادار.",
+    "radar.headlineUnplotted": "{n} إشارة لم تتجمع في فكرة بعد.",
 
     /* whitespace card */
     "wsp.title": "بطاقة الفرصة",
@@ -875,6 +896,9 @@ const LABELS: Record<string, Record<string, string>> = {
     "wsp.target": "النقل إلى",
     "wsp.ownerHint": "من يتولاها من هنا. اتركه كما هو للإبقاء على المسؤول الحالي.",
     "wsp.moved": "نُقلت إلى {status}.",
+    "wsp.ledeBoth": "{flags} تنبيهًا تنظيميًا و{experiments} تجربة مسجلة على هذه الفكرة.",
+    "wsp.ledeFlags": "{flags} تنبيهًا تنظيميًا مسجلة على هذه الفكرة.",
+    "wsp.ledeExperiments": "{experiments} تجربة مسجلة على هذه الفكرة.",
 
     /* panel */
     "panel.title": "معلومات قائمة الجهات المسعّرة",
@@ -890,6 +914,8 @@ const LABELS: Record<string, Record<string, string>> = {
     "panel.packHint": "الحجم المحوّل ومؤشر المنافسة وفروق الصياغة، في ملف بي دي إف.",
     "panel.packDenied": "الملف يذكر أرقام الأطراف الأخرى، لذا يحتاج صلاحية الترقية.",
     "panel.openPricing": "مقاييس السعر",
+    "panel.headlineCheaper": "{n} من أصل {total} شركة تأمين مسعّرة دون الوسيط.",
+    "panel.headlineCount": "{n} شركة تأمين على القائمة لهذه الفترة.",
 
     /* price benchmarks */
     "price.title": "مقاييس السعر",
@@ -901,6 +927,8 @@ const LABELS: Record<string, Record<string, string>> = {
     "price.below": "{pct}٪ أقل",
     "price.empty": "لا شيء مُسعّر في هذه الفترة.",
     "price.allBelow": "كل الفئات المُسعّرة عند الوسيط أو أقل منه.",
+    "price.headlineLosses": "{n} من أصل {lines} خط أعمال يخسر أمام قائمة الجهات المسعّرة هذه الفترة.",
+    "price.headlineCount": "{n} خط أعمال على القائمة لهذه الفترة.",
 
     /* experiments */
     "xp.title": "التجارب",
@@ -928,6 +956,8 @@ const LABELS: Record<string, Record<string, string>> = {
     "xp.decided": "تم تسجيل القرار.",
     "xp.empty": "لا توجد تجارب بعد.",
     "xp.openRadar": "الرادار",
+    "xp.headlineRunning": "{n} من أصل {total} تجربة تعمل الآن.",
+    "xp.headlineCount": "{n} تجربة على اللوحة.",
 
     /* analytics */
     "an.title": "تحليلات التسعير",
@@ -959,6 +989,8 @@ const LABELS: Record<string, Record<string, string>> = {
     "an.benchNotExportableWhy":
       "محرك التقارير لا يسجّل جدول مقارنة الأسعار، لذا لا يمكن إخراج أرقام المؤشر ومعدل الفوز أعلاه كملف. ملف التفاوض هو التصدير الذي يحملها.",
     "an.openPanel": "معلومات قائمة الجهات المسعّرة",
+    "an.headlineAdequacy": "{pct}٪ من الحجم المُسعّر عند الوسيط أو أقل، عبر {periods} فترة.",
+    "an.headlineCount": "{n} فترة على القائمة.",
 
     /* data products */
     "dtp.title": "المنتجات المعرفية",
@@ -1013,6 +1045,8 @@ const LABELS: Record<string, Record<string, string>> = {
     "dtp.warn.staleFeed": "منشور على تغذية لا تُبنى",
     "dtp.warnWhy.staleFeed": "المشتركون يقرؤون تقطيعًا أقدم مما تدّعيه وتيرته.",
     "dtp.openRadar": "العودة إلى الرادار",
+    "dtp.headlineFlagged": "{n} من أصل {total} منتج معرفي مُعلَّم للمراجعة.",
+    "dtp.headlinePublished": "{n} من أصل {total} منتج معرفي منشور.",
 
     /* الشاشة ٦ — إعدادات سكاوت */
     "adm.title": "إعدادات سكاوت",
@@ -1046,6 +1080,8 @@ const LABELS: Record<string, Record<string, string>> = {
     "adm.approvalsHint":
       "ترقية فجوة إلى فرصة مُتحقَّقة هي الخطوة المحكومة الوحيدة في الوحدة؛ ونشر منتج معرفي يحمل التحقق ذاته من الصلاحية.",
     "adm.pending": "{count} بانتظار قرار.",
+    "adm.headlinePending": "{n} تغييرًا في سكاوت بانتظار قرار.",
+    "adm.headlineQuiet": "{n} مصدر إشارات أصبح هادئًا.",
     "adm.noApprovals": "لم يُرسل أي تغيير في سكاوت للموافقة.",
     "adm.noLibrary": "قوالب الفرضيات غير مخزَّنة",
     "adm.noLibraryWhy":

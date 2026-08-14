@@ -92,6 +92,7 @@ const LABELS: Record<string, Record<string, string>> = {
     intro:
       "Asks the model what this customer is most likely to take next, and why. Proposing changes nothing the customer can see — an offer reaches them only when someone surfaces it.",
     backToOffers: "Back to next best offers",
+    "summary.offers": "{count} offers, {surfaceable} ready to surface.",
     ask: "Propose offers",
     askIntro: "Scored against what this customer already holds. Nothing is sent.",
     customerId: "Customer",
@@ -145,6 +146,7 @@ const LABELS: Record<string, Record<string, string>> = {
     intro:
       "يسأل النموذج عما يرجَّح أن يأخذه هذا العميل تاليًا، ولماذا. الاقتراح لا يغيّر شيئًا يراه العميل — لا يصل إليه العرض إلا حين يعرضه شخص ما.",
     backToOffers: "العودة إلى أفضل العروض التالية",
+    "summary.offers": "{count} عرضًا، {surfaceable} جاهز للعرض.",
     ask: "اقتراح عروض",
     askIntro: "تُحتسب مقابل ما يملكه العميل بالفعل. لا يُرسل شيء.",
     customerId: "العميل",
@@ -223,6 +225,15 @@ export function evidenceOf(reasonJson: string | null): Record<string, unknown> {
   }
 }
 
+/**
+ * Total offers versus how many are still one click from surfacing. Arithmetic
+ * over what the loader already listed — not a model finding, so no ✦
+ * (CLAUDE.md §11, same call as `consoleHeadline` in orbit-console.tsx).
+ */
+export function offerSummary(offers: Pick<Offer, "state">[], maySurface: boolean): { total: number; surfaceable: number } {
+  return { total: offers.length, surfaceable: offers.filter((offer) => canSurface(offer, maySurface)).length };
+}
+
 /* ------------------------------------------------------------------ loader */
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
@@ -297,18 +308,25 @@ export default function NextBestOffers() {
   const l = labelsIn(locale);
   const busy = navigation.state !== "idle";
   const offers = loaded.offers;
+  const summary = offers && offers.length > 0 ? offerSummary(offers, loaded.may.surface) : null;
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-2">
-        <Link
-          to="/distribution/next-best-offers"
-          className="font-ui text-12 text-subtle underline-offset-2 hover:underline"
-        >
-          {l("backToOffers")}
-        </Link>
-        <h1 className="font-serif text-22 leading-[1.2] text-text">{l("title")}</h1>
-        <p className="max-w-prose font-ui text-13 text-muted">{l("intro")}</p>
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <Link
+            to="/distribution/next-best-offers"
+            className="w-fit font-ui text-12 text-subtle underline-offset-2 hover:underline"
+          >
+            {l("backToOffers")}
+          </Link>
+          <h1 className="font-serif text-22 leading-[1.2] text-text">{l("title")}</h1>
+          <p className="max-w-prose font-ui text-13 text-muted">
+            {summary
+              ? l("summary.offers", { count: String(summary.total), surfaceable: String(summary.surfaceable) })
+              : l("intro")}
+          </p>
+        </div>
       </header>
 
       {!loaded.may.read ? (

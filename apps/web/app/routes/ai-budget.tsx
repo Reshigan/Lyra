@@ -130,7 +130,12 @@ const LABELS: Record<string, Record<string, string>> = {
     "problem.confirm_required": "Tick the confirmation before changing a ceiling.",
     "problem.invalid_amount": "A ceiling must be a number that is zero or more.",
     "problem.nothing_to_set": "Set at least one of the two ceilings.",
-    "problem.bad_intent": "That form did not carry a recognised action."
+    "problem.bad_intent": "That form did not carry a recognised action.",
+    "headline.stopped": "module(s) have stopped agents on budget today.",
+    "headline.none": "No budget has been set for this tenant yet.",
+    "headline.uncapped": "At least one module has no ceiling today.",
+    "headline.onTrack": "Every module is within its ceiling today.",
+    "headline.consoleLink": "See what's stopped in the AI console"
   },
   ar: {
     title: "حدود الإنفاق",
@@ -187,7 +192,12 @@ const LABELS: Record<string, Record<string, string>> = {
     "problem.confirm_required": "علّم خانة التأكيد قبل تغيير أي حد.",
     "problem.invalid_amount": "يجب أن يكون الحد رقمًا يساوي صفرًا أو أكثر.",
     "problem.nothing_to_set": "اضبط أحد الحدين على الأقل.",
-    "problem.bad_intent": "لم يحمل النموذج إجراءً معروفًا."
+    "problem.bad_intent": "لم يحمل النموذج إجراءً معروفًا.",
+    "headline.stopped": "وحدة (أو أكثر) أوقفت وكلاءها بسبب الميزانية اليوم.",
+    "headline.none": "لم تُضبط أي ميزانية لهذه المؤسسة بعد.",
+    "headline.uncapped": "وحدة واحدة على الأقل بلا حد اليوم.",
+    "headline.onTrack": "كل وحدة ضمن حدها اليوم.",
+    "headline.consoleLink": "اطّلع على الموقوف في لوحة الذكاء الاصطناعي"
   }
 };
 
@@ -272,6 +282,16 @@ export function ceilingsFor(rows: readonly BudgetRow[] | null, day?: string): Bu
 
 /** Zero is not a small ceiling: the gateway reads it as "do not stop them". */
 const uncapped = (row: BudgetRow): boolean => row.tokensLimit === 0 && row.costMicroLimit === 0;
+
+/** One true line for the hero: a module actually stopped outranks merely
+ *  being uncapped, which outranks "nothing set up yet". */
+export function budgetHeadline(ceilings: readonly BudgetRow[], L: Label): string {
+  const stopped = ceilings.filter((row) => row.stoppedAt !== null).length;
+  if (stopped > 0) return `${stopped} ${L("headline.stopped")}`;
+  if (ceilings.length === 0) return L("headline.none");
+  if (ceilings.some(uncapped)) return L("headline.uncapped");
+  return L("headline.onTrack");
+}
 
 /* ------------------------------------------------------------------ loader */
 
@@ -458,10 +478,16 @@ export default function AiBudget() {
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-1">
-        <h1 className="font-serif text-22 leading-[1.2] text-text">
-          <span aria-hidden="true">{AGENT_MARK}</span> {L("title")}
-        </h1>
-        <p className="max-w-prose font-ui text-13 text-subtle">{L("intro")}</p>
+        <h1 className="font-serif text-22 leading-[1.2] text-text">{L("title")}</h1>
+        <p className="max-w-prose font-ui text-13 text-muted">{budgetHeadline(ceilings, L)}</p>
+        {ceilings.some((row) => row.stoppedAt !== null) ? (
+          <Link
+            to="/admin/ai/console"
+            className="w-fit font-ui text-13 text-accent underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          >
+            {L("headline.consoleLink")}
+          </Link>
+        ) : null}
       </header>
 
       {/* An uncapped tenant is the finding an operator came here to act on, so

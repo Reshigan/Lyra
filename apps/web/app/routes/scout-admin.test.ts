@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { currentThresholds, floorOverrides, healthOf, QUIET_AFTER_DAYS, type ThresholdRow } from "./scout-admin";
-import { K_FLOOR, type Page } from "./scout.shared";
+import {
+  adminHeadline,
+  currentThresholds,
+  floorOverrides,
+  healthOf,
+  QUIET_AFTER_DAYS,
+  type SourceHealth,
+  type ThresholdRow
+} from "./scout-admin";
+import { K_FLOOR, labelsIn, type Page } from "./scout.shared";
+
+const l = labelsIn("en");
 
 // The screen makes three claims and nothing else: a source is quiet or it is
 // not, a threshold row is the live one or a superseded one, and a product's
@@ -116,5 +126,30 @@ describe("suppression floors", () => {
     expect(floorOverrides([{ id: "dtp_1", name: "Demand curve", aggregationMin: K_FLOOR, status: "draft" }])).toEqual(
       []
     );
+  });
+});
+
+/* --------------------------------------------------------------- headline */
+
+const source = (over: Partial<SourceHealth> = {}): SourceHealth => ({
+  source: "search",
+  count: 100,
+  lastAt: NOW,
+  quiet: false,
+  ...over
+});
+
+describe("adminHeadline", () => {
+  it("leads with the pending count whatever the sources look like", () => {
+    expect(adminHeadline(3, [source({ quiet: true })], l)).toBe(l("adm.headlinePending", { n: "3" }));
+  });
+
+  it("falls back to the quiet-source count with nothing pending", () => {
+    const sources = [source({ quiet: true }), source({ source: "news", quiet: false })];
+    expect(adminHeadline(0, sources, l)).toBe(l("adm.headlineQuiet", { n: "1" }));
+  });
+
+  it("falls back to the title with nothing pending and every source live", () => {
+    expect(adminHeadline(0, [source()], l)).toBe(l("adm.title"));
   });
 });

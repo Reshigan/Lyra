@@ -70,7 +70,7 @@ interface TileTable {
   generatedAt: number;
 }
 
-interface TileResult {
+export interface TileResult {
   key: string;
   table?: TileTable;
   totals?: Record<string, number>;
@@ -105,7 +105,9 @@ const LABELS: Record<string, Record<string, string>> = {
     tileFailed: "This tile could not be built.",
     noRows: "No figures in this window.",
     generated: "Generated",
-    total: "Total"
+    total: "Total",
+    "health.allOk": "All {count} tiles built.",
+    "health.someFailed": "{failed} of {total} tiles could not be built."
   },
   ar: {
     dashboard: "لوحة معلومات",
@@ -116,9 +118,19 @@ const LABELS: Record<string, Record<string, string>> = {
     tileFailed: "تعذّر إنشاء هذه البطاقة.",
     noRows: "لا توجد أرقام في هذه الفترة.",
     generated: "تم الإنشاء",
-    total: "الإجمالي"
+    total: "الإجمالي",
+    "health.allOk": "تم إنشاء كل البطاقات ({count}).",
+    "health.someFailed": "تعذّر إنشاء {failed} من أصل {total} بطاقة."
   }
 };
+
+/** How many of a dashboard's tiles came back as figures versus a dead tile
+ *  (`{ error }` with no table, checked above in `TileResult`). Pure so the
+ *  hero line is a one-line test, not a scan of the tile grid. */
+export function tileHealth(tiles: TileResult[]): { ok: number; failed: number; total: number } {
+  const failed = tiles.filter((tile) => tile.error || !tile.table).length;
+  return { ok: tiles.length - failed, failed, total: tiles.length };
+}
 
 /** The shared resolver (docs/ui.md §7 P3-14), with one last resort of its own:
  *  a tile type nobody labelled reads as words, not as `claims_by_state`. */
@@ -193,18 +205,27 @@ export default function AnalyticsDashboard() {
 
   const data = loaded.data;
   const specs = data?.layout.tiles ?? [];
+  const health = data ? tileHealth(data.tiles) : null;
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-2">
-        <p className="font-ui text-12 text-subtle">{l("dashboard")}</p>
-        <h1 className="font-serif text-22 leading-[1.2] text-text">{loaded.name}</h1>
-        {data ? (
-          <p className="font-ui text-12 text-subtle">
-            {l("generated")}{" "}
-            <DateTime value={data.generatedAt} locale={locale} precision="minute" />
-          </p>
-        ) : null}
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <h1 className="font-serif text-22 leading-[1.2] text-text">{loaded.name}</h1>
+          {health ? (
+            <p className="font-ui text-13 text-muted">
+              {health.failed > 0
+                ? l("health.someFailed", { failed: String(health.failed), total: String(health.total) })
+                : l("health.allOk", { count: String(health.total) })}
+            </p>
+          ) : null}
+          {data ? (
+            <p className="font-ui text-12 text-subtle">
+              {l("generated")}{" "}
+              <DateTime value={data.generatedAt} locale={locale} precision="minute" />
+            </p>
+          ) : null}
+        </div>
       </header>
 
       {!data ? (

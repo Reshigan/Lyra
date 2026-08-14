@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { alertOf, alertsFrom, staffing, type Presence, type SupervisedConversation } from "./orbit-supervisor";
+import {
+  LABELS,
+  alertOf,
+  alertsFrom,
+  labelsIn,
+  staffing,
+  supervisorHeadline,
+  type Presence,
+  type SupervisedConversation
+} from "./orbit-supervisor";
 
 // docs/modules/orbit.md §4 screen 2. The wall's own logic is the triage: which
 // open conversations have missed something, and in what order a supervisor
@@ -99,5 +108,26 @@ describe("staffing", () => {
 
   it("survives an empty roster", () => {
     expect(staffing([])).toEqual({ available: 0, away: 0, offline: 0, holding: 0 });
+  });
+});
+
+describe("supervisorHeadline", () => {
+  it("leads with a breach over a long wait over a plain open count", () => {
+    const l = labelsIn("en");
+    expect(supervisorHeadline(5, 2, 3, l)).toBe(l("headlineBreach", { n: "2" }));
+    expect(supervisorHeadline(5, 0, 3, l)).toBe(l("headlineWaiting", { n: "3" }));
+    expect(supervisorHeadline(5, 0, 0, l)).toBe(l("headlineOpen", { n: "5" }));
+    expect(supervisorHeadline(0, 0, 0, l)).toBe(l("headlineClear"));
+  });
+});
+
+describe("the supervisor wall speaks both locales", () => {
+  it("has the same keys in en and ar, none left empty or untranslated", () => {
+    expect(Object.keys(LABELS.ar ?? {}).sort()).toEqual(Object.keys(LABELS.en ?? {}).sort());
+    for (const [key, english] of Object.entries(LABELS.en ?? {})) {
+      const arabic = LABELS.ar?.[key] ?? "";
+      expect(arabic.trim(), key).not.toBe("");
+      expect(arabic, key).not.toBe(english);
+    }
   });
 });

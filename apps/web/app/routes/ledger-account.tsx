@@ -4,7 +4,7 @@ import { ApiError, api, fetchMe } from "../api.server";
 import { cloudflare } from "../context";
 import { translator } from "../i18n";
 import { useShellData } from "./workspace";
-import { PERM, labelIn } from "./ledger.shared";
+import { PERM, accountHeadline, labelIn } from "./ledger.shared";
 
 // Read-only by design: an account balance is an outcome, never an input. The
 // only thing worth alarming about here is the cached balance disagreeing with
@@ -172,9 +172,13 @@ export default function LedgerAccount() {
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-2">
-        <h1 className="font-serif text-22 leading-[1.2] text-text">{l("account.title")}</h1>
-        <p className="max-w-prose font-ui text-13 text-subtle">{l("account.intro")}</p>
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <h1 className="font-serif text-22 leading-[1.2] text-text">
+            {accountHeadline(statement, currency, drift, l, locale)}
+          </h1>
+          <p className="font-ui text-13 text-muted">{l("account.intro")}</p>
+        </div>
       </header>
 
       <Form method="get" aria-label={l("account.lookup")} className="flex flex-wrap items-end gap-3">

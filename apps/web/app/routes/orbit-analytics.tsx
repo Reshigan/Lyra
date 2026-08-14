@@ -103,12 +103,20 @@ export function meanOf(values: Array<number | null | undefined>): number | null 
   return real.reduce((total, value) => total + value, 0) / real.length;
 }
 
+/** The one number worth leading with: containment for the selected window, or a no-data note. */
+export function analyticsHeadline(containmentRatio: number | null, days: number, l: Label): string {
+  if (containmentRatio === null) return l("headlineNoData", { n: String(days) });
+  return l("headlineContainment", { n: String(Math.round(containmentRatio * 100)), days: String(days) });
+}
+
 /* ------------------------------------------------------------------ labels */
 
 export const LABELS: Labels = {
   en: {
     title: "Customer analytics",
     lede: "How much the agent handled alone, how often a human took over, how customers felt, and how many stayed.",
+    headlineContainment: "{n}% contained without a human, last {days} days",
+    headlineNoData: "No conversations in the last {n} days",
     window: "Window",
     days: "Last {n} days",
     containment: "Containment",
@@ -173,6 +181,8 @@ export const LABELS: Labels = {
   ar: {
     title: "تحليلات العملاء",
     lede: "ما أنجزه الوكيل وحده، وعدد مرات تدخّل موظف، ومشاعر العملاء، وعدد من بقي منهم.",
+    headlineContainment: "احتواء {n}٪ دون تدخل بشري، آخر {days} يوم",
+    headlineNoData: "لا محادثات خلال آخر {n} يوم",
     window: "المدة",
     days: "آخر {n} يومًا",
     containment: "الاكتفاء الذاتي",
@@ -396,7 +406,9 @@ export default function CustomerAnalytics() {
     <div className="flex flex-col gap-6">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-col gap-1">
-          <h1 className="font-serif text-22 leading-[1.2] text-text">{l("title")}</h1>
+          <h1 className="font-serif text-22 leading-[1.2] text-text">
+            {analyticsHeadline(loaded.containment, loaded.days, l)}
+          </h1>
           <p className="max-w-prose font-ui text-13 text-muted">{l("lede")}</p>
         </div>
         <nav aria-label={l("window")} className="flex items-center gap-2">

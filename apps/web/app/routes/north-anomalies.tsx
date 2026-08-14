@@ -1,5 +1,6 @@
 import {
   Form,
+  Link,
   useActionData,
   useLoaderData,
   useNavigation,
@@ -88,6 +89,15 @@ const LABELS: Labels = {
     "act.explain": "Explain it",
     "act.own": "Take it on",
     "act.dismiss": "Dismiss",
+    // The hero's opening line: what state the whole loaded list is in, not
+    // the filtered one — see `headline()`. Deliberately count-free, same
+    // reasoning as home.tsx's `answer`: a number here needs a plural rule per
+    // locale, and Arabic has five.
+    "headline.denied": "You do not have access to anomalies.",
+    "headline.clear": "Nothing moved more than the detector expected.",
+    "headline.open": "There is a deviation nobody has looked at yet.",
+    "headline.owned": "Every anomaly here already has an owner.",
+    "headline.action": "Open the anomaly",
     "none.title": "Nothing is out of line",
     "none.body": "No anomaly matches this filter. That is the state you want most days.",
     denied: "You do not have permission to read anomalies. Ask a tenant administrator for NORTH anomaly access.",
@@ -131,6 +141,11 @@ const LABELS: Labels = {
     "act.explain": "فسّرها",
     "act.own": "تولّها",
     "act.dismiss": "استبعدها",
+    "headline.denied": "لا تملك صلاحية الوصول إلى الحالات الشاذة.",
+    "headline.clear": "لم يتحرك شيء أكثر مما توقعه الكاشف.",
+    "headline.open": "هناك انحراف لم ينظر إليه أحد بعد.",
+    "headline.owned": "كل حالة هنا لها مسؤول بالفعل.",
+    "headline.action": "فتح الحالة الشاذة",
     "none.title": "لا شيء خارج الحد",
     "none.body": "لا توجد حالة تطابق هذا المرشّح. وهذه هي الحالة المرجوة في معظم الأيام.",
     denied: "لا تملك صلاحية قراءة الحالات الشاذة. اطلب من مدير المستأجر صلاحية حالات نورث.",
@@ -183,6 +198,20 @@ export function tone(magnitude: number, direction: string | undefined): "ok" | "
   if (magnitude === 0) return "neutral";
   const good = direction === "down" ? magnitude < 0 : magnitude > 0;
   return good ? "ok" : "bad";
+}
+
+/**
+ * The hero's headline: what state the whole loaded list is in, before a single
+ * card is drawn — same move as home.tsx's `answer`. Arithmetic on stored
+ * state, not an agent's reading, so it carries no ✦ mark.
+ */
+export function headline(
+  anomalies: readonly Pick<Anomaly, "state">[] | null,
+  l: (key: string, vars?: Record<string, string>) => string
+): string {
+  if (anomalies === null) return l("headline.denied");
+  if (anomalies.length === 0) return l("headline.clear");
+  return anomalies.some((one) => one.state === "new") ? l("headline.open") : l("headline.owned");
 }
 
 /* ------------------------------------------------------------------ loader */
@@ -262,6 +291,11 @@ export default function NorthAnomalies() {
   const held = new Set(shell?.permissions ?? []);
 
   const byKey = new Map(metrics.map((row) => [row.key, row]));
+  // The most recently detected unowned anomaly (the list loads detectedAt
+  // desc) is what the hero's link drills into — a real destination
+  // (record.tsx's generic `/north/anomalies/:id`, already used the same way
+  // from north-brief.tsx), not a fabricated one.
+  const openAnomaly = anomalies?.find((one) => one.state === "new") ?? null;
 
   // An approval hold is a state, not a failure, so it goes to Gate untranslated
   // and everything else gets this screen's own copy for the refusal code.
@@ -279,8 +313,13 @@ export default function NorthAnomalies() {
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-2">
         <span className="font-mono text-12 uppercase tracking-[0.14em] text-subtle">{l("kicker")}</span>
-        <h1 className="font-serif text-22 leading-[1.2] text-text">{l("title")}</h1>
+        <h1 className="font-serif text-22 leading-[1.2] text-text">{headline(anomalies, l)}</h1>
         <p className="max-w-[68ch] font-ui text-13 text-subtle">{l("intro")}</p>
+        {openAnomaly ? (
+          <Link to={`/north/anomalies/${openAnomaly.id}`} className="w-fit font-ui text-13 text-accent underline">
+            {l("headline.action")}
+          </Link>
+        ) : null}
       </header>
 
       {shown ? <Gate problem={shown} l={l} /> : null}

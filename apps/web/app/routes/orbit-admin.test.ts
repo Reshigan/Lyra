@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  LABELS,
+  adminHeadline,
   coverageOf,
   faultsOf,
+  labelsIn,
   transportGaps,
   type ConnectorRow,
   type MemberRow,
@@ -138,5 +141,24 @@ describe("faultsOf", () => {
     );
     const faults = faultsOf({ connectors, teams: [team({ isDefault: 1 })], rules: [rule()], coverage: covered });
     expect(faults).toEqual([]);
+  });
+});
+
+describe("adminHeadline", () => {
+  it("leads with what is stranded over the otherwise-healthy reach numbers", () => {
+    const l = labelsIn("en");
+    expect(adminHeadline(2, 3, 4, l)).toBe(l("headlineFaults", { n: "2" }));
+    expect(adminHeadline(0, 3, 4, l)).toBe(l("headlineOk", { channels: "3", teams: "4" }));
+  });
+});
+
+describe("ORBIT admin speaks both locales", () => {
+  it("has the same keys in en and ar, none left empty or untranslated", () => {
+    expect(Object.keys(LABELS.ar ?? {}).sort()).toEqual(Object.keys(LABELS.en ?? {}).sort());
+    for (const [key, english] of Object.entries(LABELS.en ?? {})) {
+      const arabic = LABELS.ar?.[key] ?? "";
+      expect(arabic.trim(), key).not.toBe("");
+      expect(arabic, key).not.toBe(english);
+    }
   });
 });

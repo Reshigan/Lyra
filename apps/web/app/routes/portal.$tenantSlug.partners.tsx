@@ -44,7 +44,7 @@ import { brandStyle } from "../components/shell";
  *  the tenant's, not ours), a short list here so the form stays a form. */
 const KINDS = ["aggregator", "bank", "broker", "retailer", "platform"] as const;
 
-const LABELS: Record<string, Record<string, string>> = {
+export const LABELS: Record<string, Record<string, string>> = {
   en: {
     "partners.title": "Partner integration",
     "partners.intro":
@@ -339,17 +339,22 @@ export default function PortalPartners() {
   return (
     <main style={brandStyle(tenant.brand)} className="lyra-field min-h-screen bg-bg text-text">
       <div className="lyra-enter mx-auto max-w-3xl p-6">
-        <header className="mb-8 flex items-center gap-3">
-          {tenant.brand.logo?.light ?? tenant.brand.logo?.mark ? (
-            <img
-              src={tenant.brand.logo?.light ?? tenant.brand.logo?.mark}
-              alt={tenant.name}
-              className="h-10 w-auto"
-            />
-          ) : null}
-          <div>
-            <h1 className="font-serif text-22 leading-[1.2]">{l("partners.title")}</h1>
-            <p className="mt-1 text-13 text-muted">{l("partners.intro")}</p>
+        <header className="mb-8 flex flex-wrap items-end justify-between gap-3">
+          <div className="flex items-center gap-3">
+            {tenant.brand.logo?.light ?? tenant.brand.logo?.mark ? (
+              <img
+                src={tenant.brand.logo?.light ?? tenant.brand.logo?.mark}
+                alt={tenant.name}
+                className="h-10 w-auto"
+              />
+            ) : null}
+            <div className="flex flex-col gap-1">
+              <h1 className="font-serif text-22 leading-[1.2] text-text">{l("partners.title")}</h1>
+              <p className="font-ui text-13 text-muted">{l("partners.intro")}</p>
+              <a className="w-fit font-ui text-13 text-accent underline" href={`/portal/${tenantSlug}`}>
+                {l("partners.back")}
+              </a>
+            </div>
           </div>
         </header>
 

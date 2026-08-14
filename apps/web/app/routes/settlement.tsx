@@ -30,7 +30,7 @@ import { translator } from "../i18n";
 import { who } from "../names";
 import { Gate } from "./module";
 import { useShellData } from "./workspace";
-import { labelsFrom } from "./detail-kit";
+import { labelsFrom, type Label } from "./detail-kit";
 
 // Running a payout period, docs/19 §5. Drafting is arithmetic: it prices the
 // entries a period earned and writes a settlement row, and that is all — no
@@ -204,6 +204,20 @@ export function queueGroups(rows: readonly Settlement[]): QueueGroup[] {
   );
 }
 
+/**
+ * The queue's one-line summary: how many settlements, and how many of those
+ * are sitting on the second-signature step. Falls back to the static intro
+ * when the queue is empty — there is nothing real to count yet.
+ */
+export function queueHeadline(groups: readonly QueueGroup[], l: Label): string {
+  const total = groups.reduce((sum, group) => sum + group.count, 0);
+  if (total === 0) return l("intro");
+  const awaiting = groups.filter((group) => group.state === "approved").reduce((sum, group) => sum + group.count, 0);
+  return awaiting > 0
+    ? l("queueHeadline.awaiting", { count: String(total), awaiting: String(awaiting) })
+    : l("queueHeadline.count", { count: String(total) });
+}
+
 export interface PeriodContext {
   counterpartyKind?: string;
   channelId?: string;
@@ -231,6 +245,8 @@ export const LABELS: Record<string, Record<string, string>> = {
     intro:
       "Draft what a channel earned in a period, then hand the number on. Drafting is arithmetic — nothing is accrued and no money moves. Approving the number and releasing the payment are two decisions, held by two different people.",
     deniedTitle: "You cannot read settlements",
+    "queueHeadline.count": "{count} settlements in the queue.",
+    "queueHeadline.awaiting": "{count} settlements in the queue, {awaiting} awaiting a second signature.",
     runTitle: "Draft a period",
     runIntro:
       "Redrafting a period that is still a draft replaces its figures. Once it is approved, a redraft returns it untouched.",
@@ -282,6 +298,8 @@ export const LABELS: Record<string, Record<string, string>> = {
     intro:
       "احسب ما استحقته القناة في الفترة ثم أحِل الرقم. الحساب مجرد حساب — لا استحقاق ولا تحويل أموال. الموافقة على الرقم وصرف الدفعة قراران يتخذهما شخصان مختلفان.",
     deniedTitle: "لا يمكنك عرض التسويات",
+    "queueHeadline.count": "{count} تسوية في قائمة الانتظار.",
+    "queueHeadline.awaiting": "{count} تسوية في قائمة الانتظار، {awaiting} بانتظار توقيع ثانٍ.",
     runTitle: "احسب فترة",
     runIntro: "إعادة حساب فترة لا تزال مسودة تستبدل أرقامها. وبعد الموافقة عليها تُعاد الفترة كما هي دون تغيير.",
     counterpartyKind: "نوع الطرف المقابل",
@@ -517,7 +535,7 @@ export default function SettlementPeriod() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title={l("title")} description={l("intro")} />
+      <PageHeader eyebrow={l("title")} title={queueHeadline(groups, l)} description={l("intro")} />
 
       <Form method="get" className="flex flex-wrap items-end gap-3" aria-label={l("filters")}>
         <Field label={l("counterpartyKind")}>

@@ -15,6 +15,7 @@ import {
   safe,
   sumBy,
   tag,
+  type Label,
   type Page
 } from "./detail-kit";
 import { FALLBACK_CURRENCY, useShellData } from "./workspace";
@@ -105,6 +106,7 @@ export const LABELS: Record<string, Record<string, string>> = {
   en: {
     intro: "What this channel may sell, what it is paid, what it is asking for, and where its money stands.",
     back: "Back to the channels",
+    heroLede: "{kind} · {medium} · {status} · {n} live requests",
     profileTitle: "The channel",
     medium: "Arrives by",
     collects: "Takes the money",
@@ -158,6 +160,7 @@ export const LABELS: Record<string, Record<string, string>> = {
   ar: {
     intro: "ما تبيعه هذه القناة، وما تحصل عليه، وما تطلبه، وموقف مستحقاتها.",
     back: "العودة إلى القنوات",
+    heroLede: "{kind} · {medium} · {status} · {n} طلب قائم",
     profileTitle: "القناة",
     medium: "طريقة الوصول",
     collects: "من يحصّل المبلغ",
@@ -211,6 +214,22 @@ export const LABELS: Record<string, Record<string, string>> = {
 };
 
 export const labelsIn = labelsFrom(LABELS);
+
+/** The line under the channel's name: what kind of channel it is, how it
+ * reaches customers, and how many quote requests are live right now — no ✦,
+ * arithmetic on loaded rows, not a model finding (CLAUDE.md §11). */
+export function channelLede(
+  channel: Pick<Channel, "kind" | "medium" | "status">,
+  openQuotes: number,
+  l: Label
+): string {
+  return l("heroLede", {
+    kind: tag(l, "kind", channel.kind),
+    medium: tag(l, "medium", channel.medium),
+    status: tag(l, "status", channel.status),
+    n: String(openQuotes)
+  });
+}
 
 /** A version is restricted to this channel only if its allow-list names it. */
 export function sellsFor(key: string, offerings: readonly OfferingRow[]): OfferingRow[] {
@@ -471,11 +490,15 @@ export default function ChannelDetail() {
 
   return (
     <div className="flex flex-col gap-6">
-      <Header title={nameOf(channel.nameJson, locale, channel.key)} intro={l("intro")} />
-
-      <Link to="/distribution/channels" className="font-ui text-12 text-accent underline-offset-2 hover:underline">
-        {l("back")}
-      </Link>
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <h1 className="font-serif text-22 leading-[1.2] text-text">{nameOf(channel.nameJson, locale, channel.key)}</h1>
+          <p className="font-ui text-13 text-muted">{channelLede(channel, open, l)}</p>
+          <Link to="/distribution/channels" className="w-fit font-ui text-13 text-accent underline">
+            {l("back")}
+          </Link>
+        </div>
+      </header>
 
       <Card
         title={l("profileTitle")}

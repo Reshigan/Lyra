@@ -29,7 +29,7 @@ import { ConfirmButton } from "../components/confirm";
 import { WORKSPACES } from "../modules";
 import { humanise } from "../modules/spec";
 import { policyTitle } from "../policy";
-import { labelsFrom } from "./detail-kit";
+import { labelsFrom, type Label } from "./detail-kit";
 import { ShiftClear } from "../components/shift-clear";
 import { Problem } from "./module";
 import { useShellData } from "./workspace";
@@ -338,7 +338,10 @@ const LABELS: Record<string, Record<string, string>> = {
     figNotices: "Notices",
     clearDecided: "See what you decided",
     announceApproved: "Approved. The action may now proceed.",
-    announceRejected: "Rejected. The action will not proceed."
+    announceRejected: "Rejected. The action will not proceed.",
+    "headline.unavailable": "This queue could not be read just now.",
+    "headline.pending": "{count} waiting on a decision.",
+    "headline.decided": "{count} decisions marked {state}."
   },
   ar: {
     title: "الموافقات",
@@ -385,9 +388,27 @@ const LABELS: Record<string, Record<string, string>> = {
     figNotices: "الإشعارات",
     clearDecided: "اطّلع على قراراتك",
     announceApproved: "تمت الموافقة. يمكن تنفيذ الإجراء الآن.",
-    announceRejected: "تم الرفض. لن يُنفَّذ الإجراء."
+    announceRejected: "تم الرفض. لن يُنفَّذ الإجراء.",
+    "headline.unavailable": "تعذّرت قراءة قائمة الطلبات الآن.",
+    "headline.pending": "{count} بانتظار القرار.",
+    "headline.decided": "{count} قرار بحالة {state}."
   }
 };
+
+/**
+ * The hero lede: one true count, nothing invented. `readable` covers both the
+ * "not my permission" and "the API refused" cases the loader already folds
+ * together — the queue has one honest thing to say either way. An empty,
+ * readable queue keeps the screen's own intro; `ShiftClear` below is where the
+ * good news actually gets said.
+ */
+export function approvalsHeadline(state: State, count: number, readable: boolean, l: Label): string {
+  if (!readable) return l("headline.unavailable");
+  if (count === 0) return l("intro");
+  return state === "pending"
+    ? l("headline.pending", { count: String(count) })
+    : l("headline.decided", { count: String(count), state: l(`state.${state}`) });
+}
 
 // Hand-rolling `LABELS[locale] ?? LABELS.en` skips the shared catalogue, so a
 // state this screen never wrote down — `state.approved`, which SHARED says —
@@ -414,7 +435,9 @@ export default function Approvals() {
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-2">
         <h1 className="font-serif text-22 leading-[1.2] text-text">{l("title")}</h1>
-        <p className="max-w-prose font-ui text-13 text-subtle">{l("intro")}</p>
+        <p className="max-w-prose font-ui text-13 text-muted">
+          {approvalsHeadline(loaded.state, items.length, loaded.readable, l)}
+        </p>
       </header>
 
       <Form method="get" className="flex flex-wrap items-end gap-3">

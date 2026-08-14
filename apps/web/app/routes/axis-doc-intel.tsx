@@ -132,7 +132,12 @@ const LABELS: Record<string, Record<string, string>> = {
     "problem.missing_doc": "No document was named.",
     "problem.missing_text": "Reading a file needs its text.",
     "problem.no_change": "Nothing was typed, so nothing was saved.",
-    "problem.conflict": "Someone already moved this document. Reload to see where it got to."
+    "problem.conflict": "Someone already moved this document. Reload to see where it got to.",
+    "headline.clear": "Nothing waiting to be read",
+    "headline.review": "{count} documents need a closer look",
+    "headline.rejected": "{count} documents were rejected",
+    "headline.reading": "Every document is being read",
+    "headline.open": "Open the one that needs review — {type}"
   },
   ar: {
     title: "استقراء المستندات",
@@ -193,7 +198,12 @@ const LABELS: Record<string, Record<string, string>> = {
     "problem.missing_doc": "لم يُحدَّد أي مستند.",
     "problem.missing_text": "قراءة الملف تحتاج نصه.",
     "problem.no_change": "لم يُكتب شيء، فلم يُحفظ شيء.",
-    "problem.conflict": "حرّك شخصٌ هذا المستند قبلك. أعد التحميل لتعرف إلى أين وصل."
+    "problem.conflict": "حرّك شخصٌ هذا المستند قبلك. أعد التحميل لتعرف إلى أين وصل.",
+    "headline.clear": "لا شيء بانتظار القراءة",
+    "headline.review": "{count} مستندات تحتاج مراجعة دقيقة",
+    "headline.rejected": "{count} مستندات رُفضت",
+    "headline.reading": "كل مستند قيد القراءة",
+    "headline.open": "افتح المستند الذي يحتاج مراجعة — {type}"
   }
 };
 
@@ -290,6 +300,25 @@ export const needsReview = (doc: Pick<DocRow, "extractionConfidence">, floor = R
   const value = confidenceOf(doc);
   return value !== null && value < floor;
 };
+
+// Arithmetic on counts the caller already has, not an agent, so it never
+// carries the ✦ mark (CLAUDE.md §11).
+export function headlineFor(
+  counts: { open: number; needsReview: number; rejected: number },
+  l: Label
+): string {
+  if (counts.open === 0) return l("headline.clear");
+  if (counts.needsReview > 0) return l("headline.review", { count: String(counts.needsReview) });
+  if (counts.rejected > 0) return l("headline.rejected", { count: String(counts.rejected) });
+  return l("headline.reading");
+}
+
+/** The desk's own worst-first pick: the lowest-confidence unread row, or the
+ *  oldest one still waiting to be read at all. Loader order is `createdAt
+ *  desc`, which is not the same thing. */
+export function worstDoc(docs: DocRow[]): DocRow | null {
+  return docs.find((doc) => needsReview(doc)) ?? docs.find((doc) => doc.status === "extracted") ?? null;
+}
 
 const STATUS_TONE: Record<string, BadgeTone> = {
   received: "neutral",
@@ -478,6 +507,15 @@ export default function AxisDocIntel() {
   const busy = navigation.state !== "idle";
 
   const counted = (status: string) => loaded.docs.filter((doc) => doc.status === status).length;
+  const worst = worstDoc(loaded.docs);
+  const headline = headlineFor(
+    {
+      open: loaded.docs.length,
+      needsReview: loaded.docs.filter((doc) => needsReview(doc)).length,
+      rejected: counted("rejected")
+    },
+    l
+  );
 
   const [index, setIndex] = useState(0);
   const [broken, setBroken] = useState(false);
@@ -514,8 +552,13 @@ export default function AxisDocIntel() {
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-1">
-        <h1 className="font-serif text-22 leading-[1.2] text-text">{l("title")}</h1>
+        <h1 className="font-serif text-22 leading-[1.2] text-text">{headline}</h1>
         <p className="max-w-prose font-ui text-13 text-subtle">{l("intro")}</p>
+        {worst ? (
+          <Link to={`/axis/documents/${worst.id}`} className="w-fit font-ui text-13 text-accent underline">
+            {l("headline.open", { type: tag(l, "docType", worst.docType) })}
+          </Link>
+        ) : null}
       </header>
 
       {result?.problem ? <Gate problem={phrase(result.problem, l)} l={l} /> : null}

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LoaderFunctionArgs } from "react-router";
 import type { Env } from "../env";
-import { LABELS, PERM, labelsIn, loader } from "./policy-detail";
+import { LABELS, PERM, labelsIn, loader, policyLede } from "./policy-detail";
 
 // This screen reads. Its one historic bug (F5) was reading the wrong thing:
 // "endorsement history" asked for every other contract the same holder owns,
@@ -97,6 +97,15 @@ describe("labelsIn", () => {
   it("does not describe the history as the holder's, which is the bug it had", () => {
     for (const locale of ["en", "ar"]) expect(labelsIn(locale)("historyCaption")).not.toContain("holder");
     expect(labelsIn("en")("historyCaption")).toContain("this agreement");
+  });
+});
+
+describe("policyLede", () => {
+  it("states the status and cover term from the loaded record", () => {
+    const lede = policyLede(POLICY, labelsIn("en"), "en");
+    expect(lede).toContain("Active");
+    expect(lede).toContain("2025");
+    expect(lede).toContain("2026");
   });
 });
 

@@ -15,7 +15,7 @@ import {
 import { api, fetchMe } from "../api.server";
 import { cloudflare } from "../context";
 import { translator } from "../i18n";
-import { Header, labelsFrom, safe, type Label } from "./detail-kit";
+import { labelsFrom, safe, type Label } from "./detail-kit";
 import { useShellData } from "./workspace";
 
 // docs/22 §1.2 — the Money Map. "Sankey of value flow for a period: premium in
@@ -183,7 +183,7 @@ export function layoutMap(map: MoneyMap, width: number, height: number): {
 
 /* ------------------------------------------------------------------ strings */
 
-const LABELS: Record<string, Record<string, string>> = {
+export const LABELS: Record<string, Record<string, string>> = {
   en: {
     title: "Money map",
     intro:
@@ -199,6 +199,8 @@ const LABELS: Record<string, Record<string, string>> = {
     "node.partner-share": "Partner share",
     "node.tax": "Tax",
     "node.net": "Net to the business",
+    "headline.breach": "{count} currency breach(es) in client money.",
+    "headline.net": "{node} for {period}: {amount}.",
     carried: "Carried out of the period",
     carriedNegative:
       "Negative: this period paid out premium it collected earlier. Ordinary, and not a client-money breach — the segregation bar below is what says whether client money is whole.",
@@ -244,6 +246,8 @@ const LABELS: Record<string, Record<string, string>> = {
     "node.partner-share": "حصة الشريك",
     "node.tax": "الضريبة",
     "node.net": "الصافي للمنشأة",
+    "headline.breach": "{count} تجاوزًا في أموال العملاء.",
+    "headline.net": "{node} لفترة {period}: {amount}.",
     carried: "المرحَّل خارج الفترة",
     carriedNegative:
       "سالب: دفعت هذه الفترة أقساطًا حُصِّلت قبلها. هذا اعتيادي وليس خرقًا لأموال العملاء — شريط الفصل أدناه هو ما يحدد سلامتها.",
@@ -276,7 +280,28 @@ const LABELS: Record<string, Record<string, string>> = {
   }
 };
 
-const labelsIn = labelsFrom(LABELS);
+export const labelsIn = labelsFrom(LABELS);
+
+// Hero headline: a client-money breach outranks everything (docs/22 §1.2 puts
+// the flag above the fold), otherwise the map's own net node said back. No ✦,
+// this is not an agent's finding (CLAUDE.md §11) — both numbers are the
+// loader's. Nothing posted this period leaves no net node; the empty state
+// below the header already says so, so the headline reuses that copy.
+export function moneyMapHeadline(
+  map: MoneyMap,
+  breached: readonly { currency: string }[],
+  l: Label,
+  locale: string
+): string {
+  if (breached.length > 0) return l("headline.breach", { count: String(breached.length) });
+  const net = map.nodes.find((node) => node.key === "net");
+  if (!net) return l("empty");
+  return l("headline.net", {
+    node: l("node.net"),
+    period: map.periodCode,
+    amount: formatMoney(net.amountMinor, map.currency, locale)
+  });
+}
 
 /* ------------------------------------------------------------------- loader */
 
@@ -381,7 +406,14 @@ export default function LedgerMoneyMap() {
         </section>
       ) : null}
 
-      <Header title={l("title")} intro={l("intro")} />
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <h1 className="font-serif text-22 leading-[1.2] text-text">
+            {moneyMapHeadline(map, breached, l, locale)}
+          </h1>
+          <p className="font-ui text-13 text-muted">{l("intro")}</p>
+        </div>
+      </header>
 
       <Form method="get" aria-label={l("title")} className="flex flex-wrap items-end gap-3">
         <Field label={l("param.period")} hint={l("hint.period")} className="w-52">

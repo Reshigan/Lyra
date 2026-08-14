@@ -6,6 +6,7 @@ import {
   action,
   epochOf,
   fnolFrom,
+  headlineFor,
   LABELS,
   labelsIn,
   phrase,
@@ -93,7 +94,9 @@ describe("labelsIn", () => {
       "problem.missing_policy",
       "problem.missing_date",
       "problem.bad_amount",
-      "problem.bad_intent"
+      "problem.bad_intent",
+      "headline.none",
+      "headline.ready"
     ];
 
     for (const key of keys) {
@@ -110,6 +113,18 @@ describe("labelsIn", () => {
 
   it("falls back to English rather than showing a raw key", () => {
     expect(labelsIn("de")("title")).toBe(labelsIn("en")("title"));
+  });
+});
+
+describe("headlineFor", () => {
+  const l = labelsIn("en");
+
+  it("warns when there is no active policy to claim against", () => {
+    expect(headlineFor(0, l)).toBe(l("headline.none"));
+  });
+
+  it("reports how many active policies are ready to pick from", () => {
+    expect(headlineFor(3, l)).toBe(l("headline.ready", { count: "3" }));
   });
 });
 

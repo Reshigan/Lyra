@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ActionFunctionArgs } from "react-router";
 import type { Env } from "../env";
-import { LABELS, action, labelsIn } from "./platform";
+import { LABELS, action, labelsIn, platformLede, type TenantHealth } from "./platform";
 
 // The platform workspace holds the two controls a customer never sees: a global
 // capability switch and standing in for one of their users. Both are gated on
@@ -43,6 +43,32 @@ function form(fields: Record<string, string>): FormData {
 }
 
 const ok = () => new Response(JSON.stringify({ id: "x" }), { status: 200 });
+
+describe("platformLede", () => {
+  const l = labelsIn("en");
+  const tenant = (over: Partial<TenantHealth>): TenantHealth => ({
+    tenantId: "t1",
+    outboxPending: 0,
+    dlqDepth: 0,
+    pendingApprovals: 0,
+    ...over
+  });
+
+  it("leads with dead letters when any exist, over anything else waiting", () => {
+    const tenants = [tenant({ dlqDepth: 3 }), tenant({ outboxPending: 5 })];
+    expect(platformLede(tenants, l)).toBe("3 dead letter(s) across 2 tenant(s) — that queue needs a look now.");
+  });
+
+  it("reports what is waiting once there are no dead letters", () => {
+    const tenants = [tenant({ outboxPending: 4, pendingApprovals: 2 })];
+    expect(platformLede(tenants, l)).toBe("4 event(s) and 2 decision(s) waiting across 1 tenant(s).");
+  });
+
+  it("reads all clear when nothing is outstanding", () => {
+    const tenants = [tenant({}), tenant({})];
+    expect(platformLede(tenants, l)).toBe("All 2 tenant(s) are clear — nothing waiting, no dead letters.");
+  });
+});
 
 describe("platform workspace labels", () => {
   it("answers the keys the shared approval gate reads", () => {

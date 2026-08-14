@@ -2,11 +2,28 @@ import { describe, expect, it } from "vitest";
 import {
   DRIFT_BASELINE_DAYS,
   DRIFT_THRESHOLD_PCT,
+  costHeadline,
   driftFor,
   driftingUnits,
   groupByUnit,
+  type Drift,
   type UnitEconRow
 } from "./cost-explorer";
+
+// costHeadline reaches into the module's own (unexported) labeller through the
+// LABELS table's shape indirectly — simplest is to fake a minimal Label that
+// mirrors the real fallback-to-key behaviour, same as any other L(key) caller.
+const L = (key: string, fallback?: string) => fallback ?? key;
+
+const drift = (over: Partial<Drift> = {}): Drift => ({
+  module: "orbit",
+  unit: "conversation",
+  day: "2026-07-30",
+  latestMinor: 200,
+  baselineMinor: 100,
+  deltaPct: 100,
+  ...over
+});
 
 // ADM-025: unit-cost drift alerting. One question this file answers: does a
 // unit that suddenly costs more than its trailing baseline get flagged, and
@@ -71,6 +88,24 @@ describe("driftFor", () => {
       row({ day: "far", costPerUnitMinor: 1_000_000 })
     ];
     expect(driftFor("orbit", "conversation", rows)?.deltaPct).toBe(0);
+  });
+});
+
+describe("costHeadline", () => {
+  it("leads with denial when the read was refused", () => {
+    expect(costHeadline(null, [], L)).toBe("table.denied");
+  });
+
+  it("counts drifting units first, ahead of anything else", () => {
+    expect(costHeadline([], [drift(), drift({ unit: "case" })], L)).toBe("2 headline.drifting");
+  });
+
+  it("says so when there is simply no data yet", () => {
+    expect(costHeadline([], [], L)).toBe("headline.none");
+  });
+
+  it("reports on track once there are rows and nothing has drifted", () => {
+    expect(costHeadline([row()], [], L)).toBe("headline.onTrack");
   });
 });
 

@@ -27,11 +27,11 @@ import { brandStyle } from "../components/shell";
 // thing the customer does here is send documents; a human approves issuance.
 // ADR-0043.
 
-const LABELS: Record<string, Record<string, string>> = {
+export const LABELS: Record<string, Record<string, string>> = {
   en: {
     "quote.title": "Your quotes",
     "quote.intro": "Prices are held for you. Keep this link — it is the only way back to this comparison.",
-    "quote.rankedBy": "Ranked by total price, cheapest first.",
+    "quote.rankedBy": "{n} offer(s), ranked by total price, cheapest first.",
     "quote.total": "Total payable",
     "quote.premium": "Premium",
     "quote.tax": "Tax",
@@ -63,7 +63,7 @@ const LABELS: Record<string, Record<string, string>> = {
   ar: {
     "quote.title": "عروض الأسعار الخاصة بك",
     "quote.intro": "الأسعار محجوزة لك. احتفظ بهذا الرابط — فهو الطريقة الوحيدة للعودة إلى هذه المقارنة.",
-    "quote.rankedBy": "مرتبة حسب السعر الإجمالي، الأرخص أولًا.",
+    "quote.rankedBy": "{n} عرض(عروض)، مرتبة حسب السعر الإجمالي، الأرخص أولًا.",
     "quote.total": "الإجمالي المستحق",
     "quote.premium": "القسط",
     "quote.tax": "الضريبة",
@@ -97,6 +97,15 @@ const LABELS: Record<string, Record<string, string>> = {
 function labeller(locale: string): (key: string) => string {
   const table = LABELS[locale] ?? LABELS[DEFAULT_LOCALE];
   return (key) => pseudoText(locale, table?.[key] ?? LABELS[DEFAULT_LOCALE]?.[key] ?? key);
+}
+
+/**
+ * The ranking line under the hero title. Real count off the comparison the
+ * loader just fetched, not shown at all once there is nothing to rank — the
+ * empty state below already says why.
+ */
+export function quoteRankingLede(l: (key: string) => string, offerCount: number): string | null {
+  return offerCount > 0 ? l("quote.rankedBy").replace("{n}", String(offerCount)) : null;
 }
 
 interface Offer {
@@ -212,15 +221,21 @@ export default function PortalQuotes() {
   const token = searchParams.get("token") ?? "";
   const busy = navigation.state !== "idle";
   const accepted = comparison.acceptedOfferingId;
+  const rankingLede = quoteRankingLede(l, comparison.offers.length);
 
   return (
     <main style={brandStyle(tenant.brand)} className="lyra-field min-h-screen bg-bg text-text">
       <div className="mx-auto max-w-3xl p-6">
-        <header className="lyra-enter mb-8">
-          <h1 className="font-serif text-22 leading-[1.2]">{l("quote.title")}</h1>
-          <p className="mt-1 text-13 text-muted">{l("quote.intro")}</p>
-          {/* Declared criteria, visible — J-C1's own wording. */}
-          <p className="mt-1 text-13 text-muted">{l("quote.rankedBy")}</p>
+        <header className="lyra-enter mb-8 flex flex-wrap items-end justify-between gap-3">
+          <div className="flex flex-col gap-1">
+            <h1 className="font-serif text-22 leading-[1.2] text-text">{l("quote.title")}</h1>
+            <p className="font-ui text-13 text-muted">{l("quote.intro")}</p>
+            {/* Declared criteria, visible — J-C1's own wording. */}
+            {rankingLede ? <p className="font-ui text-13 text-muted">{rankingLede}</p> : null}
+            <a className="w-fit font-ui text-13 text-accent underline" href={`/portal/${tenantSlug}`}>
+              {l("quote.back")}
+            </a>
+          </div>
         </header>
 
         {result?.errorKey ? (

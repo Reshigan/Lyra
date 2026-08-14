@@ -23,9 +23,10 @@ import { Turnstile } from "../components/turnstile";
 // no shared workspace catalogue to borrow from and no `:module` spec to route
 // through.
 
-const LABELS: Record<string, Record<string, string>> = {
+export const LABELS: Record<string, Record<string, string>> = {
   en: {
     "portal.intro": "Compare products and get a quote in minutes.",
+    "portal.introCount": "{n} products to compare — get a quote in minutes.",
     "portal.empty": "No products are available for comparison right now.",
     "portal.quote": "Get a quote",
     "portal.form.name": "Full name",
@@ -61,6 +62,7 @@ const LABELS: Record<string, Record<string, string>> = {
   },
   ar: {
     "portal.intro": "قارن المنتجات واحصل على عرض سعر خلال دقائق.",
+    "portal.introCount": "{n} منتج للمقارنة — احصل على عرض سعر خلال دقائق.",
     "portal.empty": "لا توجد منتجات متاحة للمقارنة حاليًا.",
     "portal.quote": "احصل على عرض سعر",
     "portal.form.name": "الاسم الكامل",
@@ -99,6 +101,17 @@ const LABELS: Record<string, Record<string, string>> = {
 function labeller(locale: string): (key: string) => string {
   const table = LABELS[locale] ?? LABELS[DEFAULT_LOCALE];
   return (key) => pseudoText(locale, table?.[key] ?? LABELS[DEFAULT_LOCALE]?.[key] ?? key);
+}
+
+/**
+ * The hero's one line of narration. Real arithmetic on the catalogue the
+ * loader just fetched — no ✦, this is not an agent's finding (CLAUDE.md
+ * §11) — falling back to the plain invitation when there is nothing to
+ * count yet (the empty state below already explains why).
+ */
+export function portalLede(l: (key: string) => string, productCount: number): string {
+  if (productCount <= 0) return l("portal.intro");
+  return l("portal.introCount").replace("{n}", String(productCount));
 }
 
 /**
@@ -235,19 +248,21 @@ export default function Portal() {
     // the workspace uses (app.css), nothing bespoke.
     <main style={brandStyle(site.tenant.brand)} className="lyra-field min-h-screen bg-bg text-text">
       <div className="mx-auto max-w-4xl p-6">
-        <header className="lyra-enter mb-8 flex items-center gap-3">
-          {site.tenant.brand.logo?.light ?? site.tenant.brand.logo?.mark ? (
-            <img
-              src={site.tenant.brand.logo?.light ?? site.tenant.brand.logo?.mark}
-              alt={site.tenant.name}
-              className="h-10 w-auto"
-            />
-          ) : null}
-          <div>
-            {/* A stranger reads the offer at arm's length: the storefront gets
-                the display step, not a workspace title's. */}
-            <h1 className="font-serif text-36 leading-[1.15]">{site.tenant.name}</h1>
-            <p className="mt-1 text-16 text-muted">{l("portal.intro")}</p>
+        <header className="lyra-enter mb-8 flex flex-wrap items-end justify-between gap-3">
+          <div className="flex items-center gap-3">
+            {site.tenant.brand.logo?.light ?? site.tenant.brand.logo?.mark ? (
+              <img
+                src={site.tenant.brand.logo?.light ?? site.tenant.brand.logo?.mark}
+                alt={site.tenant.name}
+                className="h-10 w-auto"
+              />
+            ) : null}
+            <div className="flex flex-col gap-1">
+              {/* A stranger reads the offer at arm's length: the storefront gets
+                  the display step, not a workspace title's. */}
+              <h1 className="font-serif text-36 leading-[1.15] text-text">{site.tenant.name}</h1>
+              <p className="font-ui text-16 text-muted">{portalLede(l, site.products.length)}</p>
+            </div>
           </div>
         </header>
 

@@ -138,6 +138,14 @@ export const PRESENCE_TONE: Record<string, BadgeTone> = {
   offline: "neutral"
 };
 
+/** What the wall is for, in one line: worst first, same order as the alerts table. */
+export function supervisorHeadline(openCount: number, alertCount: number, waitingLong: number, l: Label): string {
+  if (alertCount > 0) return l("headlineBreach", { n: String(alertCount) });
+  if (waitingLong > 0) return l("headlineWaiting", { n: String(waitingLong) });
+  if (openCount > 0) return l("headlineOpen", { n: String(openCount) });
+  return l("headlineClear");
+}
+
 /* ------------------------------------------------------------------ labels */
 
 export const LABELS: Labels = {
@@ -146,6 +154,10 @@ export const LABELS: Labels = {
     lede: "The room from one step back. Refresh to pull the current state.",
     refresh: "Refresh",
     asOf: "As of",
+    headlineBreach: "{n} conversations have missed a deadline",
+    headlineWaiting: "{n} conversations waiting over 15 minutes",
+    headlineOpen: "{n} conversations open, nothing overdue",
+    headlineClear: "Nothing open right now",
 
     openNow: "Open now",
     heldByAgent: "Held by the agent",
@@ -207,6 +219,10 @@ export const LABELS: Labels = {
     lede: "الغرفة من خطوة إلى الوراء. حدّث الصفحة لجلب الحالة الحالية.",
     refresh: "تحديث",
     asOf: "حتى",
+    headlineBreach: "{n} محادثة فاتها موعد",
+    headlineWaiting: "{n} محادثة تنتظر أكثر من ١٥ دقيقة",
+    headlineOpen: "{n} محادثة مفتوحة، لا شيء متأخر",
+    headlineClear: "لا شيء مفتوح الآن",
 
     openNow: "مفتوح الآن",
     heldByAgent: "بيد الوكيل الذكي",
@@ -403,8 +419,18 @@ export default function OrbitSupervisor() {
     <div className="flex flex-col gap-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-col gap-1">
-          <h1 className="font-serif text-22 leading-[1.2] text-text">{l("title")}</h1>
+          <h1 className="font-serif text-22 leading-[1.2] text-text">
+            {supervisorHeadline(loaded.counts.open, alerts.length, waitingLong, l)}
+          </h1>
           <p className="font-ui text-13 text-muted">{l("lede")}</p>
+          {alerts[0] ? (
+            <Link
+              to={`/orbit/conversations/${alerts[0].row.id}/thread`}
+              className="w-fit font-ui text-13 text-accent underline"
+            >
+              {l("openThread")}
+            </Link>
+          ) : null}
         </div>
         <Form method="get" replace className="flex items-center gap-3">
           <span className="font-ui text-12 text-subtle">

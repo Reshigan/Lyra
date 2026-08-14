@@ -207,7 +207,14 @@ const LABELS: Record<string, Record<string, string>> = {
     "denied.body": "It needs a permission your role does not hold. An administrator can grant it.",
     "empty.hits": "The provider returned no matches.",
     when: "When",
-    problem: "The run did not happen"
+    problem: "The run did not happen",
+    "headline.screening.clear": "No matches. Clear to proceed.",
+    "headline.screening.hit": "A match was found. The subject is blocked.",
+    "headline.screening.inconclusive": "The result was inconclusive.",
+    "headline.evidenceReady": "Bundle built, {count} files.",
+    "headline.evidenceFailed": "The archive could not be stored.",
+    "headline.retentionPlan": "{count} rows would be deleted.",
+    "headline.retentionDone": "{count} rows deleted."
   },
   ar: {
     title: "عمليات الامتثال",
@@ -295,11 +302,18 @@ const LABELS: Record<string, Record<string, string>> = {
     "denied.body": "تتطلب صلاحية لا يملكها دورك. يمكن للمسؤول منحها.",
     "empty.hits": "لم يُرجع المزود أي تطابق.",
     when: "التاريخ",
-    problem: "لم تُنفَّذ العملية"
+    problem: "لم تُنفَّذ العملية",
+    "headline.screening.clear": "لا تطابق. يمكن المتابعة.",
+    "headline.screening.hit": "عُثر على تطابق. الموضوع محظور.",
+    "headline.screening.inconclusive": "النتيجة غير حاسمة.",
+    "headline.evidenceReady": "تم إنشاء الحزمة، {count} ملف.",
+    "headline.evidenceFailed": "تعذّر تخزين الأرشيف.",
+    "headline.retentionPlan": "سيُحذف {count} صف.",
+    "headline.retentionDone": "حُذف {count} صف."
   }
 };
 
-type Label = (key: string) => string;
+type Label = (key: string, vars?: Record<string, string>) => string;
 
 // Local table, then detail-kit's SHARED, then `common.*` — the same chain every
 // screen uses. This screen builds keys from enum values, and a hand-rolled table
@@ -357,6 +371,24 @@ type ActionResult =
   | { kind: "evidence"; problem: null; bundle: Bundle }
   | { kind: "retention"; problem: null; retention: RetentionResult }
   | { kind: RunKind; problem: { title: string; status: number; detail?: string }; screening?: never };
+
+/**
+ * The one line a just-finished run adds to the header. Nothing to say before a
+ * run, and nothing to add once the problem card below already carries a
+ * failure — this only speaks for a result the API actually returned.
+ */
+export function runHeadline(fresh: ActionResult | undefined, l: Label): string | null {
+  if (!fresh || fresh.problem) return null;
+  if (fresh.kind === "screening") return l(`headline.screening.${fresh.screening.result}`);
+  if (fresh.kind === "evidence") {
+    return fresh.bundle.state === "failed"
+      ? l("headline.evidenceFailed")
+      : l("headline.evidenceReady", { count: String(fresh.bundle.manifest.files.length) });
+  }
+  return fresh.retention.dryRun === false
+    ? l("headline.retentionDone", { count: String(fresh.retention.rowsAffected) })
+    : l("headline.retentionPlan", { count: String(fresh.retention.rowsAffected) });
+}
 
 export async function action({ request, params, context }: ActionFunctionArgs): Promise<ActionResult> {
   const kind = params.kind ?? "";
@@ -450,7 +482,9 @@ export default function ComplianceRun() {
             </ul>
           </nav>
         ) : null}
-        <p className="max-w-prose font-ui text-13 text-muted">{l(`intro.${loaded.kind}`)}</p>
+        <p className="max-w-prose font-ui text-13 text-muted">
+          {runHeadline(fresh, l) ?? l(`intro.${loaded.kind}`)}
+        </p>
       </header>
 
       {loaded.denied ? (

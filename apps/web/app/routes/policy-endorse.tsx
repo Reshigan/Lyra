@@ -11,7 +11,7 @@ import { Button, Card, Checkbox, DatePicker, EmptyState, Field, GuardrailNotice,
 import { ApiError, api } from "../api.server";
 import { cloudflare } from "../context";
 import { labelsFrom } from "./detail-kit";
-import type { Policy } from "./policy-detail";
+import { policyLede, type Policy } from "./policy-detail";
 import { Gate } from "./staff";
 import { useShellData } from "./workspace";
 
@@ -29,6 +29,7 @@ const LABELS: Record<string, Record<string, string>> = {
     title: "Endorse {noun}",
     intro: "Price the change first. Nothing is written until you confirm what was priced.",
     back: "Back to the {noun}",
+    heroLede: "{status} · {from} – {to}",
     "field.changes": "Changes (JSON)",
     "field.changesHint": "An object of the fields changing, e.g. {\"sumInsuredMinor\": 5000000}.",
     "field.effectiveFrom": "Effective from",
@@ -62,6 +63,7 @@ const LABELS: Record<string, Record<string, string>> = {
     title: "تعديل {noun}",
     intro: "سعّر التغيير أولًا. لا يُكتب شيء حتى تؤكد ما تم تسعيره.",
     back: "العودة إلى {noun}",
+    heroLede: "{status} · من {from} إلى {to}",
     "field.changes": "التغييرات (JSON)",
     "field.changesHint": "كائن بالحقول المتغيرة، مثل {\"sumInsuredMinor\": 5000000}.",
     "field.effectiveFrom": "سارٍ من",
@@ -295,7 +297,7 @@ export default function PolicyEndorse() {
 
   if (result?.done === "confirm") {
     return (
-      <Shell l={l}>
+      <Shell l={l} policy={policy} locale={locale}>
         <EmptyState
           title={l("doneTitle")}
           body={l("doneBody", { versionSeq: String(result.policy?.versionSeq ?? "") })}
@@ -312,7 +314,7 @@ export default function PolicyEndorse() {
   const blocked = blockedReason(policy);
   if (blocked) {
     return (
-      <Shell l={l}>
+      <Shell l={l} policy={policy} locale={locale}>
         <GuardrailNotice title={l("blockedTitle")} reason={l(blocked)} />
       </Shell>
     );
@@ -321,7 +323,7 @@ export default function PolicyEndorse() {
   const preview = result?.done === "preview" ? result.preview : undefined;
 
   return (
-    <Shell l={l}>
+    <Shell l={l} policy={policy} locale={locale}>
       {result?.problem ? <Gate problem={phrase(result.problem, l)} l={l} /> : null}
 
       <Form method="post" id="endorse-form" className="flex max-w-2xl flex-col gap-4">
@@ -387,13 +389,40 @@ export default function PolicyEndorse() {
   );
 }
 
-function Shell({ l, children }: { l: Label; children: React.ReactNode }) {
+/**
+ * The not-found/denied branch has no policy to identify — it keeps the old
+ * generic title. Every other branch has already loaded the real policy, so its
+ * hero names it directly, matching policy-detail.tsx's pattern.
+ */
+function Shell({
+  l,
+  policy,
+  locale,
+  children
+}: {
+  l: Label;
+  policy?: Pick<Policy, "id" | "policyNo" | "status" | "startAt" | "endAt"> | null;
+  locale?: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-2">
-        <h1 className="text-xl font-semibold">{l("title")}</h1>
-        <p className="text-sm text-[var(--color-fg-muted)]">{l("intro")}</p>
-      </header>
+      {policy ? (
+        <header className="flex flex-wrap items-end justify-between gap-3">
+          <div className="flex flex-col gap-1">
+            <h1 className="font-serif text-22 leading-[1.2] text-text">{`${l("policyId")} ${policy.policyNo}`}</h1>
+            <p className="font-ui text-13 text-muted">{policyLede(policy, l, locale ?? "en")}</p>
+            <Link to={`/axis/policies/${policy.id}/detail`} className="w-fit font-ui text-13 text-accent underline">
+              {l("back")}
+            </Link>
+          </div>
+        </header>
+      ) : (
+        <header className="flex flex-col gap-2">
+          <h1 className="text-xl font-semibold">{l("title")}</h1>
+          <p className="text-sm text-[var(--color-fg-muted)]">{l("intro")}</p>
+        </header>
+      )}
       {children}
     </div>
   );

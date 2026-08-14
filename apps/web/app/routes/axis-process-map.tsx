@@ -3,7 +3,7 @@ import { EmptyState, Panel } from "@lyra/ui";
 import { api, fetchMe } from "../api.server";
 import { cloudflare } from "../context";
 import { arrowFor, translator } from "../i18n";
-import { Header, labelsFrom, rowsOf, safe, tag, type Page } from "./detail-kit";
+import { labelsFrom, rowsOf, safe, tag, type Label, type Page } from "./detail-kit";
 import { useShellData } from "./workspace";
 
 // Tenant-wide process mining, not one case's timeline — case-detail.tsx
@@ -225,20 +225,49 @@ export function layoutFlow(flow: Flow, width: number, height: number): Layout {
   return { nodes: [...positioned.values()], links };
 }
 
+/** The single slowest step-to-step transition — the concrete answer to "where
+ *  does it pool". Ties keep the first one seen, which is stable output order
+ *  from `flowFrom`. */
+export function worstBottleneck(links: readonly FlowLink[]): FlowLink | null {
+  return links.reduce<FlowLink | null>(
+    (worst, link) => (worst === null || link.avgMs > worst.avgMs ? link : worst),
+    null,
+  );
+}
+
+// Arithmetic on the flow the caller already has, not an agent, so it never
+// carries the ✦ mark (CLAUDE.md §11).
+export function headlineFor(flow: Flow, l: Label): string {
+  if (flow.nodes.length === 0) return l("headline.empty");
+  const worst = worstBottleneck(flow.links);
+  if (worst && worst.avgMs > 0)
+    return l("headline.bottleneck", {
+      from: tag(l, "step", worst.from),
+      to: tag(l, "step", worst.to),
+    });
+  return l("headline.moving");
+}
+
 /* ----------------------------------------------------------------- labels */
 
 const LABELS: Record<string, Record<string, string>> = {
   en: {
     title: "Process map",
     intro: `Where work actually flows across the last ${WINDOW} recorded steps, and where it pools.`,
+    "headline.empty": "No steps recorded yet",
+    "headline.bottleneck": "Work pools most between {from} and {to}",
+    "headline.moving": "Work is moving with no clear bottleneck",
   },
   ar: {
     title: "خريطة العملية",
     intro: `مسار سير العمل الفعلي عبر آخر ${WINDOW} خطوة مسجّلة، ومواضع تراكمه.`,
+    "headline.empty": "لا توجد خطوات مسجّلة بعد",
+    "headline.bottleneck": "يتراكم العمل أكثر بين {from} و{to}",
+    "headline.moving": "العمل يتحرك دون عائق واضح",
   },
 };
 
-const labelsIn = labelsFrom(LABELS);
+export const labelsIn = labelsFrom(LABELS);
 
 /* ----------------------------------------------------------------- loader */
 
@@ -271,10 +300,17 @@ export default function AxisProcessMap() {
   const l = labelsIn(locale, shell?.domainPack);
   const height = flowHeight(loaded.flow);
   const laid = layoutFlow(loaded.flow, WIDTH, height);
+  // Denied means no data was even fetched, so the headline stays static —
+  // headlineFor's "no steps" reading would misreport a permission gap as an
+  // empty process.
+  const headline = loaded.may ? headlineFor(loaded.flow, l) : l("title");
 
   return (
     <div className="flex flex-col gap-6">
-      <Header title={l("title")} intro={l("intro")} />
+      <header className="flex flex-col gap-1">
+        <h1 className="font-serif text-22 leading-[1.2] text-text">{headline}</h1>
+        <p className="max-w-prose font-ui text-13 text-subtle">{l("intro")}</p>
+      </header>
 
       {!loaded.may ? (
         <EmptyState title={l("deniedTitle")} body={t("error.forbidden")} />

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LABELS, PERM, channelKeysOf, labelsIn } from "./product-detail";
+import { LABELS, PERM, channelKeysOf, labelsIn, productLede } from "./product-detail";
 import type { OfferingRow } from "./product-detail";
 
 // Read-only screen: no action to exercise. What can break is the labelling and
@@ -26,6 +26,12 @@ describe("labelsIn", () => {
 
   it("takes the pack's word for cover before its own", () => {
     expect(labelsIn("en", "retail-ecom")("coverageJson")).toBe("Entitlements");
+  });
+});
+
+describe("productLede", () => {
+  it("states the line, status and version count from the loaded record", () => {
+    expect(productLede({ line: "motor", status: "active" }, 3, labelsIn("en"))).toBe("Motor · Active · 3 versions");
   });
 });
 

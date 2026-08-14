@@ -1,6 +1,7 @@
 import type * as React from "react";
 import {
   Form,
+  Link,
   useLoaderData,
   useNavigation,
   type LoaderFunctionArgs
@@ -67,6 +68,7 @@ const LABELS: Labels = {
     "definition.direction": "Better when",
     "definition.target": "Target",
     "definition.unset": "Not recorded",
+    "definition.edit": "Edit this definition in NORTH admin",
     up: "Rising",
     down: "Falling",
     public: "Public",
@@ -104,6 +106,7 @@ const LABELS: Labels = {
     "definition.direction": "الأفضل عندما",
     "definition.target": "المستهدف",
     "definition.unset": "غير مسجل",
+    "definition.edit": "عدّل هذا التعريف في إدارة نورث",
     up: "يرتفع",
     down: "ينخفض",
     public: "عام",
@@ -129,6 +132,18 @@ export function deltaBps(values: readonly number[]): number | null {
   const prior = values[values.length - 2]!;
   if (prior === 0) return null;
   return Math.round(((last - prior) / Math.abs(prior)) * 10_000);
+}
+
+/**
+ * The direction a hero can headline the metric's latest move with. `null`
+ * when there is nothing to report yet — fewer than two snapshots, or no
+ * change at all — so the headline falls back to naming the metric instead of
+ * guessing a trend that isn't there.
+ */
+export function headlineDirection(values: readonly number[]): "up" | "down" | null {
+  const bps = deltaBps(values);
+  if (!bps) return null;
+  return bps > 0 ? "up" : "down";
 }
 
 /* ------------------------------------------------------------------ loader */
@@ -174,6 +189,7 @@ export default function NorthExplorer() {
 
   const rows = snapshots ?? [];
   const values = rows.map((row) => row.value);
+  const direction = headlineDirection(values);
   const change = pct(deltaBps(values), locale);
   const target = parsed<{ value?: number } | null>(metric?.targetJson, null);
 
@@ -181,12 +197,35 @@ export default function NorthExplorer() {
     <MetricValue value={value} unit={metric?.unit ?? "count"} currency={metric?.currency ?? null} locale={locale} />
   );
 
+  // The headline narrates the actual series rather than repeating the kicker:
+  // the metric's name plus which way its last two snapshots moved, when there
+  // are enough of them to say so. This is arithmetic on real snapshot values
+  // (deltaBps above), not a model call, so it carries no ✦ mark.
+  const headline =
+    metric && direction ? (
+      <>
+        {metricName(metric, locale)} {l(direction)} {change}
+      </>
+    ) : metric ? (
+      metricName(metric, locale)
+    ) : (
+      l("title")
+    );
+
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-2">
         <span className="font-mono text-12 uppercase tracking-[0.14em] text-subtle">{l("kicker")}</span>
-        <h1 className="font-serif text-22 leading-[1.2] text-text">{l("title")}</h1>
+        <h1 className="font-serif text-22 leading-[1.2] text-text">{headline}</h1>
         <p className="max-w-[68ch] font-ui text-13 text-subtle">{l("intro")}</p>
+        {metric ? (
+          <Link
+            to={`/north/admin?metric=${encodeURIComponent(metric.id)}`}
+            className="w-fit font-ui text-13 text-accent underline"
+          >
+            {l("definition.edit")}
+          </Link>
+        ) : null}
       </header>
 
       {metrics.length === 0 ? (

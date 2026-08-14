@@ -121,12 +121,23 @@ export function mean(rows: QaScore[]): number {
   return Math.round(rows.reduce((total, row) => total + row.score, 0) / rows.length);
 }
 
+/** What the reviewer should look at first: flagged scores, else the running average. */
+export function qualityHeadline(flagged: number, avg: number, reviewed: number, l: Label): string {
+  if (reviewed === 0) return l("headlineNone");
+  if (flagged > 0) return l("headlineFlagged", { n: String(flagged) });
+  return l("headlineClean", { n: String(avg) });
+}
+
 /* ------------------------------------------------------------------ labels */
 
 export const LABELS: Labels = {
   en: {
     title: "Conversation quality",
     lede: "What the quality agent scored, why it scored it that way, and where a reviewer disagreed.",
+    headlineNone: "No conversations scored yet",
+    headlineFlagged: "{n} conversations scored below 60",
+    headlineClean: "Average score {n}, nothing below 60",
+    reviewFlagged: "Review the lowest score",
     reviewed: "Scored conversations",
     average: "Average score",
     flagged: "Below 60",
@@ -182,6 +193,10 @@ export const LABELS: Labels = {
   ar: {
     title: "جودة المحادثات",
     lede: "ما منحه وكيل الجودة من درجات، وسبب ذلك، وحيث اختلف معه المراجع.",
+    headlineNone: "لا محادثات مقيّمة بعد",
+    headlineFlagged: "{n} محادثة سُجّلت بأقل من ٦٠",
+    headlineClean: "متوسط الدرجات {n}، لا شيء تحت ٦٠",
+    reviewFlagged: "راجع أدنى درجة",
     reviewed: "المحادثات المقيَّمة",
     average: "المعدل",
     flagged: "أقل من ٦٠",
@@ -356,14 +371,26 @@ export default function ConversationQuality() {
   const rows = loaded.scores.data;
   const reviewerRows = rows.filter((row) => !isAgentScored(row));
   const scored = new Set(rows.map((row) => row.conversationId).filter(Boolean) as string[]);
+  const flagged = rows.filter((row) => row.score < 60);
+  const worst = [...flagged]
+    .filter((row) => row.conversationId)
+    .sort((a, b) => a.score - b.score)[0];
 
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-1">
         <h1 className="font-serif text-22 leading-[1.2] text-text">
-          <span aria-hidden="true">{AGENT_MARK}</span> {l("title")}
+          <span aria-hidden="true">{AGENT_MARK}</span> {qualityHeadline(flagged.length, mean(rows), rows.length, l)}
         </h1>
         <p className="font-ui text-13 text-muted">{l("lede")}</p>
+        {worst ? (
+          <Link
+            to={`/orbit/conversations/${worst.conversationId}/thread`}
+            className="w-fit font-ui text-13 text-accent underline underline-offset-2"
+          >
+            {l("reviewFlagged")}
+          </Link>
+        ) : null}
       </header>
 
       {result?.error ? (
@@ -381,7 +408,7 @@ export default function ConversationQuality() {
       <KPIWall>
         <Stat label={l("reviewed")} value={String(loaded.scores.total ?? rows.length)} />
         <Stat label={l("average")} value={String(mean(rows))} />
-        <Stat label={l("flagged")} value={String(rows.filter((row) => row.score < 60).length)} />
+        <Stat label={l("flagged")} value={String(flagged.length)} />
         <Stat label={l("corrections")} value={String(reviewerRows.length)} />
       </KPIWall>
 

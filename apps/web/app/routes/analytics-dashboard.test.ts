@@ -1,16 +1,28 @@
 import { describe, expect, it } from "vitest";
-import { labelsIn } from "./analytics-dashboard";
+import { tileHealth, type TileResult } from "./analytics-dashboard";
 
-describe("labelsIn", () => {
-  it("reads the local table first", () => {
-    expect(labelsIn("en")("total")).toBe("Total");
+const table = { title: "t", columns: [], rows: [], generatedAt: 0 };
+
+describe("tileHealth", () => {
+  it("counts a tile with no table as failed even without an error string", () => {
+    const tiles: TileResult[] = [{ key: "a" }, { key: "b", table }];
+    expect(tileHealth(tiles)).toEqual({ ok: 1, failed: 1, total: 2 });
   });
 
-  // A tile type nobody wrote a label for used to render its own key as the
-  // section heading — "claims_by_state" in 12px uppercase tracking, on a board
-  // screen (docs/ui.md §7.3).
-  it("says a key nobody labelled as words rather than as a key", () => {
-    expect(labelsIn("en")("claims_by_state")).toBe("Claims by state");
-    expect(labelsIn("en")("ai_spend")).toBe("AI spend");
+  it("counts an explicit tile error as failed", () => {
+    const tiles: TileResult[] = [{ key: "a", error: "denied" }];
+    expect(tileHealth(tiles)).toEqual({ ok: 0, failed: 1, total: 1 });
+  });
+
+  it("is all-ok when every tile has a table", () => {
+    const tiles: TileResult[] = [
+      { key: "a", table },
+      { key: "b", table }
+    ];
+    expect(tileHealth(tiles)).toEqual({ ok: 2, failed: 0, total: 2 });
+  });
+
+  it("is zero-total on an empty dashboard", () => {
+    expect(tileHealth([])).toEqual({ ok: 0, failed: 0, total: 0 });
   });
 });

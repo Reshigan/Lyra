@@ -14,6 +14,7 @@ import {
   rowsOf,
   safe,
   tag,
+  type Label,
   type Page
 } from "./detail-kit";
 import { useShellData } from "./workspace";
@@ -79,6 +80,7 @@ export const LABELS: Record<string, Record<string, string>> = {
   en: {
     intro: "What this covers, what prices it, and who is allowed to sell it.",
     back: "Back to the catalogue",
+    heroLede: "{line} · {status} · {n} versions",
     definitionTitle: "Definition",
     line: "Line",
     structure: "Structure",
@@ -129,6 +131,7 @@ export const LABELS: Record<string, Record<string, string>> = {
   ar: {
     intro: "ما يغطّيه هذا المنتج، وما يحدّد سعره، ومن يحق له بيعه.",
     back: "العودة إلى الكتالوج",
+    heroLede: "{line} · {status} · {n} إصدارات",
     definitionTitle: "التعريف",
     line: "الخط",
     structure: "البنية",
@@ -179,6 +182,13 @@ export const LABELS: Record<string, Record<string, string>> = {
 };
 
 export const labelsIn = labelsFrom(LABELS);
+
+/** The line under the product's name: its line of business, its status, and
+ * how many underwriter versions exist to price it — no ✦, arithmetic on
+ * loaded rows, not a model finding (CLAUDE.md §11). */
+export function productLede(product: Pick<Product, "line" | "status">, versionCount: number, l: Label): string {
+  return l("heroLede", { line: tag(l, "line", product.line), status: tag(l, "status", product.status), n: String(versionCount) });
+}
 
 /** The channel keys a version restricts itself to; empty means unrestricted. */
 export function channelKeysOf(offerings: readonly OfferingRow[]): string[] {
@@ -334,11 +344,15 @@ export default function ProductDetail() {
 
   return (
     <div className="flex flex-col gap-6">
-      <Header title={nameOf(product.nameJson, locale, product.id)} intro={l("intro")} />
-
-      <Link to="/admin/products" className="font-ui text-12 text-accent underline-offset-2 hover:underline">
-        {l("back")}
-      </Link>
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <h1 className="font-serif text-22 leading-[1.2] text-text">{nameOf(product.nameJson, locale, product.id)}</h1>
+          <p className="font-ui text-13 text-muted">{productLede(product, loaded.offerings.length, l)}</p>
+          <Link to="/admin/products" className="w-fit font-ui text-13 text-accent underline">
+            {l("back")}
+          </Link>
+        </div>
+      </header>
 
       <Card
         title={l("definitionTitle")}

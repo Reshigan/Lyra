@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LABELS, PERM, labelsIn, sellsFor } from "./channel-detail";
+import { LABELS, PERM, channelLede, labelsIn, sellsFor } from "./channel-detail";
 import type { OfferingRow } from "./channel-detail";
 
 // Read-only screen: no action to exercise. The one piece of logic is which
@@ -29,6 +29,14 @@ describe("labelsIn", () => {
       expect(labelsIn("en")(`state.${state}`)).not.toBe(`state.${state}`);
       expect(labelsIn("ar")(`state.${state}`)).not.toBe(`state.${state}`);
     }
+  });
+});
+
+describe("channelLede", () => {
+  it("states the kind, medium, status and live-request count from the loaded record", () => {
+    expect(channelLede({ kind: "b2c", medium: "web", status: "active" }, 4, labelsIn("en"))).toBe(
+      "Direct · Website · Active · 4 live requests"
+    );
   });
 });
 

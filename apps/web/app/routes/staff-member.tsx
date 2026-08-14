@@ -58,9 +58,11 @@ const STEP_TONES: Record<string, "neutral" | "info" | "success" | "warning" | "d
   failed: "danger"
 };
 
-const LABELS: Record<string, Record<string, string>> = {
+export const LABELS: Record<string, Record<string, string>> = {
   en: {
     back: "Back to staff",
+    ledeRoles: "{count} role(s) held.",
+    ledeRolesOnboarding: "{count} role(s) held. {done} of {total} required onboarding steps cleared.",
     rolesTitle: "Roles",
     rolesIntro: "Adding a role you do not hold yourself is refused by the server, not by this form.",
     reason: "Reason for this change",
@@ -93,6 +95,8 @@ const LABELS: Record<string, Record<string, string>> = {
   },
   ar: {
     back: "العودة إلى الموظفين",
+    ledeRoles: "{count} دور محتفظ به.",
+    ledeRolesOnboarding: "{count} دور محتفظ به. اكتملت {done} من {total} خطوة تأهيل مطلوبة.",
     rolesTitle: "الأدوار",
     rolesIntro: "إضافة دور لا تملكه أنت يرفضه الخادم، وليس هذا النموذج.",
     reason: "سبب هذا التغيير",
@@ -137,6 +141,19 @@ async function safe<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
     if (error instanceof ApiError && error.status === 403) return fallback;
     throw error;
   }
+}
+
+/** The line under the name and status: roles held, and onboarding progress once it is readable. */
+export function memberLede(
+  heldRoleKeys: readonly string[],
+  steps: readonly OnboardingStep[],
+  l: (key: string, vars?: Record<string, string>) => string
+): string {
+  const count = String(heldRoleKeys.length);
+  if (steps.length === 0) return l("ledeRoles", { count });
+  const required = steps.filter((step) => step.required);
+  const done = required.filter((step) => step.state === "done" || step.state === "waived").length;
+  return l("ledeRolesOnboarding", { count, done: String(done), total: String(required.length) });
 }
 
 function stepLabel(labelJson: string): string {
@@ -329,6 +346,7 @@ export default function StaffMember() {
       <header className="flex flex-col gap-1">
         <h1 className="font-serif text-22 leading-[1.2] text-text">{user.name}</h1>
         <p className="font-ui text-13 text-muted">{user.email}</p>
+        <p className="font-ui text-13 text-muted">{memberLede(loaded.heldRoleKeys, loaded.steps, l)}</p>
         <Badge tone={userTone(user.status)} size="sm" dot className="w-fit">
           {t(`admin.status.${user.status}`)}
         </Badge>

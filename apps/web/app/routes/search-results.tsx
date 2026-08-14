@@ -56,6 +56,19 @@ export function specFor(resource: string): { workspace: (typeof WORKSPACES)[numb
 /** The palette's own floor: one letter matches half the tenant. */
 const MIN_QUERY = 2;
 
+/** The one line under the title: the refusal, the prompt, or the count actually found. */
+export function resultsLede(
+  q: string,
+  groups: readonly SearchGroup[],
+  denied: boolean,
+  l: (key: string, vars?: Record<string, string>) => string
+): string {
+  if (denied) return l("denied");
+  const total = groups.reduce((sum, group) => sum + group.items.length, 0);
+  if (q.length < MIN_QUERY || total === 0) return l("intro");
+  return l("count", { count: String(total), areas: String(groups.length) });
+}
+
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = context.get(cloudflare).env;
   const q = (new URL(request.url).searchParams.get("q") ?? "").trim();
@@ -110,7 +123,7 @@ export default function SearchResults() {
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-2">
         <h1 className="font-serif text-22 leading-[1.2] text-text">{l("title")}</h1>
-        <p className="max-w-prose font-ui text-13 text-subtle">{l("intro")}</p>
+        <p className="max-w-prose font-ui text-13 text-subtle">{resultsLede(loaded.q, loaded.groups, loaded.denied, l)}</p>
       </header>
 
       {/* A GET form: the query belongs in the URL, so a result set can be sent
@@ -138,15 +151,9 @@ export default function SearchResults() {
       ) : total === 0 ? (
         <EmptyState title={t("common.empty.title")} body={t("search.none")} />
       ) : (
-        <>
-          <p className="font-ui text-12 tabular-nums text-subtle">
-            {l("count", { count: String(total), areas: String(loaded.groups.length) })}
-          </p>
-
-          {loaded.groups.map((group) => (
-            <Group key={`${group.module}:${group.resource}`} group={group} locale={locale} l={l} t={t} />
-          ))}
-        </>
+        loaded.groups.map((group) => (
+          <Group key={`${group.module}:${group.resource}`} group={group} locale={locale} l={l} t={t} />
+        ))
       )}
     </div>
   );

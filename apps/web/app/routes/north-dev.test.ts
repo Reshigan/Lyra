@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { curlFor, periodFor, validPeriod } from "./north-dev";
+import { curlFor, headline, periodFor, validPeriod } from "./north-dev";
 
 // 2026-08-13T09:00:00Z — mid-morning, so "yesterday" is unambiguous.
 const NOW = Date.UTC(2026, 7, 13, 9, 0, 0);
+const l = (key: string, vars?: Record<string, string>) =>
+  vars ? `${key}:${Object.values(vars).join(",")}` : key;
 
 describe("periodFor", () => {
   it("offers yesterday for a day, because today's row is not written until it closes", () => {
@@ -51,5 +53,19 @@ describe("curlFor", () => {
   it("never carries a real key, only the variable that stands for one", () => {
     const curl = curlFor("https://api.example.com", { metricKeys: ["a"], grain: "day", period: "2026-08-12" });
     expect(curl).not.toMatch(/Bearer\s+(?!\$)/);
+  });
+});
+
+describe("headline", () => {
+  it("says so when the snapshot layer itself could not be read", () => {
+    expect(headline(null, l)).toBe("headline.denied");
+  });
+
+  it("points out an empty registry — there is nothing to query yet", () => {
+    expect(headline([], l)).toBe("headline.empty");
+  });
+
+  it("counts the metrics on the bench once there are some", () => {
+    expect(headline([{ key: "gwp_month" }, { key: "loss_ratio" }], l)).toBe("headline.ready:2");
   });
 });

@@ -5,12 +5,16 @@ import {
   action,
   activeSubscribers,
   definitionOf,
+  dtpHeadline,
   nextProductStates,
   subjectRefOf,
   subscribersOf,
   warningsFor,
   type DataProductRow
 } from "./scout-data-products";
+import { labelsIn } from "./scout.shared";
+
+const l = labelsIn("en");
 
 // A data product is a promise about what its cells cannot reveal. What is worth
 // asserting is that the promise is arithmetic — a floor under the module's
@@ -277,5 +281,25 @@ describe("changing status", () => {
     expect(result.problem?.code).toBe("approval_required");
     expect(result.problem?.policy_key).toBe("scout.data_product_publish");
     expect(result.done).toBeNull();
+  });
+});
+
+/* --------------------------------------------------------------- headline */
+
+describe("dtpHeadline", () => {
+  it("leads with the flagged count when any product is flagged", () => {
+    const flagged = product({ aggregationMin: 1, status: "draft" });
+    expect(warningsFor(flagged)).toContain("belowFloor");
+    const rows = [flagged, product()];
+    expect(dtpHeadline(rows, l)).toBe(l("dtp.headlineFlagged", { n: "1", total: "2" }));
+  });
+
+  it("falls back to the published count with nothing flagged", () => {
+    const rows = [product({ status: "published" }), product({ status: "draft" })];
+    expect(dtpHeadline(rows, l)).toBe(l("dtp.headlinePublished", { n: "1", total: "2" }));
+  });
+
+  it("falls back to the title with no products at all", () => {
+    expect(dtpHeadline([], l)).toBe(l("dtp.title"));
   });
 });

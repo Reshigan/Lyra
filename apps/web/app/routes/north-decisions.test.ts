@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { optionsFrom, queueState, readOptions } from "./north-decisions";
+import { dueCounts, optionsFrom, queueState, readOptions } from "./north-decisions";
 
 const DAY = 86_400_000;
 const NOW = 1_770_000_000_000;
@@ -26,6 +26,28 @@ describe("queueState", () => {
 
   it("never queues a decision nobody set a date on — there is nothing to be late for", () => {
     expect(queueState({ status: "open", reviewAt: null }, NOW)).toBeNull();
+  });
+});
+
+describe("dueCounts", () => {
+  it("tallies the open queue by urgency, the same as each card's own badge", () => {
+    const open = [
+      { status: "open", reviewAt: NOW - 3 * DAY }, // overdue
+      { status: "open", reviewAt: NOW }, // due
+      { status: "open", reviewAt: NOW + 10 * DAY }, // soon
+      { status: "open", reviewAt: NOW + 30 * DAY }, // quiet — outside the window
+      { status: "open", reviewAt: null } // undated — never counted
+    ];
+    expect(dueCounts(open, NOW)).toEqual({ overdue: 1, due: 1, soon: 1 });
+  });
+
+  it("comes back all zero for an empty or entirely quiet queue", () => {
+    expect(dueCounts([], NOW)).toEqual({ overdue: 0, due: 0, soon: 0 });
+    expect(dueCounts([{ status: "open", reviewAt: NOW + 30 * DAY }], NOW)).toEqual({
+      overdue: 0,
+      due: 0,
+      soon: 0
+    });
   });
 });
 

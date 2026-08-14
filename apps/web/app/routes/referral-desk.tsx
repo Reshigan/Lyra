@@ -94,7 +94,11 @@ const LABELS: Record<string, Record<string, string>> = {
     "problem.missing_reason": "A declined referral needs a reason.",
     "problem.missing_terms": "A counter needs the terms you are offering.",
     "problem.bad_terms": "The counter terms must be a JSON object.",
-    "problem.unknown_intent": "That control is not available."
+    "problem.unknown_intent": "That control is not available.",
+    "headline.clear": "Nothing is waiting on an underwriter",
+    "headline.urgent": "{count} referrals are due within a day",
+    "headline.waiting": "{count} referrals waiting, none due within a day",
+    "headline.open": "Open the most urgent referral — {ref}"
   },
   ar: {
     title: "مكتب الإحالات",
@@ -124,13 +128,28 @@ const LABELS: Record<string, Record<string, string>> = {
     "problem.missing_reason": "الرفض يحتاج سببًا.",
     "problem.missing_terms": "العرض البديل يحتاج الشروط المعروضة.",
     "problem.bad_terms": "يجب أن تكون شروط العرض البديل كائن JSON.",
-    "problem.unknown_intent": "هذا الإجراء غير متاح."
+    "problem.unknown_intent": "هذا الإجراء غير متاح.",
+    "headline.clear": "لا شيء ينتظر مكتتبًا",
+    "headline.urgent": "{count} إحالات مستحقة خلال يوم واحد",
+    "headline.waiting": "{count} إحالة قيد الانتظار، لا شيء منها مستحق خلال يوم",
+    "headline.open": "افتح الإحالة الأكثر إلحاحًا — {ref}"
   }
 };
 
 export type Label = (key: string, vars?: Record<string, string>) => string;
 
 export const labelsIn = labelsFrom(LABELS);
+
+/** The days-left cut the desk already flags danger at (the `daysLeft` column). */
+export const DAYS_LEFT_DANGER = 1;
+
+// Arithmetic on counts the caller already has, not an agent, so it never
+// carries the ✦ mark (CLAUDE.md §11).
+export function headlineFor(counts: { total: number; urgent: number }, l: Label): string {
+  if (counts.total === 0) return l("headline.clear");
+  if (counts.urgent > 0) return l("headline.urgent", { count: String(counts.urgent) });
+  return l("headline.waiting", { count: String(counts.total) });
+}
 
 /* ------------------------------------------------------------------ loader */
 
@@ -248,11 +267,26 @@ export default function ReferralDesk() {
     return <EmptyState title={l("title")} body={l("empty")} />;
   }
 
+  const urgent = loaded.rows.filter((row) => {
+    const days = daysUntil(row.slaDueAt, loaded.now);
+    return days !== null && days <= DAYS_LEFT_DANGER;
+  }).length;
+  const headline = headlineFor({ total: loaded.rows.length, urgent }, l);
+  const soonest = loaded.rows[0];
+
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-1">
-        <h1 className="font-serif text-22 leading-[1.2] text-text">{l("title")}</h1>
+        <h1 className="font-serif text-22 leading-[1.2] text-text">{headline}</h1>
         <p className="font-ui text-13 text-muted">{l("intro")}</p>
+        {soonest?.caseId ? (
+          <Link
+            to={`/axis/cases/${soonest.caseId}`}
+            className="w-fit font-ui text-13 text-accent underline"
+          >
+            {l("headline.open", { ref: soonest.caseId })}
+          </Link>
+        ) : null}
       </header>
 
       {result?.problem ? <Gate problem={phrase(result.problem, l)} l={l} /> : null}

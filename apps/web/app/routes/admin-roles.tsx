@@ -128,6 +128,13 @@ export function keptGrants(granted: readonly string[], held: ReadonlySet<string>
   return granted.filter((g) => !held.has(g));
 }
 
+/** The one line under the title: how many roles exist, and how many are custom. */
+export function rolesLede(roles: readonly Pick<RoleRow, "system">[], l: (key: string, vars?: Record<string, string>) => string): string {
+  if (roles.length === 0) return l("introEmpty");
+  const custom = roles.filter((row) => !row.system).length;
+  return l("introCount", { count: String(roles.length), custom: String(custom) });
+}
+
 /* ----------------------------------------------------------------- labels */
 
 export const LABELS: Record<string, Record<string, string>> = {
@@ -136,6 +143,8 @@ export const LABELS: Record<string, Record<string, string>> = {
     intro:
       "What each role is trusted with. You can grant only what you hold yourself, and the roles that ship with the platform are read-only here.",
     deniedTitle: "You cannot read roles",
+    introEmpty: "No roles defined for this organisation yet.",
+    introCount: "{count} role(s), {custom} of them custom.",
     listTitle: "Roles",
     listCaption: "Roles defined for this organisation",
     colRole: "Role",
@@ -179,6 +188,8 @@ export const LABELS: Record<string, Record<string, string>> = {
     intro:
       "ما يُؤتمن عليه كل دور. لا يمكنك منح إلا ما تملكه أنت، والأدوار المرفقة مع المنصة تُعرض هنا للقراءة فقط.",
     deniedTitle: "لا يمكنك قراءة الأدوار",
+    introEmpty: "لا توجد أدوار معرَّفة لهذه المؤسسة بعد.",
+    introCount: "{count} دور، منها {custom} مخصص.",
     listTitle: "الأدوار",
     listCaption: "الأدوار المعرّفة لهذه المؤسسة",
     colRole: "الدور",
@@ -367,7 +378,7 @@ export default function AdminRoles() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title={l("title")} description={l("intro")} />
+      <PageHeader eyebrow={l("title")} title={rolesLede(loaded.roles, l)} description={l("intro")} />
 
       {result?.error ? (
         <p role="alert" className="font-ui text-13 text-danger">

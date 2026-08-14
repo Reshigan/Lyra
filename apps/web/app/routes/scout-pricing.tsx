@@ -37,6 +37,14 @@ import {
 
 const LIMIT = 200;
 
+/** The one sentence the bench opens with — line count and loss count already
+ *  on the loader, no ✦ (arithmetic, not an agent's finding, CLAUDE.md §11). */
+export function priceHeadline(lines: LineBench[], lost: Loss[], l: Label): string {
+  if (lines.length === 0) return l("price.title");
+  if (lost.length > 0) return l("price.headlineLosses", { n: String(lost.length), lines: String(lines.length) });
+  return l("price.headlineCount", { n: String(lines.length) });
+}
+
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = context.get(cloudflare).env;
   const bench = await safe(
@@ -64,11 +72,13 @@ export default function ScoutPricing() {
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-1">
-        <h1 className="font-serif text-22 leading-[1.2] text-text">{l("price.title")}</h1>
-        <p className="max-w-prose font-ui text-13 text-muted">
-          {l("price.lede", { period: loaded.period ?? l("none") })}
-        </p>
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <h1 className="font-serif text-22 leading-[1.2] text-text">
+            {priceHeadline(loaded.lines, loaded.losses, l)}
+          </h1>
+          <p className="font-ui text-13 text-muted">{l("price.lede", { period: loaded.period ?? l("none") })}</p>
+        </div>
       </header>
 
       <Card title={l("price.byLine")} description={l("price.note")}>

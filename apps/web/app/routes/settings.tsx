@@ -160,6 +160,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "tabs.data": "Your data",
     "settings.title": "Account",
     "settings.intro": "Your profile, sign-in and sessions.",
+    "settings.introUnread": "{count} unread notification(s) below.",
     "settings.tenantIntro": "Settings for the whole tenant, because you administer it.",
 
     "profile.title": "Profile",
@@ -354,6 +355,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "tabs.data": "بياناتك",
     "settings.title": "الحساب",
     "settings.intro": "ملفك الشخصي وتسجيل الدخول والجلسات.",
+    "settings.introUnread": "{count} إشعار غير مقروء أدناه.",
     "settings.tenantIntro": "إعدادات تخص المؤسسة بأكملها، لأنك تديرها.",
 
     "profile.title": "الملف الشخصي",
@@ -549,6 +551,18 @@ function labelsFor(locale: string): (key: string) => string {
  *  string is not worth widening it for. */
 function fill(text: string, vars: Record<string, string>): string {
   return text.replace(/\{(\w+)\}/g, (whole, key: string) => vars[key] ?? whole);
+}
+
+/**
+ * The hero lede for every tab of this screen, not just the account tab where
+ * the inbox itself lives — an unread count is worth surfacing wherever the
+ * actor lands. Falls back to the plain, static intro once nothing is unread.
+ */
+export function settingsLede(unreadCount: number, label: (key: string) => string): string {
+  if (unreadCount > 0) {
+    return fill(label("settings.introUnread"), { count: String(unreadCount) });
+  }
+  return label("settings.intro");
 }
 
 /* ------------------------------------------------------------------ loader */
@@ -999,7 +1013,7 @@ export default function Settings() {
     <div className="flex flex-col gap-8">
       <header className="flex flex-col gap-1">
         <h1 className="font-serif text-22 leading-[1.2] text-text">{label("settings.title")}</h1>
-        <p className="font-ui text-13 text-subtle">{label("settings.intro")}</p>
+        <p className="font-ui text-13 text-muted">{settingsLede(loaded.notifications.length, label)}</p>
       </header>
 
       <nav aria-label={label("tabs.label")} className="flex flex-wrap gap-1 border-b border-border">

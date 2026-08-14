@@ -119,6 +119,20 @@ export function channelOf(ref: string): string {
   return ref.startsWith("channel:") ? ref.slice("channel:".length) : ref;
 }
 
+export type DetailHeadlineKey = "mismatch" | "actionable" | "plain";
+
+/**
+ * Which line the header adds ahead of the net figure: a ledger mismatch beats
+ * a pending decision beats a plain readout. Mirrors the `!holds` alert
+ * already rendered below (CLAUDE.md §12) so the header never claims a total
+ * that card is about to dispute.
+ */
+export function detailHeadlineKey(holds: boolean, transitionCount: number): DetailHeadlineKey {
+  if (!holds) return "mismatch";
+  if (transitionCount > 0) return "actionable";
+  return "plain";
+}
+
 /** Reads the same `approval_required` gate `settlement.tsx`'s `Gate` renders, for callers that need the policy key itself. */
 export function approvalOf(problem: Problem | null): { policyKey: string; approvalId?: string } | null {
   if (!problem) return null;
@@ -140,6 +154,9 @@ const OWN: Record<string, Record<string, string>> = {
     title: "Settlement",
     intro: "The entries it was drafted from, and the terms that priced them.",
     back: "Back to settlements",
+    "headline.mismatch": "Net no longer adds up — do not release. Net",
+    "headline.actionable": "{count} decision open. Net",
+    "headline.plain": "Net",
     summaryTitle: "Amounts",
     summaryGross: "Gross",
     summaryAdjustments: "Adjustments",
@@ -174,6 +191,9 @@ const OWN: Record<string, Record<string, string>> = {
     title: "التسوية",
     intro: "القيود التي صيغت منها، والشروط التي سعّرتها.",
     back: "العودة إلى التسويات",
+    "headline.mismatch": "لم يعد الصافي متوازنًا — لا تصرفه. الصافي",
+    "headline.actionable": "{count} قرار مفتوح. الصافي",
+    "headline.plain": "الصافي",
     summaryTitle: "المبالغ",
     summaryGross: "الإجمالي",
     summaryAdjustments: "التسويات",
@@ -291,10 +311,16 @@ export default function SettlementDetail() {
   const l = labelsIn(locale);
   const busy = navigation.state !== "idle";
 
+  const back = (
+    <Link to="/ledger/settlement" className="w-fit font-ui text-12 text-subtle underline-offset-2 hover:underline">
+      {l("back")}
+    </Link>
+  );
+
   if (!loaded.may.read || !loaded.lines) {
     return (
       <div className="flex flex-col gap-6">
-        <PageHeader title={l("title")} description={l("intro")} />
+        <PageHeader title={l("title")} description={l("intro")} back={back} />
         <EmptyState title={l("deniedTitle")} body={t("error.forbidden")} />
       </div>
     );
@@ -305,6 +331,7 @@ export default function SettlementDetail() {
   const safe = pdfSafe(table);
   const held = new Set([...(loaded.may.settle ? [PERM.settle] : []), ...(loaded.may.pay ? [PERM.pay] : [])]);
   const transitions = transitionsFor(settlement, held);
+  const status = detailHeadlineKey(holds, transitions.length);
 
   const columns: Array<Column<Record<string, string | number>>> = table.columns.map((col) => ({
     key: col.key,
@@ -320,11 +347,17 @@ export default function SettlementDetail() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title={l("title")} description={l("intro")} />
-
-      <Link to="/ledger/settlement" className="font-ui text-12 text-accent underline-offset-2 hover:underline">
-        {l("back")}
-      </Link>
+      <PageHeader
+        eyebrow={l("title")}
+        title={
+          <>
+            {status === "actionable" ? l("headline.actionable", { count: String(transitions.length) }) : l(`headline.${status}`)}{" "}
+            <Money amountMinor={totals.netMinor} currency={table.currency} locale={locale} />
+          </>
+        }
+        description={l("intro")}
+        back={back}
+      />
 
       <Card
         title={l("summaryTitle")}

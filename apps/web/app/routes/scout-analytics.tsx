@@ -81,6 +81,14 @@ interface ExportRow {
 
 const LIMIT = 200;
 
+/** The one sentence analytics opens with — the adequacy share already on the
+ *  KPI wall, no ✦ (arithmetic, not an agent's finding, CLAUDE.md §11). */
+export function analyticsHeadline(periods: number, share: number | null, l: Label): string {
+  if (periods === 0) return l("an.title");
+  if (share !== null) return l("an.headlineAdequacy", { pct: String(Math.round(share)), periods: String(periods) });
+  return l("an.headlineCount", { n: String(periods) });
+}
+
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = context.get(cloudflare).env;
   const bench = await safe(
@@ -171,9 +179,13 @@ export default function ScoutAnalytics() {
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-1">
-        <h1 className="font-serif text-22 leading-[1.2] text-text">{l("an.title")}</h1>
-        <p className="max-w-prose font-ui text-13 text-muted">{l("an.lede")}</p>
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <h1 className="font-serif text-22 leading-[1.2] text-text">
+            {analyticsHeadline(loaded.periods, share, l)}
+          </h1>
+          <p className="font-ui text-13 text-muted">{l("an.lede")}</p>
+        </div>
       </header>
 
       {result?.problem ? <Gate problem={explain(result.problem, l)} l={l} /> : null}

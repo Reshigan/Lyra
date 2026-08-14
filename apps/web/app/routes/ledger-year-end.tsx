@@ -15,7 +15,7 @@ import { translator } from "../i18n";
 import { ConfirmButton } from "../components/confirm";
 import { Problem } from "./module";
 import { useShellData } from "./workspace";
-import { PERM, labelIn } from "./ledger.shared";
+import { PERM, labelIn, yearEndHeadline } from "./ledger.shared";
 
 // docs/27 F3. The closing lines are read out of the journal on both the preview
 // and the post, so what a controller signs off is what posts. Nothing on this
@@ -104,9 +104,13 @@ export default function LedgerYearEnd() {
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-2">
-        <h1 className="font-serif text-22 leading-[1.2] text-text">{l("ye.title")}</h1>
-        <p className="max-w-prose font-ui text-13 text-subtle">{l("ye.intro")}</p>
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <h1 className="font-serif text-22 leading-[1.2] text-text">
+            {yearEndHeadline(loaded.year, preview, l, locale)}
+          </h1>
+          <p className="font-ui text-13 text-muted">{l("ye.intro")}</p>
+        </div>
       </header>
 
       <Form method="get" aria-label={l("ye.year")} className="flex flex-wrap items-end gap-3">

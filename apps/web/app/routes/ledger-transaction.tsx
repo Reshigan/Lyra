@@ -38,7 +38,7 @@ import {
   labelIn,
   mintKey,
   txnActions,
-  txnTone,
+  txnHeadline,
   type Label
 } from "./ledger.shared";
 
@@ -350,14 +350,11 @@ export default function LedgerTransaction() {
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-2">
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="font-serif text-22 leading-[1.2] text-text">
-            {l("txn.title")} <span className="font-mono text-16 text-muted">{txn.type}</span>
-          </h1>
-          <Badge tone={txnTone(txn.state)}>{l(`state.${txn.state}`)}</Badge>
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <h1 className="font-serif text-22 leading-[1.2] text-text">{txnHeadline(txn, l, locale)}</h1>
+          <p className="font-ui text-13 text-muted">{l("txn.intro")}</p>
         </div>
-        <p className="max-w-prose font-ui text-13 text-subtle">{l("txn.intro")}</p>
       </header>
 
       <Announcement result={result} l={l} />

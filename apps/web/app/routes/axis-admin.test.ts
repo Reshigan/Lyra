@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import type { Env } from "../env";
-import { LABELS, action, caseKind, connectorHealth, connectorTone, labelsIn, loader } from "./axis-admin";
+import { LABELS, action, caseKind, connectorHealth, connectorTone, headlineFor, labelsIn, loader } from "./axis-admin";
 
 const env = { ENVIRONMENT: "test", API_ORIGIN: "https://api.test", SESSION_COOKIE: "s" } as Env;
 
@@ -106,6 +106,26 @@ describe("connectorTone", () => {
     expect(connectorTone({ dead: 1, failed: 0 })).toBe("danger");
     expect(connectorTone({ dead: 0, failed: 1 })).toBe("warning");
     expect(connectorTone({ dead: 0, failed: 0 })).toBe("success");
+  });
+});
+
+describe("headlineFor", () => {
+  const l = labelsIn("en");
+
+  it("leads with dead webhooks over anything else", () => {
+    expect(headlineFor({ dead: 2, failed: 1, pendingSops: 3 }, l)).toBe(l("headline.dead", { count: "2" }));
+  });
+
+  it("calls out failing webhooks when nothing is dead", () => {
+    expect(headlineFor({ dead: 0, failed: 1, pendingSops: 3 }, l)).toBe(l("headline.failing", { count: "1" }));
+  });
+
+  it("reports unpublished procedures when connectors are clean", () => {
+    expect(headlineFor({ dead: 0, failed: 0, pendingSops: 3 }, l)).toBe(l("headline.pending", { count: "3" }));
+  });
+
+  it("falls back to healthy when nothing needs attention", () => {
+    expect(headlineFor({ dead: 0, failed: 0, pendingSops: 0 }, l)).toBe(l("headline.healthy"));
   });
 });
 

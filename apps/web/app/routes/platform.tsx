@@ -109,6 +109,9 @@ export const LABELS: Record<string, Record<string, string>> = {
     title: "Platform staff",
     intro: "How every tenant is doing, which capabilities are live, and who is standing in for a customer.",
     deniedTitle: "You cannot read platform diagnostics",
+    introDlq: "{dlq} dead letter(s) across {tenants} tenant(s) — that queue needs a look now.",
+    introWaiting: "{outbox} event(s) and {approvals} decision(s) waiting across {tenants} tenant(s).",
+    introClear: "All {tenants} tenant(s) are clear — nothing waiting, no dead letters.",
 
     kpiTenants: "Active tenants",
     kpiOutbox: "Events waiting",
@@ -205,6 +208,9 @@ export const LABELS: Record<string, Record<string, string>> = {
     title: "فريق المنصة",
     intro: "حال كل مستأجر، وأي القدرات مفعّلة، ومن ينوب عن عميل الآن.",
     deniedTitle: "لا يمكنك قراءة تشخيصات المنصة",
+    introDlq: "{dlq} رسالة فاشلة عبر {tenants} مستأجر — هذه الطابور تحتاج نظرة الآن.",
+    introWaiting: "{outbox} حدث و{approvals} قرار في الانتظار عبر {tenants} مستأجر.",
+    introClear: "كل {tenants} مستأجر بلا انتظار وبلا رسائل فاشلة.",
 
     kpiTenants: "المؤسسات النشطة",
     kpiOutbox: "أحداث في الانتظار",
@@ -304,6 +310,22 @@ type Label = (key: string, vars?: Record<string, string>) => string;
 /** The shared resolver: the route's own table, then the shared catalogue, then
  *  the platform's `common.*` words (docs/ui.md §7 P3-14). */
 export const labelsIn = labelsFrom(LABELS);
+
+/** The one line under the title: dead letters first, then anything waiting, else all clear. */
+export function platformLede(tenants: readonly TenantHealth[], l: Label): string {
+  const totals = tenants.reduce(
+    (sum, row) => ({
+      outbox: sum.outbox + row.outboxPending,
+      dlq: sum.dlq + row.dlqDepth,
+      approvals: sum.approvals + row.pendingApprovals
+    }),
+    { outbox: 0, dlq: 0, approvals: 0 }
+  );
+  const vars = { tenants: String(tenants.length), outbox: String(totals.outbox), approvals: String(totals.approvals), dlq: String(totals.dlq) };
+  if (totals.dlq > 0) return l("introDlq", vars);
+  if (totals.outbox > 0 || totals.approvals > 0) return l("introWaiting", vars);
+  return l("introClear", vars);
+}
 
 /* ------------------------------------------------------------------ loader */
 
@@ -622,7 +644,7 @@ export default function Platform() {
 
   return (
     <div className="flex flex-col gap-6">
-      <Header l={l} />
+      <Header l={l} lede={platformLede(loaded.tenants, l)} />
 
       {result?.problem ? <Gate problem={result.problem} l={l} /> : null}
       {result?.error ? <Problem problem={{ title: l(result.error) }} /> : null}
@@ -760,6 +782,10 @@ export default function Platform() {
   );
 }
 
-function Header({ l }: { l: Label }) {
-  return <PageHeader title={l("title")} description={l("intro")} />;
+function Header({ l, lede }: { l: Label; lede?: string }) {
+  return lede ? (
+    <PageHeader eyebrow={l("title")} title={lede} description={l("intro")} />
+  ) : (
+    <PageHeader title={l("title")} description={l("intro")} />
+  );
 }

@@ -7,6 +7,7 @@ import {
   WEIGHTS,
   action,
   byPriority,
+  headlineFor,
   hopsFor,
   incurredOf,
   labelsIn,
@@ -137,7 +138,11 @@ describe("labelsIn", () => {
       "problem.missing_claim",
       "problem.missing_handler",
       "problem.bad_transition",
-      "problem.bad_intent"
+      "problem.bad_intent",
+      "headline.clear",
+      "headline.breached",
+      "headline.moving",
+      "headline.open"
     ];
 
     for (const key of keys) {
@@ -198,6 +203,22 @@ describe("byPriority", () => {
     const c = claim({ id: "c", reserveMinor: 5_000_000, fraudScore: 95, slaDueAt: NOW - DAY });
     const sorted = [a, b, c].sort(byPriority(NOW));
     expect(sorted.map((row) => row.id)).toEqual(["c", "b", "a"]);
+  });
+});
+
+describe("headlineFor", () => {
+  const l = labelsIn("en");
+
+  it("says the desk is empty when there is no open claim", () => {
+    expect(headlineFor({ total: 0, breached: 0 }, l)).toBe(l("headline.clear"));
+  });
+
+  it("leads with a breach over a plain count", () => {
+    expect(headlineFor({ total: 5, breached: 2 }, l)).toBe(l("headline.breached", { count: "2" }));
+  });
+
+  it("falls back to a plain count when nothing has breached", () => {
+    expect(headlineFor({ total: 5, breached: 0 }, l)).toBe(l("headline.moving", { count: "5" }));
   });
 });
 

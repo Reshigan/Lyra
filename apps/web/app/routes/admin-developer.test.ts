@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ActionFunctionArgs } from "react-router";
 import type { Env } from "../env";
-import { LABELS, SIGNING_HEADERS, action, keyTone, labelsIn, listOf, surfaceOf } from "./admin-developer";
+import { LABELS, SIGNING_HEADERS, action, devLede, keyTone, labelsIn, listOf, surfaceOf } from "./admin-developer";
 
 // Rotating a webhook secret is a one-shot reveal: the plaintext exists only in
 // the response of the POST, and the receiver stops verifying the old one
@@ -95,6 +95,24 @@ describe("keyTone", () => {
     expect(keyTone({ mode: "live", revokedAt: null })).toBe("warning");
     expect(keyTone({ mode: "test", revokedAt: null })).toBe("info");
     expect(keyTone({ mode: "live", revokedAt: 1 })).toBe("neutral");
+  });
+});
+
+describe("devLede", () => {
+  const l = labelsIn("en");
+
+  it("names test mode when nothing live is calling in", () => {
+    expect(devLede([{ mode: "test", revokedAt: null } as never], [], l)).toBe(LABELS.en?.introEmpty);
+  });
+
+  it("counts only live, unrevoked keys and active hooks", () => {
+    const keys = [
+      { mode: "live", revokedAt: null },
+      { mode: "live", revokedAt: 1 },
+      { mode: "test", revokedAt: null }
+    ] as never[];
+    const hooks = [{ status: "active" }, { status: "disabled" }] as never[];
+    expect(devLede(keys, hooks, l)).toBe("1 live key(s) and 1 active webhook(s) are calling this API right now.");
   });
 });
 

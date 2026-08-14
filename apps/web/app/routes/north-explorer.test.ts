@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deltaBps } from "./north-explorer";
+import { deltaBps, headlineDirection } from "./north-explorer";
 
 describe("deltaBps", () => {
   it("has no change to report with fewer than two snapshots", () => {
@@ -20,5 +20,21 @@ describe("deltaBps", () => {
   it("keeps the direction of the move when the prior was negative", () => {
     // A loss shrinking from -100 to -50 is an improvement of 50%, not -50%.
     expect(deltaBps([-100, -50])).toBe(5000);
+  });
+});
+
+describe("headlineDirection", () => {
+  it("has nothing to headline with fewer than two snapshots", () => {
+    expect(headlineDirection([])).toBeNull();
+    expect(headlineDirection([100])).toBeNull();
+  });
+
+  it("names the direction the last two snapshots moved", () => {
+    expect(headlineDirection([100, 110])).toBe("up");
+    expect(headlineDirection([100, 90])).toBe("down");
+  });
+
+  it("reports nothing rather than a trend that isn't there", () => {
+    expect(headlineDirection([100, 100])).toBeNull();
   });
 });

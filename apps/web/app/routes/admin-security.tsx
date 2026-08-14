@@ -5,7 +5,7 @@ import { cloudflare } from "../context";
 import { translator } from "../i18n";
 import { humanise } from "../modules/spec";
 import { useShellData } from "./workspace";
-import { labelsFrom } from "./detail-kit";
+import { labelsFrom, type Label } from "./detail-kit";
 
 // docs/25 admin_security — "SSO, sessions, network and rate limits".
 //
@@ -83,6 +83,16 @@ export function providerTone(row: Pick<ProviderRow, "enabled" | "mfaAsserted">):
   return row.mfaAsserted ? "success" : "warning";
 }
 
+/** The one line under the title: the gap that actually needs chasing, if any. */
+export function securityLede(posture: Pick<Posture, "mfa" | "sso">, l: Label): string {
+  if (posture.mfa.gapsWithheld) return l("gapsWithheld");
+  if (posture.mfa.gaps.length > 0) {
+    return l("introGaps", { count: String(posture.mfa.gaps.length), percent: String(coverage(posture.mfa)) });
+  }
+  if (posture.sso.gaps.length > 0) return l("introSsoGap", { count: String(posture.sso.gaps.length) });
+  return l("introClear");
+}
+
 /* ----------------------------------------------------------------- labels */
 
 export const LABELS: Record<string, Record<string, string>> = {
@@ -90,6 +100,9 @@ export const LABELS: Record<string, Record<string, string>> = {
     title: "Security & access",
     intro: "What is enforced when someone signs in to this organisation, and who is currently outside it.",
     deniedTitle: "You cannot read security settings",
+    introGaps: "{count} people still need a second factor ({percent}% coverage).",
+    introSsoGap: "{count} sign-in provider(s) let people in without asserting a second factor.",
+    introClear: "Everyone the second-factor floor applies to has enrolled.",
     fixed: "Enforced by the platform — not a setting",
     mfaTitle: "Second factor",
     mfaIntro:
@@ -155,6 +168,9 @@ export const LABELS: Record<string, Record<string, string>> = {
     title: "الأمان والوصول",
     intro: "ما يُفرَض عند تسجيل الدخول إلى هذه المؤسسة، ومن هو خارج ذلك حاليًا.",
     deniedTitle: "لا يمكنك قراءة إعدادات الأمان",
+    introGaps: "{count} شخص ما زال يحتاج عاملًا ثانيًا (تغطية {percent}٪).",
+    introSsoGap: "{count} موفّر تسجيل دخول يسمح بالدخول دون تأكيد عامل ثانٍ.",
+    introClear: "كل من تشمله قاعدة العامل الثاني قد سجّله.",
     fixed: "تفرضه المنصّة — وليس إعدادًا",
     mfaTitle: "العامل الثاني",
     mfaIntro:
@@ -353,7 +369,7 @@ export default function AdminSecurity() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title={l("title")} description={l("intro")} />
+      <PageHeader eyebrow={l("title")} title={securityLede(posture, l)} description={l("intro")} />
 
       <Card title={l("mfaTitle")} description={l("mfaIntro")}>
         <div className="flex flex-col gap-4">

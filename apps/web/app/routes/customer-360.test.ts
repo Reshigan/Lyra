@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import type { Env } from "../env";
-import { LABELS, PERM, action, chips, labelsIn, loader } from "./customer-360";
+import { LABELS, PERM, action, chips, customerLede, labelsIn, loader } from "./customer-360";
 
 // The 360 view is read-mostly; its one write puts a priced offer in front of a
 // customer, which is consequential (docs/15 §4). So: the offer id is required
@@ -69,6 +69,12 @@ describe("panel permissions", () => {
   it("covers the cases panel and the activity timeline", () => {
     expect(PERM.cases).toBe("axis:cases:read");
     expect(PERM.audit).toBe("core:audit:read");
+  });
+});
+
+describe("customerLede", () => {
+  it("states the customer's type and identity-check status from the loaded record", () => {
+    expect(customerLede({ type: "person", kycStatus: "verified" }, labelsIn("en"))).toBe("Individual customer · Verified");
   });
 });
 

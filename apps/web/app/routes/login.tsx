@@ -29,7 +29,7 @@ import { CATALOGUES, DEFAULT_LOCALE, localeFrom, pseudoText, translator } from "
  * vocabulary the whole shell speaks; a sentence said once, here, does not
  * belong in it.
  */
-const LABELS: Record<string, Record<string, string>> = {
+export const LABELS: Record<string, Record<string, string>> = {
   en: {
     "sso.title": "Organisation sign-in",
     "sso.intro": "If your company signs you in, enter your work email and continue there.",
@@ -64,7 +64,25 @@ interface LoginResponse {
 
 // The step the page can be *on*. Demo sign-in is a submitted step but never a
 // rendered one: it either redirects or falls back to the password form.
-type Step = "password" | "totp" | "enrol" | "recovery";
+export type Step = "password" | "totp" | "enrol" | "recovery";
+
+/** The i18n keys the hero reads for the step the page is on right now. */
+export function loginHeading(step: Step): { title: string; intro: string } {
+  return {
+    title: {
+      password: "auth.signIn",
+      totp: "auth.totp.title",
+      enrol: "auth.enrol.title",
+      recovery: "auth.recovery.title"
+    }[step],
+    intro: {
+      password: "auth.intro",
+      totp: "auth.totp.intro",
+      enrol: "auth.enrol.intro",
+      recovery: "auth.recovery.intro"
+    }[step]
+  };
+}
 
 /** A seeded persona a demo deployment offers as a one-click door. */
 interface Persona {
@@ -342,18 +360,7 @@ export default function Login() {
   // The step the API put us on survives a rejected code — a bad TOTP must not
   // drop the user back to a password form the session has already passed.
   const step: Step = result?.step ?? "password";
-  const title = {
-    password: "auth.signIn",
-    totp: "auth.totp.title",
-    enrol: "auth.enrol.title",
-    recovery: "auth.recovery.title"
-  }[step];
-  const intro = {
-    password: "auth.intro",
-    totp: "auth.totp.intro",
-    enrol: "auth.enrol.intro",
-    recovery: "auth.recovery.intro"
-  }[step];
+  const { title, intro } = loginHeading(step);
 
   return (
     <main className="lyra-field lyra-stagger mx-auto flex min-h-screen max-w-md flex-col justify-center p-6">
@@ -361,8 +368,12 @@ export default function Login() {
         <Mark />
       </div>
       <Card>
-        <h1 className="font-serif text-22 leading-[1.2]">{t(title)}</h1>
-        <p className="mt-1 text-13 text-muted">{t(intro)}</p>
+        <header className="flex flex-wrap items-end justify-between gap-3">
+          <div className="flex flex-col gap-1">
+            <h1 className="font-serif text-22 leading-[1.2] text-text">{t(title)}</h1>
+            <p className="font-ui text-13 text-muted">{t(intro)}</p>
+          </div>
+        </header>
 
         {result?.errorKey || result?.localErrorKey ? (
           <div role="alert" className="mt-4 rounded-md border border-danger/40 bg-danger/10 p-3">

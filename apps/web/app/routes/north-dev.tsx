@@ -93,6 +93,10 @@ const LABELS: Labels = {
       "The demo tenant carries a deterministic synthetic dataset — the same fixtures every environment is seeded from, so a query written against it behaves the same on staging and in production.",
     "sandbox.open": "Open the metric explorer",
     denied: "You do not have permission to read the snapshot layer. Ask a tenant administrator for NORTH access.",
+    "headline.denied": "You do not have access to the snapshot layer.",
+    "headline.empty": "Nothing to query yet — no metric is registered.",
+    "headline.action": "Register a metric",
+    "headline.ready": "{count} metrics ready to query.",
     "saved.query": "Query ran.",
     "saved.snapshot": "Snapshotter run.",
     approvalTitle: "Queued for approval",
@@ -143,6 +147,10 @@ const LABELS: Labels = {
       "تحمل المؤسسة التجريبية بيانات اصطناعية حتمية — نفس التجهيزات التي تُبذر منها كل البيئات، فالاستعلام المكتوب عليها يتصرف كما هو على التجريب والإنتاج.",
     "sandbox.open": "افتح مستكشف المقاييس",
     denied: "لا تملك صلاحية قراءة طبقة اللقطات. اطلب من مدير المستأجر صلاحية نورث.",
+    "headline.denied": "لا تملك صلاحية الوصول إلى طبقة اللقطات.",
+    "headline.empty": "لا شيء لاستعلامه بعد — لم يُسجَّل أي مقياس.",
+    "headline.action": "سجّل مقياساً",
+    "headline.ready": "{count} مقياس جاهز للاستعلام.",
     "saved.query": "شُغّل الاستعلام.",
     "saved.snapshot": "شُغّل المُلقِط.",
     approvalTitle: "في انتظار الموافقة",
@@ -173,6 +181,20 @@ export function periodFor(grain: Grain, now: number): string {
 /** Whether a typed period is the shape its grain is stored in. */
 export function validPeriod(grain: Grain, text: string): boolean {
   return (grain === "day" ? /^\d{4}-\d{2}-\d{2}$/ : /^\d{4}-\d{2}$/).test(text.trim());
+}
+
+/**
+ * The bench's own headline: whether there is anything registered to query at
+ * all. Arithmetic on the loaded registry, not a model's reading, so it
+ * carries no ✦ mark (CLAUDE.md §11).
+ */
+export function headline(
+  metrics: readonly Pick<Metric, "key">[] | null,
+  l: (key: string, vars?: Record<string, string>) => string
+): string {
+  if (metrics === null) return l("headline.denied");
+  if (metrics.length === 0) return l("headline.empty");
+  return l("headline.ready", { count: String(metrics.length) });
 }
 
 /** The console's own request, written out so an integrator can paste it. */
@@ -286,8 +308,13 @@ export default function NorthDev() {
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-2">
         <span className="font-mono text-12 uppercase tracking-[0.14em] text-subtle">{l("kicker")}</span>
-        <h1 className="font-serif text-22 leading-[1.2] text-text">{l("title")}</h1>
+        <h1 className="font-serif text-22 leading-[1.2] text-text">{headline(metrics, l)}</h1>
         <p className="max-w-[68ch] font-ui text-13 text-subtle">{l("intro")}</p>
+        {metrics !== null && metrics.length === 0 ? (
+          <Link to="/north/admin" className="w-fit font-ui text-13 text-accent underline">
+            {l("headline.action")}
+          </Link>
+        ) : null}
       </header>
 
       {shown ? <Gate problem={shown} l={l} /> : null}

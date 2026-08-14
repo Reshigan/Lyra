@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import type { Env } from "../env";
-import { PERM, action, labelsIn, loader, phrase } from "./renewal-desk";
+import { CHURN_RISK, PERM, action, headlineFor, labelsIn, loader, phrase } from "./renewal-desk";
 
 // D.7: the AXIS operator view of orbit_renewals — a read of the same table
 // orbit-save.tsx writes, joined to the policy head it renews. Two of its four
@@ -123,7 +123,11 @@ describe("labelsIn", () => {
       "do_not_contact",
       "problem.missing_renewal",
       "problem.missing_policy",
-      "problem.unknown_intent"
+      "problem.unknown_intent",
+      "headline.clear",
+      "headline.risk",
+      "headline.moving",
+      "headline.open"
     ];
 
     for (const key of keys) {
@@ -135,6 +139,25 @@ describe("labelsIn", () => {
 
   it("falls back to English rather than showing a raw key", () => {
     expect(labelsIn("de")("title")).toBe(labelsIn("en")("title"));
+  });
+});
+
+describe("headlineFor", () => {
+  const l = labelsIn("en");
+  it("says nothing is expiring when the desk is empty", () => {
+    expect(headlineFor({ total: 0, highRisk: 0 }, l)).toBe(l("headline.clear"));
+  });
+  it("leads with high-churn-risk terms over a plain count", () => {
+    expect(headlineFor({ total: 5, highRisk: 2 }, l)).toBe(l("headline.risk", { count: "2" }));
+  });
+  it("falls back to a plain count when nothing is flagged high risk", () => {
+    expect(headlineFor({ total: 5, highRisk: 0 }, l)).toBe(l("headline.moving", { count: "5" }));
+  });
+});
+
+describe("CHURN_RISK", () => {
+  it("matches the threshold the risk column badges at", () => {
+    expect(CHURN_RISK).toBe(65);
   });
 });
 
