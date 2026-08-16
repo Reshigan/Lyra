@@ -81,22 +81,7 @@ export const HIDDEN_ROUTES: Record<string, string> = {
   "/axis/documents/:id/file": "streams one document's source file, opened from the verify-queue viewer",
   "/axis/cases/:id/evidence-bundles/:bundleId/download":
     "streams one recon evidence bundle's file, opened from the case detail evidence list",
-  "/signal/cockpit": "the growth read across the SIGNAL ledgers, linked from the signal workspace tools list",
-  "/signal/studio":
-    "creates a campaign and drafts its content, linked from the signal workspace tools list and from the cockpit when nothing is running",
   "/signal/creatives/:id/image": "streams one generated creative's image, opened from the studio's creative list",
-  "/signal/audience-value": "value against cost per audience, linked from the signal workspace tools list",
-  "/signal/answer-engines": "answer-engine coverage and citation share, linked from the signal workspace tools list",
-  "/signal/experiments":
-    "the experiment registry and the reading each test stopped on, linked from the signal workspace tools list",
-  "/signal/budget":
-    "the spend ceiling and the autopilot's bounds, linked from the signal workspace tools list and from the cockpit's autopilot panel",
-  "/signal/analytics":
-    "CAC, LTV and cohort retention with the spend export, linked from the signal workspace tools list and from the cockpit",
-  "/signal/admin":
-    "the brand kit, guardrails, budget bounds, approval thresholds and suppression lists everything sent from SIGNAL is checked against, linked from the signal workspace tools list",
-  "/signal/dev":
-    "the SIGNAL read console, webhook tester and sandbox spend tick, linked from the signal workspace tools list",
   "/admin/customers/:id/360": "opens everything known about one customer from the customers list",
   "/admin/products/:id/detail": "opens one product definition from the products list",
   "/axis/policies/:id/detail": "opens one policy with its history from the policies list",
