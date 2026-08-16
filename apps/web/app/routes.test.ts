@@ -61,6 +61,25 @@ describe("LYRA_MODULES route gating", () => {
     expect(paths.some((p) => p.startsWith("scout/"))).toBe(false);
   });
 
+  it("includes only axis's routes when LYRA_MODULES=axis", async () => {
+    const paths = flatPaths(await loadRoutesUnder("axis"));
+    expect(paths).toContain("axis/exceptions");
+    expect(paths).toContain("axis/board");
+    expect(paths).toContain("axis/quote-desk");
+    expect(paths).toContain("axis/doc-intelligence");
+    expect(paths).toContain("axis/analytics");
+    expect(paths).toContain("axis/process-map");
+    expect(paths).toContain("axis/renewals");
+    expect(paths).toContain("axis/referrals");
+    expect(paths).toContain("axis/claims/desk");
+    expect(paths).toContain("axis/admin");
+    expect(paths).toContain("axis/dev");
+    expect(paths.some((p) => p.startsWith("north/"))).toBe(false);
+    expect(paths.some((p) => p.startsWith("orbit/"))).toBe(false);
+    expect(paths.some((p) => p.startsWith("signal/"))).toBe(false);
+    expect(paths.some((p) => p.startsWith("scout/"))).toBe(false);
+  });
+
   it("still includes login/logout when scoped to a single module", async () => {
     const paths = flatPaths(await loadRoutesUnder("north"));
     expect(paths).toContain("login");
@@ -93,6 +112,15 @@ describe("LYRA_MODULES workspace gating", () => {
     const { workspaceFor } = await loadModulesUnder("north");
     expect(workspaceFor("/north")).toBeDefined();
     expect(workspaceFor("/axis")).toBeUndefined();
+    expect(workspaceFor("/orbit")).toBeUndefined();
+    expect(workspaceFor("/signal")).toBeUndefined();
+    expect(workspaceFor("/scout")).toBeUndefined();
+  });
+
+  it("resolves /axis and stops resolving other modules under LYRA_MODULES=axis", async () => {
+    const { workspaceFor } = await loadModulesUnder("axis");
+    expect(workspaceFor("/axis")).toBeDefined();
+    expect(workspaceFor("/north")).toBeUndefined();
     expect(workspaceFor("/orbit")).toBeUndefined();
     expect(workspaceFor("/signal")).toBeUndefined();
     expect(workspaceFor("/scout")).toBeUndefined();
