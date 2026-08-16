@@ -77,21 +77,6 @@ export default [
         ]
       : []),
 
-    ...(shouldInclude("signal")
-      ? [
-          route("signal/cockpit", "routes/signal-cockpit.tsx"),
-          route("signal/studio", "routes/signal-studio.tsx"),
-          route("signal/creatives/:id/image", "routes/signal-creative-image.tsx"),
-          route("signal/audience-value", "routes/signal-audience-value.tsx"),
-          route("signal/answer-engines", "routes/signal-answer-engines.tsx"),
-          route("signal/experiments", "routes/signal-experiments.tsx"),
-          route("signal/budget", "routes/signal-budget.tsx"),
-          route("signal/analytics", "routes/signal-analytics.tsx"),
-          route("signal/admin", "routes/signal-admin.tsx"),
-          route("signal/dev", "routes/signal-dev.tsx")
-        ]
-      : []),
-
     // Record screens: a static last segment, so each still ranks above the
     // generic `:module/:resource/:id`.
     route("admin/customers/:id/360", "routes/customer-360.tsx"),
@@ -140,6 +125,22 @@ export default [
           route("orbit/admin", "routes/orbit-admin.tsx"),
           route("orbit/dev", "routes/orbit-dev.tsx"),
           route("orbit/journeys/:id/builder", "routes/orbit-journey.tsx")
+        ])
+      ]
+    : []),
+  ...(shouldInclude("signal")
+    ? [
+        layout("routes/signal-shell.tsx", [
+          route("signal/cockpit", "routes/signal-cockpit.tsx"),
+          route("signal/studio", "routes/signal-studio.tsx"),
+          route("signal/creatives/:id/image", "routes/signal-creative-image.tsx"),
+          route("signal/audience-value", "routes/signal-audience-value.tsx"),
+          route("signal/answer-engines", "routes/signal-answer-engines.tsx"),
+          route("signal/experiments", "routes/signal-experiments.tsx"),
+          route("signal/budget", "routes/signal-budget.tsx"),
+          route("signal/analytics", "routes/signal-analytics.tsx"),
+          route("signal/admin", "routes/signal-admin.tsx"),
+          route("signal/dev", "routes/signal-dev.tsx")
         ])
       ]
     : []),
