@@ -116,6 +116,23 @@ describe("LYRA_MODULES route gating", () => {
     expect(paths.some((p) => p.startsWith("scout/"))).toBe(false);
   });
 
+  it("includes only scout's routes when LYRA_MODULES=scout", async () => {
+    const paths = flatPaths(await loadRoutesUnder("scout"));
+    expect(paths).toContain("scout/radar");
+    expect(paths).toContain("scout/whitespace/:id");
+    expect(paths).toContain("scout/panel");
+    expect(paths).toContain("scout/pricing");
+    expect(paths).toContain("scout/experiments");
+    expect(paths).toContain("scout/analytics");
+    expect(paths).toContain("scout/data-products");
+    expect(paths).toContain("scout/admin");
+    expect(paths).toContain("scout/dev");
+    expect(paths.some((p) => p.startsWith("north/"))).toBe(false);
+    expect(paths.some((p) => p.startsWith("axis/"))).toBe(false);
+    expect(paths.some((p) => p.startsWith("orbit/"))).toBe(false);
+    expect(paths.some((p) => p.startsWith("signal/"))).toBe(false);
+  });
+
   it("still includes login/logout when scoped to a single module", async () => {
     const paths = flatPaths(await loadRoutesUnder("north"));
     expect(paths).toContain("login");

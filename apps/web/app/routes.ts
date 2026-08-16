@@ -63,20 +63,6 @@ export default [
     // is what it is about (partners|channels|staff, then the subject's id).
     route("onboarding/:kind/:ref", "routes/onboarding.tsx"),
 
-    ...(shouldInclude("scout")
-      ? [
-          route("scout/radar", "routes/scout-radar.tsx"),
-          route("scout/whitespace/:id", "routes/scout-whitespace.tsx"),
-          route("scout/panel", "routes/scout-panel.tsx"),
-          route("scout/pricing", "routes/scout-pricing.tsx"),
-          route("scout/experiments", "routes/scout-experiments.tsx"),
-          route("scout/analytics", "routes/scout-analytics.tsx"),
-          route("scout/data-products", "routes/scout-data-products.tsx"),
-          route("scout/admin", "routes/scout-admin.tsx"),
-          route("scout/dev", "routes/scout-dev.tsx")
-        ]
-      : []),
-
     // Record screens: a static last segment, so each still ranks above the
     // generic `:module/:resource/:id`.
     route("admin/customers/:id/360", "routes/customer-360.tsx"),
@@ -141,6 +127,21 @@ export default [
           route("signal/analytics", "routes/signal-analytics.tsx"),
           route("signal/admin", "routes/signal-admin.tsx"),
           route("signal/dev", "routes/signal-dev.tsx")
+        ])
+      ]
+    : []),
+  ...(shouldInclude("scout")
+    ? [
+        layout("routes/scout-shell.tsx", [
+          route("scout/radar", "routes/scout-radar.tsx"),
+          route("scout/whitespace/:id", "routes/scout-whitespace.tsx"),
+          route("scout/panel", "routes/scout-panel.tsx"),
+          route("scout/pricing", "routes/scout-pricing.tsx"),
+          route("scout/experiments", "routes/scout-experiments.tsx"),
+          route("scout/analytics", "routes/scout-analytics.tsx"),
+          route("scout/data-products", "routes/scout-data-products.tsx"),
+          route("scout/admin", "routes/scout-admin.tsx"),
+          route("scout/dev", "routes/scout-dev.tsx")
         ])
       ]
     : []),
