@@ -111,7 +111,7 @@ export function NorthShell({
   // `?asOf=abc` is `Number("abc")` → NaN, which is `!== null` and would ride
   // all the way into aria-valuenow and the loaders' `&to=`. Anything that is
   // not a finite epoch is simply "live".
-  const asOfParam = searchParams.get("asOf");
+  const asOfParam = searchParams.get("asOf")?.trim();
   const initialAsOf = asOfParam && Number.isFinite(Number(asOfParam)) ? Number(asOfParam) : null;
   function handleScrub(value: number | null) {
     const next = new URLSearchParams(searchParams);
@@ -147,7 +147,7 @@ export function NorthShell({
         <header className="lyra-vt-chrome sticky top-0 z-30 flex h-[50px] items-center gap-2 border-b border-border bg-surface-1 px-3 sm:gap-3 sm:px-4">
           <div className="flex shrink-0 items-center gap-2">
             <NavLink
-              to="/north"
+              to="/north/brief"
               className="flex shrink-0 items-center gap-[9px] rounded-md px-1 py-1 font-display text-13 text-text hover:text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
             >
               {logo ? (

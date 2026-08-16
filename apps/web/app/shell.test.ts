@@ -1,10 +1,10 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { ar } from "./i18n/ar";
 import { en } from "./i18n/en";
-import { HIDDEN_ROUTES, WORKSPACE_PATHS, availableShellsForRoles, labelKeyFor, landingFor } from "./routing";
+import { HIDDEN_ROUTES, WORKSPACE_PATHS, availableShellsForRoles, isRouted, labelKeyFor, landingFor } from "./routing";
 
 // The three invariants of the shell that can be checked without a DOM: every
 // route is labelled, every locale is complete, and no component smuggles in an
@@ -42,6 +42,30 @@ describe("route tree", () => {
     // and never lands somewhere the API did not offer.
     expect(landingFor(["orbit.agent"], nav)).toBe("/axis");
     expect(landingFor([], [{ href: "/" }])).toBe("/settings");
+  });
+
+  describe("LYRA_MODULES gating", () => {
+    afterEach(() => {
+      delete process.env.LYRA_MODULES;
+    });
+
+    it("stops routing an excluded module's workspace path", () => {
+      process.env.LYRA_MODULES = "north";
+      expect(isRouted("/axis")).toBe(false);
+      expect(isRouted("/north")).toBe(true);
+    });
+
+    it("never gates the shared workspaces, which belong to no module", () => {
+      process.env.LYRA_MODULES = "north";
+      expect(isRouted("/ledger")).toBe(true);
+      expect(isRouted("/settings")).toBe(true);
+    });
+
+    it("skips an excluded module's landing path in favor of the next offered one", () => {
+      process.env.LYRA_MODULES = "north";
+      const nav = [{ href: "/" }, { href: "/axis" }, { href: "/north" }];
+      expect(landingFor(["axis.agent"], nav)).toBe("/north");
+    });
   });
 });
 

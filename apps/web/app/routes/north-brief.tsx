@@ -238,7 +238,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   // ?asOf=<epoch-ms> replays this screen as of a past moment (Meridian's
   // replay mode) — an upper time bound on every query here, threaded through
   // to the API's pre-existing `to` param (apps/api/src/http.ts's ListQuery).
-  const asOf = url.searchParams.get("asOf");
+  const asOf = url.searchParams.get("asOf")?.trim();
   // A non-numeric ?asOf= is not a moment — replay stays off rather than
   // sending `&to=NaN` upstream.
   const to = asOf && Number.isFinite(Number(asOf)) ? `&to=${encodeURIComponent(asOf)}` : "";

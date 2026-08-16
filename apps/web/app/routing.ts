@@ -194,7 +194,9 @@ export function landingFor(roles: readonly string[], nav: readonly NavHref[]): s
 }
 
 export function isRouted(path: string): boolean {
-  return (WORKSPACE_PATHS as readonly string[]).includes(path);
+  if (!(WORKSPACE_PATHS as readonly string[]).includes(path)) return false;
+  const module = moduleOf(path);
+  return module === null || shouldInclude(module);
 }
 
 /** `/axis` → `nav.axis`. The label itself comes from the catalogue. */

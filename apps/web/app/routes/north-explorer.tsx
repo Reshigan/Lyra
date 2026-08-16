@@ -159,7 +159,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const grain = GRAINS.find((one) => one === url.searchParams.get("grain")) ?? metric?.grain ?? "day";
   // ?asOf=<epoch-ms> replays the series as of a past moment (Meridian's
   // replay mode) — an upper time bound on the snapshots query.
-  const asOf = url.searchParams.get("asOf");
+  const asOf = url.searchParams.get("asOf")?.trim();
   // A non-numeric ?asOf= is not a moment — replay stays off rather than
   // sending `&to=NaN` upstream.
   const to = asOf && Number.isFinite(Number(asOf)) ? `&to=${encodeURIComponent(asOf)}` : "";
