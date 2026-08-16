@@ -108,15 +108,6 @@ export const HIDDEN_ROUTES: Record<string, string> = {
   "/distribution/channels/:id/detail": "opens one distribution channel from the channels list",
   "/search/results": "the full result page behind the command palette, opened from its last row",
   "/onboarding/:kind/:ref": "one subject's onboarding checklist, opened from that partner, channel or staff record",
-  "/orbit/console": "the live conversation console, linked from the ORBIT workspace tools list",
-  "/orbit/supervisor":
-    "the supervisor wall over the whole room, with barge and whisper, linked from the ORBIT workspace tools list",
-  "/orbit/save": "the retention save desk, linked from the ORBIT workspace tools list",
-  "/orbit/pipeline": "the renewal pipeline, linked from the ORBIT workspace tools list",
-  "/orbit/quality": "conversation quality review, linked from the ORBIT workspace tools list",
-  "/orbit/analytics": "service and retention analytics, linked from the ORBIT workspace tools list",
-  "/orbit/admin": "teams, routing and SLA policy, linked from the ORBIT workspace tools list",
-  "/orbit/dev": "the conversation simulator and developer links, linked from the ORBIT workspace tools list",
   "/orbit/journeys/:id/builder": "opens one journey's steps from the journeys list",
   // NORTH's eight sub-screens are deliberately NOT hidden: NorthShell owns its
   // own rail and lists all of them directly (docs/superpowers/specs
