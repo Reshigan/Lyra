@@ -2,7 +2,7 @@ import { Link, useLoaderData, type LoaderFunctionArgs } from "react-router";
 import { Badge, Card, DateTime, EmptyState, GuardrailNotice } from "@lyra/ui";
 import { api } from "../api.server";
 import { cloudflare } from "../context";
-import { useShellData } from "./workspace";
+import { useScoutSessionData } from "./scout-shell";
 import {
   K_FLOOR,
   emptyPage,
@@ -162,7 +162,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
 export default function ScoutAdmin() {
   const loaded = useLoaderData<typeof loader>();
-  const shell = useShellData();
+  const shell = useScoutSessionData();
   const locale = shell?.locale ?? "en";
   const l = labelsIn(locale, shell?.domainPack);
   const ingested = loaded.sources.reduce((sum, one) => sum + one.count, 0);
