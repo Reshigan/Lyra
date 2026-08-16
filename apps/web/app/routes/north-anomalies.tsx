@@ -222,9 +222,13 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const url = new URL(request.url);
 
   const state = STATES.find((one) => one === url.searchParams.get("state")) ?? null;
+  // ?asOf=<epoch-ms> replays the queue as of a past moment (Meridian's
+  // replay mode) — an upper time bound on the anomalies query.
+  const asOf = url.searchParams.get("asOf");
+  const to = asOf ? `&to=${encodeURIComponent(asOf)}` : "";
   const query = `/v1/north/anomalies?sort=detectedAt&order=desc&limit=${PAGE}${
     state ? `&state=${state}` : ""
-  }`;
+  }${to}`;
 
   const [anomalies, metrics] = await Promise.all([
     readable(api<Page<Anomaly>>(query, opts)),
