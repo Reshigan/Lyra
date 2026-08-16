@@ -1,6 +1,20 @@
 import { useEffect, useState } from "react";
-import { NavLink, useLocation, useNavigate, useSearchParams, useSubmit } from "react-router";
-import { Breadcrumbs, Menu, ModuleSwitcher, type LyraModule, type ModuleLink } from "@lyra/ui";
+import {
+  NavLink,
+  useLocation,
+  useNavigate,
+  useNavigation,
+  useSearchParams,
+  useSubmit
+} from "react-router";
+import {
+  Breadcrumbs,
+  Menu,
+  ModuleSwitcher,
+  ToastProvider,
+  type LyraModule,
+  type ModuleLink
+} from "@lyra/ui";
 import type { NavItem } from "../api.server";
 import { translator, type Translate } from "../i18n";
 import type { SessionBootstrap } from "../session.server";
@@ -60,7 +74,9 @@ export function NorthShell({
   const profiles = profilesFor(session.roles, session.nav, pathname);
   const roleKey = profiles.find((profile) => profile.active)?.role ?? session.roles[0] ?? null;
   const mayCompanion = session.permissions.includes("ai:runs:read");
-  const settling = false;
+  const navigation = useNavigation();
+  const settling =
+    navigation.state === "loading" && (navigation.location?.pathname ?? pathname) !== pathname;
   const slow = useSettledFor(settling, 400);
 
   // Meridian is fully URL-driven here (docs/superpowers/specs
@@ -83,169 +99,173 @@ export function NorthShell({
   }));
 
   return (
-    <div className="lyra-field min-h-screen bg-bg text-text" style={brandStyle(session.brand)}>
-      <ColdOpen name={productName} />
-      <a
-        href="#workspace"
-        className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:m-2 focus:rounded-md focus:bg-surface-2 focus:px-3 focus:py-2 focus:text-13"
-      >
-        {t("app.skipToContent")}
-      </a>
+    // The toast host lives above every workspace so any screen can say what
+    // happened after the control that caused it has scrolled away (ADR-0051).
+    <ToastProvider dismissLabel={t("common.dismiss")}>
+      <div className="lyra-field min-h-screen bg-bg text-text" style={brandStyle(session.brand)}>
+        <ColdOpen name={productName} />
+        <a
+          href="#workspace"
+          className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:m-2 focus:rounded-md focus:bg-surface-2 focus:px-3 focus:py-2 focus:text-13"
+        >
+          {t("app.skipToContent")}
+        </a>
 
-      <header className="lyra-vt-chrome sticky top-0 z-30 flex h-[50px] items-center gap-2 border-b border-border bg-surface-1 px-3 sm:gap-3 sm:px-4">
-        <div className="flex shrink-0 items-center gap-2">
-          <NavLink
-            to="/north"
-            className="flex shrink-0 items-center gap-[9px] rounded-md px-1 py-1 font-display text-13 text-text hover:text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-          >
-            {logo ? (
-              <img src={logo} alt={productName} className="h-6 w-auto" />
-            ) : (
-              <>
-                <ConstellationMark className="shrink-0" />
-                <span className="truncate font-semibold ltr:tracking-[0.15em]">{productName}</span>
-              </>
-            )}
-          </NavLink>
-          {servedName ? (
-            <>
-              <span aria-hidden="true" className="h-[15px] w-px shrink-0 bg-border-strong" />
-              <span className="hidden max-w-[16ch] truncate font-ui text-12 text-muted sm:inline">
-                {servedName}
-              </span>
-            </>
-          ) : null}
-        </div>
-
-        <SearchPalette
-          t={t}
-          destinations={items.map((item) => ({ href: item.href, label: t(item.labelKey) }))}
-        />
-
-        <div className="ms-auto flex shrink-0 items-center gap-1">
-          <PostureChips posture={session.inbox?.posture} t={t} />
-          <ThemeToggle t={t} />
-          {mayCompanion ? (
-            <button
-              type="button"
-              aria-expanded={companion}
-              aria-label={t(companion ? "companion.close" : "companion.open")}
-              title={t(companion ? "companion.close" : "companion.open")}
-              onClick={() => setCompanion((open) => !open)}
-              className="hidden size-8 shrink-0 place-items-center rounded-md text-13 text-muted transition-colors duration-150 hover:bg-surface-2 hover:text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent aria-expanded:text-accent lg:grid"
+        <header className="lyra-vt-chrome sticky top-0 z-30 flex h-[50px] items-center gap-2 border-b border-border bg-surface-1 px-3 sm:gap-3 sm:px-4">
+          <div className="flex shrink-0 items-center gap-2">
+            <NavLink
+              to="/north"
+              className="flex shrink-0 items-center gap-[9px] rounded-md px-1 py-1 font-display text-13 text-text hover:text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
             >
-              <span aria-hidden="true">&#10022;</span>
-            </button>
-          ) : null}
-          <Menu
-            label={t("header.account")}
-            items={accountMenuItems(
-              t,
-              (href) => void navigate(href),
-              () => void submit(null, { method: "post", action: "/logout" }),
-              profiles
-            )}
-            trigger={
+              {logo ? (
+                <img src={logo} alt={productName} className="h-6 w-auto" />
+              ) : (
+                <>
+                  <ConstellationMark className="shrink-0" />
+                  <span className="truncate font-semibold ltr:tracking-[0.15em]">{productName}</span>
+                </>
+              )}
+            </NavLink>
+            {servedName ? (
+              <>
+                <span aria-hidden="true" className="h-[15px] w-px shrink-0 bg-border-strong" />
+                <span className="hidden max-w-[16ch] truncate font-ui text-12 text-muted sm:inline">
+                  {servedName}
+                </span>
+              </>
+            ) : null}
+          </div>
+
+          <SearchPalette
+            t={t}
+            destinations={items.map((item) => ({ href: item.href, label: t(item.labelKey) }))}
+          />
+
+          <div className="ms-auto flex shrink-0 items-center gap-1">
+            <PostureChips posture={session.inbox?.posture} t={t} />
+            <ThemeToggle t={t} />
+            {mayCompanion ? (
               <button
                 type="button"
-                className="ms-1 flex items-center gap-2 rounded-orbit border border-border py-0.5 pe-2.5 ps-0.5 transition-colors duration-150 hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-                title={
-                  session.actorName
-                    ? t("header.signedInAs", { name: session.actorName })
-                    : t("header.account")
-                }
+                aria-expanded={companion}
+                aria-label={t(companion ? "companion.close" : "companion.open")}
+                title={t(companion ? "companion.close" : "companion.open")}
+                onClick={() => setCompanion((open) => !open)}
+                className="hidden size-8 shrink-0 place-items-center rounded-md text-13 text-muted transition-colors duration-150 hover:bg-surface-2 hover:text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent aria-expanded:text-accent lg:grid"
               >
-                <span
-                  aria-hidden="true"
-                  className="grid size-6 shrink-0 place-items-center rounded-orbit bg-accent font-mono text-12 font-medium text-accent-contrast"
-                >
-                  {session.actorName ? initialsOf(session.actorName) : "•"}
-                </span>
-                <span className="hidden max-w-40 truncate font-mono text-12 text-muted sm:inline">
-                  {roleKey ?? session.actorName ?? t("header.account")}
-                </span>
-                <span aria-hidden="true" className="text-11 text-subtle">
-                  &#9662;
-                </span>
+                <span aria-hidden="true">&#10022;</span>
               </button>
-            }
-          />
-        </div>
-      </header>
+            ) : null}
+            <Menu
+              label={t("header.account")}
+              items={accountMenuItems(
+                t,
+                (href) => void navigate(href),
+                () => void submit(null, { method: "post", action: "/logout" }),
+                profiles
+              )}
+              trigger={
+                <button
+                  type="button"
+                  className="ms-1 flex items-center gap-2 rounded-orbit border border-border py-0.5 pe-2.5 ps-0.5 transition-colors duration-150 hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                  title={
+                    session.actorName
+                      ? t("header.signedInAs", { name: session.actorName })
+                      : t("header.account")
+                  }
+                >
+                  <span
+                    aria-hidden="true"
+                    className="grid size-6 shrink-0 place-items-center rounded-orbit bg-accent font-mono text-12 font-medium text-accent-contrast"
+                  >
+                    {session.actorName ? initialsOf(session.actorName) : "•"}
+                  </span>
+                  <span className="hidden max-w-40 truncate font-mono text-12 text-muted sm:inline">
+                    {roleKey ?? session.actorName ?? t("header.account")}
+                  </span>
+                  <span aria-hidden="true" className="text-11 text-subtle">
+                    &#9662;
+                  </span>
+                </button>
+              }
+            />
+          </div>
+        </header>
 
-      <Meridian
-        t={t}
-        inbox={session.inbox}
-        accent={NORTH_ACCENT}
-        initialAsOf={initialAsOf}
-        onScrub={handleScrub}
-      />
+        <Meridian
+          t={t}
+          inbox={session.inbox}
+          accent={NORTH_ACCENT}
+          initialAsOf={initialAsOf}
+          onScrub={handleScrub}
+        />
 
-      <div className="flex min-h-[calc(100vh-50px)] flex-col md:flex-row">
-        <nav
-          aria-label={t("nav.primary")}
-          className="flex shrink-0 gap-1 overflow-x-auto border-b border-border bg-surface-1 p-2 md:hidden"
-        >
-          {items.map((item) => (
-            <NavItemLink key={item.href} item={item} t={t} />
-          ))}
-        </nav>
-
-        <nav
-          aria-label={t("nav.primary")}
-          className="lyra-vt-rail hidden md:sticky md:top-[50px] md:flex md:h-[calc(100vh-50px)] md:w-60 md:shrink-0 md:flex-col md:gap-2 md:overflow-y-auto md:border-e md:border-border md:p-3"
-        >
-          {moduleLinks.length > 1 ? (
-            <ModuleSwitcher modules={moduleLinks} current="north" label={t("nav.group.modules")} />
-          ) : null}
-          <ShiftRail
-            t={t}
-            shift={shiftFrom(
-              initialAsOf === null ? session.inbox : inboxAsOf(session.inbox, initialAsOf),
-              session.names
-            )}
-          />
-          <ul className="flex flex-col gap-0.5">
-            {items.map((item) => (
-              <li key={item.href}>
-                <NavItemLink item={item} t={t} />
-              </li>
-            ))}
-          </ul>
-          {/* Projection is a separate navigation affordance, not a Meridian
-              mode (this plan's Global Constraints, Deviation 4) — reuses the
-              existing /north/brief <-> /north/whatif cross-link pattern. */}
-          <NavLink
-            to="/north/whatif"
-            className="mt-2 rounded-md px-3 py-2 text-start font-ui text-12 text-muted hover:bg-surface-2 hover:text-text"
+        <div className="flex min-h-[calc(100vh-50px)] flex-col md:flex-row">
+          <nav
+            aria-label={t("nav.primary")}
+            className="flex shrink-0 gap-1 overflow-x-auto border-b border-border bg-surface-1 p-2 md:hidden"
           >
-            {t("north.whatif.title")}
+            {items.map((item) => (
+              <NavItemLink key={item.href} item={item} t={t} />
+            ))}
+          </nav>
+
+          <nav
+            aria-label={t("nav.primary")}
+            className="lyra-vt-rail hidden md:sticky md:top-[50px] md:flex md:h-[calc(100vh-50px)] md:w-60 md:shrink-0 md:flex-col md:gap-2 md:overflow-y-auto md:border-e md:border-border md:p-3"
+          >
+            {moduleLinks.length > 1 ? (
+              <ModuleSwitcher modules={moduleLinks} current="north" label={t("nav.group.modules")} />
+            ) : null}
+            <ShiftRail
+              t={t}
+              shift={shiftFrom(
+                initialAsOf === null ? session.inbox : inboxAsOf(session.inbox, initialAsOf),
+                session.names
+              )}
+            />
+            <ul className="flex flex-col gap-0.5">
+              {items.map((item) => (
+                <li key={item.href}>
+                  <NavItemLink item={item} t={t} />
+                </li>
+              ))}
+            </ul>
+            {/* Projection is a separate navigation affordance, not a Meridian
+                mode (this plan's Global Constraints, Deviation 4) — reuses the
+                existing /north/brief <-> /north/whatif cross-link pattern. */}
+            <NavLink
+              to="/north/whatif"
+              className="mt-2 rounded-md px-3 py-2 text-start font-ui text-12 text-muted hover:bg-surface-2 hover:text-text"
+            >
+              {t("nav.whatif")}
+            </NavLink>
+          </nav>
+
+          <main
+            key={pathname}
+            id="workspace"
+            tabIndex={-1}
+            className="lyra-vt-workspace lyra-stagger mx-auto flex min-w-0 w-full max-w-[100rem] flex-1 flex-col gap-4 p-4 sm:p-6"
+          >
+            <span aria-hidden="true" className="h-0.5 w-full shrink-0 rounded-full" style={{ background: NORTH_ACCENT }} />
+            {crumbs.length ? <Breadcrumbs items={crumbs} label={t("nav.breadcrumb")} /> : null}
+            {slow ? <PageSkeleton label={t("common.loading")} /> : children}
+          </main>
+
+          {mayCompanion && companion ? <Companion t={t} /> : null}
+        </div>
+
+        <footer className="lyra-vt-status sticky bottom-0 z-20 hidden h-7 items-center gap-2 border-t border-border bg-surface-1 px-4 font-mono text-12 text-subtle sm:flex">
+          <span aria-hidden="true" className="truncate">
+            {productName}
+          </span>
+          <NavLink to="/design" className="ms-auto shrink-0 hover:text-text aria-[current=page]:text-text">
+            {t("nav.doctrine")}
           </NavLink>
-        </nav>
-
-        <main
-          key={pathname}
-          id="workspace"
-          tabIndex={-1}
-          className="lyra-vt-workspace lyra-stagger mx-auto flex min-w-0 w-full max-w-[100rem] flex-1 flex-col gap-4 p-4 sm:p-6"
-        >
-          <span aria-hidden="true" className="h-0.5 w-full shrink-0 rounded-full" style={{ background: NORTH_ACCENT }} />
-          {crumbs.length ? <Breadcrumbs items={crumbs} label={t("nav.breadcrumb")} /> : null}
-          {slow ? <PageSkeleton label={t("common.loading")} /> : children}
-        </main>
-
-        {mayCompanion && companion ? <Companion t={t} /> : null}
+        </footer>
       </div>
-
-      <footer className="lyra-vt-status sticky bottom-0 z-20 hidden h-7 items-center gap-2 border-t border-border bg-surface-1 px-4 font-mono text-12 text-subtle sm:flex">
-        <span aria-hidden="true" className="truncate">
-          {productName}
-        </span>
-        <NavLink to="/design" className="ms-auto shrink-0 hover:text-text aria-[current=page]:text-text">
-          {t("nav.doctrine")}
-        </NavLink>
-      </footer>
-    </div>
+    </ToastProvider>
   );
 }
 
