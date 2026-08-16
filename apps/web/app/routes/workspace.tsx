@@ -11,7 +11,7 @@ import { cloudflare } from "../context";
 import { ErrorPanel } from "../components/error-panel";
 import { Shell } from "../components/shell";
 import { DEFAULT_LOCALE, translator } from "../i18n";
-import { bootstrapSession, CALENDARS, FALLBACK_CURRENCY, calendarFrom } from "../session.server";
+import { bootstrapSession } from "../session.server";
 
 // Everything behind a session hangs off this layout. bootstrapSession() feeds
 // the whole shell: actor, tenant brand, permissions and the nav the API
@@ -19,8 +19,6 @@ import { bootstrapSession, CALENDARS, FALLBACK_CURRENCY, calendarFrom } from "..
 // NORTH's own layout — see session.server.ts.
 
 export const ROUTE_ID = "routes/workspace";
-
-export { CALENDARS, FALLBACK_CURRENCY, calendarFrom };
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   return bootstrapSession(context.get(cloudflare).env, request);

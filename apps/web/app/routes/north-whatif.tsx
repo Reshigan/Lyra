@@ -23,7 +23,7 @@ import {
 import { api } from "../api.server";
 import { cloudflare } from "../context";
 import { Gate } from "./staff";
-import { FALLBACK_CURRENCY } from "./workspace";
+import { FALLBACK_CURRENCY } from "../session.server";
 import { useNorthSessionData } from "./north-shell";
 import {
   labelsFrom,
