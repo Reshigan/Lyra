@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { ar } from "./i18n/ar";
 import { en } from "./i18n/en";
-import { HIDDEN_ROUTES, WORKSPACE_PATHS, labelKeyFor, landingFor } from "./routing";
+import { HIDDEN_ROUTES, WORKSPACE_PATHS, availableShellsForRoles, labelKeyFor, landingFor } from "./routing";
 
 // The three invariants of the shell that can be checked without a DOM: every
 // route is labelled, every locale is complete, and no component smuggles in an
@@ -42,6 +42,23 @@ describe("route tree", () => {
     // and never lands somewhere the API did not offer.
     expect(landingFor(["orbit.agent"], nav)).toBe("/axis");
     expect(landingFor([], [{ href: "/" }])).toBe("/settings");
+  });
+});
+
+describe("availableShellsForRoles", () => {
+  it("returns every distinct workspace a multi-role actor's roles resolve to", () => {
+    expect(availableShellsForRoles(["north.exec", "axis.agent"])).toEqual(
+      expect.arrayContaining(["north", "axis"])
+    );
+    expect(availableShellsForRoles(["north.exec", "axis.agent"])).toHaveLength(2);
+  });
+
+  it("returns exactly one shell for a single-role actor", () => {
+    expect(availableShellsForRoles(["north.exec"])).toEqual(["north"]);
+  });
+
+  it("falls back to north when no role resolves to anything", () => {
+    expect(availableShellsForRoles([])).toEqual(["north"]);
   });
 });
 

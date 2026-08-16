@@ -217,3 +217,44 @@ export function moduleOf(path: string): LyraModule | null {
   const first = path.split("/").filter(Boolean)[0];
   return first && MODULES.has(first) ? (first as LyraModule) : null;
 }
+
+/**
+ * Web-local duplicate of packages/core/src/lens.ts's `availableShellsForRoles`
+ * (that function's own header comment explains why: packages/core may not
+ * depend on an app). Every workspace this actor's roles resolve to, not just
+ * the first-wins default `defaultWorkspaceForRoles` returns — used by
+ * bootstrapSession() (session.server.ts) to compute `session.availableShells`
+ * for the multi-role switcher (docs/superpowers/specs
+ * /2026-08-15-north-shell-fork-design.md §5).
+ */
+const WORKSPACE_BY_ROLE: Record<string, string> = {
+  "tenant.compliance": "compliance"
+};
+const WORKSPACE_BY_ROLE_PREFIX: Record<string, string> = {
+  tenant: "admin",
+  platform: "admin",
+  dev: "admin",
+  partner: "distribution",
+  provider: "scout",
+  customer: "settings",
+  finance: "ledger"
+};
+
+export function availableShellsForRoles(roles: readonly string[]): string[] {
+  const found = new Set<string>();
+  for (const role of roles) {
+    const exact = WORKSPACE_BY_ROLE[role];
+    if (exact) {
+      found.add(exact);
+      continue;
+    }
+    const prefix = role.split(".")[0] ?? "";
+    const mapped = WORKSPACE_BY_ROLE_PREFIX[prefix];
+    if (mapped) {
+      found.add(mapped);
+      continue;
+    }
+    if (prefix) found.add(prefix);
+  }
+  return found.size ? [...found] : ["north"];
+}
