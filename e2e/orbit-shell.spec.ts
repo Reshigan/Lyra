@@ -27,6 +27,8 @@ test("orbit.agent lands in OrbitShell and sees only ORBIT's own rail", async ({ 
   await expect(rail.getByRole("link", { name: /pipeline/i })).toBeVisible();
   await expect(rail.getByRole("link", { name: /quality/i })).toBeVisible();
   await expect(rail.getByRole("link", { name: /analytics/i })).toBeVisible();
+  await expect(rail.getByRole("link", { name: /admin/i })).toBeVisible();
+  await expect(rail.getByRole("link", { name: /dev/i })).toBeVisible();
 
   // No other module's destinations leak into this rail.
   await expect(rail.getByRole("link", { name: /^brief$/i })).toHaveCount(0);
