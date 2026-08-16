@@ -78,15 +78,7 @@ export const HIDDEN_ROUTES: Record<string, string> = {
     "the developer portal inside the admin workspace, linked from its tools list beside the API keys tab",
   "/admin/security":
     "the sign-in enforcement posture inside the admin workspace, linked from its tools list beside the sign-in providers tab",
-  "/axis/exceptions": "the cross-resource work queue, linked from the AXIS workspace tools list",
-  "/axis/board": "the production board of cases by state, linked from the AXIS workspace tools list",
-  "/axis/quote-desk": "the quote desk and group bids, linked from the AXIS workspace tools list",
-  "/axis/doc-intelligence": "extraction review over documents, linked from the AXIS workspace tools list",
   "/axis/documents/:id/file": "streams one document's source file, opened from the verify-queue viewer",
-  "/axis/analytics": "operations analytics and exports, linked from the AXIS workspace tools list",
-  "/axis/process-map": "the case-state flow diagram, linked from the AXIS workspace tools list",
-  "/axis/admin": "SOP publish, connector health and operating policy, linked from the AXIS workspace tools list",
-  "/axis/dev": "extraction sandbox for testing document parsing, linked from the admin developer tools sandbox card",
   "/axis/cases/:id/evidence-bundles/:bundleId/download":
     "streams one recon evidence bundle's file, opened from the case detail evidence list",
   "/signal/cockpit": "the growth read across the SIGNAL ledgers, linked from the signal workspace tools list",
@@ -110,11 +102,7 @@ export const HIDDEN_ROUTES: Record<string, string> = {
   "/axis/policies/:id/detail": "opens one policy with its history from the policies list",
   "/axis/policies/:id/endorse": "prices and confirms a mid-term change, linked from a policy's detail page",
   "/axis/policies/:id/cancel": "prices and confirms a cancellation, linked from a policy's detail page",
-  "/axis/renewals": "the renewal desk over upcoming and offered renewals, linked from the AXIS workspace tools list",
-  "/axis/referrals":
-    "the underwriting referral desk over risks outside delegated authority, linked from the AXIS workspace tools list",
   "/axis/claims/new": "opens a first notice of loss intake form, linked from the claims list",
-  "/axis/claims/desk": "the claims handling desk, linked from the AXIS workspace tools list",
   "/axis/claims/:id/detail": "opens one claim for assessment from the claims list",
   "/axis/cases/:id/detail": "opens one work item from the cases list",
   "/distribution/channels/:id/detail": "opens one distribution channel from the channels list",
