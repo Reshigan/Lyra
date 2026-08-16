@@ -92,30 +92,6 @@ export default [
         ]
       : []),
 
-    ...(shouldInclude("axis")
-      ? [
-          route("axis/exceptions", "routes/axis-exceptions.tsx"),
-          route("axis/board", "routes/axis-board.tsx"),
-          route("axis/quote-desk", "routes/axis-quote-desk.tsx"),
-          route("axis/doc-intelligence", "routes/axis-doc-intel.tsx"),
-          route("axis/documents/:id/file", "routes/axis-document-file.tsx"),
-          route("axis/analytics", "routes/axis-analytics.tsx"),
-          route("axis/admin", "routes/axis-admin.tsx"),
-          route("axis/dev", "routes/axis-dev.tsx"),
-          route("axis/process-map", "routes/axis-process-map.tsx"),
-          route("axis/claims/new", "routes/fnol-intake.tsx"),
-          route("axis/claims/desk", "routes/claims-desk.tsx"),
-          route("axis/renewals", "routes/renewal-desk.tsx"),
-          route("axis/referrals", "routes/referral-desk.tsx"),
-          route("axis/policies/:id/detail", "routes/policy-detail.tsx"),
-          route("axis/policies/:id/endorse", "routes/policy-endorse.tsx"),
-          route("axis/policies/:id/cancel", "routes/policy-cancel.tsx"),
-          route("axis/claims/:id/detail", "routes/claim-detail.tsx"),
-          route("axis/cases/:id/evidence-bundles/:bundleId/download", "routes/case-evidence-download.tsx"),
-          route("axis/cases/:id/detail", "routes/case-detail.tsx")
-        ]
-      : []),
-
     ...(shouldInclude("signal")
       ? [
           route("signal/cockpit", "routes/signal-cockpit.tsx"),
@@ -141,6 +117,31 @@ export default [
     route(":module/:resource", "routes/module.tsx", { id: "module-resource" }),
     route(":module/:resource/:id", "routes/record.tsx")
   ]),
+  ...(shouldInclude("axis")
+    ? [
+        layout("routes/axis-shell.tsx", [
+          route("axis/exceptions", "routes/axis-exceptions.tsx"),
+          route("axis/board", "routes/axis-board.tsx"),
+          route("axis/quote-desk", "routes/axis-quote-desk.tsx"),
+          route("axis/doc-intelligence", "routes/axis-doc-intel.tsx"),
+          route("axis/documents/:id/file", "routes/axis-document-file.tsx"),
+          route("axis/analytics", "routes/axis-analytics.tsx"),
+          route("axis/admin", "routes/axis-admin.tsx"),
+          route("axis/dev", "routes/axis-dev.tsx"),
+          route("axis/process-map", "routes/axis-process-map.tsx"),
+          route("axis/claims/new", "routes/fnol-intake.tsx"),
+          route("axis/claims/desk", "routes/claims-desk.tsx"),
+          route("axis/renewals", "routes/renewal-desk.tsx"),
+          route("axis/referrals", "routes/referral-desk.tsx"),
+          route("axis/policies/:id/detail", "routes/policy-detail.tsx"),
+          route("axis/policies/:id/endorse", "routes/policy-endorse.tsx"),
+          route("axis/policies/:id/cancel", "routes/policy-cancel.tsx"),
+          route("axis/claims/:id/detail", "routes/claim-detail.tsx"),
+          route("axis/cases/:id/evidence-bundles/:bundleId/download", "routes/case-evidence-download.tsx"),
+          route("axis/cases/:id/detail", "routes/case-detail.tsx")
+        ])
+      ]
+    : []),
   ...(shouldInclude("north")
     ? [
         layout("routes/north-shell.tsx", [
