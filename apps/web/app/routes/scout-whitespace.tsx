@@ -504,13 +504,18 @@ export default function ScoutWhitespace() {
         <Link to="/scout/panel" className="font-ui text-13 text-accent underline-offset-2 hover:underline">
           {l("panel.title")}
         </Link>
-        {/* The finding was retyped into a brief by hand; this carries it over. */}
-        <Link
-          to={`/signal/studio?opportunityId=${encodeURIComponent(card.id)}`}
-          className="font-ui text-13 text-accent underline-offset-2 hover:underline"
-        >
-          {l("wsp.draftCreative")}
-        </Link>
+        {/* The finding was retyped into a brief by hand; this carries it over.
+            SIGNAL is its own shell post-fork (ADR-0061) — a scout-only actor
+            has no availableShells entry for it and would 403 on click, so the
+            link only renders when the current actor can actually land there. */}
+        {shell?.availableShells.includes("signal") ? (
+          <Link
+            to={`/signal/studio?opportunityId=${encodeURIComponent(card.id)}`}
+            className="font-ui text-13 text-accent underline-offset-2 hover:underline"
+          >
+            {l("wsp.draftCreative")}
+          </Link>
+        ) : null}
       </footer>
     </div>
   );
