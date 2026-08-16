@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CALENDARS, FALLBACK_CURRENCY, calendarFrom } from "./session.server";
+import { CALENDARS, FALLBACK_CURRENCY, calendarFrom } from "./calendar";
 
 describe("calendarFrom", () => {
   it("passes through a known calendar preference", () => {

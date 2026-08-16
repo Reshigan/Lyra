@@ -31,7 +31,7 @@ import { humanise, permissionTitle } from "@lyra/core/words";
 import { titleText } from "../modules/spec";
 import { Problem } from "./module";
 import { useShellData } from "./workspace";
-import { CALENDARS, FALLBACK_CURRENCY, calendarFrom } from "../session.server";
+import { CALENDARS, FALLBACK_CURRENCY, calendarFrom } from "../calendar";
 import type { CalendarPreference } from "@lyra/ui";
 
 // The actor's own account, and — for whoever administers the tenant — the parts

@@ -11,6 +11,11 @@ import { defineConfig } from "vite";
 // what keeps `react-router build` and `wrangler deploy` looking in one place.
 export default defineConfig({
   plugins: [cloudflare({ viteEnvironment: { name: "ssr" } }), tailwindcss(), reactRouter()],
+  // LYRA_MODULES is a *build-time* flag (app/routing.ts's shouldInclude).
+  // Neither bundle can read it at runtime — the browser has no `process`, and
+  // workerd's `process.env` holds wrangler vars, not the build machine's
+  // environment — so it is inlined here, once, for both.
+  define: { "process.env.LYRA_MODULES": JSON.stringify(process.env.LYRA_MODULES ?? "all") },
   // "localhost" resolves to ::1 first on this box, so the dev server only ever
   // binds IPv6 — Playwright's webServer health check hits 127.0.0.1 explicitly
   // (e2e/env.ts) and times out against a port nothing IPv4 is listening on.

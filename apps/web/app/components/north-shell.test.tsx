@@ -24,11 +24,11 @@ function sessionWith(overrides: Partial<SessionBootstrap> = {}): SessionBootstra
     locale: "en",
     inbox: null,
     names: {},
-    // routing.ts's HIDDEN_ROUTES documents /north/brief, /north/explorer etc.
-    // as deliberately NOT nav destinations (reached from links inside the
-    // workspace's own screens, not the rail) — isRouted() only recognises
-    // WORKSPACE_PATHS' top-level roots. So the only real /north nav leaf is
-    // /north itself; /axis stands in for "some other module's destination".
+    // NorthShell's rail is compile-time known (NORTH_NAV_PATHS), not derived
+    // from session.nav — session.nav is WORKSPACE_PATHS-shaped and can only
+    // ever carry top-level roots. It is still supplied because crumbsFor and
+    // profilesFor read it; /axis stands in for "some other module's
+    // destination", which must not reach this rail.
     nav: [
       { labelKey: "nav.north", href: "/north", icon: "compass" },
       { labelKey: "nav.axis", href: "/axis", icon: "gear" }
@@ -56,12 +56,27 @@ function markupFor(session: SessionBootstrap): string {
 }
 
 describe("NorthShell", () => {
-  it("renders only NORTH's own nav destinations, not other modules'", () => {
+  it("renders all eight of NORTH's own nav destinations, not other modules'", () => {
     const html = markupFor(sessionWith());
-    // nav.north is a real catalogue key ("Insight"), not a fallback-to-key
-    // case — assert on the rendered label, not the raw key.
-    expect(html).toContain('href="/north"');
-    expect(html).toContain("Insight");
+    // The spec (docs/superpowers/specs/2026-08-15-north-shell-fork-design.md
+    // §"Owns") gives this shell the north/* destinations directly. These are
+    // real catalogue keys, so assert on the rendered label too — a raw
+    // "nav.north/brief" in the markup would mean a missing translation.
+    for (const [href, label] of [
+      ["/north/brief", "Brief"],
+      ["/north/explorer", "Explorer"],
+      ["/north/anomalies", "Anomalies"],
+      ["/north/whatif", "Scenarios"],
+      ["/north/board", "Board"],
+      ["/north/admin", "Admin"],
+      ["/north/decisions", "Decisions"],
+      ["/north/dev", "Dev"]
+    ] as const) {
+      expect(html).toContain(`href="${href}"`);
+      expect(html).toContain(`>${label}<`);
+    }
+    // The board pack's file stream is a detail route, not a rail destination.
+    expect(html).not.toContain("/north/board/");
     expect(html).not.toContain('href="/axis"');
   });
 

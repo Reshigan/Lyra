@@ -533,7 +533,7 @@ export function accountMenuItems(
  * 24px and a third initial turns it into a smudge. Works the same in Arabic:
  * the split is on whitespace, not on script.
  */
-function initialsOf(name: string): string {
+export function initialsOf(name: string): string {
   const words = name.trim().split(/\s+/).filter(Boolean);
   if (!words.length) return "";
   const first = [...(words[0] ?? "")][0] ?? "";
@@ -592,7 +592,7 @@ function NavItemLink({ item, t, nested }: { item: NavItem; t: Translate; nested?
 }
 
 /** True once `active` has held for `ms` — nothing at all below that. */
-function useSettledFor(active: boolean, ms: number): boolean {
+export function useSettledFor(active: boolean, ms: number): boolean {
   const [late, setLate] = useState(false);
   useEffect(() => {
     if (!active) {

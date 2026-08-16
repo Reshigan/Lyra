@@ -225,7 +225,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   // ?asOf=<epoch-ms> replays the queue as of a past moment (Meridian's
   // replay mode) — an upper time bound on the anomalies query.
   const asOf = url.searchParams.get("asOf");
-  const to = asOf ? `&to=${encodeURIComponent(asOf)}` : "";
+  // A non-numeric ?asOf= is not a moment — replay stays off rather than
+  // sending `&to=NaN` upstream.
+  const to = asOf && Number.isFinite(Number(asOf)) ? `&to=${encodeURIComponent(asOf)}` : "";
   const query = `/v1/north/anomalies?sort=detectedAt&order=desc&limit=${PAGE}${
     state ? `&state=${state}` : ""
   }${to}`;

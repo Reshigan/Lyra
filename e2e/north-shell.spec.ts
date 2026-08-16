@@ -21,15 +21,14 @@ test("north.exec lands in NorthShell and sees only NORTH's own rail", async ({ p
   // .first() is defensive, matching horizon-shell.spec.ts's convention.
   const rail = page.getByRole("navigation", { name: /primary/i }).first();
 
-  // north-shell.test.tsx (unit test) and routing.ts's HIDDEN_ROUTES already
-  // establish, by design, that /north/brief, /north/explorer, /north/anomalies
-  // etc. are NOT rail destinations — they're reached from links inside the
-  // workspace's own screens (breadcrumb, "Open the anomaly", "Board pack",
-  // "What-if"...), not the persistent rail. The only real /north nav leaf is
-  // /north itself, labelled via the "nav.north" catalogue key ("Insight").
-  const insight = rail.getByRole("link", { name: "Insight" });
-  await expect(insight).toBeVisible();
-  await expect(insight).toHaveAttribute("href", "/north");
+  // The spec gives NorthShell the north/* destinations directly
+  // (…-north-shell-fork-design.md §"Owns": "its own nav rail (the nine
+  // north/* destinations only, no other module's items)"), so the rail lists
+  // them itself rather than filtering /v1/me's nav — which is
+  // WORKSPACE_PATHS-shaped and can only ever carry "/north".
+  await expect(rail.getByRole("link", { name: /brief/i })).toBeVisible();
+  await expect(rail.getByRole("link", { name: /explorer/i })).toBeVisible();
+  await expect(rail.getByRole("link", { name: /anomalies/i })).toBeVisible();
 
   // No other module's destinations leak into this rail.
   await expect(rail.getByRole("link", { name: /axis/i })).toHaveCount(0);

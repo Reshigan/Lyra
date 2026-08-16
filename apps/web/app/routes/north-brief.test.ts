@@ -37,14 +37,28 @@ describe("north-brief loader asOf", () => {
     vi.clearAllMocks();
   });
 
-  it("appends &to=<asOf> to every query when ?asOf= is present", async () => {
+  it("appends &to=<asOf> to the time-series queries when ?asOf= is present", async () => {
     vi.mocked(api).mockResolvedValue({ data: [] });
     await loader({
       request: new Request("https://lyra.test/north/brief?asOf=1700000000000"),
       context: fakeContext()
     } as never);
     const calledPaths = vi.mocked(api).mock.calls.map(([path]) => path as string);
-    expect(calledPaths.every((path) => path.includes("&to=1700000000000"))).toBe(true);
+    expect(calledPaths.filter((path) => path.includes("&to=1700000000000"))).toHaveLength(2);
+    // …but never to /v1/north/metrics: that is the metric *definitions*
+    // catalogue, so bounding it by the replay moment would hide definitions
+    // created since rather than replay their values.
+    expect(calledPaths.find((path) => path.startsWith("/v1/north/metrics"))).not.toContain("&to=");
+  });
+
+  it("ignores a non-numeric ?asOf= rather than sending &to=NaN", async () => {
+    vi.mocked(api).mockResolvedValue({ data: [] });
+    await loader({
+      request: new Request("https://lyra.test/north/brief?asOf=abc"),
+      context: fakeContext()
+    } as never);
+    const calledPaths = vi.mocked(api).mock.calls.map(([path]) => path as string);
+    expect(calledPaths.every((path) => !path.includes("&to="))).toBe(true);
   });
 
   it("omits &to= when ?asOf= is absent (live mode, unchanged behavior)", async () => {

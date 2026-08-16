@@ -44,7 +44,7 @@ import {
 } from "./detail-kit";
 import { Gate } from "./staff";
 import { useShellData } from "./workspace";
-import { FALLBACK_CURRENCY } from "../session.server";
+import { FALLBACK_CURRENCY } from "../calendar";
 
 // One customer, everything the platform holds on them: what they bought, what
 // they claimed, who they talked to, what they consented to, what they are worth

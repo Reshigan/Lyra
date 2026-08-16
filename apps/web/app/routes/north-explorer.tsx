@@ -160,7 +160,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   // ?asOf=<epoch-ms> replays the series as of a past moment (Meridian's
   // replay mode) — an upper time bound on the snapshots query.
   const asOf = url.searchParams.get("asOf");
-  const to = asOf ? `&to=${encodeURIComponent(asOf)}` : "";
+  // A non-numeric ?asOf= is not a moment — replay stays off rather than
+  // sending `&to=NaN` upstream.
+  const to = asOf && Number.isFinite(Number(asOf)) ? `&to=${encodeURIComponent(asOf)}` : "";
 
   // Newest first, then flipped for the chart: a tenant with more history than
   // WINDOW wants the recent end of it, not the first 90 periods it ever had.

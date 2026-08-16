@@ -1,8 +1,7 @@
-# ADR-0061: Shell-per-module (NORTH reference build)
+# ADR-0061 — Shell-per-module (NORTH reference build)
 
-**Status:** accepted
-**Date:** 2026-08-16
-**Context:** docs/superpowers/specs/2026-08-15-north-shell-fork-design.md, docs/superpowers/plans/2026-08-16-north-shell-fork.md
+Status: accepted · 2026-08-16
+Context: docs/superpowers/specs/2026-08-15-north-shell-fork-design.md, docs/superpowers/plans/2026-08-16-north-shell-fork.md
 
 ## Decision
 
@@ -29,11 +28,16 @@ today's shared `Shell` unchanged.
   dependency on `@lyra/core`; `packages/core` may not depend on an app —
   same convention `apps/mobile/src/workspace.ts` already follows for the
   same reason).
-- `NorthShell` — its own nav rail (only `/north/*` destinations), the
-  `--module-north` accent, Meridian scrubber, and the multi-role switcher.
-- `LYRA_MODULES` build-time flag + `shouldInclude()` route-manifest gate.
-- The multi-role switcher (`ModuleSwitcher`/`ModuleLink`, `@lyra/ui`) —
-  generic, reusable by any future module shell.
+- `NorthShell` — its own nav rail (the eight `/north/*` rail destinations;
+  `north/board/:id/file` is a detail route opened from the board pack list),
+  the `--module-north` accent, Meridian scrubber, and the multi-role switcher.
+- `LYRA_MODULES` build-time flag + `shouldInclude()` (`apps/web/app/routing.ts`),
+  gating both the route manifest (`routes.ts`) and workspace resolution
+  (`modules/index.ts`) so an excluded module cannot answer through the generic
+  `:module` catch-all.
+- NORTH is the **first consumer** of `ModuleSwitcher`/`ModuleLink` (`@lyra/ui`,
+  `packages/ui/src/nav.tsx`) — those primitives pre-existed this ADR untouched
+  and were not built here; what is new is a shell that actually mounts them.
 
 **Explicitly deferred:** `AxisShell`, `OrbitShell`, `SignalShell`,
 `ScoutShell`, a compliance shell, the mapping of non-module shared screens
@@ -58,7 +62,10 @@ shared rail: each module shell has its own rail, scoped to only that
 module's own screens. The multi-role switcher introduced here is **not** a
 redundant second list over the same rail — it is the only way to reach a
 second, disjoint rail belonging to a different shell, and it renders only
-when `session.availableShells.length > 1`. ADR-0052's reasoning still holds
+when `session.availableShells` reaches a module shell *other* than the one
+you are in — the shell you are already in is not a destination, and the
+shared workspaces (ledger, admin…) have no shell of their own to switch to.
+ADR-0052's reasoning still holds
 within any one shell; this ADR narrows it to not extend to choosing between
 shells.
 
@@ -72,8 +79,8 @@ Global Constraints for full detail)
 3. `north-whatif.tsx`'s scenario picker already uses `?id=`, not
    `?scenario=`; this ADR's scope does not touch that screen's query
    contract.
-4. Meridian stays single-day; projection is a plain link to `/north/whatif`,
-   not a Meridian mode.
+4. Meridian stays single-day; projection is not a Meridian mode — it is
+   `/north/whatif`, one of the rail's own destinations.
 
 ## Naming note
 

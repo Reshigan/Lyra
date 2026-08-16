@@ -67,3 +67,43 @@ describe("LYRA_MODULES route gating", () => {
     expect(paths).toContain("logout");
   });
 });
+
+// Registration is only half the gate: /axis has no routes of its own in a
+// north-only build, but the generic `:module` catch-all would still resolve it
+// unless WORKSPACES is filtered by the same flag.
+describe("LYRA_MODULES workspace gating", () => {
+  afterEach(() => {
+    delete process.env.LYRA_MODULES;
+  });
+
+  async function loadModulesUnder(lyraModules: string | undefined) {
+    vi.resetModules();
+    if (lyraModules === undefined) delete process.env.LYRA_MODULES;
+    else process.env.LYRA_MODULES = lyraModules;
+    return import("./modules");
+  }
+
+  it("resolves every workspace by default (unset)", async () => {
+    const { workspaceFor } = await loadModulesUnder(undefined);
+    expect(workspaceFor("/axis")).toBeDefined();
+    expect(workspaceFor("/north")).toBeDefined();
+  });
+
+  it("stops resolving an excluded module's workspace", async () => {
+    const { workspaceFor } = await loadModulesUnder("north");
+    expect(workspaceFor("/north")).toBeDefined();
+    expect(workspaceFor("/axis")).toBeUndefined();
+    expect(workspaceFor("/orbit")).toBeUndefined();
+    expect(workspaceFor("/signal")).toBeUndefined();
+    expect(workspaceFor("/scout")).toBeUndefined();
+  });
+
+  it("never gates the shared workspaces, which belong to no module", async () => {
+    const { workspaceFor } = await loadModulesUnder("north");
+    expect(workspaceFor("/ledger")).toBeDefined();
+    expect(workspaceFor("/admin")).toBeDefined();
+    expect(workspaceFor("/analytics")).toBeDefined();
+    expect(workspaceFor("/compliance")).toBeDefined();
+    expect(workspaceFor("/distribution")).toBeDefined();
+  });
+});

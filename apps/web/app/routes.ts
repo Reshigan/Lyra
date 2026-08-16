@@ -1,4 +1,5 @@
 import { index, layout, route, type RouteConfig } from "@react-router/dev/routes";
+import { shouldInclude } from "./routing";
 
 // Two kinds of screen live behind the session. Most of a workspace is lists and
 // records, so those are one pair of generic routes driven by the specs in
@@ -7,16 +8,8 @@ import { index, layout, route, type RouteConfig } from "@react-router/dev/routes
 // approvals queue) get a static path, which React Router ranks above the
 // dynamic `:module` segment, so they win the match without extra ceremony.
 
-// LYRA_MODULES is a build-time flag (read once at config-eval time, not a
-// runtime wrangler var — see docs/superpowers/specs
-// /2026-08-15-north-shell-fork-design.md § Standalone/together build).
-// Comma-separated module list, e.g. "north" or "north,axis"; unset or "all"
-// includes everything (today's default build, zero behavior change).
-function shouldInclude(module: string): boolean {
-  const raw = process.env.LYRA_MODULES;
-  if (!raw || raw === "all") return true;
-  return raw.split(",").map((m) => m.trim()).includes(module);
-}
+// LYRA_MODULES gating lives in app/routing.ts (`shouldInclude`) so this file and
+// app/modules/index.ts gate on the same answer — see that function's comment.
 
 export default [
   route("login", "routes/login.tsx"),

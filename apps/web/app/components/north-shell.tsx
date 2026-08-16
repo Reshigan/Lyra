@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   NavLink,
   useLocation,
@@ -17,6 +17,7 @@ import {
 } from "@lyra/ui";
 import type { NavItem } from "../api.server";
 import { translator, type Translate } from "../i18n";
+import { labelKeyFor, moduleOf } from "../routing";
 import type { SessionBootstrap } from "../session.server";
 import { ColdOpen } from "./cold-open";
 import { Companion } from "./companion";
@@ -31,13 +32,41 @@ import {
   accountMenuItems,
   brandStyle,
   crumbsFor,
+  initialsOf,
   lockupNames,
   PageSkeleton,
   profilesFor,
-  routedLeaves
+  useSettledFor
 } from "./shell";
 
 const NORTH_ACCENT = "var(--module-north)";
+
+/**
+ * NORTH's own rail, compile-time known — the nine `north/*` destinations the
+ * design spec gives this shell (docs/superpowers/specs
+ * /2026-08-15-north-shell-fork-design.md §"Owns"). Deliberately NOT derived
+ * from `session.nav`: that is WORKSPACE_PATHS-shaped (top-level roots only,
+ * routing.ts), so it can never carry a sub-screen. `/north/board/:id/file` is
+ * a detail route opened from the board pack list, not a rail destination —
+ * same as every other `:id` route in routing.ts's HIDDEN_ROUTES.
+ */
+const NORTH_NAV_PATHS = [
+  "/north/brief",
+  "/north/explorer",
+  "/north/anomalies",
+  "/north/whatif",
+  "/north/board",
+  "/north/decisions",
+  "/north/admin",
+  "/north/dev"
+] as const;
+
+type RailItem = Pick<NavItem, "href" | "labelKey">;
+
+const NORTH_NAV_ITEMS: RailItem[] = NORTH_NAV_PATHS.map((href) => ({
+  href,
+  labelKey: labelKeyFor(href)
+}));
 
 /**
  * NORTH's own shell: a scoped rail (only /north/* destinations), the same
@@ -62,11 +91,7 @@ export function NorthShell({
   const [searchParams, setSearchParams] = useSearchParams();
   const [companion, setCompanion] = useState(false);
 
-  // NORTH's own destinations only: routedLeaves already drops anything the
-  // nav lists that has no real route, so this just narrows further to /north.
-  const items: NavItem[] = session.nav
-    .flatMap(routedLeaves)
-    .filter((item) => item.href === "/north" || item.href.startsWith("/north/"));
+  const items = NORTH_NAV_ITEMS;
 
   const { product: productName, tenant: servedName } = lockupNames(session.brand, session.tenantName);
   const logo = session.brand?.logo?.dark ?? session.brand?.logo?.light ?? session.brand?.logo?.mark;
@@ -83,8 +108,11 @@ export function NorthShell({
   // /2026-08-15-north-shell-fork-design.md § Meridian): ?asOf=<epoch-ms> is
   // the entire replay state, no client-only scrub state. Dragging updates the
   // param via history replace so back/forward and shareable links both work.
+  // `?asOf=abc` is `Number("abc")` → NaN, which is `!== null` and would ride
+  // all the way into aria-valuenow and the loaders' `&to=`. Anything that is
+  // not a finite epoch is simply "live".
   const asOfParam = searchParams.get("asOf");
-  const initialAsOf = asOfParam ? Number(asOfParam) : null;
+  const initialAsOf = asOfParam && Number.isFinite(Number(asOfParam)) ? Number(asOfParam) : null;
   function handleScrub(value: number | null) {
     const next = new URLSearchParams(searchParams);
     if (value === null) next.delete("asOf");
@@ -92,11 +120,16 @@ export function NorthShell({
     setSearchParams(next, { replace: true });
   }
 
-  const moduleLinks: ModuleLink[] = session.availableShells.map((shell) => ({
-    id: shell as LyraModule,
-    label: t(`nav.${shell}`),
-    href: `/${shell}`
-  }));
+  // A switcher exists to leave, so the shell you are already in is not a
+  // destination. `availableShells` is workspace-shaped, not module-shaped — it
+  // can hold "admin"/"ledger"/"settings", none of which are LyraModule — so
+  // moduleOf() (routing.ts) both narrows the type and drops the non-modules,
+  // instead of an unsound cast.
+  const moduleLinks: ModuleLink[] = session.availableShells.flatMap((shell) => {
+    if (shell === "north") return [];
+    const id: LyraModule | null = moduleOf(`/${shell}`);
+    return id ? [{ id, label: t(`nav.${shell}`), href: `/${shell}` }] : [];
+  });
 
   return (
     // The toast host lives above every workspace so any screen can say what
@@ -201,6 +234,19 @@ export function NorthShell({
         />
 
         <div className="flex min-h-[calc(100vh-50px)] flex-col md:flex-row">
+          {/* ModuleSwitcher renders its own <nav aria-label="Modules">, so it is
+              a sibling of the rail rather than a child of it — a <nav> inside a
+              <nav> reads as two competing landmarks. Rendered twice for the
+              same reason the rail is: the mobile copy is the only way a
+              multi-shell actor on a small screen can leave this shell. */}
+          {moduleLinks.length ? (
+            <ModuleSwitcher
+              modules={moduleLinks}
+              current="north"
+              label={t("nav.group.modules")}
+              className="shrink-0 border-b border-border bg-surface-1 p-2 md:hidden"
+            />
+          ) : null}
           <nav
             aria-label={t("nav.primary")}
             className="flex shrink-0 gap-1 overflow-x-auto border-b border-border bg-surface-1 p-2 md:hidden"
@@ -210,11 +256,8 @@ export function NorthShell({
             ))}
           </nav>
 
-          <nav
-            aria-label={t("nav.primary")}
-            className="lyra-vt-rail hidden md:sticky md:top-[50px] md:flex md:h-[calc(100vh-50px)] md:w-60 md:shrink-0 md:flex-col md:gap-2 md:overflow-y-auto md:border-e md:border-border md:p-3"
-          >
-            {moduleLinks.length > 1 ? (
+          <div className="lyra-vt-rail hidden md:sticky md:top-[50px] md:flex md:h-[calc(100vh-50px)] md:w-60 md:shrink-0 md:flex-col md:gap-2 md:overflow-y-auto md:border-e md:border-border md:p-3">
+            {moduleLinks.length ? (
               <ModuleSwitcher modules={moduleLinks} current="north" label={t("nav.group.modules")} />
             ) : null}
             <ShiftRail
@@ -224,23 +267,16 @@ export function NorthShell({
                 session.names
               )}
             />
-            <ul className="flex flex-col gap-0.5">
-              {items.map((item) => (
-                <li key={item.href}>
-                  <NavItemLink item={item} t={t} />
-                </li>
-              ))}
-            </ul>
-            {/* Projection is a separate navigation affordance, not a Meridian
-                mode (this plan's Global Constraints, Deviation 4) — reuses the
-                existing /north/brief <-> /north/whatif cross-link pattern. */}
-            <NavLink
-              to="/north/whatif"
-              className="mt-2 rounded-md px-3 py-2 text-start font-ui text-12 text-muted hover:bg-surface-2 hover:text-text"
-            >
-              {t("nav.whatif")}
-            </NavLink>
-          </nav>
+            <nav aria-label={t("nav.primary")}>
+              <ul className="flex flex-col gap-0.5">
+                {items.map((item) => (
+                  <li key={item.href}>
+                    <NavItemLink item={item} t={t} />
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          </div>
 
           <main
             key={pathname}
@@ -269,21 +305,11 @@ export function NorthShell({
   );
 }
 
-function initialsOf(name: string): string {
-  const words = name.trim().split(/\s+/).filter(Boolean);
-  if (!words.length) return "";
-  const first = [...(words[0] ?? "")][0] ?? "";
-  const last = words.length > 1 ? ([...(words.at(-1) ?? "")][0] ?? "") : "";
-  return (first + last).toLocaleUpperCase();
-}
-
-function NavItemLink({ item, t }: { item: NavItem; t: Translate }) {
+function NavItemLink({ item, t }: { item: RailItem; t: Translate }) {
   return (
     <NavLink
       to={item.href}
-      end={item.href === "/north"}
       viewTransition
-      data-icon={item.icon}
       className={({ isActive }) =>
         [
           "group flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-start font-ui text-13 transition-colors duration-150",
@@ -307,17 +333,4 @@ function NavItemLink({ item, t }: { item: NavItem; t: Translate }) {
       )}
     </NavLink>
   );
-}
-
-function useSettledFor(active: boolean, ms: number): boolean {
-  const [late, setLate] = useState(false);
-  useEffect(() => {
-    if (!active) {
-      setLate(false);
-      return;
-    }
-    const timer = setTimeout(() => setLate(true), ms);
-    return () => clearTimeout(timer);
-  }, [active, ms]);
-  return late;
 }

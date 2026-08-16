@@ -239,11 +239,16 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   // replay mode) — an upper time bound on every query here, threaded through
   // to the API's pre-existing `to` param (apps/api/src/http.ts's ListQuery).
   const asOf = url.searchParams.get("asOf");
-  const to = asOf ? `&to=${encodeURIComponent(asOf)}` : "";
+  // A non-numeric ?asOf= is not a moment — replay stays off rather than
+  // sending `&to=NaN` upstream.
+  const to = asOf && Number.isFinite(Number(asOf)) ? `&to=${encodeURIComponent(asOf)}` : "";
 
   const [briefings, metrics, anomalies] = await Promise.all([
     readable(api<Page<Briefing>>(`/v1/north/briefings?sort=date&order=desc&limit=${RECENT}${to}`, opts)),
-    readable(api<Page<Metric>>(`/v1/north/metrics?limit=200${to}`, opts)),
+    // No `${to}`: this is the metric *definitions* catalogue, not a series.
+    // Bounding it by the replay moment would hide definitions created since,
+    // rather than replay their values — which is not what replay is for.
+    readable(api<Page<Metric>>("/v1/north/metrics?limit=200", opts)),
     readable(
       api<Page<Anomaly>>(`/v1/north/anomalies?state=new&sort=detectedAt&order=desc&limit=10${to}`, opts)
     )

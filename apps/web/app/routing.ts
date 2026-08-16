@@ -130,15 +130,11 @@ export const HIDDEN_ROUTES: Record<string, string> = {
   "/orbit/admin": "teams, routing and SLA policy, linked from the ORBIT workspace tools list",
   "/orbit/dev": "the conversation simulator and developer links, linked from the ORBIT workspace tools list",
   "/orbit/journeys/:id/builder": "opens one journey's steps from the journeys list",
-  "/north/brief": "the executive briefing, linked from the NORTH workspace tools list",
-  "/north/explorer": "one metric, its series and its definition, linked from the NORTH workspace tools list",
-  "/north/anomalies": "the anomaly wall and its driver breakdowns, linked from the NORTH workspace tools list",
-  "/north/whatif": "the scenario ask bar and saved library, linked from the NORTH workspace tools list",
-  "/north/board": "the board room and its pack library, linked from the NORTH workspace tools list",
+  // NORTH's eight sub-screens are deliberately NOT hidden: NorthShell owns its
+  // own rail and lists all of them directly (docs/superpowers/specs
+  // /2026-08-15-north-shell-fork-design.md §"Owns"). Only the detail route below
+  // is hidden, same as every other module's :id routes.
   "/north/board/:id/file": "streams one board pack's rendered PDF, opened from the board pack list",
-  "/north/decisions": "the decision log and its outcomes, linked from the NORTH workspace tools list",
-  "/north/admin": "metric definitions and briefing cadence, linked from the NORTH workspace tools list",
-  "/north/dev": "the metric sandbox and developer links, linked from the NORTH workspace tools list",
   "/scout/radar": "the opportunity radar over clusters and whitespace, linked from the SCOUT workspace tools list",
   "/scout/whitespace/:id": "the dossier for one theme, opened from a dot on the radar",
   "/scout/panel": "panel benchmarks and the negotiation pack, linked from the SCOUT workspace tools list",
@@ -207,6 +203,28 @@ export function labelKeyFor(path: string): string {
 }
 
 const MODULES = new Set<string>(["axis", "orbit", "signal", "scout", "north"]);
+
+/**
+ * LYRA_MODULES is a build-time flag (docs/superpowers/specs
+ * /2026-08-15-north-shell-fork-design.md § Standalone/together build).
+ * Comma-separated module list, e.g. "north" or "north,axis"; unset or "all"
+ * includes everything (today's default build, zero behavior change).
+ *
+ * Read here rather than in routes.ts so route *registration* (routes.ts) and
+ * workspace *resolution* (modules/index.ts) cannot disagree — a module excluded
+ * from one but not the other still answers through the generic `:module`
+ * catch-all. Only names in MODULES are gated: the shared workspaces (ledger,
+ * admin, analytics…) are not modules and ship in every build.
+ *
+ * `process.env.LYRA_MODULES` is inlined by vite's `define` (apps/web/
+ * vite.config.ts) in both the client and worker bundles, because workerd's
+ * `process.env` holds wrangler vars, not the build machine's environment.
+ */
+export function shouldInclude(module: string): boolean {
+  const raw = process.env.LYRA_MODULES;
+  if (!raw || raw === "all") return true;
+  return raw.split(",").map((m) => m.trim()).includes(module);
+}
 
 /**
  * The module a path belongs to, or null for the shared surfaces (ledger,
