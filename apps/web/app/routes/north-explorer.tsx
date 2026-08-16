@@ -9,7 +9,7 @@ import {
 import { Button, Card, DateTime, EmptyState, Field, LineChart, Select, Stat, Table } from "@lyra/ui";
 import { api } from "../api.server";
 import { cloudflare } from "../context";
-import { useShellData } from "./workspace";
+import { useNorthSessionData } from "./north-shell";
 import {
   MetricValue,
   labelsFrom,
@@ -180,7 +180,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
 export default function NorthExplorer() {
   const { metrics, metric, grain, snapshots } = useLoaderData<typeof loader>();
-  const shell = useShellData();
+  const shell = useNorthSessionData();
   const navigation = useNavigation();
 
   const locale = shell?.locale ?? "en";
