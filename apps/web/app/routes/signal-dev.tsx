@@ -11,7 +11,7 @@ import { Badge, Button, Card, EmptyState, Field, Input, Select, Table, type Colu
 import { ApiError, api, fetchMe } from "../api.server";
 import { cloudflare } from "../context";
 import { Gate } from "./staff";
-import { useShellData } from "./workspace";
+import { useSignalSessionData } from "./signal-shell";
 import {
   PERM,
   asJson,
@@ -185,7 +185,7 @@ export async function action({ request, context }: ActionFunctionArgs): Promise<
 export default function SignalDev() {
   const loaded = useLoaderData<typeof loader>();
   const result = useActionData<typeof action>();
-  const shell = useShellData();
+  const shell = useSignalSessionData();
   const navigation = useNavigation();
 
   const locale = shell?.locale ?? "en";

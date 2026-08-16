@@ -28,7 +28,7 @@ import { arrowFor } from "../i18n";
 import { cloudflare } from "../context";
 import { Gate } from "./staff";
 import { channelColumns } from "./signal-studio";
-import { useShellData } from "./workspace";
+import { useSignalSessionData } from "./signal-shell";
 import {
   PERM,
   WINDOWS,
@@ -154,7 +154,7 @@ export async function action({ request, context }: ActionFunctionArgs): Promise<
 export default function GrowthCockpit() {
   const loaded = useLoaderData<typeof loader>();
   const result = useActionData<typeof action>();
-  const shell = useShellData();
+  const shell = useSignalSessionData();
   const navigation = useNavigation();
   const l = labelsIn(shell?.locale ?? "en", shell?.domainPack);
   const locale = shell?.locale ?? "en";
