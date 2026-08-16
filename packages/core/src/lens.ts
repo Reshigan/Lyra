@@ -70,6 +70,12 @@ export function availableShellsForRoles(roles: readonly string[]): string[] {
       continue;
     }
     if (prefix) found.add(prefix);
+    // ADR-0054: orbit.retention finishes the AXIS renewal desk itself
+    // (rbac.ts grants it axis:policies:renew), so it needs the AXIS shell
+    // too, not just its own. A narrow, named exception, not a generic
+    // "any foreign permission implies a shell" rule — north.exec also holds
+    // cross-module axis:* reads but must stay 403'd on /axis/* (axis-shell.spec.ts).
+    if (role === "orbit.retention") found.add("axis");
   }
   return found.size ? [...found] : ["north"];
 }

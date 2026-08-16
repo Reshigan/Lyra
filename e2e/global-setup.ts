@@ -3,8 +3,9 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { makeLibsqlDb } from "@lyra/db/libsql";
 import type { CoreDb } from "@lyra/core";
+import { dayKey } from "@lyra/core";
 import { resyncSystemRolePermissions } from "@lyra/core/seed";
-import { approvals, distNextBestOffers, signalBudgetMoves, tenants, users } from "@lyra/db/schema";
+import { approvals, distNextBestOffers, northBriefings, signalBudgetMoves, tenants, users } from "@lyra/db/schema";
 import { and, eq, like } from "drizzle-orm";
 import { API_ORIGIN, DB_PATH, FILES_DIR, LIBSQL_URL } from "./env.js";
 
@@ -72,6 +73,29 @@ export default async function globalSetup(): Promise<void> {
       .update(distNextBestOffers)
       .set({ state: "proposed", surfacedAt: null })
       .where(eq(distNextBestOffers.state, "surfaced"));
+
+    // north.spec.ts's J-E1 pins the seeded "yesterday" exec briefing by a
+    // freshly computed dayKey(Date.now(), -1); seed.ts stamped `date` with
+    // dayKey(seed-time now, -1), so a reused DB run on a later calendar day
+    // no longer has a row for "yesterday". The published exec briefing with
+    // the latest `date` is always that seeded row (seed.ts's other exec
+    // briefing sits two days further back, and "today" is deliberately left
+    // unseeded for J-E1 to generate) — re-stamp it forward, same idiom as
+    // the resets above.
+    const publishedExec = await db
+      .select({ date: northBriefings.date })
+      .from(northBriefings)
+      .where(and(eq(northBriefings.audience, "exec"), eq(northBriefings.status, "published")));
+    if (publishedExec.length) {
+      const latestDate = publishedExec.map((r) => r.date).sort().at(-1)!;
+      const freshYesterday = dayKey(Date.now(), -1);
+      if (latestDate !== freshYesterday) {
+        await db
+          .update(northBriefings)
+          .set({ date: freshYesterday })
+          .where(and(eq(northBriefings.date, latestDate), eq(northBriefings.audience, "exec")));
+      }
+    }
 
     // core_roles.permissions_json is a snapshot taken at seed time, so a
     // permission added to a role in rbac.ts (e.g. ADR-0054) never reaches a
