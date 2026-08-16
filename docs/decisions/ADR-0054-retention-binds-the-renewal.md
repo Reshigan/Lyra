@@ -47,3 +47,17 @@ docs/06 asks for one.
 - Renewals above the threshold behave exactly as before: approval first.
 - `packages/core/src/rbac.ts` is the only change; the route, the gate and the
   desk are untouched.
+
+## Addendum — 2026-08-16, AXIS shell fork
+
+The AXIS shell fork (`docs/superpowers/plans/2026-08-16-axis-shell-fork.md`)
+added a shell-entry gate in `axis-shell.tsx`'s loader, driven by
+`availableShellsForRoles()`. Before the fork, `/axis/renewals` lived under
+the shared `workspace.tsx` layout with no shell-level gate — `orbit.retention`
+reached it on `axis:policies:renew` alone. The fork's new gate would have
+403'd `orbit.retention` out of the desk this ADR grants it access to, so
+`availableShellsForRoles()` (`packages/core/src/lens.ts`,
+`apps/web/app/routing.ts`) carries an explicit `orbit.retention` → `axis`
+exception. This restores this ADR's original decision under the new gate;
+it does not grant any additional permission beyond what's already decided
+above.

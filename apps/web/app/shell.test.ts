@@ -84,6 +84,15 @@ describe("availableShellsForRoles", () => {
   it("falls back to north when no role resolves to anything", () => {
     expect(availableShellsForRoles([])).toEqual(["north"]);
   });
+
+  it("grants orbit.retention the AXIS shell too, per ADR-0054", () => {
+    expect(availableShellsForRoles(["orbit.retention"])).toEqual(expect.arrayContaining(["orbit", "axis"]));
+    expect(availableShellsForRoles(["orbit.retention"])).toHaveLength(2);
+  });
+
+  it("does not extend the ADR-0054 exception to other roles holding cross-module reads", () => {
+    expect(availableShellsForRoles(["north.exec"])).toEqual(["north"]);
+  });
 });
 
 describe("message catalogues", () => {
