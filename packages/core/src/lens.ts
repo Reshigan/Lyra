@@ -45,6 +45,35 @@ export function defaultWorkspaceForRoles(roles: readonly string[]): string {
   return "north";
 }
 
+/**
+ * Every workspace this actor's roles resolve to, not just the first that
+ * matches (defaultWorkspaceForRoles's "first role wins" rule collapses a
+ * multi-role actor down to one destination). Same three lookups per role —
+ * exact key, then prefix table, then the bare prefix itself — but every
+ * role's resolution is kept, not just the first role that had one. Powers
+ * NorthShell's multi-role switcher (docs/superpowers/specs
+ * /2026-08-15-north-shell-fork-design.md §5): an actor holding both
+ * `axis.agent` and `north.exec` can reach both shells.
+ */
+export function availableShellsForRoles(roles: readonly string[]): string[] {
+  const found = new Set<string>();
+  for (const role of roles) {
+    const exact = WORKSPACE_BY_ROLE[role];
+    if (exact) {
+      found.add(exact);
+      continue;
+    }
+    const prefix = role.split(".")[0] ?? "";
+    const mapped = WORKSPACE_BY_ROLE_PREFIX[prefix];
+    if (mapped) {
+      found.add(mapped);
+      continue;
+    }
+    if (prefix) found.add(prefix);
+  }
+  return found.size ? [...found] : ["north"];
+}
+
 /** The role default lens: no pins, no hidden items, comfortable density, nothing learned yet. */
 export function defaultLensFor(roles: readonly string[]): LensJson {
   return LensJson.parse({ workspace: defaultWorkspaceForRoles(roles) });
