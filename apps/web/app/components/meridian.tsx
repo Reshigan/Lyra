@@ -30,16 +30,20 @@ export function Meridian({
   t,
   inbox,
   accent,
+  initialAsOf = null,
   onScrub
 }: {
   t: Translate;
   inbox: Inbox | null;
   accent: string;
+  /** Seeds the scrubber's cursor in replay mode (?asOf=<epoch-ms> in the
+   *  caller's URL). Absent/null means live — the pre-existing default. */
+  initialAsOf?: number | null;
   /** The moment the playhead is on, or null while it is following now. */
   onScrub?: (at: number | null) => void;
 }) {
   const [now, setNow] = React.useState<number | null>(null);
-  const [cursor, setCursor] = React.useState<number | null>(null);
+  const [cursor, setCursor] = React.useState<number | null>(initialAsOf);
   const [dragging, setDragging] = React.useState(false);
 
   React.useEffect(() => {
