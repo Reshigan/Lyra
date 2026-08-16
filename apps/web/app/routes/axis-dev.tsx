@@ -14,7 +14,7 @@ import { cloudflare } from "../context";
 import { pseudoText, translator } from "../i18n";
 import { bodyFrom, type FieldSpec } from "../modules/spec";
 import { Problem } from "./module";
-import { useShellData } from "./workspace";
+import { useAxisSessionData } from "./axis-shell";
 
 // docs/20 developer console "extraction playground". Runs the exact prompt
 // apps/api/src/routes/axis.ts's /documents/:id/extract uses, minus a document
@@ -122,7 +122,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
 export default function AxisDev() {
   const loaded = useLoaderData<typeof loader>();
   const result = useActionData<typeof action>();
-  const shell = useShellData();
+  const shell = useAxisSessionData();
   const navigation = useNavigation();
 
   const locale = shell?.locale ?? "en";

@@ -23,7 +23,7 @@ import { ApiError, api, names } from "../api.server";
 import { who, type Names } from "../names";
 import { cloudflare } from "../context";
 import { Gate } from "./staff";
-import { useShellData } from "./workspace";
+import { useAxisSessionData } from "./axis-shell";
 import { labelsFrom } from "./detail-kit";
 
 // FNOL taken from a third party has no customer file to open yet — so this
@@ -360,7 +360,7 @@ export default function FnolIntake() {
   const { policies, named } = useLoaderData<typeof loader>();
   const result = useActionData<typeof action>();
   const navigation = useNavigation();
-  const shell = useShellData();
+  const shell = useAxisSessionData();
   const locale = shell?.locale ?? "en";
   const l = labelsIn(locale, shell?.domainPack);
   const busy = navigation.state !== "idle";

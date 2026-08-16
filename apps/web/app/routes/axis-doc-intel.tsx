@@ -34,7 +34,7 @@ import { ApiError, api } from "../api.server";
 import { cloudflare } from "../context";
 import { labelsFrom, tag } from "./detail-kit";
 import { Gate } from "./staff";
-import { useShellData } from "./workspace";
+import { useAxisSessionData } from "./axis-shell";
 
 // The documents tab can list rows and stamp a verification. What it cannot do is
 // the actual work: read what the model pulled out of a file, see how sure it was
@@ -498,7 +498,7 @@ export function phrase(problem: Refusal, l: Label): Refusal {
 export default function AxisDocIntel() {
   const loaded = useLoaderData<typeof loader>();
   const result = useActionData<typeof action>();
-  const shell = useShellData();
+  const shell = useAxisSessionData();
   const navigation = useNavigation();
 
   const locale = shell?.locale ?? "en";

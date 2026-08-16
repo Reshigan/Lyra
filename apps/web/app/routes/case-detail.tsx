@@ -32,7 +32,7 @@ import { translator } from "../i18n";
 import { humanise } from "../modules/spec";
 import { Entry, Facts, Header, Payload, labelsFrom, rowsOf, safe, tag, type Label, type Page } from "./detail-kit";
 import { Gate } from "./staff";
-import { useShellData } from "./workspace";
+import { useAxisSessionData } from "./axis-shell";
 
 // One AXIS work item: where it stands, the steps that got it there, what is
 // waiting on sign-off, and the two transitions the API actually owns — move the
@@ -478,7 +478,7 @@ export default function CaseDetail() {
   const loaded = useLoaderData<typeof loader>();
   const result = useActionData<typeof action>();
   const navigation = useNavigation();
-  const shell = useShellData();
+  const shell = useAxisSessionData();
   const locale = shell?.locale ?? "en";
   const t = translator(locale, shell?.overrides);
   const l = labelsIn(locale, shell?.domainPack);

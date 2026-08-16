@@ -26,7 +26,7 @@ import { cloudflare } from "../context";
 import { axis } from "../modules/axis";
 import { labelsFor, optionLabel } from "../modules/spec";
 import { Gate } from "./staff";
-import { useShellData } from "./workspace";
+import { useAxisSessionData } from "./axis-shell";
 import { labelsFrom } from "./detail-kit";
 
 // Four operational numbers: how much work came in, how much of it went wrong,
@@ -485,7 +485,7 @@ export function statusLabel(status: string, locale: string, pack?: string): stri
 export default function AxisAnalytics() {
   const loaded = useLoaderData<typeof loader>();
   const result = useActionData<typeof action>();
-  const shell = useShellData();
+  const shell = useAxisSessionData();
   const navigation = useNavigation();
 
   const locale = shell?.locale ?? "en";

@@ -26,7 +26,7 @@ import { ApiError, api, names } from "../api.server";
 import { cloudflare } from "../context";
 import { RefPicker, type RefOption } from "../components/ref-picker";
 import { Gate } from "./staff";
-import { useShellData } from "./workspace";
+import { useAxisSessionData } from "./axis-shell";
 import { labelsFrom } from "./detail-kit";
 
 // One case, several providers, one decision. The quotes tab lists rows; a desk
@@ -543,7 +543,7 @@ export function phrase(problem: Refusal, l: Label): Refusal {
 export default function AxisQuoteDesk() {
   const loaded = useLoaderData<typeof loader>();
   const result = useActionData<typeof action>();
-  const shell = useShellData();
+  const shell = useAxisSessionData();
   const navigation = useNavigation();
 
   const locale = shell?.locale ?? "en";

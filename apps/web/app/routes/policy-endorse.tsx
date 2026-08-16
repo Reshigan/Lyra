@@ -13,7 +13,7 @@ import { cloudflare } from "../context";
 import { labelsFrom } from "./detail-kit";
 import { policyLede, type Policy } from "./policy-detail";
 import { Gate } from "./staff";
-import { useShellData } from "./workspace";
+import { useAxisSessionData } from "./axis-shell";
 
 // A mid-term change is priced before it is written (§B.1): preview calls the
 // pricing engine and writes nothing; confirm writes exactly the changeset the
@@ -276,7 +276,7 @@ export function phrase(problem: Refusal, l: Label): Refusal {
 export default function PolicyEndorse() {
   const loaded = useLoaderData<typeof loader>();
   const result = useActionData<typeof action>();
-  const shell = useShellData();
+  const shell = useAxisSessionData();
   const navigation = useNavigation();
 
   const locale = shell?.locale ?? "en";
