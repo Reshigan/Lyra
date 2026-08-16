@@ -63,21 +63,6 @@ export default [
     // is what it is about (partners|channels|staff, then the subject's id).
     route("onboarding/:kind/:ref", "routes/onboarding.tsx"),
 
-    ...(shouldInclude("orbit")
-      ? [
-          route("orbit/conversations/:id/thread", "routes/conversation.tsx"),
-          route("orbit/console", "routes/orbit-console.tsx"),
-          route("orbit/supervisor", "routes/orbit-supervisor.tsx"),
-          route("orbit/save", "routes/orbit-save.tsx"),
-          route("orbit/pipeline", "routes/orbit-pipeline.tsx"),
-          route("orbit/quality", "routes/orbit-quality.tsx"),
-          route("orbit/analytics", "routes/orbit-analytics.tsx"),
-          route("orbit/admin", "routes/orbit-admin.tsx"),
-          route("orbit/dev", "routes/orbit-dev.tsx"),
-          route("orbit/journeys/:id/builder", "routes/orbit-journey.tsx")
-        ]
-      : []),
-
     ...(shouldInclude("scout")
       ? [
           route("scout/radar", "routes/scout-radar.tsx"),
@@ -139,6 +124,22 @@ export default [
           route("axis/claims/:id/detail", "routes/claim-detail.tsx"),
           route("axis/cases/:id/evidence-bundles/:bundleId/download", "routes/case-evidence-download.tsx"),
           route("axis/cases/:id/detail", "routes/case-detail.tsx")
+        ])
+      ]
+    : []),
+  ...(shouldInclude("orbit")
+    ? [
+        layout("routes/orbit-shell.tsx", [
+          route("orbit/conversations/:id/thread", "routes/conversation.tsx"),
+          route("orbit/console", "routes/orbit-console.tsx"),
+          route("orbit/supervisor", "routes/orbit-supervisor.tsx"),
+          route("orbit/save", "routes/orbit-save.tsx"),
+          route("orbit/pipeline", "routes/orbit-pipeline.tsx"),
+          route("orbit/quality", "routes/orbit-quality.tsx"),
+          route("orbit/analytics", "routes/orbit-analytics.tsx"),
+          route("orbit/admin", "routes/orbit-admin.tsx"),
+          route("orbit/dev", "routes/orbit-dev.tsx"),
+          route("orbit/journeys/:id/builder", "routes/orbit-journey.tsx")
         ])
       ]
     : []),

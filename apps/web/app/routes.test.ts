@@ -80,6 +80,24 @@ describe("LYRA_MODULES route gating", () => {
     expect(paths.some((p) => p.startsWith("scout/"))).toBe(false);
   });
 
+  it("includes only orbit's routes when LYRA_MODULES=orbit", async () => {
+    const paths = flatPaths(await loadRoutesUnder("orbit"));
+    expect(paths).toContain("orbit/console");
+    expect(paths).toContain("orbit/supervisor");
+    expect(paths).toContain("orbit/save");
+    expect(paths).toContain("orbit/pipeline");
+    expect(paths).toContain("orbit/quality");
+    expect(paths).toContain("orbit/analytics");
+    expect(paths).toContain("orbit/admin");
+    expect(paths).toContain("orbit/dev");
+    expect(paths).toContain("orbit/conversations/:id/thread");
+    expect(paths).toContain("orbit/journeys/:id/builder");
+    expect(paths.some((p) => p.startsWith("north/"))).toBe(false);
+    expect(paths.some((p) => p.startsWith("axis/"))).toBe(false);
+    expect(paths.some((p) => p.startsWith("signal/"))).toBe(false);
+    expect(paths.some((p) => p.startsWith("scout/"))).toBe(false);
+  });
+
   it("still includes login/logout when scoped to a single module", async () => {
     const paths = flatPaths(await loadRoutesUnder("north"));
     expect(paths).toContain("login");
