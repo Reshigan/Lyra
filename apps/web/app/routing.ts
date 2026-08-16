@@ -99,18 +99,8 @@ export const HIDDEN_ROUTES: Record<string, string> = {
   // /2026-08-15-north-shell-fork-design.md §"Owns"). Only the detail route below
   // is hidden, same as every other module's :id routes.
   "/north/board/:id/file": "streams one board pack's rendered PDF, opened from the board pack list",
-  "/scout/radar": "the opportunity radar over clusters and whitespace, linked from the SCOUT workspace tools list",
-  "/scout/whitespace/:id": "the dossier for one theme, opened from a dot on the radar",
-  "/scout/panel": "panel benchmarks and the negotiation pack, linked from the SCOUT workspace tools list",
-  "/scout/pricing": "price position by line and where we lose, linked from the SCOUT workspace tools list",
-  "/scout/experiments": "the experiment board and its decisions, linked from the SCOUT workspace tools list",
-  "/scout/analytics": "pricing elasticity and adequacy, linked from the SCOUT workspace tools list",
-  "/scout/data-products":
-    "the data-product catalogue, its subscribers and the k-anonymity monitor, linked from the SCOUT workspace tools list",
-  "/scout/admin":
-    "the module's own settings — source health, suppression floors, policy thresholds and approval gates, linked from the SCOUT workspace tools list",
-  "/scout/dev":
-    "the market-index and wording-diff consoles with their curl equivalents, linked from the SCOUT workspace tools list",
+  "/scout/whitespace/:id":
+    "the dossier for one theme, opened from a dot on the radar",
   "/:module": "the generic workspace list; the rail links the real paths",
   "/:module/:resource": "a resource tab inside a workspace, linked from its tab strip",
   "/:module/:resource/:id": "a single record, linked from the list that holds it"
