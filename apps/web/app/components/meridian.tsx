@@ -43,7 +43,7 @@ export function Meridian({
   onScrub?: (at: number | null) => void;
 }) {
   const [now, setNow] = React.useState<number | null>(null);
-  const [cursor, setCursor] = React.useState<number | null>(initialAsOf);
+  const [cursor, setCursor] = React.useState<number | null>(null);
   const [dragging, setDragging] = React.useState(false);
 
   React.useEffect(() => {
@@ -52,6 +52,14 @@ export function Meridian({
     // minute is as fine as the strip can show — 42px carries no more.
     const id = setInterval(() => setNow(Date.now()), 60_000);
     return () => clearInterval(id);
+  }, []);
+
+  // Seeds the replay cursor from the deep link once, post-mount, in the
+  // reader's real local timezone — same reasoning as `now` above. Runs only
+  // on mount so a later drag (or `release`) is never clobbered by this.
+  React.useEffect(() => {
+    if (initialAsOf !== null) setCursor(dayFraction(initialAsOf));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const events = now === null ? [] : dayEvents(inbox, now);
