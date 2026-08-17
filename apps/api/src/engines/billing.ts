@@ -489,43 +489,63 @@ async function postRecognitions(ctx: Ctx): Promise<number> {
 
   let count = 0;
   for (const row of due) {
-    const idempotencyKey = `sub-recog:${row.id}`;
-    // A schedule row's `accountCode` is the income line the release belongs to
-    // (4050 usage, 4060 data products, 4090 success fees); only the deferred
-    // revenue liability 2300 has to be mapped, and it maps to subscription
-    // revenue. Collapsing everything to 4040 misstated the revenue lines this
-    // engine exists to keep apart.
-    const incomeAccount = row.accountCode === "2300" ? "4040" : row.accountCode;
+    // One schedule row's failure is one row's problem — same reasoning as
+    // raiseInvoices/applyOverages. Unisolated, rows process asc(period), so an
+    // uncaught throw here would wedge the head of the window and block every
+    // later recognition for the tenant, forever (ADR-0050-style starvation).
+    try {
+      const idempotencyKey = `sub-recog:${row.id}`;
+      // A schedule row's `accountCode` is the income line the release belongs
+      // to (4050 usage, 4060 data products, 4090 success fees); only the
+      // deferred revenue liability 2300 has to be mapped, and it maps to
+      // subscription revenue. Collapsing everything to 4040 misstated the
+      // revenue lines this engine exists to keep apart.
+      const incomeAccount = row.accountCode === "2300" ? "4040" : row.accountCode;
 
-    const txn = await runTxn(
-      ctx,
-      {
-        type: "SUB-RECOG",
-        idempotencyKey,
-        currency: row.currency,
-        grossMinor: row.plannedMinor,
-        subjectRefs: { invoiceId: row.invoiceId }
-      },
-      {
-        recipe: {
-          lines: buildRecipe("SUB-RECOG", { amountMinor: row.plannedMinor, incomeAccount }),
-          currency: row.currency
-        }
+      // Resolve the rate before posting, same as invoiceSubscription /
+      // applyOverages: a refused post here would burn `idempotencyKey` for
+      // good, wedging this row at the head of the asc(period) window forever.
+      const fxRatePpm = await fxRateFor(ctx, row.currency);
+      if (!fxRatePpm) {
+        console.error(
+          `billing: revenue schedule ${row.id} recognizes in ${row.currency} but the tenant has no ${row.currency} -> ${ctx.policy.currency} rate; skipped`
+        );
+        continue;
       }
-    );
 
-    await ctx.db
-      .update(schema.ledgerRevenueSchedules)
-      .set({ state: "recognized", recognizedMinor: row.plannedMinor, txnId: txn?.id })
-      .where(scoped(ctx, schema.ledgerRevenueSchedules, eq(schema.ledgerRevenueSchedules.id, row.id)));
+      const txn = await runTxn(
+        ctx,
+        {
+          type: "SUB-RECOG",
+          idempotencyKey,
+          currency: row.currency,
+          grossMinor: row.plannedMinor,
+          subjectRefs: { invoiceId: row.invoiceId }
+        },
+        {
+          recipe: {
+            lines: buildRecipe("SUB-RECOG", { amountMinor: row.plannedMinor, incomeAccount }),
+            currency: row.currency,
+            fxRatePpm
+          }
+        }
+      );
 
-    await emit(ctx, {
-      module: "ledger",
-      type: "ledger.revenue.recognized",
-      subject: row.id,
-      data: { invoiceId: row.invoiceId, amountMinor: row.plannedMinor, txnId: txn?.id }
-    });
-    count++;
+      await ctx.db
+        .update(schema.ledgerRevenueSchedules)
+        .set({ state: "recognized", recognizedMinor: row.plannedMinor, txnId: txn?.id })
+        .where(scoped(ctx, schema.ledgerRevenueSchedules, eq(schema.ledgerRevenueSchedules.id, row.id)));
+
+      await emit(ctx, {
+        module: "ledger",
+        type: "ledger.revenue.recognized",
+        subject: row.id,
+        data: { invoiceId: row.invoiceId, amountMinor: row.plannedMinor, txnId: txn?.id }
+      });
+      count++;
+    } catch (err) {
+      console.error(`billing: revenue schedule ${row.id} could not be recognized`, err);
+    }
   }
   return count;
 }

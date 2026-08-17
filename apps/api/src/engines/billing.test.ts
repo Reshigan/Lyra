@@ -510,6 +510,99 @@ describe("sweepBilling", () => {
     expect(lines.find((l) => l.side === "debit")?.accountCode).toBe("2300");
   });
 
+  it("skips a schedule row it has no fx rate for instead of blocking rows behind it", async () => {
+    await ctx.db.insert(schema.ledgerRevenueSchedules).values({
+      id: "sch_fx_head",
+      tenantId: ctx.tenantId,
+      invoiceId: "inv_fx_head",
+      accountCode: "4060",
+      period: "2023-09",
+      plannedMinor: 5000,
+      currency: "USD",
+      state: "scheduled"
+    });
+    await ctx.db.insert(schema.ledgerRevenueSchedules).values({
+      id: "sch_fx_tail",
+      tenantId: ctx.tenantId,
+      invoiceId: "inv_fx_tail",
+      accountCode: "4060",
+      period: "2023-10",
+      plannedMinor: 3000,
+      currency: "AED",
+      state: "scheduled"
+    });
+
+    // No USD -> AED rate on file: the head-of-window row (earliest period) must
+    // not block the row behind it in the asc(period) ordering.
+    expect((await sweepBilling(aedCtx(ctx))).recognitionsPosted).toBe(1);
+
+    const rows = await ctx.db
+      .select()
+      .from(schema.ledgerRevenueSchedules)
+      .where(eq(schema.ledgerRevenueSchedules.tenantId, ctx.tenantId));
+    expect(rows.find((r) => r.id === "sch_fx_head")?.state).toBe("scheduled");
+    expect(rows.find((r) => r.id === "sch_fx_tail")?.state).toBe("recognized");
+
+    await ctx.db.insert(schema.ledgerFxRates).values({
+      id: "fx_usd_aed3",
+      tenantId: ctx.tenantId,
+      fromCurrency: "USD",
+      toCurrency: "AED",
+      ratePpm: 3_672_500,
+      asOf: "2023-11-01"
+    });
+    expect((await sweepBilling(aedCtx(ctx))).recognitionsPosted).toBe(1);
+  });
+
+  it("keeps recognizing schedule rows after one throws", async () => {
+    await ctx.db.insert(schema.ledgerRevenueSchedules).values({
+      id: "sch_wedged",
+      tenantId: ctx.tenantId,
+      invoiceId: "inv_wedged",
+      accountCode: "4060",
+      period: "2023-09",
+      plannedMinor: 5000,
+      currency: "USD",
+      state: "scheduled"
+    });
+    await ctx.db.insert(schema.ledgerRevenueSchedules).values({
+      id: "sch_healthy",
+      tenantId: ctx.tenantId,
+      invoiceId: "inv_healthy",
+      accountCode: "4060",
+      period: "2023-10",
+      plannedMinor: 3000,
+      currency: "USD",
+      state: "scheduled"
+    });
+    // A key already burnt by an earlier failure: runTxn throws `already failed`
+    // on sight. Unisolated, that throw aborts the whole recognition sweep.
+    await ctx.db.insert(schema.ledgerTxns).values({
+      id: "txn_recog_wedged",
+      tenantId: ctx.tenantId,
+      type: "SUB-RECOG",
+      idempotencyKey: "sub-recog:sch_wedged",
+      state: "failed",
+      actorKind: "system",
+      actorId: "scheduler",
+      currency: "USD",
+      baseCurrency: "USD",
+      grossMinor: 5000,
+      createdAt: ctx.now - 500,
+      updatedAt: ctx.now - 500,
+      failedAt: ctx.now - 500
+    });
+
+    expect((await sweepBilling(ctx)).recognitionsPosted).toBe(1);
+
+    const rows = await ctx.db
+      .select()
+      .from(schema.ledgerRevenueSchedules)
+      .where(eq(schema.ledgerRevenueSchedules.tenantId, ctx.tenantId));
+    expect(rows.find((r) => r.id === "sch_healthy")?.state).toBe("recognized");
+    expect(rows.find((r) => r.id === "sch_wedged")?.state).toBe("scheduled");
+  });
+
   it("is bounded-bite: a processed row never reappears in the same-tick result set (ADR-0050)", async () => {
     for (let i = 0; i < 3; i++) {
       await ctx.db.insert(schema.ledgerSubscriptions).values({
