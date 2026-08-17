@@ -382,70 +382,91 @@ async function applyOverages(ctx: Ctx): Promise<number> {
 
   let count = 0;
   for (const meter of meters) {
-    // Bill the units not yet billed, not the whole overage: usage keeps arriving
-    // after the allowance is crossed, and one invoice per period at the moment
-    // of crossing left the rest of the period free.
-    const billedUnits = meter.includedQuantity + meter.invoicedQuantity;
-    const overageUnits = meter.quantity - billedUnits;
-    const netMinor = Math.ceil((overageUnits * meter.unitPriceMicro) / 1_000_000);
-    const currency = meter.currency;
-    const invoicedQuantity = meter.invoicedQuantity + overageUnits;
+    // One meter's failure is one meter's problem — same reasoning as
+    // raiseInvoices: every sweep for every tenant runs inside a single try in
+    // the cron handler (index.ts), so an uncaught throw here used to take out
+    // that tenant's remaining jobs on every tick, forever.
+    try {
+      // Bill the units not yet billed, not the whole overage: usage keeps
+      // arriving after the allowance is crossed, and one invoice per period at
+      // the moment of crossing left the rest of the period free.
+      const billedUnits = meter.includedQuantity + meter.invoicedQuantity;
+      const overageUnits = meter.quantity - billedUnits;
+      const netMinor = Math.ceil((overageUnits * meter.unitPriceMicro) / 1_000_000);
+      const currency = meter.currency;
+      const invoicedQuantity = meter.invoicedQuantity + overageUnits;
 
-    // Claim the units before billing them, the way recordUsage creates its meter
-    // before settling the usage transaction. Billing first left a window: the
-    // OVERAGE transaction settled, the worker died, and because the idempotency
-    // key is the *cumulative* unit count, the retry — by then seeing more usage —
-    // computed a different key, so it billed a second transaction covering the
-    // units the first one already charged for.
-    //
-    // ponytail: a crash between this write and the posting below bills those
-    // units never. Under-billing a customer is recoverable and visible in the
-    // meter; double-charging is neither.
-    await ctx.db
-      .update(schema.ledgerUsageMeters)
-      .set({
-        overageInvoicedQuantity: invoicedQuantity,
-        // Closed only once the period itself is over. Stamping it on the first
-        // crossing is what stopped the rest of the period from ever being billed.
-        overageInvoicedAt: meter.period < currentPeriod(ctx.now) ? ctx.now : null,
-        updatedAt: ctx.now
-      })
-      .where(scoped(ctx, schema.ledgerUsageMeters, eq(schema.ledgerUsageMeters.id, meter.id)));
+      // Resolve the rate *before* claiming the units, same as
+      // invoiceSubscription: claiming first and refusing to post second would
+      // satisfy the selection predicate, so the row would leave the result set
+      // with those units billed to nobody, ever.
+      const fxRatePpm = await fxRateFor(ctx, currency);
+      if (!fxRatePpm) {
+        console.error(
+          `billing: meter ${meter.id} bills in ${currency} but the tenant has no ${currency} -> ${ctx.policy.currency} rate; skipped`
+        );
+        continue;
+      }
 
-    const txn = await runTxn(
-      ctx,
-      {
-        type: "OVERAGE",
-        // The cumulative unit count, so a replayed tick is a no-op while a tick
-        // that finds new usage gets its own transaction.
-        idempotencyKey: `overage:${meter.id}:${invoicedQuantity}`,
+      // Claim the units before billing them, the way recordUsage creates its
+      // meter before settling the usage transaction. Billing first left a
+      // window: the OVERAGE transaction settled, the worker died, and because
+      // the idempotency key is the *cumulative* unit count, the retry — by then
+      // seeing more usage — computed a different key, so it billed a second
+      // transaction covering the units the first one already charged for.
+      //
+      // ponytail: a crash between this write and the posting below bills those
+      // units never. Under-billing a customer is recoverable and visible in the
+      // meter; double-charging is neither.
+      await ctx.db
+        .update(schema.ledgerUsageMeters)
+        .set({
+          overageInvoicedQuantity: invoicedQuantity,
+          // Closed only once the period itself is over. Stamping it on the
+          // first crossing is what stopped the rest of the period from ever
+          // being billed.
+          overageInvoicedAt: meter.period < currentPeriod(ctx.now) ? ctx.now : null,
+          updatedAt: ctx.now
+        })
+        .where(scoped(ctx, schema.ledgerUsageMeters, eq(schema.ledgerUsageMeters.id, meter.id)));
+
+      const txn = await runTxn(
+        ctx,
+        {
+          type: "OVERAGE",
+          // The cumulative unit count, so a replayed tick is a no-op while a
+          // tick that finds new usage gets its own transaction.
+          idempotencyKey: `overage:${meter.id}:${invoicedQuantity}`,
+          currency,
+          grossMinor: netMinor,
+          subjectRefs: { subscriptionId: meter.subscriptionId ?? "", meter: meter.meter, period: meter.period }
+        },
+        { recipe: { lines: buildRecipe("OVERAGE", { netMinor }), currency, fxRatePpm } }
+      );
+
+      // No revenue schedule: the OVERAGE recipe credits usage revenue 4050 on
+      // the invoice itself (recipes.ts), so there is nothing deferred to
+      // release. Scheduling it here recognised the same usage a second time out
+      // of 2300, which was never credited for it.
+      const { invoiceId, created } = await invoiceOnce(ctx, txn?.id, {
+        customerRef: meter.customerRef,
+        subscriptionId: meter.subscriptionId,
+        netMinor,
         currency,
-        grossMinor: netMinor,
-        subjectRefs: { subscriptionId: meter.subscriptionId ?? "", meter: meter.meter, period: meter.period }
-      },
-      { recipe: { lines: buildRecipe("OVERAGE", { netMinor }), currency } }
-    );
+        lines: [{ description: `${meter.meter} overage (${overageUnits} units)`, amountMinor: netMinor }]
+      });
 
-    // No revenue schedule: the OVERAGE recipe credits usage revenue 4050 on the
-    // invoice itself (recipes.ts), so there is nothing deferred to release.
-    // Scheduling it here recognised the same usage a second time out of 2300,
-    // which was never credited for it.
-    const { invoiceId, created } = await invoiceOnce(ctx, txn?.id, {
-      customerRef: meter.customerRef,
-      subscriptionId: meter.subscriptionId,
-      netMinor,
-      currency,
-      lines: [{ description: `${meter.meter} overage (${overageUnits} units)`, amountMinor: netMinor }]
-    });
-
-    if (!created) continue;
-    await emit(ctx, {
-      module: "ledger",
-      type: "ledger.overage.applied",
-      subject: invoiceId,
-      data: { meterId: meter.id, netMinor, txnId: txn?.id }
-    });
-    count++;
+      if (!created) continue;
+      await emit(ctx, {
+        module: "ledger",
+        type: "ledger.overage.applied",
+        subject: invoiceId,
+        data: { meterId: meter.id, netMinor, txnId: txn?.id }
+      });
+      count++;
+    } catch (err) {
+      console.error(`billing: meter ${meter.id} could not be billed for overage`, err);
+    }
   }
   return count;
 }

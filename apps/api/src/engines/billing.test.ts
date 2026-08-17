@@ -363,6 +363,124 @@ describe("sweepBilling", () => {
     expect(meter?.overageInvoicedAt).toBeNull();
   });
 
+  /**
+   * A subscription with no invoice due, so raiseInvoices leaves it alone and
+   * only the overage path touches it — isolates overage-only assertions from
+   * the sibling subscription-invoicing sweep in the same tick.
+   */
+  async function overageSub(subId: string): Promise<void> {
+    await ctx.db.insert(schema.ledgerSubscriptions).values({
+      id: subId,
+      tenantId: ctx.tenantId,
+      customerRef: `cust_${subId}`,
+      plan: "pro",
+      priceMinor: 10_000,
+      currency: "USD",
+      interval: "month",
+      seats: 1,
+      startAt: ctx.now - 1000,
+      nextInvoiceAt: ctx.now + 365 * 24 * 60 * 60 * 1000,
+      state: "active",
+      createdAt: ctx.now - 1000,
+      updatedAt: ctx.now - 1000
+    });
+  }
+
+  it("skips a meter it has no fx rate for instead of losing the units for good", async () => {
+    await overageSub("sub_fx3");
+    const period = new Date(ctx.now).toISOString().slice(0, 7);
+    await recordUsage(ctx, {
+      subscriptionId: "sub_fx3",
+      meter: "api-calls",
+      period,
+      delta: 1500,
+      includedQuantity: 1000,
+      unitPriceMicro: 1_000_000,
+      idempotencyKey: "fx3:1"
+    });
+
+    // No AED rate on file: posting.ts would refuse the batch. Claiming the
+    // units before checking the rate would satisfy the selection predicate
+    // and lose them for good — the row would never be retried.
+    expect((await sweepBilling(aedCtx(ctx))).overagesApplied).toBe(0);
+    const txns = await ctx.db
+      .select()
+      .from(schema.ledgerTxns)
+      .where(and(eq(schema.ledgerTxns.tenantId, ctx.tenantId), eq(schema.ledgerTxns.type, "OVERAGE")));
+    expect(txns.length, "the skipped meter burned an idempotency key").toBe(0);
+    const [meter] = await ctx.db
+      .select()
+      .from(schema.ledgerUsageMeters)
+      .where(eq(schema.ledgerUsageMeters.tenantId, ctx.tenantId));
+    expect(meter?.overageInvoicedQuantity, "the skipped meter claimed units it never billed").toBe(0);
+
+    await ctx.db.insert(schema.ledgerFxRates).values({
+      id: "fx_usd_aed2",
+      tenantId: ctx.tenantId,
+      fromCurrency: "USD",
+      toCurrency: "AED",
+      ratePpm: 3_672_500,
+      asOf: "2023-11-01"
+    });
+    expect((await sweepBilling(aedCtx(ctx))).overagesApplied).toBe(1);
+  });
+
+  it("keeps applying overages after one meter throws", async () => {
+    await overageSub("sub_ov_wedged");
+    await overageSub("sub_ov_healthy");
+    const period = new Date(ctx.now).toISOString().slice(0, 7);
+    await recordUsage(ctx, {
+      subscriptionId: "sub_ov_wedged",
+      meter: "api-calls",
+      period,
+      delta: 1500,
+      includedQuantity: 1000,
+      unitPriceMicro: 1_000_000,
+      idempotencyKey: "wedged:1"
+    });
+    await recordUsage(ctx, {
+      subscriptionId: "sub_ov_healthy",
+      meter: "api-calls",
+      period,
+      delta: 1500,
+      includedQuantity: 1000,
+      unitPriceMicro: 1_000_000,
+      idempotencyKey: "healthy:1"
+    });
+
+    const [wedgedMeter] = await ctx.db
+      .select()
+      .from(schema.ledgerUsageMeters)
+      .where(eq(schema.ledgerUsageMeters.subscriptionId, "sub_ov_wedged"));
+
+    // A key already burnt by an earlier failure: runTxn throws `already failed`
+    // on sight. Unisolated, that throw aborts the whole overage sweep — and in
+    // cron, every other job queued behind it.
+    await ctx.db.insert(schema.ledgerTxns).values({
+      id: "txn_ov_wedged",
+      tenantId: ctx.tenantId,
+      type: "OVERAGE",
+      idempotencyKey: `overage:${wedgedMeter!.id}:500`,
+      state: "failed",
+      actorKind: "system",
+      actorId: "scheduler",
+      currency: "USD",
+      baseCurrency: "USD",
+      grossMinor: 500,
+      createdAt: ctx.now - 500,
+      updatedAt: ctx.now - 500,
+      failedAt: ctx.now - 500
+    });
+
+    expect((await sweepBilling(ctx)).overagesApplied).toBe(1);
+
+    const invoices = await ctx.db
+      .select()
+      .from(schema.ledgerInvoices)
+      .where(eq(schema.ledgerInvoices.tenantId, ctx.tenantId));
+    expect(invoices.map((i) => i.subscriptionId)).toEqual(["sub_ov_healthy"]);
+  });
+
   it("recognises a schedule into its own income account, not always 4040", async () => {
     // The 4060 rows the data-product engine and the seed write are the case the
     // dead `"4050" ? "4040" : "4040"` ternary silently sent to subscription
