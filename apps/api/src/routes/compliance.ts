@@ -203,41 +203,48 @@ complianceRoutes.post("/disclosures/present", async (c) => {
   require_(ctx.actor, "compliance:disclosures:present", { tenantId: ctx.tenantId, module: "compliance" });
   const input = await body(c, DisclosurePresentBody);
 
-  const wordingHash = await sha256Hex(input.wording);
-  const row = {
-    id: id("dsc", ctx.now),
-    tenantId: ctx.tenantId,
-    key: input.key,
-    locale: input.locale,
-    subjectRef: input.subjectRef,
-    customerId: input.customerId ?? null,
-    wordingHash,
-    wordingRef: input.wordingRef ?? null,
-    criteriaJson: input.criteria ? JSON.stringify(input.criteria) : null,
-    channel: input.channel,
-    acknowledgedAt: null,
-    ts: ctx.now
-  };
-  await ctx.db.insert(schema.disclosures).values(row);
-  await audit(ctx, { action: "compliance.disclosure.present", subjectRef: input.subjectRef, after: row });
-  await emit(ctx, {
-    module: "compliance",
-    type: "compliance.disclosure.presented",
-    subject: input.subjectRef,
-    data: { disclosureId: row.id, key: row.key, channel: row.channel }
+  // The insert, audit, emit and runTxn call all need to replay as one unit —
+  // runTxn alone only dedupes its own ledger write, so a replayed request was
+  // otherwise double-writing the disclosures row/audit/event underneath it.
+  const result = await withIdempotency(ctx, input.idempotencyKey, `POST ${c.req.path}`, input, async () => {
+    const wordingHash = await sha256Hex(input.wording);
+    const row = {
+      id: id("dsc", ctx.now),
+      tenantId: ctx.tenantId,
+      key: input.key,
+      locale: input.locale,
+      subjectRef: input.subjectRef,
+      customerId: input.customerId ?? null,
+      wordingHash,
+      wordingRef: input.wordingRef ?? null,
+      criteriaJson: input.criteria ? JSON.stringify(input.criteria) : null,
+      channel: input.channel,
+      acknowledgedAt: null,
+      ts: ctx.now
+    };
+    await ctx.db.insert(schema.disclosures).values(row);
+    await audit(ctx, { action: "compliance.disclosure.present", subjectRef: input.subjectRef, after: row });
+    await emit(ctx, {
+      module: "compliance",
+      type: "compliance.disclosure.presented",
+      subject: input.subjectRef,
+      data: { disclosureId: row.id, key: row.key, channel: row.channel }
+    });
+
+    // DISCLOSURE-PRESENT is non-financial (docs/19 §4: ⊘, financial: false) — the
+    // disclosure itself, inserted above, is the evidence AD-PLACEMENT's
+    // precondition reads; this is the audited, idempotent, reversible envelope
+    // every business fact gets, posting no journal (same shape as REFERRAL-QUAL).
+    const txn = await runTxn(ctx, {
+      type: "DISCLOSURE-PRESENT",
+      idempotencyKey: input.idempotencyKey,
+      subjectRefs: { subject: input.subjectRef, ...(input.customerId ? { customer: input.customerId } : {}) }
+    });
+
+    return { ...row, txn };
   });
 
-  // DISCLOSURE-PRESENT is non-financial (docs/19 §4: ⊘, financial: false) — the
-  // disclosure itself, inserted above, is the evidence AD-PLACEMENT's
-  // precondition reads; this is the audited, idempotent, reversible envelope
-  // every business fact gets, posting no journal (same shape as REFERRAL-QUAL).
-  const txn = await runTxn(ctx, {
-    type: "DISCLOSURE-PRESENT",
-    idempotencyKey: input.idempotencyKey,
-    subjectRefs: { subject: input.subjectRef, ...(input.customerId ? { customer: input.customerId } : {}) }
-  });
-
-  return c.json({ ...row, txn }, 201);
+  return c.json(result, 201);
 });
 
 /* ------------------------------------------------------- evidence bundles */

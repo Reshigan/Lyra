@@ -126,4 +126,35 @@ describe("compliance disclosure present (docs/superpowers/specs/2026-08-16-reven
     expect(txns.length).toBe(1);
     expect(txns[0]?.state).toBe("settled");
   });
+
+  it("replaying the same idempotencyKey does not double-write the disclosure, audit entry, or event", async () => {
+    const payload = {
+      subjectRef: "campaign:replay-check",
+      key: "ad_placement",
+      wording: "This is a sponsored placement.",
+      channel: "web",
+      idempotencyKey: "dsc:campaign-replay-check:1"
+    };
+    const first = ok(await call("POST", "/v1/compliance/disclosures/present", payload), 201);
+    const second = ok(await call("POST", "/v1/compliance/disclosures/present", payload), 201);
+    expect(second).toEqual(first);
+
+    const rows = await database
+      .select()
+      .from(schema.disclosures)
+      .where(and(eq(schema.disclosures.tenantId, seeded.tenantId), eq(schema.disclosures.subjectRef, "campaign:replay-check")));
+    expect(rows.length).toBe(1);
+
+    const audits = await database
+      .select()
+      .from(schema.auditLog)
+      .where(
+        and(
+          eq(schema.auditLog.tenantId, seeded.tenantId),
+          eq(schema.auditLog.action, "compliance.disclosure.present"),
+          eq(schema.auditLog.subjectRef, "campaign:replay-check")
+        )
+      );
+    expect(audits.length).toBe(1);
+  });
 });
