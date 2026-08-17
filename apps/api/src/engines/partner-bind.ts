@@ -1,4 +1,4 @@
-import { audit, conflict, emit, type Ctx } from "@lyra/core";
+import { audit, conflict, emit, scoped, type Ctx } from "@lyra/core";
 import { id as newId, schema } from "@lyra/db";
 import { buildRecipe, runTxn } from "@lyra/ledger";
 import { and, eq } from "drizzle-orm";
@@ -25,8 +25,13 @@ export async function bindPartner(ctx: Ctx, partnerId: string, quoteId: string):
   if (quote.partnerId !== partnerId) throw conflict("quote does not belong to this partner");
   if (quote.kind !== "quote") throw conflict(`txn ${quoteId} is not a quote`);
 
+  // ponytail: quote.amountMinor is premium, not commission — PARTNER-BIND
+  // (docs/19 §5.2 C) expects gross commission here; orbit_partners has no
+  // commission-rate column yet to derive it. Also check receivableAccount:
+  // sibling EXT-RSHARE pairs 4075 with 1160, this recipe still defaults to
+  // 1100. Resolve before bindPartner() gets a route.
   const grossMinor = quote.amountMinor;
-  const shareMinor = quote.revshareCalcMinor ?? 0;
+  const shareMinor = quote.revshareCalcMinor;
 
   const bindTxn = await runTxn(
     ctx,
@@ -40,7 +45,7 @@ export async function bindPartner(ctx: Ctx, partnerId: string, quoteId: string):
     { recipe: { lines: buildRecipe("PARTNER-BIND", { grossMinor }), currency: quote.currency } }
   );
 
-  let shareTxn = null;
+  let shareTxn: Awaited<ReturnType<typeof runTxn>> | null = null;
   if (shareMinor > 0) {
     shareTxn = await runTxn(
       ctx,
@@ -63,11 +68,14 @@ export async function bindPartner(ctx: Ctx, partnerId: string, quoteId: string):
     .select()
     .from(schema.orbitPartnerTxns)
     .where(
-      and(
-        eq(schema.orbitPartnerTxns.tenantId, ctx.tenantId),
-        eq(schema.orbitPartnerTxns.partnerId, partnerId),
-        eq(schema.orbitPartnerTxns.kind, "bind"),
-        eq(schema.orbitPartnerTxns.txnRef, bindTxn.id)
+      scoped(
+        ctx,
+        schema.orbitPartnerTxns,
+        and(
+          eq(schema.orbitPartnerTxns.partnerId, partnerId),
+          eq(schema.orbitPartnerTxns.kind, "bind"),
+          eq(schema.orbitPartnerTxns.txnRef, bindTxn.id)
+        )
       )
     );
   const bindRow = existing[0];
