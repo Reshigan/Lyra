@@ -783,7 +783,16 @@ export const LEDGER = register(
   r("client-money-checks", schema.ledgerClientMoneyChecks, "cmc", "ledger", ro("ledger:client_money:read"), {
     immutable: true
   }),
-  r("subscriptions", schema.ledgerSubscriptions, "sub", "ledger", rw("admin:billing")),
+  r("subscriptions", schema.ledgerSubscriptions, "sub", "ledger", rw("admin:billing"), {
+    // A subscription with no `next_invoice_at` is never invoiced at all: the
+    // sweep filters on `next_invoice_at <= now` and in SQL a NULL comparison is
+    // NULL, not true. The first invoice is due when the term starts, so that is
+    // the default — callers may still name their own date.
+    beforeWrite: (_ctx, values, existing) => {
+      if (existing || values.nextInvoiceAt != null) return values;
+      return { ...values, nextInvoiceAt: values.startAt };
+    }
+  }),
   r("invoices", schema.ledgerInvoices, "inv", "ledger", {
     read: "ledger:invoices:read",
     create: "ledger:invoices:create",

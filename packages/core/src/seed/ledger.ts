@@ -945,6 +945,10 @@ export async function seedLedger(ctx: SeedContext): Promise<void> {
   const subOryx = nid("sub");
   const subGulfHealth = nid("sub");
 
+  // `nextInvoiceAt` is next month's first day, not each subscription's own
+  // anniversary: the billing sweep runs against seeded data and catches up every
+  // period between that date and the clock, and the invoices below already cover
+  // the months up to now — so anything earlier would raise them a second time.
   await db.insert(schema.ledgerSubscriptions).values([
     {
       // The distribution partners pay for the portal they sell through.
@@ -958,6 +962,7 @@ export async function seedLedger(ctx: SeedContext): Promise<void> {
       interval: "month",
       seats: 12,
       startAt: now - 300 * DAY,
+      nextInvoiceAt: monthStart(1),
       state: "active",
       termsJson: JSON.stringify({ noticeDays: 30, autoRenew: true, includedApiCalls: 100_000 }),
       createdAt: now - 300 * DAY,
@@ -974,6 +979,7 @@ export async function seedLedger(ctx: SeedContext): Promise<void> {
       interval: "month",
       seats: 40,
       startAt: now - 180 * DAY,
+      nextInvoiceAt: monthStart(1),
       state: "active",
       termsJson: JSON.stringify({ noticeDays: 90, autoRenew: true, slaMinutes: 15 }),
       createdAt: now - 180 * DAY,
@@ -990,6 +996,7 @@ export async function seedLedger(ctx: SeedContext): Promise<void> {
       interval: "month",
       seats: 6,
       startAt: now - 240 * DAY,
+      nextInvoiceAt: monthStart(1),
       state: "active",
       createdAt: now - 240 * DAY,
       updatedAt: now - 30 * DAY
@@ -1006,6 +1013,7 @@ export async function seedLedger(ctx: SeedContext): Promise<void> {
       interval: "year",
       seats: 3,
       startAt: now - 20 * DAY,
+      nextInvoiceAt: monthStart(1),
       state: "active",
       termsJson: JSON.stringify({ noticeDays: 60, autoRenew: true, exportOfServices: true }),
       createdAt: now - 20 * DAY,
@@ -1024,6 +1032,7 @@ export async function seedLedger(ctx: SeedContext): Promise<void> {
       interval: "month",
       seats: 4,
       startAt: now - 150 * DAY,
+      nextInvoiceAt: monthStart(1),
       state: "past_due",
       createdAt: now - 150 * DAY,
       updatedAt: now - 3 * DAY
@@ -1273,6 +1282,10 @@ export async function seedLedger(ctx: SeedContext): Promise<void> {
       period: thisMonth,
       quantity: 228_000,
       includedQuantity: 100_000,
+      // The 128,000 units over the bundle are the 38,400 the OVERAGE transaction
+      // above already invoiced (under its own `overage:{channel}:{month}` key).
+      // Without this the billing sweep would recompute and bill them again.
+      overageInvoicedQuantity: 128_000,
       unitPriceMicro: 300_000,
       updatedAt: now + 5 * HOUR
     },

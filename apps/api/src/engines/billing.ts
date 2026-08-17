@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, lt, lte } from "drizzle-orm";
+import { and, asc, eq, gt, isNull, lt, lte, sql } from "drizzle-orm";
 import { id as newId, schema } from "@lyra/db";
 import { buildRecipe, runTxn } from "@lyra/ledger";
 import { audit, emit, scoped, type Ctx } from "@lyra/core";
@@ -26,23 +26,45 @@ export async function recordUsage(
   ctx: Ctx,
   args: RecordUsageArgs
 ): Promise<{ meterId: string; quantity: number }> {
+  const meterRow = scoped(
+    ctx,
+    schema.ledgerUsageMeters,
+    eq(schema.ledgerUsageMeters.subscriptionId, args.subscriptionId),
+    eq(schema.ledgerUsageMeters.meter, args.meter),
+    eq(schema.ledgerUsageMeters.period, args.period)
+  );
+
   const [existing] = await ctx.db
-    .select()
+    .select({ id: schema.ledgerUsageMeters.id })
     .from(schema.ledgerUsageMeters)
-    .where(
-      scoped(
-        ctx,
-        schema.ledgerUsageMeters,
-        eq(schema.ledgerUsageMeters.subscriptionId, args.subscriptionId),
-        eq(schema.ledgerUsageMeters.meter, args.meter),
-        eq(schema.ledgerUsageMeters.period, args.period)
-      )
-    );
+    .where(meterRow);
+
+  // The row is created empty and the quantity is added only after the
+  // transaction settles. A zero-quantity meter states no usage, so a runTxn
+  // that throws below leaves nothing to reconcile — whereas incrementing first
+  // recorded usage the caller could never see, behind an idempotency key now
+  // stuck in `failed` and so unretryable forever.
+  if (!existing) {
+    await ctx.db
+      .insert(schema.ledgerUsageMeters)
+      .values({
+        id: newId("usg", ctx.now),
+        tenantId: ctx.tenantId,
+        subscriptionId: args.subscriptionId,
+        meter: args.meter,
+        period: args.period,
+        quantity: 0,
+        includedQuantity: args.includedQuantity ?? 0,
+        unitPriceMicro: args.unitPriceMicro ?? 0,
+        updatedAt: ctx.now
+      })
+      .onConflictDoNothing();
+  }
 
   // The idempotency key already burned means this exact call happened before
   // (runTxn's own openTxn would just replay the settled row) — the guard here
   // is for *our* side effect, the quantity increment, which runTxn's replay
-  // does not know about.
+  // does not know about. Read before runTxn opens the row it would then find.
   const [priorTxn] = await ctx.db
     .select({ id: schema.ledgerTxns.id })
     .from(schema.ledgerTxns)
@@ -54,30 +76,6 @@ export async function recordUsage(
       )
     );
   const alreadyApplied = !!priorTxn;
-
-  const meterId = existing?.id ?? newId("usg", ctx.now);
-  const quantity = alreadyApplied ? (existing?.quantity ?? 0) : (existing?.quantity ?? 0) + args.delta;
-
-  if (existing) {
-    if (!alreadyApplied) {
-      await ctx.db
-        .update(schema.ledgerUsageMeters)
-        .set({ quantity, updatedAt: ctx.now })
-        .where(scoped(ctx, schema.ledgerUsageMeters, eq(schema.ledgerUsageMeters.id, meterId)));
-    }
-  } else {
-    await ctx.db.insert(schema.ledgerUsageMeters).values({
-      id: meterId,
-      tenantId: ctx.tenantId,
-      subscriptionId: args.subscriptionId,
-      meter: args.meter,
-      period: args.period,
-      quantity,
-      includedQuantity: args.includedQuantity ?? 0,
-      unitPriceMicro: args.unitPriceMicro ?? 0,
-      updatedAt: ctx.now
-    });
-  }
 
   // Non-financial (⊘ in packages/ledger/src/types.ts): a meter tick moves no
   // money, so no recipe — it exists so usage has a transaction of its own to
@@ -94,6 +92,20 @@ export async function recordUsage(
   );
 
   if (!alreadyApplied) {
+    // One statement, not read-then-write: two concurrent ticks on the same
+    // meter both read the same quantity and the later write loses the earlier
+    // increment.
+    await ctx.db
+      .update(schema.ledgerUsageMeters)
+      .set({ quantity: sql`${schema.ledgerUsageMeters.quantity} + ${args.delta}`, updatedAt: ctx.now })
+      .where(meterRow);
+  }
+
+  const [meter] = await ctx.db.select().from(schema.ledgerUsageMeters).where(meterRow);
+  const meterId = meter?.id ?? existing?.id ?? "";
+  const quantity = meter?.quantity ?? 0;
+
+  if (!alreadyApplied) {
     // No "billing" entry in MODULES (packages/core/src/events.ts) — usage
     // metering lives in the ledger domain alongside settlement.ts, which
     // emits its "ledger.settlement.*" events under module "ledger" too.
@@ -108,11 +120,80 @@ export async function recordUsage(
   return { meterId, quantity };
 }
 
-const MONTH_MS = 30 * 24 * 60 * 60 * 1000;
-
 function currentPeriod(now: number): string {
   const d = new Date(now);
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+/**
+ * A calendar month, not 30 days. A fixed constant drifts the billing anniversary
+ * a day or two every cycle and lands two due dates inside one calendar month
+ * twice a year — and `currentPeriod()` is the invoice's idempotency key, so that
+ * collision is a billing period silently skipped. Day-of-month is clamped, so
+ * the 31st bills on the 28th in February and on the 31st again in March.
+ */
+function addMonths(ts: number, months: number): number {
+  const d = new Date(ts);
+  const day = d.getUTCDate();
+  const target = new Date(ts);
+  target.setUTCDate(1);
+  target.setUTCMonth(target.getUTCMonth() + months);
+  const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
+  target.setUTCDate(Math.min(day, lastDay));
+  return target.getTime();
+}
+
+interface InvoiceOnceArgs {
+  customerRef: string;
+  subscriptionId?: string | null;
+  netMinor: number;
+  currency: string;
+  lines: { description: string; amountMinor: number }[];
+}
+
+/**
+ * The invoice row for a settled journal transaction, written once however many
+ * times we are called.
+ *
+ * `runTxn` is idempotent — a replay returns the settled transaction and posts no
+ * second journal — but a `newId()` invoice behind it is not, and neither is the
+ * revenue schedule that hangs off that new id (the schedule's unique index is on
+ * `invoiceId`, which was fresh every time). One retry, or two due dates inside
+ * one calendar month, therefore billed the customer twice and recognised the
+ * revenue twice for a single AR posting. The transaction is the natural key, so
+ * the invoice is looked up by it and the schedule ids stay stable across replays.
+ */
+async function invoiceOnce(
+  ctx: Ctx,
+  txnId: string | undefined,
+  args: InvoiceOnceArgs
+): Promise<{ invoiceId: string; created: boolean }> {
+  const [prior] = txnId
+    ? await ctx.db
+        .select({ id: schema.ledgerInvoices.id })
+        .from(schema.ledgerInvoices)
+        .where(scoped(ctx, schema.ledgerInvoices, eq(schema.ledgerInvoices.txnId, txnId)))
+    : [];
+  if (prior) return { invoiceId: prior.id, created: false };
+
+  const invoiceId = newId("inv", ctx.now);
+  await ctx.db.insert(schema.ledgerInvoices).values({
+    id: invoiceId,
+    tenantId: ctx.tenantId,
+    number: invoiceNumber(invoiceId, ctx.now),
+    customerRef: args.customerRef,
+    subscriptionId: args.subscriptionId ?? null,
+    subtotalMinor: args.netMinor,
+    totalMinor: args.netMinor,
+    currency: args.currency,
+    linesJson: JSON.stringify(args.lines),
+    state: "issued",
+    issuedAt: ctx.now,
+    txnId: txnId ?? null,
+    createdAt: ctx.now,
+    updatedAt: ctx.now
+  });
+  return { invoiceId, created: true };
 }
 
 async function raiseInvoices(ctx: Ctx): Promise<number> {
@@ -132,77 +213,123 @@ async function raiseInvoices(ctx: Ctx): Promise<number> {
 
   let count = 0;
   for (const sub of due) {
-    const invoiceId = newId("inv", ctx.now);
-    const period = currentPeriod(ctx.now);
+    // `interval` is the contract's own cycle (schema ledger.ts): an annual
+    // subscription's priceMinor is the whole year, so billing it monthly was a
+    // 12x overcharge.
+    const months = sub.interval === "year" ? 12 : 1;
     const netMinor = sub.priceMinor;
-    const idempotencyKey = `sub-invoice:${sub.id}:${period}`;
+    let cursor = sub.nextInvoiceAt ?? ctx.now;
 
-    const txn = await runTxn(
-      ctx,
-      {
-        type: "SUB-INVOICE",
-        idempotencyKey,
+    // Advance from the anniversary the subscription is actually owed from, not
+    // from the clock, and step one period at a time — a sweep that ran late (or
+    // not at all, through an outage) then bills the periods it missed instead of
+    // skipping them, and the row still leaves this result set in one tick
+    // (ADR-0050).
+    while (cursor <= ctx.now) {
+      const period = currentPeriod(cursor);
+      const at = cursor;
+      cursor = addMonths(cursor, months);
+
+      // A zero-price plan has no invoice to raise — `invoiceRaised` requires a
+      // positive net, and letting it throw would burn the key and abort the
+      // sweep for every tenant behind this one.
+      if (netMinor <= 0) continue;
+
+      const txn = await runTxn(
+        ctx,
+        {
+          type: "SUB-INVOICE",
+          idempotencyKey: `sub-invoice:${sub.id}:${period}`,
+          currency: sub.currency,
+          grossMinor: netMinor,
+          subjectRefs: { subscriptionId: sub.id, customerRef: sub.customerRef }
+        },
+        { recipe: { lines: buildRecipe("SUB-INVOICE", { netMinor }), currency: sub.currency } }
+      );
+
+      const { invoiceId, created } = await invoiceOnce(ctx, txn?.id, {
+        customerRef: sub.customerRef,
+        subscriptionId: sub.id,
+        netMinor,
         currency: sub.currency,
-        grossMinor: netMinor,
-        subjectRefs: { subscriptionId: sub.id, customerRef: sub.customerRef }
-      },
-      { recipe: { lines: buildRecipe("SUB-INVOICE", { netMinor }), currency: sub.currency } }
-    );
+        lines: [{ description: `${sub.plan} subscription`, amountMinor: netMinor }]
+      });
 
-    await ctx.db.insert(schema.ledgerInvoices).values({
-      id: invoiceId,
-      tenantId: ctx.tenantId,
-      number: invoiceNumber(invoiceId, ctx.now),
-      customerRef: sub.customerRef,
-      subscriptionId: sub.id,
-      subtotalMinor: netMinor,
-      totalMinor: netMinor,
-      currency: sub.currency,
-      linesJson: JSON.stringify([{ description: `${sub.plan} subscription`, amountMinor: netMinor }]),
-      state: "issued",
-      issuedAt: ctx.now,
-      txnId: txn?.id,
-      createdAt: ctx.now,
-      updatedAt: ctx.now
-    });
+      // Straight-line recognition: the invoice defers the whole term into 2300
+      // and each period releases its share. The first period carries the
+      // integer-division remainder so the twelve rows sum to exactly the invoice.
+      const share = Math.floor(netMinor / months);
+      for (let i = 0; i < months; i++) {
+        await ctx.db
+          .insert(schema.ledgerRevenueSchedules)
+          .values({
+            id: newId("sch", ctx.now),
+            tenantId: ctx.tenantId,
+            invoiceId,
+            accountCode: "2300",
+            period: currentPeriod(addMonths(at, i)),
+            plannedMinor: i === 0 ? netMinor - share * (months - 1) : share,
+            currency: sub.currency,
+            state: "scheduled"
+          })
+          .onConflictDoNothing();
+      }
 
-    await ctx.db.insert(schema.ledgerRevenueSchedules).values({
-      id: newId("sch", ctx.now),
-      tenantId: ctx.tenantId,
-      invoiceId,
-      accountCode: "2300",
-      period,
-      plannedMinor: netMinor,
-      currency: sub.currency,
-      state: "scheduled"
-    });
+      if (!created) continue;
+      await emit(ctx, {
+        module: "ledger",
+        type: "ledger.invoice.raised",
+        subject: invoiceId,
+        data: { subscriptionId: sub.id, netMinor, currency: sub.currency, txnId: txn?.id }
+      });
+      count++;
+    }
 
     await ctx.db
       .update(schema.ledgerSubscriptions)
-      .set({ nextInvoiceAt: ctx.now + MONTH_MS, updatedAt: ctx.now })
+      .set({ nextInvoiceAt: cursor, updatedAt: ctx.now })
       .where(scoped(ctx, schema.ledgerSubscriptions, eq(schema.ledgerSubscriptions.id, sub.id)));
-
-    await emit(ctx, {
-      module: "ledger",
-      type: "ledger.invoice.raised",
-      subject: invoiceId,
-      data: { subscriptionId: sub.id, netMinor, currency: sub.currency, txnId: txn?.id }
-    });
-    count++;
   }
   return count;
 }
 
 async function applyOverages(ctx: Ctx): Promise<number> {
   const meters = await ctx.db
-    .select()
+    .select({
+      id: schema.ledgerUsageMeters.id,
+      subscriptionId: schema.ledgerUsageMeters.subscriptionId,
+      meter: schema.ledgerUsageMeters.meter,
+      period: schema.ledgerUsageMeters.period,
+      quantity: schema.ledgerUsageMeters.quantity,
+      includedQuantity: schema.ledgerUsageMeters.includedQuantity,
+      invoicedQuantity: schema.ledgerUsageMeters.overageInvoicedQuantity,
+      unitPriceMicro: schema.ledgerUsageMeters.unitPriceMicro,
+      customerRef: schema.ledgerSubscriptions.customerRef,
+      currency: schema.ledgerSubscriptions.currency
+    })
     .from(schema.ledgerUsageMeters)
+    // The subscription is the only place the customer and the currency exist —
+    // the meter has neither. An inner join also drops meters with no
+    // subscription (the platform's own usage counters), which have nobody to
+    // invoice and were previously billed to customerRef "unknown" in USD.
+    .innerJoin(
+      schema.ledgerSubscriptions,
+      and(
+        eq(schema.ledgerSubscriptions.id, schema.ledgerUsageMeters.subscriptionId),
+        eq(schema.ledgerSubscriptions.tenantId, ctx.tenantId)
+      )
+    )
     .where(
       scoped(
         ctx,
         schema.ledgerUsageMeters,
         isNull(schema.ledgerUsageMeters.overageInvoicedAt),
-        lt(schema.ledgerUsageMeters.includedQuantity, schema.ledgerUsageMeters.quantity)
+        // Every predicate here is one a billing run clears, so a row it selects
+        // always leaves its own result set (ADR-0050): unpriced meters and
+        // fully-invoiced overage are excluded rather than fetched and skipped,
+        // which is what used to wedge the head of an oldest-first window.
+        gt(schema.ledgerUsageMeters.unitPriceMicro, 0),
+        sql`${schema.ledgerUsageMeters.includedQuantity} + ${schema.ledgerUsageMeters.overageInvoicedQuantity} < ${schema.ledgerUsageMeters.quantity}`
       )
     )
     .orderBy(asc(schema.ledgerUsageMeters.updatedAt))
@@ -210,19 +337,22 @@ async function applyOverages(ctx: Ctx): Promise<number> {
 
   let count = 0;
   for (const meter of meters) {
-    const overageUnits = meter.quantity - meter.includedQuantity;
+    // Bill the units not yet billed, not the whole overage: usage keeps arriving
+    // after the allowance is crossed, and one invoice per period at the moment
+    // of crossing left the rest of the period free.
+    const billedUnits = meter.includedQuantity + meter.invoicedQuantity;
+    const overageUnits = meter.quantity - billedUnits;
     const netMinor = Math.ceil((overageUnits * meter.unitPriceMicro) / 1_000_000);
-    if (netMinor <= 0) continue;
-
-    const invoiceId = newId("inv", ctx.now);
-    const idempotencyKey = `overage:${meter.id}`;
-    const currency = "USD";
+    const currency = meter.currency;
+    const invoicedQuantity = meter.invoicedQuantity + overageUnits;
 
     const txn = await runTxn(
       ctx,
       {
         type: "OVERAGE",
-        idempotencyKey,
+        // The cumulative unit count, so a replayed tick is a no-op while a tick
+        // that finds new usage gets its own transaction.
+        idempotencyKey: `overage:${meter.id}:${invoicedQuantity}`,
         currency,
         grossMinor: netMinor,
         subjectRefs: { subscriptionId: meter.subscriptionId ?? "", meter: meter.meter, period: meter.period }
@@ -230,39 +360,30 @@ async function applyOverages(ctx: Ctx): Promise<number> {
       { recipe: { lines: buildRecipe("OVERAGE", { netMinor }), currency } }
     );
 
-    await ctx.db.insert(schema.ledgerInvoices).values({
-      id: invoiceId,
-      tenantId: ctx.tenantId,
-      number: invoiceNumber(invoiceId, ctx.now),
-      customerRef: meter.subscriptionId ?? "unknown",
+    // No revenue schedule: the OVERAGE recipe credits usage revenue 4050 on the
+    // invoice itself (recipes.ts), so there is nothing deferred to release.
+    // Scheduling it here recognised the same usage a second time out of 2300,
+    // which was never credited for it.
+    const { invoiceId, created } = await invoiceOnce(ctx, txn?.id, {
+      customerRef: meter.customerRef,
       subscriptionId: meter.subscriptionId,
-      subtotalMinor: netMinor,
-      totalMinor: netMinor,
+      netMinor,
       currency,
-      linesJson: JSON.stringify([{ description: `${meter.meter} overage (${overageUnits} units)`, amountMinor: netMinor }]),
-      state: "issued",
-      issuedAt: ctx.now,
-      txnId: txn?.id,
-      createdAt: ctx.now,
-      updatedAt: ctx.now
-    });
-
-    await ctx.db.insert(schema.ledgerRevenueSchedules).values({
-      id: newId("sch", ctx.now),
-      tenantId: ctx.tenantId,
-      invoiceId,
-      accountCode: "4050",
-      period: meter.period,
-      plannedMinor: netMinor,
-      currency,
-      state: "scheduled"
+      lines: [{ description: `${meter.meter} overage (${overageUnits} units)`, amountMinor: netMinor }]
     });
 
     await ctx.db
       .update(schema.ledgerUsageMeters)
-      .set({ overageInvoicedAt: ctx.now, updatedAt: ctx.now })
+      .set({
+        overageInvoicedQuantity: invoicedQuantity,
+        // Closed only once the period itself is over. Stamping it on the first
+        // crossing is what stopped the rest of the period from ever being billed.
+        overageInvoicedAt: meter.period < currentPeriod(ctx.now) ? ctx.now : null,
+        updatedAt: ctx.now
+      })
       .where(scoped(ctx, schema.ledgerUsageMeters, eq(schema.ledgerUsageMeters.id, meter.id)));
 
+    if (!created) continue;
     await emit(ctx, {
       module: "ledger",
       type: "ledger.overage.applied",
@@ -293,7 +414,12 @@ async function postRecognitions(ctx: Ctx): Promise<number> {
   let count = 0;
   for (const row of due) {
     const idempotencyKey = `sub-recog:${row.id}`;
-    const incomeAccount = row.accountCode === "4050" ? "4040" : "4040";
+    // A schedule row's `accountCode` is the income line the release belongs to
+    // (4050 usage, 4060 data products, 4090 success fees); only the deferred
+    // revenue liability 2300 has to be mapped, and it maps to subscription
+    // revenue. Collapsing everything to 4040 misstated the revenue lines this
+    // engine exists to keep apart.
+    const incomeAccount = row.accountCode === "2300" ? "4040" : row.accountCode;
 
     const txn = await runTxn(
       ctx,
@@ -352,7 +478,7 @@ export async function subscribeToDataProduct(
   );
 
   await audit(ctx, {
-    action: "billing.dprod.subscribed",
+    action: "ledger.dprod.subscribed",
     subjectRef: args.dataProductId,
     before: null,
     after: { subscriberRef: args.subscriberRef }
@@ -398,7 +524,6 @@ export async function deliverDataProduct(
     { args: { dataProductId: args.dataProductId, cellCount: args.cellCount } }
   );
 
-  const invoiceId = newId("inv", ctx.now);
   const currency = "USD";
   const period = currentPeriod(ctx.now);
 
@@ -415,20 +540,11 @@ export async function deliverDataProduct(
     { recipe: { lines: buildRecipe("SUB-INVOICE", { netMinor: args.netMinor }), currency } }
   );
 
-  await ctx.db.insert(schema.ledgerInvoices).values({
-    id: invoiceId,
-    tenantId: ctx.tenantId,
-    number: invoiceNumber(invoiceId, ctx.now),
+  const { invoiceId } = await invoiceOnce(ctx, invoiceTxn?.id, {
     customerRef: args.subscriberRef,
-    subtotalMinor: args.netMinor,
-    totalMinor: args.netMinor,
+    netMinor: args.netMinor,
     currency,
-    linesJson: JSON.stringify([{ description: `data product ${args.dataProductId} delivery`, amountMinor: args.netMinor }]),
-    state: "issued",
-    issuedAt: ctx.now,
-    txnId: invoiceTxn?.id,
-    createdAt: ctx.now,
-    updatedAt: ctx.now
+    lines: [{ description: `data product ${args.dataProductId} delivery`, amountMinor: args.netMinor }]
   });
 
   const recogTxn = await runTxn(
@@ -449,22 +565,39 @@ export async function deliverDataProduct(
     }
   );
 
-  const scheduleId = newId("sch", ctx.now);
-  await ctx.db.insert(schema.ledgerRevenueSchedules).values({
-    id: scheduleId,
-    tenantId: ctx.tenantId,
-    invoiceId,
-    accountCode: "4060",
-    period,
-    plannedMinor: args.netMinor,
-    recognizedMinor: args.netMinor,
-    currency,
-    txnId: recogTxn?.id,
-    state: "recognized"
-  });
+  // Idempotent through the schedule's own unique index on (tenant, invoice,
+  // period, accountCode), which only bites now that the invoice id is stable
+  // across replays — a fresh invoice id per call made every retry a new row.
+  const scheduleWhere = scoped(
+    ctx,
+    schema.ledgerRevenueSchedules,
+    eq(schema.ledgerRevenueSchedules.invoiceId, invoiceId),
+    eq(schema.ledgerRevenueSchedules.period, period),
+    eq(schema.ledgerRevenueSchedules.accountCode, "4060")
+  );
+  await ctx.db
+    .insert(schema.ledgerRevenueSchedules)
+    .values({
+      id: newId("sch", ctx.now),
+      tenantId: ctx.tenantId,
+      invoiceId,
+      accountCode: "4060",
+      period,
+      plannedMinor: args.netMinor,
+      recognizedMinor: args.netMinor,
+      currency,
+      txnId: recogTxn?.id,
+      state: "recognized"
+    })
+    .onConflictDoNothing();
+  const [schedule] = await ctx.db
+    .select({ id: schema.ledgerRevenueSchedules.id })
+    .from(schema.ledgerRevenueSchedules)
+    .where(scheduleWhere);
+  const scheduleId = schedule?.id ?? "";
 
   await audit(ctx, {
-    action: "billing.dprod.delivered",
+    action: "ledger.dprod.delivered",
     subjectRef: args.dataProductId,
     before: null,
     after: { subscriberRef: args.subscriberRef, netMinor: args.netMinor, invoiceId }
