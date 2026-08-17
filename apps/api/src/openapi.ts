@@ -109,7 +109,7 @@ const HAND_WRITTEN: Op[] = [
   // own transaction (BIND-GROUP, dual control) rather than the individual
   // bind's; the advisory fee is a second, separate accrual on top of it.
   { method: "post", path: "/v1/axis/policies/{id}/bind-group", summary: "Bind a group/SME scheme, posting a BIND-GROUP commission accrual (dual control)", permission: "axis:policies:bind", tag: "axis", requestBody: true },
-  { method: "post", path: "/v1/axis/policies/{id}/broker-fee", summary: "Post a FEE-BROK brokerage/advisory fee accrual against a bound policy", permission: "axis:policies:bind", tag: "axis", requestBody: true },
+  { method: "post", path: "/v1/axis/policies/{id}/broker-fee", summary: "Post a FEE-BROK brokerage/advisory fee accrual on a policy", permission: "axis:policies:bind", tag: "axis", requestBody: true },
 
   // docs/27 F5. Mid-term change: the preview prices it and writes nothing, the
   // endorse appends a priced version and moves the pro-rated money.
