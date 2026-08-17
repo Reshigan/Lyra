@@ -525,6 +525,60 @@ describe("sweepBilling", () => {
       .where(eq(schema.ledgerSubscriptions.id, "sub_wedged"));
     expect(wedged?.nextInvoiceAt).toBe(ctx.now - 1000);
   });
+
+  /** A subscription due since `dueSince`, billed in the ctx's own currency. */
+  async function sub(subId: string, dueSince: number, interval: "month" | "year", priceMinor: number): Promise<void> {
+    await ctx.db.insert(schema.ledgerSubscriptions).values({
+      id: subId,
+      tenantId: ctx.tenantId,
+      customerRef: `cust_${subId}`,
+      plan: "growth",
+      priceMinor,
+      currency: "USD",
+      interval,
+      seats: 1,
+      startAt: dueSince,
+      nextInvoiceAt: dueSince,
+      state: "active",
+      createdAt: dueSince,
+      updatedAt: dueSince
+    });
+  }
+
+  it("bills every calendar month a stalled sweep missed, in one tick", async () => {
+    const start = Date.UTC(2026, 0, 15);
+    await sub("sub_catchup", start, "month", 10_000);
+
+    // Three months of outage. Each missed period is owed and gets its own
+    // invoice; none is billed twice, and the row is up to date afterwards.
+    const late = await makeCtx(Date.UTC(2026, 3, 15));
+    expect((await sweepBilling(late)).invoicesRaised).toBe(4); // Jan, Feb, Mar, Apr
+
+    const invoices = await ctx.db
+      .select()
+      .from(schema.ledgerInvoices)
+      .where(eq(schema.ledgerInvoices.tenantId, ctx.tenantId));
+    expect(invoices.length).toBe(4);
+    // One posting each: four invoices sharing a transaction would mean one period
+    // was billed twice off the same journal entry.
+    expect(new Set(invoices.map((i) => i.txnId)).size).toBe(4);
+    expect((await sweepBilling(late)).invoicesRaised).toBe(0);
+  });
+
+  it("steps an annual subscription a year at a time, not a month", async () => {
+    const start = Date.UTC(2025, 0, 15);
+    await sub("sub_annual", start, "year", 480_000);
+
+    // Eighteen months stale. A monthly step would bill eighteen full years.
+    const late = await makeCtx(Date.UTC(2026, 5, 15));
+    expect((await sweepBilling(late)).invoicesRaised).toBe(2); // 2025 and 2026 terms
+
+    const [row] = await ctx.db
+      .select()
+      .from(schema.ledgerSubscriptions)
+      .where(eq(schema.ledgerSubscriptions.id, "sub_annual"));
+    expect(row?.nextInvoiceAt).toBe(Date.UTC(2027, 0, 15));
+  });
 });
 
 // Migration 0026 populates next_invoice_at for subscriptions that predate the
