@@ -3068,7 +3068,7 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "PATCH /v1/axis/policies/{id}": { tag: "axis", summary: "Update a policy", permission: "axis:policies:update", public: false },
   "POST /v1/axis/policies/{id}/bind": { tag: "axis", summary: "Bind a draft policy, issuing version 1", permission: "axis:policies:bind", public: false },
   "POST /v1/axis/policies/{id}/bind-group": { tag: "axis", summary: "Bind a group/SME scheme, posting a BIND-GROUP commission accrual (dual control)", permission: "axis:policies:bind", public: false },
-  "POST /v1/axis/policies/{id}/broker-fee": { tag: "axis", summary: "Post a FEE-BROK brokerage/advisory fee accrual against a bound policy", permission: "axis:policies:bind", public: false },
+  "POST /v1/axis/policies/{id}/broker-fee": { tag: "axis", summary: "Post a FEE-BROK brokerage/advisory fee accrual on a policy", permission: "axis:policies:bind", public: false },
   "POST /v1/axis/policies/{id}/cancel": { tag: "axis", summary: "Cancel a policy, refunding the unearned premium", permission: "axis:policies:cancel", public: false },
   "POST /v1/axis/policies/{id}/cancel/preview": { tag: "axis", summary: "Price a cancellation without writing anything", permission: "axis:policies:cancel", public: false },
   "POST /v1/axis/policies/{id}/documents": { tag: "axis", summary: "Issue a policy document for a version and attach it", permission: "axis:policies:document", public: false },
