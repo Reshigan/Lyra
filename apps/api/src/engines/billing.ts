@@ -129,8 +129,13 @@ function currentPeriod(now: number): string {
  * A calendar month, not 30 days. A fixed constant drifts the billing anniversary
  * a day or two every cycle and lands two due dates inside one calendar month
  * twice a year — and `currentPeriod()` is the invoice's idempotency key, so that
- * collision is a billing period silently skipped. Day-of-month is clamped, so
- * the 31st bills on the 28th in February and on the 31st again in March.
+ * collision is a billing period silently skipped. Day-of-month is clamped to the
+ * target month's length, and the clamp is lossy because the result is the next
+ * cursor: a 31st anniversary stepped through February becomes the 28th and stays
+ * the 28th thereafter. That costs a customer nothing (still one invoice per
+ * calendar month) but the anniversary does drift earlier once per month-end
+ * subscription. Anchoring on the original start date would fix it — a stored
+ * anchor, not a change here.
  */
 function addMonths(ts: number, months: number): number {
   const d = new Date(ts);
