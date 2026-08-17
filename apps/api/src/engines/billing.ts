@@ -1,7 +1,7 @@
 import { and, asc, eq, isNull, lt, lte } from "drizzle-orm";
 import { id as newId, schema } from "@lyra/db";
 import { buildRecipe, runTxn } from "@lyra/ledger";
-import { emit, scoped, type Ctx } from "@lyra/core";
+import { audit, emit, scoped, type Ctx } from "@lyra/core";
 import { SWEEP_MAX } from "./sweep.js";
 
 /** `INV-YYYYMMDD-<last6ofId>`, mirrors axis-fnol.ts's claimNumber() shape. */
@@ -326,6 +326,162 @@ async function postRecognitions(ctx: Ctx): Promise<number> {
     count++;
   }
   return count;
+}
+
+export interface SubscribeToDataProductArgs {
+  dataProductId: string;
+  subscriberRef: string;
+  idempotencyKey: string;
+}
+
+/** DPROD-SUB (⊘): subscribing a partner to a data product posts no journal. */
+export async function subscribeToDataProduct(
+  ctx: Ctx,
+  args: SubscribeToDataProductArgs
+): Promise<{ txnId: string | undefined }> {
+  const txn = await runTxn(
+    ctx,
+    {
+      type: "DPROD-SUB",
+      idempotencyKey: args.idempotencyKey,
+      currency: "USD",
+      grossMinor: 0,
+      subjectRefs: { dataProductId: args.dataProductId, subscriberRef: args.subscriberRef }
+    },
+    {}
+  );
+
+  await audit(ctx, {
+    action: "billing.dprod.subscribed",
+    subjectRef: args.dataProductId,
+    before: null,
+    after: { subscriberRef: args.subscriberRef }
+  });
+  // No "billing" entry in MODULES (packages/core/src/events.ts) — data-product
+  // billing lives in the ledger domain, same as usage/settlement events above.
+  await emit(ctx, {
+    module: "ledger",
+    type: "ledger.dprod.subscribed",
+    subject: args.dataProductId,
+    data: { subscriberRef: args.subscriberRef, ...(txn ? { txnId: txn.id } : {}) }
+  });
+
+  return { txnId: txn?.id };
+}
+
+export interface DeliverDataProductArgs {
+  dataProductId: string;
+  subscriberRef: string;
+  cellCount: number;
+  netMinor: number;
+  idempotencyKey: string;
+}
+
+/**
+ * DPROD-DELIVER (⊘, gated by TXN_PRECONDITIONS on k-anonymity) chained into the
+ * F2 money legs per spec D2: same SUB-INVOICE/SUB-RECOG recipes, incomeAccount
+ * "4060" passed only at the SUB-RECOG call site (InvoiceArgs has no such field).
+ */
+export async function deliverDataProduct(
+  ctx: Ctx,
+  args: DeliverDataProductArgs
+): Promise<{ deliverTxnId: string | undefined; invoiceId: string; scheduleId: string }> {
+  const deliverTxn = await runTxn(
+    ctx,
+    {
+      type: "DPROD-DELIVER",
+      idempotencyKey: args.idempotencyKey,
+      currency: "USD",
+      grossMinor: 0,
+      subjectRefs: { dataProductId: args.dataProductId, subscriberRef: args.subscriberRef }
+    },
+    { args: { dataProductId: args.dataProductId, cellCount: args.cellCount } }
+  );
+
+  const invoiceId = newId("inv", ctx.now);
+  const currency = "USD";
+  const period = currentPeriod(ctx.now);
+
+  const invoiceTxn = await runTxn(
+    ctx,
+    {
+      type: "SUB-INVOICE",
+      idempotencyKey: `${args.idempotencyKey}:invoice`,
+      currency,
+      grossMinor: args.netMinor,
+      subjectRefs: { dataProductId: args.dataProductId, subscriberRef: args.subscriberRef },
+      ...(deliverTxn ? { parentTxnId: deliverTxn.id } : {})
+    },
+    { recipe: { lines: buildRecipe("SUB-INVOICE", { netMinor: args.netMinor }), currency } }
+  );
+
+  await ctx.db.insert(schema.ledgerInvoices).values({
+    id: invoiceId,
+    tenantId: ctx.tenantId,
+    number: invoiceNumber(invoiceId, ctx.now),
+    customerRef: args.subscriberRef,
+    subtotalMinor: args.netMinor,
+    totalMinor: args.netMinor,
+    currency,
+    linesJson: JSON.stringify([{ description: `data product ${args.dataProductId} delivery`, amountMinor: args.netMinor }]),
+    state: "issued",
+    issuedAt: ctx.now,
+    txnId: invoiceTxn?.id,
+    createdAt: ctx.now,
+    updatedAt: ctx.now
+  });
+
+  const recogTxn = await runTxn(
+    ctx,
+    {
+      type: "SUB-RECOG",
+      idempotencyKey: `${args.idempotencyKey}:recog`,
+      currency,
+      grossMinor: args.netMinor,
+      subjectRefs: { dataProductId: args.dataProductId, invoiceId },
+      ...(deliverTxn ? { parentTxnId: deliverTxn.id } : {})
+    },
+    {
+      recipe: {
+        lines: buildRecipe("SUB-RECOG", { amountMinor: args.netMinor, incomeAccount: "4060" }),
+        currency
+      }
+    }
+  );
+
+  const scheduleId = newId("sch", ctx.now);
+  await ctx.db.insert(schema.ledgerRevenueSchedules).values({
+    id: scheduleId,
+    tenantId: ctx.tenantId,
+    invoiceId,
+    accountCode: "4060",
+    period,
+    plannedMinor: args.netMinor,
+    recognizedMinor: args.netMinor,
+    currency,
+    txnId: recogTxn?.id,
+    state: "recognized"
+  });
+
+  await audit(ctx, {
+    action: "billing.dprod.delivered",
+    subjectRef: args.dataProductId,
+    before: null,
+    after: { subscriberRef: args.subscriberRef, netMinor: args.netMinor, invoiceId }
+  });
+  await emit(ctx, {
+    module: "ledger",
+    type: "ledger.dprod.delivered",
+    subject: args.dataProductId,
+    data: {
+      subscriberRef: args.subscriberRef,
+      invoiceId,
+      netMinor: args.netMinor,
+      ...(deliverTxn ? { txnId: deliverTxn.id } : {})
+    }
+  });
+
+  return { deliverTxnId: deliverTxn?.id, invoiceId, scheduleId };
 }
 
 /** Bounded-bite sweep (ADR-0050): invoices due subscriptions, applies pending overages, posts due recognitions. */

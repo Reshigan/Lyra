@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { PolicyJson, EntitlementsJson, schema } from "@lyra/db";
 import { permissionsForRole, type Actor, type Ctx } from "@lyra/core";
-import { recordUsage, invoiceNumber, sweepBilling } from "./billing.js";
+import { recordUsage, invoiceNumber, sweepBilling, subscribeToDataProduct, deliverDataProduct } from "./billing.js";
 
 // Group C revenue lines (docs/specs revenue lines full build design, task 3):
 // recordUsage() had no real writer, only the schema and a hand-fixtured seed
@@ -48,6 +48,13 @@ async function makeCtx(now = 1_700_000_000_000): Promise<Ctx> {
     policy: PolicyJson.parse({ currency: "USD" }),
     entitlements: EntitlementsJson.parse({})
   };
+}
+
+/** Fresh in-memory db + migrations + ctx, for describe blocks that don't need a shared beforeEach. */
+async function testCtx(now = 1_700_000_000_000): Promise<Ctx> {
+  client = createClient({ url: ":memory:" });
+  for (const sql of statements()) await client.execute(sql);
+  return makeCtx(now);
 }
 
 describe("recordUsage", () => {
@@ -273,5 +280,113 @@ describe("sweepBilling", () => {
     expect(result.invoicesRaised).toBe(3);
     const rerun = await sweepBilling(ctx);
     expect(rerun.invoicesRaised).toBe(0);
+  });
+});
+
+describe("subscribeToDataProduct", () => {
+  it("posts DPROD-SUB with no journal lines", async () => {
+    ctx = await testCtx();
+    await ctx.db.insert(schema.scoutDataProducts).values({
+      id: "dp1",
+      tenantId: ctx.tenantId,
+      name: "Market pulse",
+      definitionJson: "{}",
+      consentBasis: "legitimate-interest",
+      aggregationMin: 20,
+      status: "active",
+      createdAt: ctx.now,
+      updatedAt: ctx.now
+    });
+
+    const result = await subscribeToDataProduct(ctx, {
+      dataProductId: "dp1",
+      subscriberRef: "partner1",
+      idempotencyKey: "dprod-sub:dp1:partner1"
+    });
+    expect(result.txnId).toBeTruthy();
+
+    const [txn] = await ctx.db
+      .select()
+      .from(schema.ledgerTxns)
+      .where(and(eq(schema.ledgerTxns.tenantId, ctx.tenantId), eq(schema.ledgerTxns.id, result.txnId!)));
+    expect(txn?.type).toBe("DPROD-SUB");
+  });
+});
+
+describe("deliverDataProduct", () => {
+  beforeEach(async () => {
+    ctx = await testCtx();
+    await ctx.db.insert(schema.scoutDataProducts).values({
+      id: "dp1",
+      tenantId: ctx.tenantId,
+      name: "Market pulse",
+      definitionJson: "{}",
+      consentBasis: "legitimate-interest",
+      aggregationMin: 20,
+      status: "active",
+      createdAt: ctx.now,
+      updatedAt: ctx.now
+    });
+  });
+
+  it("refuses delivery below the k-anonymity floor and burns no idempotency key", async () => {
+    // conflict() (packages/core/src/errors.ts) fixes .message to "Conflict" and
+    // carries the real reason in .detail, so the k-anonymity text is asserted
+    // there — same pattern as analytics.test.ts's "rejects a timezone" case.
+    try {
+      await deliverDataProduct(ctx, {
+        dataProductId: "dp1",
+        subscriberRef: "partner1",
+        cellCount: 5,
+        netMinor: 50000,
+        idempotencyKey: "dprod-deliver:dp1:1"
+      });
+      expect.unreachable("deliverDataProduct accepted a cell count below the k-anonymity floor");
+    } catch (e) {
+      expect((e as { detail?: string }).detail).toMatch(/k-anonymity/i);
+    }
+
+    const [txn] = await ctx.db
+      .select()
+      .from(schema.ledgerTxns)
+      .where(
+        and(eq(schema.ledgerTxns.tenantId, ctx.tenantId), eq(schema.ledgerTxns.idempotencyKey, "dprod-deliver:dp1:1"))
+      );
+    expect(txn).toBeUndefined();
+  });
+
+  it("delivers, invoices, and recognises revenue against income account 4060", async () => {
+    const result = await deliverDataProduct(ctx, {
+      dataProductId: "dp1",
+      subscriberRef: "partner1",
+      cellCount: 50,
+      netMinor: 50000,
+      idempotencyKey: "dprod-deliver:dp1:2"
+    });
+    expect(result.deliverTxnId).toBeTruthy();
+
+    const [invoice] = await ctx.db
+      .select()
+      .from(schema.ledgerInvoices)
+      .where(eq(schema.ledgerInvoices.id, result.invoiceId));
+    expect(invoice?.totalMinor).toBe(50000);
+
+    const [recogTxn] = await ctx.db
+      .select()
+      .from(schema.ledgerTxns)
+      .where(and(eq(schema.ledgerTxns.tenantId, ctx.tenantId), eq(schema.ledgerTxns.type, "SUB-RECOG")));
+    expect(recogTxn).toBeTruthy();
+    expect(recogTxn?.parentTxnId).toBe(result.deliverTxnId);
+
+    // schema.ledgerPostings does not exist in packages/db/src/schema.ts — the
+    // journal-lines table is exported as `ledgerJournalLines` (see schema.ts
+    // re-export of ledger.ts's `journalLines`); columns txnId/side/accountCode
+    // do match the brief as written.
+    const lines = await ctx.db
+      .select()
+      .from(schema.ledgerJournalLines)
+      .where(eq(schema.ledgerJournalLines.txnId, recogTxn!.id));
+    const creditLine = lines.find((l) => l.side === "credit" && l.accountCode === "4060");
+    expect(creditLine).toBeTruthy();
   });
 });
