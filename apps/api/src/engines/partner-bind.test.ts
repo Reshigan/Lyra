@@ -132,6 +132,10 @@ describe("bindPartner", () => {
 
     expect(second.bindTxnId).toBe(first.bindTxnId);
     expect(second.shareTxnId).toBe(first.shareTxnId);
+
+    const rows = await txnsFor("prt_3");
+    const bindRows = rows.filter((r) => r.kind === "bind");
+    expect(bindRows.length).toBe(1);
   });
 
   it("rejects binding for a suspended partner", async () => {

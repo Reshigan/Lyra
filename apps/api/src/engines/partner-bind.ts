@@ -1,6 +1,7 @@
 import { audit, conflict, emit, type Ctx } from "@lyra/core";
 import { id as newId, schema } from "@lyra/db";
 import { buildRecipe, runTxn } from "@lyra/ledger";
+import { and, eq } from "drizzle-orm";
 import { must } from "../rows.js";
 
 export interface PartnerBindResult {
@@ -53,6 +54,35 @@ export async function bindPartner(ctx: Ctx, partnerId: string, quoteId: string):
       },
       { recipe: { lines: buildRecipe("RSHARE-ACCR", { amountMinor: shareMinor }), currency: quote.currency } }
     );
+  }
+
+  // Retry after a dropped response replays the same idempotencyKey, so
+  // runTxn above returns the same bindTxn — but the row/audit/emit below are
+  // not naturally idempotent, so guard them explicitly on that existing row.
+  const existing = await ctx.db
+    .select()
+    .from(schema.orbitPartnerTxns)
+    .where(
+      and(
+        eq(schema.orbitPartnerTxns.tenantId, ctx.tenantId),
+        eq(schema.orbitPartnerTxns.partnerId, partnerId),
+        eq(schema.orbitPartnerTxns.kind, "bind"),
+        eq(schema.orbitPartnerTxns.txnRef, bindTxn.id)
+      )
+    );
+  const bindRow = existing[0];
+
+  if (bindRow) {
+    return {
+      id: bindRow.id,
+      partnerId: bindRow.partnerId,
+      quoteId,
+      bindTxnId: bindTxn.id,
+      shareTxnId: shareTxn?.id ?? null,
+      grossMinor: bindRow.amountMinor,
+      shareMinor: bindRow.revshareCalcMinor ?? 0,
+      currency: bindRow.currency
+    };
   }
 
   const id = newId("otx", ctx.now);
