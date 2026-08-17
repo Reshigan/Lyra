@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { PolicyJson, EntitlementsJson, schema } from "@lyra/db";
 import { permissionsForRole, type Actor, type Ctx } from "@lyra/core";
-import { recordUsage, invoiceNumber } from "./billing.js";
+import { recordUsage, invoiceNumber, sweepBilling } from "./billing.js";
 
 // Group C revenue lines (docs/specs revenue lines full build design, task 3):
 // recordUsage() had no real writer, only the schema and a hand-fixtured seed
@@ -45,7 +45,7 @@ async function makeCtx(now = 1_700_000_000_000): Promise<Ctx> {
     requestId: "req_1",
     now,
     locale: "en",
-    policy: PolicyJson.parse({}),
+    policy: PolicyJson.parse({ currency: "USD" }),
     entitlements: EntitlementsJson.parse({})
   };
 }
@@ -130,5 +130,148 @@ describe("invoiceNumber", () => {
   it("derives a stable, human-readable number from id and timestamp", () => {
     const n = invoiceNumber("inv_abcdef123456", Date.parse("2026-08-17T00:00:00Z"));
     expect(n).toMatch(/^INV-\d{8}-123456$/);
+  });
+});
+
+describe("sweepBilling", () => {
+  beforeEach(async () => {
+    client = createClient({ url: ":memory:" });
+    for (const sql of statements()) await client.execute(sql);
+    ctx = await makeCtx();
+  });
+
+  it("raises SUB-INVOICE for subscriptions due, and advances nextInvoiceAt so the row leaves the sweep", async () => {
+    const subId = "sub_due1";
+    await ctx.db.insert(schema.ledgerSubscriptions).values({
+      id: subId,
+      tenantId: ctx.tenantId,
+      customerRef: "cust1",
+      plan: "pro",
+      priceMinor: 10000,
+      currency: "USD",
+      interval: "month",
+      seats: 1,
+      startAt: ctx.now - 1000,
+      nextInvoiceAt: ctx.now - 1000,
+      state: "active",
+      createdAt: ctx.now - 1000,
+      updatedAt: ctx.now - 1000
+    });
+
+    const first = await sweepBilling(ctx);
+    expect(first.invoicesRaised).toBe(1);
+
+    const [sub] = await ctx.db
+      .select()
+      .from(schema.ledgerSubscriptions)
+      .where(eq(schema.ledgerSubscriptions.id, subId));
+    expect(sub?.nextInvoiceAt).toBeGreaterThan(ctx.now - 1000);
+
+    const [invoice] = await ctx.db
+      .select()
+      .from(schema.ledgerInvoices)
+      .where(eq(schema.ledgerInvoices.subscriptionId, subId));
+    expect(invoice?.totalMinor).toBe(10000);
+    expect(invoice?.txnId).toBeTruthy();
+
+    const second = await sweepBilling(ctx);
+    expect(second.invoicesRaised).toBe(0);
+  });
+
+  it("applies OVERAGE when usage exceeds included quantity, once", async () => {
+    const subId = "sub_over1";
+    await ctx.db.insert(schema.ledgerSubscriptions).values({
+      id: subId,
+      tenantId: ctx.tenantId,
+      customerRef: "cust2",
+      plan: "pro",
+      priceMinor: 10000,
+      currency: "USD",
+      interval: "month",
+      seats: 1,
+      startAt: ctx.now - 1000,
+      state: "active",
+      createdAt: ctx.now - 1000,
+      updatedAt: ctx.now - 1000
+    });
+    await recordUsage(ctx, {
+      subscriptionId: subId,
+      meter: "api-calls",
+      period: "2026-08",
+      delta: 1500,
+      includedQuantity: 1000,
+      unitPriceMicro: 1000,
+      idempotencyKey: "usage:over1"
+    });
+
+    const result = await sweepBilling(ctx);
+    expect(result.overagesApplied).toBe(1);
+
+    const again = await sweepBilling(ctx);
+    expect(again.overagesApplied).toBe(0);
+  });
+
+  it("posts SUB-RECOG for scheduled revenue rows due by the current period", async () => {
+    const subId = "sub_recog1";
+    await ctx.db.insert(schema.ledgerSubscriptions).values({
+      id: subId,
+      tenantId: ctx.tenantId,
+      customerRef: "cust3",
+      plan: "pro",
+      priceMinor: 10000,
+      currency: "USD",
+      interval: "month",
+      seats: 1,
+      startAt: ctx.now - 1000,
+      nextInvoiceAt: ctx.now - 1000,
+      state: "active",
+      createdAt: ctx.now - 1000,
+      updatedAt: ctx.now - 1000
+    });
+    const first = await sweepBilling(ctx); // raises the invoice + schedule row for the current period
+    expect(first.invoicesRaised).toBe(1);
+
+    const [scheduleAfterFirst] = await ctx.db
+      .select()
+      .from(schema.ledgerRevenueSchedules)
+      .where(eq(schema.ledgerRevenueSchedules.tenantId, ctx.tenantId));
+    expect(scheduleAfterFirst).toBeDefined();
+    expect(scheduleAfterFirst?.state).toBe("scheduled");
+
+    // Advance time to the next month so the schedule becomes due
+    const nextMonthCtx = await makeCtx(ctx.now + 32 * 24 * 60 * 60 * 1000);
+    const result = await sweepBilling(nextMonthCtx);
+    expect(result.recognitionsPosted).toBe(1);
+
+    const [schedule] = await ctx.db
+      .select()
+      .from(schema.ledgerRevenueSchedules)
+      .where(eq(schema.ledgerRevenueSchedules.tenantId, ctx.tenantId));
+    expect(schedule?.state).toBe("recognized");
+    expect(schedule?.txnId).toBeTruthy();
+  });
+
+  it("is bounded-bite: a processed row never reappears in the same-tick result set (ADR-0050)", async () => {
+    for (let i = 0; i < 3; i++) {
+      await ctx.db.insert(schema.ledgerSubscriptions).values({
+        id: `sub_bite_${i}`,
+        tenantId: ctx.tenantId,
+        customerRef: `cust_bite_${i}`,
+        plan: "pro",
+        priceMinor: 5000,
+        currency: "USD",
+        interval: "month",
+        seats: 1,
+        startAt: ctx.now - 1000,
+        nextInvoiceAt: ctx.now - 1000,
+        state: "active",
+        createdAt: ctx.now - 1000,
+        updatedAt: ctx.now - 1000
+      });
+    }
+    const result = await sweepBilling(ctx);
+    expect(result.invoicesRaised).toBe(3);
+    const rerun = await sweepBilling(ctx);
+    expect(rerun.invoicesRaised).toBe(0);
   });
 });

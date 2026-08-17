@@ -5,6 +5,7 @@ import { drainOutbox, deliverQueued } from "./dispatch.js";
 import { sweepPolicyLifecycle } from "./engines/axis-lifecycle.js";
 import { sweepRenewals } from "./engines/renewals.js";
 import { sweepRouting } from "./engines/orbit-routing.js";
+import { sweepBilling } from "./engines/billing.js";
 import { sweepConversationDrafts } from "./engines/orbit-draft.js";
 import { runSnapshotter } from "./engines/north-snapshotter.js";
 import { backupTenant } from "./engines/backup.js";
@@ -192,6 +193,7 @@ export default {
             // agent went quiet, requeued — before anything else touches assignment
             // state this tick.
             await sweepRouting(ctx);
+            await sweepBilling(ctx);
             await runBudgetAutopilot(ctx);
             await runDueSchedules(ctx, env.FILES, env.BROWSER);
             // A delegation that has run out must stop showing as active, or every

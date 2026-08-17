@@ -1,7 +1,8 @@
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq, isNull, lt, lte } from "drizzle-orm";
 import { id as newId, schema } from "@lyra/db";
-import { runTxn } from "@lyra/ledger";
+import { buildRecipe, runTxn } from "@lyra/ledger";
 import { emit, scoped, type Ctx } from "@lyra/core";
+import { SWEEP_MAX } from "./sweep.js";
 
 /** `INV-YYYYMMDD-<last6ofId>`, mirrors axis-fnol.ts's claimNumber() shape. */
 export function invoiceNumber(invoiceId: string, now: number): string {
@@ -105,4 +106,234 @@ export async function recordUsage(
   }
 
   return { meterId, quantity };
+}
+
+const MONTH_MS = 30 * 24 * 60 * 60 * 1000;
+
+function currentPeriod(now: number): string {
+  const d = new Date(now);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+async function raiseInvoices(ctx: Ctx): Promise<number> {
+  const due = await ctx.db
+    .select()
+    .from(schema.ledgerSubscriptions)
+    .where(
+      scoped(
+        ctx,
+        schema.ledgerSubscriptions,
+        eq(schema.ledgerSubscriptions.state, "active"),
+        lte(schema.ledgerSubscriptions.nextInvoiceAt, ctx.now)
+      )
+    )
+    .orderBy(asc(schema.ledgerSubscriptions.nextInvoiceAt))
+    .limit(SWEEP_MAX);
+
+  let count = 0;
+  for (const sub of due) {
+    const invoiceId = newId("inv", ctx.now);
+    const period = currentPeriod(ctx.now);
+    const netMinor = sub.priceMinor;
+    const idempotencyKey = `sub-invoice:${sub.id}:${period}`;
+
+    const txn = await runTxn(
+      ctx,
+      {
+        type: "SUB-INVOICE",
+        idempotencyKey,
+        currency: sub.currency,
+        grossMinor: netMinor,
+        subjectRefs: { subscriptionId: sub.id, customerRef: sub.customerRef }
+      },
+      { recipe: { lines: buildRecipe("SUB-INVOICE", { netMinor }), currency: sub.currency } }
+    );
+
+    await ctx.db.insert(schema.ledgerInvoices).values({
+      id: invoiceId,
+      tenantId: ctx.tenantId,
+      number: invoiceNumber(invoiceId, ctx.now),
+      customerRef: sub.customerRef,
+      subscriptionId: sub.id,
+      subtotalMinor: netMinor,
+      totalMinor: netMinor,
+      currency: sub.currency,
+      linesJson: JSON.stringify([{ description: `${sub.plan} subscription`, amountMinor: netMinor }]),
+      state: "issued",
+      issuedAt: ctx.now,
+      txnId: txn?.id,
+      createdAt: ctx.now,
+      updatedAt: ctx.now
+    });
+
+    await ctx.db.insert(schema.ledgerRevenueSchedules).values({
+      id: newId("sch", ctx.now),
+      tenantId: ctx.tenantId,
+      invoiceId,
+      accountCode: "2300",
+      period,
+      plannedMinor: netMinor,
+      currency: sub.currency,
+      state: "scheduled"
+    });
+
+    await ctx.db
+      .update(schema.ledgerSubscriptions)
+      .set({ nextInvoiceAt: ctx.now + MONTH_MS, updatedAt: ctx.now })
+      .where(scoped(ctx, schema.ledgerSubscriptions, eq(schema.ledgerSubscriptions.id, sub.id)));
+
+    await emit(ctx, {
+      module: "ledger",
+      type: "billing.invoice.raised",
+      subject: invoiceId,
+      data: { subscriptionId: sub.id, netMinor, currency: sub.currency, txnId: txn?.id }
+    });
+    count++;
+  }
+  return count;
+}
+
+async function applyOverages(ctx: Ctx): Promise<number> {
+  const meters = await ctx.db
+    .select()
+    .from(schema.ledgerUsageMeters)
+    .where(
+      scoped(
+        ctx,
+        schema.ledgerUsageMeters,
+        isNull(schema.ledgerUsageMeters.overageInvoicedAt),
+        lt(schema.ledgerUsageMeters.includedQuantity, schema.ledgerUsageMeters.quantity)
+      )
+    )
+    .orderBy(asc(schema.ledgerUsageMeters.updatedAt))
+    .limit(SWEEP_MAX);
+
+  let count = 0;
+  for (const meter of meters) {
+    const overageUnits = meter.quantity - meter.includedQuantity;
+    const netMinor = Math.ceil((overageUnits * meter.unitPriceMicro) / 1_000_000);
+    if (netMinor <= 0) continue;
+
+    const invoiceId = newId("inv", ctx.now);
+    const idempotencyKey = `overage:${meter.id}`;
+    const currency = "USD";
+
+    const txn = await runTxn(
+      ctx,
+      {
+        type: "OVERAGE",
+        idempotencyKey,
+        currency,
+        grossMinor: netMinor,
+        subjectRefs: { subscriptionId: meter.subscriptionId ?? "", meter: meter.meter, period: meter.period }
+      },
+      { recipe: { lines: buildRecipe("OVERAGE", { netMinor }), currency } }
+    );
+
+    await ctx.db.insert(schema.ledgerInvoices).values({
+      id: invoiceId,
+      tenantId: ctx.tenantId,
+      number: invoiceNumber(invoiceId, ctx.now),
+      customerRef: meter.subscriptionId ?? "unknown",
+      subscriptionId: meter.subscriptionId,
+      subtotalMinor: netMinor,
+      totalMinor: netMinor,
+      currency,
+      linesJson: JSON.stringify([{ description: `${meter.meter} overage (${overageUnits} units)`, amountMinor: netMinor }]),
+      state: "issued",
+      issuedAt: ctx.now,
+      txnId: txn?.id,
+      createdAt: ctx.now,
+      updatedAt: ctx.now
+    });
+
+    await ctx.db.insert(schema.ledgerRevenueSchedules).values({
+      id: newId("sch", ctx.now),
+      tenantId: ctx.tenantId,
+      invoiceId,
+      accountCode: "4050",
+      period: meter.period,
+      plannedMinor: netMinor,
+      currency,
+      state: "scheduled"
+    });
+
+    await ctx.db
+      .update(schema.ledgerUsageMeters)
+      .set({ overageInvoicedAt: ctx.now, updatedAt: ctx.now })
+      .where(scoped(ctx, schema.ledgerUsageMeters, eq(schema.ledgerUsageMeters.id, meter.id)));
+
+    await emit(ctx, {
+      module: "ledger",
+      type: "billing.overage.applied",
+      subject: invoiceId,
+      data: { meterId: meter.id, netMinor, txnId: txn?.id }
+    });
+    count++;
+  }
+  return count;
+}
+
+async function postRecognitions(ctx: Ctx): Promise<number> {
+  const period = currentPeriod(ctx.now);
+  const due = await ctx.db
+    .select()
+    .from(schema.ledgerRevenueSchedules)
+    .where(
+      scoped(
+        ctx,
+        schema.ledgerRevenueSchedules,
+        eq(schema.ledgerRevenueSchedules.state, "scheduled"),
+        lt(schema.ledgerRevenueSchedules.period, period)
+      )
+    )
+    .orderBy(asc(schema.ledgerRevenueSchedules.period))
+    .limit(SWEEP_MAX);
+
+  let count = 0;
+  for (const row of due) {
+    const idempotencyKey = `sub-recog:${row.id}`;
+    const incomeAccount = row.accountCode === "4050" ? "4040" : "4040";
+
+    const txn = await runTxn(
+      ctx,
+      {
+        type: "SUB-RECOG",
+        idempotencyKey,
+        currency: row.currency,
+        grossMinor: row.plannedMinor,
+        subjectRefs: { invoiceId: row.invoiceId }
+      },
+      {
+        recipe: {
+          lines: buildRecipe("SUB-RECOG", { amountMinor: row.plannedMinor, incomeAccount }),
+          currency: row.currency
+        }
+      }
+    );
+
+    await ctx.db
+      .update(schema.ledgerRevenueSchedules)
+      .set({ state: "recognized", recognizedMinor: row.plannedMinor, txnId: txn?.id })
+      .where(scoped(ctx, schema.ledgerRevenueSchedules, eq(schema.ledgerRevenueSchedules.id, row.id)));
+
+    await emit(ctx, {
+      module: "ledger",
+      type: "billing.revenue.recognized",
+      subject: row.id,
+      data: { invoiceId: row.invoiceId, amountMinor: row.plannedMinor, txnId: txn?.id }
+    });
+    count++;
+  }
+  return count;
+}
+
+/** Bounded-bite sweep (ADR-0050): invoices due subscriptions, applies pending overages, posts due recognitions. */
+export async function sweepBilling(
+  ctx: Ctx
+): Promise<{ invoicesRaised: number; overagesApplied: number; recognitionsPosted: number }> {
+  const invoicesRaised = await raiseInvoices(ctx);
+  const overagesApplied = await applyOverages(ctx);
+  const recognitionsPosted = await postRecognitions(ctx);
+  return { invoicesRaised, overagesApplied, recognitionsPosted };
 }
