@@ -184,7 +184,7 @@ async function raiseInvoices(ctx: Ctx): Promise<number> {
 
     await emit(ctx, {
       module: "ledger",
-      type: "billing.invoice.raised",
+      type: "ledger.invoice.raised",
       subject: invoiceId,
       data: { subscriptionId: sub.id, netMinor, currency: sub.currency, txnId: txn?.id }
     });
@@ -265,7 +265,7 @@ async function applyOverages(ctx: Ctx): Promise<number> {
 
     await emit(ctx, {
       module: "ledger",
-      type: "billing.overage.applied",
+      type: "ledger.overage.applied",
       subject: invoiceId,
       data: { meterId: meter.id, netMinor, txnId: txn?.id }
     });
@@ -319,7 +319,7 @@ async function postRecognitions(ctx: Ctx): Promise<number> {
 
     await emit(ctx, {
       module: "ledger",
-      type: "billing.revenue.recognized",
+      type: "ledger.revenue.recognized",
       subject: row.id,
       data: { invoiceId: row.invoiceId, amountMinor: row.plannedMinor, txnId: txn?.id }
     });
