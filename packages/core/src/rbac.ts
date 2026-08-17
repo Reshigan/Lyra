@@ -226,6 +226,7 @@ export const PERMISSIONS = [
   "compliance:dsar:read", "compliance:dsar:create", "compliance:dsar:fulfil",
   "compliance:erasure:execute",
   "compliance:disclosures:read",
+  "compliance:disclosures:present",
   "compliance:screenings:read", "compliance:screenings:run",
   "compliance:retention:read", "compliance:retention:run",
   "compliance:legal_holds:read", "compliance:legal_holds:write",
@@ -379,7 +380,8 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     "dist:channels:read", "dist:offerings:read", "dist:rates:read",
     "dist:ai:invoke", "dist:quote_requests:read", "dist:quote_requests:create", "dist:quote_requests:share",
     "dist:quote_requests:select",
-    "dist:commissions:read", "dist:offers:read", "dist:offers:surface", "dist:offers:override"
+    "dist:commissions:read", "dist:offers:read", "dist:offers:surface", "dist:offers:override",
+    "compliance:disclosures:present"
   ],
   "axis.admin": [
     "axis:*:*", "ai:suggestions:read", "core:customers:*", "core:products:*", "core:providers:*",
@@ -467,7 +469,8 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     "core:files:read", "core:files:create",
     "ledger:txns:read", "analytics:reports:read", "analytics:reports:run",
     "analytics:exports:create", "analytics:exports:download",
-    "analytics:saved_views:read", "analytics:saved_views:write"
+    "analytics:saved_views:read", "analytics:saved_views:write",
+    "compliance:disclosures:present"
   ],
   "signal.admin": [
     "signal:*:*", "ai:suggestions:read", "core:consents:read", "core:files:*", "core:approvals:read",
