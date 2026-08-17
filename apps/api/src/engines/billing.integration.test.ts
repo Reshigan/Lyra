@@ -280,16 +280,27 @@ describe("overage billing survives a crash mid-tick", () => {
     const usage = { subscriptionId: subId, meter: "api-calls", period: "2026-01", includedQuantity: 10000, unitPriceMicro: 1_000_000 };
     await recordUsage(ctx, { ...usage, delta: 12000, idempotencyKey: "crash1:usage:1" });
 
-    // The crash: the engine's own meter update is the last write of the tick, so
-    // aborting it reproduces a worker dying between posting the OVERAGE
-    // transaction and recording which units that transaction covered.
+    // The crash: applyOverages claims the units (updates the meter) before it
+    // calls runTxn, so aborting that claim write reproduces a worker dying
+    // before the OVERAGE transaction is ever posted. Per-meter isolation
+    // (C3) catches this locally — it no longer takes the whole sweep down —
+    // so the claimed-but-unposted units simply stay unclaimed for the retry.
     await client.execute("CREATE TRIGGER crash_meter BEFORE UPDATE ON ledger_usage_meters BEGIN SELECT RAISE(ABORT, 'crash'); END");
-    await expect(sweepBilling(ctx)).rejects.toThrow();
+    await sweepBilling(ctx);
     await client.execute("DROP TRIGGER crash_meter");
 
-    // More usage arrives before the retry, so the retry's cumulative
-    // idempotency key differs from the one the lost tick used and does not
-    // replay it — it bills a fresh transaction for units already invoiced.
+    // Nothing was claimed or posted on the crashed tick: the meter's claim
+    // write is the first write in applyOverages, so aborting it means runTxn
+    // is never reached and no OVERAGE transaction exists yet.
+    const invoicesAfterCrash = await ctx.db
+      .select()
+      .from(schema.ledgerInvoices)
+      .where(eq(schema.ledgerInvoices.tenantId, ctx.tenantId));
+    expect(invoicesAfterCrash).toHaveLength(0);
+
+    // More usage arrives before the retry. Because the crashed tick never
+    // claimed or billed anything, the retry sees the full 13,000 units and
+    // bills the whole 3,000-unit overage exactly once.
     await recordUsage(ctx, { ...usage, delta: 1000, idempotencyKey: "crash1:usage:2" });
     await sweepBilling(ctx);
 
@@ -299,7 +310,7 @@ describe("overage billing survives a crash mid-tick", () => {
       .where(eq(schema.ledgerInvoices.tenantId, ctx.tenantId));
     const billedUnits = invoices.reduce((s, i) => s + i.totalMinor, 0);
     // 13,000 used, 10,000 included: 3,000 units of overage exist and at most
-    // 3,000 may ever be billed. Under-billing after a crash is the accepted
+    // 3,000 may ever be billed. Under-billing after a crash is an accepted
     // outcome; billing 5,000 is not.
     expect(billedUnits).toBeLessThanOrEqual(3000);
   });

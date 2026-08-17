@@ -977,6 +977,23 @@ describe("deliverDataProduct", () => {
     expect(creditLine).toBeTruthy();
   });
 
+  it("invoices in the tenant's own currency, not a hard-coded USD", async () => {
+    const eurCtx: Ctx = { ...ctx, policy: PolicyJson.parse({ currency: "EUR" }) };
+    const result = await deliverDataProduct(eurCtx, {
+      dataProductId: "dp1",
+      subscriberRef: "partner1",
+      cellCount: 50,
+      netMinor: 50000,
+      idempotencyKey: "dprod-deliver:dp1:eur"
+    });
+
+    const [invoice] = await ctx.db
+      .select()
+      .from(schema.ledgerInvoices)
+      .where(eq(schema.ledgerInvoices.id, result.invoiceId));
+    expect(invoice?.currency).toBe("EUR");
+  });
+
   it("writes one invoice and one schedule however many times a delivery is replayed", async () => {
     const args = {
       dataProductId: "dp1",

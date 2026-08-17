@@ -620,7 +620,11 @@ export async function deliverDataProduct(
     { args: { dataProductId: args.dataProductId, cellCount: args.cellCount } }
   );
 
-  const currency = "USD";
+  // The tenant's own reporting currency, not a literal-coded one: the data
+  // product schema (scout.ts) carries no per-product currency, so this is the
+  // only correct source (same as the other billing paths). Since it's always
+  // the posting base currency, fxRateFor trivially resolves — no guard needed.
+  const currency = ctx.policy.currency;
   const period = currentPeriod(ctx.now);
 
   const invoiceTxn = await runTxn(
