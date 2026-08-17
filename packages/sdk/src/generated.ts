@@ -1650,6 +1650,7 @@ export interface LedgerUsageMeters {
   quantity?: number;
   includedQuantity?: number;
   unitPriceMicro?: number;
+  overageInvoicedQuantity?: number;
   overageInvoicedAt?: number;
   updatedAt?: number;
 }

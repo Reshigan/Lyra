@@ -347,6 +347,9 @@ export const usageMeters = sqliteTable(
     quantity: integer("quantity").notNull().default(0),
     includedQuantity: integer("included_quantity").notNull().default(0),
     unitPriceMicro: integer("unit_price_micro").notNull().default(0),
+    /** Overage units already invoiced, so a later tick bills only the new ones. */
+    overageInvoicedQuantity: integer("overage_invoiced_quantity").notNull().default(0),
+    /** Set once the period is closed and no further overage can arrive for it. */
     overageInvoicedAt: integer("overage_invoiced_at"),
     updatedAt: integer("updated_at").notNull()
   },
