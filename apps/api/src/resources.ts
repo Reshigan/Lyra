@@ -786,11 +786,15 @@ export const LEDGER = register(
   r("subscriptions", schema.ledgerSubscriptions, "sub", "ledger", rw("admin:billing"), {
     // A subscription with no `next_invoice_at` is never invoiced at all: the
     // sweep filters on `next_invoice_at <= now` and in SQL a NULL comparison is
-    // NULL, not true. The first invoice is due when the term starts, so that is
-    // the default — callers may still name their own date.
-    beforeWrite: (_ctx, values, existing) => {
+    // NULL, not true. So it gets a default — but not `start_at`, which for a
+    // back-dated term (a migrated customer, a contract signed last quarter) has
+    // the sweep catch up every period since, billing months somebody has already
+    // invoiced by hand. Due now, or when the term starts if that is still ahead;
+    // callers may still name their own date. Same not-yet-due rule migration 0026
+    // uses to backfill existing rows.
+    beforeWrite: (ctx, values, existing) => {
       if (existing || values.nextInvoiceAt != null) return values;
-      return { ...values, nextInvoiceAt: values.startAt };
+      return { ...values, nextInvoiceAt: Math.max(values.startAt as number, ctx.now) };
     }
   }),
   r("invoices", schema.ledgerInvoices, "inv", "ledger", {
