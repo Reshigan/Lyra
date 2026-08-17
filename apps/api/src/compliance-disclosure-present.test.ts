@@ -78,7 +78,8 @@ describe("compliance disclosure present (docs/superpowers/specs/2026-08-16-reven
         subjectRef: "campaign:xyz",
         key: "ad_placement",
         wording: "This is a sponsored placement.",
-        channel: "web"
+        channel: "web",
+        idempotencyKey: "dsc:campaign-xyz:1"
       }),
       201
     );
@@ -97,5 +98,32 @@ describe("compliance disclosure present (docs/superpowers/specs/2026-08-16-reven
       .from(schema.auditLog)
       .where(and(eq(schema.auditLog.tenantId, seeded.tenantId), eq(schema.auditLog.action, "compliance.disclosure.present")));
     expect(audits.some((a) => a.subjectRef === "campaign:xyz")).toBe(true);
+  });
+
+  it("posts a DISCLOSURE-PRESENT ledger transaction linked by the request's idempotency key", async () => {
+    const out = ok(
+      await call("POST", "/v1/compliance/disclosures/present", {
+        subjectRef: "campaign:ledger-check",
+        key: "ad_placement",
+        wording: "This is a sponsored placement.",
+        channel: "web",
+        idempotencyKey: "dsc:campaign-ledger-check:1"
+      }),
+      201
+    );
+    expect(out.subjectRef).toBe("campaign:ledger-check");
+
+    const txns = await database
+      .select()
+      .from(schema.ledgerTxns)
+      .where(
+        and(
+          eq(schema.ledgerTxns.tenantId, seeded.tenantId),
+          eq(schema.ledgerTxns.type, "DISCLOSURE-PRESENT"),
+          eq(schema.ledgerTxns.idempotencyKey, "dsc:campaign-ledger-check:1")
+        )
+      );
+    expect(txns.length).toBe(1);
+    expect(txns[0]?.state).toBe("settled");
   });
 });

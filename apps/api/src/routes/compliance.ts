@@ -15,7 +15,7 @@ import {
   withIdempotency,
   type Ctx
 } from "@lyra/core";
-import type { ReportTable } from "@lyra/ledger";
+import { runTxn, type ReportTable } from "@lyra/ledger";
 import { meterEgress } from "../engines/egress.js";
 import { render } from "../engines/export/render.js";
 import { utf8, zip } from "../engines/export/zip.js";
@@ -193,7 +193,8 @@ const DisclosurePresentBody = z
     wordingRef: z.string().min(1).max(200).optional(),
     criteria: z.record(z.string(), z.unknown()).optional(),
     channel: z.string().min(1).max(64),
-    customerId: z.string().min(1).max(64).optional()
+    customerId: z.string().min(1).max(64).optional(),
+    idempotencyKey: z.string().min(1).max(200)
   })
   .strict();
 
@@ -225,7 +226,18 @@ complianceRoutes.post("/disclosures/present", async (c) => {
     subject: input.subjectRef,
     data: { disclosureId: row.id, key: row.key, channel: row.channel }
   });
-  return c.json(row, 201);
+
+  // DISCLOSURE-PRESENT is non-financial (docs/19 §4: ⊘, financial: false) — the
+  // disclosure itself, inserted above, is the evidence AD-PLACEMENT's
+  // precondition reads; this is the audited, idempotent, reversible envelope
+  // every business fact gets, posting no journal (same shape as REFERRAL-QUAL).
+  const txn = await runTxn(ctx, {
+    type: "DISCLOSURE-PRESENT",
+    idempotencyKey: input.idempotencyKey,
+    subjectRefs: { subject: input.subjectRef, ...(input.customerId ? { customer: input.customerId } : {}) }
+  });
+
+  return c.json({ ...row, txn }, 201);
 });
 
 /* ------------------------------------------------------- evidence bundles */

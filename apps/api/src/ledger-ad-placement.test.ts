@@ -95,7 +95,8 @@ describe("AD-PLACEMENT precondition (docs/superpowers/specs/2026-08-16-revenue-l
         subjectRef: "campaign:ready",
         key: "ad_placement",
         wording: "This is a sponsored placement.",
-        channel: "web"
+        channel: "web",
+        idempotencyKey: "dsc:campaign-ready:1"
       }),
       201
     );
@@ -118,7 +119,8 @@ describe("AD-PLACEMENT precondition (docs/superpowers/specs/2026-08-16-revenue-l
         subjectRef: "campaign:decoy",
         key: "ad_placement",
         wording: "This is a sponsored placement.",
-        channel: "web"
+        channel: "web",
+        idempotencyKey: "dsc:campaign-decoy:1"
       }),
       201
     );
