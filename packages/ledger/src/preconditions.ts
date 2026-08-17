@@ -1,6 +1,6 @@
 import { and, eq, like } from "drizzle-orm";
 import { schema } from "@lyra/db";
-import { conflict, type Ctx } from "@lyra/core";
+import { checkKAnonymity, conflict, type Ctx } from "@lyra/core";
 
 // docs/specs/gap-finance-design.md D2/D3. Some transactions are illegal because
 // of what is already in the ledger, not because of their own arguments: a second
@@ -77,11 +77,48 @@ const yearNotAlreadyClosed: Precondition = async (ctx, args) => {
   }
 };
 
+function requireString(args: Record<string, unknown>, key: string): string {
+  const v = args[key];
+  if (typeof v !== "string" || !v) throw conflict(`${key} is required`);
+  return v;
+}
+
+function requireNumber(args: Record<string, unknown>, key: string): number {
+  const v = args[key];
+  if (typeof v !== "number" || !Number.isFinite(v)) throw conflict(`${key} is required`);
+  return v;
+}
+
+/**
+ * docs/19 §5.2 F: a data-product delivery whose result set is too small to
+ * anonymise must be refused before any transaction is opened — the caller
+ * supplies the query's own cell count via `args`, the product supplies its
+ * own floor via `aggregationMin` (docs/03 §SCOUT).
+ */
+const dataProductKAnonymity: Precondition = async (ctx, args) => {
+  const dataProductId = requireString(args, "dataProductId");
+  const cellCount = requireNumber(args, "cellCount");
+  const [product] = await ctx.db
+    .select({ aggregationMin: schema.scoutDataProducts.aggregationMin })
+    .from(schema.scoutDataProducts)
+    .where(
+      and(eq(schema.scoutDataProducts.tenantId, ctx.tenantId), eq(schema.scoutDataProducts.id, dataProductId))
+    );
+  if (!product) throw conflict(`data product ${dataProductId} not found`);
+  const result = checkKAnonymity(cellCount, product.aggregationMin);
+  if (!result.allowed) {
+    throw conflict(
+      `k-anonymity floor not met: ${result.cellCount} cells below floor of ${result.floor}`
+    );
+  }
+};
+
 /** Every check that must pass before a transaction of this type may proceed. */
 export const TXN_PRECONDITIONS: Record<string, Precondition> = {
   "OPEN-BAL": firstOpeningBalanceOnly,
   "YEAR-END-CLOSE": async (ctx, args) => {
     await yearNotAlreadyClosed(ctx, args);
     await fiscalYearSoftClosed(ctx, args);
-  }
+  },
+  "DPROD-DELIVER": dataProductKAnonymity
 };
