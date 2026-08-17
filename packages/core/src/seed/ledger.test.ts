@@ -1067,7 +1067,7 @@ describe("revenue schedules", () => {
     expect(rows[0]!.currency).toBe("USD");
   });
 
-  it("Meridian's February row is scheduled, nothing recognized yet", async () => {
+  it("Meridian's February row is cancelled with the term, never recognized", async () => {
     const invMeridianJan = await invoiceByNumber(`INV-${THIS_MONTH.replace("-", "")}-0052`);
     const [row] = await db
       .select()
@@ -1075,7 +1075,10 @@ describe("revenue schedules", () => {
       .where(eq(schema.ledgerRevenueSchedules.invoiceId, invMeridianJan.id));
     expect(row!.plannedMinor).toBe(1_800_000);
     expect(row!.recognizedMinor).toBe(0);
-    expect(row!.state).toBe("scheduled");
+    // Gulf Health cancelled mid-term and this invoice posted no journal, so
+    // nothing was ever deferred for the sweep to release: left `scheduled` the
+    // recognition sweep drove deferred revenue 2300 negative on this invoice.
+    expect(row!.state).toBe("cancelled");
   });
 });
 

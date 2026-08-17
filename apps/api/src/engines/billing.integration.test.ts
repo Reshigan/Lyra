@@ -5,7 +5,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { PolicyJson, EntitlementsJson, schema } from "@lyra/db";
-import { permissionsForRole, type Actor, type Ctx } from "@lyra/core";
+import { permissionsForRole, seed, type Actor, type Ctx } from "@lyra/core";
 import { recordUsage, sweepBilling } from "./billing.js";
 
 // Group C revenue lines, task 7: worked-example integration test proving the
@@ -97,6 +97,52 @@ async function assertLedgerInvariants(ctx: Ctx, at: string): Promise<void> {
   expect(deferred, `${at}: deferred revenue 2300 is negative (${deferred})`).toBeGreaterThanOrEqual(0);
 }
 
+/**
+ * The same invariant, per invoice. Deferred revenue is a liability owed on one
+ * invoice at a time and the account total hides that: an invoice that releases
+ * revenue it never deferred nets away against the next invoice's fresh credit,
+ * so 2300 stays comfortably positive while a customer's revenue is recognised
+ * out of nothing. A recognition transaction names its invoice in `subjectRefs`
+ * and an invoice row names its own posting, so every 2300 line can be attributed.
+ */
+async function assertDeferredPerInvoice(ctx: Ctx, at: string): Promise<void> {
+  const txns = await ctx.db.select().from(schema.ledgerTxns).where(eq(schema.ledgerTxns.tenantId, ctx.tenantId));
+  const invoices = await ctx.db
+    .select()
+    .from(schema.ledgerInvoices)
+    .where(eq(schema.ledgerInvoices.tenantId, ctx.tenantId));
+
+  const invoiceOfTxn = new Map<string, string>();
+  for (const inv of invoices) if (inv.txnId) invoiceOfTxn.set(inv.txnId, inv.id);
+  for (const t of txns) {
+    const ref = t.subjectRefsJson ? (JSON.parse(t.subjectRefsJson) as { invoiceId?: string }) : {};
+    if (ref.invoiceId) invoiceOfTxn.set(t.id, ref.invoiceId);
+  }
+
+  const lines = await ctx.db
+    .select()
+    .from(schema.ledgerJournalLines)
+    .where(eq(schema.ledgerJournalLines.tenantId, ctx.tenantId));
+
+  const perInvoice = new Map<string, number>();
+  for (const l of lines) {
+    if (l.accountCode !== "2300") continue;
+    // ponytail: a 2300 line on a transaction that names no invoice cannot be
+    // attributed, so it is left to the account-level check above.
+    const invoiceId = invoiceOfTxn.get(l.txnId);
+    if (!invoiceId) continue;
+    const delta = l.side === "credit" ? l.amountMinor : -l.amountMinor;
+    perInvoice.set(invoiceId, (perInvoice.get(invoiceId) ?? 0) + delta);
+  }
+
+  for (const [invoiceId, deferred] of perInvoice) {
+    expect(
+      deferred,
+      `${at}: invoice ${invoiceId} released ${-deferred} more deferred revenue than it deferred`
+    ).toBeGreaterThanOrEqual(0);
+  }
+}
+
 describe("ledger invariants across sweeps and calendar months", () => {
   it("never double-bills, never drives 2300 negative, never recognises more than invoiced", async () => {
     // Real calendar dates, and meter periods that match the clock — the existing
@@ -166,6 +212,40 @@ describe("ledger invariants across sweeps and calendar months", () => {
     const recognised = schedules.reduce((s, r) => s + r.recognizedMinor, 0);
     const invoiced = invoices.reduce((s, i) => s + i.subtotalMinor, 0);
     expect(recognised, "recognised more revenue than was invoiced").toBeLessThanOrEqual(invoiced);
+  });
+});
+
+describe("the shipped seed's own tenant", () => {
+  it("never drives deferred revenue 2300 negative, however long the sweep runs", async () => {
+    // Every test above builds its own two-row fixture, so the invariant has only
+    // ever been checked against data written by the engine itself. The seed is
+    // the demo, the e2e fixture and the provisioning template — a hand-fixtured
+    // revenue schedule with nothing deferred behind it releases revenue out of a
+    // liability that was never credited, and only running the real tenant
+    // through the real sweep finds it.
+    client = createClient({ url: ":memory:" });
+    for (const sql of statements()) await client.execute(sql);
+    const seeded = await seed(drizzle(client) as never);
+
+    const base: Ctx = {
+      ...(await makeCtx()),
+      tenantId: seeded.tenantId,
+      // What the cron handler builds (index.ts): the policy defaults, not the
+      // subscription's currency.
+      policy: PolicyJson.parse({})
+    };
+    base.actor.tenantId = seeded.tenantId;
+
+    // The seed's clock is 2026-01-06; a year of month-end ticks takes every
+    // schedule row it ships past its own period and into the recognition path.
+    const start = Date.UTC(2026, 0, 6, 8, 0, 0);
+    for (let month = 0; month <= 12; month++) {
+      const tick: Ctx = { ...base, now: Date.UTC(2026, month, 28, 8, 0, 0) };
+      const at = `seed tenant, month ${month} (from ${new Date(start).toISOString()})`;
+      await sweepBilling(tick);
+      await assertLedgerInvariants(tick, at);
+      await assertDeferredPerInvoice(tick, at);
+    }
   });
 });
 

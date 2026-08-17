@@ -1263,7 +1263,11 @@ export async function seedLedger(ctx: SeedContext): Promise<void> {
       state: "scheduled"
     },
     {
-      // Gulf Health cancelled mid-term, so the unearned months are cancelled too.
+      // Gulf Health cancelled mid-term, so the unearned months are cancelled
+      // too — and the row has to say so. Left `scheduled` it stayed due, and the
+      // recognition sweep released 1,800,000 out of deferred revenue that this
+      // invoice never posted (invMeridianJan carries no txnId at all), so 2300
+      // went negative on its own invoice the moment February closed.
       id: nid("rev"),
       tenantId,
       invoiceId: invMeridianJan,
@@ -1272,7 +1276,7 @@ export async function seedLedger(ctx: SeedContext): Promise<void> {
       plannedMinor: 1_800_000,
       recognizedMinor: 0,
       currency: BASE,
-      state: "scheduled"
+      state: "cancelled"
     }
   ]);
 
