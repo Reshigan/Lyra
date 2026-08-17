@@ -64,7 +64,7 @@ beforeAll(async () => {
   env = { DB_CLIENT: database, ENVIRONMENT: "development", APP_ORIGIN: "http://localhost:5173" } as unknown as Env;
 
   const login = await call("POST", "/v1/auth/login", {
-    email: "demo@gonxt.ae",
+    email: "faisal.omar@gonxt.ae",
     password: PASSWORD,
     tenantSlug: "gonxt"
   });
@@ -110,5 +110,31 @@ describe("AD-PLACEMENT precondition (docs/superpowers/specs/2026-08-16-revenue-l
       201
     );
     expect(out.txn.state).toBe("settled");
+  });
+
+  it("refuses AD-PLACEMENT when args.subjectRef does not match subjectRefs, even with a fresh disclosure for the mismatched subject", async () => {
+    ok(
+      await call("POST", "/v1/compliance/disclosures/present", {
+        subjectRef: "campaign:decoy",
+        key: "ad_placement",
+        wording: "This is a sponsored placement.",
+        channel: "web"
+      }),
+      201
+    );
+
+    const res = await call("POST", "/v1/ledger/txn/AD-PLACEMENT", {
+      idempotencyKey: "ad-placement-mismatched-subject",
+      currency: "AED",
+      subjectRefs: { campaign: "campaign:real" },
+      args: { grossMinor: 5_000_00, subjectRef: "campaign:decoy" }
+    });
+    expect(res.status).toBe(409);
+
+    const txns = await database
+      .select()
+      .from(schema.ledgerTxns)
+      .where(eq(schema.ledgerTxns.idempotencyKey, "ad-placement-mismatched-subject"));
+    expect(txns.length).toBe(0);
   });
 });
