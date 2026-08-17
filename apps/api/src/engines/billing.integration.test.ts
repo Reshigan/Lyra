@@ -249,6 +249,59 @@ describe("the shipped seed's own tenant", () => {
   });
 });
 
+describe("overage billing survives a crash mid-tick", () => {
+  it("does not bill the same units twice when the meter update is lost", async () => {
+    const jan15 = Date.parse("2026-01-15T00:00:00Z");
+    const ctx = await testCtx(jan15);
+    const subId = "sub_crash1";
+
+    await ctx.db.insert(schema.ledgerSubscriptions).values({
+      id: subId,
+      tenantId: ctx.tenantId,
+      customerRef: "cust_crash1",
+      plan: "growth",
+      priceMinor: 20000,
+      currency: "USD",
+      interval: "month",
+      seats: 1,
+      startAt: jan15,
+      // Far enough out that no subscription invoice joins the overage invoices
+      // this test counts.
+      nextInvoiceAt: jan15 + 365 * 24 * 60 * 60 * 1000,
+      state: "active",
+      createdAt: jan15,
+      updatedAt: jan15
+    });
+
+    // 1 minor per unit, so invoiced minor == overage units billed.
+    const usage = { subscriptionId: subId, meter: "api-calls", period: "2026-01", includedQuantity: 10000, unitPriceMicro: 1_000_000 };
+    await recordUsage(ctx, { ...usage, delta: 12000, idempotencyKey: "crash1:usage:1" });
+
+    // The crash: the engine's own meter update is the last write of the tick, so
+    // aborting it reproduces a worker dying between posting the OVERAGE
+    // transaction and recording which units that transaction covered.
+    await client.execute("CREATE TRIGGER crash_meter BEFORE UPDATE ON ledger_usage_meters BEGIN SELECT RAISE(ABORT, 'crash'); END");
+    await expect(sweepBilling(ctx)).rejects.toThrow();
+    await client.execute("DROP TRIGGER crash_meter");
+
+    // More usage arrives before the retry, so the retry's cumulative
+    // idempotency key differs from the one the lost tick used and does not
+    // replay it — it bills a fresh transaction for units already invoiced.
+    await recordUsage(ctx, { ...usage, delta: 1000, idempotencyKey: "crash1:usage:2" });
+    await sweepBilling(ctx);
+
+    const invoices = await ctx.db
+      .select()
+      .from(schema.ledgerInvoices)
+      .where(eq(schema.ledgerInvoices.tenantId, ctx.tenantId));
+    const billedUnits = invoices.reduce((s, i) => s + i.totalMinor, 0);
+    // 13,000 used, 10,000 included: 3,000 units of overage exist and at most
+    // 3,000 may ever be billed. Under-billing after a crash is the accepted
+    // outcome; billing 5,000 is not.
+    expect(billedUnits).toBeLessThanOrEqual(3000);
+  });
+});
+
 describe("F2 worked example: subscription + overage + recognition", () => {
   it("takes a subscription from due invoice through overage to recognized revenue", async () => {
     const ctx = await testCtx();

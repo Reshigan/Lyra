@@ -386,6 +386,27 @@ async function applyOverages(ctx: Ctx): Promise<number> {
     const currency = meter.currency;
     const invoicedQuantity = meter.invoicedQuantity + overageUnits;
 
+    // Claim the units before billing them, the way recordUsage creates its meter
+    // before settling the usage transaction. Billing first left a window: the
+    // OVERAGE transaction settled, the worker died, and because the idempotency
+    // key is the *cumulative* unit count, the retry — by then seeing more usage —
+    // computed a different key, so it billed a second transaction covering the
+    // units the first one already charged for.
+    //
+    // ponytail: a crash between this write and the posting below bills those
+    // units never. Under-billing a customer is recoverable and visible in the
+    // meter; double-charging is neither.
+    await ctx.db
+      .update(schema.ledgerUsageMeters)
+      .set({
+        overageInvoicedQuantity: invoicedQuantity,
+        // Closed only once the period itself is over. Stamping it on the first
+        // crossing is what stopped the rest of the period from ever being billed.
+        overageInvoicedAt: meter.period < currentPeriod(ctx.now) ? ctx.now : null,
+        updatedAt: ctx.now
+      })
+      .where(scoped(ctx, schema.ledgerUsageMeters, eq(schema.ledgerUsageMeters.id, meter.id)));
+
     const txn = await runTxn(
       ctx,
       {
@@ -411,17 +432,6 @@ async function applyOverages(ctx: Ctx): Promise<number> {
       currency,
       lines: [{ description: `${meter.meter} overage (${overageUnits} units)`, amountMinor: netMinor }]
     });
-
-    await ctx.db
-      .update(schema.ledgerUsageMeters)
-      .set({
-        overageInvoicedQuantity: invoicedQuantity,
-        // Closed only once the period itself is over. Stamping it on the first
-        // crossing is what stopped the rest of the period from ever being billed.
-        overageInvoicedAt: meter.period < currentPeriod(ctx.now) ? ctx.now : null,
-        updatedAt: ctx.now
-      })
-      .where(scoped(ctx, schema.ledgerUsageMeters, eq(schema.ledgerUsageMeters.id, meter.id)));
 
     if (!created) continue;
     await emit(ctx, {
