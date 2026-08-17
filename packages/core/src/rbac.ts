@@ -544,7 +544,7 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     // Settles against the terms, so must be able to read them.
     "dist:agreements:read", "core:onboarding:read",
     "analytics:*:read", "analytics:reports:run", "analytics:exports:create", "analytics:exports:download",
-    "analytics:exports:unmasked", "compliance:evidence:read", "compliance:evidence:export"
+    "analytics:exports:unmasked", "compliance:disclosures:present", "compliance:evidence:read", "compliance:evidence:export"
   ],
   /**
    * Dual control needs a second seat that is only a second seat. The director
