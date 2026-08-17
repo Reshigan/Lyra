@@ -116,7 +116,10 @@ async function assertDeferredPerInvoice(ctx: Ctx, at: string): Promise<void> {
   for (const inv of invoices) if (inv.txnId) invoiceOfTxn.set(inv.txnId, inv.id);
   for (const t of txns) {
     const ref = t.subjectRefsJson ? (JSON.parse(t.subjectRefsJson) as { invoiceId?: string }) : {};
-    if (ref.invoiceId) invoiceOfTxn.set(t.id, ref.invoiceId);
+    // Don't overwrite an entry the first loop already set from the invoice's
+    // own `txnId` — that attribution is authoritative, this one is a fallback
+    // for txn-less invoices.
+    if (ref.invoiceId && !invoiceOfTxn.has(t.id)) invoiceOfTxn.set(t.id, ref.invoiceId);
   }
 
   const lines = await ctx.db
