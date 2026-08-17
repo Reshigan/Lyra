@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { id as newId, schema } from "@lyra/db";
 import { runTxn } from "@lyra/ledger";
-import { scoped, type Ctx } from "@lyra/core";
+import { emit, scoped, type Ctx } from "@lyra/core";
 
 /** `INV-YYYYMMDD-<last6ofId>`, mirrors axis-fnol.ts's claimNumber() shape. */
 export function invoiceNumber(invoiceId: string, now: number): string {
@@ -91,6 +91,18 @@ export async function recordUsage(
     },
     {}
   );
+
+  if (!alreadyApplied) {
+    // No "billing" entry in MODULES (packages/core/src/events.ts) — usage
+    // metering lives in the ledger domain alongside settlement.ts, which
+    // emits its "ledger.settlement.*" events under module "ledger" too.
+    await emit(ctx, {
+      module: "ledger",
+      type: "ledger.usage.recorded",
+      subject: args.subscriptionId,
+      data: { meterId, subscriptionId: args.subscriptionId, meter: args.meter, period: args.period, quantity }
+    });
+  }
 
   return { meterId, quantity };
 }
