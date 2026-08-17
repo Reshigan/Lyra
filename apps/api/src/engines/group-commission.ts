@@ -61,9 +61,13 @@ export async function bindGroup(
   const after = { ...policy, ...stamp };
 
   await audit(ctx, { action: "axis.policy.bind_group", subjectRef: policy.id, before: policy, after });
+  // Same event type the single-policy bind path emits (routes/axis.ts) — docs/19
+  // and docs/specs/gap-axis-design.md both name `axis.policy.issued` for
+  // BIND-GROUP too, so existing subscribers (ORBIT welcome journey, SIGNAL bind
+  // attribution) see group binds without a second subscription.
   await emit(ctx, {
     module: "axis",
-    type: "axis.policy.group_issued",
+    type: "axis.policy.issued",
     subject: policy.id,
     data: {
       policyId: policy.id,

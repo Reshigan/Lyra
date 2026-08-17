@@ -148,7 +148,7 @@ describe("AXIS bind-group (docs/superpowers/specs/2026-08-16-revenue-lines-full-
       .where(and(eq(schema.auditLog.tenantId, seeded.tenantId), eq(schema.auditLog.action, "axis.policy.bind_group")));
     expect(audits.some((a) => a.subjectRef === out.policy.id)).toBe(true);
 
-    const events = await database.select().from(schema.eventOutbox).where(eq(schema.eventOutbox.type, "axis.policy.group_issued"));
+    const events = await database.select().from(schema.eventOutbox).where(eq(schema.eventOutbox.type, "axis.policy.issued"));
     expect(events.some((e) => e.envelopeJson.includes(out.policy.id))).toBe(true);
   });
 
