@@ -99,12 +99,22 @@ const dataProductKAnonymity: Precondition = async (ctx, args) => {
   const dataProductId = requireString(args, "dataProductId");
   const cellCount = requireNumber(args, "cellCount");
   const [product] = await ctx.db
-    .select({ aggregationMin: schema.scoutDataProducts.aggregationMin })
+    .select({
+      aggregationMin: schema.scoutDataProducts.aggregationMin,
+      status: schema.scoutDataProducts.status
+    })
     .from(schema.scoutDataProducts)
     .where(
       and(eq(schema.scoutDataProducts.tenantId, ctx.tenantId), eq(schema.scoutDataProducts.id, dataProductId))
     );
   if (!product) throw conflict(`data product ${dataProductId} not found`);
+  // draft|published|suspended (schema scout.ts): only a published product may be
+  // delivered and billed — a draft was never approved for sale and a suspended
+  // one has been withdrawn, often for the exact disclosure reasons this gate
+  // exists to enforce.
+  if (product.status !== "published") {
+    throw conflict(`data product ${dataProductId} is ${product.status}, not published`);
+  }
   const result = checkKAnonymity(cellCount, product.aggregationMin);
   if (!result.allowed) {
     throw conflict(
