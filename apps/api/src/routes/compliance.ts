@@ -182,6 +182,52 @@ complianceRoutes.post("/screenings/run", async (c) => {
   return c.json({ ...row, hits: outcome.hits }, 201);
 });
 
+/* --------------------------------------------------------- disclosures */
+
+const DisclosurePresentBody = z
+  .object({
+    subjectRef: z.string().min(1).max(200),
+    key: z.string().min(1).max(64),
+    locale: z.string().min(2).max(10).default("en"),
+    wording: z.string().min(1),
+    wordingRef: z.string().min(1).max(200).optional(),
+    criteria: z.record(z.string(), z.unknown()).optional(),
+    channel: z.string().min(1).max(64),
+    customerId: z.string().min(1).max(64).optional()
+  })
+  .strict();
+
+complianceRoutes.post("/disclosures/present", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "compliance:disclosures:present", { tenantId: ctx.tenantId, module: "compliance" });
+  const input = await body(c, DisclosurePresentBody);
+
+  const wordingHash = await sha256Hex(input.wording);
+  const row = {
+    id: id("dsc", ctx.now),
+    tenantId: ctx.tenantId,
+    key: input.key,
+    locale: input.locale,
+    subjectRef: input.subjectRef,
+    customerId: input.customerId ?? null,
+    wordingHash,
+    wordingRef: input.wordingRef ?? null,
+    criteriaJson: input.criteria ? JSON.stringify(input.criteria) : null,
+    channel: input.channel,
+    acknowledgedAt: null,
+    ts: ctx.now
+  };
+  await ctx.db.insert(schema.disclosures).values(row);
+  await audit(ctx, { action: "compliance.disclosure.present", subjectRef: input.subjectRef, after: row });
+  await emit(ctx, {
+    module: "compliance",
+    type: "compliance.disclosure.presented",
+    subject: input.subjectRef,
+    data: { disclosureId: row.id, key: row.key, channel: row.channel }
+  });
+  return c.json(row, 201);
+});
+
 /* ------------------------------------------------------- evidence bundles */
 
 /** ponytail: one page of each log per bundle. A regulator scope wider than this
