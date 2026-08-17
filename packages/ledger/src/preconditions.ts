@@ -1,4 +1,4 @@
-import { and, eq, like } from "drizzle-orm";
+import { and, eq, gte, like } from "drizzle-orm";
 import { schema } from "@lyra/db";
 import { conflict, type Ctx } from "@lyra/core";
 
@@ -31,6 +31,12 @@ function fiscalYearOf(args: Record<string, unknown>): number {
   const y = args["fiscalYear"];
   if (typeof y !== "number" || !Number.isInteger(y)) throw conflict("fiscalYear is required");
   return y;
+}
+
+function subjectRefOf(args: Record<string, unknown>): string {
+  const s = args["subjectRef"];
+  if (typeof s !== "string" || !s) throw conflict("subjectRef is required");
+  return s;
 }
 
 /**
@@ -77,11 +83,33 @@ const yearNotAlreadyClosed: Precondition = async (ctx, args) => {
   }
 };
 
+const AD_PLACEMENT_STALENESS_MS = 24 * 60 * 60 * 1000;
+
+const freshAdPlacementDisclosure: Precondition = async (ctx, args) => {
+  const subjectRef = subjectRefOf(args);
+  const rows = await ctx.db
+    .select({ id: schema.disclosures.id })
+    .from(schema.disclosures)
+    .where(
+      and(
+        eq(schema.disclosures.tenantId, ctx.tenantId),
+        eq(schema.disclosures.subjectRef, subjectRef),
+        eq(schema.disclosures.key, "ad_placement"),
+        gte(schema.disclosures.ts, ctx.now - AD_PLACEMENT_STALENESS_MS)
+      )
+    )
+    .limit(1);
+  if (!rows.length) {
+    throw conflict(`no disclosure presented for ${subjectRef} in the last 24h; present one before placing this ad`);
+  }
+};
+
 /** Every check that must pass before a transaction of this type may proceed. */
 export const TXN_PRECONDITIONS: Record<string, Precondition> = {
   "OPEN-BAL": firstOpeningBalanceOnly,
   "YEAR-END-CLOSE": async (ctx, args) => {
     await yearNotAlreadyClosed(ctx, args);
     await fiscalYearSoftClosed(ctx, args);
-  }
+  },
+  "AD-PLACEMENT": freshAdPlacementDisclosure
 };
