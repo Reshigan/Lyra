@@ -1263,11 +1263,12 @@ export async function seedLedger(ctx: SeedContext): Promise<void> {
       state: "scheduled"
     },
     {
-      // Gulf Health cancelled mid-term, so the unearned months are cancelled
-      // too — and the row has to say so. Left `scheduled` it stayed due, and the
-      // recognition sweep released 1,800,000 out of deferred revenue that this
-      // invoice never posted (invMeridianJan carries no txnId at all), so 2300
-      // went negative on its own invoice the moment February closed.
+      // invMeridianJan (Meridian, not Gulf Health) carries no `txnId` at all —
+      // it was never posted, so there is nothing in 2300 for a recognition to
+      // release. Left `scheduled` it stayed due, and the sweep would have
+      // released 1,800,000 out of deferred revenue this invoice never
+      // deferred, taking 2300 negative on its own invoice the moment February
+      // closed. `cancelled` says so.
       id: nid("rev"),
       tenantId,
       invoiceId: invMeridianJan,
