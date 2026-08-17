@@ -1,13 +1,13 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { TXN_PRECONDITIONS } from "./preconditions.js";
 
-function fakeCtx(aggregationMin: number) {
+function fakeCtx(aggregationMin: number, status = "published") {
   return {
     tenantId: "t1",
     db: {
       select: () => ({
         from: () => ({
-          where: () => Promise.resolve([{ aggregationMin }])
+          where: () => Promise.resolve([{ aggregationMin, status }])
         })
       })
     }
@@ -34,6 +34,19 @@ describe("TXN_PRECONDITIONS[DPROD-DELIVER]", () => {
     await rejects(
       TXN_PRECONDITIONS["DPROD-DELIVER"]!(ctx, { dataProductId: "dp1", cellCount: 10 }),
       /k-anonymity/i
+    );
+  });
+
+  it("refuses a product that is not published, whatever the cell count", async () => {
+    // A draft was never approved for sale and a suspended one has been pulled,
+    // often for the same disclosure reasons this gate exists to enforce.
+    await rejects(
+      TXN_PRECONDITIONS["DPROD-DELIVER"]!(fakeCtx(50, "draft"), { dataProductId: "dp1", cellCount: 500 }),
+      /not published/i
+    );
+    await rejects(
+      TXN_PRECONDITIONS["DPROD-DELIVER"]!(fakeCtx(50, "suspended"), { dataProductId: "dp1", cellCount: 500 }),
+      /not published/i
     );
   });
 

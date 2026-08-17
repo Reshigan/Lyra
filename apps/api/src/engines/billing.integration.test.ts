@@ -56,6 +56,119 @@ async function testCtx(now = 1_700_000_000_000): Promise<Ctx> {
   return makeCtx(now);
 }
 
+/** Signed per-account net over every posted line: debit positive, credit negative. */
+async function signedByAccount(ctx: Ctx): Promise<Map<string, number>> {
+  const lines = await ctx.db
+    .select()
+    .from(schema.ledgerJournalLines)
+    .where(eq(schema.ledgerJournalLines.tenantId, ctx.tenantId));
+  const net = new Map<string, number>();
+  for (const l of lines) {
+    const delta = l.side === "debit" ? l.amountMinor : -l.amountMinor;
+    net.set(l.accountCode, (net.get(l.accountCode) ?? 0) + delta);
+  }
+  return net;
+}
+
+/**
+ * CLAUDE.md §12's ledger invariants, asserted at every point in a sweep run
+ * rather than only at the end: every transaction's own lines balance, and
+ * deferred revenue 2300 is never released beyond what was deferred into it.
+ */
+async function assertLedgerInvariants(ctx: Ctx, at: string): Promise<void> {
+  const lines = await ctx.db
+    .select()
+    .from(schema.ledgerJournalLines)
+    .where(eq(schema.ledgerJournalLines.tenantId, ctx.tenantId));
+
+  const perTxn = new Map<string, number>();
+  for (const l of lines) {
+    const delta = l.side === "debit" ? l.amountMinor : -l.amountMinor;
+    perTxn.set(l.txnId, (perTxn.get(l.txnId) ?? 0) + delta);
+  }
+  for (const [txnId, net] of perTxn) {
+    expect(net, `${at}: txn ${txnId} debits != credits`).toBe(0);
+  }
+
+  const net = await signedByAccount(ctx);
+  // 2300 is a liability: its balance is credits minus debits, and a negative
+  // balance means recognition released revenue that was never deferred.
+  const deferred = -(net.get("2300") ?? 0);
+  expect(deferred, `${at}: deferred revenue 2300 is negative (${deferred})`).toBeGreaterThanOrEqual(0);
+}
+
+describe("ledger invariants across sweeps and calendar months", () => {
+  it("never double-bills, never drives 2300 negative, never recognises more than invoiced", async () => {
+    // Real calendar dates, and meter periods that match the clock — the existing
+    // worked example pins its meter to "2026-08" while ctx.now is 2023, so its
+    // overage schedule never becomes due and the recognition path never runs.
+    const jan1 = Date.parse("2026-01-01T00:00:00Z");
+    const ctx = await testCtx(jan1);
+    const subId = "sub_inv1";
+
+    await ctx.db.insert(schema.ledgerSubscriptions).values({
+      id: subId,
+      tenantId: ctx.tenantId,
+      customerRef: "cust_inv1",
+      plan: "growth",
+      priceMinor: 20000,
+      currency: "USD",
+      interval: "month",
+      seats: 3,
+      startAt: jan1,
+      nextInvoiceAt: jan1,
+      state: "active",
+      createdAt: jan1,
+      updatedAt: jan1
+    });
+
+    await recordUsage(ctx, {
+      subscriptionId: subId,
+      meter: "api-calls",
+      period: "2026-01",
+      delta: 12000,
+      includedQuantity: 10000,
+      unitPriceMicro: 500_000,
+      idempotencyKey: "inv1:usage:1"
+    });
+
+    // Four ticks over three calendar months: the second lands inside the same
+    // calendar month as the first (Jan 1 + 30d), which is exactly the case a
+    // fixed 30-day cycle turns into a second invoice for one AR posting.
+    const ticks: [string, Ctx][] = [
+      ["jan-01", ctx],
+      ["jan-31", await makeCtx(Date.parse("2026-01-31T00:00:00Z"))],
+      ["feb-15", await makeCtx(Date.parse("2026-02-15T00:00:00Z"))],
+      ["mar-15", await makeCtx(Date.parse("2026-03-15T00:00:00Z"))]
+    ];
+    for (const [label, tickCtx] of ticks) {
+      await sweepBilling(tickCtx);
+      await assertLedgerInvariants(tickCtx, label);
+    }
+
+    // One invoice per journal posting: a replayed SUB-INVOICE must not mint a
+    // second invoice row behind the transaction that correctly no-op'd.
+    const invoices = await ctx.db
+      .select()
+      .from(schema.ledgerInvoices)
+      .where(eq(schema.ledgerInvoices.tenantId, ctx.tenantId));
+    const txnIds = invoices.map((i) => i.txnId);
+    expect(new Set(txnIds).size, "two invoices share one transaction").toBe(txnIds.length);
+
+    // One subscription invoice per calendar month billed, no more.
+    const subInvoices = invoices.filter((i) => i.subscriptionId === subId && i.totalMinor === 20000);
+    expect(subInvoices.length).toBe(3); // Jan, Feb, Mar
+
+    const schedules = await ctx.db
+      .select()
+      .from(schema.ledgerRevenueSchedules)
+      .where(eq(schema.ledgerRevenueSchedules.tenantId, ctx.tenantId));
+    const recognised = schedules.reduce((s, r) => s + r.recognizedMinor, 0);
+    const invoiced = invoices.reduce((s, i) => s + i.subtotalMinor, 0);
+    expect(recognised, "recognised more revenue than was invoiced").toBeLessThanOrEqual(invoiced);
+  });
+});
+
 describe("F2 worked example: subscription + overage + recognition", () => {
   it("takes a subscription from due invoice through overage to recognized revenue", async () => {
     const ctx = await testCtx();
@@ -124,15 +237,13 @@ describe("F2 worked example: subscription + overage + recognition", () => {
       .select()
       .from(schema.ledgerRevenueSchedules)
       .where(eq(schema.ledgerRevenueSchedules.tenantId, ctx.tenantId));
-    expect(schedules.length).toBe(2);
-    // Only the subscription schedule (real-clock period "2023-11") is due
-    // by nextMonthCtx's "2023-12"; the overage schedule is pinned to the
-    // literal "2026-08" period passed to recordUsage, which sorts after
-    // "2023-12" lexicographically and so never becomes due here.
+    // One schedule only: the subscription's. Overage credits usage revenue 4050
+    // on the invoice itself, so it has nothing deferred to schedule — scheduling
+    // it too was recognising the same revenue twice.
+    expect(schedules.length).toBe(1);
     const recognized = schedules.filter((s) => s.state === "recognized");
-    const stillScheduled = schedules.filter((s) => s.state === "scheduled");
     expect(recognized.length).toBe(1);
-    expect(stillScheduled.length).toBe(1);
+    expect(recognized[0]?.accountCode).toBe("2300");
 
     // tick 4: nothing left to do at this clock — the remaining schedule's
     // period ("2026-08") is still not before nextMonthCtx's real-clock period.

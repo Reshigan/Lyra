@@ -258,6 +258,140 @@ describe("sweepBilling", () => {
     expect(schedule?.txnId).toBeTruthy();
   });
 
+  it("invoices an annual subscription once a year and recognises it straight-line", async () => {
+    const subId = "sub_year1";
+    await ctx.db.insert(schema.ledgerSubscriptions).values({
+      id: subId,
+      tenantId: ctx.tenantId,
+      customerRef: "cust_year",
+      plan: "data_feed",
+      priceMinor: 480_005, // not divisible by 12, so the remainder has to land somewhere
+      currency: "USD",
+      interval: "year",
+      seats: 1,
+      startAt: ctx.now - 1000,
+      nextInvoiceAt: ctx.now - 1000,
+      state: "active",
+      createdAt: ctx.now - 1000,
+      updatedAt: ctx.now - 1000
+    });
+
+    const first = await sweepBilling(ctx);
+    expect(first.invoicesRaised).toBe(1);
+
+    const invoices = await ctx.db
+      .select()
+      .from(schema.ledgerInvoices)
+      .where(eq(schema.ledgerInvoices.subscriptionId, subId));
+    expect(invoices.length).toBe(1);
+    expect(invoices[0]?.totalMinor).toBe(480_005);
+
+    const schedules = await ctx.db
+      .select()
+      .from(schema.ledgerRevenueSchedules)
+      .where(eq(schema.ledgerRevenueSchedules.tenantId, ctx.tenantId));
+    expect(schedules.length).toBe(12);
+    expect(schedules.reduce((s, r) => s + r.plannedMinor, 0)).toBe(480_005);
+    expect(new Set(schedules.map((r) => r.period)).size).toBe(12);
+
+    // A month later there is still nothing to invoice — the term runs a year.
+    const nextMonth = await makeCtx(ctx.now + 40 * 24 * 60 * 60 * 1000);
+    expect((await sweepBilling(nextMonth)).invoicesRaised).toBe(0);
+  });
+
+  it("bills only the new overage units when usage keeps arriving in an open period", async () => {
+    const subId = "sub_delta1";
+    await ctx.db.insert(schema.ledgerSubscriptions).values({
+      id: subId,
+      tenantId: ctx.tenantId,
+      customerRef: "cust_delta",
+      plan: "pro",
+      priceMinor: 10000,
+      currency: "EUR",
+      interval: "month",
+      seats: 1,
+      startAt: ctx.now - 1000,
+      state: "active",
+      createdAt: ctx.now - 1000,
+      updatedAt: ctx.now - 1000
+    });
+    const period = new Date(ctx.now).toISOString().slice(0, 7);
+    const usage = async (delta: number, key: string): Promise<void> => {
+      await recordUsage(ctx, {
+        subscriptionId: subId,
+        meter: "api-calls",
+        period,
+        delta,
+        includedQuantity: 1000,
+        unitPriceMicro: 1_000_000, // 1 minor unit per call, so amounts are readable
+        idempotencyKey: key
+      });
+    };
+
+    // Tenant books in EUR too, so the overage invoice's currency has to come
+    // from the subscription — the old hard-coded "USD" has no fx rate here and
+    // would be refused by posting.ts outright.
+    const eurCtx: Ctx = { ...ctx, policy: PolicyJson.parse({ currency: "EUR" }) };
+    await usage(1500, "delta:1");
+    expect((await sweepBilling(eurCtx)).overagesApplied).toBe(1);
+    await usage(200, "delta:2");
+    expect((await sweepBilling(eurCtx)).overagesApplied).toBe(1);
+
+    const overageInvoices = await ctx.db
+      .select()
+      .from(schema.ledgerInvoices)
+      .where(and(eq(schema.ledgerInvoices.tenantId, ctx.tenantId), eq(schema.ledgerInvoices.subscriptionId, subId)));
+    expect(overageInvoices.map((i) => i.totalMinor).sort((a, b) => a - b)).toEqual([200, 500]);
+    // Currency and customer come from the subscription, not a hard-coded "USD"
+    // and not the subscription id.
+    expect(overageInvoices.every((i) => i.currency === "EUR")).toBe(true);
+    expect(overageInvoices.every((i) => i.customerRef === "cust_delta")).toBe(true);
+
+    // Nothing deferred: overage credits usage revenue on the invoice itself.
+    const schedules = await ctx.db
+      .select()
+      .from(schema.ledgerRevenueSchedules)
+      .where(eq(schema.ledgerRevenueSchedules.tenantId, ctx.tenantId));
+    expect(schedules.length).toBe(0);
+
+    // Still open, so the period is not closed to further usage.
+    const [meter] = await ctx.db
+      .select()
+      .from(schema.ledgerUsageMeters)
+      .where(eq(schema.ledgerUsageMeters.tenantId, ctx.tenantId));
+    expect(meter?.overageInvoicedQuantity).toBe(700);
+    expect(meter?.overageInvoicedAt).toBeNull();
+  });
+
+  it("recognises a schedule into its own income account, not always 4040", async () => {
+    // The 4060 rows the data-product engine and the seed write are the case the
+    // dead `"4050" ? "4040" : "4040"` ternary silently sent to subscription
+    // revenue, merging the very revenue lines this engine separates.
+    await ctx.db.insert(schema.ledgerRevenueSchedules).values({
+      id: "sch_dp1",
+      tenantId: ctx.tenantId,
+      invoiceId: "inv_dp1",
+      accountCode: "4060",
+      period: "2023-10", // before ctx.now's own period
+      plannedMinor: 7000,
+      currency: "USD",
+      state: "scheduled"
+    });
+
+    expect((await sweepBilling(ctx)).recognitionsPosted).toBe(1);
+
+    const [row] = await ctx.db
+      .select()
+      .from(schema.ledgerRevenueSchedules)
+      .where(eq(schema.ledgerRevenueSchedules.id, "sch_dp1"));
+    const lines = await ctx.db
+      .select()
+      .from(schema.ledgerJournalLines)
+      .where(eq(schema.ledgerJournalLines.txnId, row!.txnId!));
+    expect(lines.find((l) => l.side === "credit")?.accountCode).toBe("4060");
+    expect(lines.find((l) => l.side === "debit")?.accountCode).toBe("2300");
+  });
+
   it("is bounded-bite: a processed row never reappears in the same-tick result set (ADR-0050)", async () => {
     for (let i = 0; i < 3; i++) {
       await ctx.db.insert(schema.ledgerSubscriptions).values({
@@ -293,7 +427,7 @@ describe("subscribeToDataProduct", () => {
       definitionJson: "{}",
       consentBasis: "legitimate-interest",
       aggregationMin: 20,
-      status: "active",
+      status: "published",
       createdAt: ctx.now,
       updatedAt: ctx.now
     });
@@ -323,7 +457,7 @@ describe("deliverDataProduct", () => {
       definitionJson: "{}",
       consentBasis: "legitimate-interest",
       aggregationMin: 20,
-      status: "active",
+      status: "published",
       createdAt: ctx.now,
       updatedAt: ctx.now
     });
@@ -353,6 +487,22 @@ describe("deliverDataProduct", () => {
         and(eq(schema.ledgerTxns.tenantId, ctx.tenantId), eq(schema.ledgerTxns.idempotencyKey, "dprod-deliver:dp1:1"))
       );
     expect(txn).toBeUndefined();
+  });
+
+  it("refuses to deliver a product that is not published", async () => {
+    await ctx.db
+      .update(schema.scoutDataProducts)
+      .set({ status: "draft" })
+      .where(eq(schema.scoutDataProducts.id, "dp1"));
+    await expect(
+      deliverDataProduct(ctx, {
+        dataProductId: "dp1",
+        subscriberRef: "partner1",
+        cellCount: 50,
+        netMinor: 50000,
+        idempotencyKey: "dprod-deliver:dp1:draft"
+      })
+    ).rejects.toMatchObject({ detail: "data product dp1 is draft, not published" });
   });
 
   it("delivers, invoices, and recognises revenue against income account 4060", async () => {
@@ -388,5 +538,30 @@ describe("deliverDataProduct", () => {
       .where(eq(schema.ledgerJournalLines.txnId, recogTxn!.id));
     const creditLine = lines.find((l) => l.side === "credit" && l.accountCode === "4060");
     expect(creditLine).toBeTruthy();
+  });
+
+  it("writes one invoice and one schedule however many times a delivery is replayed", async () => {
+    const args = {
+      dataProductId: "dp1",
+      subscriberRef: "partner1",
+      cellCount: 50,
+      netMinor: 50000,
+      idempotencyKey: "dprod-deliver:dp1:replay"
+    };
+    const first = await deliverDataProduct(ctx, args);
+    const second = await deliverDataProduct(ctx, args);
+    expect(second.invoiceId).toBe(first.invoiceId);
+    expect(second.scheduleId).toBe(first.scheduleId);
+
+    const invoices = await ctx.db
+      .select()
+      .from(schema.ledgerInvoices)
+      .where(eq(schema.ledgerInvoices.tenantId, ctx.tenantId));
+    const schedules = await ctx.db
+      .select()
+      .from(schema.ledgerRevenueSchedules)
+      .where(eq(schema.ledgerRevenueSchedules.tenantId, ctx.tenantId));
+    expect(invoices.length).toBe(1);
+    expect(schedules.length).toBe(1);
   });
 });
