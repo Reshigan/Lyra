@@ -415,6 +415,116 @@ describe("sweepBilling", () => {
     const rerun = await sweepBilling(ctx);
     expect(rerun.invoicesRaised).toBe(0);
   });
+
+  // The cron ctx (apps/api/src/index.ts) builds its policy from defaults, so the
+  // tenant's base currency is whatever PolicyJson defaults to — never the
+  // subscription's. Every test above happens to bill in the ctx's own currency,
+  // which is why nothing here has ever posted a cross-currency invoice.
+  const aedCtx = (from: Ctx): Ctx => ({ ...from, policy: PolicyJson.parse({ currency: "AED" }) });
+
+  async function usdSub(subId: string): Promise<void> {
+    await ctx.db.insert(schema.ledgerSubscriptions).values({
+      id: subId,
+      tenantId: ctx.tenantId,
+      customerRef: `cust_${subId}`,
+      plan: "data_feed",
+      priceMinor: 10_000,
+      currency: "USD",
+      interval: "month",
+      seats: 1,
+      startAt: ctx.now - 1000,
+      nextInvoiceAt: ctx.now - 1000,
+      state: "active",
+      createdAt: ctx.now - 1000,
+      updatedAt: ctx.now - 1000
+    });
+  }
+
+  it("invoices a subscription billed in a currency the tenant does not report in", async () => {
+    await usdSub("sub_fx1");
+    await ctx.db.insert(schema.ledgerFxRates).values({
+      id: "fx_usd_aed",
+      tenantId: ctx.tenantId,
+      fromCurrency: "USD",
+      toCurrency: "AED",
+      ratePpm: 3_672_500,
+      asOf: "2023-11-01"
+    });
+
+    expect((await sweepBilling(aedCtx(ctx))).invoicesRaised).toBe(1);
+
+    const [batch] = await ctx.db
+      .select()
+      .from(schema.ledgerJournalBatches)
+      .where(eq(schema.ledgerJournalBatches.tenantId, ctx.tenantId));
+    expect(batch?.currency).toBe("USD");
+    expect(batch?.baseCurrency).toBe("AED");
+    expect(batch?.fxRatePpm).toBe(3_672_500);
+    expect(batch?.baseTotalDebitMinor).toBe(36_725); // 10_000 * 3.6725
+    expect(batch?.baseTotalDebitMinor).toBe(batch?.baseTotalCreditMinor);
+  });
+
+  it("skips a subscription it has no rate for instead of burning its idempotency key", async () => {
+    await usdSub("sub_fx2");
+
+    // No rate on file: posting.ts refuses the batch, runTxn fails the txn, and a
+    // `failed` row makes that key throw `already failed` for good — the period
+    // could never be invoiced again, by cron or by hand.
+    expect((await sweepBilling(aedCtx(ctx))).invoicesRaised).toBe(0);
+    const txns = await ctx.db.select().from(schema.ledgerTxns).where(eq(schema.ledgerTxns.tenantId, ctx.tenantId));
+    expect(txns.length, "the skipped subscription burned an idempotency key").toBe(0);
+
+    // Still due, and billable the moment finance adds the rate.
+    await ctx.db.insert(schema.ledgerFxRates).values({
+      id: "fx_usd_aed",
+      tenantId: ctx.tenantId,
+      fromCurrency: "USD",
+      toCurrency: "AED",
+      ratePpm: 3_672_500,
+      asOf: "2023-11-01"
+    });
+    expect((await sweepBilling(aedCtx(ctx))).invoicesRaised).toBe(1);
+  });
+
+  it("keeps sweeping after one subscription throws", async () => {
+    await usdSub("sub_wedged");
+    await usdSub("sub_healthy");
+
+    // A key already burnt by an earlier failure: runTxn throws `already failed`
+    // on sight. Unisolated, that throw aborts the tenant's whole sweep — and in
+    // cron, every other job queued behind it (index.ts's one per-tenant try).
+    await ctx.db.insert(schema.ledgerTxns).values({
+      id: "txn_wedged",
+      tenantId: ctx.tenantId,
+      type: "SUB-INVOICE",
+      idempotencyKey: `sub-invoice:sub_wedged:${new Date(ctx.now).toISOString().slice(0, 7)}`,
+      state: "failed",
+      actorKind: "system",
+      actorId: "scheduler",
+      currency: "USD",
+      baseCurrency: "USD",
+      grossMinor: 10_000,
+      createdAt: ctx.now - 500,
+      updatedAt: ctx.now - 500,
+      failedAt: ctx.now - 500
+    });
+
+    expect((await sweepBilling(ctx)).invoicesRaised).toBe(1);
+
+    const invoices = await ctx.db
+      .select()
+      .from(schema.ledgerInvoices)
+      .where(eq(schema.ledgerInvoices.tenantId, ctx.tenantId));
+    expect(invoices.map((i) => i.subscriptionId)).toEqual(["sub_healthy"]);
+
+    // The wedged row keeps its due date: its period is still owed, and a sweep
+    // that advanced it would silently write the period off.
+    const [wedged] = await ctx.db
+      .select()
+      .from(schema.ledgerSubscriptions)
+      .where(eq(schema.ledgerSubscriptions.id, "sub_wedged"));
+    expect(wedged?.nextInvoiceAt).toBe(ctx.now - 1000);
+  });
 });
 
 describe("subscribeToDataProduct", () => {

@@ -1,6 +1,6 @@
 import { and, asc, eq, gt, isNull, lt, lte, sql } from "drizzle-orm";
 import { id as newId, schema } from "@lyra/db";
-import { buildRecipe, runTxn } from "@lyra/ledger";
+import { buildRecipe, fxRateFor, runTxn } from "@lyra/ledger";
 import { audit, emit, scoped, type Ctx } from "@lyra/core";
 import { SWEEP_MAX } from "./sweep.js";
 
@@ -213,83 +213,123 @@ async function raiseInvoices(ctx: Ctx): Promise<number> {
 
   let count = 0;
   for (const sub of due) {
-    // `interval` is the contract's own cycle (schema ledger.ts): an annual
-    // subscription's priceMinor is the whole year, so billing it monthly was a
-    // 12x overcharge.
-    const months = sub.interval === "year" ? 12 : 1;
-    const netMinor = sub.priceMinor;
-    let cursor = sub.nextInvoiceAt ?? ctx.now;
+    // One subscription's failure is one subscription's problem. Every sweep for
+    // every tenant runs inside a single try in the cron handler (index.ts), so a
+    // throw from here used to take out that tenant's remaining jobs — autopilot,
+    // due schedules, delegation expiry, backups — on every tick, forever.
+    try {
+      count += await invoiceSubscription(ctx, sub);
+    } catch (err) {
+      console.error(`billing: subscription ${sub.id} could not be invoiced`, err);
+    }
+  }
+  return count;
+}
 
-    // Advance from the anniversary the subscription is actually owed from, not
-    // from the clock, and step one period at a time — a sweep that ran late (or
-    // not at all, through an outage) then bills the periods it missed instead of
-    // skipping them, and the row still leaves this result set in one tick
-    // (ADR-0050).
-    while (cursor <= ctx.now) {
-      const period = currentPeriod(cursor);
-      const at = cursor;
-      cursor = addMonths(cursor, months);
+/**
+ * How many periods one subscription may catch up on in a single tick.
+ *
+ * The catch-up loop bills every period between `nextInvoiceAt` and the clock, and
+ * `SWEEP_MAX` bounds rows, not periods per row — one badly back-dated import
+ * (years of them) would post its whole history in one Worker invocation. Capped,
+ * the row still leaves its own result set each tick (its `nextInvoiceAt` advances
+ * a year), so the remainder is simply the next tick's work (ADR-0050).
+ */
+const CATCHUP_MAX = 12;
 
-      // A zero-price plan has no invoice to raise — `invoiceRaised` requires a
-      // positive net, and letting it throw would burn the key and abort the
-      // sweep for every tenant behind this one.
-      if (netMinor <= 0) continue;
+async function invoiceSubscription(ctx: Ctx, sub: typeof schema.ledgerSubscriptions.$inferSelect): Promise<number> {
+  // `interval` is the contract's own cycle (schema ledger.ts): an annual
+  // subscription's priceMinor is the whole year, so billing it monthly was a
+  // 12x overcharge.
+  const months = sub.interval === "year" ? 12 : 1;
+  const netMinor = sub.priceMinor;
+  let cursor = sub.nextInvoiceAt ?? ctx.now;
+  let count = 0;
 
-      const txn = await runTxn(
-        ctx,
-        {
-          type: "SUB-INVOICE",
-          idempotencyKey: `sub-invoice:${sub.id}:${period}`,
-          currency: sub.currency,
-          grossMinor: netMinor,
-          subjectRefs: { subscriptionId: sub.id, customerRef: sub.customerRef }
-        },
-        { recipe: { lines: buildRecipe("SUB-INVOICE", { netMinor }), currency: sub.currency } }
-      );
+  // A subscription bills in its own contract's currency, which need not be the
+  // one the tenant reports in. Resolve the rate *before* opening the transaction:
+  // posting without one is refused, a refused post fails the transaction, and a
+  // failed transaction burns `sub-invoice:{sub}:{period}` for good (txn.ts's
+  // "already failed") — the period could then never be billed, by cron or by
+  // hand. Refusing early leaves no trace, exactly as txn.ts's own preconditions
+  // do.
+  const fxRatePpm = await fxRateFor(ctx, sub.currency);
+  if (!fxRatePpm) {
+    console.error(
+      `billing: subscription ${sub.id} bills in ${sub.currency} but the tenant has no ${sub.currency} -> ${ctx.policy.currency} rate; skipped`
+    );
+    return 0;
+  }
 
-      const { invoiceId, created } = await invoiceOnce(ctx, txn?.id, {
-        customerRef: sub.customerRef,
-        subscriptionId: sub.id,
-        netMinor,
+  // Advance from the anniversary the subscription is actually owed from, not
+  // from the clock, and step one period at a time — a sweep that ran late (or
+  // not at all, through an outage) then bills the periods it missed instead of
+  // skipping them, and the row still leaves this result set in one tick
+  // (ADR-0050).
+  for (let periods = 0; cursor <= ctx.now && periods < CATCHUP_MAX; periods++) {
+    const period = currentPeriod(cursor);
+    const at = cursor;
+    cursor = addMonths(cursor, months);
+
+    // A zero-price plan has no invoice to raise — `invoiceRaised` requires a
+    // positive net, and letting it throw would burn the key and abort the
+    // sweep for every tenant behind this one.
+    if (netMinor <= 0) continue;
+
+    const txn = await runTxn(
+      ctx,
+      {
+        type: "SUB-INVOICE",
+        idempotencyKey: `sub-invoice:${sub.id}:${period}`,
         currency: sub.currency,
-        lines: [{ description: `${sub.plan} subscription`, amountMinor: netMinor }]
-      });
+        grossMinor: netMinor,
+        subjectRefs: { subscriptionId: sub.id, customerRef: sub.customerRef }
+      },
+      { recipe: { lines: buildRecipe("SUB-INVOICE", { netMinor }), currency: sub.currency, fxRatePpm } }
+    );
 
-      // Straight-line recognition: the invoice defers the whole term into 2300
-      // and each period releases its share. The first period carries the
-      // integer-division remainder so the twelve rows sum to exactly the invoice.
-      const share = Math.floor(netMinor / months);
-      for (let i = 0; i < months; i++) {
-        await ctx.db
-          .insert(schema.ledgerRevenueSchedules)
-          .values({
-            id: newId("sch", ctx.now),
-            tenantId: ctx.tenantId,
-            invoiceId,
-            accountCode: "2300",
-            period: currentPeriod(addMonths(at, i)),
-            plannedMinor: i === 0 ? netMinor - share * (months - 1) : share,
-            currency: sub.currency,
-            state: "scheduled"
-          })
-          .onConflictDoNothing();
-      }
+    const { invoiceId, created } = await invoiceOnce(ctx, txn?.id, {
+      customerRef: sub.customerRef,
+      subscriptionId: sub.id,
+      netMinor,
+      currency: sub.currency,
+      lines: [{ description: `${sub.plan} subscription`, amountMinor: netMinor }]
+    });
 
-      if (!created) continue;
-      await emit(ctx, {
-        module: "ledger",
-        type: "ledger.invoice.raised",
-        subject: invoiceId,
-        data: { subscriptionId: sub.id, netMinor, currency: sub.currency, txnId: txn?.id }
-      });
-      count++;
+    // Straight-line recognition: the invoice defers the whole term into 2300
+    // and each period releases its share. The first period carries the
+    // integer-division remainder so the twelve rows sum to exactly the invoice.
+    const share = Math.floor(netMinor / months);
+    for (let i = 0; i < months; i++) {
+      await ctx.db
+        .insert(schema.ledgerRevenueSchedules)
+        .values({
+          id: newId("sch", ctx.now),
+          tenantId: ctx.tenantId,
+          invoiceId,
+          accountCode: "2300",
+          period: currentPeriod(addMonths(at, i)),
+          plannedMinor: i === 0 ? netMinor - share * (months - 1) : share,
+          currency: sub.currency,
+          state: "scheduled"
+        })
+        .onConflictDoNothing();
     }
 
-    await ctx.db
-      .update(schema.ledgerSubscriptions)
-      .set({ nextInvoiceAt: cursor, updatedAt: ctx.now })
-      .where(scoped(ctx, schema.ledgerSubscriptions, eq(schema.ledgerSubscriptions.id, sub.id)));
+    if (!created) continue;
+    await emit(ctx, {
+      module: "ledger",
+      type: "ledger.invoice.raised",
+      subject: invoiceId,
+      data: { subscriptionId: sub.id, netMinor, currency: sub.currency, txnId: txn?.id }
+    });
+    count++;
   }
+
+  await ctx.db
+    .update(schema.ledgerSubscriptions)
+    .set({ nextInvoiceAt: cursor, updatedAt: ctx.now })
+    .where(scoped(ctx, schema.ledgerSubscriptions, eq(schema.ledgerSubscriptions.id, sub.id)));
   return count;
 }
 
