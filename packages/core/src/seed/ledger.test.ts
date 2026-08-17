@@ -945,6 +945,11 @@ describe("subscriptions", () => {
     expect(s.currency).toBe("USD");
     expect(s.interval).toBe("year");
     expect(JSON.parse(s.termsJson!)).toEqual({ noticeDays: 60, autoRenew: true, exportOfServices: true });
+    // The whole year is invoiced already (invFalconAnnual), so the next invoice
+    // falls due a year after the term started — not at next month's boundary,
+    // which would have the billing sweep raise a second full year eleven months
+    // early.
+    expect(s.nextInvoiceAt).toBeGreaterThanOrEqual(s.startAt + 365 * DAY);
   });
 
   it("subOryx: past_due, no terms", async () => {

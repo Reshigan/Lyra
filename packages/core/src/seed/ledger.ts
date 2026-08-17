@@ -949,6 +949,10 @@ export async function seedLedger(ctx: SeedContext): Promise<void> {
   // anniversary: the billing sweep runs against seeded data and catches up every
   // period between that date and the clock, and the invoices below already cover
   // the months up to now — so anything earlier would raise them a second time.
+  //
+  // Except the annual one: its priceMinor is a whole year and that year is
+  // already invoiced, so next month's boundary would bill a second full year
+  // eleven months early (migration 0026 makes the same distinction).
   await db.insert(schema.ledgerSubscriptions).values([
     {
       // The distribution partners pay for the portal they sell through.
@@ -1013,7 +1017,7 @@ export async function seedLedger(ctx: SeedContext): Promise<void> {
       interval: "year",
       seats: 3,
       startAt: now - 20 * DAY,
-      nextInvoiceAt: monthStart(1),
+      nextInvoiceAt: now - 20 * DAY + 365 * DAY,
       state: "active",
       termsJson: JSON.stringify({ noticeDays: 60, autoRenew: true, exportOfServices: true }),
       createdAt: now - 20 * DAY,

@@ -527,6 +527,68 @@ describe("sweepBilling", () => {
   });
 });
 
+// Migration 0026 populates next_invoice_at for subscriptions that predate the
+// column. It runs against real production rows exactly once, so the only place
+// its arithmetic can be checked is here: the statement is taken from the
+// migration itself and replayed over rows this test controls.
+describe("migration 0026: next_invoice_at backfill", () => {
+  const DAY = 24 * 60 * 60 * 1000;
+
+  function backfillStatement(): string {
+    const file = readdirSync(MIGRATIONS).find((f) => f.startsWith("0026_"));
+    const stmt = readFileSync(join(MIGRATIONS, file!), "utf8")
+      .split("--> statement-breakpoint")
+      .map((s) => s.trim())
+      .find((s) => s.includes("next_invoice_at"));
+    if (!stmt) throw new Error("test: migration 0026 no longer backfills next_invoice_at");
+    return stmt;
+  }
+
+  it("does not make an already-invoiced year due again next month", async () => {
+    // The real clock, because the migration dates off `now`: the tenant is
+    // upgraded today and the sweep runs on the 1st of next month.
+    const today = Date.now();
+    const d = new Date(today);
+    const firstOfNextMonth = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1);
+    const ctx = await testCtx(firstOfNextMonth + DAY);
+
+    // Both signed 20 days ago and invoiced by hand for their first term — the
+    // yearly one for the whole year, which is what makes billing it again in a
+    // month's time a duplicate of 12 months of revenue.
+    for (const [id, interval] of [
+      ["sub_bf_year", "year"],
+      ["sub_bf_month", "month"]
+    ] as const) {
+      await ctx.db.insert(schema.ledgerSubscriptions).values({
+        id,
+        tenantId: ctx.tenantId,
+        customerRef: `cust_${id}`,
+        plan: "data_feed",
+        priceMinor: 480_000,
+        currency: "USD",
+        interval,
+        seats: 1,
+        startAt: today - 20 * DAY,
+        nextInvoiceAt: null,
+        state: "active",
+        createdAt: today - 20 * DAY,
+        updatedAt: today - 20 * DAY
+      });
+    }
+
+    await client.execute(backfillStatement());
+    await sweepBilling(ctx);
+
+    const invoices = await ctx.db
+      .select()
+      .from(schema.ledgerInvoices)
+      .where(eq(schema.ledgerInvoices.tenantId, ctx.tenantId));
+    // The monthly term is up, so its second month is due. The annual term has
+    // eleven months left to run.
+    expect(invoices.map((i) => i.subscriptionId)).toEqual(["sub_bf_month"]);
+  });
+});
+
 describe("subscribeToDataProduct", () => {
   it("posts DPROD-SUB with no journal lines", async () => {
     ctx = await testCtx();

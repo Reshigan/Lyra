@@ -8,9 +8,17 @@ ALTER TABLE `ledger_usage_meters` ADD `overage_invoiced_quantity` integer DEFAUL
 -- invoice for every month since the subscription began, including months
 -- already invoiced by hand. The first period nobody could have billed yet is
 -- the next one, so that is where these rows resume.
+--
+-- A yearly subscription's term is not up next month, though: its price is the
+-- whole year and that year is already invoiced, so resuming it at the month
+-- boundary bills a second full year eleven months early. Each row therefore
+-- resumes no earlier than one of its own terms after it started.
 UPDATE `ledger_subscriptions`
 SET `next_invoice_at` = MAX(
-  `start_at`,
+  CASE `interval`
+    WHEN 'year' THEN CAST(strftime('%s', datetime(`start_at` / 1000, 'unixepoch', '+1 year')) AS INTEGER) * 1000
+    ELSE `start_at`
+  END,
   CAST(strftime('%s', date('now', 'start of month', '+1 month')) AS INTEGER) * 1000
 )
 WHERE `next_invoice_at` IS NULL AND `state` = 'active';
