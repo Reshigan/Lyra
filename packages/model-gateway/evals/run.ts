@@ -7,6 +7,7 @@ import { parseTriage } from "../src/triage.js";
 import { parseReserve } from "../src/reserve.js";
 import { parseFraud } from "../src/fraud.js";
 import { parseSla } from "../src/sla.js";
+import { parseUbi } from "../src/ubi.js";
 import { aggregateCxScore, localeGap } from "../src/cx-judge.js";
 import { verifyNumericClaims, verifyGroundedness, checkCompliance as checkSignalCompliance, type BriefingSnapshot } from "@lyra/core";
 import { loadCases, loadThresholds, metric, metricOk, type Metric } from "./harness.js";
@@ -451,6 +452,86 @@ async function scoreSla(dir: string): Promise<Metric[]> {
   ];
 }
 
+interface UbiCase {
+  id: string;
+  text: string;
+  /** The sign the parsed delta must carry. */
+  expectDirection: "up" | "down" | "flat";
+  /** Factors the case deliberately leaves unevidenced; absent means none. */
+  expectDroppedFactors?: number;
+  /** Present only on the fairness pair — two cases identical but for a protected proxy. */
+  cohort?: string;
+}
+
+interface UbiThresholds {
+  directionAccuracyMin: number;
+  unexplainedFactorRateMax: number;
+  maxDeltaPpmByProtectedProxy: number;
+}
+
+// docs/superpowers/specs/2026-08-16-revenue-lines-full-build-design.md (Group E).
+// No live model call (deterministic/CI-safe, docs/13 §4) — cases.jsonl bakes in
+// canned model replies (clean up/down/flat, code-fenced, unevidenced factors,
+// out-of-range deltas, garbage, and a fairness pair) and scores the exact
+// `parseUbi` the UBI-REPRICE engine runs before it proposes a price change.
+async function scoreUbi(dir: string): Promise<Metric[]> {
+  const cases = await loadCases<UbiCase>(dir);
+  const thresholds = await loadThresholds<UbiThresholds>(dir);
+
+  const scored = cases.map((c) => ({ case: c, result: parseUbi(c.text) }));
+
+  const sign = (ppm: number): UbiCase["expectDirection"] => (ppm > 0 ? "up" : ppm < 0 ? "down" : "flat");
+  const correct = scored.filter((s) => sign(s.result.premiumDeltaPpm) === s.case.expectDirection).length;
+
+  // Measured against raw factor candidates, not the already-filtered `factors`
+  // array, for the reason scoreFraud gives: parseUbi cannot leave an unevidenced
+  // factor in that array by construction, so the ratio would be a permanent zero.
+  //
+  // Deviation from the sibling scoreFraud, deliberate: the numerator is drops the
+  // golden set did NOT ask for (|actual - expectDroppedFactors|), not raw drops.
+  // With a threshold of 0.0 and a golden set that must contain an unevidenced
+  // factor, raw drops would make the gate unsatisfiable; and axis-fraud's variant
+  // reads as coverage while its own golden set carries no unevidenced indicator
+  // at all, so its zero is vacuous. This form pins the drop count exactly — a
+  // parser that stops dropping, or starts over-dropping, both fail the gate.
+  let candidates = 0;
+  let unaccounted = 0;
+  for (const { case: c, result } of scored) {
+    unaccounted += Math.abs(result.droppedFactorCount - (c.expectDroppedFactors ?? 0));
+    candidates += result.factors.length + result.droppedFactorCount;
+  }
+
+  const metrics = [
+    metric("directionAccuracy", cases.length ? correct / cases.length : 1, {
+      min: thresholds.directionAccuracyMin
+    }),
+    metric("unexplainedFactorRate", candidates ? unaccounted / candidates : 0, {
+      max: thresholds.unexplainedFactorRateMax
+    })
+  ];
+
+  // Fairness: two replies whose numbers are identical and whose only difference
+  // is a protected proxy must price the same, because parseUbi is pure and never
+  // reads the proxy. Same ">= 2 groups" gate scoreFraud/scoreCxQuality use.
+  const byCohort = new Map<string, number[]>();
+  for (const { case: c, result } of scored) {
+    if (!c.cohort) continue;
+    byCohort.set(c.cohort, [...(byCohort.get(c.cohort) ?? []), result.premiumDeltaPpm]);
+  }
+  const cohorts = [...byCohort.entries()].sort(([a], [b]) => a.localeCompare(b));
+  if (cohorts.length >= 2) {
+    const mean = (xs: number[]): number => xs.reduce((a, b) => a + b, 0) / xs.length;
+    const means = cohorts.map(([, deltas]) => mean(deltas));
+    metrics.push(
+      metric("maxDeltaPpmByProtectedProxy", Math.max(...means) - Math.min(...means), {
+        max: thresholds.maxDeltaPpmByProtectedProxy
+      })
+    );
+  }
+
+  return metrics;
+}
+
 interface CxQualityCase {
   id: string;
   locale: string;
@@ -615,6 +696,7 @@ const SCORERS: Record<string, (dir: string) => Promise<Metric[]>> = {
   "axis-reserve": scoreReserve,
   "axis-fraud": scoreFraud,
   "axis-sla": scoreSla,
+  "ubi-reprice": scoreUbi,
   "cx-quality": scoreCxQuality,
   north: scoreNorth,
   signal: scoreSignal
