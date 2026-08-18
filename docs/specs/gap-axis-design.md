@@ -154,6 +154,16 @@ transaction while still superseding the version — money state with no journal
 so the version id is the scope. The shared-approval property is unaffected:
 both raisers read the same current version.
 
+The **ledger** key carries one field the subject ref does not — the leg's own
+amount: `axis.endorse:${policyId}:${versionId}:${hash}:${chargeMinor}`, and
+`axis.endorse.refund:…:${refundMinor}` for the refund leg. The version stops
+being the full scope when a retry re-reads it (the charge settled, the version
+insert never landed) and prices differently, which is the reprice case where a
+model returns another `premiumDeltaPpm` for the same factor codes. The amount
+keeps a genuine duplicate colliding while separating two prices off one version.
+Amount stays off the subject ref deliberately: the approval identity is the
+request, not the price it computes to.
+
 ### A.4 Consequential actions and authority limits
 
 `consequential: true` (needs approval unless the tenant's `auto_approve`

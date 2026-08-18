@@ -92,6 +92,15 @@ async function txns(type?: string) {
   return type ? rows.filter((r) => r.type === type) : rows;
 }
 
+/** What a transaction's journal actually posted, on the side that carries it. */
+async function debitSum(txnId: string): Promise<number> {
+  const lines = await ctx.db
+    .select()
+    .from(schema.ledgerJournalLines)
+    .where(eq(schema.ledgerJournalLines.txnId, txnId));
+  return lines.filter((l) => l.side === "debit").reduce((s, l) => s + l.amountMinor, 0);
+}
+
 async function currentVersion() {
   const [row] = await ctx.db
     .select()
@@ -254,12 +263,12 @@ describe("endorsePolicy transaction type", () => {
     const first = await endorsePolicy(ctx, policy, { changes, premiumMinor: 110_000 }, { type: "UBI-REPRICE" });
     const second = await endorsePolicy(ctx, first.policy, { changes, premiumMinor: 121_000 });
 
-    // Identical change set, so identical hash — only the prefix separates them.
-    const hash = first.txn!.idempotencyKey.split(":").pop();
-    expect(second.txn!.idempotencyKey.split(":").pop()).toBe(hash);
+    // Identical change set, so identical hash — the prefix is what separates
+    // them, and it would separate them even off one version at one price.
+    const hash = await changeSetHashOf({ changes });
     expect(first.txn!.idempotencyKey).not.toBe(second.txn!.idempotencyKey);
-    expect(first.txn!.idempotencyKey).toBe(`axis.ubi-reprice:pol_1:pver_1:${hash}`);
-    expect(second.txn!.idempotencyKey).toBe(`axis.endorse:pol_1:${first.version.id}:${hash}`);
+    expect(first.txn!.idempotencyKey).toBe(`axis.ubi-reprice:pol_1:pver_1:${hash}:10555`);
+    expect(second.txn!.idempotencyKey).toBe(`axis.endorse:pol_1:${first.version.id}:${hash}:11610`);
   });
 
   it("keys the ledger transaction to the version it supersedes, not the change set alone", async () => {
@@ -287,6 +296,40 @@ describe("endorsePolicy transaction type", () => {
     expect(first.version.txnId).toBe(first.txn!.id);
     expect(second.version.txnId).toBe(second.txn!.id);
     expect((await currentVersion()).txnId).toBe(second.txn!.id);
+  });
+
+  it("keys the ledger transaction to the amount as well, so a retry at a different price posts its own journal", async () => {
+    // The crack left under the version scoping. The charge `runTxn` settles and
+    // something throws before the version insert (the refund leg, an eviction);
+    // the retry re-reads the *same* still-current version, and `changeSetHashOf`
+    // covers {changes, reason} and not the price. On (policy, version, hash)
+    // alone a retry that prices differently — a reprice whose model returns
+    // another `premiumDeltaPpm` for the same factor codes — replayed the settled
+    // transaction, so `runTxn` posted no journal while `endorsePolicy` carried
+    // on and superseded the version at the new premium: money state with no
+    // journal behind it (CLAUDE.md #12).
+    //
+    // This does not make the path atomic — the abandoned settled charge is
+    // still an over-post needing compensation, and that stays a recorded
+    // follow-up. It guarantees the invariant that matters.
+    const changes = { km_band: { weight: 1 } };
+    const first = await endorsePolicy(ctx, policy, { changes, premiumMinor: 110_000 });
+
+    // Rewind to exactly the mid-flight state: the charge is settled, neither
+    // version write happened, so `current` reads back as `pver_1`.
+    await ctx.db.delete(schema.axisPolicyVersions).where(eq(schema.axisPolicyVersions.id, first.version.id));
+    await ctx.db
+      .update(schema.axisPolicyVersions)
+      .set({ state: "effective", effectiveTo: END, supersededAt: null })
+      .where(eq(schema.axisPolicyVersions.id, "pver_1"));
+
+    const retry = await endorsePolicy(ctx, policy, { changes, premiumMinor: 130_000 });
+
+    expect(retry.txn!.id).not.toBe(first.txn!.id);
+    // 100_000 -> 130_000 is a ratio of 1.3, so commission moves 10_000 -> 13_000,
+    // pro-rated over the 335 days left of a 365-day term: round(3000 * 335/365).
+    expect(await debitSum(retry.txn!.id)).toBe(2753);
+    expect(retry.version.txnId).toBe(retry.txn!.id);
   });
 });
 

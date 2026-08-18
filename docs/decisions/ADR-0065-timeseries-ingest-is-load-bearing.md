@@ -68,7 +68,7 @@ collide on one ledger key nor spend each other's approval — an underwriter
 approving a manual +10% must not silently authorise a sensor-driven one.
 
 Both are scoped to the version being superseded, not to the change set alone:
-`axis.ubi-reprice:<policy>:<version>:<changeSetHash>` and
+`axis.ubi-reprice:<policy>:<version>:<changeSetHash>:<chargeMinor>` and
 `axis_ubi_reprice:<policy>:<version>:<changeSetHash>`. `changeSetHashOf` covers
 `{changes, reason}` and *not* the price, so two reprices proposing the same
 factor codes at the same weights but a different `premiumDeltaPpm` hash
@@ -82,6 +82,33 @@ collides, a real second price move gets its own key. This amends the subject-ref
 convention in docs/specs/gap-axis-design.md §A.3; the property that convention
 existed for — an agent-raised and a desk-raised endorsement of one change set
 sharing an approval — survives, because both read the same current version.
+
+The **ledger** key carries the leg's own amount as well (`:<chargeMinor>`, and
+`:<refundMinor>` on the `.refund` leg); the subject ref does not. The version is
+the full scope only until a retry re-reads it: the charge `runTxn` settles,
+something throws before the version insert — the refund leg, an eviction — and
+the retry finds the same still-current version. If that retry prices
+differently, which is exactly the reprice whose model returns another
+`premiumDeltaPpm` for the same factor codes, the key collided again and the
+version was superseded against a replayed transaction. With the amount in the
+key a genuine duplicate of the identical request still collides (same version,
+same change set, same amount) and two prices off one version cannot. This does
+*not* make the path atomic — an abandoned settled charge is still an over-post
+needing compensation, and that remains open — but it holds the invariant that
+matters: no money state moves without a journal behind it. The amount stays off
+the subject ref on purpose: an approval's identity is the request a human is
+being asked about, not the number it happens to compute to, and forking it on
+the amount would stop an agent-raised and a desk-raised change sharing one
+decision.
+
+**Version scoping orphans a pending approval.** A consequence of the subject ref
+naming the version: an approval raised against version V no longer matches a
+retry after any intervening endorsement or reprice, because `gate`
+(`packages/core/src/approvals.ts:222`) matches `(subjectRef, policyKey)` exactly,
+so the granted row is left unspent and the retry raises a second request. That is
+the safer default — the base premium and therefore `amountMinor` changed, and
+`approvals.ts:247` already refuses to reuse an approval granted for less — but
+desks will accumulate approved-but-unactioned rows and need a way to see them.
 
 **The residual on the `/reprice` fallback key.** `POST
 /v1/axis/policies/:id/reprice` derives its idempotency key from the current

@@ -174,6 +174,18 @@ export async function endorsePolicy(
   // second price move does not. An agent-raised and a desk-raised endorsement
   // of the same change set still share one approval identity, because they
   // read the same current version.
+  //
+  // The **ledger** keys below carry the leg's own amount on top of that, and
+  // the subject ref deliberately does not. The version only stops being the
+  // full scope when a retry re-reads it: the charge settles, the version insert
+  // never lands, and the retry prices differently — a reprice whose model
+  // returns another `premiumDeltaPpm` for the same factor codes. The amount
+  // makes those two keys differ, so no version moves against a replayed
+  // transaction. It does not make the path atomic; the abandoned settled charge
+  // still needs compensation, and that is a recorded follow-up. Amount lives on
+  // the ledger key alone because the approval identity is the *request*, not
+  // the price it happens to compute to, and forking it on the amount would stop
+  // an agent-raised and a desk-raised change sharing one decision.
   const subjectRef = `axis_${type.toLowerCase().replaceAll("-", "_")}:${policy.id}:${current.id}:${changeSetHash}`;
   const refundMinor = quote.refundMinor;
 
@@ -214,7 +226,7 @@ export async function endorsePolicy(
       ctx,
       {
         type,
-        idempotencyKey: `${keyPrefix}:${policy.id}:${current.id}:${changeSetHash}`,
+        idempotencyKey: `${keyPrefix}:${policy.id}:${current.id}:${changeSetHash}:${quote.chargeMinor}`,
         currency: policy.currency,
         grossMinor: Math.abs(quote.chargeMinor),
         subjectRefs: { policy: policy.id }
@@ -245,7 +257,7 @@ export async function endorsePolicy(
       ctx,
       {
         type: "REFUND-ISSUE",
-        idempotencyKey: `${keyPrefix}.refund:${policy.id}:${current.id}:${changeSetHash}`,
+        idempotencyKey: `${keyPrefix}.refund:${policy.id}:${current.id}:${changeSetHash}:${refundMinor}`,
         currency: policy.currency,
         grossMinor: refundMinor,
         ...(txn ? { parentTxnId: txn.id } : {}),
