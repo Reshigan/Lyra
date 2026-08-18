@@ -6,7 +6,7 @@ import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
 import { EntitlementsJson, PolicyJson, schema } from "@lyra/db";
-import { notFound, type Ctx } from "@lyra/core";
+import { canonicalJson, notFound, sha256Hex, type Ctx } from "@lyra/core";
 import { Gateway, makeStub } from "@lyra/model-gateway";
 import { axisRoutes } from "./routes/axis.js";
 import { crudRouter } from "./crud.js";
@@ -339,6 +339,38 @@ describe("retry storms", () => {
     expect(await retry.json()).toEqual(await first.json());
     expect(await versions(ctx)).toHaveLength(2);
     expect(await modelCalls(ctx)).toHaveLength(1);
+  });
+
+  it("collapses a header-less double submit: the second call is refused, not priced again", async () => {
+    // What the version-scoped fallback key is FOR (ADR-0065). Two un-keyed
+    // submits arriving while the first is still running read the same current
+    // version, so they derive one key and the second is refused as in-flight
+    // rather than reaching the model. Pinned deterministically — an `in_flight`
+    // row is exactly the state the first request is in mid-flight — because a
+    // real race here would be a flaky test, which is Sev-2 in this repo.
+    const { ctx, policy } = await seedTenantAndPolicy({ permissions: ["axis:policies:endorse"] });
+    await ingestKm(ctx, policy, 120, 95, 140);
+    const app = testApp(ctx, gatewayWith(reply(100_000)));
+    const route = `/v1/axis/policies/${policy.id}/reprice`;
+    await ctx.db.insert(schema.idempotencyKeys).values({
+      id: "idm_inflight",
+      tenantId: ctx.tenantId,
+      key: `axis_ubi_reprice:${policy.id}:1`,
+      route: `POST ${route}`,
+      // The route hands `withIdempotency` an empty request object: a reprice
+      // carries no body, which is why the key has to carry the version.
+      requestHash: await sha256Hex(canonicalJson({})),
+      responseJson: null,
+      status: "in_flight",
+      expiresAt: ctx.now + 60_000,
+      createdAt: ctx.now
+    });
+
+    const res = await app.request(route, { method: "POST" });
+
+    expect(res.status).toBe(409);
+    expect(await versions(ctx)).toHaveLength(1);
+    expect(await modelCalls(ctx)).toHaveLength(0);
   });
 
   it("cannot bump the price twice from one window, key or no key", async () => {

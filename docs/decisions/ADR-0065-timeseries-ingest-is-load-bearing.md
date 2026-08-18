@@ -37,13 +37,19 @@ any engine sees the reply, so a model that returns 900% cannot bill it and no
 call site can forget the guard. The parser also drops any factor without a
 non-empty `evidenceRef`, and zeroes the adjustment entirely when no evidenced
 factor survives: an unexplainable price change is not a price change, however
-confident the reply sounded. The clamp bounds a single step at 75% of the current
-premium, but it does not bound the sequence: the engine refuses outright when a
-reprice would land the premium at or below zero, because a cover already priced
-at 0 (a manual endorsement may set one — `EndorseBody.premiumMinor` is
-non-negative) would otherwise reprice forever, moving tax and commission by
-nothing while stamping a new version each time. A zero premium is not a price,
-so the engine says so rather than silently flooring it.
+confident the reply sounded. The clamp bounds a single step to a quarter of the
+current premium, and repeated maximal downward steps cannot walk a premium to
+zero either: the engine converts ppm with `Math.round`, which rounds half
+toward +∞, so P=1→1, P=2→2, P=3→2, P=4→3 — a positive integer premium always
+keeps at least one minor unit.
+
+The hole the zero-premium guard closes is a different one: a cover that is
+*already* at `premiumMinor === 0`. A manual endorsement can write one —
+`EndorseBody.premiumMinor` is `nonnegative()` — and because the engine prices a
+reprice as a ratio of the stored premium, every later reprice on such a cover
+would move premium, tax and commission by nothing while stamping a new version
+each time. The engine refuses at or below zero rather than flooring silently: a
+zero premium is not a price.
 
 **4. `UBI-REPRICE` has a recipe, and it is deliberately identical to `ENDORSE`'s.**
 The plan that preceded this branch said the type would have no recipe of its own.
@@ -76,6 +82,20 @@ collides, a real second price move gets its own key. This amends the subject-ref
 convention in docs/specs/gap-axis-design.md §A.3; the property that convention
 existed for — an agent-raised and a desk-raised endorsement of one change set
 sharing an approval — survives, because both read the same current version.
+
+**The residual on the `/reprice` fallback key.** `POST
+/v1/axis/policies/:id/reprice` derives its idempotency key from the current
+version when the client sends no `Idempotency-Key` header, and a successful
+reprice changes that version. An un-keyed retry after a settled reprice
+therefore derives a different key, and if fresh telemetry has landed in the new
+window it will price again. That is accepted, and it is a documented limit
+rather than a hidden one: with no client key, such a retry is indistinguishable
+from a genuine second reprice request, and pricing new telemetry is the correct
+answer to the second. What the fallback does provide is collapsing an immediate
+double submit — two requests in flight together read the same current version,
+derive one key, and the later one is refused as in-flight before it reaches the
+model (pinned in `apps/api/src/axis-telemetry.test.ts`). A client that needs
+exactly-once across a lost response must send `Idempotency-Key`.
 
 ## The gap this records
 
