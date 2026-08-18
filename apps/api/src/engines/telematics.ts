@@ -3,7 +3,7 @@ import { id as newId, schema } from "@lyra/db";
 import { badRequest, conflict, emit, hashObject, scoped, type Ctx, type TimeseriesIngest } from "@lyra/core";
 import { runTxn } from "@lyra/ledger";
 import { parseUbi, ubiMessages, type Gateway, type UbiContext } from "@lyra/model-gateway";
-import { declaredPricingInputs, effectiveVersion, endorsePolicy } from "./axis-endorse.js";
+import { declaredPricingInputs, effectiveVersion, endorsementBlocker, endorsePolicy } from "./axis-endorse.js";
 
 // docs/27 group E — telematics/UBI. First real implementation of the H6 seam
 // (`TimeseriesIngest`, packages/core/src/seams.ts): usage/sensor points arriving
@@ -88,6 +88,17 @@ export class TelematicsIngest implements TimeseriesIngest {
     if (!namesPolicy(ref, this.policy)) {
       throw badRequest(`subjectRef ${ref} is not policy ${this.policy.id}`);
     }
+
+    // Accepted implies priceable (ADR-0065 decision 5). Cancellation and lapse
+    // leave `endAt` and the effective version untouched, so nothing else here
+    // notices them — and `priceEndorsement` refuses the whole endorsement on
+    // them, which would make every point accepted after that moment exposure no
+    // reprice can ever bill. Same predicate the pricer reads, so the two cannot
+    // drift apart. A 400 rather than the pricer's 409: this is a device-facing
+    // doorway, and every other refusal on it is a 400.
+    const blocker = endorsementBlocker(this.policy, ctx.now);
+    if (blocker) throw badRequest(blocker);
+
     const subjectRef = ref;
     if (points.length === 0) throw badRequest("no points to ingest");
     if (points.length > MAX_POINTS_PER_BATCH) {
@@ -110,9 +121,12 @@ export class TelematicsIngest implements TimeseriesIngest {
       // timestamp would let two "same instant" readings both land and
       // double-count the kilometres they carry.
       if (!Number.isSafeInteger(p.at)) throw badRequest(`point at ${p.at} is not an epoch-millis integer`);
-      if (p.at < this.policy.startAt || p.at > this.policy.endAt) {
+      // Half-open, like every window that reads these points: a reprice prices
+      // `[unpricedFrom, now)` and is refused at `now >= endAt`, so a point at
+      // exactly `endAt` is in no window there will ever be.
+      if (p.at < this.policy.startAt || p.at >= this.policy.endAt) {
         throw badRequest(
-          `point at ${p.at} falls outside the cover term (${this.policy.startAt}..${this.policy.endAt})`
+          `point at ${p.at} falls outside the cover term [${this.policy.startAt}, ${this.policy.endAt})`
         );
       }
       if (p.at < priced) {
@@ -292,14 +306,14 @@ export async function repriceFromTelemetry(ctx: Ctx, policy: PolicyRow, gateway:
   const current = await effectiveVersion(ctx, policy.id);
   if (!current) throw conflict("policy has no effective version to reprice");
 
-  // `priceEndorsement` derives `effectiveFrom = max(now, current.effectiveFrom)`
-  // and refuses anything at or past `endAt`, so a reprice past the term end is a
-  // guaranteed refusal. Said here rather than discovered there, because there it
-  // is raised after `gateway.complete` — a billed, audited model call for a price
-  // that was never going to move.
-  if (ctx.now >= policy.endAt) {
-    throw conflict("cover term has ended; there is no remaining term to price into");
-  }
+  // What `priceEndorsement` would refuse, asked here rather than discovered
+  // there: there it is raised after `gateway.complete` — a billed, audited model
+  // call for a price that was never going to move. Read from the shared
+  // predicate, never hand-copied: a doorway that refuses less than the pricer
+  // burns a model call, and one that refuses more silently stops repricing live
+  // covers.
+  const blocker = endorsementBlocker(policy, ctx.now);
+  if (blocker) throw conflict(blocker);
 
   // The whole safety of a model-proposed factor is `priceEndorsement`'s referral
   // guard, and that guard is inert when the product declares no pricing inputs

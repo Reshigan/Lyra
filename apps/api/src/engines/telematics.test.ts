@@ -109,6 +109,13 @@ async function seedVersion(effectiveFrom: number, pricedTo?: number): Promise<vo
   } as never);
 }
 
+/** The same cover, moved to another status and re-read as the route would read it. */
+async function withStatus(status: string): Promise<PolicyRow> {
+  await ctx.db.update(schema.axisPolicies).set({ status }).where(eq(schema.axisPolicies.id, policy.id));
+  const [row] = await ctx.db.select().from(schema.axisPolicies).where(eq(schema.axisPolicies.id, policy.id));
+  return row!;
+}
+
 const subjectRef = (): string => `policy:${policy.id}`;
 
 function ingester(source = SOURCE): TelematicsIngest {
@@ -226,6 +233,41 @@ describe("TelematicsIngest.ingest", () => {
 
     expect(await telemTxns()).toHaveLength(0);
     expect(await points()).toHaveLength(0);
+  });
+
+  it("refuses a point at exactly endAt: the reprice window is half-open, so nothing would price it", async () => {
+    // Every reprice window is `[unpricedFrom, now)` and a reprice is refused at
+    // `now >= endAt`, so no window ever contains `endAt`. Accepting a point there
+    // is accepting exposure that is structurally unbillable. The bound is pinned
+    // to the millisecond on both sides: `endAt` out, `endAt - 1` in.
+    expect(
+      await refusalDetail(() => ingester().ingest(subjectRef(), [{ at: policy.endAt, value: 5 }]))
+    ).toMatch(/cover term/i);
+    expect(await telemTxns()).toHaveLength(0);
+    expect(await points()).toHaveLength(0);
+
+    await ingester().ingest(subjectRef(), [{ at: policy.endAt - 1, value: 5 }]);
+    expect((await points()).map((r) => r.at)).toEqual([policy.endAt - 1]);
+  });
+
+  it("refuses ingest on a cover that is not on risk and stores zero points", async () => {
+    // ADR-0065 decision 5: accepted implies priceable. Cancellation leaves
+    // `endAt` and the effective version untouched, so without a status check the
+    // doorway returns `acceptedCount` for points `priceEndorsement` guarantees it
+    // will refuse — exposure recorded against a cover nothing can bill.
+    for (const status of ["cancelled", "lapsed", "expired", "draft"]) {
+      const off = await withStatus(status);
+      expect(
+        await refusalDetail(() => new TelematicsIngest(ctx, SOURCE, off).ingest(subjectRef(), batch(ctx.now - DAY, 3)))
+      ).toMatch(/not on risk/i);
+      expect(await points()).toHaveLength(0);
+      expect(await telemTxns()).toHaveLength(0);
+    }
+
+    // Same batch, same instants, on risk: the refusal above was the status and
+    // nothing else about the batch.
+    await new TelematicsIngest(ctx, SOURCE, await withStatus("active")).ingest(subjectRef(), batch(ctx.now - DAY, 3));
+    expect(await points()).toHaveLength(3);
   });
 
   it("refuses a negative or non-finite value and leaves no transaction", async () => {

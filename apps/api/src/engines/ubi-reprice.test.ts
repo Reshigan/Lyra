@@ -530,13 +530,38 @@ describe("repriceFromTelemetry", () => {
     // model call and writes an `ai_audit_log` row for a price that was never
     // going to move.
     await ingestKm(100);
-    ctx.now = END + DAY;
+    // Pinned at exactly `END`, not a day past it: `effectiveFrom >= endAt` is
+    // refused, so `END` is already outside the priceable term and a `>` guard
+    // here would burn a model call on it while a `now = END + DAY` test stayed
+    // green.
+    ctx.now = END;
     const one = gatewayWithStub(reply(100_000));
 
     expect(await refusalDetail(() => repriceFromTelemetry(ctx, policy, one.gateway))).toMatch(
       /term has ended/
     );
     expect(one.stub.calls.length).toBe(0);
+  });
+
+  it("refuses a reprice on a cover that is not on risk before spending a model call on it", async () => {
+    // `priceEndorsement` refuses the whole endorsement on a cover that is not
+    // bound or active — but it refuses it *after* `gateway.complete`, so the
+    // refusal arrives having already billed a model call and written an
+    // `ai_audit_log` row for a price that was never going to move.
+    await ingestKm(100);
+
+    for (const status of ["cancelled", "lapsed", "expired"]) {
+      await ctx.db.update(schema.axisPolicies).set({ status }).where(eq(schema.axisPolicies.id, policy.id));
+      const [off] = await ctx.db.select().from(schema.axisPolicies).where(eq(schema.axisPolicies.id, policy.id));
+      const one = gatewayWithStub(reply(100_000));
+
+      expect(await refusalDetail(() => repriceFromTelemetry(ctx, off!, one.gateway))).toMatch(/not on risk/i);
+      // The money property: no model call, so no billed provider request and no
+      // audit row — and no reprice transaction behind it.
+      expect(one.stub.calls.length).toBe(0);
+      expect(await ctx.db.select().from(schema.aiAuditLog).where(eq(schema.aiAuditLog.tenantId, ctx.tenantId))).toHaveLength(0);
+      expect(await txns("UBI-REPRICE")).toHaveLength(0);
+    }
   });
 
   it("clamps an absurd downward proposal, so one reply cannot move the price more than 25%", async () => {

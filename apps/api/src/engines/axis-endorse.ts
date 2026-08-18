@@ -82,11 +82,30 @@ export async function effectiveVersion(ctx: Ctx, policyId: string) {
   return row;
 }
 
+/**
+ * Why this cover cannot take an endorsement at `now`, or `null` if it can.
+ *
+ * One predicate rather than a hand-copy per doorway. The telemetry doorway must
+ * refuse exactly what the pricer refuses, or it accepts exposure nothing can
+ * ever bill (ADR-0065 decision 5: accepted implies priceable) — and discovers
+ * the refusal inside `priceEndorsement`, i.e. after a billed model call.
+ *
+ * The term bound is half-open to match every window that reads it: `endAt`
+ * itself is outside the priceable term, because `priceEndorsement` refuses an
+ * `effectiveFrom` at or past it.
+ */
+export function endorsementBlocker(policy: PolicyRow, now: number): string | null {
+  if (policy.status !== "bound" && policy.status !== "active") {
+    return "this cover is not on risk; endorsement is unavailable";
+  }
+  if (now >= policy.endAt) return "cover term has ended; there is no remaining term to price into";
+  return null;
+}
+
 /** Everything the preview endpoint returns and the write endpoint acts on. */
 export async function priceEndorsement(ctx: Ctx, policy: PolicyRow, input: EndorseInput) {
-  if (policy.status !== "bound" && policy.status !== "active") {
-    throw conflict("this cover is not on risk; endorsement is unavailable");
-  }
+  const blocker = endorsementBlocker(policy, ctx.now);
+  if (blocker) throw conflict(blocker);
   const current = await effectiveVersion(ctx, policy.id);
   if (!current) throw conflict("policy has no effective version to endorse");
 
