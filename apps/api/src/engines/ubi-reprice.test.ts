@@ -285,13 +285,12 @@ describe("endorsePolicy transaction type", () => {
     const second = await endorsePolicy(ctx, first.policy, { changes, premiumMinor: 130_000 });
 
     expect(second.txn!.id).not.toBe(first.txn!.id);
-    for (const txn of [first.txn!, second.txn!]) {
-      const lines = await ctx.db
-        .select()
-        .from(schema.ledgerJournalLines)
-        .where(eq(schema.ledgerJournalLines.txnId, txn.id));
-      expect(lines.length).toBeGreaterThan(0);
-    }
+    // Each journal is that endorsement's own commission delta, pro-rated over
+    // the remaining term. `commissionAccrual` debits the gross once, so the
+    // debit sum is the amount posted: a replay would show the first amount
+    // twice, and a double post would show it doubled.
+    expect(await debitSum(first.txn!.id)).toBe(918);
+    expect(await debitSum(second.txn!.id)).toBe(1836);
     // Each version names the transaction that actually posted its journal.
     expect(first.version.txnId).toBe(first.txn!.id);
     expect(second.version.txnId).toBe(second.txn!.id);
@@ -390,13 +389,10 @@ describe("repriceFromTelemetry", () => {
     expect(second.premiumMinor).toBe(115_500);
     expect(await txns("UBI-REPRICE")).toHaveLength(2);
     expect(second.txn!.id).not.toBe(first.txn!.id);
-    for (const txn of [first.txn!, second.txn!]) {
-      const lines = await ctx.db
-        .select()
-        .from(schema.ledgerJournalLines)
-        .where(eq(schema.ledgerJournalLines.txnId, txn.id));
-      expect(lines.length).toBeGreaterThan(0);
-    }
+    // 100_000 -> 110_000 then 110_000 -> 115_500: the second journal is the
+    // second delta's commission, not a replay of the first's.
+    expect(await debitSum(first.txn!.id)).toBe(918);
+    expect(await debitSum(second.txn!.id)).toBe(503);
     const head = await currentVersion();
     expect(head.premiumMinor).toBe(115_500);
     expect(head.txnId).toBe(second.txn!.id);
