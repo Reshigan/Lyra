@@ -37,10 +37,13 @@ any engine sees the reply, so a model that returns 900% cannot bill it and no
 call site can forget the guard. The parser also drops any factor without a
 non-empty `evidenceRef`, and zeroes the adjustment entirely when no evidenced
 factor survives: an unexplainable price change is not a price change, however
-confident the reply sounded. Because the clamp bounds the result at 75% of the
-current premium from below, the engine's `Math.max(0, …)` premium floor is
-unreachable through `parseUbi` and is defence-in-depth against a future second
-caller, not live logic.
+confident the reply sounded. The clamp bounds a single step at 75% of the current
+premium, but it does not bound the sequence: the engine refuses outright when a
+reprice would land the premium at or below zero, because a cover already priced
+at 0 (a manual endorsement may set one — `EndorseBody.premiumMinor` is
+non-negative) would otherwise reprice forever, moving tax and commission by
+nothing while stamping a new version each time. A zero premium is not a price,
+so the engine says so rather than silently flooring it.
 
 **4. `UBI-REPRICE` has a recipe, and it is deliberately identical to `ENDORSE`'s.**
 The plan that preceded this branch said the type would have no recipe of its own.
@@ -52,9 +55,12 @@ price rather than an underwriter, which is the first question asked when a
 customer disputes a premium, while the money lands in exactly the same place.
 `endorsePolicy` therefore builds `ENDORSE`'s recipe whatever `opts.type` says,
 and that divergence between type and recipe is intentional and commented at both
-sites. `opts.type` additionally prefixes the idempotency key
-(`axis.ubi-reprice:…` vs `axis.endorse:…`), so a reprice and a manual endorsement
-carrying the same change set cannot collide on one key.
+sites. `opts.type` additionally prefixes the ledger idempotency key
+(`axis.ubi-reprice:…` vs `axis.endorse:…`) *and* the approval subject ref
+(`axis_ubi_reprice:<policy>:<changeSetHash>`), so a reprice and a manual
+endorsement carrying the same change set can neither collide on one ledger key
+nor spend each other's approval — an underwriter approving a manual +10% must
+not silently authorise a sensor-driven one.
 
 ## The gap this records
 
