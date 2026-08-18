@@ -153,6 +153,30 @@ reason unrelated to pricing can always open a gap between the two, and exposure
 that falls in it is silently under-billed with a balanced journal every time, so
 no ledger invariant catches it.
 
+The watermark is only one of **three** conditions that invariant rests on, and
+all three are enforced at ingest because a reprice enforces all three:
+
+1. **The cover is on risk.** A reprice is an endorsement, and `priceEndorsement`
+   refuses one on a policy that is not `bound` or `active`. Cancellation and
+   lapse leave `endAt` and the effective version untouched, so nothing about the
+   window arithmetic notices them; without this condition the doorway accepts
+   points on a cancelled cover that every future reprice is guaranteed to refuse.
+2. **`now` is inside the half-open term `[startAt, endAt)`.** `endAt` itself is
+   outside it: `priceEndorsement` refuses an `effectiveFrom` at or past `endAt`,
+   and a reprice window is `[unpricedFrom, now)`, so no window ever contains the
+   instant `endAt`.
+3. **The point is at or after the priced watermark**, as above.
+
+Conditions 1 and 2 are `endorsementBlocker`
+(`apps/api/src/engines/axis-endorse.ts`), read by `priceEndorsement`,
+`repriceFromTelemetry` and `TelematicsIngest.ingest` — one predicate, three
+readers, for the same reason the watermark is one function. Hand-copying it is
+what produced this rule's fourth and fifth Criticals: half of one condition was
+copied, with the wrong bound, and the other condition was not copied at all. A
+doorway that refuses *less* than the pricer accepts unbillable exposure and burns
+a billed model call discovering it; one that refuses *more* silently stops
+repricing a live cover. Both are money defects and neither trips a ledger check.
+
 A test pinning this must assert **which exposure was priced** — in minor units,
 or in window bounds — not that a reprice happened. Every one of the four
 Criticals this rule has produced survived a suite that asserted liveness
