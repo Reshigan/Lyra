@@ -375,7 +375,16 @@ export const AXIS = register(
         .where(scoped(ctx, schema.axisClaims, eq(schema.axisClaims.id, row.claimId as string)));
     }
   }),
-  r("referrals", schema.axisReferrals, "rfl", "axis", ro("axis:policies:decide_referral"))
+  r("referrals", schema.axisReferrals, "rfl", "axis", ro("axis:policies:decide_referral")),
+  // Read-only for the same reason as payments/settlements above:
+  // engines/telematics.ts's TelematicsIngest is the sole doorway (POST
+  // /v1/axis/policies/:id/telemetry) — it is the only writer that enforces the
+  // cover-term bounds, dedups against what is already stored, and stamps the
+  // TELEM-INGEST transaction id every row carries. A generic create would let
+  // a caller insert a point with an arbitrary `at`, an arbitrary `value` and a
+  // `txnId` pointing at nothing — which then feeds a reprice. This is the point
+  // that most matters here: a writable telemetry table is a writable premium.
+  r("telemetry-points", schema.axisTelemetryPoints, "telp", "axis", ro("axis:policies:read"))
 );
 
 /* ------------------------------------------------------------------- orbit */

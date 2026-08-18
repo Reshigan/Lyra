@@ -116,6 +116,13 @@ const HAND_WRITTEN: Op[] = [
   { method: "post", path: "/v1/axis/policies/{id}/endorse/preview", summary: "Price a mid-term change without writing anything", permission: "axis:policies:endorse", tag: "axis", requestBody: true },
   { method: "post", path: "/v1/axis/policies/{id}/endorse", summary: "Endorse a policy, appending a priced version", permission: "axis:policies:endorse", tag: "axis", requestBody: true },
 
+  // docs/27 F5. Usage-based insurance: a device/integration posts raw sensor
+  // points against its own series (machine authority, never `:endorse`), and
+  // a reprice turns what has accrued since the last version into a priced
+  // endorsement through the same approval gate as a manual one.
+  { method: "post", path: "/v1/axis/policies/{id}/telemetry", summary: "Ingest a batch of sensor points against this cover", permission: "axis:policies:telemetry", tag: "axis", requestBody: true },
+  { method: "post", path: "/v1/axis/policies/{id}/reprice", summary: "Reprice a cover from its telemetry, endorsing it if the price moved", permission: "axis:policies:endorse", tag: "axis" },
+
   // docs/27 F5 part 2. The ways cover stops. Cancellation refunds the unearned
   // share and claws the matching commission; NTU unwinds a contract that never
   // went on risk; lapse and reinstatement are the unpaid-instalment pair.

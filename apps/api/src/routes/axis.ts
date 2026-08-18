@@ -40,6 +40,7 @@ import { body } from "../http.js";
 import { readUpload } from "../upload.js";
 import { must } from "../rows.js";
 import { EndorseBody, endorsePolicy, priceEndorsement } from "../engines/axis-endorse.js";
+import { TelematicsIngest, repriceFromTelemetry } from "../engines/telematics.js";
 import { bindGroup, brokerFee } from "../engines/group-commission.js";
 import {
   CancelBody,
@@ -1124,6 +1125,54 @@ axisRoutes.post("/policies/:id/endorse", async (c) => {
     c.req.header("idempotency-key") ??
     `axis_endorse:${policy.id}:${await sha256Hex(JSON.stringify({ changes: input.changes, reason: input.reason ?? null }))}`;
   const out = await withIdempotency(ctx, key, `POST ${c.req.path}`, input, () => endorsePolicy(ctx, policy, input));
+  return c.json(out, 200);
+});
+
+// docs/27 F5 — telematics/UBI. `/telemetry` is a device/integration doorway,
+// not an underwriting one (packages/core/src/rbac.ts): a fleet posting
+// kilometres must not also be able to move a price. `/reprice` is the opposite
+// shape — it produces a priced endorsement, so it stays behind the same
+// `axis:policies:endorse` gate as a manual one and invents no permission of
+// its own.
+
+/** The series key and points come from the body; the cover is the route's own
+ *  param, never the body's — `TelematicsIngest` refuses a mismatch anyway,
+ *  but the route should not hand it a ref to check against itself. */
+axisRoutes.post("/policies/:id/telemetry", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:policies:telemetry", { tenantId: ctx.tenantId, module: "axis" });
+  const policy = await must(ctx, schema.axisPolicies, c.req.param("id"), "policies");
+  const input = await body(
+    c,
+    z.object({
+      source: z.string().min(1),
+      points: z.array(z.object({ at: z.number(), value: z.number() }))
+    })
+  );
+  const key = c.req.header("idempotency-key");
+  const run = async () => {
+    await new TelematicsIngest(ctx, input.source, policy).ingest(policy.id, input.points);
+    return { accepted: true as const };
+  };
+  const out = await withIdempotency(ctx, key, `POST ${c.req.path}`, input, run);
+  return c.json(out, 201);
+});
+
+/**
+ * §F5: prices the exposure the cover's telemetry has recorded since its
+ * current version took effect and, if it moved, endorses the contract by that
+ * much — same pricing call, same referral guard, same `axis.endorse` approval
+ * gate as a manual endorsement (`repriceFromTelemetry`, engines/telematics.ts).
+ * `{ repriced: false }` is a genuine no-op, not an error: a model that proposed
+ * no change is a success, so it comes back 200 rather than a 4xx.
+ */
+axisRoutes.post("/policies/:id/reprice", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:policies:endorse", { tenantId: ctx.tenantId, module: "axis" });
+  const policy = await must(ctx, schema.axisPolicies, c.req.param("id"), "policies");
+  const key = c.req.header("idempotency-key");
+  const run = () => repriceFromTelemetry(ctx, policy, c.get("gateway"));
+  const out = await withIdempotency(ctx, key, `POST ${c.req.path}`, {}, run);
   return c.json(out, 200);
 });
 

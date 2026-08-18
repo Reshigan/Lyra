@@ -609,6 +609,17 @@ export interface AxisTasks {
   updatedAt?: number;
 }
 
+export interface AxisTelemetryPoints {
+  id?: string;
+  tenantId?: string;
+  subjectRef: string;
+  source: string;
+  at: number;
+  value: number;
+  txnId: string;
+  createdAt?: number;
+}
+
 export interface ComplianceDisclosures {
   id?: string;
   tenantId?: string;
@@ -2388,6 +2399,8 @@ export interface Operations {
   "POST /v1/axis/policies/{id}/premium-financing-plan/cancel": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/axis/policies/{id}/reinstate": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/axis/policies/{id}/renew": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
+  "POST /v1/axis/policies/{id}/reprice": Op<{ id: string }, never, never, Record<string, unknown>>;
+  "POST /v1/axis/policies/{id}/telemetry": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/axis/policies/{id}/versions": Op<{ id: string }, never, never, Record<string, unknown>>;
   "GET /v1/axis/process-events": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<AxisProcessEvents>>;
   "GET /v1/axis/process-events/{id}": Op<{ id: string }, never, never, AxisProcessEvents>;
@@ -2415,6 +2428,8 @@ export interface Operations {
   "GET /v1/axis/tasks/{id}": Op<{ id: string }, never, never, AxisTasks>;
   "PATCH /v1/axis/tasks/{id}": Op<{ id: string }, never, AxisTasks, AxisTasks>;
   "DELETE /v1/axis/tasks/{id}": Op<{ id: string }, never, never, void>;
+  "GET /v1/axis/telemetry-points": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<AxisTelemetryPoints>>;
+  "GET /v1/axis/telemetry-points/{id}": Op<{ id: string }, never, never, AxisTelemetryPoints>;
   "GET /v1/channels/{connectorId}/webhook": Op<{ connectorId: string }, never, never, Record<string, unknown>>;
   "POST /v1/channels/{connectorId}/webhook": Op<{ connectorId: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/compliance/disclosures": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<ComplianceDisclosures>>;
@@ -3085,6 +3100,8 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "POST /v1/axis/policies/{id}/premium-financing-plan/cancel": { tag: "axis", summary: "Cancel a policy's live premium-financing plan", permission: "axis:policies:finance", public: false },
   "POST /v1/axis/policies/{id}/reinstate": { tag: "axis", summary: "Put cover back on risk after arrears are cleared", permission: "axis:policies:reinstate", public: false },
   "POST /v1/axis/policies/{id}/renew": { tag: "axis", summary: "Bind a successor term and close the prior one", permission: "axis:policies:renew", public: false },
+  "POST /v1/axis/policies/{id}/reprice": { tag: "axis", summary: "Reprice a cover from its telemetry, endorsing it if the price moved", permission: "axis:policies:endorse", public: false },
+  "POST /v1/axis/policies/{id}/telemetry": { tag: "axis", summary: "Ingest a batch of sensor points against this cover", permission: "axis:policies:telemetry", public: false },
   "GET /v1/axis/policies/{id}/versions": { tag: "axis", summary: "The endorsement history of this policy, newest first", permission: "axis:policies:read", public: false },
   "GET /v1/axis/process-events": { tag: "axis", summary: "List process-events", permission: "axis:metrics:read", public: false },
   "GET /v1/axis/process-events/{id}": { tag: "axis", summary: "Fetch one process event", permission: "axis:metrics:read", public: false },
@@ -3112,6 +3129,8 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "GET /v1/axis/tasks/{id}": { tag: "axis", summary: "Fetch one task", permission: "axis:tasks:read", public: false },
   "PATCH /v1/axis/tasks/{id}": { tag: "axis", summary: "Update a task", permission: "axis:tasks:write", public: false },
   "DELETE /v1/axis/tasks/{id}": { tag: "axis", summary: "Soft-delete a task", permission: "axis:tasks:write", public: false },
+  "GET /v1/axis/telemetry-points": { tag: "axis", summary: "List telemetry-points", permission: "axis:policies:read", public: false },
+  "GET /v1/axis/telemetry-points/{id}": { tag: "axis", summary: "Fetch one telemetry point", permission: "axis:policies:read", public: false },
   "GET /v1/channels/{connectorId}/webhook": { tag: "orbit", summary: "Provider subscription handshake; echoes the challenge when the verify token matches", permission: null, public: true },
   "POST /v1/channels/{connectorId}/webhook": { tag: "orbit", summary: "Provider webhook delivery: signature-verified inbound messages and delivery receipts", permission: null, public: true },
   "GET /v1/compliance/disclosures": { tag: "compliance", summary: "List disclosures", permission: "compliance:disclosures:read", public: false },
