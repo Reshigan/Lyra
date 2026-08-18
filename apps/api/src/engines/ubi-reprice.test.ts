@@ -6,9 +6,9 @@ import { and, eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import { EntitlementsJson, PolicyJson, schema } from "@lyra/db";
 import { decide, hashObject, permissionsForRole, type Ctx } from "@lyra/core";
-import { Gateway, makeStub } from "@lyra/model-gateway";
+import { Gateway, makeStub, type UbiContext } from "@lyra/model-gateway";
 import { changeSetHashOf, endorsePolicy } from "./axis-endorse.js";
-import { TelematicsIngest, repriceFromTelemetry, type PolicyRow } from "./telematics.js";
+import { TelematicsIngest, repriceFromTelemetry, type PolicyRow, type UbiStamp } from "./telematics.js";
 
 // docs/27 F5 (Group E, task 4): a telemetry-driven price change is an
 // endorsement. These tests exist to hold that claim down — same pricing, same
@@ -45,9 +45,27 @@ function reply(premiumDeltaPpm: number, code = "km_band"): string {
   });
 }
 
-function gatewayWith(...replies: string[]): Gateway {
+function gatewayWithStub(...replies: string[]): { gateway: Gateway; stub: ReturnType<typeof makeStub> } {
   const stub = makeStub({ replies });
-  return new Gateway({ env: {}, providers: { "workers-ai": stub, anthropic: stub, "openai-compat": stub } });
+  return {
+    gateway: new Gateway({ env: {}, providers: { "workers-ai": stub, anthropic: stub, "openai-compat": stub } }),
+    stub
+  };
+}
+
+function gatewayWith(...replies: string[]): Gateway {
+  return gatewayWithStub(...replies).gateway;
+}
+
+/** The `UbiContext` a given model call was handed — the exposure it priced on. */
+function contextOfCall(stub: ReturnType<typeof makeStub>, n: number): UbiContext {
+  const user = [...stub.calls[n]!.messages].reverse().find((m) => m.role === "user");
+  return JSON.parse(user!.content) as UbiContext;
+}
+
+/** The reprice provenance stamped on a version (`termsJson.ubi`). */
+function ubiStamp(version: { termsJson: string | null }): UbiStamp {
+  return (JSON.parse(version.termsJson ?? "{}") as { ubi?: UbiStamp }).ubi!;
 }
 
 /** The change set `repriceFromTelemetry` builds from `reply()`, and its hash. */
@@ -341,14 +359,24 @@ describe("repriceFromTelemetry", () => {
     expect(head.txnId).toBe(second.txn!.id);
   });
 
-  it("prices telemetry stamped now while a forward-dated endorsement is pending", async () => {
+  it("prices each window once while a forward-dated endorsement is pending, not back to inception every run", async () => {
     // `priceEndorsement` allows a future `effectiveFrom` and inserts the new
     // version `state: "effective"` straight away, so the effective version can
     // start in the future while the cover still runs on the version it
     // superseded. Reading the priced watermark off the effective version alone
-    // then put the watermark in the future: every ingest 400s until that date
-    // arrives and the reprice window is empty until then. The watermark is the
-    // start of the version in force *now*.
+    // put the watermark in the future: every ingest 400s until that date
+    // arrives and the reprice window is empty until then.
+    //
+    // Reading it off the version in force *now* fixes that and is still not a
+    // watermark on its own. A reprice under a pending forward-dated endorsement
+    // does not move the version in force: `priceEndorsement` sets
+    // `effectiveFrom = max(now, current.effectiveFrom)` and `current` is the
+    // forward-dated version, so the new version also starts at the future date,
+    // and the superseded one is closed at its own start — a zero-width window
+    // `versionAt` cannot match. The version containing `now` stays the
+    // pre-endorsement one run after run, so every sweep would re-price back to
+    // inception and compound the premium on kilometres already billed. The end
+    // of the last window actually priced is what has to move.
     const future = await endorsePolicy(ctx, policy, {
       changes: { km_band: { weight: 1 } },
       premiumMinor: 110_000,
@@ -357,11 +385,31 @@ describe("repriceFromTelemetry", () => {
     expect(future.version.effectiveFrom).toBe(NOW + 30 * DAY);
     expect(future.version.state).toBe("effective");
 
-    await new TelematicsIngest(ctx, SOURCE, policy).ingest(`policy:${policy.id}`, [{ at: NOW, value: 140 }]);
+    await new TelematicsIngest(ctx, SOURCE, policy).ingest(`policy:${policy.id}`, [{ at: NOW, value: 100 }]);
 
     ctx.now = NOW + DAY;
-    const out = await repriceFromTelemetry(ctx, future.policy, gatewayWith(reply(100_000)));
-    expect(out.repriced).toBe(true);
+    const one = gatewayWithStub(reply(100_000));
+    const first = await repriceFromTelemetry(ctx, future.policy, one.gateway);
+    expect(first.repriced).toBe(true);
+    const firstUbi = ubiStamp(await currentVersion());
+    expect(contextOfCall(one.stub, 0).series[0]!.total).toBe(100);
+
+    // A second batch inside the still-pending forward date, and a second sweep.
+    ctx.now = NOW + 2 * DAY;
+    await new TelematicsIngest(ctx, SOURCE, policy).ingest(`policy:${policy.id}`, [
+      { at: NOW + Math.round(1.5 * DAY), value: 10 }
+    ]);
+    const two = gatewayWithStub(reply(100_000));
+    const second = await repriceFromTelemetry(ctx, future.policy, two.gateway);
+    expect(second.repriced).toBe(true);
+    const secondUbi = ubiStamp(await currentVersion());
+
+    // Consecutive windows, sharing an endpoint: no instant is priced twice.
+    expect(firstUbi.windowEnd).toBe(NOW + DAY);
+    expect(secondUbi.windowStart).toBe(firstUbi.windowEnd);
+    expect(secondUbi.windowEnd).toBe(NOW + 2 * DAY);
+    // And the model saw only the second batch's exposure, not 110 km again.
+    expect(contextOfCall(two.stub, 0).series[0]!.total).toBe(10);
   });
 
   it("clamps an absurd downward proposal, so one reply cannot move the price more than 25%", async () => {
