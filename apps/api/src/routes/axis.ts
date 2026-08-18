@@ -15,6 +15,7 @@ import {
   emit,
   forbidden,
   gate,
+  hashObject,
   notFound,
   openFields,
   require_,
@@ -39,8 +40,8 @@ import {
 import { body } from "../http.js";
 import { readUpload } from "../upload.js";
 import { must } from "../rows.js";
-import { EndorseBody, endorsePolicy, priceEndorsement } from "../engines/axis-endorse.js";
-import { TelematicsIngest, repriceFromTelemetry } from "../engines/telematics.js";
+import { EndorseBody, changeSetHashOf, endorsePolicy, priceEndorsement } from "../engines/axis-endorse.js";
+import { MAX_POINTS_PER_BATCH, TelematicsIngest, repriceFromTelemetry } from "../engines/telematics.js";
 import { bindGroup, brokerFee } from "../engines/group-commission.js";
 import {
   CancelBody,
@@ -1121,9 +1122,7 @@ axisRoutes.post("/policies/:id/endorse", async (c) => {
   // Without a caller-supplied key the change-set is the key: submitting the same
   // change twice is one endorsement. A throw releases the slot, so the retry
   // that follows a granted approval runs rather than replaying the 403.
-  const key =
-    c.req.header("idempotency-key") ??
-    `axis_endorse:${policy.id}:${await sha256Hex(JSON.stringify({ changes: input.changes, reason: input.reason ?? null }))}`;
+  const key = c.req.header("idempotency-key") ?? `axis_endorse:${policy.id}:${await changeSetHashOf(input)}`;
   const out = await withIdempotency(ctx, key, `POST ${c.req.path}`, input, () => endorsePolicy(ctx, policy, input));
   return c.json(out, 200);
 });
@@ -1142,16 +1141,24 @@ axisRoutes.post("/policies/:id/telemetry", async (c) => {
   const ctx = ctxOf(c);
   require_(ctx.actor, "axis:policies:telemetry", { tenantId: ctx.tenantId, module: "axis" });
   const policy = await must(ctx, schema.axisPolicies, c.req.param("id"), "policies");
+  // Bounded at the trust boundary, not only inside the engine: without `.max()`
+  // a 500 000-point body is parsed and validated in full before anything refuses
+  // it. The engine keeps its own copy of both checks (defence in depth).
   const input = await body(
     c,
     z.object({
       source: z.string().min(1),
-      points: z.array(z.object({ at: z.number(), value: z.number() }))
+      points: z
+        .array(z.object({ at: z.number().int(), value: z.number() }))
+        .min(1)
+        .max(MAX_POINTS_PER_BATCH)
     })
   );
-  const key = c.req.header("idempotency-key");
+  // Plan §Task 5: absent a caller key the batch is the key, so a device that
+  // retries a flush after a timeout stores one set of rows, not two.
+  const key = c.req.header("idempotency-key") ?? `axis_telemetry:${policy.id}:${await hashObject(input)}`;
   const run = async () => {
-    await new TelematicsIngest(ctx, input.source, policy).ingest(policy.id, input.points);
+    await new TelematicsIngest(ctx, input.source, policy).ingest(`policy:${policy.id}`, input.points);
     return { accepted: true as const };
   };
   const out = await withIdempotency(ctx, key, `POST ${c.req.path}`, input, run);
@@ -1170,7 +1177,10 @@ axisRoutes.post("/policies/:id/reprice", async (c) => {
   const ctx = ctxOf(c);
   require_(ctx.actor, "axis:policies:endorse", { tenantId: ctx.tenantId, module: "axis" });
   const policy = await must(ctx, schema.axisPolicies, c.req.param("id"), "policies");
-  const key = c.req.header("idempotency-key");
+  // Plan §Task 5: one reprice per version per retry storm. The body is empty, so
+  // without this a header-less retry storm is N model calls and N price moves.
+  const key =
+    c.req.header("idempotency-key") ?? `axis_ubi_reprice:${policy.id}:${policy.currentVersionId ?? policy.versionSeq}`;
   const run = () => repriceFromTelemetry(ctx, policy, c.get("gateway"));
   const out = await withIdempotency(ctx, key, `POST ${c.req.path}`, {}, run);
   return c.json(out, 200);
