@@ -1,7 +1,8 @@
 import { eq } from "drizzle-orm";
 import { id as newId, schema } from "@lyra/db";
-import { badRequest, scoped, type Ctx } from "@lyra/core";
+import { badRequest, emit, scoped, type Ctx } from "@lyra/core";
 import { buildRecipe, fxRateFor, runTxn } from "@lyra/ledger";
+import { SWEEP_MAX } from "./sweep.js";
 
 // docs/27 group D — premium financing. Opening a plan itself moves no money
 // (PLAN-CREATE is non-financial, docs/19 §4.2); the financing house's
@@ -105,4 +106,86 @@ export async function createPlan(
     .where(scoped(ctx, schema.ledgerPaymentPlans, eq(schema.ledgerPaymentPlans.id, planId)));
 
   return { plan: plan!, txn: { id: txn.id } };
+}
+
+export async function payInstalment(ctx: Ctx, plan: PaymentPlanRow, now: number): Promise<void> {
+  const schedule: ScheduleRow[] = JSON.parse(plan.scheduleJson);
+  let missedStreak = plan.missedStreak;
+  let dueDunned = false;
+
+  for (const row of schedule) {
+    if (row.state !== "pending" || row.dueAt > now) continue;
+
+    try {
+      const fxRatePpm = await fxRateFor(ctx, plan.currency);
+      if (!fxRatePpm) throw badRequest(`no fx rate supplied for ${plan.currency} -> ${ctx.policy.currency}`);
+
+      const lines = buildRecipe("PREM-INSTALMENT", {
+        amountMinor: row.amountMinor,
+        memo: `instalment ${row.seq}/${plan.instalments}: plan ${plan.id}`,
+        dims: { policy: plan.subjectRef }
+      });
+      await runTxn(
+        ctx,
+        {
+          type: "PREM-INSTALMENT",
+          idempotencyKey: `finance.instalment:${plan.id}:${row.seq}`,
+          currency: plan.currency,
+          subjectRefs: { policy: plan.subjectRef, plan: plan.id }
+        },
+        { recipe: { lines, currency: plan.currency, fxRatePpm } }
+      );
+      row.state = "paid";
+      missedStreak = 0;
+    } catch (err) {
+      // A missing fx rate (or any other posting failure) must not throw out of
+      // the sweep loop — every other plan in this tenant's tick, and every
+      // other cron job after sweepPremiumFinancing, has to keep running.
+      row.state = "missed";
+      missedStreak += 1;
+      dueDunned = true;
+      await runTxn(ctx, {
+        type: "DUNNING",
+        idempotencyKey: `finance.dunning:${plan.id}:${row.seq}`,
+        currency: plan.currency,
+        subjectRefs: { policy: plan.subjectRef, plan: plan.id },
+        metadata: { reason: err instanceof Error ? err.message : String(err), seq: row.seq }
+      });
+    }
+  }
+
+  await ctx.db
+    .update(schema.ledgerPaymentPlans)
+    .set({ scheduleJson: JSON.stringify(schedule), missedStreak, updatedAt: now })
+    .where(scoped(ctx, schema.ledgerPaymentPlans, eq(schema.ledgerPaymentPlans.id, plan.id)));
+
+  if (dueDunned && missedStreak >= DUNNING_LAPSE_THRESHOLD) {
+    const missedSeq = [...schedule].reverse().find((r) => r.state === "missed")?.seq ?? 0;
+    await emit(ctx, {
+      module: "ledger",
+      type: "ledger.financing.lapse_due",
+      subject: `plan:${plan.id}`,
+      data: { policyId: plan.subjectRef, planId: plan.id, missedStreak, missedSeq }
+    });
+  }
+}
+
+export async function sweepPremiumFinancing(ctx: Ctx): Promise<number> {
+  const plans = await ctx.db
+    .select()
+    .from(schema.ledgerPaymentPlans)
+    .where(scoped(ctx, schema.ledgerPaymentPlans, eq(schema.ledgerPaymentPlans.state, "active")))
+    .limit(SWEEP_MAX);
+
+  for (const plan of plans) {
+    // One plan's fully-caught failure (fx guard above) must not stop the rest
+    // of this tenant's plans, or the rest of the tenant's cron tick.
+    try {
+      await payInstalment(ctx, plan, ctx.now);
+    } catch (err) {
+      console.error("premium-financing: sweep failed for plan", { planId: plan.id, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  return plans.length;
 }

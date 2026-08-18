@@ -6,7 +6,7 @@ import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { EntitlementsJson, PolicyJson, id as newId, schema } from "@lyra/db";
 import type { Ctx } from "@lyra/core";
-import { createPlan, type PolicyRow } from "./engines/premium-financing.js";
+import { createPlan, payInstalment, sweepPremiumFinancing, DUNNING_LAPSE_THRESHOLD, type PolicyRow } from "./engines/premium-financing.js";
 
 // docs/27 group D — premium financing createPlan(). Flat/local-helper
 // convention (no shared fixtures export seedTenantAndPolicy/testCtx in this
@@ -128,5 +128,86 @@ describe("createPlan", () => {
       error = e;
     }
     expect((error as { detail?: string } | undefined)?.detail).toMatch(/fx rate/i);
+  });
+});
+
+describe("payInstalment", () => {
+  it("collects a due instalment via PREM-INSTALMENT and marks the row paid", async () => {
+    const { ctx, policy } = await seedTenantAndPolicy({ currency: "AED" });
+    const { plan } = await createPlan(ctx, policy, {
+      totalMinor: 120_000, currency: "AED", instalments: 12,
+      startAt: ctx.now, frequencyDays: 30, commissionMinor: 15_000
+    });
+
+    await payInstalment(ctx, plan, ctx.now);
+
+    const [after] = await ctx.db.select().from(schema.ledgerPaymentPlans).where(eq(schema.ledgerPaymentPlans.id, plan.id));
+    const schedule = JSON.parse(after!.scheduleJson);
+    expect(schedule[0].state).toBe("paid");
+    expect(after!.missedStreak).toBe(0);
+
+    const txns = await ctx.db.select().from(schema.ledgerTxns).where(eq(schema.ledgerTxns.type, "PREM-INSTALMENT"));
+    expect(txns).toHaveLength(1);
+  });
+
+  it("posts DUNNING and increments missedStreak when fx rate is missing for the plan currency, without throwing", async () => {
+    const { ctx, policy } = await seedTenantAndPolicy({ currency: "AED" });
+    const { plan } = await createPlan(ctx, policy, {
+      totalMinor: 120_000, currency: "AED", instalments: 12,
+      startAt: ctx.now, frequencyDays: 30, commissionMinor: 15_000
+    });
+    // Force the plan into a currency with no fx rate on file, simulating the
+    // guard's target scenario without needing a second seeded currency.
+    await ctx.db.update(schema.ledgerPaymentPlans).set({ currency: "JPY" }).where(eq(schema.ledgerPaymentPlans.id, plan.id));
+    const [jpyPlan] = await ctx.db.select().from(schema.ledgerPaymentPlans).where(eq(schema.ledgerPaymentPlans.id, plan.id));
+
+    await expect(payInstalment(ctx, jpyPlan!, ctx.now)).resolves.not.toThrow();
+
+    const [after] = await ctx.db.select().from(schema.ledgerPaymentPlans).where(eq(schema.ledgerPaymentPlans.id, plan.id));
+    expect(after!.missedStreak).toBe(1);
+    const schedule = JSON.parse(after!.scheduleJson);
+    expect(schedule[0].state).toBe("missed");
+    const dunning = await ctx.db.select().from(schema.ledgerTxns).where(eq(schema.ledgerTxns.type, "DUNNING"));
+    expect(dunning).toHaveLength(1);
+  });
+
+  it("emits ledger.financing.lapse_due once missedStreak reaches the threshold", async () => {
+    const { ctx, policy } = await seedTenantAndPolicy({ currency: "AED" });
+    const { plan } = await createPlan(ctx, policy, {
+      totalMinor: 120_000, currency: "AED", instalments: 12,
+      startAt: ctx.now, frequencyDays: 30, commissionMinor: 15_000
+    });
+    await ctx.db.update(schema.ledgerPaymentPlans)
+      .set({ currency: "JPY", missedStreak: DUNNING_LAPSE_THRESHOLD - 1 })
+      .where(eq(schema.ledgerPaymentPlans.id, plan.id));
+    const [row] = await ctx.db.select().from(schema.ledgerPaymentPlans).where(eq(schema.ledgerPaymentPlans.id, plan.id));
+
+    await payInstalment(ctx, row!, ctx.now);
+
+    const events = await ctx.db.select().from(schema.eventOutbox).where(eq(schema.eventOutbox.type, "ledger.financing.lapse_due"));
+    expect(events).toHaveLength(1);
+  });
+});
+
+describe("sweepPremiumFinancing", () => {
+  it("processes every active plan due for collection and does not throw when one plan's currency has no fx rate", async () => {
+    const { ctx, policy } = await seedTenantAndPolicy({ currency: "AED" });
+    const good = await createPlan(ctx, policy, {
+      totalMinor: 120_000, currency: "AED", instalments: 12,
+      startAt: ctx.now, frequencyDays: 30, commissionMinor: 15_000
+    });
+    const bad = await createPlan(ctx, policy, {
+      totalMinor: 60_000, currency: "AED", instalments: 6,
+      startAt: ctx.now, frequencyDays: 30, commissionMinor: 6_000
+    });
+    await ctx.db.update(schema.ledgerPaymentPlans).set({ currency: "JPY" }).where(eq(schema.ledgerPaymentPlans.id, bad.plan.id));
+
+    const count = await sweepPremiumFinancing(ctx);
+
+    expect(count).toBe(2);
+    const [goodAfter] = await ctx.db.select().from(schema.ledgerPaymentPlans).where(eq(schema.ledgerPaymentPlans.id, good.plan.id));
+    const [badAfter] = await ctx.db.select().from(schema.ledgerPaymentPlans).where(eq(schema.ledgerPaymentPlans.id, bad.plan.id));
+    expect(JSON.parse(goodAfter!.scheduleJson)[0].state).toBe("paid");
+    expect(badAfter!.missedStreak).toBe(1);
   });
 });
