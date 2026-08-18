@@ -39,9 +39,14 @@ export interface UbiSeriesTotal {
  */
 export interface UbiContext {
   series: UbiSeriesTotal[];
-  /** Exposure window the totals cover, epoch ms. */
-  windowStart: number;
-  windowEnd: number;
+  /**
+   * Exposure window the totals cover, ISO-8601. Strings, not epoch ms: a bare
+   * 13-digit instant is redacted as a card number on the way out (scrub.ts),
+   * and a window the model cannot read is a price struck blind. The stamp
+   * written to the policy version keeps the millis — see `UbiStamp`.
+   */
+  windowStart: string;
+  windowEnd: string;
 }
 
 export interface UbiFactor {

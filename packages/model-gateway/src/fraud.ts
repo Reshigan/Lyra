@@ -17,7 +17,8 @@ export interface FraudHistoryClaim {
   status: string;
   amountMinor: number | null;
   settledMinor: number | null;
-  closedAt: number | null;
+  /** ISO-8601, for the same reason as `FraudContext.reportedAt`. */
+  closedAt: string | null;
 }
 
 export interface FraudDocument {
@@ -29,8 +30,11 @@ export interface FraudDocument {
 export interface FraudContext {
   perilCode: string | null;
   causeCode: string | null;
-  incidentAt: number | null;
-  reportedAt: number;
+  /** ISO-8601, not epoch ms — a bare 13-digit instant is redacted as a card
+   * number on the way out (scrub.ts), and the gap between these two is the
+   * first signal this prompt asks for. */
+  incidentAt: string | null;
+  reportedAt: string;
   amountMinor: number | null;
   limits: Record<string, number> | null;
   history: FraudHistoryClaim[];

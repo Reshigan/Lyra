@@ -32,6 +32,11 @@ const RULES: Rule[] = [
   // PII.
   { kind: "EMAIL", re: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g },
   { kind: "IBAN", re: /\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b/g },
+  // A prompt must never carry a bare epoch-millisecond instant: it is a
+  // 13-digit run, one in ten passes Luhn, and the model then reads
+  // "[[CARD_1]]" where a date belonged. Prompt payloads carry ISO-8601
+  // strings, whose separators cannot match this. Widening the rule to spare
+  // them would spare real 13-digit PANs too.
   { kind: "CARD", re: /\b(?:\d[ -]?){13,19}\b/g },
   { kind: "EMIRATES_ID", re: /\b784[-\s]?\d{4}[-\s]?\d{7}[-\s]?\d\b/g },
   { kind: "PHONE", re: /\+\d[\d\s().-]{7,17}\d/g },

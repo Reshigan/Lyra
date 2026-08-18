@@ -40,6 +40,9 @@ export async function claimDocuments(ctx: Ctx, claim: ClaimRow): Promise<(typeof
 }
 
 /** Generation only — never writes anything. Ambient, not consequential (CLAUDE.md §4): a failed call scores nothing. */
+/** Prompt payloads carry ISO-8601, never epoch ms — see `FraudContext`. */
+const iso = (ms: number | null): string | null => (ms === null ? null : new Date(ms).toISOString());
+
 export async function scoreFraud(
   ctx: Ctx,
   claim: ClaimRow,
@@ -56,8 +59,8 @@ export async function scoreFraud(
       messages: fraudMessages({
         perilCode: claim.perilCode,
         causeCode: claim.causeCode,
-        incidentAt: claim.incidentAt,
-        reportedAt: claim.reportedAt,
+        incidentAt: iso(claim.incidentAt),
+        reportedAt: new Date(claim.reportedAt).toISOString(),
         amountMinor: claim.amountMinor,
         limits: coverage?.limits ?? null,
         history: history.map((h) => ({
@@ -66,7 +69,7 @@ export async function scoreFraud(
           status: h.status,
           amountMinor: h.amountMinor,
           settledMinor: h.settledMinor,
-          closedAt: h.closedAt
+          closedAt: iso(h.closedAt)
         })),
         documents: documents.map((d) => ({ id: d.id, docType: d.docType, extractionConfidence: d.extractionConfidence }))
       })

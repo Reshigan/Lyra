@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { fraudMessages, parseFraud } from "./fraud.js";
+import { scrub } from "./scrub.js";
 
 const FRAUD_CTX = {
   perilCode: "fire",
   causeCode: "electrical",
-  incidentAt: 1_000,
-  reportedAt: 2_000,
+  incidentAt: "1970-01-01T00:00:01.000Z",
+  reportedAt: "1970-01-01T00:00:02.000Z",
   amountMinor: 500_000,
   limits: { building: 1_000_000 },
   history: [],
@@ -13,6 +14,22 @@ const FRAUD_CTX = {
 };
 
 const evidenced = { code: "late_report", weight: 40, evidenceRef: "reportedAt_0" };
+
+describe("fraudMessages", () => {
+  // Same collision as ubi.test.ts: a Luhn-valid epoch-millisecond instant is
+  // indistinguishable from a 13-digit PAN, and the gap between incidentAt and
+  // reportedAt is the first thing this prompt asks the model to weigh.
+  const LUHN_MS = 1_781_571_600_000; // 2026-06-16T01:00:00.000Z, Luhn-valid
+
+  it("sends dates the model can read, even when an instant looks like a card number", () => {
+    const messages = fraudMessages({ ...FRAUD_CTX, reportedAt: new Date(LUHN_MS).toISOString() });
+    const { text, flags } = scrub(messages.at(-1)!.content);
+
+    expect(flags).not.toContain("pii_card");
+    expect(text).not.toContain("[[CARD_");
+    expect(text).toContain(new Date(LUHN_MS).toISOString());
+  });
+});
 
 describe("parseFraud", () => {
   it("strips a ```json fence", () => {
