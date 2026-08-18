@@ -229,8 +229,10 @@ floored at 0.
   `{ source, points }`, idempotency key defaults to the batch hash.
 - `POST /v1/axis/policies/:id/reprice` — `axis:policies:endorse` reused: a mid-term price
   change is an endorsement, and a desk that may not endorse may not reprice. Key defaults
-  to `axis_ubi_reprice:${policy.id}:${currentVersionId}` — one reprice per version per
-  retry storm.
+  to `axis_ubi_reprice:${policy.id}:${currentVersionId}:${newestUnpricedAt}` — one reprice
+  per exposure per retry storm. The key names the newest unpriced telemetry instant, not
+  just the version: a run returning `repriced:false` has still billed a model call, so its
+  key is kept, and only new telemetry mints a new one.
 - `telemetry-points` resource: read-only (`axis:policies:read`), engine owns writes.
 - `axis:policies:telemetry` granted to `axis.admin` and `axis.lead` beside `:finance`.
 
