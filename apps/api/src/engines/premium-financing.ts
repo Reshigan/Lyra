@@ -23,6 +23,13 @@ export interface ScheduleRow {
   amountMinor: number;
   /** `"due"` is the legacy synonym of `"pending"` written by packages/core/src/seed/ledger.ts. */
   state: "pending" | "due" | "paid" | "missed";
+  /**
+   * The `ledger_payments` row that caused the miss on a `"missed"` row. A
+   * missed instalment stays collectable (the financier re-presents the debit),
+   * so the loop needs to tell "this failure again" from "a newer attempt" —
+   * without it, one bounce is re-counted on every tick and lapses a customer.
+   */
+  missedPaymentId?: string | undefined;
 }
 
 export interface CreatePlanInput {
@@ -42,7 +49,25 @@ export const DUNNING_LAPSE_THRESHOLD = 3;
 /** Only a live policy has premium left to finance. */
 const FINANCEABLE_POLICY_STATES = ["bound", "active"];
 
-const uncollected = (state: ScheduleRow["state"]): boolean => state === "pending" || state === "due";
+/**
+ * A `missed` row is still collectable: the financier re-presents the debit and
+ * it clears days later. Excluding it would lose real money that arrived, and
+ * would keep the plan `active` forever (it can never satisfy "every row paid"),
+ * occupying a SWEEP_MAX slot for the life of the tenant.
+ */
+const uncollected = (state: ScheduleRow["state"]): boolean =>
+  state === "pending" || state === "due" || state === "missed";
+
+/**
+ * The engine does not own `ledger_payments.state`, so it is an allowlist, not a
+ * denylist: only these mean the money is with us. Anything else — `pending`, an
+ * unrecognised state a future PSP intake introduces — leaves the row for the
+ * next tick rather than silently becoming a client-money receipt.
+ */
+const PAID_STATES = new Set(["authorized", "captured", "settled"]);
+
+/** The money is not with us and the customer's attempt is over: this is the miss. */
+const MISS_STATES = new Set(["failed", "charged_back", "refunded"]);
 
 /** Legacy plan rows carry a `policy:`-prefixed subjectRef; the ledger dims and
  *  the lapse consumer's policy lookup both need the bare id. */
@@ -76,6 +101,28 @@ export async function createPlan(
   // cover that does not exist.
   if (!FINANCEABLE_POLICY_STATES.includes(policy.status)) {
     throw conflict(`policy ${policy.id} is ${policy.status}; premium financing needs bound or active`);
+  }
+
+  // A policy is financed once. The route's idempotency key only dedupes the
+  // *same* attempt: a client sending a fresh UUID per retry (the normal case),
+  // or re-sending a key after IDEMPOTENCY_TTL_MS, would otherwise open a second
+  // plan — booking the FIN-CMSN commission twice and then collecting the same
+  // premium twice every tick on separate keys (CLAUDE.md #12). `completed` and
+  // `cancelled` plans do not block a new one; a live plan does.
+  const [existing] = await ctx.db
+    .select({ id: schema.ledgerPaymentPlans.id })
+    .from(schema.ledgerPaymentPlans)
+    .where(
+      scoped(
+        ctx,
+        schema.ledgerPaymentPlans,
+        // Legacy rows carry the `policy:` prefix (see policyIdOf).
+        inArray(schema.ledgerPaymentPlans.subjectRef, [policy.id, `policy:${policy.id}`]),
+        inArray(schema.ledgerPaymentPlans.state, ["active", "defaulted"])
+      )
+    );
+  if (existing) {
+    throw conflict(`policy ${policy.id} already has financing plan ${existing.id}`);
   }
 
   // Pre-check before anything is opened or written: a missing fx rate must
@@ -143,7 +190,9 @@ export async function createPlan(
  * The settlement signal for the instalments being collected this tick, if a
  * PSP/financier intake has written any: `ledger_payments.providerRef =
  * "<planId>:<seq>"` (ADR-0066). One scoped query, latest row per seq wins, so a
- * retry that succeeds supersedes an earlier failure.
+ * retry that succeeds supersedes an earlier failure. A settlement file imported
+ * in one batch stamps every row with the same `created_at`, so the id breaks the
+ * tie — otherwise the winner is whatever the scan happened to return last.
  */
 async function paymentsBySeq(
   ctx: Ctx,
@@ -153,7 +202,7 @@ async function paymentsBySeq(
     .select()
     .from(schema.ledgerPayments)
     .where(scoped(ctx, schema.ledgerPayments, inArray(schema.ledgerPayments.providerRef, refs)))
-    .orderBy(asc(schema.ledgerPayments.createdAt));
+    .orderBy(asc(schema.ledgerPayments.createdAt), asc(schema.ledgerPayments.id));
   return new Map(rows.map((r) => [r.providerRef ?? "", r]));
 }
 
@@ -187,10 +236,14 @@ export async function payInstalment(ctx: Ctx, plan: PaymentPlanRow, now: number)
     for (const row of due) {
       const payment = payments.get(`${plan.id}:${row.seq}`);
 
-      if (payment && (payment.state === "failed" || payment.state === "charged_back")) {
+      if (payment && MISS_STATES.has(payment.state)) {
+        // Already counted: the same refused attempt seen again on a later tick
+        // is not a second miss. Only a *newer* payment row moves the streak.
+        if (payment.id === row.missedPaymentId) continue;
         // The only thing that makes an instalment a miss: money that was
-        // actually refused or clawed back.
+        // actually refused, clawed back or returned.
         row.state = "missed";
+        row.missedPaymentId = payment.id;
         missedStreak += 1;
         changed = true;
         try {
@@ -218,6 +271,10 @@ export async function payInstalment(ctx: Ctx, plan: PaymentPlanRow, now: number)
         continue;
       }
 
+      // Neither cash nor a closed attempt (an in-flight `pending` debit, or a
+      // state this engine has never heard of): wait for the next tick.
+      if (payment && !PAID_STATES.has(payment.state)) continue;
+
       try {
         const lines = buildRecipe("PREM-INSTALMENT", {
           amountMinor: row.amountMinor,
@@ -236,6 +293,7 @@ export async function payInstalment(ctx: Ctx, plan: PaymentPlanRow, now: number)
           { recipe: { lines, currency: plan.currency, fxRatePpm } }
         );
         row.state = "paid";
+        delete row.missedPaymentId; // the miss is cured; don't leave it on the row
         // The streak counts *consecutive* misses, so any collection clears it:
         // a plan that pays after two misses starts again from zero rather than
         // lapsing on a miss months later. A collection later in this same tick
