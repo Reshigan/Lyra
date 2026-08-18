@@ -1,7 +1,7 @@
 import { asc, eq, inArray, like } from "drizzle-orm";
 import { id as newId, schema } from "@lyra/db";
-import { badRequest, conflict, emit, scoped, type Ctx } from "@lyra/core";
-import { buildRecipe, fxRateFor, runTxn } from "@lyra/ledger";
+import { audit, badRequest, conflict, emit, notFound, scoped, type Ctx } from "@lyra/core";
+import { buildRecipe, fxRateFor, reverseTxn, runTxn } from "@lyra/ledger";
 import { SWEEP_MAX } from "./sweep.js";
 
 // docs/27 group D — premium financing. Opening a plan itself moves no money
@@ -236,6 +236,77 @@ async function paymentsBySeq(
     .where(scoped(ctx, schema.ledgerPayments, inArray(schema.ledgerPayments.providerRef, refs)))
     .orderBy(asc(schema.ledgerPayments.createdAt), asc(schema.ledgerPayments.id));
   return new Map(rows.map((r) => [r.providerRef ?? "", r]));
+}
+
+/**
+ * A plan opened in error. C3 makes a live plan permanent for its policy, so
+ * without a way out a single mistaken plan locks that contract out of financing
+ * for good — this is the release valve, and the only reason C3 is safe.
+ *
+ * The commission was recognised the moment the plan opened, so cancelling
+ * un-earns it: the FIN-CMSN is reversed rather than deleted, leaving both sides
+ * in the ledger (docs/19 §7). Instalments already collected are real money that
+ * arrived and stay posted.
+ *
+ * ponytail: cancels whole, not pro-rata. A part-collected plan that should
+ * surrender only the unearned share of the commission needs a settlement figure
+ * from the financier, which is a `written_off`/`surrendered` state and its own
+ * recipe — build it when a financier asks for one.
+ */
+export async function cancelPlan(
+  ctx: Ctx,
+  plan: PaymentPlanRow,
+  reason: string
+): Promise<{ plan: PaymentPlanRow; reversalTxnId: string | null }> {
+  if (plan.state !== "active" && plan.state !== "defaulted") {
+    throw conflict(`plan ${plan.id} is ${plan.state}; only a live plan can be cancelled`);
+  }
+
+  // Deterministic key (see createPlan), so no reverse lookup by dimension.
+  const [commission] = await ctx.db
+    .select({ id: schema.ledgerTxns.id })
+    .from(schema.ledgerTxns)
+    .where(
+      scoped(ctx, schema.ledgerTxns, eq(schema.ledgerTxns.idempotencyKey, `finance.plan_commission:${plan.id}`))
+    );
+
+  // Absent for a legacy orphan — a plan row that survived a failed chained
+  // FIN-CMSN back when the row was written first. Nothing to un-earn, and
+  // refusing here would leave exactly those rows unfixable.
+  const reversal = commission ? await reverseTxn(ctx, commission.id, reason) : null;
+
+  await ctx.db
+    .update(schema.ledgerPaymentPlans)
+    .set({ state: "cancelled", updatedAt: ctx.now })
+    .where(scoped(ctx, schema.ledgerPaymentPlans, eq(schema.ledgerPaymentPlans.id, plan.id)));
+
+  const after = { ...plan, state: "cancelled", updatedAt: ctx.now };
+  await audit(ctx, {
+    action: "ledger.financing.plan.cancel",
+    subjectRef: plan.id,
+    before: plan,
+    after: { ...after, reason, reversalTxnId: reversal?.reversal.id ?? null }
+  });
+
+  return { plan: after, reversalTxnId: reversal?.reversal.id ?? null };
+}
+
+/** The one live plan on a policy, or a 404 — the cancel route's lookup. */
+export async function livePlanOf(ctx: Ctx, policyId: string): Promise<PaymentPlanRow> {
+  const [plan] = await ctx.db
+    .select()
+    .from(schema.ledgerPaymentPlans)
+    .where(
+      scoped(
+        ctx,
+        schema.ledgerPaymentPlans,
+        // Same pair C3 checks: a legacy row may carry the bare policy id.
+        inArray(schema.ledgerPaymentPlans.subjectRef, [policyId, `policy:${policyId}`]),
+        inArray(schema.ledgerPaymentPlans.state, ["active", "defaulted"])
+      )
+    );
+  if (!plan) throw notFound(`no live financing plan for policy ${policyId}`);
+  return plan;
 }
 
 export async function payInstalment(ctx: Ctx, plan: PaymentPlanRow, now: number): Promise<void> {

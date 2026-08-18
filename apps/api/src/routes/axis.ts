@@ -91,7 +91,7 @@ import {
   registerFnol
 } from "../engines/axis-fnol.js";
 import { GenerateBordereauBody, generateBordereaux, reconcileBordereaux } from "../engines/axis-bordereaux.js";
-import { createPlan } from "../engines/premium-financing.js";
+import { cancelPlan, createPlan, livePlanOf } from "../engines/premium-financing.js";
 import { embedUpsert } from "../engines/vectorize.js";
 import { meterEgress } from "../engines/egress.js";
 import { fieldKey, type App } from "../env.js";
@@ -1197,6 +1197,28 @@ axisRoutes.post("/policies/:id/premium-financing-plan", async (c) => {
   // retrying client with no header still gets one plan.
   const key = c.req.header("idempotency-key") ?? `axis_finance_plan:${policy.id}`;
   const out = await withIdempotency(ctx, key, `POST ${c.req.path}`, input, () => createPlan(ctx, policy, input));
+  return c.json(out, 200);
+});
+
+const CancelFinancingPlanBody = z.object({ reason: z.string().min(1).max(500) });
+
+/**
+ * C3 gives a policy at most one live financing plan, which makes a plan opened
+ * against the wrong contract permanent without this route. Same permission as
+ * opening one: whoever may commit a contract to a financier may un-commit it.
+ */
+axisRoutes.post("/policies/:id/premium-financing-plan/cancel", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:policies:finance", { tenantId: ctx.tenantId, module: "axis" });
+  const policy = await must(ctx, schema.axisPolicies, c.req.param("id"), "policies");
+  const input = await body(c, CancelFinancingPlanBody);
+  const plan = await livePlanOf(ctx, policy.id);
+  // Keyed on the plan, not the policy: cancelling reverses a settled
+  // transaction, so a retrying client must not un-earn the commission twice.
+  const key = c.req.header("idempotency-key") ?? `axis_finance_cancel:${plan.id}`;
+  const out = await withIdempotency(ctx, key, `POST ${c.req.path}`, input, () =>
+    cancelPlan(ctx, plan, input.reason)
+  );
   return c.json(out, 200);
 });
 

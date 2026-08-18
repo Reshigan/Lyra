@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import { EntitlementsJson, PolicyJson, id as newId, schema } from "@lyra/db";
 import { notFound, pendingOutbox, type Ctx } from "@lyra/core";
 import {
+  cancelPlan,
   createPlan,
   payInstalment,
   sweepPremiumFinancing,
@@ -738,6 +739,96 @@ describe("reinstatePolicy", () => {
     const after = await reread(ctx, plan.id);
     expect(after.state).toBe("active");
     expect(after.missedStreak).toBe(0);
+  });
+});
+
+describe("cancelPlan", () => {
+  it("reverses the commission, leaves the plan out of the sweep, and frees the policy", async () => {
+    const { ctx, policy } = await seedTenantAndPolicy({ currency: "AED" });
+    const { plan } = await createPlan(ctx, policy, {
+      totalMinor: 120_000, currency: "AED", instalments: 12,
+      startAt: ctx.now, frequencyDays: 30, commissionMinor: 15_000
+    });
+
+    await cancelPlan(ctx, plan, "opened against the wrong contract");
+
+    const after = await reread(ctx, plan.id);
+    expect(after.state).toBe("cancelled");
+    // The receivable is un-earned: the original goes `reversed` and a balanced
+    // contra transaction carries the other side.
+    const commissions = await txnsOfType(ctx, "FIN-CMSN");
+    expect(commissions).toHaveLength(2);
+    const original = commissions.find((t) => t.idempotencyKey === `finance.plan_commission:${plan.id}`)!;
+    expect(original.state).toBe("reversed");
+    expect(commissions.find((t) => t.reversalOf === original.id)!.state).toBe("settled");
+    expect(await sweepPremiumFinancing(ctx)).toBe(0);
+
+    // The point of the cancel path: C3 no longer locks the policy out.
+    await expect(createPlan(ctx, policy, {
+      totalMinor: 120_000, currency: "AED", instalments: 12,
+      startAt: ctx.now, frequencyDays: 30, commissionMinor: 15_000
+    })).resolves.toBeDefined();
+  });
+
+  it("refuses a plan that is not live", async () => {
+    const { ctx, policy } = await seedTenantAndPolicy({ currency: "AED" });
+    const { plan } = await createPlan(ctx, policy, {
+      totalMinor: 10_000, currency: "AED", instalments: 1,
+      startAt: ctx.now, frequencyDays: 30, commissionMinor: 1_000
+    });
+    // One instalment, collected: the plan is `completed`, and cancelling a
+    // finished plan would reverse a commission the financier has earned.
+    await payInstalment(ctx, plan, ctx.now);
+
+    await expect(cancelPlan(ctx, await reread(ctx, plan.id), "changed my mind")).rejects.toThrow();
+  });
+
+  it("cancels a plan whose commission was never posted", async () => {
+    // The release valve for a legacy orphan (a plan row that survived a failed
+    // chained FIN-CMSN before createPlan wrote the row last).
+    const { ctx, policy } = await seedTenantAndPolicy({ currency: "AED" });
+    await ctx.db.insert(schema.ledgerPaymentPlans).values({
+      id: "finplan_orphan", tenantId: ctx.tenantId, subjectRef: `policy:${policy.id}`,
+      financierRef: null, totalMinor: 10_000, currency: "AED", instalments: 1,
+      scheduleJson: JSON.stringify([{ seq: 1, dueAt: ctx.now, amountMinor: 10_000, state: "pending" }]),
+      state: "active", missedStreak: 0, createdAt: ctx.now, updatedAt: ctx.now
+    } as never);
+
+    await cancelPlan(ctx, await reread(ctx, "finplan_orphan"), "orphan cleanup");
+
+    expect((await reread(ctx, "finplan_orphan")).state).toBe("cancelled");
+    expect(await txnsOfType(ctx, "FIN-CMSN")).toHaveLength(0);
+  });
+});
+
+describe("POST /v1/axis/policies/:id/premium-financing-plan/cancel", () => {
+  it("cancels the policy's live plan", async () => {
+    const { ctx, policy } = await seedTenantAndPolicy({ currency: "AED" });
+    const { plan } = await createPlan(ctx, policy, {
+      totalMinor: 120_000, currency: "AED", instalments: 12,
+      startAt: ctx.now, frequencyDays: 30, commissionMinor: 15_000
+    });
+
+    const res = await testApp(ctx).request(`/v1/axis/policies/${policy.id}/premium-financing-plan/cancel`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ reason: "opened against the wrong contract" })
+    });
+
+    expect(res.status).toBe(200);
+    expect((await reread(ctx, plan.id)).state).toBe("cancelled");
+  });
+
+  it("404s when the policy has no live plan", async () => {
+    const { ctx, policy } = await seedTenantAndPolicy({ currency: "AED" });
+
+    const res = await testApp(ctx).request(`/v1/axis/policies/${policy.id}/premium-financing-plan/cancel`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ reason: "nothing to cancel" })
+    });
+
+    expect(res.status).toBe(404);
   });
 });
 
