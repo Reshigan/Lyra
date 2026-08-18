@@ -4,6 +4,7 @@ import { badRequest, conflict, emit, hashObject, scoped, type Ctx, type Timeseri
 import { runTxn } from "@lyra/ledger";
 import { parseUbi, ubiMessages, type Gateway, type UbiContext } from "@lyra/model-gateway";
 import { declaredPricingInputs, effectiveVersion, endorsePolicy } from "./axis-endorse.js";
+import { versionAt } from "./axis-fnol.js";
 
 // docs/27 group E — telematics/UBI. First real implementation of the H6 seam
 // (`TimeseriesIngest`, packages/core/src/seams.ts): usage/sensor points arriving
@@ -28,6 +29,25 @@ export const MAX_POINTS_PER_BATCH = 1000;
 const ROWS_PER_INSERT = 11; // 8 columns per row
 
 type Point = { at: number; value: number };
+
+/**
+ * The start of exposure no reprice has priced yet: the `effectiveFrom` of the
+ * version the cover is actually running on right now.
+ *
+ * Usually that is the effective version. It is not when a forward-dated
+ * endorsement is pending: `priceEndorsement` allows a future `effectiveFrom`
+ * and inserts the new version `state: "effective"` immediately, so the
+ * effective version can start in the future while the cover still runs on the
+ * version it superseded. Reading the watermark off the effective version alone
+ * then put it in the future — every ingest 400s until that date arrives, and
+ * the reprice window is empty until then. `versionAt` asks the honest question
+ * instead: which version's window contains now.
+ */
+async function unpricedFrom(ctx: Ctx, policyId: string): Promise<number> {
+  const effective = await effectiveVersion(ctx, policyId);
+  if (!effective || effective.effectiveFrom <= ctx.now) return effective?.effectiveFrom ?? 0;
+  return (await versionAt(ctx, policyId, ctx.now))?.effectiveFrom ?? effective.effectiveFrom;
+}
 
 /** The seam hands us a subjectRef; it must be the one cover this adapter holds. */
 const namesPolicy = (subjectRef: string, policy: PolicyRow): boolean => subjectRef === `policy:${policy.id}`;
@@ -60,12 +80,12 @@ export class TelematicsIngest implements TimeseriesIngest {
       throw badRequest(`too many points: ${points.length} exceeds MAX_POINTS_PER_BATCH (${MAX_POINTS_PER_BATCH})`);
     }
 
-    // The priced watermark. A reprice reads `[current.effectiveFrom, now)` and
-    // each reprice advances `effectiveFrom`, so a point stamped before it is
+    // The priced watermark. A reprice reads `[unpricedFrom, now)` and each
+    // reprice advances that start, so a point stamped before it is
     // exposure no window will ever price. A device that buffers offline and
     // flushes stale points must hear that, not get `acceptedCount: 400` for
     // readings nothing will bill.
-    const priced = (await effectiveVersion(ctx, this.policy.id))?.effectiveFrom ?? 0;
+    const priced = await unpricedFrom(ctx, this.policy.id);
 
     // Dedup inside the batch as well as against the table: two rows for the
     // same instant would collide on `axis_telem_point_uq` and make
@@ -258,9 +278,10 @@ export async function repriceFromTelemetry(ctx: Ctx, policy: PolicyRow, gateway:
   const current = await effectiveVersion(ctx, policy.id);
   if (!current) throw conflict("policy has no effective version to reprice");
 
-  // Exposure since the version being replaced, not since inception: the last
-  // reprice already priced everything before it, and counting it twice would
-  // charge for the same kilometres on every run.
+  // Exposure since the version in force, not since inception: the last reprice
+  // already priced everything before it, and counting it twice would charge for
+  // the same kilometres on every run. Same watermark the ingest refuses against,
+  // so a point that was accepted is a point some window will price.
   // The whole safety of a model-proposed factor is `priceEndorsement`'s referral
   // guard, and that guard is inert when the product declares no pricing inputs
   // (there is no allowlist to check against). A human endorsement may proceed
@@ -270,7 +291,7 @@ export async function repriceFromTelemetry(ctx: Ctx, policy: PolicyRow, gateway:
     throw conflict("policy's product declares no pricing inputs; a model-proposed factor cannot be validated");
   }
 
-  const windowStart = current.effectiveFrom;
+  const windowStart = await unpricedFrom(ctx, policy.id);
   const windowEnd = ctx.now;
   const subjectRef = `policy:${policy.id}`;
   const aggregates = await telemetryBySource(ctx, subjectRef, { from: windowStart, to: windowEnd });

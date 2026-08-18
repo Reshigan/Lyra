@@ -44,7 +44,7 @@ export const CoverageCheckBody = z.object({
  * someone relied on — but `superseded` ones are the whole point: an endorsement
  * closes version 1's window, it does not erase the term it covered.
  */
-async function versionAt(ctx: Ctx, policyId: string, incidentAt: number): Promise<VersionRow | undefined> {
+export async function versionAt(ctx: Ctx, policyId: string, incidentAt: number): Promise<VersionRow | undefined> {
   const [row] = await ctx.db
     .select()
     .from(schema.axisPolicyVersions)

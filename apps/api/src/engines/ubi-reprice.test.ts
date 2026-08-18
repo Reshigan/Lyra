@@ -341,6 +341,29 @@ describe("repriceFromTelemetry", () => {
     expect(head.txnId).toBe(second.txn!.id);
   });
 
+  it("prices telemetry stamped now while a forward-dated endorsement is pending", async () => {
+    // `priceEndorsement` allows a future `effectiveFrom` and inserts the new
+    // version `state: "effective"` straight away, so the effective version can
+    // start in the future while the cover still runs on the version it
+    // superseded. Reading the priced watermark off the effective version alone
+    // then put the watermark in the future: every ingest 400s until that date
+    // arrives and the reprice window is empty until then. The watermark is the
+    // start of the version in force *now*.
+    const future = await endorsePolicy(ctx, policy, {
+      changes: { km_band: { weight: 1 } },
+      premiumMinor: 110_000,
+      effectiveFrom: NOW + 30 * DAY
+    });
+    expect(future.version.effectiveFrom).toBe(NOW + 30 * DAY);
+    expect(future.version.state).toBe("effective");
+
+    await new TelematicsIngest(ctx, SOURCE, policy).ingest(`policy:${policy.id}`, [{ at: NOW, value: 140 }]);
+
+    ctx.now = NOW + DAY;
+    const out = await repriceFromTelemetry(ctx, future.policy, gatewayWith(reply(100_000)));
+    expect(out.repriced).toBe(true);
+  });
+
   it("clamps an absurd downward proposal, so one reply cannot move the price more than 25%", async () => {
     await ingestKm(20);
     // -900_000 ppm would be -90%; MAX_REPRICE_PPM clamps it to -25%.
