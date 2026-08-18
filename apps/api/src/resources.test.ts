@@ -357,6 +357,28 @@ describe("invoice state machine through generic CRUD", () => {
   });
 });
 
+describe("a back-dated subscription does not back-bill", () => {
+  it("defaults next_invoice_at to the current period, not to a start date in the past", async () => {
+    const subs = router(ledgerResource("subscriptions"));
+    const startAt = NOW - 200 * 24 * 60 * 60 * 1000;
+    const res = await send(subs, "POST", "/", {
+      customerRef: "cus_backdated",
+      plan: "growth",
+      priceMinor: 20_000,
+      currency: "AED",
+      interval: "month",
+      startAt,
+      state: "active"
+    });
+    expect(res.status).toBe(201);
+    // The billing sweep invoices every period from next_invoice_at up to the
+    // clock, so defaulting this to a term that started six months ago raises six
+    // months of invoices on the next tick — for periods a migration of existing
+    // customers has already billed by hand. The row is due now, once.
+    expect(res.body.nextInvoiceAt).toBeGreaterThanOrEqual(NOW);
+  });
+});
+
 /* ------------------------------------------------------------ notifications */
 
 describe("notifications are visible to their addressee only", () => {

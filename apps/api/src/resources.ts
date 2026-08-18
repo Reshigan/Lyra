@@ -783,7 +783,25 @@ export const LEDGER = register(
   r("client-money-checks", schema.ledgerClientMoneyChecks, "cmc", "ledger", ro("ledger:client_money:read"), {
     immutable: true
   }),
-  r("subscriptions", schema.ledgerSubscriptions, "sub", "ledger", rw("admin:billing")),
+  r("subscriptions", schema.ledgerSubscriptions, "sub", "ledger", rw("admin:billing"), {
+    // A subscription with no `next_invoice_at` is never invoiced at all: the
+    // sweep filters on `next_invoice_at <= now` and in SQL a NULL comparison is
+    // NULL, not true. So it gets a default — but not `start_at`, which for a
+    // back-dated term (a migrated customer, a contract signed last quarter) has
+    // the sweep catch up every period since, billing months somebody has already
+    // invoiced by hand. Due now, or when the term starts if that is still ahead;
+    // callers may still name their own date. Deliberately not the same rule
+    // migration 0026 uses to backfill existing rows: a subscription created
+    // here has no invoicing history to protect, so `MAX(startAt, ctx.now)` is
+    // safe. 0026's rows may already have been invoiced by hand for periods
+    // since `startAt`, so it floors at the first of next month instead of
+    // `startAt` — using this simpler rule there would back-bill those periods
+    // a second time. Don't collapse the two into one.
+    beforeWrite: (ctx, values, existing) => {
+      if (existing || values.nextInvoiceAt != null) return values;
+      return { ...values, nextInvoiceAt: Math.max(values.startAt as number, ctx.now) };
+    }
+  }),
   r("invoices", schema.ledgerInvoices, "inv", "ledger", {
     read: "ledger:invoices:read",
     create: "ledger:invoices:create",

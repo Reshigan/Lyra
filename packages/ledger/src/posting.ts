@@ -123,12 +123,44 @@ function assertClientMoneyShape(lines: readonly PostingLine[]): void {
   }
 }
 
+/**
+ * The tenant's rate from `from` to its reporting currency, parts per million, or
+ * undefined when it has none on file.
+ *
+ * `ledger_fx_rates` is where a tenant's rates live, and until now nothing read
+ * them: every caller had to hand `post()` a rate it had no way to know, so any
+ * transaction in a currency other than the tenant's default was refused outright
+ * (subscriptions, overages and data-product deliveries all bill in their own
+ * contract's currency). Resolving it here rather than in each caller means the
+ * rate is found once, on the one path that needs it.
+ *
+ * ponytail: newest row wins. A back-dated posting wanting the rate of its own
+ * value date filters on `as_of <= postedAt` — add that when back-dating exists.
+ */
+export async function fxRateFor(ctx: Ctx, from: string, to?: string): Promise<number | undefined> {
+  const base = to ?? ctx.policy.currency;
+  if (from === base) return PPM;
+  const [row] = await ctx.db
+    .select({ ratePpm: schema.ledgerFxRates.ratePpm })
+    .from(schema.ledgerFxRates)
+    .where(
+      and(
+        eq(schema.ledgerFxRates.tenantId, ctx.tenantId),
+        eq(schema.ledgerFxRates.fromCurrency, from),
+        eq(schema.ledgerFxRates.toCurrency, base)
+      )
+    )
+    .orderBy(sql`${schema.ledgerFxRates.asOf} desc`)
+    .limit(1);
+  return row?.ratePpm;
+}
+
 export async function post(ctx: Ctx, input: PostInput): Promise<PostedBatch> {
   if (input.lines.length < 2) throw badRequest("a journal batch needs at least two lines");
 
   const postedAt = input.postedAt ?? ctx.now;
   const baseCurrency = input.baseCurrency ?? ctx.policy.currency;
-  const fxRatePpm = input.fxRatePpm ?? (input.currency === baseCurrency ? PPM : undefined);
+  const fxRatePpm = input.fxRatePpm ?? (await fxRateFor(ctx, input.currency, baseCurrency));
   if (!fxRatePpm) throw badRequest(`no fx rate supplied for ${input.currency} -> ${baseCurrency}`);
   if (fxRatePpm <= 0) throw badRequest("fx rate must be positive");
 

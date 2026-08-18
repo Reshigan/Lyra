@@ -1,6 +1,6 @@
 import { and, eq, gte, like } from "drizzle-orm";
 import { schema } from "@lyra/db";
-import { conflict, type Ctx } from "@lyra/core";
+import { checkKAnonymity, conflict, type Ctx } from "@lyra/core";
 
 // docs/specs/gap-finance-design.md D2/D3. Some transactions are illegal because
 // of what is already in the ledger, not because of their own arguments: a second
@@ -33,10 +33,16 @@ function fiscalYearOf(args: Record<string, unknown>): number {
   return y;
 }
 
-function subjectRefOf(args: Record<string, unknown>): string {
-  const s = args["subjectRef"];
-  if (typeof s !== "string" || !s) throw conflict("subjectRef is required");
-  return s;
+function requireString(args: Record<string, unknown>, key: string): string {
+  const v = args[key];
+  if (typeof v !== "string" || !v) throw conflict(`${key} is required`);
+  return v;
+}
+
+function requireNumber(args: Record<string, unknown>, key: string): number {
+  const v = args[key];
+  if (typeof v !== "number" || !Number.isFinite(v)) throw conflict(`${key} is required`);
+  return v;
 }
 
 /**
@@ -86,7 +92,7 @@ const yearNotAlreadyClosed: Precondition = async (ctx, args) => {
 const AD_PLACEMENT_STALENESS_MS = 24 * 60 * 60 * 1000;
 
 const freshAdPlacementDisclosure: Precondition = async (ctx, args) => {
-  const subjectRef = subjectRefOf(args);
+  const subjectRef = requireString(args, "subjectRef");
   const rows = await ctx.db
     .select({ id: schema.disclosures.id })
     .from(schema.disclosures)
@@ -104,6 +110,40 @@ const freshAdPlacementDisclosure: Precondition = async (ctx, args) => {
   }
 };
 
+/**
+ * docs/19 §5.2 F: a data-product delivery whose result set is too small to
+ * anonymise must be refused before any transaction is opened — the caller
+ * supplies the query's own cell count via `args`, the product supplies its
+ * own floor via `aggregationMin` (docs/03 §SCOUT).
+ */
+const dataProductKAnonymity: Precondition = async (ctx, args) => {
+  const dataProductId = requireString(args, "dataProductId");
+  const cellCount = requireNumber(args, "cellCount");
+  const [product] = await ctx.db
+    .select({
+      aggregationMin: schema.scoutDataProducts.aggregationMin,
+      status: schema.scoutDataProducts.status
+    })
+    .from(schema.scoutDataProducts)
+    .where(
+      and(eq(schema.scoutDataProducts.tenantId, ctx.tenantId), eq(schema.scoutDataProducts.id, dataProductId))
+    );
+  if (!product) throw conflict(`data product ${dataProductId} not found`);
+  // draft|published|suspended (schema scout.ts): only a published product may be
+  // delivered and billed — a draft was never approved for sale and a suspended
+  // one has been withdrawn, often for the exact disclosure reasons this gate
+  // exists to enforce.
+  if (product.status !== "published") {
+    throw conflict(`data product ${dataProductId} is ${product.status}, not published`);
+  }
+  const result = checkKAnonymity(cellCount, product.aggregationMin);
+  if (!result.allowed) {
+    throw conflict(
+      `k-anonymity floor not met: ${result.cellCount} cells below floor of ${result.floor}`
+    );
+  }
+};
+
 /** Every check that must pass before a transaction of this type may proceed. */
 export const TXN_PRECONDITIONS: Record<string, Precondition> = {
   "OPEN-BAL": firstOpeningBalanceOnly,
@@ -111,5 +151,6 @@ export const TXN_PRECONDITIONS: Record<string, Precondition> = {
     await yearNotAlreadyClosed(ctx, args);
     await fiscalYearSoftClosed(ctx, args);
   },
-  "AD-PLACEMENT": freshAdPlacementDisclosure
+  "AD-PLACEMENT": freshAdPlacementDisclosure,
+  "DPROD-DELIVER": dataProductKAnonymity
 };

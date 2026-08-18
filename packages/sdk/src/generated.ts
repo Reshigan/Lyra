@@ -1576,6 +1576,7 @@ export interface LedgerSubscriptions {
   seats?: number;
   startAt: number;
   endAt?: number;
+  nextInvoiceAt?: number;
   state?: string;
   termsJson?: string;
   createdAt?: number;
@@ -1649,6 +1650,8 @@ export interface LedgerUsageMeters {
   quantity?: number;
   includedQuantity?: number;
   unitPriceMicro?: number;
+  overageInvoicedQuantity?: number;
+  overageInvoicedAt?: number;
   updatedAt?: number;
 }
 
