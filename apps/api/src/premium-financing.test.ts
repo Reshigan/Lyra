@@ -742,6 +742,33 @@ describe("reinstatePolicy", () => {
   });
 });
 
+describe("one-live-plan-per-subject constraint", () => {
+  it("is enforced by the database, not only by createPlan's read", async () => {
+    // createPlan reads-then-writes, and two concurrent requests both pass the
+    // read (Workers offer no serialisable transaction to hold it). The partial
+    // unique index is what actually makes the rule true.
+    const { ctx, policy } = await seedTenantAndPolicy({ currency: "AED" });
+    const { plan } = await createPlan(ctx, policy, {
+      totalMinor: 120_000, currency: "AED", instalments: 12,
+      startAt: ctx.now, frequencyDays: 30, commissionMinor: 15_000
+    });
+
+    const second = {
+      id: "finplan_race", tenantId: ctx.tenantId, subjectRef: plan.subjectRef,
+      financierRef: null, totalMinor: 10_000, currency: "AED", instalments: 1,
+      scheduleJson: "[]", state: "active", missedStreak: 0,
+      createdAt: ctx.now, updatedAt: ctx.now
+    };
+    await expect(ctx.db.insert(schema.ledgerPaymentPlans).values(second as never)).rejects.toThrow();
+
+    // Partial: a finished plan does not occupy the slot, so cancel-and-reopen
+    // works (the whole point of cancelPlan).
+    await ctx.db.update(schema.ledgerPaymentPlans).set({ state: "cancelled" })
+      .where(eq(schema.ledgerPaymentPlans.id, plan.id));
+    await expect(ctx.db.insert(schema.ledgerPaymentPlans).values(second as never)).resolves.toBeDefined();
+  });
+});
+
 describe("cancelPlan", () => {
   it("reverses the commission, leaves the plan out of the sweep, and frees the policy", async () => {
     const { ctx, policy } = await seedTenantAndPolicy({ currency: "AED" });

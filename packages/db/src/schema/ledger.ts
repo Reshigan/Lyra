@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { sqliteTable, text, integer, index, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 // docs/19 — transactions & double-entry ledger. Implemented once here, inherited
@@ -396,7 +397,18 @@ export const paymentPlans = sqliteTable(
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull()
   },
-  (t) => [index("ledger_payment_plans_idx").on(t.tenantId, t.state)]
+  (t) => [
+    index("ledger_payment_plans_idx").on(t.tenantId, t.state),
+    // One live plan per subject, enforced by the database. The engine checks the
+    // same rule before it writes (a check gives the caller a 409 with the
+    // offending plan id instead of a constraint error), but two concurrent
+    // requests both pass that read — Workers have no serialisable transaction to
+    // hold it. Partial, because a subject may hold any number of finished plans:
+    // cancel one and open another.
+    uniqueIndex("ledger_payment_plans_live_uq")
+      .on(t.tenantId, t.subjectRef)
+      .where(sql`state IN ('active','defaulted')`)
+  ]
 );
 
 /** Rates stamped onto postings; never fetched at read time. */
