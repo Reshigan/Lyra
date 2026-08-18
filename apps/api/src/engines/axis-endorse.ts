@@ -32,21 +32,27 @@ export const EndorseBody = z.object({
 });
 export type EndorseInput = z.infer<typeof EndorseBody>;
 
-/** Everything the preview endpoint returns and the write endpoint acts on. */
-export async function priceEndorsement(ctx: Ctx, policy: PolicyRow, input: EndorseInput) {
-  if (policy.status !== "bound" && policy.status !== "active") {
-    throw conflict("this cover is not on risk; endorsement is unavailable");
-  }
-  const [current] = await ctx.db
+/** The one version a policy is currently on (§C.2: exactly one is `effective`). */
+export async function effectiveVersion(ctx: Ctx, policyId: string) {
+  const [row] = await ctx.db
     .select()
     .from(schema.axisPolicyVersions)
     .where(
       scoped(
         ctx,
         schema.axisPolicyVersions,
-        and(eq(schema.axisPolicyVersions.policyId, policy.id), eq(schema.axisPolicyVersions.state, "effective"))
+        and(eq(schema.axisPolicyVersions.policyId, policyId), eq(schema.axisPolicyVersions.state, "effective"))
       )
     );
+  return row;
+}
+
+/** Everything the preview endpoint returns and the write endpoint acts on. */
+export async function priceEndorsement(ctx: Ctx, policy: PolicyRow, input: EndorseInput) {
+  if (policy.status !== "bound" && policy.status !== "active") {
+    throw conflict("this cover is not on risk; endorsement is unavailable");
+  }
+  const current = await effectiveVersion(ctx, policy.id);
   if (!current) throw conflict("policy has no effective version to endorse");
 
   // Cover sold today may incept next week, and an endorsement cannot take
@@ -92,9 +98,27 @@ export async function priceEndorsement(ctx: Ctx, policy: PolicyRow, input: Endor
   };
 }
 
-export async function endorsePolicy(ctx: Ctx, policy: PolicyRow, input: EndorseInput) {
+/**
+ * `opts.type` is the transaction type the change is recorded under, and with it
+ * the idempotency-key prefix. A telemetry-driven reprice (`UBI-REPRICE`) is an
+ * endorsement in every other respect — same pricing, same gate, same recipe,
+ * same event — so it rides this function rather than a second copy of it, and
+ * only the provenance of the change differs. Distinct prefixes matter because a
+ * reprice and a manual endorsement of the same contract can carry the identical
+ * change set, and their refund legs share one transaction type.
+ */
+export async function endorsePolicy(
+  ctx: Ctx,
+  policy: PolicyRow,
+  input: EndorseInput,
+  opts: { type?: string } = {}
+) {
   const { current, effectiveFrom, quote, needsReferral, changeSetHash } = await priceEndorsement(ctx, policy, input);
   if (needsReferral) throw badRequest("this change is outside the product's rating inputs and needs referral");
+
+  const type = opts.type ?? "ENDORSE";
+  // `ENDORSE` -> `axis.endorse`, unchanged from before this parameter existed.
+  const keyPrefix = `axis.${type.toLowerCase()}`;
 
   const subjectRef = `axis_endorse:${policy.id}:${changeSetHash}`;
   const refundMinor = quote.refundMinor;
@@ -124,8 +148,8 @@ export async function endorsePolicy(ctx: Ctx, policy: PolicyRow, input: EndorseI
     txn = await runTxn(
       ctx,
       {
-        type: "ENDORSE",
-        idempotencyKey: `axis.endorse:${policy.id}:${changeSetHash}`,
+        type,
+        idempotencyKey: `${keyPrefix}:${policy.id}:${changeSetHash}`,
         currency: policy.currency,
         grossMinor: Math.abs(quote.chargeMinor),
         subjectRefs: { policy: policy.id }
@@ -134,6 +158,12 @@ export async function endorsePolicy(ctx: Ctx, policy: PolicyRow, input: EndorseI
         recipe: {
           // A negative delta gives commission back. That is the clawback recipe,
           // under the ENDORSE type — the transaction is still an endorsement.
+          //
+          // The recipe stays ENDORSE's whatever `opts.type` says, and that
+          // divergence is deliberate: the transaction type records *why* the
+          // price moved (a sensor, not an underwriter) while the posting is the
+          // same posting. RECIPES["UBI-REPRICE"] exists only because
+          // POST /v1/txn/{type} validates against that table.
           lines:
             cmsn > 0
               ? buildRecipe("ENDORSE", { grossMinor: cmsn, channelMinor })
@@ -150,7 +180,7 @@ export async function endorsePolicy(ctx: Ctx, policy: PolicyRow, input: EndorseI
       ctx,
       {
         type: "REFUND-ISSUE",
-        idempotencyKey: `axis.endorse.refund:${policy.id}:${changeSetHash}`,
+        idempotencyKey: `${keyPrefix}.refund:${policy.id}:${changeSetHash}`,
         currency: policy.currency,
         grossMinor: refundMinor,
         ...(txn ? { parentTxnId: txn.id } : {}),
