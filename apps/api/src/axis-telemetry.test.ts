@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
 import { EntitlementsJson, PolicyJson, schema } from "@lyra/db";
@@ -159,6 +159,14 @@ async function versions(ctx: Ctx) {
 /** One row per gateway completion, so its length is the model-call count. */
 async function modelCalls(ctx: Ctx) {
   return ctx.db.select().from(schema.aiAuditLog).where(eq(schema.aiAuditLog.tenantId, ctx.tenantId));
+}
+
+/** The transaction a reprice posts under: zero rows is "no money moved". */
+async function ubiTxns(ctx: Ctx) {
+  return ctx.db
+    .select()
+    .from(schema.ledgerTxns)
+    .where(and(eq(schema.ledgerTxns.tenantId, ctx.tenantId), eq(schema.ledgerTxns.type, "UBI-REPRICE")));
 }
 
 async function keys(ctx: Ctx) {
@@ -425,13 +433,60 @@ describe("POST /policies/:id/reprice", () => {
     expect(await res.json()).toEqual({ repriced: false });
   });
 
-  it("frees the fallback key on a no-op, so the next window prices what arrived after it", async () => {
-    // The fallback key is derived from the current version, and a no-op does not
-    // write one — so a second call derives the SAME key. A stored `repriced:false`
-    // therefore replays for 24h over a watermark the no-op also left where it was:
-    // every kilometre driven in that day is admitted, never priced, and the key
-    // expires long after the window has moved on. The money, not the call count,
-    // is the assertion: the second reprice must actually re-price.
+  it("bills one model call for a header-less retry storm whose reprice moves nothing", async () => {
+    // `repriced:false` is NOT a free no-op: it is only reachable after
+    // `gateway.complete` has billed a provider call and written an
+    // `ai_audit_log` row. Three POSTs must therefore buy exactly one model call
+    // — and leave no version and no UBI-REPRICE transaction behind. Asserting
+    // the call count and the zero rows, not that the calls returned 200: a
+    // liveness assertion is what let a header-less storm bill three times.
+    const { ctx, policy } = await seedTenantAndPolicy({ permissions: ["axis:policies:endorse"] });
+    await ingestKm(ctx, policy, 120, 95);
+    const app = testApp(ctx, gatewayWith(reply(0), reply(0), reply(0)));
+    const route = `/v1/axis/policies/${policy.id}/reprice`;
+
+    const first = await app.request(route, { method: "POST" });
+    const second = await app.request(route, { method: "POST" });
+    const third = await app.request(route, { method: "POST" });
+
+    for (const res of [first, second, third]) {
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ repriced: false });
+    }
+    expect(await modelCalls(ctx)).toHaveLength(1);
+    expect(await versions(ctx)).toHaveLength(1);
+    expect(await ubiTxns(ctx)).toHaveLength(0);
+  });
+
+  it("replays a caller's key rather than re-asking a model that answers differently", async () => {
+    // The model is not deterministic: the same window asked twice comes back 0
+    // and then +20%. A caller-supplied `Idempotency-Key` is the caller saying
+    // "these two POSTs are one request", so the second must replay the first's
+    // no-op. The 200000 must never reach a version or the ledger.
+    const { ctx, policy } = await seedTenantAndPolicy({ permissions: ["axis:policies:endorse"] });
+    await ingestKm(ctx, policy, 120, 95);
+    const app = testApp(ctx, gatewayWith(reply(0), reply(200_000)));
+    const route = `/v1/axis/policies/${policy.id}/reprice`;
+    const init: RequestInit = { method: "POST", headers: { "idempotency-key": "k_ops_1" } };
+
+    const first = await app.request(route, init);
+    const second = await app.request(route, init);
+
+    expect(first.status).toBe(200);
+    expect(await first.json()).toEqual({ repriced: false });
+    expect(second.status).toBe(200);
+    expect(await second.json()).toEqual({ repriced: false });
+    expect(await modelCalls(ctx)).toHaveLength(1);
+    expect(await versions(ctx)).toHaveLength(1);
+    expect(await ubiTxns(ctx)).toHaveLength(0);
+  });
+
+  it("mints a new fallback key when new telemetry arrives, so the next window prices it", async () => {
+    // The other half of keeping a no-op's key: the key names the *exposure* to
+    // be priced, not the version it starts from, so it changes exactly when new
+    // unpriced telemetry lands. Without that, one no-op would suppress this
+    // cover for 24h while kilometres pile up unpriced — the money property, not
+    // the call count, is what pins it: the second POST must actually price.
     const { ctx, policy } = await seedTenantAndPolicy({ permissions: ["axis:policies:endorse"] });
     const app = testApp(ctx, gatewayWith(reply(0), reply(100_000)));
     const route = `/v1/axis/policies/${policy.id}/reprice`;
@@ -449,6 +504,10 @@ describe("POST /policies/:id/reprice", () => {
     const out = (await second.json()) as { repriced: boolean; premiumMinor?: number };
     expect(out.repriced).toBe(true);
     expect(out.premiumMinor).toBe(110_000);
+    expect(await versions(ctx)).toHaveLength(2);
+    const [txn] = await ubiTxns(ctx);
+    expect(txn?.state).toBe("settled");
+    expect(await modelCalls(ctx)).toHaveLength(2);
   });
 
   it("rejects without axis:policies:endorse, before any write", async () => {
