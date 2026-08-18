@@ -413,7 +413,11 @@ export async function onFinancingLapseDue(ctx: Ctx, envelope: Envelope): Promise
     .from(schema.axisPolicies)
     .where(scoped(ctx, schema.axisPolicies, eq(schema.axisPolicies.id, data.policyId)));
   if (!policy) return; // policy already gone (deleted/merged) — nothing to lapse
-  if (policy.status === "lapsed") return; // already lapsed, e.g. by a concurrent path
+  // POLICY_TRANSITIONS allows only active -> lapsed, so any other status makes
+  // lapsePolicy throw a conflict the queue cannot resolve: consume() would burn
+  // six retries and dead-letter an event whose work is genuinely moot
+  // (cancelled, expired, or already lapsed by a concurrent path).
+  if (policy.status !== "active") return;
 
   await lapsePolicy(ctx, policy, data.missedSeq, `premium financing plan ${data.planId}: ${data.missedStreak} consecutive missed instalments`);
 }

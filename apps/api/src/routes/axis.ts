@@ -1188,7 +1188,11 @@ axisRoutes.post("/policies/:id/premium-financing-plan", async (c) => {
   require_(ctx.actor, "axis:policies:finance", { tenantId: ctx.tenantId, module: "axis" });
   const policy = await must(ctx, schema.axisPolicies, c.req.param("id"), "policies");
   const input = await body(c, PremiumFinancingPlanBody);
-  const key = c.req.header("idempotency-key");
+  // withIdempotency is a no-op without a key, and a policy is financed once:
+  // two plans on one contract double-book the commission and post a duplicate
+  // client-money receipt every tick for the plan's life. Key on the policy so a
+  // retrying client with no header still gets one plan.
+  const key = c.req.header("idempotency-key") ?? `axis_finance_plan:${policy.id}`;
   const out = await withIdempotency(ctx, key, `POST ${c.req.path}`, input, () => createPlan(ctx, policy, input));
   return c.json(out, 200);
 });
