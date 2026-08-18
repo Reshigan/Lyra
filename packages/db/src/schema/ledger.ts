@@ -371,7 +371,11 @@ export const payments = sqliteTable(
   },
   (t) => [
     index("ledger_payments_idx").on(t.tenantId, t.state, t.createdAt),
-    index("ledger_payments_batch_idx").on(t.tenantId, t.settlementBatch)
+    index("ledger_payments_batch_idx").on(t.tenantId, t.settlementBatch),
+    // Premium financing reads the settlement signal by providerRef ("<planId>:<seq>",
+    // ADR-0066), once per plan per cron tick — up to SWEEP_MAX scans per tenant
+    // otherwise, on the table that grows fastest once an intake exists.
+    index("ledger_payments_ref_idx").on(t.tenantId, t.providerRef)
   ]
 );
 
