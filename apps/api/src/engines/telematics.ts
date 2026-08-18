@@ -3,7 +3,13 @@ import { id as newId, schema } from "@lyra/db";
 import { badRequest, conflict, emit, hashObject, scoped, type Ctx, type TimeseriesIngest } from "@lyra/core";
 import { runTxn } from "@lyra/ledger";
 import { parseUbi, ubiMessages, type Gateway, type UbiContext } from "@lyra/model-gateway";
-import { declaredPricingInputs, effectiveVersion, endorsementBlocker, endorsePolicy } from "./axis-endorse.js";
+import {
+  declaredPricingInputs,
+  effectiveVersion,
+  endorsementBlocker,
+  endorsePolicy,
+  ingestBlocker
+} from "./axis-endorse.js";
 
 // docs/27 group E — telematics/UBI. First real implementation of the H6 seam
 // (`TimeseriesIngest`, packages/core/src/seams.ts): usage/sensor points arriving
@@ -89,14 +95,18 @@ export class TelematicsIngest implements TimeseriesIngest {
       throw badRequest(`subjectRef ${ref} is not policy ${this.policy.id}`);
     }
 
-    // Accepted implies priceable (ADR-0065 decision 5). Cancellation and lapse
-    // leave `endAt` and the effective version untouched, so nothing else here
-    // notices them — and `priceEndorsement` refuses the whole endorsement on
-    // them, which would make every point accepted after that moment exposure no
-    // reprice can ever bill. Same predicate the pricer reads, so the two cannot
-    // drift apart. A 400 rather than the pricer's 409: this is a device-facing
-    // doorway, and every other refusal on it is a 400.
-    const blocker = endorsementBlocker(this.policy, ctx.now);
+    // Accepted implies priceable (ADR-0065 decision 5). Cancellation leaves
+    // `endAt` and the effective version untouched, so nothing else here notices
+    // it, and every point accepted after it is exposure no reprice can ever
+    // bill. Deliberately `ingestBlocker` and not the pricer's
+    // `endorsementBlocker`: this refusal discards the batch, so it may only
+    // refuse what is unpriceable forever, where the pricer refuses what is
+    // unpriceable now — the two differ on `lapsed`, which reinstatement cures
+    // and the next window prices. Both predicates live in one file and share
+    // their term bound, so they cannot drift. A 400 rather than the pricer's
+    // 409: this is a device-facing doorway, and every other refusal on it is a
+    // 400.
+    const blocker = ingestBlocker(this.policy, ctx.now);
     if (blocker) throw badRequest(blocker);
 
     const subjectRef = ref;

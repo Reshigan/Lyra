@@ -548,6 +548,14 @@ describe("repriceFromTelemetry", () => {
     // bound or active — but it refuses it *after* `gateway.complete`, so the
     // refusal arrives having already billed a model call and written an
     // `ai_audit_log` row for a price that was never going to move.
+    //
+    // `lapsed` belongs in this list and deliberately *not* in the ingest
+    // doorway's equivalent loop (telematics.test.ts): the pricer asks whether
+    // the cover is on risk right now, and a lapsed cover is not, so it refuses —
+    // reversibly, because the watermark does not move and the next window after
+    // reinstatement prices everything it declined. The doorway asks the wider
+    // question because its refusal destroys evidence. Two predicates, one
+    // difference: `lapsed`.
     await ingestKm(100);
 
     for (const status of ["cancelled", "lapsed", "expired"]) {
@@ -562,6 +570,38 @@ describe("repriceFromTelemetry", () => {
       expect(await ctx.db.select().from(schema.aiAuditLog).where(eq(schema.aiAuditLog.tenantId, ctx.tenantId))).toHaveLength(0);
       expect(await txns("UBI-REPRICE")).toHaveLength(0);
     }
+  });
+
+  it("prices the kilometres driven during a lapse the reinstatement cured", async () => {
+    // The money property behind the doorway/pricer split. Nothing in the
+    // codebase records a lapse as a gap in cover: `reinstatePolicy` hops back to
+    // `active`, clears `lapsedAt` and leaves the write-once term alone, and the
+    // watermark is `max(startAt, last priced windowEnd)` which does not advance
+    // while reprices are refused. So the first window after reinstatement spans
+    // the lapse — and had the doorway refused the batch driven during it, the
+    // model would be handed a smaller total over the same window and propose a
+    // smaller uplift, with a journal balancing perfectly against a premium delta
+    // that is simply too small.
+    const beforeLapse = 200;
+    const duringLapse = 250;
+    const ingestOne = async (p: PolicyRow, at: number, value: number) =>
+      new TelematicsIngest(ctx, SOURCE, p).ingest(`policy:${p.id}`, [{ at, value }]);
+    const asStatus = async (status: string): Promise<PolicyRow> => {
+      await ctx.db.update(schema.axisPolicies).set({ status }).where(eq(schema.axisPolicies.id, policy.id));
+      const [row] = await ctx.db.select().from(schema.axisPolicies).where(eq(schema.axisPolicies.id, policy.id));
+      return row!;
+    };
+
+    await ingestOne(policy, NOW - 10 * DAY, beforeLapse);
+    await ingestOne(await asStatus("lapsed"), NOW - 5 * DAY, duringLapse);
+
+    const one = gatewayWithStub(reply(100_000));
+    const out = await repriceFromTelemetry(ctx, await asStatus("active"), one.gateway);
+
+    expect(out.repriced).toBe(true);
+    // The number, not `repriced === true`: the whole defect is a total quietly
+    // short by the lapse span.
+    expect(contextOfCall(one.stub, 0).series[0]!.total).toBe(beforeLapse + duringLapse);
   });
 
   it("clamps an absurd downward proposal, so one reply cannot move the price more than 25%", async () => {

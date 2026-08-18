@@ -11,6 +11,7 @@ import {
   assertPolicyTransition,
   canCaseTransition,
   canClaimTransition,
+  canPolicyReach,
   canPolicyTransition,
   isCaseState,
   isClaimState,
@@ -38,6 +39,27 @@ describe("policy lifecycle", () => {
     expect(canPolicyTransition("draft", "active")).toBe(false);
     expect(POLICY_TRANSITIONS.draft).toContain("bound");
     expect(POLICY_TRANSITIONS.bound).toContain("active");
+  });
+
+  it("canPolicyReach answers the rest of the contract's life, not just the next hop", () => {
+    // The telemetry doorway asks "can this cover ever be on risk again?" before
+    // discarding a batch it can never get back (`ingestBlocker`,
+    // apps/api/src/engines/axis-endorse.ts). That is reachability, not one hop:
+    // a draft reaches `active` through `bound`, and a lapse is cured by
+    // `reinstatePolicy` over an unchanged term.
+    for (const from of ["draft", "bound", "active", "lapsed"] as const) {
+      expect(canPolicyReach(from, "active"), from).toBe(true);
+    }
+    // The true terminal set: nothing here has a path back on risk. `expired`
+    // reaches only `renewed`, which is terminal — a renewal is a new contract.
+    for (const from of ["cancelled", "expired", "renewed", "ntu"] as const) {
+      expect(canPolicyReach(from, "active"), from).toBe(false);
+    }
+  });
+
+  it("canPolicyReach terminates on the cycles the machine actually has", () => {
+    // active -> lapsed -> active is a real cycle; an unguarded walk hangs on it.
+    expect(canPolicyReach("active", "ntu")).toBe(false);
   });
 
   it("lists only known states as targets", () => {

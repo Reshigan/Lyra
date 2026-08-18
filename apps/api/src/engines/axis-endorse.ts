@@ -5,13 +5,15 @@ import {
   actorRef,
   audit,
   badRequest,
+  canPolicyReach,
   conflict,
   emit,
   gate,
   hashObject,
   quoteEndorsement,
   scoped,
-  type Ctx
+  type Ctx,
+  type PolicyState
 } from "@lyra/core";
 import { autoApprovable, buildRecipe, runTxn } from "@lyra/ledger";
 
@@ -82,23 +84,67 @@ export async function effectiveVersion(ctx: Ctx, policyId: string) {
   return row;
 }
 
+/** The two statuses that carry risk: the contract exists and has not left it. */
+const onRisk = (policy: PolicyRow): boolean => policy.status === "bound" || policy.status === "active";
+
+/**
+ * The term bound, in one place because both predicates below need it and two
+ * adjacent copies of a comparison is how this rule has drifted before.
+ *
+ * Half-open, to match every window that reads it: `endAt` itself is outside the
+ * priceable term, because `priceEndorsement` refuses an `effectiveFrom` at or
+ * past it and a reprice window is `[unpricedFrom, now)`.
+ */
+const termEnded = (policy: PolicyRow, now: number): boolean => now >= policy.endAt;
+
+const TERM_ENDED = "cover term has ended; there is no remaining term to price into";
+
 /**
  * Why this cover cannot take an endorsement at `now`, or `null` if it can.
  *
- * One predicate rather than a hand-copy per doorway. The telemetry doorway must
- * refuse exactly what the pricer refuses, or it accepts exposure nothing can
- * ever bill (ADR-0065 decision 5: accepted implies priceable) — and discovers
- * the refusal inside `priceEndorsement`, i.e. after a billed model call.
+ * One predicate rather than a hand-copy per pricing site: read by
+ * `priceEndorsement` and by `repriceFromTelemetry`, which asks it before
+ * `gateway.complete` so a refusal costs no billed model call.
  *
- * The term bound is half-open to match every window that reads it: `endAt`
- * itself is outside the priceable term, because `priceEndorsement` refuses an
- * `effectiveFrom` at or past it.
+ * This is a question about **now**, and its refusal is reversible — the priced
+ * watermark does not move, so exposure it declines today is priced by the next
+ * window that opens. `ingestBlocker` below is the question a doorway asks
+ * instead.
  */
 export function endorsementBlocker(policy: PolicyRow, now: number): string | null {
-  if (policy.status !== "bound" && policy.status !== "active") {
-    return "this cover is not on risk; endorsement is unavailable";
+  if (!onRisk(policy)) return "this cover is not on risk; endorsement is unavailable";
+  if (termEnded(policy, now)) return TERM_ENDED;
+  return null;
+}
+
+/**
+ * Why no future window could ever price a point on this cover, or `null`.
+ *
+ * Not `endorsementBlocker`: that one asks whether an endorsement can be priced
+ * *now*, and may refuse reversibly. This one guards `TelematicsIngest.ingest`,
+ * whose refusal is a 400 that discards the batch — a device treats 4xx as
+ * terminal and drops its buffer — so it may only refuse what is unpriceable
+ * *forever*, or it destroys evidence that cannot be recovered.
+ *
+ * The two answers coincide on `cancelled`, `expired`, `renewed` and `ntu`, and
+ * differ on `lapsed` (and `draft`), which still have a path back to `active`:
+ * `reinstatePolicy` cures a lapse over an unchanged term and writes no cover
+ * gap, and the watermark does not advance while reprices are refused, so the
+ * next window spans the whole lapse and prices exactly these points.
+ *
+ * The status answer comes from `POLICY_TRANSITIONS` via `canPolicyReach` and
+ * never from a literal list of states — a second list is the hand-copy that has
+ * produced this rule's last three defects.
+ */
+export function ingestBlocker(policy: PolicyRow, now: number): string | null {
+  if (!onRisk(policy) && !canPolicyReach(policy.status as PolicyState, "active")) {
+    return "this cover can no longer go on risk; telemetry cannot be priced into it";
   }
-  if (now >= policy.endAt) return "cover term has ended; there is no remaining term to price into";
+  // Kept, unlike the status half: past `endAt` no reprice can ever run
+  // (`repriceFromTelemetry` refuses on the same bound), so every point in the
+  // batch is unpriceable forever. The per-point `p.at >= endAt` check is about
+  // where the point is stamped, not about whether a window can still open.
+  if (termEnded(policy, now)) return TERM_ENDED;
   return null;
 }
 

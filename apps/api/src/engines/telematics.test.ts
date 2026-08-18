@@ -250,16 +250,24 @@ describe("TelematicsIngest.ingest", () => {
     expect((await points()).map((r) => r.at)).toEqual([policy.endAt - 1]);
   });
 
-  it("refuses ingest on a cover that is not on risk and stores zero points", async () => {
+  it("refuses ingest on a cover that can never go on risk again and stores zero points", async () => {
     // ADR-0065 decision 5: accepted implies priceable. Cancellation leaves
     // `endAt` and the effective version untouched, so without a status check the
-    // doorway returns `acceptedCount` for points `priceEndorsement` guarantees it
-    // will refuse — exposure recorded against a cover nothing can bill.
-    for (const status of ["cancelled", "lapsed", "expired", "draft"]) {
+    // doorway returns `acceptedCount` for points no reprice will ever price —
+    // exposure recorded against a cover nothing can bill.
+    //
+    // This is deliberately a *different* list from ubi-reprice.test.ts's
+    // "refuses a reprice on a cover that is not on risk", which keeps `lapsed`.
+    // The pricer asks whether the cover is on risk *now* and its refusal is
+    // reversible; this doorway asks whether the cover can ever be on risk again,
+    // because its refusal is a 400 that discards the batch for good. `lapsed`
+    // and `draft` still have a path to `active`, so they are admitted here and
+    // refused there. Only the states with no path back belong in this loop.
+    for (const status of ["cancelled", "expired", "renewed", "ntu"]) {
       const off = await withStatus(status);
       expect(
         await refusalDetail(() => new TelematicsIngest(ctx, SOURCE, off).ingest(subjectRef(), batch(ctx.now - DAY, 3)))
-      ).toMatch(/not on risk/i);
+      ).toMatch(/can no longer go on risk/i);
       expect(await points()).toHaveLength(0);
       expect(await telemTxns()).toHaveLength(0);
     }
@@ -267,6 +275,18 @@ describe("TelematicsIngest.ingest", () => {
     // Same batch, same instants, on risk: the refusal above was the status and
     // nothing else about the batch.
     await new TelematicsIngest(ctx, SOURCE, await withStatus("active")).ingest(subjectRef(), batch(ctx.now - DAY, 3));
+    expect(await points()).toHaveLength(3);
+  });
+
+  it("accepts ingest on a lapsed cover, whose reinstatement the next window prices", async () => {
+    // `reinstatePolicy` hops a lapsed cover back to `active` over an unchanged
+    // term and writes no cover gap, and the watermark does not advance while
+    // reprices are refused — so the first window after reinstatement spans the
+    // lapse and prices these very points. Refusing them at the door would throw
+    // away exposure nothing can recover (the money property is pinned in
+    // ubi-reprice.test.ts; here it is that the rows land at all).
+    const lapsed = await withStatus("lapsed");
+    await new TelematicsIngest(ctx, SOURCE, lapsed).ingest(subjectRef(), batch(ctx.now - DAY, 3));
     expect(await points()).toHaveLength(3);
   });
 

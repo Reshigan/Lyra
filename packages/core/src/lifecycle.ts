@@ -34,6 +34,31 @@ export function canPolicyTransition(from: PolicyState, to: PolicyState): boolean
   return POLICY_TRANSITIONS[from].includes(to);
 }
 
+/**
+ * Is `to` reachable from `from` in one hop or many?
+ *
+ * `canPolicyTransition` answers about the next hop; this answers about the rest
+ * of the contract's life. A doorway whose refusal destroys something — the
+ * telemetry ingest discards the batch on a 400 and a device drops its buffer —
+ * may only refuse what is impossible forever, not what is impossible today
+ * (`ingestBlocker`, apps/api/src/engines/axis-endorse.ts). Derived from
+ * `POLICY_TRANSITIONS` rather than listed, so a new state is answered for by
+ * editing the machine and nothing else.
+ */
+export function canPolicyReach(from: PolicyState, to: PolicyState): boolean {
+  const seen = new Set<PolicyState>();
+  const queue: PolicyState[] = [...POLICY_TRANSITIONS[from]];
+  while (queue.length > 0) {
+    const next = queue.shift()!;
+    if (next === to) return true;
+    // active -> lapsed -> active is a real cycle; without this the walk hangs.
+    if (seen.has(next)) continue;
+    seen.add(next);
+    queue.push(...POLICY_TRANSITIONS[next]);
+  }
+  return false;
+}
+
 export function isPolicyState(s: string): s is PolicyState {
   return (POLICY_STATES as readonly string[]).includes(s);
 }
