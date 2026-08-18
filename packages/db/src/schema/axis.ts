@@ -644,8 +644,8 @@ export const telemetryPoints = sqliteTable(
     txnId: text("txn_id").notNull(),
     createdAt: integer("created_at").notNull()
   },
-  (t) => [
-    uniqueIndex("axis_telem_point_uq").on(t.tenantId, t.subjectRef, t.source, t.at),
-    index("axis_telem_subject_idx").on(t.tenantId, t.subjectRef, t.source, t.at)
-  ]
+  // One index, not two: a second index on the identical columns is pure write
+  // amplification on this feature's hottest insert path, and every read (dedup
+  // lookup, window aggregate) is a prefix scan the unique index already serves.
+  (t) => [uniqueIndex("axis_telem_point_uq").on(t.tenantId, t.subjectRef, t.source, t.at)]
 );

@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "84f1249c-b162-4bf5-9bd1-f76bea140845",
+  "id": "603361d5-e6e7-44bc-a528-3c5d4dcaec61",
   "prevId": "2e2a12f6-c60c-409a-81ff-283dd9cfcbe5",
   "tables": {
     "ai_agents": {
@@ -5384,16 +5384,6 @@
             "at"
           ],
           "isUnique": true
-        },
-        "axis_telem_subject_idx": {
-          "name": "axis_telem_subject_idx",
-          "columns": [
-            "tenant_id",
-            "subject_ref",
-            "source",
-            "at"
-          ],
-          "isUnique": false
         }
       },
       "foreignKeys": {},
