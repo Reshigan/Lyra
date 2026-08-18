@@ -1,4 +1,4 @@
-import { eq, gte, lt, lte } from "drizzle-orm";
+import { desc, eq, gte, lt, lte } from "drizzle-orm";
 import { id as newId, schema } from "@lyra/db";
 import { badRequest, conflict, emit, hashObject, scoped, type Ctx, type TimeseriesIngest } from "@lyra/core";
 import { runTxn } from "@lyra/ledger";
@@ -31,22 +31,66 @@ const ROWS_PER_INSERT = 11; // 8 columns per row
 type Point = { at: number; value: number };
 
 /**
- * The start of exposure no reprice has priced yet: the `effectiveFrom` of the
- * version the cover is actually running on right now.
+ * The end of the last window a reprice actually priced, or 0 if none has.
  *
- * Usually that is the effective version. It is not when a forward-dated
- * endorsement is pending: `priceEndorsement` allows a future `effectiveFrom`
- * and inserts the new version `state: "effective"` immediately, so the
- * effective version can start in the future while the cover still runs on the
- * version it superseded. Reading the watermark off the effective version alone
- * then put it in the future — every ingest 400s until that date arrives, and
- * the reprice window is empty until then. `versionAt` asks the honest question
- * instead: which version's window contains now.
+ * `termsJson.ubi` is stamped by the reprice that produced the version and is in
+ * `VERSION_SCOPED_TERMS`, so it is never carried forward: only versions a
+ * reprice wrote carry one, and the highest `versionSeq` carrying one is the
+ * most recent window. One query, versions-of-one-policy sized.
+ */
+async function lastPricedWindowEnd(ctx: Ctx, policyId: string): Promise<number> {
+  const rows = await ctx.db
+    .select({ termsJson: schema.axisPolicyVersions.termsJson })
+    .from(schema.axisPolicyVersions)
+    .where(scoped(ctx, schema.axisPolicyVersions, eq(schema.axisPolicyVersions.policyId, policyId)))
+    .orderBy(desc(schema.axisPolicyVersions.versionSeq));
+  for (const row of rows) {
+    const { ubi } = JSON.parse(row.termsJson ?? "{}") as { ubi?: UbiStamp };
+    if (typeof ubi?.windowEnd === "number") return ubi.windowEnd;
+  }
+  return 0;
+}
+
+/**
+ * The start of exposure no reprice has priced yet: the later of where the cover
+ * is running from and where the last priced window ended.
+ *
+ * The version in force is usually the effective one. It is not when a
+ * forward-dated endorsement is pending: `priceEndorsement` allows a future
+ * `effectiveFrom` and inserts the new version `state: "effective"` immediately,
+ * so the effective version can start in the future while the cover still runs
+ * on the version it superseded. Reading the watermark off the effective version
+ * alone then put it in the future — every ingest 400s until that date arrives,
+ * and the reprice window is empty until then. `versionAt` asks the honest
+ * question instead: which version's window contains now.
+ *
+ * The version in force is not a watermark on its own either. A reprice under
+ * that pending forward date does not move it: the new version starts at the
+ * future date too, and the version it supersedes is closed at its own start —
+ * a zero-width window `versionAt` cannot match. So the version containing `now`
+ * stays the pre-endorsement one, and on the version alone every sweep would
+ * re-price back to inception and compound the premium on exposure already
+ * billed (a balanced journal each time, so no ledger invariant catches it).
+ * `lastPricedWindowEnd` is the half that does advance. In the ordinary case a
+ * reprice sets `effectiveFrom === windowEnd === now` and the two agree.
+ *
+ * Two cases still fall through `versionAt` to the future `effectiveFrom`, and
+ * both are deliberate rather than overlooked:
+ *   - a cover that has not incepted yet (one forward-dated version, nothing
+ *     superseded) — exposure before inception is not covered exposure, and the
+ *     term bounds in `ingest` refuse those points first anyway;
+ *   - a cover whose term has ended (`effectiveTo <= now` everywhere) — there is
+ *     no window left to price into.
+ * In both the watermark sits in the future and the reprice refuses with "no
+ * telemetry stored ... in the window", which is the correct answer for each.
  */
 async function unpricedFrom(ctx: Ctx, policyId: string): Promise<number> {
   const effective = await effectiveVersion(ctx, policyId);
-  if (!effective || effective.effectiveFrom <= ctx.now) return effective?.effectiveFrom ?? 0;
-  return (await versionAt(ctx, policyId, ctx.now))?.effectiveFrom ?? effective.effectiveFrom;
+  const inForce =
+    !effective || effective.effectiveFrom <= ctx.now
+      ? (effective?.effectiveFrom ?? 0)
+      : ((await versionAt(ctx, policyId, ctx.now))?.effectiveFrom ?? effective.effectiveFrom);
+  return Math.max(inForce, await lastPricedWindowEnd(ctx, policyId));
 }
 
 /** The seam hands us a subjectRef; it must be the one cover this adapter holds. */
