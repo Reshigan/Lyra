@@ -71,21 +71,6 @@ export async function withIdempotency<T>(
   }
 }
 
-/**
- * Forget a completed attempt, so the same key may run again.
- *
- * For the narrow case where a handler succeeded but did nothing: replaying "I
- * did nothing" for the next 24h is wrong when the caller's second attempt would
- * do something (the UBI reprice, `apps/api/src/routes/axis.ts`, whose fallback
- * key is derived from a version a no-op does not change). Call it only when the
- * run left no state behind — releasing a key whose attempt DID write is how a
- * double charge happens.
- */
-export async function releaseIdempotency(ctx: Ctx, key: string | undefined, route: string): Promise<void> {
-  if (!key) return;
-  await ctx.db.delete(schema.idempotencyKeys).where(slot(ctx, key, route));
-}
-
 export async function pruneIdempotency(db: CoreDb, now: number): Promise<void> {
   await db.delete(schema.idempotencyKeys).where(lt(schema.idempotencyKeys.expiresAt, now));
 }

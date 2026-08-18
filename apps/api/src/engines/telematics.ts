@@ -69,6 +69,39 @@ async function unpricedFrom(ctx: Ctx, policy: PolicyRow): Promise<number> {
   return Math.max(policy.startAt, await lastPricedWindowEnd(ctx, policy.id));
 }
 
+/**
+ * The newest instant of stored telemetry no reprice has priced yet, or 0 when
+ * there is none.
+ *
+ * The reprice route builds its fallback idempotency key from this. That key
+ * must change exactly when the exposure to be priced changes: a run that comes
+ * back `repriced:false` has still billed a model call and written an audit row,
+ * so its key is kept rather than released — and keeping a key derived from the
+ * *version* would replay "nothing happened" for 24h over telemetry that landed
+ * afterwards. Keyed on what will be priced, new telemetry mints a new key and
+ * no new telemetry replays.
+ *
+ * One row out, never the batch: the database does the ordering over the
+ * `axis_telem_point_uq` (tenant, subjectRef, …) prefix and returns the max.
+ */
+export async function newestUnpricedAt(ctx: Ctx, policy: PolicyRow): Promise<number> {
+  const from = await unpricedFrom(ctx, policy);
+  const [row] = await ctx.db
+    .select({ at: schema.axisTelemetryPoints.at })
+    .from(schema.axisTelemetryPoints)
+    .where(
+      scoped(
+        ctx,
+        schema.axisTelemetryPoints,
+        eq(schema.axisTelemetryPoints.subjectRef, `policy:${policy.id}`),
+        gte(schema.axisTelemetryPoints.at, from)
+      )
+    )
+    .orderBy(desc(schema.axisTelemetryPoints.at))
+    .limit(1);
+  return row?.at ?? 0;
+}
+
 /** The seam hands us a subjectRef; it must be the one cover this adapter holds. */
 const namesPolicy = (subjectRef: string, policy: PolicyRow): boolean => subjectRef === `policy:${policy.id}`;
 

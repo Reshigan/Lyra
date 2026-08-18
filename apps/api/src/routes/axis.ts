@@ -18,7 +18,6 @@ import {
   hashObject,
   notFound,
   openFields,
-  releaseIdempotency,
   require_,
   scoped,
   sealFields,
@@ -42,7 +41,7 @@ import { body } from "../http.js";
 import { readUpload } from "../upload.js";
 import { must } from "../rows.js";
 import { EndorseBody, changeSetHashOf, endorsePolicy, priceEndorsement } from "../engines/axis-endorse.js";
-import { MAX_POINTS_PER_BATCH, TelematicsIngest, repriceFromTelemetry } from "../engines/telematics.js";
+import { MAX_POINTS_PER_BATCH, TelematicsIngest, newestUnpricedAt, repriceFromTelemetry } from "../engines/telematics.js";
 import { bindGroup, brokerFee } from "../engines/group-commission.js";
 import {
   CancelBody,
@@ -1178,17 +1177,23 @@ axisRoutes.post("/policies/:id/reprice", async (c) => {
   const ctx = ctxOf(c);
   require_(ctx.actor, "axis:policies:endorse", { tenantId: ctx.tenantId, module: "axis" });
   const policy = await must(ctx, schema.axisPolicies, c.req.param("id"), "policies");
-  // Plan §Task 5: one reprice per version per retry storm. The body is empty, so
-  // without this a header-less retry storm is N model calls and N price moves.
+  // Plan §Task 5: one reprice per exposure per retry storm. The body is empty,
+  // so without this a header-less retry storm is N model calls and N price
+  // moves.
+  //
+  // The key is kept whatever the outcome, `repriced:false` included: that answer
+  // is only reachable after `gateway.complete` has billed a provider call and
+  // written an `ai_audit_log` row, so a no-op is not a run that did nothing and
+  // releasing its key buys the next retry another billed call. What moves
+  // instead is the key itself — it names the newest unpriced telemetry, so it
+  // changes exactly when the exposure to be priced changes. New telemetry mints
+  // a new key and prices; no new telemetry replays.
   const key =
-    c.req.header("idempotency-key") ?? `axis_ubi_reprice:${policy.id}:${policy.currentVersionId ?? policy.versionSeq}`;
-  const run = () => repriceFromTelemetry(ctx, policy, c.get("gateway"));
-  const route = `POST ${c.req.path}`;
-  const out = await withIdempotency(ctx, key, route, {}, run);
-  // A no-op wrote nothing — no version, no ledger, and no watermark move — so
-  // the key would otherwise replay "nothing happened" for 24h across windows in
-  // which something did. Safe precisely because nothing was written.
-  if (!out.repriced) await releaseIdempotency(ctx, key, route);
+    c.req.header("idempotency-key") ??
+    `axis_ubi_reprice:${policy.id}:${policy.currentVersionId ?? policy.versionSeq}:${await newestUnpricedAt(ctx, policy)}`;
+  const out = await withIdempotency(ctx, key, `POST ${c.req.path}`, {}, () =>
+    repriceFromTelemetry(ctx, policy, c.get("gateway"))
+  );
   return c.json(out, 200);
 });
 

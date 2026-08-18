@@ -330,7 +330,13 @@ describe("retry storms", () => {
     expect(await points(ctx)).toHaveLength(1);
   });
 
-  it("keys a header-less reprice to the version it is repricing, so a retry replays", async () => {
+  // The fallback key the route derives for `pol_1` once `ingestKm` has run:
+  // the current version AND the newest unpriced instant, which `ingestKm`
+  // stamps at NOW - DAY. Spelled out here rather than recomputed, so a change
+  // to what the key names fails these tests instead of following them.
+  const FALLBACK_KEY = `axis_ubi_reprice:pol_1:pver_1:${NOW - DAY}`;
+
+  it("keys a header-less reprice to the exposure it is repricing, so a retry replays", async () => {
     const { ctx, policy } = await seedTenantAndPolicy({ permissions: ["axis:policies:endorse"] });
     await ingestKm(ctx, policy, 120, 95, 140);
     const app = testApp(ctx, gatewayWith(reply(100_000), reply(100_000)));
@@ -338,13 +344,14 @@ describe("retry storms", () => {
     const first = await app.request(`/v1/axis/policies/${policy.id}/reprice`, { method: "POST" });
     expect(first.status).toBe(200);
     // Nothing else in the request identifies the attempt: the body is empty, so
-    // without the version in the key a retry is a second real price move.
-    expect((await keys(ctx)).map((k) => k.key)).toEqual([`axis_ubi_reprice:${policy.id}:pver_1`]);
+    // without the version and the exposure in the key a retry is a second real
+    // price move.
+    expect((await keys(ctx)).map((k) => k.key)).toEqual([FALLBACK_KEY]);
 
     // The retry the transport would send after a lost response.
     const retry = await app.request(`/v1/axis/policies/${policy.id}/reprice`, {
       method: "POST",
-      headers: { "idempotency-key": `axis_ubi_reprice:${policy.id}:pver_1` }
+      headers: { "idempotency-key": FALLBACK_KEY }
     });
 
     expect(retry.status).toBe(200);
@@ -354,9 +361,9 @@ describe("retry storms", () => {
   });
 
   it("collapses a header-less double submit: the second call is refused, not priced again", async () => {
-    // What the version-scoped fallback key is FOR (ADR-0065). Two un-keyed
-    // submits arriving while the first is still running read the same current
-    // version, so they derive one key and the second is refused as in-flight
+    // What the fallback key is FOR (ADR-0065). Two un-keyed submits arriving
+    // while the first is still running read the same current version and the
+    // same unpriced telemetry, so they derive one key and the second is refused as in-flight
     // rather than reaching the model. Pinned deterministically — an `in_flight`
     // row is exactly the state the first request is in mid-flight — because a
     // real race here would be a flaky test, which is Sev-2 in this repo.
@@ -367,10 +374,11 @@ describe("retry storms", () => {
     await ctx.db.insert(schema.idempotencyKeys).values({
       id: "idm_inflight",
       tenantId: ctx.tenantId,
-      key: `axis_ubi_reprice:${policy.id}:pver_1`,
+      key: FALLBACK_KEY,
       route: `POST ${route}`,
       // The route hands `withIdempotency` an empty request object: a reprice
-      // carries no body, which is why the key has to carry the version.
+      // carries no body, which is why the key has to carry the version and the
+      // exposure.
       requestHash: await sha256Hex(canonicalJson({})),
       responseJson: null,
       status: "in_flight",
