@@ -234,6 +234,11 @@ floored at 0.
   version: a run returning `repriced:false` has still billed a model call, so its key is
   kept, and only new telemetry mints a new one. It counts the points as well as dating them
   so an out-of-order backfill, which lands behind the newest instant, still moves the key.
+  Both scalars are taken over `unpricedWindow` — the same half-open `[watermark, now)` the
+  reprice itself prices, derived once and consumed by both. Ingest bounds a point by the
+  term and the watermark, never by the clock, so a fast-clocked device stores future-dated
+  points: a wider key bills a second model call for exposure the run ignores, a narrower one
+  replays a stale no-op over a real price move once the clock catches up.
 - `telemetry-points` resource: read-only (`axis:policies:read`), engine owns writes.
 - `axis:policies:telemetry` granted to `axis.admin` and `axis.lead` beside `:finance`.
 

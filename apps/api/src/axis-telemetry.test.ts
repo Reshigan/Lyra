@@ -47,9 +47,17 @@ function reply(premiumDeltaPpm: number, code = "km_band"): string {
   });
 }
 
-function gatewayWith(...replies: string[]): Gateway {
+/** The gateway plus the stub behind it, so a test can read what was priced. */
+function gatewayCapturing(...replies: string[]): { gateway: Gateway; stub: ReturnType<typeof makeStub> } {
   const stub = makeStub({ replies });
-  return new Gateway({ env: {}, providers: { "workers-ai": stub, anthropic: stub, "openai-compat": stub } });
+  return {
+    stub,
+    gateway: new Gateway({ env: {}, providers: { "workers-ai": stub, anthropic: stub, "openai-compat": stub } })
+  };
+}
+
+function gatewayWith(...replies: string[]): Gateway {
+  return gatewayCapturing(...replies).gateway;
 }
 
 async function seedTenantAndPolicy(opts: { permissions?: string[] } = {}): Promise<{ ctx: Ctx; policy: PolicyRow }> {
@@ -546,6 +554,70 @@ describe("POST /policies/:id/reprice", () => {
     expect(await versions(ctx)).toHaveLength(2);
     expect((await ubiTxns(ctx))[0]?.state).toBe("settled");
     expect(await modelCalls(ctx)).toHaveLength(2);
+  });
+
+  it("does not bill a second model call for a point the priced window cannot reach yet", async () => {
+    // Ingest bounds a point by the cover's term and the priced watermark, never
+    // by the clock, so a device running fast stores a future-dated point. The
+    // reprice prices `[watermark, now)`, so that point changes nothing about the
+    // question being asked — and a key that counted it would ask a model the
+    // same question a second time, on the tenant's money.
+    const { ctx, policy } = await seedTenantAndPolicy({ permissions: ["axis:policies:endorse"] });
+    const app = testApp(ctx, gatewayWith(reply(0), reply(100_000)));
+    const route = `/v1/axis/policies/${policy.id}/reprice`;
+    const ingestAt = (at: number, value: number) =>
+      new TelematicsIngest(ctx, SOURCE, policy).ingest(`policy:${policy.id}`, [{ at, value }]);
+
+    await ingestAt(NOW - DAY, 120);
+    expect(await (await app.request(route, { method: "POST" })).json()).toEqual({ repriced: false });
+
+    await ingestAt(NOW + DAY, 400);
+    const second = await app.request(route, { method: "POST" });
+
+    expect(await second.json()).toEqual({ repriced: false });
+    expect(await modelCalls(ctx)).toHaveLength(1);
+    expect(await versions(ctx)).toHaveLength(1);
+    expect(await ubiTxns(ctx)).toHaveLength(0);
+  });
+
+  it("prices a future-dated point once the clock reaches it, rather than replaying the no-op", async () => {
+    // The other half of the same divergence. Once `now` passes the point, it is
+    // inside the priced window and worth a real price move — but the exposure
+    // it belongs to has not changed since the last run by any measure taken
+    // past the window's end, so a key ignoring the upper bound replays a stored
+    // `repriced:false` over it for the whole 24h TTL.
+    const { ctx, policy } = await seedTenantAndPolicy({ permissions: ["axis:policies:endorse"] });
+    const { gateway, stub } = gatewayCapturing(reply(0), reply(100_000), reply(100_000));
+    const app = testApp(ctx, gateway);
+    const route = `/v1/axis/policies/${policy.id}/reprice`;
+    const ingestAt = (at: number, value: number) =>
+      new TelematicsIngest(ctx, SOURCE, policy).ingest(`policy:${policy.id}`, [{ at, value }]);
+
+    await ingestAt(NOW - DAY, 120);
+    await app.request(route, { method: "POST" });
+    await ingestAt(NOW + DAY, 400);
+    await app.request(route, { method: "POST" });
+
+    ctx.now = NOW + 2 * DAY;
+    const out = (await (await app.request(route, { method: "POST" })).json()) as {
+      repriced: boolean;
+      premiumMinor?: number;
+    };
+
+    expect(out.repriced).toBe(true);
+    expect(out.premiumMinor).toBe(110_000);
+    expect(await versions(ctx)).toHaveLength(2);
+    expect((await ubiTxns(ctx))[0]?.state).toBe("settled");
+    // Two runs, not three: the middle call replayed. And the run that did price
+    // was asked about both points' kilometres, over a window ending at the
+    // clock it ran under.
+    expect(await modelCalls(ctx)).toHaveLength(2);
+    const priced = JSON.parse(stub.calls[1]!.messages.at(-1)!.content) as {
+      series: { total: number }[];
+      windowEnd: number;
+    };
+    expect(priced.series[0]!.total).toBe(520);
+    expect(priced.windowEnd).toBe(NOW + 2 * DAY);
   });
 
   it("rejects without axis:policies:endorse, before any write", async () => {

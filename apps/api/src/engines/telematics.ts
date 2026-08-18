@@ -70,6 +70,22 @@ async function unpricedFrom(ctx: Ctx, policy: PolicyRow): Promise<number> {
 }
 
 /**
+ * The exposure a reprice run right now would price: half-open, `[from, to)`.
+ *
+ * One definition, because the reprice route's idempotency key and the pricer
+ * itself both need it and deriving it twice is how this rule has failed before.
+ * A key covering a wider window than the pricer bills a model call for exposure
+ * the run then ignores; a narrower one replays a stale answer over exposure the
+ * run would have priced.
+ *
+ * `unpricedFrom` alone is the start, and the ingest doorway wants only that —
+ * it asks whether a point is already billed, not whether it is priceable yet.
+ */
+async function unpricedWindow(ctx: Ctx, policy: PolicyRow): Promise<{ from: number; to: number }> {
+  return { from: await unpricedFrom(ctx, policy), to: ctx.now };
+}
+
+/**
  * A fingerprint of the stored telemetry no reprice has priced yet: the newest
  * instant in it and how many points it holds.
  *
@@ -87,9 +103,17 @@ async function unpricedFrom(ctx: Ctx, policy: PolicyRow): Promise<number> {
  * no-op until the key expired. Both scalars come out of one aggregate over the
  * `axis_telem_point_uq` (tenant, subjectRef, …) prefix, cheaper than the window
  * scan the reprice itself runs.
+ *
+ * It fingerprints `unpricedWindow`, not everything from the watermark onwards,
+ * and that is load-bearing rather than tidiness. Ingest bounds a point by the
+ * cover's term and the watermark, never by the clock, so a device running fast
+ * stores future-dated points. Fingerprinting past `to` would mint a new key for
+ * a point the reprice cannot yet price — a second billed model call for the
+ * same question — and then fail to mint one when the clock caught up and that
+ * same point became a real price move, replaying the stored no-op instead.
  */
 export async function unpricedExposureKey(ctx: Ctx, policy: PolicyRow): Promise<string> {
-  const from = await unpricedFrom(ctx, policy);
+  const { from, to } = await unpricedWindow(ctx, policy);
   const [row] = await ctx.db
     .select({ newest: max(schema.axisTelemetryPoints.at), points: count() })
     .from(schema.axisTelemetryPoints)
@@ -98,7 +122,8 @@ export async function unpricedExposureKey(ctx: Ctx, policy: PolicyRow): Promise<
         ctx,
         schema.axisTelemetryPoints,
         eq(schema.axisTelemetryPoints.subjectRef, `policy:${policy.id}`),
-        gte(schema.axisTelemetryPoints.at, from)
+        gte(schema.axisTelemetryPoints.at, from),
+        lt(schema.axisTelemetryPoints.at, to)
       )
     );
   return `${row?.newest ?? 0}x${row?.points ?? 0}`;
@@ -380,10 +405,11 @@ export async function repriceFromTelemetry(ctx: Ctx, policy: PolicyRow, gateway:
   // already priced everything before it, and counting it twice would charge for
   // the same kilometres on every run. Same watermark the ingest refuses against,
   // so a point that was accepted is a point some window will price.
-  const windowStart = await unpricedFrom(ctx, policy);
-  const windowEnd = ctx.now;
+  const window = await unpricedWindow(ctx, policy);
+  const windowStart = window.from;
+  const windowEnd = window.to;
   const subjectRef = `policy:${policy.id}`;
-  const aggregates = await telemetryBySource(ctx, subjectRef, { from: windowStart, to: windowEnd });
+  const aggregates = await telemetryBySource(ctx, subjectRef, window);
   if (aggregates.size === 0) {
     throw conflict("no telemetry stored for this cover in the window; there is nothing to price");
   }
