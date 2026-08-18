@@ -79,8 +79,12 @@ beforeEach(async () => {
   policy = await seedPolicy();
 });
 
-/** An effective version, whose `effectiveFrom` is the priced watermark. */
-async function seedVersion(effectiveFrom: number): Promise<void> {
+/**
+ * An effective version. `pricedTo` stamps the `ubi.windowEnd` a reprice would
+ * have left behind — the only thing that moves the priced watermark; without it
+ * the version is a price change that priced nothing.
+ */
+async function seedVersion(effectiveFrom: number, pricedTo?: number): Promise<void> {
   await ctx.db.insert(schema.axisPolicyVersions).values({
     id: newId("pver", ctx.now),
     tenantId: ctx.tenantId,
@@ -96,7 +100,7 @@ async function seedVersion(effectiveFrom: number): Promise<void> {
     currency: policy.currency,
     premiumDeltaMinor: 0,
     proRataDays: 365,
-    termsJson: "{}",
+    termsJson: JSON.stringify(pricedTo === undefined ? {} : { ubi: { windowEnd: pricedTo } }),
     state: "effective",
     issuedBy: "user:u_test",
     issuedAt: ctx.now,
@@ -271,23 +275,45 @@ describe("TelematicsIngest.ingest", () => {
     expect(data).toMatchObject({ submittedCount: 3, acceptedCount: 2 });
   });
 
-  it("refuses points older than the priced watermark instead of accepting exposure nothing will price", async () => {
-    // A reprice reads `[current.effectiveFrom, now)`, and each reprice advances
-    // `effectiveFrom`. A device flushing a stale offline buffer would otherwise
-    // get `acceptedCount` for kilometres no window will ever bill.
-    const effectiveFrom = ctx.now - 3 * DAY;
-    await seedVersion(effectiveFrom);
+  it("refuses points older than the last priced window end instead of accepting exposure nothing will price", async () => {
+    // A reprice reads `[unpricedFrom, now)` and stamps the window it priced, so
+    // everything below that stamp is already billed. A device flushing a stale
+    // offline buffer would otherwise get `acceptedCount` for kilometres no
+    // window will ever bill.
+    const pricedTo = ctx.now - 3 * DAY;
+    await seedVersion(ctx.now - 10 * DAY, pricedTo);
 
-    expect(
-      await refusalDetail(() => ingester().ingest(subjectRef(), [{ at: effectiveFrom - 1, value: 5 }]))
-    ).toMatch(/priced watermark/);
+    expect(await refusalDetail(() => ingester().ingest(subjectRef(), [{ at: pricedTo - 1, value: 5 }]))).toMatch(
+      /priced watermark/
+    );
     expect(await telemTxns()).toHaveLength(0);
     expect(await points()).toHaveLength(0);
 
     // The watermark itself is in the next window (half-open at the bottom), so a
     // point at exactly that instant is priced once, not refused and not twice.
-    await ingester().ingest(subjectRef(), [{ at: effectiveFrom, value: 5 }]);
+    await ingester().ingest(subjectRef(), [{ at: pricedTo, value: 5 }]);
     expect(await points()).toHaveLength(1);
+  });
+
+  it("accepts points before a version boundary that priced nothing, back to inception", async () => {
+    // A version boundary is where the price changed, not where pricing got up
+    // to. Reading the watermark off one refused — and, once a forward-dated
+    // endorsement's date arrived, permanently stranded — exposure that no
+    // reprice had ever priced. With no `ubi` stamp anywhere, the whole term from
+    // inception is still unpriced and every point in it is billable.
+    await seedVersion(ctx.now - 3 * DAY);
+
+    await ingester().ingest(subjectRef(), [
+      { at: policy.startAt, value: 5 },
+      { at: ctx.now - 3 * DAY - 1, value: 7 }
+    ]);
+    expect((await points()).map((r) => r.at).sort()).toEqual([policy.startAt, ctx.now - 3 * DAY - 1]);
+
+    // Inception is still the floor: exposure before the cover began is not
+    // covered exposure, and the term bound refuses it first.
+    expect(
+      await refusalDetail(() => ingester().ingest(subjectRef(), [{ at: policy.startAt - 1, value: 5 }]))
+    ).toMatch(/outside the cover term/);
   });
 
   it("@seam:H6 TelematicsIngest satisfies TimeseriesIngest and its points land", async () => {

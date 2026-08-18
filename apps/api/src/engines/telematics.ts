@@ -4,7 +4,6 @@ import { badRequest, conflict, emit, hashObject, scoped, type Ctx, type Timeseri
 import { runTxn } from "@lyra/ledger";
 import { parseUbi, ubiMessages, type Gateway, type UbiContext } from "@lyra/model-gateway";
 import { declaredPricingInputs, effectiveVersion, endorsePolicy } from "./axis-endorse.js";
-import { versionAt } from "./axis-fnol.js";
 
 // docs/27 group E — telematics/UBI. First real implementation of the H6 seam
 // (`TimeseriesIngest`, packages/core/src/seams.ts): usage/sensor points arriving
@@ -52,45 +51,16 @@ async function lastPricedWindowEnd(ctx: Ctx, policyId: string): Promise<number> 
 }
 
 /**
- * The start of exposure no reprice has priced yet: the later of where the cover
- * is running from and where the last priced window ended.
+ * The start of exposure no reprice has priced yet.
  *
- * The version in force is usually the effective one. It is not when a
- * forward-dated endorsement is pending: `priceEndorsement` allows a future
- * `effectiveFrom` and inserts the new version `state: "effective"` immediately,
- * so the effective version can start in the future while the cover still runs
- * on the version it superseded. Reading the watermark off the effective version
- * alone then put it in the future — every ingest 400s until that date arrives,
- * and the reprice window is empty until then. `versionAt` asks the honest
- * question instead: which version's window contains now.
- *
- * The version in force is not a watermark on its own either. A reprice under
- * that pending forward date does not move it: the new version starts at the
- * future date too, and the version it supersedes is closed at its own start —
- * a zero-width window `versionAt` cannot match. So the version containing `now`
- * stays the pre-endorsement one, and on the version alone every sweep would
- * re-price back to inception and compound the premium on exposure already
- * billed (a balanced journal each time, so no ledger invariant catches it).
- * `lastPricedWindowEnd` is the half that does advance. In the ordinary case a
- * reprice sets `effectiveFrom === windowEnd === now` and the two agree.
- *
- * Two cases still fall through `versionAt` to the future `effectiveFrom`, and
- * both are deliberate rather than overlooked:
- *   - a cover that has not incepted yet (one forward-dated version, nothing
- *     superseded) — exposure before inception is not covered exposure, and the
- *     term bounds in `ingest` refuse those points first anyway;
- *   - a cover whose term has ended (`effectiveTo <= now` everywhere) — there is
- *     no window left to price into.
- * In both the watermark sits in the future and the reprice refuses with "no
- * telemetry stored ... in the window", which is the correct answer for each.
+ * A version boundary is where the price changed, not where pricing got up to,
+ * so no version is a watermark: reading one put the start in the future under a
+ * pending forward-dated endorsement and stranded accepted telemetry. Only two
+ * bounds matter — exposure cannot precede inception, and the last window a
+ * reprice actually priced is the only thing already billed.
  */
-async function unpricedFrom(ctx: Ctx, policyId: string): Promise<number> {
-  const effective = await effectiveVersion(ctx, policyId);
-  const inForce =
-    !effective || effective.effectiveFrom <= ctx.now
-      ? (effective?.effectiveFrom ?? 0)
-      : ((await versionAt(ctx, policyId, ctx.now))?.effectiveFrom ?? effective.effectiveFrom);
-  return Math.max(inForce, await lastPricedWindowEnd(ctx, policyId));
+async function unpricedFrom(ctx: Ctx, policy: PolicyRow): Promise<number> {
+  return Math.max(policy.startAt, await lastPricedWindowEnd(ctx, policy.id));
 }
 
 /** The seam hands us a subjectRef; it must be the one cover this adapter holds. */
@@ -129,7 +99,7 @@ export class TelematicsIngest implements TimeseriesIngest {
     // exposure no window will ever price. A device that buffers offline and
     // flushes stale points must hear that, not get `acceptedCount: 400` for
     // readings nothing will bill.
-    const priced = await unpricedFrom(ctx, this.policy.id);
+    const priced = await unpricedFrom(ctx, this.policy);
 
     // Dedup inside the batch as well as against the table: two rows for the
     // same instant would collide on `axis_telem_point_uq` and make
@@ -309,8 +279,8 @@ export interface UbiStamp {
 }
 
 /**
- * Prices the exposure stored since the contract's current version took effect
- * and, if it moved, endorses the contract by that much.
+ * Prices the exposure stored since the last window a reprice priced and, if
+ * that moved the premium, endorses the contract by that much.
  *
  * Refuses on no telemetry rather than repricing on nothing: a price change with
  * no evidence behind it is the failure mode that ends up in front of a
@@ -322,10 +292,15 @@ export async function repriceFromTelemetry(ctx: Ctx, policy: PolicyRow, gateway:
   const current = await effectiveVersion(ctx, policy.id);
   if (!current) throw conflict("policy has no effective version to reprice");
 
-  // Exposure since the version in force, not since inception: the last reprice
-  // already priced everything before it, and counting it twice would charge for
-  // the same kilometres on every run. Same watermark the ingest refuses against,
-  // so a point that was accepted is a point some window will price.
+  // `priceEndorsement` derives `effectiveFrom = max(now, current.effectiveFrom)`
+  // and refuses anything at or past `endAt`, so a reprice past the term end is a
+  // guaranteed refusal. Said here rather than discovered there, because there it
+  // is raised after `gateway.complete` — a billed, audited model call for a price
+  // that was never going to move.
+  if (ctx.now >= policy.endAt) {
+    throw conflict("cover term has ended; there is no remaining term to price into");
+  }
+
   // The whole safety of a model-proposed factor is `priceEndorsement`'s referral
   // guard, and that guard is inert when the product declares no pricing inputs
   // (there is no allowlist to check against). A human endorsement may proceed
@@ -335,7 +310,11 @@ export async function repriceFromTelemetry(ctx: Ctx, policy: PolicyRow, gateway:
     throw conflict("policy's product declares no pricing inputs; a model-proposed factor cannot be validated");
   }
 
-  const windowStart = await unpricedFrom(ctx, policy.id);
+  // Exposure since the last priced window, not since inception: the last reprice
+  // already priced everything before it, and counting it twice would charge for
+  // the same kilometres on every run. Same watermark the ingest refuses against,
+  // so a point that was accepted is a point some window will price.
+  const windowStart = await unpricedFrom(ctx, policy);
   const windowEnd = ctx.now;
   const subjectRef = `policy:${policy.id}`;
   const aggregates = await telemetryBySource(ctx, subjectRef, { from: windowStart, to: windowEnd });
