@@ -98,6 +98,7 @@ describe("labelsIn", () => {
       "confirm.submit",
       "blockedTitle",
       "blockedReason",
+      "blockedTermEnded",
       "deniedTitle",
       "missingTitle",
       "missingBody",
@@ -129,18 +130,44 @@ describe("labelsIn", () => {
     expect(retail("title")).toBe("Endorse order");
     expect(retail("blockedReason")).toBe("Only a bound or active order can be endorsed.");
 
-    for (const key of ["title", "back", "blockedTitle", "blockedReason", "deniedTitle"]) {
+    for (const key of [
+      "title",
+      "back",
+      "blockedTitle",
+      "blockedReason",
+      "blockedTermEnded",
+      "deniedTitle"
+    ]) {
       expect(retail(key).toLowerCase(), key).not.toContain("policy");
     }
   });
 });
 
 describe("blockedReason", () => {
+  const NOW = Date.parse("2026-08-16T00:00:00Z");
+  const DAY = 86_400_000;
+  const running = { endAt: NOW + 30 * DAY };
+
   it("blocks anything not on risk, mirroring the engine's own check", () => {
-    expect(blockedReason({ status: "draft" })).toBe("blockedReason");
-    expect(blockedReason({ status: "cancelled" })).toBe("blockedReason");
-    expect(blockedReason({ status: "bound" })).toBeNull();
-    expect(blockedReason({ status: "active" })).toBeNull();
+    expect(blockedReason({ status: "draft", ...running }, NOW)).toBe("blockedReason");
+    expect(blockedReason({ status: "cancelled", ...running }, NOW)).toBe("blockedReason");
+    expect(blockedReason({ status: "bound", ...running }, NOW)).toBeNull();
+    expect(blockedReason({ status: "active", ...running }, NOW)).toBeNull();
+  });
+
+  // The second half of `endorsementBlocker`: a cover whose term has run out is
+  // still `bound` or `active` until a sweep moves it, and the engine refuses it
+  // on the term bound alone. A screen that only reads the status offers a form
+  // the API answers with a 409.
+  it("blocks an on-risk cover whose term has already ended, with its own reason", () => {
+    expect(blockedReason({ status: "active", endAt: NOW }, NOW)).toBe("blockedTermEnded");
+    expect(blockedReason({ status: "bound", endAt: NOW - DAY }, NOW)).toBe("blockedTermEnded");
+    // Half-open, as everywhere else: the last instant inside the term is endorsable.
+    expect(blockedReason({ status: "active", endAt: NOW + 1 }, NOW)).toBeNull();
+  });
+
+  it("names the status before the term, so an off-risk cover reads as off risk", () => {
+    expect(blockedReason({ status: "cancelled", endAt: NOW - DAY }, NOW)).toBe("blockedReason");
   });
 });
 

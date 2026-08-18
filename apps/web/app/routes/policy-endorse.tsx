@@ -47,6 +47,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "confirm.submit": "Confirm the endorsement",
     blockedTitle: "This {noun} cannot be endorsed",
     blockedReason: "Only a bound or active {noun} can be endorsed.",
+    blockedTermEnded: "This {noun}'s term has ended, so there is no cover left to change. Renew it instead.",
     deniedTitle: "You cannot read this {noun}",
     missingTitle: "No such {noun}",
     missingBody: "It may have been written under another tenant, or the link is stale.",
@@ -81,6 +82,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "confirm.submit": "تأكيد التعديل",
     blockedTitle: "لا يمكن تعديل {noun}",
     blockedReason: "يمكن تعديل {noun} السارية أو الملزمة فقط.",
+    blockedTermEnded: "انتهت مدة {noun}، فلم تبقَ تغطية يمكن تعديلها. جدّدها بدلًا من ذلك.",
     deniedTitle: "لا يمكنك قراءة {noun}",
     missingTitle: "لا يوجد سجل بهذا المعرف ({noun})",
     missingBody: "قد تكون مكتوبة تحت مستأجر آخر، أو أن الرابط قديم.",
@@ -135,9 +137,27 @@ export function epochOf(value: string): number | null {
   return Number.isNaN(ms) ? null : ms;
 }
 
-/** Only a bound or active policy is endorsable — mirrors the pricing engine's own gate. */
-export function blockedReason(policy: { status: string }): string | null {
-  return policy.status === "bound" || policy.status === "active" ? null : "blockedReason";
+/**
+ * Why this cover cannot be endorsed, as a label key, or `null` if it can.
+ *
+ * A deliberate second copy of `endorsementBlocker`
+ * (`apps/api/src/engines/axis-endorse.ts`), which stays the authority: the API
+ * refuses on both conditions whatever this screen says, and `apps/web` cannot
+ * import from `apps/api`. Keep the two in step — a screen that knows only half
+ * the rule offers a form the API answers with a 409, and the desk reads that as
+ * the product being broken.
+ *
+ * The term half matters on its own because nothing moves a policy off `active`
+ * the instant its term runs out; a cover past `endAt` is still on risk by status
+ * and still unendorsable. Half-open, like every other window here: `endAt`
+ * itself is outside the term.
+ */
+export function blockedReason(
+  policy: { status: string; endAt: number },
+  now: number = Date.now()
+): string | null {
+  if (policy.status !== "bound" && policy.status !== "active") return "blockedReason";
+  return now >= policy.endAt ? "blockedTermEnded" : null;
 }
 
 /**
