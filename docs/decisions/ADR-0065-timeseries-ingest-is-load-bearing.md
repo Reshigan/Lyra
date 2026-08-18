@@ -154,28 +154,59 @@ that falls in it is silently under-billed with a balanced journal every time, so
 no ledger invariant catches it.
 
 The watermark is only one of **three** conditions that invariant rests on, and
-all three are enforced at ingest because a reprice enforces all three:
+all three are enforced at ingest:
 
-1. **The cover is on risk.** A reprice is an endorsement, and `priceEndorsement`
-   refuses one on a policy that is not `bound` or `active`. Cancellation and
-   lapse leave `endAt` and the effective version untouched, so nothing about the
-   window arithmetic notices them; without this condition the doorway accepts
-   points on a cancelled cover that every future reprice is guaranteed to refuse.
+1. **The cover can be on risk.** A reprice is an endorsement, and
+   `priceEndorsement` refuses one on a policy that is not `bound` or `active`.
+   Cancellation and lapse leave `endAt` and the effective version untouched, so
+   nothing about the window arithmetic notices them; without this condition the
+   doorway accepts points on a cancelled cover that every future reprice is
+   guaranteed to refuse.
+
+   The doorway and the pricer ask this one differently, and must. The pricer
+   asks whether the cover is on risk **now**, and its refusal is reversible: the
+   watermark does not advance while reprices are refused, so exposure it
+   declines today is priced by the next window that opens. The doorway asks
+   whether the cover can **ever** be on risk again, because its refusal is a 400
+   that discards the batch and a device treats 4xx as terminal. `lapsed` is the
+   case that separates them: `reinstatePolicy` cures a lapse back to `active`
+   over a write-once term and writes no cover gap, so the first window after
+   reinstatement spans the lapse and prices exactly the points a doorway reading
+   the pricer's predicate had already thrown away — an under-charge with a
+   balanced journal, unrecoverable because the rows do not exist.
 2. **`now` is inside the half-open term `[startAt, endAt)`.** `endAt` itself is
    outside it: `priceEndorsement` refuses an `effectiveFrom` at or past `endAt`,
    and a reprice window is `[unpricedFrom, now)`, so no window ever contains the
-   instant `endAt`.
+   instant `endAt`. This half is asked identically at both sites: past `endAt` no
+   future reprice can run at all, so every point in the batch is unpriceable
+   forever and refusing it destroys nothing recoverable.
 3. **The point is at or after the priced watermark**, as above.
 
-Conditions 1 and 2 are `endorsementBlocker`
-(`apps/api/src/engines/axis-endorse.ts`), read by `priceEndorsement`,
-`repriceFromTelemetry` and `TelematicsIngest.ingest` — one predicate, three
-readers, for the same reason the watermark is one function. Hand-copying it is
-what produced this rule's fourth and fifth Criticals: half of one condition was
-copied, with the wrong bound, and the other condition was not copied at all. A
-doorway that refuses *less* than the pricer accepts unbillable exposure and burns
-a billed model call discovering it; one that refuses *more* silently stops
-repricing a live cover. Both are money defects and neither trips a ledger check.
+Condition 1's two forms and condition 2 are `endorsementBlocker` and
+`ingestBlocker` (`apps/api/src/engines/axis-endorse.ts`): two predicates in one
+file, sharing `onRisk` and `termEnded`, with `ingestBlocker` deriving its status
+answer from `POLICY_TRANSITIONS` through `canPolicyReach` rather than from a
+second list of states. `priceEndorsement` and `repriceFromTelemetry` read the
+first; `TelematicsIngest.ingest` reads the second. Hand-copying either is what
+produced this rule's fourth and fifth Criticals: half of one condition was
+copied, with the wrong bound, and the other condition was not copied at all —
+and collapsing the two questions into one predicate produced the sixth. A
+doorway that refuses *less* than any future pricer accepts unbillable exposure
+and burns a billed model call discovering it; one that refuses *more* discards
+exposure that can never be recovered. Both are money defects and neither trips a
+ledger check.
+
+**One known exception, deliberately not enforced at the door.**
+`repriceFromTelemetry` also refuses when `declaredPricingInputs(ctx, policy)` is
+`null` — a product declaring no pricing inputs has no allowlist to validate a
+model-proposed factor against — and the doorway does not check it, so such a
+cover accepts telemetry that nothing prices while the product stays that way. It
+is left at the pricer because the check is an async product query on a hot,
+device-facing path, and because a product can gain pricing inputs later: a
+doorway enforcing it would permanently destroy points that were about to become
+priceable, which is the more expensive of the two errors. The exposure is bounded
+by the product's configuration, not by a race, and is visible as telemetry
+accumulating against a cover that never reprices.
 
 A test pinning this must assert **which exposure was priced** — in minor units,
 or in window bounds — not that a reprice happened. Every one of the four

@@ -1018,7 +1018,14 @@ Confirm → `POST /v1/axis/policies/:id/endorse` (idempotency key = the
 request and a desk request for the same change share the approval).
 
 Empty/blocked states: policy not `active|bound` → "This cover is not on risk;
-endorsement is unavailable" with the reinstate/renew links as the exits.
+endorsement is unavailable" with the reinstate/renew links as the exits; term
+already ended (`now >= endAt`, whatever the status says — a policy stuck at
+`bound` is never expired by the sweep) → "Cover term has ended; there is no
+remaining term to price into", with renewal as the exit. Retrospectively
+amending a closed term is a different business act and needs its own verb, not
+an endorsement. Both refusals are `endorsementBlocker`
+(`apps/api/src/engines/axis-endorse.ts`); the screen's own copy is a deliberate
+duplicate, because `apps/web` cannot import from `apps/api`.
 
 ### D.5 Cancellation — `axis/policies/:id/cancel`
 
