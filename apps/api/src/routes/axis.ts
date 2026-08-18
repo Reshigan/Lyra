@@ -41,7 +41,7 @@ import { body } from "../http.js";
 import { readUpload } from "../upload.js";
 import { must } from "../rows.js";
 import { EndorseBody, changeSetHashOf, endorsePolicy, priceEndorsement } from "../engines/axis-endorse.js";
-import { MAX_POINTS_PER_BATCH, TelematicsIngest, newestUnpricedAt, repriceFromTelemetry } from "../engines/telematics.js";
+import { MAX_POINTS_PER_BATCH, TelematicsIngest, repriceFromTelemetry, unpricedExposureKey } from "../engines/telematics.js";
 import { bindGroup, brokerFee } from "../engines/group-commission.js";
 import {
   CancelBody,
@@ -1185,12 +1185,12 @@ axisRoutes.post("/policies/:id/reprice", async (c) => {
   // is only reachable after `gateway.complete` has billed a provider call and
   // written an `ai_audit_log` row, so a no-op is not a run that did nothing and
   // releasing its key buys the next retry another billed call. What moves
-  // instead is the key itself — it names the newest unpriced telemetry, so it
+  // instead is the key itself — it fingerprints the unpriced telemetry, so it
   // changes exactly when the exposure to be priced changes. New telemetry mints
   // a new key and prices; no new telemetry replays.
   const key =
     c.req.header("idempotency-key") ??
-    `axis_ubi_reprice:${policy.id}:${policy.currentVersionId ?? policy.versionSeq}:${await newestUnpricedAt(ctx, policy)}`;
+    `axis_ubi_reprice:${policy.id}:${policy.currentVersionId ?? policy.versionSeq}:${await unpricedExposureKey(ctx, policy)}`;
   const out = await withIdempotency(ctx, key, `POST ${c.req.path}`, {}, () =>
     repriceFromTelemetry(ctx, policy, c.get("gateway"))
   );

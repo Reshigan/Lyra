@@ -1,4 +1,4 @@
-import { desc, eq, gte, lt, lte } from "drizzle-orm";
+import { count, desc, eq, gte, lt, lte, max } from "drizzle-orm";
 import { id as newId, schema } from "@lyra/db";
 import { badRequest, conflict, emit, hashObject, scoped, type Ctx, type TimeseriesIngest } from "@lyra/core";
 import { runTxn } from "@lyra/ledger";
@@ -70,8 +70,8 @@ async function unpricedFrom(ctx: Ctx, policy: PolicyRow): Promise<number> {
 }
 
 /**
- * The newest instant of stored telemetry no reprice has priced yet, or 0 when
- * there is none.
+ * A fingerprint of the stored telemetry no reprice has priced yet: the newest
+ * instant in it and how many points it holds.
  *
  * The reprice route builds its fallback idempotency key from this. That key
  * must change exactly when the exposure to be priced changes: a run that comes
@@ -81,13 +81,17 @@ async function unpricedFrom(ctx: Ctx, policy: PolicyRow): Promise<number> {
  * afterwards. Keyed on what will be priced, new telemetry mints a new key and
  * no new telemetry replays.
  *
- * One row out, never the batch: the database does the ordering over the
- * `axis_telem_point_uq` (tenant, subjectRef, …) prefix and returns the max.
+ * The count is why this is not just the max: a device that buffers and uploads
+ * out of order backfills points *older* than the newest one already stored, and
+ * a max-only key would not move for them — leaving that exposure replaying a
+ * no-op until the key expired. Both scalars come out of one aggregate over the
+ * `axis_telem_point_uq` (tenant, subjectRef, …) prefix, cheaper than the window
+ * scan the reprice itself runs.
  */
-export async function newestUnpricedAt(ctx: Ctx, policy: PolicyRow): Promise<number> {
+export async function unpricedExposureKey(ctx: Ctx, policy: PolicyRow): Promise<string> {
   const from = await unpricedFrom(ctx, policy);
   const [row] = await ctx.db
-    .select({ at: schema.axisTelemetryPoints.at })
+    .select({ newest: max(schema.axisTelemetryPoints.at), points: count() })
     .from(schema.axisTelemetryPoints)
     .where(
       scoped(
@@ -96,10 +100,8 @@ export async function newestUnpricedAt(ctx: Ctx, policy: PolicyRow): Promise<num
         eq(schema.axisTelemetryPoints.subjectRef, `policy:${policy.id}`),
         gte(schema.axisTelemetryPoints.at, from)
       )
-    )
-    .orderBy(desc(schema.axisTelemetryPoints.at))
-    .limit(1);
-  return row?.at ?? 0;
+    );
+  return `${row?.newest ?? 0}x${row?.points ?? 0}`;
 }
 
 /** The seam hands us a subjectRef; it must be the one cover this adapter holds. */

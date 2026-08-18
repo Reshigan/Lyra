@@ -334,7 +334,9 @@ describe("retry storms", () => {
   // the current version AND the newest unpriced instant, which `ingestKm`
   // stamps at NOW - DAY. Spelled out here rather than recomputed, so a change
   // to what the key names fails these tests instead of following them.
-  const FALLBACK_KEY = `axis_ubi_reprice:pol_1:pver_1:${NOW - DAY}`;
+  // The exposure fingerprint the route derives: the newest unpriced instant and
+  // how many unpriced points stand behind it, so a backfill moves the key too.
+  const FALLBACK_KEY = `axis_ubi_reprice:pol_1:pver_1:${NOW - DAY}x3`;
 
   it("keys a header-less reprice to the exposure it is repricing, so a retry replays", async () => {
     const { ctx, policy } = await seedTenantAndPolicy({ permissions: ["axis:policies:endorse"] });
@@ -515,6 +517,34 @@ describe("POST /policies/:id/reprice", () => {
     expect(await versions(ctx)).toHaveLength(2);
     const [txn] = await ubiTxns(ctx);
     expect(txn?.state).toBe("settled");
+    expect(await modelCalls(ctx)).toHaveLength(2);
+  });
+
+  it("mints a new fallback key for a backfilled point older than the newest stored one", async () => {
+    // A device that buffers offline uploads out of order, so the exposure grows
+    // *behind* the newest point already stored. A key that named only the max
+    // instant would not move for that batch, and the kilometres it carries would
+    // replay a no-op until the key expired. The key counts the unpriced points
+    // as well as dating them, so this prices.
+    const { ctx, policy } = await seedTenantAndPolicy({ permissions: ["axis:policies:endorse"] });
+    const app = testApp(ctx, gatewayWith(reply(0), reply(100_000)));
+    const route = `/v1/axis/policies/${policy.id}/reprice`;
+    const ingestAt = (at: number, value: number) =>
+      new TelematicsIngest(ctx, SOURCE, policy).ingest(`policy:${policy.id}`, [{ at, value }]);
+
+    await ingestAt(NOW - 2 * DAY, 120);
+    expect(await (await app.request(route, { method: "POST" })).json()).toEqual({ repriced: false });
+
+    // Older than the point already stored, and still unpriced: the no-op moved
+    // no watermark, so this instant is inside the window the next reprice reads.
+    await ingestAt(NOW - 3 * DAY, 400);
+    const second = await app.request(route, { method: "POST" });
+
+    const out = (await second.json()) as { repriced: boolean; premiumMinor?: number };
+    expect(out.repriced).toBe(true);
+    expect(out.premiumMinor).toBe(110_000);
+    expect(await versions(ctx)).toHaveLength(2);
+    expect((await ubiTxns(ctx))[0]?.state).toBe("settled");
     expect(await modelCalls(ctx)).toHaveLength(2);
   });
 
