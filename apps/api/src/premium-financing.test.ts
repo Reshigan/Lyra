@@ -15,7 +15,8 @@ import {
   type PaymentPlanRow,
   type PolicyRow
 } from "./engines/premium-financing.js";
-import { onFinancingLapseDue } from "./engines/axis-lifecycle.js";
+import { onFinancingLapseDue, reinstatePolicy } from "./engines/axis-lifecycle.js";
+import { drainOutbox } from "./dispatch.js";
 import { axisRoutes } from "./routes/axis.js";
 import { crudRouter } from "./crud.js";
 import { BY_MODULE } from "./resources.js";
@@ -38,6 +39,28 @@ function statements(): string[] {
     .filter(Boolean);
 }
 
+/** A second contract in the same tenant — one policy may hold only one plan (C3). */
+async function seedPolicy(ctx: Ctx, currency: string): Promise<PolicyRow> {
+  const policyId = newId("pol", ctx.now);
+  await ctx.db.insert(schema.axisPolicies).values({
+    id: policyId,
+    tenantId: ctx.tenantId,
+    customerId: `cust_${policyId}`,
+    providerId: "prov_test",
+    policyNo: `POL-${policyId}`,
+    versionSeq: 1,
+    startAt: ctx.now - 30 * 86_400_000,
+    endAt: ctx.now + 335 * 86_400_000,
+    premiumMinor: 100_000,
+    currency,
+    status: "active",
+    createdAt: ctx.now,
+    updatedAt: ctx.now
+  } as never);
+  const [policy] = await ctx.db.select().from(schema.axisPolicies).where(eq(schema.axisPolicies.id, policyId));
+  return policy!;
+}
+
 async function seedTenantAndPolicy(opts: { currency: string }): Promise<{ ctx: Ctx; policy: PolicyRow }> {
   const client = createClient({ url: ":memory:" });
   for (const sql of statements()) await client.execute(sql);
@@ -54,27 +77,7 @@ async function seedTenantAndPolicy(opts: { currency: string }): Promise<{ ctx: C
     entitlements: EntitlementsJson.parse({})
   };
 
-  const policyId = newId("pol", now);
-  const startAt = now - 30 * 86_400_000;
-  const endAt = now + 335 * 86_400_000;
-  await ctx.db.insert(schema.axisPolicies).values({
-    id: policyId,
-    tenantId,
-    customerId: `cust_${policyId}`,
-    providerId: "prov_test",
-    policyNo: `POL-${policyId}`,
-    versionSeq: 1,
-    startAt,
-    endAt,
-    premiumMinor: 100_000,
-    currency: opts.currency,
-    status: "active",
-    createdAt: now,
-    updatedAt: now
-  } as never);
-
-  const [policy] = await ctx.db.select().from(schema.axisPolicies).where(eq(schema.axisPolicies.id, policyId));
-  return { ctx, policy: policy! };
+  return { ctx, policy: await seedPolicy(ctx, opts.currency) };
 }
 
 /**
@@ -109,9 +112,16 @@ const DAY = 86_400_000;
  * these yet — a PSP/financier settlement intake is the follow-up work — so the
  * tests are the seam's only writer today.
  */
-async function insertPayment(ctx: Ctx, planId: string, seq: number, state: string): Promise<void> {
+async function insertPayment(
+  ctx: Ctx,
+  planId: string,
+  seq: number,
+  state: string,
+  opts: { at?: number; id?: string } = {}
+): Promise<void> {
+  const at = opts.at ?? ctx.now;
   await ctx.db.insert(schema.ledgerPayments).values({
-    id: newId("pay", ctx.now + seq),
+    id: opts.id ?? newId("pay", at + seq),
     tenantId: ctx.tenantId,
     direction: "in",
     method: "bank",
@@ -120,8 +130,8 @@ async function insertPayment(ctx: Ctx, planId: string, seq: number, state: strin
     currency: "AED",
     state,
     failureCode: state === "failed" ? "insufficient_funds" : null,
-    createdAt: ctx.now,
-    updatedAt: ctx.now
+    createdAt: at,
+    updatedAt: at
   } as never);
 }
 
@@ -293,7 +303,7 @@ describe("payInstalment", () => {
     expect(await txnsOfType(ctx, "PREM-INSTALMENT")).toHaveLength(1);
   });
 
-  it.each(["failed", "charged_back"])("marks the instalment missed and posts DUNNING on a %s payment", async (paymentState) => {
+  it.each(["failed", "charged_back", "refunded"])("marks the instalment missed and posts DUNNING on a %s payment", async (paymentState) => {
     const { ctx, policy } = await seedTenantAndPolicy({ currency: "AED" });
     const { plan } = await createPlan(ctx, policy, {
       totalMinor: 120_000, currency: "AED", instalments: 12,
@@ -334,6 +344,133 @@ describe("payInstalment", () => {
     const after = await reread(ctx, plan.id);
     expect(after.missedStreak).toBe(1);
     expect(JSON.parse(after.scheduleJson)[0].state).toBe("missed");
+  });
+
+  it.each(["authorized", "captured", "settled"])("collects the instalment on a %s payment", async (paymentState) => {
+    const { ctx, policy } = await seedTenantAndPolicy({ currency: "AED" });
+    const { plan } = await createPlan(ctx, policy, {
+      totalMinor: 120_000, currency: "AED", instalments: 12,
+      startAt: ctx.now, frequencyDays: 30, commissionMinor: 15_000
+    });
+    await insertPayment(ctx, plan.id, 1, paymentState);
+
+    await payInstalment(ctx, plan, ctx.now);
+
+    expect(JSON.parse((await reread(ctx, plan.id)).scheduleJson)[0].state).toBe("paid");
+    expect(await txnsOfType(ctx, "PREM-INSTALMENT")).toHaveLength(1);
+  });
+
+  it.each(["pending", "some_future_psp_state"])(
+    "leaves the instalment pending on a %s payment rather than treating it as cash",
+    async (paymentState) => {
+      const { ctx, policy } = await seedTenantAndPolicy({ currency: "AED" });
+      const { plan } = await createPlan(ctx, policy, {
+        totalMinor: 120_000, currency: "AED", instalments: 12,
+        startAt: ctx.now, frequencyDays: 30, commissionMinor: 15_000
+      });
+      // The engine does not own ledger_payments' state set, so an in-flight or
+      // unrecognised state must never become a client-money receipt: it is not
+      // a miss either, so the row waits for the next tick.
+      await insertPayment(ctx, plan.id, 1, paymentState);
+
+      await payInstalment(ctx, plan, ctx.now);
+
+      const after = await reread(ctx, plan.id);
+      expect(JSON.parse(after.scheduleJson)[0].state).toBe("pending");
+      expect(after.missedStreak).toBe(0);
+      expect(await txnsOfType(ctx, "PREM-INSTALMENT")).toHaveLength(0);
+      expect(await txnsOfType(ctx, "DUNNING")).toHaveLength(0);
+      expect(after.updatedAt).toBe(plan.updatedAt); // nothing written at all
+    }
+  );
+
+  it("breaks a created_at tie on the payment id, not on scan order", async () => {
+    const { ctx, policy } = await seedTenantAndPolicy({ currency: "AED" });
+    const { plan } = await createPlan(ctx, policy, {
+      totalMinor: 120_000, currency: "AED", instalments: 12,
+      startAt: ctx.now, frequencyDays: 30, commissionMinor: 15_000
+    });
+    // A financier settlement file imported in one batch stamps every row with
+    // the same created_at. Insert the loser last so scan order and id order
+    // disagree: without the id tiebreaker the `settled` row wins by accident.
+    await insertPayment(ctx, plan.id, 1, "failed", { id: "pay_zzz" });
+    await insertPayment(ctx, plan.id, 1, "settled", { id: "pay_aaa" });
+
+    await payInstalment(ctx, plan, ctx.now);
+
+    const after = await reread(ctx, plan.id);
+    expect(JSON.parse(after.scheduleJson)[0].state).toBe("missed");
+    expect(after.missedStreak).toBe(1);
+  });
+
+  it("leaves the row pending and the streak clear when our own PREM-INSTALMENT post fails", async () => {
+    const { ctx, policy } = await seedTenantAndPolicy({ currency: "AED" });
+    const { plan } = await createPlan(ctx, policy, {
+      totalMinor: 120_000, currency: "AED", instalments: 12,
+      startAt: ctx.now, frequencyDays: 30, commissionMinor: 15_000
+    });
+    // A non-fx internal cause: a prior instalment txn under this seq's key is
+    // already `failed`, so runTxn's replay guard raises conflict. Stands in for
+    // a transient D1 error, a closed period, or a client-money breach — all of
+    // which are our fault, not the customer's, so none may become a miss.
+    await ctx.db.insert(schema.ledgerTxns).values({
+      id: newId("txn", ctx.now), tenantId: ctx.tenantId, type: "PREM-INSTALMENT",
+      idempotencyKey: `finance.instalment:${plan.id}:1`, state: "failed",
+      actorKind: "system", actorId: "sys", currency: "AED", baseCurrency: "AED",
+      createdAt: ctx.now, updatedAt: ctx.now
+    } as never);
+
+    await expect(payInstalment(ctx, plan, ctx.now)).resolves.toBeUndefined();
+
+    const after = await reread(ctx, plan.id);
+    expect(JSON.parse(after.scheduleJson)[0].state).toBe("pending");
+    expect(after.missedStreak).toBe(0);
+    expect(await txnsOfType(ctx, "DUNNING")).toHaveLength(0);
+    expect(after.updatedAt).toBe(plan.updatedAt); // nothing written at all
+  });
+
+  it("collects a missed instalment once the re-presented debit settles, clearing the miss", async () => {
+    const { ctx, policy } = await seedTenantAndPolicy({ currency: "AED" });
+    const { plan } = await createPlan(ctx, policy, {
+      totalMinor: 10_000, currency: "AED", instalments: 1,
+      startAt: ctx.now, frequencyDays: 30, commissionMinor: 1_000
+    });
+    await insertPayment(ctx, plan.id, 1, "failed");
+
+    await payInstalment(ctx, plan, ctx.now);
+    expect((await reread(ctx, plan.id)).missedStreak).toBe(1);
+
+    // The financier re-presents a week later and it clears. Real money arrived;
+    // a `missed` row that can never be revisited would hide it forever and keep
+    // the plan in the sweep for the life of the tenant.
+    await insertPayment(ctx, plan.id, 1, "settled", { at: ctx.now + 7 * DAY });
+
+    await payInstalment(ctx, await reread(ctx, plan.id), ctx.now + 7 * DAY);
+
+    const after = await reread(ctx, plan.id);
+    expect(JSON.parse(after.scheduleJson)[0].state).toBe("paid");
+    expect(after.missedStreak).toBe(0);
+    expect(after.state).toBe("completed");
+    expect(await txnsOfType(ctx, "PREM-INSTALMENT")).toHaveLength(1);
+  });
+
+  it("counts one miss for one failed payment however many ticks pass over it", async () => {
+    const { ctx, policy } = await seedTenantAndPolicy({ currency: "AED" });
+    const { plan } = await createPlan(ctx, policy, {
+      totalMinor: 120_000, currency: "AED", instalments: 12,
+      startAt: ctx.now, frequencyDays: 30, commissionMinor: 15_000
+    });
+    await insertPayment(ctx, plan.id, 1, "failed");
+
+    // Re-examining a `missed` row must key off a *newer* payment attempt. The
+    // naive version — just making `missed` collectable — re-counts the same
+    // failure every tick and lapses a customer in three ticks off one bounce.
+    for (let i = 0; i < 5; i++) await payInstalment(ctx, await reread(ctx, plan.id), ctx.now + i * 1_000);
+
+    const after = await reread(ctx, plan.id);
+    expect(after.missedStreak).toBe(1);
+    expect(after.state).toBe("active");
+    expect(await txnsOfType(ctx, "DUNNING")).toHaveLength(1);
   });
 
   it("marks the plan completed once every instalment is paid, so the sweep stops seeing it", async () => {
@@ -395,8 +532,9 @@ describe("payInstalment", () => {
     expect(crossed.state).toBe("defaulted");
 
     // A later tick where the plan misses again (streak already past the
-    // threshold) must not re-fire. Put the plan back in the sweep's set the
-    // way an operator reinstating the policy would.
+    // threshold) must not re-fire. Put the plan back in the sweep's set —
+    // `reinstatePolicy` does exactly this write for real (see its spec above);
+    // here it is inlined so the fixture stays free of the approval gate.
     await ctx.db.update(schema.ledgerPaymentPlans).set({ state: "active" }).where(eq(schema.ledgerPaymentPlans.id, plan.id));
     await insertPayment(ctx, plan.id, 2, "failed");
 
@@ -431,6 +569,27 @@ describe("onFinancingLapseDue", () => {
     expect(after!.status).toBe("lapsed");
   });
 
+  it("lapses the policy end to end through drainOutbox, the production wiring", async () => {
+    const { ctx, policy } = await seedTenantAndPolicy({ currency: "AED" });
+    const { plan } = await createPlan(ctx, policy, {
+      totalMinor: 120_000, currency: "AED", instalments: 12,
+      startAt: ctx.now, frequencyDays: 30, commissionMinor: 15_000
+    });
+    await ctx.db.update(schema.ledgerPaymentPlans)
+      .set({ missedStreak: DUNNING_LAPSE_THRESHOLD - 1 })
+      .where(eq(schema.ledgerPaymentPlans.id, plan.id));
+    await insertPayment(ctx, plan.id, 1, "failed");
+
+    await sweepPremiumFinancing(ctx);
+    // The join the other two specs each prove half of: nothing else in the
+    // codebase carries a real miss to a real lapse, and drainOutbox's own
+    // comment invites a refactor into a type->handler map that could drop it.
+    await drainOutbox(ctx);
+
+    const [after] = await ctx.db.select().from(schema.axisPolicies).where(eq(schema.axisPolicies.id, policy.id));
+    expect(after!.status).toBe("lapsed");
+  });
+
   it("returns quietly when the policy is not active, instead of throwing into six retries and the DLQ", async () => {
     const { ctx, policy } = await seedTenantAndPolicy({ currency: "AED" });
     const { plan } = await createPlan(ctx, policy, {
@@ -456,6 +615,39 @@ describe("onFinancingLapseDue", () => {
   });
 });
 
+describe("reinstatePolicy", () => {
+  it("puts the policy's defaulted financing plan back in the sweep with a clear streak", async () => {
+    const { ctx, policy } = await seedTenantAndPolicy({ currency: "AED" });
+    const { plan } = await createPlan(ctx, policy, {
+      totalMinor: 120_000, currency: "AED", instalments: 12,
+      startAt: ctx.now, frequencyDays: 30, commissionMinor: 15_000
+    });
+    await ctx.db.update(schema.ledgerPaymentPlans)
+      .set({ state: "defaulted", missedStreak: DUNNING_LAPSE_THRESHOLD })
+      .where(eq(schema.ledgerPaymentPlans.id, plan.id));
+    await ctx.db.update(schema.axisPolicies)
+      .set({ status: "lapsed", lapsedAt: ctx.now - DAY })
+      .where(eq(schema.axisPolicies.id, policy.id));
+    const [lapsed] = await ctx.db.select().from(schema.axisPolicies).where(eq(schema.axisPolicies.id, policy.id));
+    // axis.reinstate is neverAutoApprove + dualControl:"always", so the gate
+    // needs a real approved row rather than a tenant allowlist entry.
+    await ctx.db.insert(schema.approvals).values({
+      id: newId("apr", ctx.now), tenantId: ctx.tenantId, subjectRef: `axis_reinstate:${policy.id}`,
+      policyKey: "axis.reinstate", module: "axis", requestedBy: "u_other", requestedAt: ctx.now - 1_000,
+      decidedBy: "u_test", decision: "approved", decidedAt: ctx.now - 500,
+      contextJson: JSON.stringify({ amountMinor: 50_000 })
+    } as never);
+
+    await reinstatePolicy(ctx, lapsed as PolicyRow, { arrearsMinor: 50_000, note: "arrears collected" });
+
+    // Arrears cleared and cover back on risk, but a plan left `defaulted` is
+    // out of the sweep for good: the remaining instalments would never collect.
+    const after = await reread(ctx, plan.id);
+    expect(after.state).toBe("active");
+    expect(after.missedStreak).toBe(0);
+  });
+});
+
 describe("sweepPremiumFinancing", () => {
   it("collects every active plan and leaves a plan it cannot rate for the next tick", async () => {
     const { ctx, policy } = await seedTenantAndPolicy({ currency: "AED" });
@@ -463,7 +655,9 @@ describe("sweepPremiumFinancing", () => {
       totalMinor: 120_000, currency: "AED", instalments: 12,
       startAt: ctx.now, frequencyDays: 30, commissionMinor: 15_000
     });
-    const bad = await createPlan(ctx, policy, {
+    // A second contract, not a second plan on the same one: one policy holds at
+    // most one financing plan (C3).
+    const bad = await createPlan(ctx, await seedPolicy(ctx, "AED"), {
       totalMinor: 60_000, currency: "AED", instalments: 6,
       startAt: ctx.now, frequencyDays: 30, commissionMinor: 6_000
     });
@@ -556,6 +750,30 @@ describe("POST /v1/axis/policies/:id/premium-financing-plan", () => {
     // post a duplicate client-money receipt every tick for the plan's life.
     expect(await ctx.db.select().from(schema.ledgerPaymentPlans)).toHaveLength(1);
     expect(await txnsOfType(ctx, "FIN-CMSN")).toHaveLength(1);
+  });
+
+  it("refuses a second plan on the same policy even under a fresh idempotency key", async () => {
+    const { ctx, policy } = await seedTenantAndPolicy({ currency: "AED" });
+    const app = testApp(ctx);
+    const body = planBody(ctx.now);
+    const post = (key: string) =>
+      app.request(`/v1/axis/policies/${policy.id}/premium-financing-plan`, {
+        method: "POST",
+        headers: { "idempotency-key": key, "content-type": "application/json" },
+        body: JSON.stringify(body)
+      });
+
+    // The normal client: a fresh UUID per attempt. The idempotency key cannot
+    // see the double-submit, so uniqueness has to live in the engine.
+    expect((await post("client-uuid-1")).status).toBe(200);
+    expect((await post("client-uuid-2")).status).toBe(409);
+
+    // Two plans would book the FIN-CMSN commission twice — real revenue and a
+    // real receivable that do not exist — then collect the same premium twice
+    // every tick, on separate idempotency keys (CLAUDE.md #12).
+    expect(await ctx.db.select().from(schema.ledgerPaymentPlans)).toHaveLength(1);
+    expect(await txnsOfType(ctx, "FIN-CMSN")).toHaveLength(1);
+    expect(await txnsOfType(ctx, "PLAN-CREATE")).toHaveLength(1);
   });
 
   it("rejects a malformed body with a clean 400 instead of reaching createPlan", async () => {
