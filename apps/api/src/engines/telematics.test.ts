@@ -296,6 +296,22 @@ describe("TelematicsIngest.ingest", () => {
     expect(await points()).toHaveLength(3);
   });
 
+  it("refuses a status the state machine does not know, as a 400 and not a crash", async () => {
+    // `axis_policies.status` is an unconstrained text column, so the doorway
+    // reads a string, not an enum. An unrecognised one has no row in
+    // `POLICY_TRANSITIONS`; walking it unguarded throws a TypeError, which the
+    // device sees as a 500 and retries forever instead of dropping the batch.
+    const bogus = await withStatus("suspended");
+    const err = await new TelematicsIngest(ctx, SOURCE, bogus)
+      .ingest(subjectRef(), batch(ctx.now - DAY, 3))
+      .then(() => null)
+      .catch((e: { status?: number; detail?: string }) => e);
+    expect(err?.status).toBe(400);
+    expect(err?.detail).toMatch(/can no longer go on risk/i);
+    expect(await points()).toHaveLength(0);
+    expect(await telemTxns()).toHaveLength(0);
+  });
+
   it("refuses a negative or non-finite value and leaves no transaction", async () => {
     for (const value of [-1, Number.NaN, Number.POSITIVE_INFINITY]) {
       expect(await refusalDetail(() => ingester().ingest(subjectRef(), [{ at: ctx.now - DAY, value }]))).toMatch(

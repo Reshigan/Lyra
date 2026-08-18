@@ -10,10 +10,10 @@ import {
   emit,
   gate,
   hashObject,
+  isPolicyState,
   quoteEndorsement,
   scoped,
-  type Ctx,
-  type PolicyState
+  type Ctx
 } from "@lyra/core";
 import { autoApprovable, buildRecipe, runTxn } from "@lyra/ledger";
 
@@ -137,7 +137,12 @@ export function endorsementBlocker(policy: PolicyRow, now: number): string | nul
  * produced this rule's last three defects.
  */
 export function ingestBlocker(policy: PolicyRow, now: number): string | null {
-  if (!onRisk(policy) && !canPolicyReach(policy.status as PolicyState, "active")) {
+  // `status` is an unconstrained text column, so guard rather than cast: an
+  // unrecognised status has no row in `POLICY_TRANSITIONS`, and indexing it
+  // would turn a device-facing 400 into a 500. Unknown means unwalkable, which
+  // is exactly the answer this predicate wants.
+  const reachesRisk = isPolicyState(policy.status) && canPolicyReach(policy.status, "active");
+  if (!onRisk(policy) && !reachesRisk) {
     return "this cover can no longer go on risk; telemetry cannot be priced into it";
   }
   // Kept, unlike the status half: past `endAt` no reprice can ever run
