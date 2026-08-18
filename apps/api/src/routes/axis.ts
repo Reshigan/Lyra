@@ -91,7 +91,7 @@ import {
   registerFnol
 } from "../engines/axis-fnol.js";
 import { GenerateBordereauBody, generateBordereaux, reconcileBordereaux } from "../engines/axis-bordereaux.js";
-import { createPlan, type CreatePlanInput } from "../engines/premium-financing.js";
+import { createPlan } from "../engines/premium-financing.js";
 import { embedUpsert } from "../engines/vectorize.js";
 import { meterEgress } from "../engines/egress.js";
 import { fieldKey, type App } from "../env.js";
@@ -1179,7 +1179,10 @@ const PremiumFinancingPlanBody = z.object({
   instalments: z.number().int().positive(),
   startAt: z.number().int().positive(),
   frequencyDays: z.number().int().positive(),
-  commissionMinor: z.number().int().nonnegative(),
+  // positive, not nonnegative: buildRecipe refuses a zero gross, so `0` was a
+  // route-legal body that only failed once the engine tried to post the chained
+  // FIN-CMSN. The engine re-checks it (that is the real fix); this stops it here.
+  commissionMinor: z.number().int().positive(),
   commissionTaxMinor: z.number().int().nonnegative().optional()
 });
 

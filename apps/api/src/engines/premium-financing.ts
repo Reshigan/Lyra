@@ -76,7 +76,12 @@ const policyIdOf = (plan: PaymentPlanRow): string => plan.subjectRef.replace(/^p
 const message = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 function buildSchedule(input: CreatePlanInput): ScheduleRow[] {
-  const perInstalment = Math.round(input.totalMinor / input.instalments);
+  // floor, not round: rounding *up* makes the remainder the last instalment
+  // absorbs negative ({5, 10} gave a -4 row), and a negative or zero amount is
+  // refused by buildRecipe on every tick forever. With floor and createPlan's
+  // `totalMinor >= instalments` precondition the last row is provably
+  // >= perInstalment >= 1.
+  const perInstalment = Math.floor(input.totalMinor / input.instalments);
   return Array.from({ length: input.instalments }, (_, i) => ({
     seq: i + 1,
     dueAt: input.startAt + i * input.frequencyDays * 86_400_000,
@@ -125,44 +130,48 @@ export async function createPlan(
     throw conflict(`policy ${policy.id} already has financing plan ${existing.id}`);
   }
 
-  // Pre-check before anything is opened or written: a missing fx rate must
-  // not leave a PLAN-CREATE txn opened with no chained commission, or a plan
-  // row with a commission that can never post.
+  // Everything that can refuse this plan happens here, before the first write.
+  // A plan row is a live money-affecting record: the sweep collects it, and C3
+  // makes it permanent. So nothing may be written until the whole plan is known
+  // to be postable (CLAUDE.md #12).
   const fxRatePpm = await fxRateFor(ctx, input.currency);
   if (!fxRatePpm) {
     throw badRequest(`no fx rate supplied for ${input.currency} -> ${ctx.policy.currency}`);
   }
 
+  // Every instalment has to be able to carry at least one minor unit, or
+  // buildSchedule hands the last row a zero/negative amount that PREM-INSTALMENT
+  // refuses on every tick for the life of the plan.
+  if (input.totalMinor < input.instalments) {
+    throw badRequest(
+      `totalMinor ${input.totalMinor} cannot fund ${input.instalments} instalments of at least 1 minor unit`
+    );
+  }
+
+  // The chained FIN-CMSN is part of opening the plan (docs/19 §5.2 A), and
+  // buildRecipe refuses a zero gross — so a zero commission is not a plan we can
+  // open, and finding that out after the insert is what orphaned live plans.
+  if (input.commissionMinor <= 0) {
+    throw badRequest(`commissionMinor must be positive; got ${input.commissionMinor}`);
+  }
+
   const planId = newId("finplan", ctx.now);
   const schedule = buildSchedule(input);
+
+  // Pure, writes nothing: built up here so a malformed recipe throws before any
+  // transaction is opened rather than between the two writes.
+  const commissionLines = buildRecipe("FIN-CMSN", {
+    grossMinor: input.commissionMinor,
+    taxMinor: input.commissionTaxMinor ?? 0,
+    memo: `financing commission: plan ${planId}`,
+    dims: { policy: policy.id }
+  });
 
   const txn = await runTxn(ctx, {
     type: "PLAN-CREATE",
     idempotencyKey: `finance.plan_create:${planId}`,
     currency: input.currency,
     subjectRefs: { policy: policy.id, plan: planId }
-  });
-
-  await ctx.db.insert(schema.ledgerPaymentPlans).values({
-    id: planId,
-    tenantId: ctx.tenantId,
-    subjectRef: policy.id,
-    financierRef: input.financierRef ?? null,
-    totalMinor: input.totalMinor,
-    currency: input.currency,
-    instalments: input.instalments,
-    scheduleJson: JSON.stringify(schedule),
-    state: "active",
-    missedStreak: 0,
-    createdAt: ctx.now,
-    updatedAt: ctx.now
-  });
-
-  const commissionLines = buildRecipe("FIN-CMSN", {
-    grossMinor: input.commissionMinor,
-    taxMinor: input.commissionTaxMinor ?? 0,
-    memo: `financing commission: plan ${planId}`,
-    dims: { policy: policy.id }
   });
 
   await runTxn(
@@ -177,6 +186,25 @@ export async function createPlan(
     },
     { recipe: { lines: commissionLines, currency: input.currency, fxRatePpm } }
   );
+
+  // Last write, deliberately. A failure anywhere above leaves at most an orphan
+  // non-financial PLAN-CREATE txn with no lines, which nothing sweeps and which
+  // the deterministic `finance.plan_create:<planId>` key makes harmless — rather
+  // than a live `active` plan collecting premium with no commission behind it.
+  await ctx.db.insert(schema.ledgerPaymentPlans).values({
+    id: planId,
+    tenantId: ctx.tenantId,
+    subjectRef: `policy:${policy.id}`,
+    financierRef: input.financierRef ?? null,
+    totalMinor: input.totalMinor,
+    currency: input.currency,
+    instalments: input.instalments,
+    scheduleJson: JSON.stringify(schedule),
+    state: "active",
+    missedStreak: 0,
+    createdAt: ctx.now,
+    updatedAt: ctx.now
+  });
 
   const [plan] = await ctx.db
     .select()

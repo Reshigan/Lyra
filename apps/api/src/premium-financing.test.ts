@@ -161,7 +161,7 @@ describe("createPlan", () => {
       commissionTaxMinor: 700
     });
 
-    expect(plan.subjectRef).toBe(policy.id);
+    expect(plan.subjectRef).toBe(`policy:${policy.id}`);
     expect(plan.totalMinor).toBe(120_000);
     expect(plan.state).toBe("active");
     expect(plan.missedStreak).toBe(0);
@@ -230,6 +230,71 @@ describe("createPlan", () => {
     // an `active` plan row with an unpostable commission survives the call.
     expect(await ctx.db.select().from(schema.ledgerPaymentPlans)).toHaveLength(0);
     expect(await txnsOfType(ctx, "PLAN-CREATE")).toHaveLength(0);
+  });
+
+  it("refuses a non-positive commission before anything is written, so the corrected retry succeeds (C-1)", async () => {
+    const { ctx, policy } = await seedTenantAndPolicy({ currency: "AED" });
+    // `commissionMinor: 0` was a route-legal body, and buildRecipe rejects a
+    // zero gross — but it ran *after* the plan row was inserted `active`, so the
+    // 400 left a live plan behind that the sweep collected with no commission
+    // ever recognised, and C3 then refused the corrected retry forever.
+    let error: unknown;
+    try {
+      await createPlan(ctx, policy, {
+        totalMinor: 120_000, currency: "AED", instalments: 12,
+        startAt: ctx.now, frequencyDays: 30, commissionMinor: 0
+      });
+    } catch (e) {
+      error = e;
+    }
+    expect((error as { status?: number } | undefined)?.status).toBe(400);
+    expect(await ctx.db.select().from(schema.ledgerPaymentPlans)).toHaveLength(0);
+    expect(await txnsOfType(ctx, "PLAN-CREATE")).toHaveLength(0);
+    expect(await txnsOfType(ctx, "FIN-CMSN")).toHaveLength(0);
+
+    // The whole point of leaving no trace: the operator fixes the body and gets
+    // a plan, rather than a permanent Conflict from C3 on an orphan row.
+    const { plan } = await createPlan(ctx, policy, {
+      totalMinor: 120_000, currency: "AED", instalments: 12,
+      startAt: ctx.now, frequencyDays: 30, commissionMinor: 15_000
+    });
+    expect(plan.state).toBe("active");
+    expect(await txnsOfType(ctx, "FIN-CMSN")).toHaveLength(1);
+  });
+
+  it("refuses a total that cannot fund one minor unit per instalment (I-1)", async () => {
+    const { ctx, policy } = await seedTenantAndPolicy({ currency: "AED" });
+    // `Math.round` used to hand the last instalment `total - per * (n - 1)`,
+    // which goes negative as soon as the division rounds up: {5, 10} produced
+    // [1,1,1,1,1,1,1,1,1,-4]. The -4 row throws inside buildRecipe on every
+    // tick, is swallowed by the per-row catch (I11), and the plan never
+    // completes — locked out of re-financing by C3 for good.
+    let error: unknown;
+    try {
+      await createPlan(ctx, policy, {
+        totalMinor: 5, currency: "AED", instalments: 10,
+        startAt: ctx.now, frequencyDays: 30, commissionMinor: 1_000
+      });
+    } catch (e) {
+      error = e;
+    }
+    expect((error as { status?: number } | undefined)?.status).toBe(400);
+    expect((error as { detail?: string } | undefined)?.detail).toMatch(/instalment/i);
+    expect(await ctx.db.select().from(schema.ledgerPaymentPlans)).toHaveLength(0);
+  });
+
+  it("floors the instalment so no row is ever zero or negative (I-1)", async () => {
+    const { ctx, policy } = await seedTenantAndPolicy({ currency: "AED" });
+    // {10, 6}: Math.round gave [2,2,2,2,2,0] — a zero-amount row buildRecipe
+    // also refuses. Math.floor gives the remainder to the last row instead.
+    const { plan } = await createPlan(ctx, policy, {
+      totalMinor: 10, currency: "AED", instalments: 6,
+      startAt: ctx.now, frequencyDays: 30, commissionMinor: 1_000
+    });
+    const amounts: number[] = (JSON.parse(plan.scheduleJson) as { amountMinor: number }[]).map((r) => r.amountMinor);
+    expect(amounts).toEqual([1, 1, 1, 1, 1, 5]);
+    expect(Math.min(...amounts)).toBeGreaterThan(0);
+    expect(amounts.reduce((a, b) => a + b, 0)).toBe(10);
   });
 
   it("refuses a policy that is neither bound nor active", async () => {
@@ -727,7 +792,7 @@ describe("POST /v1/axis/policies/:id/premium-financing-plan", () => {
     const secondJson = (await second.json()) as { plan: { id: string } };
     expect(secondJson.plan.id).toBe(firstJson.plan.id);
 
-    const plans = await ctx.db.select().from(schema.ledgerPaymentPlans).where(eq(schema.ledgerPaymentPlans.subjectRef, policy.id));
+    const plans = await ctx.db.select().from(schema.ledgerPaymentPlans).where(eq(schema.ledgerPaymentPlans.subjectRef, `policy:${policy.id}`));
     expect(plans).toHaveLength(1); // not 2 — the replay didn't insert a second row
   });
 
@@ -785,6 +850,22 @@ describe("POST /v1/axis/policies/:id/premium-financing-plan", () => {
       body: JSON.stringify({ totalMinor: 120_000, currency: "AED", instalments: 0, startAt: ctx.now, frequencyDays: 30, commissionMinor: 15_000 })
     });
     expect(res.status).toBe(400);
+  });
+
+  it("rejects commissionMinor: 0 at the route and leaves no plan row behind (C-1)", async () => {
+    const { ctx, policy } = await seedTenantAndPolicy({ currency: "AED" });
+    const app = testApp(ctx);
+    const post = (commissionMinor: number) =>
+      app.request(`/v1/axis/policies/${policy.id}/premium-financing-plan`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "idempotency-key": `k-${commissionMinor}` },
+        body: JSON.stringify({ ...planBody(ctx.now), commissionMinor })
+      });
+
+    expect((await post(0)).status).toBe(400);
+    expect(await ctx.db.select().from(schema.ledgerPaymentPlans)).toHaveLength(0);
+    // Not 409: the refused attempt wrote nothing, so C3 has nothing to trip on.
+    expect((await post(15_000)).status).toBe(200);
   });
 
   it("refuses a policy that is neither bound nor active with a 409", async () => {
