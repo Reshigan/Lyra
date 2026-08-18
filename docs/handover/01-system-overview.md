@@ -475,6 +475,8 @@ as of this revision:
 | `PARTNER-BIND` | yes | `4075` | default | a distribution partner binds through the API |
 | `FIN-CMSN` | yes | `4080` | `1150` | a premium-financing plan is opened |
 | `DISCLOSURE-PRESENT` | no | — | — | a required disclosure is shown (evidence only) |
+| `TELEM-INGEST` | no | — | — | a batch of usage/sensor readings is stored (evidence only) |
+| `UBI-REPRICE` | yes | `4000` | default | telemetry moves a contract's price mid-term |
 
 Two of these have behaviour that generates support tickets:
 
@@ -490,6 +492,21 @@ Two of these have behaviour that generates support tickets:
 `FIN-CMSN` has a recipe on `main` but nothing calls it yet — the engine that
 opens financing plans is on an unmerged branch. See
 [`README.md` §7](README.md#7-revision-history).
+
+`TELEM-INGEST` and `UBI-REPRICE` are likewise unmerged. Two things about the
+pair are worth knowing before the first support call:
+
+- **`UBI-REPRICE` posts exactly what `ENDORSE` posts.** The recipes are
+  deliberately identical; the two codes differ in *provenance*, not in money. A
+  reprice tells you a sensor moved the price rather than an underwriter, which
+  is the first question when a customer disputes a premium. Reporting grouped by
+  transaction type sees them apart; reporting grouped by account does not.
+- **A price cannot move more than 25% in one reprice.** The clamp lives in the
+  model gateway (`MAX_REPRICE_PPM`), before any engine sees the reply, and a
+  proposed factor with no evidence is dropped rather than priced. "The model
+  wanted +40%" is a clamped reprice, not a fault.
+
+See [ADR-0065](../decisions/ADR-0065-timeseries-ingest-is-load-bearing.md).
 
 ## 9. Two homes: Cloudflare and on-prem
 

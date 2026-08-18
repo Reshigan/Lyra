@@ -310,7 +310,7 @@ The **Defers** column marks an ADR that leaves work undone. **25 of the 59 do.**
 | 0062 | Revenue-schedule recognition timing | **Unmerged** — Group C branch (PR #25) |
 | 0063 | Income-account inference from `accountCode` | **Unmerged** — Group C branch (PR #25) |
 | 0064 | `runTxn` permanent failure burns the idempotency key | **Unmerged** — Group C branch (PR #25) |
-| 0065 | **Reserved, never written.** Held for telematics/UBI, which has not been started — there is no branch. Do not assume a title for it. | — |
+| 0065 | The H6 timeseries seam is load-bearing, and a reprice is an endorsement | **Unmerged** — telematics/UBI branch |
 | 0066 | Premium-financing settlement signal | **Unmerged** — premium-financing branch |
 
 **ADR-0061 narrows ADR-0052 rather than superseding it.** ADR-0052 forbids a
@@ -375,6 +375,30 @@ branch's own review trail:
 - `cancelPlan()` **cancels the whole plan, not pro-rata** — its own `ponytail:`
   comment says so. A part-collected plan that should keep the collected portion
   needs a separate path.
+
+**On the unmerged telematics/UBI branch** — same reason, and all recorded in
+[ADR-0065](../decisions/ADR-0065-timeseries-ingest-is-load-bearing.md):
+
+- **Consent is not enforced at telemetry ingest.** docs/16 §H6 names a consent
+  purpose `telemetry`; nothing checks it. LYRA's only consent store is
+  `signal_contacts.consent_purposes`, which is marketing-scoped and
+  contact-scoped, with no link to a cover. Ingest authorises on the RBAC
+  permission `axis:policies:telemetry` and on the batch naming the right cover,
+  and stops there. This is a real compliance gap, recorded rather than closed
+  because closing it needs a subject-scoped consent model LYRA does not have.
+  **No tenant should add `axis.endorse` to its `auto_approve` allowlist while
+  usage-based pricing is enabled.**
+- **`UBI-REPRICE`'s recipe is deliberately identical to `ENDORSE`'s**, and
+  `endorsePolicy` builds `ENDORSE`'s recipe whatever transaction type it is
+  given. That divergence between type and recipe is intentional, commented at
+  both sites, and is not a copy-paste defect.
+- **Nothing calls the telemetry routes.** No device integration, no fleet
+  import, no scheduled reprice sweep. A price moves only when an operator
+  posts to `/reprice`. Seeded environments carry no telemetry points, so the
+  first tick after the branch ships changes nothing on its own.
+- **The premium floor in `repriceFromTelemetry` is unreachable.** `parseUbi`
+  clamps at ±25%, so the `Math.max(0, …)` guard is defence-in-depth against a
+  future second caller, not live logic.
 
 ---
 

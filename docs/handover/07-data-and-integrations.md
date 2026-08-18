@@ -55,14 +55,14 @@ Every table follows these, so you can predict a table you have never seen:
 
 ## 2. Where the schema lives
 
-[`packages/db/src/schema/`](../../packages/db/src/schema) — **11 files, 150 tables.**
+[`packages/db/src/schema/`](../../packages/db/src/schema) — **11 files, 151 tables.**
 One file per group; the group is also the table-name prefix.
 
 | File | Tables | Prefix | Owns |
 |---|---:|---|---|
 | [`core.ts`](../../packages/db/src/schema/core.ts) | 36 | `core_` (plus `ai_audit_log`) | Tenancy, identity, RBAC, the customer spine, audit, events, platform plumbing |
 | [`ledger.ts`](../../packages/db/src/schema/ledger.ts) | 20 | `ledger_` | Transactions, double-entry journals, periods, billing, payments, reconciliation |
-| [`axis.ts`](../../packages/db/src/schema/axis.ts) | 20 | `axis_` | Operations: cases, policies, claims, bordereaux, complaints |
+| [`axis.ts`](../../packages/db/src/schema/axis.ts) | 21 | `axis_` | Operations: cases, policies, claims, bordereaux, complaints, telemetry |
 | [`orbit.ts`](../../packages/db/src/schema/orbit.ts) | 16 | `orbit_` | Conversations, channels, renewals, journeys, partners, agent teams |
 | [`compliance.ts`](../../packages/db/src/schema/compliance.ts) | 10 | `compliance_` | DSARs, erasure, disclosures, screening, retention, legal hold, evidence |
 | [`ai.ts`](../../packages/db/src/schema/ai.ts) | 9 | `ai_` | Agents, prompts, runs, tool calls, suggestions, budgets, evals, guardrails |
@@ -79,6 +79,11 @@ One file per group; the group is also the table-name prefix.
 > *recipe*, not a schema. The in-flight branches (README §7) follow the same
 > rule — premium financing adds one column (`ledger_payment_plans.missed_streak`)
 > and two indexes, and no table at all.
+>
+> **One exception, and it is the honest one:** telematics/UBI adds
+> `axis_telemetry_points` (the 151st table). A recipe needs no storage; a
+> measurement series does. Nothing else in that branch adds schema — the
+> reprice reuses `axis_policy_versions` and the existing ledger tables.
 
 Two more files in [`packages/db/src/`](../../packages/db/src) matter when you
 are reading data:
@@ -154,7 +159,7 @@ transaction engine.
 | `ledger_tax_rules` | Tax treatment by jurisdiction/product |
 | `ledger_settlements` | Payout control. Carries `external_ref` / `paid_via` **because there is no PSP connector** — the payout is made outside LYRA and recorded here (see §6) |
 
-### 2.3 `axis_` — operations (20 tables)
+### 2.3 `axis_` — operations (21 tables)
 
 | Table | Purpose |
 |---|---|
@@ -177,6 +182,7 @@ transaction engine.
 | `axis_complaints` | Regulated complaints. `due_at` is the **regulatory** clock, not an SLA |
 | `axis_siu_referrals` | Special Investigations Unit records (distinct from the lightweight `claims.siu_state` flag) |
 | `axis_referrals` | Underwriting referrals — risks outside delegated authority |
+| `axis_telemetry_points` | Usage/sensor readings against a contract, one row per `(subject_ref, source, at)`. `source` is the series key (`telematics:obd:km`), and the unique index is what stops a replayed batch double-counting the exposure a reprice is priced on. Read-only through the API — see file 08 |
 
 ### 2.4 `orbit_` — conversations, renewals and partners (16 tables)
 

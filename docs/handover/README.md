@@ -193,7 +193,7 @@ not yet describe it.
 |---|---|---|---|
 | **F2/F3** — whitelabel billing + data products | PR #25, `worktree-revenue-lines-group-c` | **Merged 2026-08-18 as `8331e86`** (all 10 checks green; `mutation` took 4h14m — see file 08 §2.4) | Revenue-schedule and usage-meter tables (migrations `0025_lonely_hedge_knight`, `0026_concerned_winter_soldier`), `recordUsage` and `sweepBilling` engines (invoicing, overages, revenue recognition), data-product subscribe/deliver, a k-anonymity precondition, and ADRs 0062–0064 |
 | **F4** — premium financing | `group-d-premium-financing` | Built, in final review, not pushed | A new non-financial `PLAN-CREATE` transaction type chaining a financial `FIN-CMSN` (income `4080`, receivable `1150`) by `parentTxnId`; `PREM-INSTALMENT` collection off the plan's instalment schedule; a `DUNNING` escalation that cascades into the existing policy-lapse path after three refused attempts; a `sweepPremiumFinancing` cron sweep; a plan-cancel route; migration `0027_empty_garia`; and ADR-0066 |
-| **F5** — telematics / usage-based insurance | not started | ADR-0065 is reserved for it and is not yet written | — |
+| **F5** — telematics / usage-based insurance | `group-e-telematics-ubi` | Built, in final review, not pushed | `axis_telemetry_points` (migration `0028_youthful_lethal_legion`) — the only new table any of these lines adds; a non-financial `TELEM-INGEST` batch receipt; a financial `UBI-REPRICE` whose recipe is deliberately identical to `ENDORSE`'s; `TelematicsIngest` (the H6 seam's first production implementation) and `repriceFromTelemetry`, which prices through the existing `endorsePolicy`; the `axis:policies:telemetry` permission and two routes; and ADR-0065 |
 
 **Migration numbering hazard — resolved.** Groups C and D were both cut from
 the same commit and both claimed `0025` and `0026`. C merged first and kept its
@@ -201,8 +201,9 @@ numbers; D dropped its three files, took `main`'s journal and snapshots, and
 re-ran `pnpm db:generate`, which emitted all three of its changes as the single
 `0027_empty_garia`. Migrations are forward-only and never edited after they are
 applied — this renumber happened *before* either branch's migrations had run
-anywhere, which is the only window in which it is legal. **F5 must do the same
-check before it generates anything.**
+anywhere, which is the only window in which it is legal. **F5 ran the same
+check** and generated `0028_youthful_lethal_legion`, clear of both C's and D's
+numbers, so it needs no renumber.
 
 ### 2026-08-13 — commit `a295218` (first edition)
 
