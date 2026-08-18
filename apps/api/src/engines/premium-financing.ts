@@ -20,14 +20,14 @@ export interface ScheduleRow {
 }
 
 export interface CreatePlanInput {
-  financierRef?: string;
+  financierRef?: string | undefined;
   totalMinor: number;
   currency: string;
   instalments: number;
   startAt: number;
   frequencyDays: number;
   commissionMinor: number;
-  commissionTaxMinor?: number;
+  commissionTaxMinor?: number | undefined;
 }
 
 /** Three consecutive missed instalments cascade into policy lapse. */

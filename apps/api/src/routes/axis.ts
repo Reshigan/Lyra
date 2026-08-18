@@ -1172,11 +1172,22 @@ axisRoutes.post("/policies/:id/reinstate", async (c) => {
  * PLAN-CREATE itself moves no money (non-financial); the financing house's
  * commission posts as a chained FIN-CMSN transaction inside createPlan().
  */
+const PremiumFinancingPlanBody = z.object({
+  financierRef: z.string().min(1).optional(),
+  totalMinor: z.number().int().positive(),
+  currency: z.string().min(1),
+  instalments: z.number().int().positive(),
+  startAt: z.number().int().positive(),
+  frequencyDays: z.number().int().positive(),
+  commissionMinor: z.number().int().nonnegative(),
+  commissionTaxMinor: z.number().int().nonnegative().optional()
+});
+
 axisRoutes.post("/policies/:id/premium-financing-plan", async (c) => {
   const ctx = ctxOf(c);
   require_(ctx.actor, "axis:policies:finance", { tenantId: ctx.tenantId, module: "axis" });
   const policy = await must(ctx, schema.axisPolicies, c.req.param("id"), "policies");
-  const input = (await c.req.json()) as CreatePlanInput;
+  const input = await body(c, PremiumFinancingPlanBody);
   const key = c.req.header("idempotency-key");
   const out = await withIdempotency(ctx, key, `POST ${c.req.path}`, input, () => createPlan(ctx, policy, input));
   return c.json(out, 200);

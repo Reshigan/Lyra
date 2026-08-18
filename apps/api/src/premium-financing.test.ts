@@ -304,6 +304,17 @@ describe("POST /v1/axis/policies/:id/premium-financing-plan", () => {
     const plans = await ctx.db.select().from(schema.ledgerPaymentPlans).where(eq(schema.ledgerPaymentPlans.subjectRef, policy.id));
     expect(plans).toHaveLength(1); // not 2 — the replay didn't insert a second row
   });
+
+  it("rejects a malformed body with a clean 400 instead of reaching createPlan", async () => {
+    const { ctx, policy } = await seedTenantAndPolicy({ currency: "AED" });
+    const app = testApp(ctx);
+    const res = await app.request(`/v1/axis/policies/${policy.id}/premium-financing-plan`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ totalMinor: 120_000, currency: "AED", instalments: 0, startAt: ctx.now, frequencyDays: 30, commissionMinor: 15_000 })
+    });
+    expect(res.status).toBe(400);
+  });
 });
 
 describe("payment-plans resource route (regression)", () => {
