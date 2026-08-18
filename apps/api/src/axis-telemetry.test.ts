@@ -94,6 +94,10 @@ async function seedTenantAndPolicy(opts: { permissions?: string[] } = {}): Promi
     productId: "prod_ubi",
     policyNo: "POL-1",
     versionSeq: 1,
+    // The reprice route keys on `currentVersionId ?? versionSeq`; a real policy
+    // always carries the id, so seeding it pins the branch ADR-0065 describes
+    // rather than the sequence fallback.
+    currentVersionId: "pver_1",
     startAt: START,
     endAt: END,
     premiumMinor: 100_000,
@@ -327,12 +331,12 @@ describe("retry storms", () => {
     expect(first.status).toBe(200);
     // Nothing else in the request identifies the attempt: the body is empty, so
     // without the version in the key a retry is a second real price move.
-    expect((await keys(ctx)).map((k) => k.key)).toEqual([`axis_ubi_reprice:${policy.id}:1`]);
+    expect((await keys(ctx)).map((k) => k.key)).toEqual([`axis_ubi_reprice:${policy.id}:pver_1`]);
 
     // The retry the transport would send after a lost response.
     const retry = await app.request(`/v1/axis/policies/${policy.id}/reprice`, {
       method: "POST",
-      headers: { "idempotency-key": `axis_ubi_reprice:${policy.id}:1` }
+      headers: { "idempotency-key": `axis_ubi_reprice:${policy.id}:pver_1` }
     });
 
     expect(retry.status).toBe(200);
@@ -355,7 +359,7 @@ describe("retry storms", () => {
     await ctx.db.insert(schema.idempotencyKeys).values({
       id: "idm_inflight",
       tenantId: ctx.tenantId,
-      key: `axis_ubi_reprice:${policy.id}:1`,
+      key: `axis_ubi_reprice:${policy.id}:pver_1`,
       route: `POST ${route}`,
       // The route hands `withIdempotency` an empty request object: a reprice
       // carries no body, which is why the key has to carry the version.
@@ -369,6 +373,10 @@ describe("retry storms", () => {
     const res = await app.request(route, { method: "POST" });
 
     expect(res.status).toBe(409);
+    // Which 409: `withIdempotency` also throws one for a key reused with a
+    // different body, so the status alone does not say the fallback key
+    // collapsed anything.
+    expect(((await res.json()) as { detail?: string }).detail).toMatch(/still in flight/);
     expect(await versions(ctx)).toHaveLength(1);
     expect(await modelCalls(ctx)).toHaveLength(0);
   });
