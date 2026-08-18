@@ -154,14 +154,19 @@ transaction while still superseding the version — money state with no journal
 so the version id is the scope. The shared-approval property is unaffected:
 both raisers read the same current version.
 
-The **ledger** key carries one field the subject ref does not — the leg's own
-amount: `axis.endorse:${policyId}:${versionId}:${hash}:${chargeMinor}`, and
-`axis.endorse.refund:…:${refundMinor}` for the refund leg. The version stops
+The **ledger** key carries two fields the subject ref does not — the quote's
+`premiumDeltaMinor` and `proRataDays`:
+`axis.endorse:${policyId}:${versionId}:${hash}:${premiumDeltaMinor}:${proRataDays}`,
+and `axis.endorse.refund:…` on the same two for the refund leg. The version stops
 being the full scope when a retry re-reads it (the charge settled, the version
 insert never landed) and prices differently, which is the reprice case where a
-model returns another `premiumDeltaPpm` for the same factor codes. The amount
-keeps a genuine duplicate colliding while separating two prices off one version.
-Amount stays off the subject ref deliberately: the approval identity is the
+model returns another `premiumDeltaPpm` for the same factor codes. Off a fixed
+version those two fields determine the whole quote — the new premium is
+`current.premiumMinor + premiumDeltaMinor`, everything else derives from it and
+the day count — where neither posted amount does: `share()` rounds a band of
+deltas onto one `chargeMinor`, and the delta alone cannot separate a back-dated
+re-issue at the same target premium. A genuine duplicate still collides. The
+quote stays off the subject ref deliberately: the approval identity is the
 request, not the price it computes to.
 
 ### A.4 Consequential actions and authority limits

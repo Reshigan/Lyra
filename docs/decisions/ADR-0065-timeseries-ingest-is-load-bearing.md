@@ -68,7 +68,8 @@ collide on one ledger key nor spend each other's approval — an underwriter
 approving a manual +10% must not silently authorise a sensor-driven one.
 
 Both are scoped to the version being superseded, not to the change set alone:
-`axis.ubi-reprice:<policy>:<version>:<changeSetHash>:<chargeMinor>` and
+`axis.ubi-reprice:<policy>:<version>:<changeSetHash>:<premiumDeltaMinor>:<proRataDays>`
+and
 `axis_ubi_reprice:<policy>:<version>:<changeSetHash>`. `changeSetHashOf` covers
 `{changes, reason}` and *not* the price, so two reprices proposing the same
 factor codes at the same weights but a different `premiumDeltaPpm` hash
@@ -83,17 +84,23 @@ convention in docs/specs/gap-axis-design.md §A.3; the property that convention
 existed for — an agent-raised and a desk-raised endorsement of one change set
 sharing an approval — survives, because both read the same current version.
 
-The **ledger** key carries the leg's own amount as well (`:<chargeMinor>`, and
-`:<refundMinor>` on the `.refund` leg); the subject ref does not. The version is
+The **ledger** key carries `:<premiumDeltaMinor>:<proRataDays>` as well (both
+legs, the `.refund` one included); the subject ref does not. The version is
 the full scope only until a retry re-reads it: the charge `runTxn` settles,
 something throws before the version insert — the refund leg, an eviction — and
 the retry finds the same still-current version. If that retry prices
 differently, which is exactly the reprice whose model returns another
 `premiumDeltaPpm` for the same factor codes, the key collided again and the
-version was superseded against a replayed transaction. With the amount in the
-key a genuine duplicate of the identical request still collides (same version,
-same change set, same amount) and two prices off one version cannot. This does
-*not* make the path atomic — an abandoned settled charge is still an over-post
+version was superseded against a replayed transaction. Those two fields are the
+honest discriminator: off a fixed version the new premium is
+`current.premiumMinor + premiumDeltaMinor` and every other quote field derives
+from that plus `proRataDays`, so the pair determines the whole quote. Neither
+posted amount does alone — `share()` maps a band of premium deltas onto one
+`chargeMinor` (100_174 and 100_175 against a 100_000 premium both charge 184 and
+carry different commission legs), and `premiumDeltaMinor` by itself cannot tell a
+back-dated re-issue from the original at the same target premium. A genuine
+duplicate of the identical request still collides; two prices off one version
+cannot. This does *not* make the path atomic — an abandoned settled charge is still an over-post
 needing compensation, and that remains open — but it holds the invariant that
 matters: no money state moves without a journal behind it. The amount stays off
 the subject ref on purpose: an approval's identity is the request a human is
