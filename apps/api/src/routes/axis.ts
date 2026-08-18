@@ -18,6 +18,7 @@ import {
   hashObject,
   notFound,
   openFields,
+  releaseIdempotency,
   require_,
   scoped,
   sealFields,
@@ -1182,7 +1183,12 @@ axisRoutes.post("/policies/:id/reprice", async (c) => {
   const key =
     c.req.header("idempotency-key") ?? `axis_ubi_reprice:${policy.id}:${policy.currentVersionId ?? policy.versionSeq}`;
   const run = () => repriceFromTelemetry(ctx, policy, c.get("gateway"));
-  const out = await withIdempotency(ctx, key, `POST ${c.req.path}`, {}, run);
+  const route = `POST ${c.req.path}`;
+  const out = await withIdempotency(ctx, key, route, {}, run);
+  // A no-op wrote nothing — no version, no ledger, and no watermark move — so
+  // the key would otherwise replay "nothing happened" for 24h across windows in
+  // which something did. Safe precisely because nothing was written.
+  if (!out.repriced) await releaseIdempotency(ctx, key, route);
   return c.json(out, 200);
 });
 

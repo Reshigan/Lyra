@@ -425,6 +425,32 @@ describe("POST /policies/:id/reprice", () => {
     expect(await res.json()).toEqual({ repriced: false });
   });
 
+  it("frees the fallback key on a no-op, so the next window prices what arrived after it", async () => {
+    // The fallback key is derived from the current version, and a no-op does not
+    // write one — so a second call derives the SAME key. A stored `repriced:false`
+    // therefore replays for 24h over a watermark the no-op also left where it was:
+    // every kilometre driven in that day is admitted, never priced, and the key
+    // expires long after the window has moved on. The money, not the call count,
+    // is the assertion: the second reprice must actually re-price.
+    const { ctx, policy } = await seedTenantAndPolicy({ permissions: ["axis:policies:endorse"] });
+    const app = testApp(ctx, gatewayWith(reply(0), reply(100_000)));
+    const route = `/v1/axis/policies/${policy.id}/reprice`;
+    const ingestAt = (at: number, value: number) =>
+      new TelematicsIngest(ctx, SOURCE, policy).ingest(`policy:${policy.id}`, [{ at, value }]);
+
+    await ingestAt(NOW - 3 * DAY, 120);
+    const first = await app.request(route, { method: "POST" });
+    expect(await first.json()).toEqual({ repriced: false });
+
+    await ingestAt(NOW - 2 * DAY, 400);
+    const second = await app.request(route, { method: "POST" });
+
+    expect(second.status).toBe(200);
+    const out = (await second.json()) as { repriced: boolean; premiumMinor?: number };
+    expect(out.repriced).toBe(true);
+    expect(out.premiumMinor).toBe(110_000);
+  });
+
   it("rejects without axis:policies:endorse, before any write", async () => {
     const { ctx, policy } = await seedTenantAndPolicy({ permissions: ["axis:policies:telemetry"] });
     await ingestKm(ctx, policy, 120, 95);
