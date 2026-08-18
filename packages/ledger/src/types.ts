@@ -100,6 +100,9 @@ export const TXN_TYPES: Record<string, TxnTypeDef> = def([
 
   // 4.2 money in
   ["PREM-COLLECT", true, null],
+  // Opening a financing plan moves no money itself — it's the FIN-CMSN txn
+  // chained off it (via parentTxnId) that posts the commission.
+  ["PLAN-CREATE", false, null],
   ["PREM-INSTALMENT", true, null],
   ["DEPOSIT-TAKE", true, null],
   ["PSP-SETTLE", true, null],
