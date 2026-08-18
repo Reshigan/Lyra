@@ -323,6 +323,8 @@ interface FraudCase {
   text: string;
   expectFraud: boolean;
   cohort: string;
+  /** Indicators the case deliberately leaves unevidenced; absent means none. */
+  expectDroppedIndicators?: number;
 }
 
 interface FraudThresholds {
@@ -357,13 +359,22 @@ async function scoreFraud(dir: string): Promise<Metric[]> {
   // array — parseFraud can never leave an unlinked indicator in that array by
   // construction, so measuring against it would report a permanent zero regardless
   // of how often the drop actually fires.
+  //
+  // The numerator is drops the golden set did NOT declare
+  // (|actual - expectDroppedIndicators|), not raw drops — same treatment as
+  // scoreUbi's unexplainedFactorRate, and for the same reason: with a threshold of
+  // 0.0, raw drops make the gate unsatisfiable for any golden set that actually
+  // contains an unevidenced indicator, so the set carried none and the metric was a
+  // structural zero that would not have moved if the drop guard were deleted. This
+  // form pins the drop count exactly — a parser that stops dropping, or starts
+  // over-dropping, both fail the gate.
   let candidates = 0;
-  let dropped = 0;
-  for (const { result } of scored) {
-    dropped += result.droppedIndicatorCount;
+  let unaccounted = 0;
+  for (const { case: c, result } of scored) {
+    unaccounted += Math.abs(result.droppedIndicatorCount - (c.expectDroppedIndicators ?? 0));
     candidates += result.indicators.length + result.droppedIndicatorCount;
   }
-  const unexplainedIndicatorRate = candidates ? dropped / candidates : 0;
+  const unexplainedIndicatorRate = candidates ? unaccounted / candidates : 0;
 
   const metrics = [
     metric("precisionAtTop10", precisionAtTop10, { min: thresholds.precisionAtTop10Min }),
@@ -487,13 +498,13 @@ async function scoreUbi(dir: string): Promise<Metric[]> {
   // array, for the reason scoreFraud gives: parseUbi cannot leave an unevidenced
   // factor in that array by construction, so the ratio would be a permanent zero.
   //
-  // Deviation from the sibling scoreFraud, deliberate: the numerator is drops the
-  // golden set did NOT ask for (|actual - expectDroppedFactors|), not raw drops.
-  // With a threshold of 0.0 and a golden set that must contain an unevidenced
-  // factor, raw drops would make the gate unsatisfiable; and axis-fraud's variant
-  // reads as coverage while its own golden set carries no unevidenced indicator
-  // at all, so its zero is vacuous. This form pins the drop count exactly — a
-  // parser that stops dropping, or starts over-dropping, both fail the gate.
+  // The numerator is drops the golden set did NOT ask for
+  // (|actual - expectDroppedFactors|), not raw drops: with a threshold of 0.0 and a
+  // golden set that must contain an unevidenced factor, raw drops would make the
+  // gate unsatisfiable. scoreFraud's unexplainedIndicatorRate now works the same
+  // way — it used to count raw drops over a golden set carrying no unevidenced
+  // indicator at all, which made its zero vacuous. This form pins the drop count
+  // exactly — a parser that stops dropping, or starts over-dropping, both fail.
   let candidates = 0;
   let unaccounted = 0;
   for (const { case: c, result } of scored) {

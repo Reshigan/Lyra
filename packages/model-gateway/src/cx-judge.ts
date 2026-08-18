@@ -1,4 +1,4 @@
-import { stripFence } from "./extract.js";
+import { parseJsonObject } from "./parse.js";
 
 // docs/13 §3.3: "CX quality rubric >= 4.2/5 (ar+en separately - parity gap
 // <= 0.2)", scored per §3.4 by "LLM-judge with a frozen judge version and n=5
@@ -91,13 +91,8 @@ export function cxJudgePrompt(sample: CxSample): string {
  * good sample.
  */
 export function parseCxScore(reply: string): number | null {
-  let parsed: Record<string, unknown>;
-  try {
-    parsed = JSON.parse(stripFence(reply)) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+  const parsed = parseJsonObject(reply);
+  if (!parsed) return null;
 
   let total = 0;
   for (const dimension of CX_RUBRIC) {

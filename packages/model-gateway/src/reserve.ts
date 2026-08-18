@@ -1,3 +1,5 @@
+import { parseJsonObject } from "./parse.js";
+
 // docs/specs/gap-axis-design.md §G.3. Reserve recommendation: given the peril,
 // cause, severity signal (complexity), policy limits/excess, and the tenant's
 // own comparable closed claims, suggest what the indemnity reserve should be.
@@ -76,22 +78,11 @@ export function reserveMessages(ctx: ReserveContext): { role: "system" | "user";
   ];
 }
 
-/** Models sometimes wrap JSON in a code fence despite `responseSchema`; strip it before parsing. */
-function stripFence(text: string): string {
-  const m = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  return (m?.[1] ?? text).trim();
-}
-
 const FIELDS = ["recommendedMinor", "bandLowMinor", "bandHighMinor", "comparables"] as const;
 
 /** Parses one model reply. Never throws — a bad reply recommends nothing. */
 export function parseReserve(reply: string): ReserveRecommendation {
-  let parsed: Record<string, unknown> = {};
-  try {
-    parsed = JSON.parse(stripFence(reply)) as Record<string, unknown>;
-  } catch {
-    parsed = {};
-  }
+  const parsed = parseJsonObject(reply) ?? {};
 
   const rawRecommended = parsed.recommendedMinor;
   const rawLow = parsed.bandLowMinor;

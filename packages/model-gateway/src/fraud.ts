@@ -1,3 +1,5 @@
+import { parseJsonObject } from "./parse.js";
+
 // docs/specs/gap-axis-design.md §G.2. Fraud/SIU scoring: given a claim, its
 // policy cover snapshot, the holder's own claim history, and any document
 // extraction results, score how referable the claim is to SIU and name the
@@ -101,22 +103,11 @@ export function fraudMessages(ctx: FraudContext): { role: "system" | "user"; con
   ];
 }
 
-/** Models sometimes wrap JSON in a code fence despite `responseSchema`; strip it before parsing. */
-function stripFence(text: string): string {
-  const m = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  return (m?.[1] ?? text).trim();
-}
-
 const FIELDS = ["score", "indicators"] as const;
 
 /** Parses one model reply. Never throws — a bad reply scores nothing. */
 export function parseFraud(reply: string): FraudScoreResult {
-  let parsed: Record<string, unknown> = {};
-  try {
-    parsed = JSON.parse(stripFence(reply)) as Record<string, unknown>;
-  } catch {
-    parsed = {};
-  }
+  const parsed = parseJsonObject(reply) ?? {};
 
   const rawScore = parsed.score;
   const rawIndicators = parsed.indicators;

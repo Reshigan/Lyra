@@ -1,3 +1,8 @@
+import { parseJsonObject } from "./parse.js";
+
+// Re-exported so importers that already take `stripFence` from here keep working.
+export { stripFence } from "./parse.js";
+
 // docs/modules/axis.md §8, docs/04 §4 "documents(+extract)". The structuring
 // step for AXIS document intake: turn OCR'd/raw text into the named fields a
 // human would otherwise type off the document by hand. Kept in this package,
@@ -107,22 +112,12 @@ export function extractionMessages(input: {
   ];
 }
 
-/** Models sometimes wrap JSON in a code fence despite `responseSchema`; strip it before parsing. */
-export function stripFence(text: string): string {
-  const m = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  return (m?.[1] ?? text).trim();
-}
-
 /** Parses one model reply against the fields it was asked for. Never throws. */
 export function parseExtraction(reply: string, fields: readonly string[]): Extraction {
-  let parsed: Record<string, unknown> = {};
-  try {
-    parsed = JSON.parse(stripFence(reply)) as Record<string, unknown>;
-  } catch {
-    // A reply that does not parse extracts nothing — not a thrown error, so one
-    // bad document does not fail the whole request.
-    parsed = {};
-  }
+  // A reply that does not parse — or parses to something that is not an object —
+  // extracts nothing, and does not throw, so one bad document does not fail the
+  // whole request.
+  const parsed = parseJsonObject(reply) ?? {};
 
   const values: Record<string, string | null> = {};
   let present = 0;
@@ -208,12 +203,7 @@ export function visionExtractionMessages(input: {
  * plausible-looking string with no evidence is exactly what that threshold exists to catch.
  */
 export function parseVisionExtraction(reply: string, fields: readonly string[]): VisionExtraction {
-  let parsed: Record<string, unknown> = {};
-  try {
-    parsed = JSON.parse(stripFence(reply)) as Record<string, unknown>;
-  } catch {
-    parsed = {};
-  }
+  const parsed = parseJsonObject(reply) ?? {};
 
   const values: Record<string, FieldEvidence> = {};
   let present = 0;

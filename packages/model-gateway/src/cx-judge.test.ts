@@ -64,6 +64,14 @@ describe("parseCxScore", () => {
     expect(parseCxScore("I would rate this a solid four out of five.")).toBeNull();
   });
 
+  // Regression: valid JSON that is not an object — `JSON.parse` returns null, 42
+  // or "a string", and the sibling parsers threw a TypeError on the first
+  // property read of null.
+  it.each(["null", "42", '"a string"'])("is null on valid non-object JSON: %s", (raw) => {
+    expect(() => parseCxScore(raw)).not.toThrow();
+    expect(parseCxScore(raw)).toBeNull();
+  });
+
   it("rejects a score outside the 1-5 rubric rather than clamping it", () => {
     expect(parseCxScore(reply({ accuracy: 9, clarity: 5, tone: 5, actionability: 5 }))).toBeNull();
     expect(parseCxScore(reply({ accuracy: 0, clarity: 5, tone: 5, actionability: 5 }))).toBeNull();

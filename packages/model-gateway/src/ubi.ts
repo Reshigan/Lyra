@@ -1,4 +1,4 @@
-import { stripFence } from "./extract.js";
+import { parseJsonObject } from "./parse.js";
 
 // docs/superpowers/specs/2026-08-16-revenue-lines-full-build-design.md (Group E,
 // usage-based pricing). Given aggregated usage/sensor series for one subject over
@@ -122,20 +122,13 @@ export function ubiMessages(ctx: UbiContext): { role: "system" | "user"; content
 }
 
 /**
- * Parses one model reply. Never throws — a bad reply moves no price.
- *
- * Note the object guard: `JSON.parse` happily returns `null`, a number or a
- * string for a reply that is valid JSON but not an object, and property access
- * on `null` would throw straight through the try/catch.
+ * Parses one model reply. Never throws — a bad reply moves no price. The object
+ * guard lives in `parseJsonObject` (parse.ts): `JSON.parse` happily returns
+ * `null`, a number or a string for a reply that is valid JSON but not an object,
+ * and property access on `null` would throw straight through the try/catch.
  */
 export function parseUbi(reply: string): UbiRepriceResult {
-  let parsed: Record<string, unknown> = {};
-  try {
-    const raw: unknown = JSON.parse(stripFence(reply));
-    if (typeof raw === "object" && raw !== null) parsed = raw as Record<string, unknown>;
-  } catch {
-    parsed = {};
-  }
+  const parsed = parseJsonObject(reply) ?? {};
 
   const candidates = Array.isArray(parsed.factors)
     ? parsed.factors.filter((v): v is Record<string, unknown> => typeof v === "object" && v !== null)

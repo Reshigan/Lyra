@@ -1,3 +1,5 @@
+import { parseJsonObject } from "./parse.js";
+
 // docs/specs/gap-axis-design.md §G.4. SLA-breach prediction: given a case's
 // age, status, state history from axis_process_events, queue depth and owner
 // load, estimate how likely the case is to miss its SLA and why.
@@ -90,22 +92,11 @@ export function slaMessages(ctx: SlaContext): { role: "system" | "user"; content
   ];
 }
 
-/** Models sometimes wrap JSON in a code fence despite `responseSchema`; strip it before parsing. */
-function stripFence(text: string): string {
-  const m = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  return (m?.[1] ?? text).trim();
-}
-
 const FIELDS = ["breachProbability", "driver"] as const;
 
 /** Parses one model reply. Never throws — a bad reply predicts nothing. */
 export function parseSla(reply: string): SlaBreachEstimate {
-  let parsed: Record<string, unknown> = {};
-  try {
-    parsed = JSON.parse(stripFence(reply)) as Record<string, unknown>;
-  } catch {
-    parsed = {};
-  }
+  const parsed = parseJsonObject(reply) ?? {};
 
   const rawProbability = parsed.breachProbability;
   const rawDriver = parsed.driver;
