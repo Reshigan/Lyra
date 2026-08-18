@@ -120,16 +120,20 @@ to bill it.
 ```json
 {
   "directionAccuracyMin": 0.9,
-  "unexplainedFactorRateMax": 0.0,
-  "maxDeltaPpmByProtectedProxy": 0
+  "unexplainedFactorRateMax": 0.0
 }
 ```
 
 `directionAccuracy`: sign of `premiumDeltaPpm` matches the case's `expectDirection`.
-`maxDeltaPpmByProtectedProxy`: paired cases with identical driving telemetry and a
-different protected-proxy field must parse to the same delta — exactly zero, because
-`parseUbi` is pure and must not read the proxy at all. This is the fairness gate
-(docs/12); `axis-fraud` carries the same one with a looser bound.
+**Superseded (commit `5f3a2ce`):** this plan originally specified a third threshold,
+`maxDeltaPpmByProtectedProxy`, and called it the fairness gate. It was a tautology —
+`parseUbi` never reads the proxy field, so the metric was zero by construction and could
+not fail. docs/12 §4 excludes protected attributes at the *input* boundary (`UbiContext`
+carries only series, totals, baselines and the window) and handles proxies through a
+quarterly human audit; it defines no protected-attribute list, so a parser-level denylist
+here would have meant inventing the classification. The pair invariant now lives as a
+purity assertion in `packages/model-gateway/src/ubi.test.ts`, where it belongs, and this
+line is not a fairness gate.
 
 - [ ] Author `cases.jsonl` (≥10 cases: worse/better/neutral telemetry, a fence-wrapped
       reply, a reply with an unevidenced factor, a delta with an empty factor array, one

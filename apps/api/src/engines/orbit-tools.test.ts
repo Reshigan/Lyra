@@ -5,7 +5,8 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { PolicyJson, EntitlementsJson, schema } from "@lyra/db";
-import { permissionsForRole, sha256Hex, type Actor, type Ctx } from "@lyra/core";
+import { permissionsForRole, type Actor, type Ctx } from "@lyra/core";
+import { changeSetHashOf } from "./axis-endorse.js";
 import { executeOrbitToolCalls, ORBIT_TOOL_DEFS, orbitToolsFor, runOrbitTool } from "./orbit-tools.js";
 
 // docs/15. ORBIT's agent acts through these handlers, not raw SQL in the AI
@@ -216,7 +217,7 @@ describe("create_endorsement_request", () => {
   it("proceeds once the matching approval is already granted", async () => {
     await seedPolicy("pol_5");
     const changes = { sumInsuredMinor: 1_200_00 };
-    const subjectRef = `axis_endorse:pol_5:${await sha256Hex(JSON.stringify({ changes, reason: null }))}`;
+    const subjectRef = `axis_endorse:pol_5:${await changeSetHashOf({ changes, reason: null })}`;
     await ctx.db.insert(schema.approvals).values({
       id: "apr_1",
       tenantId: ctx.tenantId,
