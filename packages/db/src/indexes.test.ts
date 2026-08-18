@@ -141,4 +141,19 @@ describe("uniqueness constraints survive the migrated schema", () => {
     await presence("ap1", "u1");
     await expect(presence("ap2", "u1")).rejects.toThrow(/UNIQUE/i);
   });
+
+  it("a replayed telemetry batch cannot double-count the same series point, but different at/tenant/source can share the rest", async () => {
+    const point = (id: string, tenantId: string, subjectRef: string, source: string, at: number) =>
+      db.execute({
+        sql: `INSERT INTO axis_telemetry_points (id, tenant_id, subject_ref, source, at, value, txn_id, created_at)
+              VALUES (?, ?, ?, ?, ?, 12.5, 'txn1', 1)`,
+        args: [id, tenantId, subjectRef, source, at]
+      });
+    await point("tp1", "t1", "policy:p1", "telematics:obd:km", 1000);
+    // exact replay of the same (tenant, subject, source, at) is the dedup guard
+    await expect(point("tp2", "t1", "policy:p1", "telematics:obd:km", 1000)).rejects.toThrow(/UNIQUE/i);
+    await point("tp3", "t1", "policy:p1", "telematics:obd:km", 2000); // different at: fine
+    await point("tp4", "t2", "policy:p1", "telematics:obd:km", 1000); // different tenant: fine
+    await point("tp5", "t1", "policy:p1", "telematics:obd:harsh_brake", 1000); // different source: fine
+  });
 });

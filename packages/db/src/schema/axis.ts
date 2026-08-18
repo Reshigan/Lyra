@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { sqliteTable, text, integer, index, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real, index, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 // docs/03 §AXIS — operations. Case is the unit of work.
 
@@ -622,4 +622,30 @@ export const referrals = sqliteTable(
     updatedAt: integer("updated_at").notNull()
   },
   (t) => [index("axis_referrals_state_idx").on(t.tenantId, t.state, t.slaDueAt)]
+);
+
+/**
+ * H6 — raw usage/sensor points against a contract (docs/16 `TimeseriesIngest`).
+ *
+ * `source` is the series key (`telematics:obd:km`), because the seam's point
+ * shape carries a value and no metric name. The unique index is the dedup
+ * guard: a replayed or overlapping batch that double-counts kilometres would
+ * reprice the policy wrong and bill a customer for it.
+ */
+export const telemetryPoints = sqliteTable(
+  "axis_telemetry_points",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    subjectRef: text("subject_ref").notNull(), // policy:<id>
+    source: text("source").notNull(),
+    at: integer("at").notNull(),
+    value: real("value").notNull(),
+    txnId: text("txn_id").notNull(),
+    createdAt: integer("created_at").notNull()
+  },
+  (t) => [
+    uniqueIndex("axis_telem_point_uq").on(t.tenantId, t.subjectRef, t.source, t.at),
+    index("axis_telem_subject_idx").on(t.tenantId, t.subjectRef, t.source, t.at)
+  ]
 );
