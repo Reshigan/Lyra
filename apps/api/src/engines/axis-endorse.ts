@@ -160,9 +160,21 @@ export async function endorsePolicy(
   // `ENDORSE` -> `axis.endorse`, unchanged from before this parameter existed.
   const keyPrefix = `axis.${type.toLowerCase()}`;
 
-  // `ENDORSE` -> `axis_endorse:<policy>:<hash>`, the convention
-  // docs/specs/gap-axis-design.md §B.1 fixed and ORBIT's tool path shares.
-  const subjectRef = `axis_${type.toLowerCase().replaceAll("-", "_")}:${policy.id}:${changeSetHash}`;
+  // `ENDORSE` -> `axis_endorse:<policy>:<version>:<hash>`, extending the
+  // convention docs/specs/gap-axis-design.md §B.1 fixed and ORBIT's tool path
+  // shares. `current.id` is in the key because `changeSetHash` covers
+  // `{changes, reason}` and NOT the price: two endorsements naming the same
+  // factors at the same weights but a different premium hash identically, and
+  // on the hash alone the second one replayed the first's settled transaction
+  // — `runTxn` returns it untouched and posts no journal — while this function
+  // carried on and superseded the version at the new premium. Money state
+  // moved with no journal behind it (CLAUDE.md #12). Exactly one endorsement
+  // can supersede a given version (§C.2), so that version's id is the honest
+  // scope: a genuine duplicate off the same version still collides, a real
+  // second price move does not. An agent-raised and a desk-raised endorsement
+  // of the same change set still share one approval identity, because they
+  // read the same current version.
+  const subjectRef = `axis_${type.toLowerCase().replaceAll("-", "_")}:${policy.id}:${current.id}:${changeSetHash}`;
   const refundMinor = quote.refundMinor;
 
   // Both gates run before the first write. Settling the commission move and
@@ -202,7 +214,7 @@ export async function endorsePolicy(
       ctx,
       {
         type,
-        idempotencyKey: `${keyPrefix}:${policy.id}:${changeSetHash}`,
+        idempotencyKey: `${keyPrefix}:${policy.id}:${current.id}:${changeSetHash}`,
         currency: policy.currency,
         grossMinor: Math.abs(quote.chargeMinor),
         subjectRefs: { policy: policy.id }
@@ -233,7 +245,7 @@ export async function endorsePolicy(
       ctx,
       {
         type: "REFUND-ISSUE",
-        idempotencyKey: `${keyPrefix}.refund:${policy.id}:${changeSetHash}`,
+        idempotencyKey: `${keyPrefix}.refund:${policy.id}:${current.id}:${changeSetHash}`,
         currency: policy.currency,
         grossMinor: refundMinor,
         ...(txn ? { parentTxnId: txn.id } : {}),

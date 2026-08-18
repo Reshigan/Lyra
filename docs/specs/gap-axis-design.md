@@ -141,8 +141,18 @@ policy({ key: "axis.recovery_writeoff", module: "axis", decide: "axis:claims:app
 `apps/api/src/engines/orbit-tools.ts:117-163`. Change its `decide` to
 `axis:policies:endorse` in the same commit that adds the key; the subject-ref
 hash convention there (`axis_endorse:${policyId}:${sha256Hex(...)}`) is kept
-verbatim by the new endorsement endpoint so an agent-raised request and a
-desk-raised request for the identical change-set share one approval identity.
+by the new endorsement endpoint so an agent-raised request and a desk-raised
+request for the identical change-set share one approval identity.
+
+**Amended (ADR-0065, group-e-telematics-ubi).** The shape now carries the id of
+the version being superseded: `axis_endorse:${policyId}:${versionId}:${hash}`,
+and the ledger idempotency key alongside it. The hash covers `{changes, reason}`
+and not the price, so two endorsements naming the same factors at different
+premiums shared one ledger key and the second replayed the first's settled
+transaction while still superseding the version — money state with no journal
+(CLAUDE.md #12). Exactly one endorsement can supersede a given version (§C.2),
+so the version id is the scope. The shared-approval property is unaffected:
+both raisers read the same current version.
 
 ### A.4 Consequential actions and authority limits
 

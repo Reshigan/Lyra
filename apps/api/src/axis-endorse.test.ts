@@ -302,7 +302,8 @@ describe("AXIS endorsement (docs/27 F5)", () => {
     // The subject ref is the change-set, hashed exactly as the ORBIT tool
     // hashes it at apps/api/src/engines/orbit-tools.ts — so the approval a
     // customer's agent raises and the one the desk raises are one record.
-    const expected = `axis_endorse:${policyId}:${await changeSetHashOf({ changes, reason: null })}`;
+    const effective = (await versionsOf(policyId)).find((v) => v.state === "effective")!;
+    const expected = `axis_endorse:${policyId}:${effective.id}:${await changeSetHashOf({ changes, reason: null })}`;
     const raised = await database
       .select()
       .from(schema.approvals)

@@ -240,8 +240,35 @@ describe("endorsePolicy transaction type", () => {
     const hash = first.txn!.idempotencyKey.split(":").pop();
     expect(second.txn!.idempotencyKey.split(":").pop()).toBe(hash);
     expect(first.txn!.idempotencyKey).not.toBe(second.txn!.idempotencyKey);
-    expect(first.txn!.idempotencyKey).toBe(`axis.ubi-reprice:pol_1:${hash}`);
-    expect(second.txn!.idempotencyKey).toBe(`axis.endorse:pol_1:${hash}`);
+    expect(first.txn!.idempotencyKey).toBe(`axis.ubi-reprice:pol_1:pver_1:${hash}`);
+    expect(second.txn!.idempotencyKey).toBe(`axis.endorse:pol_1:${first.version.id}:${hash}`);
+  });
+
+  it("keys the ledger transaction to the version it supersedes, not the change set alone", async () => {
+    // The change set is what `changeSetHashOf` covers; the price is not. Two
+    // endorsements naming the same factors at the same weights but a different
+    // premium therefore hash the same, and on the hash alone they shared one
+    // ledger idempotency key: `runTxn` returned the first settled transaction
+    // without posting a journal, while `endorsePolicy` carried on and
+    // superseded the version at the new premium. Money state moved with no
+    // journal behind it (CLAUDE.md #12). Exactly one endorsement can supersede
+    // a given version (§C.2), so that version's id is the honest scope.
+    const changes = { km_band: { weight: 1 } };
+    const first = await endorsePolicy(ctx, policy, { changes, premiumMinor: 110_000 });
+    const second = await endorsePolicy(ctx, first.policy, { changes, premiumMinor: 130_000 });
+
+    expect(second.txn!.id).not.toBe(first.txn!.id);
+    for (const txn of [first.txn!, second.txn!]) {
+      const lines = await ctx.db
+        .select()
+        .from(schema.ledgerJournalLines)
+        .where(eq(schema.ledgerJournalLines.txnId, txn.id));
+      expect(lines.length).toBeGreaterThan(0);
+    }
+    // Each version names the transaction that actually posted its journal.
+    expect(first.version.txnId).toBe(first.txn!.id);
+    expect(second.version.txnId).toBe(second.txn!.id);
+    expect((await currentVersion()).txnId).toBe(second.txn!.id);
   });
 });
 
@@ -283,13 +310,42 @@ describe("repriceFromTelemetry", () => {
     expect((await txns("UBI-REPRICE"))).toHaveLength(1);
   });
 
+  it("posts a second journal when a later reprice repeats the factors at a different ppm", async () => {
+    // The reported case for the key above: `changes` is built from the model's
+    // factor codes and weights, so two proposals that differ only in
+    // `premiumDeltaPpm` are one hash. F2's canonicalisation removed the
+    // accidental key-order differentiator, so this stopped being rare.
+    await ingestKm(120, 95);
+    const first = await repriceFromTelemetry(ctx, policy, gatewayWith(reply(100_000)));
+    if (!first.repriced) throw new Error("the first reprice returned no price move");
+
+    // A later window with its own kilometres in it — the first reprice advanced
+    // `effectiveFrom` past everything it already priced.
+    ctx.now = NOW + DAY;
+    await new TelematicsIngest(ctx, SOURCE, policy).ingest(`policy:${policy.id}`, [{ at: NOW + DAY / 2, value: 130 }]);
+    const second = await repriceFromTelemetry(ctx, policy, gatewayWith(reply(50_000)));
+    if (!second.repriced) throw new Error("the second reprice returned no price move");
+
+    expect(second.premiumMinor).toBe(115_500);
+    expect(await txns("UBI-REPRICE")).toHaveLength(2);
+    expect(second.txn!.id).not.toBe(first.txn!.id);
+    for (const txn of [first.txn!, second.txn!]) {
+      const lines = await ctx.db
+        .select()
+        .from(schema.ledgerJournalLines)
+        .where(eq(schema.ledgerJournalLines.txnId, txn.id));
+      expect(lines.length).toBeGreaterThan(0);
+    }
+    const head = await currentVersion();
+    expect(head.premiumMinor).toBe(115_500);
+    expect(head.txnId).toBe(second.txn!.id);
+  });
+
   it("clamps an absurd downward proposal, so one reply cannot move the price more than 25%", async () => {
     await ingestKm(20);
-    // -900_000 ppm would be -90%; MAX_REPRICE_PPM clamps it to -25%. The clamp
-    // bounds one reply, not the drift of many, which is why the zero-premium
-    // refusal below exists rather than a floor that would silently absorb it.
+    // -900_000 ppm would be -90%; MAX_REPRICE_PPM clamps it to -25%.
     const hash = await changeSetHashFor();
-    const subjectRef = `axis_ubi_reprice:${policy.id}:${hash}`;
+    const subjectRef = `axis_ubi_reprice:${policy.id}:pver_1:${hash}`;
     await preApprove(`${subjectRef}:refund`, "ledger.refund", 100_000);
 
     const out = await repriceFromTelemetry(ctx, policy, gatewayWith(reply(-900_000)));
@@ -300,9 +356,15 @@ describe("repriceFromTelemetry", () => {
 
   it("refuses rather than writing a zero premium, which would freeze tax and commission forever", async () => {
     // `quoteEndorsement` prices the delta as a ratio of the current premium, so a
-    // contract at 0 accrues no tax and no commission on any later move. Nothing
-    // caps cumulative drift across reprices, so this state is reachable, and the
-    // refusal — not a `Math.max(0, …)` floor — is what keeps it out of the book.
+    // contract at 0 accrues no tax and no commission on any later move, and would
+    // reprice forever, stamping a version each time and moving nothing.
+    //
+    // Repeated reprices are NOT the path into that state: the clamp is ±250 000
+    // ppm and the engine rounds with `Math.round`, which rounds half toward +∞,
+    // so P=1→1, P=2→2, P=3→2, P=4→3 — a positive integer premium never reaches
+    // 0 by maximal downward steps. The reachable path is a cover written at 0 in
+    // the first place: `EndorseBody.premiumMinor` is `nonnegative()`. The direct
+    // UPDATE below is the honest way to reach that state in a test.
     await ctx.db
       .update(schema.axisPolicyVersions)
       .set({ premiumMinor: 0 })

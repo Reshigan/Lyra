@@ -56,11 +56,26 @@ customer disputes a premium, while the money lands in exactly the same place.
 `endorsePolicy` therefore builds `ENDORSE`'s recipe whatever `opts.type` says,
 and that divergence between type and recipe is intentional and commented at both
 sites. `opts.type` additionally prefixes the ledger idempotency key
-(`axis.ubi-reprice:…` vs `axis.endorse:…`) *and* the approval subject ref
-(`axis_ubi_reprice:<policy>:<changeSetHash>`), so a reprice and a manual
-endorsement carrying the same change set can neither collide on one ledger key
-nor spend each other's approval — an underwriter approving a manual +10% must
-not silently authorise a sensor-driven one.
+(`axis.ubi-reprice:…` vs `axis.endorse:…`) *and* the approval subject ref, so a
+reprice and a manual endorsement carrying the same change set can neither
+collide on one ledger key nor spend each other's approval — an underwriter
+approving a manual +10% must not silently authorise a sensor-driven one.
+
+Both are scoped to the version being superseded, not to the change set alone:
+`axis.ubi-reprice:<policy>:<version>:<changeSetHash>` and
+`axis_ubi_reprice:<policy>:<version>:<changeSetHash>`. `changeSetHashOf` covers
+`{changes, reason}` and *not* the price, so two reprices proposing the same
+factor codes at the same weights but a different `premiumDeltaPpm` hash
+identically. On the hash alone the second one replayed the first's settled
+transaction — `runTxn` returns a settled txn untouched and posts no journal —
+while `endorsePolicy` carried on, superseded the version and stamped the policy
+at the new premium. That is money state with no journal behind it (CLAUDE.md
+#12). Exactly one endorsement can supersede a given version (§C.2), so the
+version id is the honest scope: a genuine duplicate off the same version still
+collides, a real second price move gets its own key. This amends the subject-ref
+convention in docs/specs/gap-axis-design.md §A.3; the property that convention
+existed for — an agent-raised and a desk-raised endorsement of one change set
+sharing an approval — survives, because both read the same current version.
 
 ## The gap this records
 

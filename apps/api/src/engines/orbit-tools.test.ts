@@ -217,7 +217,7 @@ describe("create_endorsement_request", () => {
   it("proceeds once the matching approval is already granted", async () => {
     await seedPolicy("pol_5");
     const changes = { sumInsuredMinor: 1_200_00 };
-    const subjectRef = `axis_endorse:pol_5:${await changeSetHashOf({ changes, reason: null })}`;
+    const subjectRef = `axis_endorse:pol_5:pver_pol_5:${await changeSetHashOf({ changes, reason: null })}`;
     await ctx.db.insert(schema.approvals).values({
       id: "apr_1",
       tenantId: ctx.tenantId,
