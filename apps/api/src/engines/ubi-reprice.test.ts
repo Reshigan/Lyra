@@ -267,8 +267,8 @@ describe("endorsePolicy transaction type", () => {
     // them, and it would separate them even off one version at one price.
     const hash = await changeSetHashOf({ changes });
     expect(first.txn!.idempotencyKey).not.toBe(second.txn!.idempotencyKey);
-    expect(first.txn!.idempotencyKey).toBe(`axis.ubi-reprice:pol_1:pver_1:${hash}:10555`);
-    expect(second.txn!.idempotencyKey).toBe(`axis.endorse:pol_1:${first.version.id}:${hash}:11610`);
+    expect(first.txn!.idempotencyKey).toBe(`axis.ubi-reprice:pol_1:pver_1:${hash}:10000:335`);
+    expect(second.txn!.idempotencyKey).toBe(`axis.endorse:pol_1:${first.version.id}:${hash}:11000:335`);
   });
 
   it("keys the ledger transaction to the version it supersedes, not the change set alone", async () => {
@@ -329,6 +329,34 @@ describe("endorsePolicy transaction type", () => {
     // pro-rated over the 335 days left of a 365-day term: round(3000 * 335/365).
     expect(await debitSum(retry.txn!.id)).toBe(2753);
     expect(retry.version.txnId).toBe(retry.txn!.id);
+  });
+
+  it("keys on the quote, not one rounded amount: two prices that share a charge still post two journals", async () => {
+    // `chargeMinor` is not injective in the price. `share(x) = round(x * 335/365)`
+    // maps a band of premium deltas onto one charge, so a retry that prices a
+    // few minor units apart re-collides on a charge-keyed transaction and the
+    // version moves against a replayed one. 100_174 and 100_175 both charge 184
+    // and are a real difference: their commission legs are 16 and 17.
+    //
+    // `premiumDeltaMinor` + `proRataDays` is the honest key. Off a fixed
+    // `current.id` the new premium is `current.premiumMinor + premiumDeltaMinor`
+    // and every other quote field derives from that and `proRataDays`, so the
+    // pair determines the whole quote where neither amount alone does — and the
+    // day count separates a back-dated re-issue of the same target premium,
+    // which `premiumDeltaMinor` alone would not.
+    const changes = { km_band: { weight: 1 } };
+    const first = await endorsePolicy(ctx, policy, { changes, premiumMinor: 100_174 });
+    await ctx.db.delete(schema.axisPolicyVersions).where(eq(schema.axisPolicyVersions.id, first.version.id));
+    await ctx.db
+      .update(schema.axisPolicyVersions)
+      .set({ state: "effective", effectiveTo: END, supersededAt: null })
+      .where(eq(schema.axisPolicyVersions.id, "pver_1"));
+
+    const retry = await endorsePolicy(ctx, policy, { changes, premiumMinor: 100_175 });
+
+    expect(retry.txn!.id).not.toBe(first.txn!.id);
+    expect(await debitSum(first.txn!.id)).toBe(16);
+    expect(await debitSum(retry.txn!.id)).toBe(17);
   });
 });
 
