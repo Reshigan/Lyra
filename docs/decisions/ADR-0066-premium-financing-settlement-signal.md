@@ -8,17 +8,22 @@ line F4, docs/19 §4 (transaction integrity), `apps/api/src/engines/premium-fina
 
 `payInstalment` posts a `PREM-INSTALMENT` client-money receipt when an
 instalment falls due, on the strength of the financing agreement, and treats an
-instalment as **missed** only when a `ledger_payments` row exists for it in
-state `failed` or `charged_back`. No new table, no new column, no new migration.
+instalment as **missed** only when a `ledger_payments` row exists for it in a
+closed non-payment state (`failed`, `charged_back` or `refunded`). No new table,
+no new column.
 
 ## The gap this records
 
-LYRA has no inbound settlement intake. Nothing in the codebase writes
+LYRA has no inbound settlement intake. No production code path writes
 `ledger_payments` — not a PSP webhook, not a financier file import, not an
-operator screen. The table is defined (`packages/db/src/schema/ledger.ts`) with
-the states a real intake would use (`pending | authorized | captured | settled |
-failed | refunded | charged_back`), and premium financing reads it, but today it
-is only ever populated by tests.
+operator screen. The only writers are tests and the demo seed
+(`packages/core/src/seed/ledger.ts:1339`, seven illustrative rows), and none of
+the seeded rows carry a `"<planId>:<seq>"` `providerRef`, so none of them reach
+premium financing. The table is defined
+(`packages/db/src/schema/ledger.ts`) with the states a real intake would use
+(`pending | authorized | captured | settled | failed | refunded |
+charged_back`), and premium financing reads it, but nothing in production
+populates it.
 
 So the dunning path this branch ships is **dormant by construction**: with no
 writer, no instalment can be marked missed, `missed_streak` never rises, the
@@ -52,16 +57,37 @@ returned debit — writes one `ledger_payments` row per instalment attempt with
 that `providerRef`, and premium financing starts behaving correctly with **zero
 engine change**:
 
-- `failed` / `charged_back` → the instalment is marked missed, `missed_streak`
-  increments, a `DUNNING` transaction is posted carrying the payment's id,
-  state and `failureCode`, and three consecutive misses cascade into policy
-  lapse through `ledger.financing.lapse_due`.
-- anything else (or no row) → collected as today.
+- `failed` / `charged_back` / `refunded` → the instalment is marked missed,
+  `missed_streak` increments, a `DUNNING` transaction is posted carrying the
+  payment's id, state and `failureCode`, and three consecutive misses cascade
+  into policy lapse through `ledger.financing.lapse_due`.
+- `authorized` / `captured` / `settled` → collected, `PREM-INSTALMENT` posted.
+- no row → collected, as on a plan with no settlement signal at all.
+- `pending`, or any state this engine has never heard of → left alone for the
+  next tick. An in-flight debit is not cash, and a PSP state added after this
+  ADR must never become a client-money receipt by default. Teaching the engine a
+  new state is a one-line allowlist change.
 
-The engine reads the latest row per `seq` by `created_at`, so a retry that
-succeeds supersedes an earlier failure without special handling. Building the
-intake is the follow-up work; it is a new writer, not a change to this engine
-(CLAUDE.md #15).
+The engine reads the latest row per `seq`, ordered by `created_at` then `id` so
+a same-millisecond tie is deterministic rather than scan-ordered. A `missed` row
+stays collectable: the row records the `ledger_payments` id that caused the miss
+(`missedPaymentId` on the schedule row), so a re-presented debit that settles
+collects the instalment and clears the miss, while the same refused attempt seen
+again on later ticks counts once and only once. Only a payment row with a
+*different* id moves `missed_streak`. Building the intake is the follow-up work;
+it is a new writer, not a change to this engine (CLAUDE.md #15).
+
+## Deployment note
+
+Any environment carrying demo seed data will post a real `PREM-INSTALMENT`
+receipt on the **first cron tick** after this branch ships. The seed's financed
+renewal (`packages/core/src/seed/ledger.ts:1446` — Rania's renewal, `active`,
+four instalments, three `paid`) leaves instalment 4 due at seed time, and the
+sweep collects every due instalment on every `active` plan. Expect one
+`PREM-INSTALMENT` transaction and its journal lines per seeded tenant, plus the
+matching commission recognition. That is correct engine behaviour on the data it
+was given, not a defect — but demo and staging balances will move on their own,
+so do not read the first tick's client-money movement as production activity.
 
 ## Alternatives considered
 
