@@ -3,11 +3,17 @@ import { join } from "node:path";
 import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
 import { eq } from "drizzle-orm";
+import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
 import { EntitlementsJson, PolicyJson, id as newId, schema } from "@lyra/db";
-import { pendingOutbox, type Ctx } from "@lyra/core";
+import { notFound, pendingOutbox, type Ctx } from "@lyra/core";
 import { createPlan, payInstalment, sweepPremiumFinancing, DUNNING_LAPSE_THRESHOLD, type PolicyRow } from "./engines/premium-financing.js";
 import { onFinancingLapseDue } from "./engines/axis-lifecycle.js";
+import { axisRoutes } from "./routes/axis.js";
+import { crudRouter } from "./crud.js";
+import { BY_MODULE } from "./resources.js";
+import { onError } from "./mw.js";
+import type { App } from "./env.js";
 
 // docs/27 group D — premium financing createPlan(). Flat/local-helper
 // convention (no shared fixtures export seedTenantAndPolicy/testCtx in this
@@ -62,6 +68,30 @@ async function seedTenantAndPolicy(opts: { currency: string }): Promise<{ ctx: C
 
   const [policy] = await ctx.db.select().from(schema.axisPolicies).where(eq(schema.axisPolicies.id, policyId));
   return { ctx, policy: policy! };
+}
+
+/**
+ * A minimal router with a fixed ctx, mirroring resources.test.ts's `router()`
+ * helper — the full `app` from ./index.js authenticates over a real session
+ * (axis-lifecycle.test.ts's login flow), which this file's flat convention
+ * has no fixture for. Mounting the real axisRoutes and the real
+ * ledger/payment-plans resource under their real paths, with ctx injected
+ * directly, exercises the actual route/permission wiring without the login
+ * detour.
+ */
+function testApp(ctx: Ctx): Hono<App> {
+  const app = new Hono<App>();
+  app.onError(onError);
+  app.notFound((c) => onError(notFound(c.req.path), c));
+  app.use("*", async (c, next) => {
+    c.set("ctx", ctx);
+    await next();
+  });
+  app.route("/v1/axis", axisRoutes);
+  const paymentPlans = BY_MODULE.ledger?.find((r) => r.path === "payment-plans");
+  if (!paymentPlans) throw new Error("no ledger/payment-plans resource");
+  app.route("/v1/ledger/payment-plans", crudRouter(paymentPlans));
+  return app;
 }
 
 describe("createPlan", () => {
@@ -242,5 +272,55 @@ describe("sweepPremiumFinancing", () => {
     const [badAfter] = await ctx.db.select().from(schema.ledgerPaymentPlans).where(eq(schema.ledgerPaymentPlans.id, bad.plan.id));
     expect(JSON.parse(goodAfter!.scheduleJson)[0].state).toBe("paid");
     expect(badAfter!.missedStreak).toBe(1);
+  });
+});
+
+describe("POST /v1/axis/policies/:id/premium-financing-plan", () => {
+  it("creates a plan and is idempotent under a repeated idempotency key", async () => {
+    const { ctx, policy } = await seedTenantAndPolicy({ currency: "AED" });
+    const app = testApp(ctx);
+    const body = {
+      totalMinor: 120_000, currency: "AED", instalments: 12,
+      startAt: ctx.now, frequencyDays: 30, commissionMinor: 15_000
+    };
+    const key = "idem-plan-1";
+
+    const first = await app.request(`/v1/axis/policies/${policy.id}/premium-financing-plan`, {
+      method: "POST",
+      headers: { "idempotency-key": key, "content-type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    expect(first.status).toBe(200);
+    const firstJson = (await first.json()) as { plan: { id: string } };
+
+    const second = await app.request(`/v1/axis/policies/${policy.id}/premium-financing-plan`, {
+      method: "POST",
+      headers: { "idempotency-key": key, "content-type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    const secondJson = (await second.json()) as { plan: { id: string } };
+    expect(secondJson.plan.id).toBe(firstJson.plan.id);
+
+    const plans = await ctx.db.select().from(schema.ledgerPaymentPlans).where(eq(schema.ledgerPaymentPlans.subjectRef, policy.id));
+    expect(plans).toHaveLength(1); // not 2 — the replay didn't insert a second row
+  });
+});
+
+describe("payment-plans resource route (regression)", () => {
+  it("rejects a direct create against the generic CRUD route", async () => {
+    const { ctx } = await seedTenantAndPolicy({ currency: "AED" });
+    const app = testApp(ctx);
+    const res = await app.request("/v1/ledger/payment-plans", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ subjectRef: "pol_x", totalMinor: 1000, currency: "AED", instalments: 1, scheduleJson: "[]" })
+    });
+    // ro() declares no `create` permission, so crud.ts never registers the
+    // POST route at all — it falls through to app.notFound (404), exactly
+    // like the sibling ledger/payments and ledger/txns resources
+    // (resources.test.ts "POST /txns and POST /payments do not exist as
+    // routes"). Not 403 — deviation from the brief's literal snippet, but
+    // matching this codebase's own established, tested convention for ro().
+    expect(res.status).toBe(404);
   });
 });

@@ -91,6 +91,7 @@ import {
   registerFnol
 } from "../engines/axis-fnol.js";
 import { GenerateBordereauBody, generateBordereaux, reconcileBordereaux } from "../engines/axis-bordereaux.js";
+import { createPlan, type CreatePlanInput } from "../engines/premium-financing.js";
 import { embedUpsert } from "../engines/vectorize.js";
 import { meterEgress } from "../engines/egress.js";
 import { fieldKey, type App } from "../env.js";
@@ -1163,6 +1164,21 @@ axisRoutes.post("/policies/:id/reinstate", async (c) => {
   // Keyed on the lapse being cured, so a later lapse can be cured again.
   const key = c.req.header("idempotency-key") ?? `axis_reinstate:${policy.id}:${policy.lapsedAt ?? 0}`;
   const out = await withIdempotency(ctx, key, `POST ${c.req.path}`, input, () => reinstatePolicy(ctx, policy, input));
+  return c.json(out, 200);
+});
+
+/**
+ * docs/27 group D — opens a premium-financing plan on a bound policy.
+ * PLAN-CREATE itself moves no money (non-financial); the financing house's
+ * commission posts as a chained FIN-CMSN transaction inside createPlan().
+ */
+axisRoutes.post("/policies/:id/premium-financing-plan", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:policies:finance", { tenantId: ctx.tenantId, module: "axis" });
+  const policy = await must(ctx, schema.axisPolicies, c.req.param("id"), "policies");
+  const input = (await c.req.json()) as CreatePlanInput;
+  const key = c.req.header("idempotency-key");
+  const out = await withIdempotency(ctx, key, `POST ${c.req.path}`, input, () => createPlan(ctx, policy, input));
   return c.json(out, 200);
 });
 

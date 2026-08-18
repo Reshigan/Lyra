@@ -119,6 +119,10 @@ const HAND_WRITTEN: Op[] = [
   { method: "post", path: "/v1/axis/policies/{id}/lapse", summary: "Lapse a policy for an unpaid instalment", permission: "axis:policies:lapse", tag: "axis", requestBody: true },
   { method: "post", path: "/v1/axis/policies/{id}/reinstate", summary: "Put cover back on risk after arrears are cleared", permission: "axis:policies:reinstate", tag: "axis", requestBody: true },
 
+  // docs/27 group D. Opens a premium-financing plan on a bound policy — how
+  // the premium is collected, not the risk or price on the contract.
+  { method: "post", path: "/v1/axis/policies/{id}/premium-financing-plan", summary: "Open a premium-financing plan on a bound policy", permission: "axis:policies:finance", tag: "axis", requestBody: true },
+
   // docs/27 F27. The contract the customer can actually hold. AXIS issues and
   // attaches it to the version it describes; ORBIT delivers it.
   { method: "post", path: "/v1/axis/policies/{id}/documents", summary: "Issue a policy document for a version and attach it", permission: "axis:policies:document", tag: "axis", requestBody: true },

@@ -812,11 +812,12 @@ export const LEDGER = register(
   // ledger module says exactly this and renders no create form). The generated
   // create accepted a client-settable `state` with no gate at all.
   r("payments", schema.ledgerPayments, "pay", "ledger", ro("ledger:payments:read")),
-  r("payment-plans", schema.ledgerPaymentPlans, "ppl", "ledger", {
-    read: "ledger:payments:read",
-    create: "ledger:payments:create",
-    update: "ledger:payments:create"
-  }),
+  // Read-only for the same reason as payments above: engines/premium-financing.ts
+  // owns writes now (POST /v1/axis/policies/:id/premium-financing-plan), with the
+  // fx-rate pre-check and chained FIN-CMSN commission the generic create knew
+  // nothing about. The generated create accepted an arbitrary schedule/state
+  // with no ledger entries behind it at all.
+  r("payment-plans", schema.ledgerPaymentPlans, "ppl", "ledger", ro("ledger:payments:read")),
   r("fx-rates", schema.ledgerFxRates, "fx", "ledger", rw("ledger:accounts"), { immutable: true }),
   r("tax-rules", schema.ledgerTaxRules, "tax", "ledger", rw("ledger:accounts")),
   // Read-only for the same reason as payments above: routes/settlement.ts is
