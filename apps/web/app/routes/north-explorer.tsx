@@ -9,7 +9,7 @@ import {
 import { Button, Card, DateTime, EmptyState, Field, LineChart, Select, Stat, Table } from "@lyra/ui";
 import { api } from "../api.server";
 import { cloudflare } from "../context";
-import { useShellData } from "./workspace";
+import { useNorthSessionData } from "./north-shell";
 import {
   MetricValue,
   labelsFrom,
@@ -157,6 +157,12 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const asked = url.searchParams.get("metric");
   const metric = metrics.find((row) => row.key === asked) ?? metrics[0] ?? null;
   const grain = GRAINS.find((one) => one === url.searchParams.get("grain")) ?? metric?.grain ?? "day";
+  // ?asOf=<epoch-ms> replays the series as of a past moment (Meridian's
+  // replay mode) — an upper time bound on the snapshots query.
+  const asOf = url.searchParams.get("asOf")?.trim();
+  // A non-numeric ?asOf= is not a moment — replay stays off rather than
+  // sending `&to=NaN` upstream.
+  const to = asOf && Number.isFinite(Number(asOf)) ? `&to=${encodeURIComponent(asOf)}` : "";
 
   // Newest first, then flipped for the chart: a tenant with more history than
   // WINDOW wants the recent end of it, not the first 90 periods it ever had.
@@ -166,7 +172,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const page = metric
     ? await readable(
         api<Page<Snapshot>>(
-          `/v1/north/snapshots?metricKey=${encodeURIComponent(metric.key)}&grain=${grain}&sort=period&order=desc&limit=${WINDOW * 4}`,
+          `/v1/north/snapshots?metricKey=${encodeURIComponent(metric.key)}&grain=${grain}&sort=period&order=desc&limit=${WINDOW * 4}${to}`,
           opts
         )
       )
@@ -180,7 +186,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
 export default function NorthExplorer() {
   const { metrics, metric, grain, snapshots } = useLoaderData<typeof loader>();
-  const shell = useShellData();
+  const shell = useNorthSessionData();
   const navigation = useNavigation();
 
   const locale = shell?.locale ?? "en";

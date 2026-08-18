@@ -11,7 +11,7 @@ import { Button, DateTime, EmptyState, Field, GuardrailNotice, Input, Panel, Tab
 import { ApiError, api } from "../api.server";
 import { cloudflare } from "../context";
 import { Gate } from "./staff";
-import { useShellData } from "./workspace";
+import { useScoutSessionData } from "./scout-shell";
 import { emptyPage, explain, labelsIn, refuse, safe, type Page, type Problemish } from "./scout.shared";
 
 // SCOUT dev (docs/modules/scout.md §4 screen 7): the integrator's bench for the
@@ -177,7 +177,7 @@ const TONE: Record<Span["type"], string> = {
 export default function ScoutDev() {
   const loaded = useLoaderData<typeof loader>();
   const result = useActionData<typeof action>();
-  const shell = useShellData();
+  const shell = useScoutSessionData();
   const navigation = useNavigation();
   const locale = shell?.locale ?? "en";
   const l = labelsIn(locale, shell?.domainPack);

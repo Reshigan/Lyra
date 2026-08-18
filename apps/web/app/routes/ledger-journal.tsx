@@ -12,7 +12,8 @@ import { ApiError, api, fetchMe } from "../api.server";
 import { cloudflare } from "../context";
 import { ConfirmButton } from "../components/confirm";
 import { Problem } from "./module";
-import { FALLBACK_CURRENCY, useShellData } from "./workspace";
+import { useShellData } from "./workspace";
+import { FALLBACK_CURRENCY } from "../calendar";
 import { PERM, labelIn } from "./ledger.shared";
 
 // docs/27 F2. The one instrument that can express any entry, so the screen's

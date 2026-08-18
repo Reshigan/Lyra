@@ -35,7 +35,7 @@ import { translator } from "../i18n";
 import { humanise } from "../modules/spec";
 import { labelsFrom } from "./detail-kit";
 import { Problem } from "./module";
-import { useShellData } from "./workspace";
+import { useOrbitSessionData } from "./orbit-shell";
 
 // One conversation, read and replied to. ORBIT has no hand-written router: the
 // whole surface is the generated CRUD in apps/api/src/crud.ts, so this screen is
@@ -566,7 +566,7 @@ const ROLES = new Set(["customer", "agent_ai", "agent_human", "system"]);
 export default function ConversationThread() {
   const loaded = useLoaderData<typeof loader>();
   const result = useActionData<typeof action>();
-  const shell = useShellData();
+  const shell = useOrbitSessionData();
   const navigation = useNavigation();
 
   const locale = shell?.locale ?? "en";

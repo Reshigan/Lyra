@@ -24,7 +24,7 @@ import { who } from "../names";
 import { cloudflare } from "../context";
 import { optionLabel } from "../modules/spec";
 import { Gate } from "./staff";
-import { useShellData } from "./workspace";
+import { useAxisSessionData } from "./axis-shell";
 import { labelsFrom } from "./detail-kit";
 
 // The board (axis-board.tsx) reports pile-ups because cases have no transition
@@ -458,7 +458,7 @@ function Cell({ label, children }: { label: string; children: React.ReactNode })
 export default function ClaimsDesk() {
   const loaded = useLoaderData<typeof loader>();
   const result = useActionData<typeof action>();
-  const shell = useShellData();
+  const shell = useAxisSessionData();
   const navigation = useNavigation();
 
   const locale = shell?.locale ?? "en";

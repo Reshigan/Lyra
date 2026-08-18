@@ -26,7 +26,7 @@ import { api } from "../api.server";
 import { humanise } from "../modules/spec";
 import { cloudflare } from "../context";
 import { Gate } from "./staff";
-import { useShellData } from "./workspace";
+import { useNorthSessionData } from "./north-shell";
 import {
   MetricValue,
   labelsFrom,
@@ -234,11 +234,24 @@ export function unowned(rows: readonly Anomaly[] | null): Anomaly | null {
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = context.get(cloudflare).env;
   const opts = { env, request };
+  const url = new URL(request.url);
+  // ?asOf=<epoch-ms> replays this screen as of a past moment (Meridian's
+  // replay mode) — an upper time bound on every query here, threaded through
+  // to the API's pre-existing `to` param (apps/api/src/http.ts's ListQuery).
+  const asOf = url.searchParams.get("asOf")?.trim();
+  // A non-numeric ?asOf= is not a moment — replay stays off rather than
+  // sending `&to=NaN` upstream.
+  const to = asOf && Number.isFinite(Number(asOf)) ? `&to=${encodeURIComponent(asOf)}` : "";
 
   const [briefings, metrics, anomalies] = await Promise.all([
-    readable(api<Page<Briefing>>(`/v1/north/briefings?sort=date&order=desc&limit=${RECENT}`, opts)),
+    readable(api<Page<Briefing>>(`/v1/north/briefings?sort=date&order=desc&limit=${RECENT}${to}`, opts)),
+    // No `${to}`: this is the metric *definitions* catalogue, not a series.
+    // Bounding it by the replay moment would hide definitions created since,
+    // rather than replay their values — which is not what replay is for.
     readable(api<Page<Metric>>("/v1/north/metrics?limit=200", opts)),
-    readable(api<Page<Anomaly>>("/v1/north/anomalies?state=new&sort=detectedAt&order=desc&limit=10", opts))
+    readable(
+      api<Page<Anomaly>>(`/v1/north/anomalies?state=new&sort=detectedAt&order=desc&limit=10${to}`, opts)
+    )
   ]);
 
   return {
@@ -321,7 +334,7 @@ export async function action({ request, context }: ActionFunctionArgs): Promise<
 export default function NorthBrief() {
   const loaded = useLoaderData<typeof loader>();
   const result = useActionData<typeof action>();
-  const shell = useShellData();
+  const shell = useNorthSessionData();
   const navigation = useNavigation();
   const [params] = useSearchParams();
 

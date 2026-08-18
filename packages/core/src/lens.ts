@@ -45,6 +45,45 @@ export function defaultWorkspaceForRoles(roles: readonly string[]): string {
   return "north";
 }
 
+/**
+ * Every workspace this actor's roles resolve to, not just the first that
+ * matches (defaultWorkspaceForRoles's "first role wins" rule collapses a
+ * multi-role actor down to one destination). Same three lookups per role —
+ * exact key, then prefix table, then the bare prefix itself — but every
+ * role's resolution is kept, not just the first role that had one. Powers
+ * NorthShell's multi-role switcher (docs/superpowers/specs
+ * /2026-08-15-north-shell-fork-design.md §5): an actor holding both
+ * `axis.agent` and `north.exec` can reach both shells.
+ */
+export function availableShellsForRoles(roles: readonly string[]): string[] {
+  const found = new Set<string>();
+  for (const role of roles) {
+    // ADR-0054: orbit.retention finishes the AXIS renewal desk itself
+    // (rbac.ts grants it axis:policies:renew), so it needs the AXIS shell
+    // too, not just its own. A narrow, named exception, not a generic
+    // "any foreign permission implies a shell" rule — north.exec also holds
+    // cross-module axis:* reads but must stay 403'd on /axis/* (axis-shell.spec.ts).
+    // Checked first and added unconditionally (no continue) so it can't be
+    // silently shadowed by a future WORKSPACE_BY_ROLE_PREFIX["orbit"] entry's
+    // own continue — orbit.retention still falls through below to also pick
+    // up its own workspace exactly as before.
+    if (role === "orbit.retention") found.add("axis");
+    const exact = WORKSPACE_BY_ROLE[role];
+    if (exact) {
+      found.add(exact);
+      continue;
+    }
+    const prefix = role.split(".")[0] ?? "";
+    const mapped = WORKSPACE_BY_ROLE_PREFIX[prefix];
+    if (mapped) {
+      found.add(mapped);
+      continue;
+    }
+    if (prefix) found.add(prefix);
+  }
+  return found.size ? [...found] : ["north"];
+}
+
 /** The role default lens: no pins, no hidden items, comfortable density, nothing learned yet. */
 export function defaultLensFor(roles: readonly string[]): LensJson {
   return LensJson.parse({ workspace: defaultWorkspaceForRoles(roles) });

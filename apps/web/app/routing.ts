@@ -78,79 +78,29 @@ export const HIDDEN_ROUTES: Record<string, string> = {
     "the developer portal inside the admin workspace, linked from its tools list beside the API keys tab",
   "/admin/security":
     "the sign-in enforcement posture inside the admin workspace, linked from its tools list beside the sign-in providers tab",
-  "/axis/exceptions": "the cross-resource work queue, linked from the AXIS workspace tools list",
-  "/axis/board": "the production board of cases by state, linked from the AXIS workspace tools list",
-  "/axis/quote-desk": "the quote desk and group bids, linked from the AXIS workspace tools list",
-  "/axis/doc-intelligence": "extraction review over documents, linked from the AXIS workspace tools list",
   "/axis/documents/:id/file": "streams one document's source file, opened from the verify-queue viewer",
-  "/axis/analytics": "operations analytics and exports, linked from the AXIS workspace tools list",
-  "/axis/process-map": "the case-state flow diagram, linked from the AXIS workspace tools list",
-  "/axis/admin": "SOP publish, connector health and operating policy, linked from the AXIS workspace tools list",
-  "/axis/dev": "extraction sandbox for testing document parsing, linked from the admin developer tools sandbox card",
   "/axis/cases/:id/evidence-bundles/:bundleId/download":
     "streams one recon evidence bundle's file, opened from the case detail evidence list",
-  "/signal/cockpit": "the growth read across the SIGNAL ledgers, linked from the signal workspace tools list",
-  "/signal/studio":
-    "creates a campaign and drafts its content, linked from the signal workspace tools list and from the cockpit when nothing is running",
   "/signal/creatives/:id/image": "streams one generated creative's image, opened from the studio's creative list",
-  "/signal/audience-value": "value against cost per audience, linked from the signal workspace tools list",
-  "/signal/answer-engines": "answer-engine coverage and citation share, linked from the signal workspace tools list",
-  "/signal/experiments":
-    "the experiment registry and the reading each test stopped on, linked from the signal workspace tools list",
-  "/signal/budget":
-    "the spend ceiling and the autopilot's bounds, linked from the signal workspace tools list and from the cockpit's autopilot panel",
-  "/signal/analytics":
-    "CAC, LTV and cohort retention with the spend export, linked from the signal workspace tools list and from the cockpit",
-  "/signal/admin":
-    "the brand kit, guardrails, budget bounds, approval thresholds and suppression lists everything sent from SIGNAL is checked against, linked from the signal workspace tools list",
-  "/signal/dev":
-    "the SIGNAL read console, webhook tester and sandbox spend tick, linked from the signal workspace tools list",
   "/admin/customers/:id/360": "opens everything known about one customer from the customers list",
   "/admin/products/:id/detail": "opens one product definition from the products list",
   "/axis/policies/:id/detail": "opens one policy with its history from the policies list",
   "/axis/policies/:id/endorse": "prices and confirms a mid-term change, linked from a policy's detail page",
   "/axis/policies/:id/cancel": "prices and confirms a cancellation, linked from a policy's detail page",
-  "/axis/renewals": "the renewal desk over upcoming and offered renewals, linked from the AXIS workspace tools list",
-  "/axis/referrals":
-    "the underwriting referral desk over risks outside delegated authority, linked from the AXIS workspace tools list",
   "/axis/claims/new": "opens a first notice of loss intake form, linked from the claims list",
-  "/axis/claims/desk": "the claims handling desk, linked from the AXIS workspace tools list",
   "/axis/claims/:id/detail": "opens one claim for assessment from the claims list",
   "/axis/cases/:id/detail": "opens one work item from the cases list",
   "/distribution/channels/:id/detail": "opens one distribution channel from the channels list",
   "/search/results": "the full result page behind the command palette, opened from its last row",
   "/onboarding/:kind/:ref": "one subject's onboarding checklist, opened from that partner, channel or staff record",
-  "/orbit/console": "the live conversation console, linked from the ORBIT workspace tools list",
-  "/orbit/supervisor":
-    "the supervisor wall over the whole room, with barge and whisper, linked from the ORBIT workspace tools list",
-  "/orbit/save": "the retention save desk, linked from the ORBIT workspace tools list",
-  "/orbit/pipeline": "the renewal pipeline, linked from the ORBIT workspace tools list",
-  "/orbit/quality": "conversation quality review, linked from the ORBIT workspace tools list",
-  "/orbit/analytics": "service and retention analytics, linked from the ORBIT workspace tools list",
-  "/orbit/admin": "teams, routing and SLA policy, linked from the ORBIT workspace tools list",
-  "/orbit/dev": "the conversation simulator and developer links, linked from the ORBIT workspace tools list",
   "/orbit/journeys/:id/builder": "opens one journey's steps from the journeys list",
-  "/north/brief": "the executive briefing, linked from the NORTH workspace tools list",
-  "/north/explorer": "one metric, its series and its definition, linked from the NORTH workspace tools list",
-  "/north/anomalies": "the anomaly wall and its driver breakdowns, linked from the NORTH workspace tools list",
-  "/north/whatif": "the scenario ask bar and saved library, linked from the NORTH workspace tools list",
-  "/north/board": "the board room and its pack library, linked from the NORTH workspace tools list",
+  // NORTH's eight sub-screens are deliberately NOT hidden: NorthShell owns its
+  // own rail and lists all of them directly (docs/superpowers/specs
+  // /2026-08-15-north-shell-fork-design.md §"Owns"). Only the detail route below
+  // is hidden, same as every other module's :id routes.
   "/north/board/:id/file": "streams one board pack's rendered PDF, opened from the board pack list",
-  "/north/decisions": "the decision log and its outcomes, linked from the NORTH workspace tools list",
-  "/north/admin": "metric definitions and briefing cadence, linked from the NORTH workspace tools list",
-  "/north/dev": "the metric sandbox and developer links, linked from the NORTH workspace tools list",
-  "/scout/radar": "the opportunity radar over clusters and whitespace, linked from the SCOUT workspace tools list",
-  "/scout/whitespace/:id": "the dossier for one theme, opened from a dot on the radar",
-  "/scout/panel": "panel benchmarks and the negotiation pack, linked from the SCOUT workspace tools list",
-  "/scout/pricing": "price position by line and where we lose, linked from the SCOUT workspace tools list",
-  "/scout/experiments": "the experiment board and its decisions, linked from the SCOUT workspace tools list",
-  "/scout/analytics": "pricing elasticity and adequacy, linked from the SCOUT workspace tools list",
-  "/scout/data-products":
-    "the data-product catalogue, its subscribers and the k-anonymity monitor, linked from the SCOUT workspace tools list",
-  "/scout/admin":
-    "the module's own settings — source health, suppression floors, policy thresholds and approval gates, linked from the SCOUT workspace tools list",
-  "/scout/dev":
-    "the market-index and wording-diff consoles with their curl equivalents, linked from the SCOUT workspace tools list",
+  "/scout/whitespace/:id":
+    "the dossier for one theme, opened from a dot on the radar",
   "/:module": "the generic workspace list; the rail links the real paths",
   "/:module/:resource": "a resource tab inside a workspace, linked from its tab strip",
   "/:module/:resource/:id": "a single record, linked from the list that holds it"
@@ -198,7 +148,9 @@ export function landingFor(roles: readonly string[], nav: readonly NavHref[]): s
 }
 
 export function isRouted(path: string): boolean {
-  return (WORKSPACE_PATHS as readonly string[]).includes(path);
+  if (!(WORKSPACE_PATHS as readonly string[]).includes(path)) return false;
+  const module = moduleOf(path);
+  return module === null || shouldInclude(module);
 }
 
 /** `/axis` → `nav.axis`. The label itself comes from the catalogue. */
@@ -209,6 +161,28 @@ export function labelKeyFor(path: string): string {
 const MODULES = new Set<string>(["axis", "orbit", "signal", "scout", "north"]);
 
 /**
+ * LYRA_MODULES is a build-time flag (docs/superpowers/specs
+ * /2026-08-15-north-shell-fork-design.md § Standalone/together build).
+ * Comma-separated module list, e.g. "north" or "north,axis"; unset or "all"
+ * includes everything (today's default build, zero behavior change).
+ *
+ * Read here rather than in routes.ts so route *registration* (routes.ts) and
+ * workspace *resolution* (modules/index.ts) cannot disagree — a module excluded
+ * from one but not the other still answers through the generic `:module`
+ * catch-all. Only names in MODULES are gated: the shared workspaces (ledger,
+ * admin, analytics…) are not modules and ship in every build.
+ *
+ * `process.env.LYRA_MODULES` is inlined by vite's `define` (apps/web/
+ * vite.config.ts) in both the client and worker bundles, because workerd's
+ * `process.env` holds wrangler vars, not the build machine's environment.
+ */
+export function shouldInclude(module: string): boolean {
+  const raw = process.env.LYRA_MODULES;
+  if (!raw || raw === "all") return true;
+  return raw.split(",").map((m) => m.trim()).includes(module);
+}
+
+/**
  * The module a path belongs to, or null for the shared surfaces (ledger,
  * admin, settings). Screens use it to draw the module's hue beside their
  * title, so a workspace signs itself the same way the rail marks it.
@@ -216,4 +190,55 @@ const MODULES = new Set<string>(["axis", "orbit", "signal", "scout", "north"]);
 export function moduleOf(path: string): LyraModule | null {
   const first = path.split("/").filter(Boolean)[0];
   return first && MODULES.has(first) ? (first as LyraModule) : null;
+}
+
+/**
+ * Web-local duplicate of packages/core/src/lens.ts's `availableShellsForRoles`
+ * (that function's own header comment explains why: packages/core may not
+ * depend on an app). Every workspace this actor's roles resolve to, not just
+ * the first-wins default `defaultWorkspaceForRoles` returns — used by
+ * bootstrapSession() (session.server.ts) to compute `session.availableShells`
+ * for the multi-role switcher (docs/superpowers/specs
+ * /2026-08-15-north-shell-fork-design.md §5).
+ */
+const WORKSPACE_BY_ROLE: Record<string, string> = {
+  "tenant.compliance": "compliance"
+};
+const WORKSPACE_BY_ROLE_PREFIX: Record<string, string> = {
+  tenant: "admin",
+  platform: "admin",
+  dev: "admin",
+  partner: "distribution",
+  provider: "scout",
+  customer: "settings",
+  finance: "ledger"
+};
+
+export function availableShellsForRoles(roles: readonly string[]): string[] {
+  const found = new Set<string>();
+  for (const role of roles) {
+    // ADR-0054: orbit.retention finishes the AXIS renewal desk itself
+    // (rbac.ts grants it axis:policies:renew), so it needs the AXIS shell
+    // too, not just its own. A narrow, named exception, not a generic
+    // "any foreign permission implies a shell" rule — north.exec also holds
+    // cross-module axis:* reads but must stay 403'd on /axis/* (axis-shell.spec.ts).
+    // Checked first and added unconditionally (no continue) so it can't be
+    // silently shadowed by a future WORKSPACE_BY_ROLE_PREFIX["orbit"] entry's
+    // own continue — orbit.retention still falls through below to also pick
+    // up its own workspace exactly as before.
+    if (role === "orbit.retention") found.add("axis");
+    const exact = WORKSPACE_BY_ROLE[role];
+    if (exact) {
+      found.add(exact);
+      continue;
+    }
+    const prefix = role.split(".")[0] ?? "";
+    const mapped = WORKSPACE_BY_ROLE_PREFIX[prefix];
+    if (mapped) {
+      found.add(mapped);
+      continue;
+    }
+    if (prefix) found.add(prefix);
+  }
+  return found.size ? [...found] : ["north"];
 }

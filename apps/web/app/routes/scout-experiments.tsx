@@ -11,7 +11,7 @@ import { Badge, Button, Card, DateTime, EmptyState, Field, Ref, Select, Table, t
 import { ApiError, api } from "../api.server";
 import { cloudflare } from "../context";
 import { Gate } from "./staff";
-import { useShellData } from "./workspace";
+import { useScoutSessionData } from "./scout-shell";
 import {
   DECISIONS,
   PERM,
@@ -121,7 +121,7 @@ export async function action({ request, context }: ActionFunctionArgs): Promise<
 export default function ScoutExperiments() {
   const loaded = useLoaderData<typeof loader>();
   const result = useActionData<typeof action>();
-  const shell = useShellData();
+  const shell = useScoutSessionData();
   const navigation = useNavigation();
   const locale = shell?.locale ?? "en";
   const l = labelsIn(locale, shell?.domainPack);

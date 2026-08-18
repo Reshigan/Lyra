@@ -1,4 +1,5 @@
 import { index, layout, route, type RouteConfig } from "@react-router/dev/routes";
+import { shouldInclude } from "./routing";
 
 // Two kinds of screen live behind the session. Most of a workspace is lists and
 // records, so those are one pair of generic routes driven by the specs in
@@ -6,6 +7,10 @@ import { index, layout, route, type RouteConfig } from "@react-router/dev/routes
 // are genuinely their own thing (a quote comparison, a trial balance, the
 // approvals queue) get a static path, which React Router ranks above the
 // dynamic `:module` segment, so they win the match without extra ceremony.
+
+// LYRA_MODULES gating lives in app/routing.ts (`shouldInclude`) so this file and
+// app/modules/index.ts gate on the same answer — see that function's comment.
+
 export default [
   route("login", "routes/login.tsx"),
   route("logout", "routes/logout.tsx"),
@@ -35,7 +40,6 @@ export default [
     route("analytics/report/:id", "routes/analytics-report.tsx"),
     route("analytics/dashboard/:id", "routes/analytics-dashboard.tsx"),
     route("distribution/quote-requests/:id/compare", "routes/quote-compare.tsx"),
-    route("orbit/conversations/:id/thread", "routes/conversation.tsx"),
     route("distribution/commission-entries/statement", "routes/commission-statement.tsx"),
     route("distribution/commission-entries/:id/clawback", "routes/commission-clawback.tsx"),
     route("distribution/next-best-offers/suggest", "routes/dist-offers.tsx"),
@@ -59,75 +63,101 @@ export default [
     // is what it is about (partners|channels|staff, then the subject's id).
     route("onboarding/:kind/:ref", "routes/onboarding.tsx"),
 
-    route("orbit/console", "routes/orbit-console.tsx"),
-    route("orbit/supervisor", "routes/orbit-supervisor.tsx"),
-    route("orbit/save", "routes/orbit-save.tsx"),
-    route("orbit/pipeline", "routes/orbit-pipeline.tsx"),
-    route("orbit/quality", "routes/orbit-quality.tsx"),
-    route("orbit/analytics", "routes/orbit-analytics.tsx"),
-    route("orbit/admin", "routes/orbit-admin.tsx"),
-    route("orbit/dev", "routes/orbit-dev.tsx"),
-
-    route("north/brief", "routes/north-brief.tsx"),
-    route("north/explorer", "routes/north-explorer.tsx"),
-    route("north/anomalies", "routes/north-anomalies.tsx"),
-    route("north/whatif", "routes/north-whatif.tsx"),
-    route("north/board", "routes/north-board.tsx"),
-    route("north/board/:id/file", "routes/north-board-file.tsx"),
-    route("north/decisions", "routes/north-decisions.tsx"),
-    route("north/admin", "routes/north-admin.tsx"),
-    route("north/dev", "routes/north-dev.tsx"),
-
-    route("scout/radar", "routes/scout-radar.tsx"),
-    route("scout/whitespace/:id", "routes/scout-whitespace.tsx"),
-    route("scout/panel", "routes/scout-panel.tsx"),
-    route("scout/pricing", "routes/scout-pricing.tsx"),
-    route("scout/experiments", "routes/scout-experiments.tsx"),
-    route("scout/analytics", "routes/scout-analytics.tsx"),
-    route("scout/data-products", "routes/scout-data-products.tsx"),
-    route("scout/admin", "routes/scout-admin.tsx"),
-    route("scout/dev", "routes/scout-dev.tsx"),
-
-    route("axis/exceptions", "routes/axis-exceptions.tsx"),
-    route("axis/board", "routes/axis-board.tsx"),
-    route("axis/quote-desk", "routes/axis-quote-desk.tsx"),
-    route("axis/doc-intelligence", "routes/axis-doc-intel.tsx"),
-    route("axis/documents/:id/file", "routes/axis-document-file.tsx"),
-    route("axis/analytics", "routes/axis-analytics.tsx"),
-    route("axis/admin", "routes/axis-admin.tsx"),
-    route("axis/dev", "routes/axis-dev.tsx"),
-    route("axis/process-map", "routes/axis-process-map.tsx"),
-    route("axis/claims/new", "routes/fnol-intake.tsx"),
-    route("axis/claims/desk", "routes/claims-desk.tsx"),
-    route("axis/renewals", "routes/renewal-desk.tsx"),
-    route("axis/referrals", "routes/referral-desk.tsx"),
-
-    route("signal/cockpit", "routes/signal-cockpit.tsx"),
-    route("signal/studio", "routes/signal-studio.tsx"),
-    route("signal/creatives/:id/image", "routes/signal-creative-image.tsx"),
-    route("signal/audience-value", "routes/signal-audience-value.tsx"),
-    route("signal/answer-engines", "routes/signal-answer-engines.tsx"),
-    route("signal/experiments", "routes/signal-experiments.tsx"),
-    route("signal/budget", "routes/signal-budget.tsx"),
-    route("signal/analytics", "routes/signal-analytics.tsx"),
-    route("signal/admin", "routes/signal-admin.tsx"),
-    route("signal/dev", "routes/signal-dev.tsx"),
-
     // Record screens: a static last segment, so each still ranks above the
     // generic `:module/:resource/:id`.
     route("admin/customers/:id/360", "routes/customer-360.tsx"),
     route("admin/products/:id/detail", "routes/product-detail.tsx"),
-    route("axis/policies/:id/detail", "routes/policy-detail.tsx"),
-    route("axis/policies/:id/endorse", "routes/policy-endorse.tsx"),
-    route("axis/policies/:id/cancel", "routes/policy-cancel.tsx"),
-    route("axis/claims/:id/detail", "routes/claim-detail.tsx"),
-    route("axis/cases/:id/evidence-bundles/:bundleId/download", "routes/case-evidence-download.tsx"),
-    route("axis/cases/:id/detail", "routes/case-detail.tsx"),
     route("distribution/channels/:id/detail", "routes/channel-detail.tsx"),
-    route("orbit/journeys/:id/builder", "routes/orbit-journey.tsx"),
 
     route(":module", "routes/module.tsx"),
     route(":module/:resource", "routes/module.tsx", { id: "module-resource" }),
     route(":module/:resource/:id", "routes/record.tsx")
-  ])
+  ]),
+  ...(shouldInclude("axis")
+    ? [
+        layout("routes/axis-shell.tsx", [
+          route("axis/exceptions", "routes/axis-exceptions.tsx"),
+          route("axis/board", "routes/axis-board.tsx"),
+          route("axis/quote-desk", "routes/axis-quote-desk.tsx"),
+          route("axis/doc-intelligence", "routes/axis-doc-intel.tsx"),
+          route("axis/documents/:id/file", "routes/axis-document-file.tsx"),
+          route("axis/analytics", "routes/axis-analytics.tsx"),
+          route("axis/admin", "routes/axis-admin.tsx"),
+          route("axis/dev", "routes/axis-dev.tsx"),
+          route("axis/process-map", "routes/axis-process-map.tsx"),
+          route("axis/claims/new", "routes/fnol-intake.tsx"),
+          route("axis/claims/desk", "routes/claims-desk.tsx"),
+          route("axis/renewals", "routes/renewal-desk.tsx"),
+          route("axis/referrals", "routes/referral-desk.tsx"),
+          route("axis/policies/:id/detail", "routes/policy-detail.tsx"),
+          route("axis/policies/:id/endorse", "routes/policy-endorse.tsx"),
+          route("axis/policies/:id/cancel", "routes/policy-cancel.tsx"),
+          route("axis/claims/:id/detail", "routes/claim-detail.tsx"),
+          route("axis/cases/:id/evidence-bundles/:bundleId/download", "routes/case-evidence-download.tsx"),
+          route("axis/cases/:id/detail", "routes/case-detail.tsx")
+        ])
+      ]
+    : []),
+  ...(shouldInclude("orbit")
+    ? [
+        layout("routes/orbit-shell.tsx", [
+          route("orbit/conversations/:id/thread", "routes/conversation.tsx"),
+          route("orbit/console", "routes/orbit-console.tsx"),
+          route("orbit/supervisor", "routes/orbit-supervisor.tsx"),
+          route("orbit/save", "routes/orbit-save.tsx"),
+          route("orbit/pipeline", "routes/orbit-pipeline.tsx"),
+          route("orbit/quality", "routes/orbit-quality.tsx"),
+          route("orbit/analytics", "routes/orbit-analytics.tsx"),
+          route("orbit/admin", "routes/orbit-admin.tsx"),
+          route("orbit/dev", "routes/orbit-dev.tsx"),
+          route("orbit/journeys/:id/builder", "routes/orbit-journey.tsx")
+        ])
+      ]
+    : []),
+  ...(shouldInclude("signal")
+    ? [
+        layout("routes/signal-shell.tsx", [
+          route("signal/cockpit", "routes/signal-cockpit.tsx"),
+          route("signal/studio", "routes/signal-studio.tsx"),
+          route("signal/creatives/:id/image", "routes/signal-creative-image.tsx"),
+          route("signal/audience-value", "routes/signal-audience-value.tsx"),
+          route("signal/answer-engines", "routes/signal-answer-engines.tsx"),
+          route("signal/experiments", "routes/signal-experiments.tsx"),
+          route("signal/budget", "routes/signal-budget.tsx"),
+          route("signal/analytics", "routes/signal-analytics.tsx"),
+          route("signal/admin", "routes/signal-admin.tsx"),
+          route("signal/dev", "routes/signal-dev.tsx")
+        ])
+      ]
+    : []),
+  ...(shouldInclude("scout")
+    ? [
+        layout("routes/scout-shell.tsx", [
+          route("scout/radar", "routes/scout-radar.tsx"),
+          route("scout/whitespace/:id", "routes/scout-whitespace.tsx"),
+          route("scout/panel", "routes/scout-panel.tsx"),
+          route("scout/pricing", "routes/scout-pricing.tsx"),
+          route("scout/experiments", "routes/scout-experiments.tsx"),
+          route("scout/analytics", "routes/scout-analytics.tsx"),
+          route("scout/data-products", "routes/scout-data-products.tsx"),
+          route("scout/admin", "routes/scout-admin.tsx"),
+          route("scout/dev", "routes/scout-dev.tsx")
+        ])
+      ]
+    : []),
+  ...(shouldInclude("north")
+    ? [
+        layout("routes/north-shell.tsx", [
+          route("north/brief", "routes/north-brief.tsx"),
+          route("north/explorer", "routes/north-explorer.tsx"),
+          route("north/anomalies", "routes/north-anomalies.tsx"),
+          route("north/whatif", "routes/north-whatif.tsx"),
+          route("north/board", "routes/north-board.tsx"),
+          route("north/board/:id/file", "routes/north-board-file.tsx"),
+          route("north/decisions", "routes/north-decisions.tsx"),
+          route("north/admin", "routes/north-admin.tsx"),
+          route("north/dev", "routes/north-dev.tsx")
+        ])
+      ]
+    : [])
 ] satisfies RouteConfig;

@@ -23,7 +23,7 @@ import {
 import { api } from "../api.server";
 import { cloudflare } from "../context";
 import { Gate } from "./staff";
-import { useShellData } from "./workspace";
+import { useNorthSessionData } from "./north-shell";
 import {
   labelsFrom,
   metricName,
@@ -222,9 +222,15 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const url = new URL(request.url);
 
   const state = STATES.find((one) => one === url.searchParams.get("state")) ?? null;
+  // ?asOf=<epoch-ms> replays the queue as of a past moment (Meridian's
+  // replay mode) — an upper time bound on the anomalies query.
+  const asOf = url.searchParams.get("asOf")?.trim();
+  // A non-numeric ?asOf= is not a moment — replay stays off rather than
+  // sending `&to=NaN` upstream.
+  const to = asOf && Number.isFinite(Number(asOf)) ? `&to=${encodeURIComponent(asOf)}` : "";
   const query = `/v1/north/anomalies?sort=detectedAt&order=desc&limit=${PAGE}${
     state ? `&state=${state}` : ""
-  }`;
+  }${to}`;
 
   const [anomalies, metrics] = await Promise.all([
     readable(api<Page<Anomaly>>(query, opts)),
@@ -282,7 +288,7 @@ export async function action({ request, context }: ActionFunctionArgs): Promise<
 export default function NorthAnomalies() {
   const { anomalies, metrics, state, idempotencyKey } = useLoaderData<typeof loader>();
   const result = useActionData<typeof action>();
-  const shell = useShellData();
+  const shell = useNorthSessionData();
   const navigation = useNavigation();
 
   const locale = shell?.locale ?? "en";

@@ -18,7 +18,8 @@ import {
   type Label,
   type Page
 } from "./detail-kit";
-import { FALLBACK_CURRENCY, useShellData } from "./workspace";
+import { useShellData } from "./workspace";
+import { FALLBACK_CURRENCY } from "../calendar";
 
 // One distribution channel: what it may sell, what it is paid, how much it is
 // actually asking for, and where its money stands. Read-only — rate changes and

@@ -11,7 +11,7 @@ import { Badge, Button, DateTime, EmptyState, Field, Input, Panel, Provenance, T
 import { api } from "../api.server";
 import { cloudflare } from "../context";
 import { Gate } from "./staff";
-import { useShellData } from "./workspace";
+import { useNorthSessionData } from "./north-shell";
 import {
   labelsFrom,
   parsed,
@@ -260,7 +260,7 @@ export async function action({ request, context }: ActionFunctionArgs): Promise<
 export default function NorthBoard() {
   const { packs, open, idempotencyKey } = useLoaderData<typeof loader>();
   const result = useActionData<typeof action>();
-  const shell = useShellData();
+  const shell = useNorthSessionData();
   const navigation = useNavigation();
 
   const locale = shell?.locale ?? "en";

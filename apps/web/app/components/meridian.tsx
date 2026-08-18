@@ -30,11 +30,15 @@ export function Meridian({
   t,
   inbox,
   accent,
+  initialAsOf = null,
   onScrub
 }: {
   t: Translate;
   inbox: Inbox | null;
   accent: string;
+  /** Seeds the scrubber's cursor in replay mode (?asOf=<epoch-ms> in the
+   *  caller's URL). Absent/null means live — the pre-existing default. */
+  initialAsOf?: number | null;
   /** The moment the playhead is on, or null while it is following now. */
   onScrub?: (at: number | null) => void;
 }) {
@@ -48,6 +52,14 @@ export function Meridian({
     // minute is as fine as the strip can show — 42px carries no more.
     const id = setInterval(() => setNow(Date.now()), 60_000);
     return () => clearInterval(id);
+  }, []);
+
+  // Seeds the replay cursor from the deep link once, post-mount, in the
+  // reader's real local timezone — same reasoning as `now` above. Runs only
+  // on mount so a later drag (or `release`) is never clobbered by this.
+  React.useEffect(() => {
+    if (initialAsOf !== null) setCursor(dayFraction(initialAsOf));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const events = now === null ? [] : dayEvents(inbox, now);

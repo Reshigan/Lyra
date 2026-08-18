@@ -15,7 +15,7 @@ import {
   type Label,
   type Page
 } from "./detail-kit";
-import { useShellData } from "./workspace";
+import { useAxisSessionData } from "./axis-shell";
 
 // One agreement: what it covers, what it costs, what has been claimed against
 // it, the paper behind it, and its own version history. This screen writes
@@ -278,7 +278,7 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
 
 export default function PolicyDetail() {
   const loaded = useLoaderData<typeof loader>();
-  const shell = useShellData();
+  const shell = useAxisSessionData();
   const locale = shell?.locale ?? "en";
   const t = translator(locale, shell?.overrides);
   const l = labelsIn(locale, shell?.domainPack);

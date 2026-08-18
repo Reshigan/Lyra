@@ -6,7 +6,7 @@ import { translator } from "../i18n";
 import { orbit } from "../modules/orbit";
 import { labelsFor, optionLabel } from "../modules/spec";
 import { labelsFrom, nameOf, rowsOf, safe, tag, type Label, type Page } from "./detail-kit";
-import { useShellData } from "./workspace";
+import { useOrbitSessionData } from "./orbit-shell";
 
 // docs/modules/orbit.md §4 screen 6. The five config tables ORBIT routes on
 // (channels, teams, members, routing rules, SLA) are plain CRUD and live as
@@ -337,7 +337,7 @@ function toneFor(row: Coverage): BadgeTone {
 
 export default function OrbitAdmin() {
   const loaded = useLoaderData<typeof loader>();
-  const shell = useShellData();
+  const shell = useOrbitSessionData();
   const locale = shell?.locale ?? "en";
   const t = translator(locale);
   const l = labelsIn(locale);

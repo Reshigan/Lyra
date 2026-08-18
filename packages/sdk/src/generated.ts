@@ -2780,6 +2780,7 @@ export interface Operations {
   "GET /v1/orbit/partners": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<OrbitPartners>>;
   "POST /v1/orbit/partners": Op<never, never, OrbitPartners, OrbitPartners>;
   "GET /v1/orbit/partners/{id}": Op<{ id: string }, never, never, OrbitPartners>;
+  "POST /v1/orbit/partners/{id}/quotes": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/orbit/qa-scores": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<OrbitQaScores>>;
   "POST /v1/orbit/qa-scores": Op<never, never, OrbitQaScores, OrbitQaScores>;
   "GET /v1/orbit/qa-scores/{id}": Op<{ id: string }, never, never, OrbitQaScores>;
@@ -3476,6 +3477,7 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "GET /v1/orbit/partners": { tag: "orbit", summary: "List partners", permission: "orbit:partners:read", public: false },
   "POST /v1/orbit/partners": { tag: "orbit", summary: "Create a partner", permission: "orbit:partners:create", public: false },
   "GET /v1/orbit/partners/{id}": { tag: "orbit", summary: "Fetch one partner", permission: "orbit:partners:read", public: false },
+  "POST /v1/orbit/partners/{id}/quotes": { tag: "orbit", summary: "Request a partner pricing quote (sandbox partners get clearly-marked synthetic pricing)", permission: "orbit:partners:read", public: false },
   "GET /v1/orbit/qa-scores": { tag: "orbit", summary: "List qa-scores", permission: "orbit:qa:read", public: false },
   "POST /v1/orbit/qa-scores": { tag: "orbit", summary: "Create a qa score", permission: "orbit:qa:score", public: false },
   "GET /v1/orbit/qa-scores/{id}": { tag: "orbit", summary: "Fetch one qa score", permission: "orbit:qa:read", public: false },

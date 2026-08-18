@@ -1,100 +1,27 @@
 import {
-  data,
   Outlet,
-  redirect,
   useLoaderData,
   useRouteError,
   useRouteLoaderData,
   type LoaderFunctionArgs,
   type MetaFunction
 } from "react-router";
-import { UiCalendarProvider, type CalendarPreference } from "@lyra/ui";
+import { UiCalendarProvider } from "@lyra/ui";
 import { cloudflare } from "../context";
-import { api, ApiError, fetchMe, names } from "../api.server";
 import { ErrorPanel } from "../components/error-panel";
 import { Shell } from "../components/shell";
-import type { Inbox } from "../components/shift";
-import { chosenLocale, DEFAULT_LOCALE, translator } from "../i18n";
-import { DEFAULT_PACK } from "../modules/vocabulary";
+import { DEFAULT_LOCALE, translator } from "../i18n";
+import { bootstrapSession } from "../session.server";
 
-// Everything behind a session hangs off this layout. One bootstrap call feeds
-// the whole shell: actor, tenant brand, permissions and the nav the API already
-// filtered for them.
+// Everything behind a session hangs off this layout. bootstrapSession() feeds
+// the whole shell: actor, tenant brand, permissions and the nav the API
+// already filtered for them. north-shell.tsx calls the same function for
+// NORTH's own layout — see session.server.ts.
 
 export const ROUTE_ID = "routes/workspace";
 
-export const CALENDARS: readonly CalendarPreference[] = ["gregorian", "islamic-umalqura", "dual"];
-
-/**
- * Last resort when neither the row nor the tenant's policy names a currency.
- * One literal, in one place, so a tenant on a different currency is a policy
- * edit rather than a grep. `Intl.NumberFormat` has no neutral code to fall back
- * to — it throws on an empty one — so this cannot simply be absent.
- */
-export const FALLBACK_CURRENCY = "AED";
-
-/** Tenant policy is loosely typed across the wire; an unknown value is Gregorian. */
-export function calendarFrom(value: unknown): CalendarPreference {
-  return CALENDARS.find((known) => known === value) ?? "gregorian";
-}
-
 export async function loader({ request, context }: LoaderFunctionArgs) {
-  const env = context.get(cloudflare).env;
-
-  let me;
-  try {
-    me = await fetchMe(env, request);
-  } catch (error) {
-    if (error instanceof ApiError && error.status === 401) {
-      const next = new URL(request.url).pathname;
-      throw redirect(`/login?next=${encodeURIComponent(next)}`);
-    }
-    // Anything else keeps its status and carries the request id to the boundary,
-    // so the message a user reads is the one support can look up.
-    if (error instanceof ApiError) throw data(error.requestId ?? "", { status: error.status });
-    throw error;
-  }
-
-  // The shell's day strip and shift block. Tolerant on purpose: this call is
-  // decoration around the work, and a queue that failed to load must not take
-  // the screen the actor asked for down with it. Both surfaces render nothing
-  // when it is null.
-  const inbox = await api<Inbox>("/v1/me/inbox", { env, request }).catch(() => null);
-
-  // The rail lists the approvals by what they are about, and an approval holds a
-  // ref, not a name. Batched into one call, and skipped entirely when the queue
-  // is empty (names() returns {} for no refs without touching the network).
-  const subjects = await names(
-    (inbox?.approvals ?? []).map((approval) => approval.subjectRef),
-    { env, request }
-  );
-
-  // "/" used to redirect to the actor's primary workspace. It is now a real
-  // screen (routes/home.tsx): what is waiting on me, how the business is doing,
-  // where I go next — which beats being teleported into a list.
-  return {
-    // The explicit choice wins over the stored one, because <html lang>/dir come
-    // from that same cookie (root.tsx) and the two must not disagree. The pseudo
-    // locale — which no profile can hold — is the case that makes it obvious.
-    locale: chosenLocale(request) ?? me.locale,
-    inbox,
-    names: subjects,
-    nav: me.nav,
-    roles: me.roles,
-    permissions: me.permissions,
-    brand: me.tenant.brand,
-    tenantName: me.tenant.name,
-    actorName: me.profile?.name ?? null,
-    // CLAUDE.md §14: the pack that renames every noun downstream of labelsFor.
-    domainPack: typeof me.policy?.domainPack === "string" ? me.policy.domainPack : DEFAULT_PACK,
-    calendar: calendarFrom(me.policy?.calendarPreference),
-    // What a money figure is denominated in when the row itself does not say.
-    // Same policy field the brand editor writes (settings.tsx).
-    currency: typeof me.policy?.currency === "string" ? me.policy.currency : FALLBACK_CURRENCY,
-    // A tenant admin's i18n key relabels (core_locale_overrides), merged by
-    // translator() over the static catalogue — see apps/web/app/i18n.ts.
-    overrides: me.overrides ?? {}
-  };
+  return bootstrapSession(context.get(cloudflare).env, request);
 }
 
 export type ShellData = Awaited<ReturnType<typeof loader>>;

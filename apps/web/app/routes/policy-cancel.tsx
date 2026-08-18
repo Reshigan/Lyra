@@ -13,7 +13,7 @@ import { cloudflare } from "../context";
 import { labelsFrom } from "./detail-kit";
 import { policyLede, type Policy } from "./policy-detail";
 import { Gate } from "./staff";
-import { useShellData } from "./workspace";
+import { useAxisSessionData } from "./axis-shell";
 
 // Cancellation is priced before it is written (§B.2/§D.5): preview quotes the
 // refund and clawback and writes nothing; confirm writes exactly what the
@@ -266,7 +266,7 @@ const REFUND_METHODS = ["credit", "bank", "none"] as const;
 export default function PolicyCancel() {
   const loaded = useLoaderData<typeof loader>();
   const result = useActionData<typeof action>();
-  const shell = useShellData();
+  const shell = useAxisSessionData();
   const navigation = useNavigation();
 
   const locale = shell?.locale ?? "en";

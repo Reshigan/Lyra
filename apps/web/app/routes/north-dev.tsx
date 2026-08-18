@@ -11,7 +11,7 @@ import { Badge, Button, EmptyState, Field, Input, Panel, Select, Table, type Col
 import { api } from "../api.server";
 import { cloudflare } from "../context";
 import { Gate } from "./staff";
-import { useShellData } from "./workspace";
+import { useNorthSessionData } from "./north-shell";
 import {
   labelsFrom,
   metricName,
@@ -277,7 +277,7 @@ export async function action({ request, context }: ActionFunctionArgs): Promise<
 export default function NorthDev() {
   const { metrics, origin, now, idempotencyKey } = useLoaderData<typeof loader>();
   const result = useActionData<typeof action>();
-  const shell = useShellData();
+  const shell = useNorthSessionData();
   const navigation = useNavigation();
 
   const locale = shell?.locale ?? "en";

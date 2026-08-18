@@ -4,7 +4,7 @@ import { api, fetchMe } from "../api.server";
 import { cloudflare } from "../context";
 import { arrowFor, translator } from "../i18n";
 import { labelsFrom, rowsOf, safe, tag, type Label, type Page } from "./detail-kit";
-import { useShellData } from "./workspace";
+import { useAxisSessionData } from "./axis-shell";
 
 // Tenant-wide process mining, not one case's timeline — case-detail.tsx
 // already tables a single case's steps. This reads axis_process_events across
@@ -294,7 +294,7 @@ const WIDTH = 880;
 
 export default function AxisProcessMap() {
   const loaded = useLoaderData<typeof loader>();
-  const shell = useShellData();
+  const shell = useAxisSessionData();
   const locale = shell?.locale ?? "en";
   const t = translator(locale);
   const l = labelsIn(locale, shell?.domainPack);

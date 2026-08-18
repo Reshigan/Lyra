@@ -13,7 +13,7 @@ import { cloudflare } from "../context";
 import { translator } from "../i18n";
 import { labelsFrom, rowsOf, type Page } from "./detail-kit";
 import { Problem } from "./module";
-import { useShellData } from "./workspace";
+import { useOrbitSessionData } from "./orbit-shell";
 
 // docs/modules/orbit.md §4 screen 7 — ORBIT Dev. Four of the five bullets
 // already have homes and are linked, not rebuilt: API keys and the webhook
@@ -234,7 +234,7 @@ const TONES: Record<string, BadgeTone> = { customer: "neutral", agent_ai: "info"
 export default function OrbitDev() {
   const loaded = useLoaderData<typeof loader>();
   const ran = useActionData<typeof action>();
-  const shell = useShellData();
+  const shell = useOrbitSessionData();
   const navigation = useNavigation();
 
   const locale = shell?.locale ?? "en";

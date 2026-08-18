@@ -18,3 +18,4 @@ packages/core/packages
 e2e.db
 reports/
 graphify-out/
+apps/web/.react-router/types/

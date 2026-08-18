@@ -12,7 +12,7 @@ import { ApiError, apiFetch, api, names } from "../api.server";
 import { cloudflare } from "../context";
 import { who } from "../names";
 import { Gate } from "./staff";
-import { useShellData } from "./workspace";
+import { useScoutSessionData } from "./scout-shell";
 import {
   K_FLOOR,
   PERM,
@@ -110,7 +110,7 @@ export async function action({ request, context }: ActionFunctionArgs): Promise<
 export default function ScoutPanel() {
   const loaded = useLoaderData<typeof loader>();
   const result = useActionData<typeof action>();
-  const shell = useShellData();
+  const shell = useScoutSessionData();
   const navigation = useNavigation();
   const locale = shell?.locale ?? "en";
   const l = labelsIn(locale, shell?.domainPack);

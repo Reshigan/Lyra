@@ -2,7 +2,7 @@ import { Link, useLoaderData, type LoaderFunctionArgs } from "react-router";
 import { Badge, Card, EmptyState, KPIWall, Money, NoData, Stat, Table, type Column } from "@lyra/ui";
 import { api } from "../api.server";
 import { cloudflare } from "../context";
-import { useShellData } from "./workspace";
+import { useSignalSessionData } from "./signal-shell";
 import {
   WINDOWS,
   audValueHeadline,
@@ -71,7 +71,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
 export default function AudienceValueScreen() {
   const loaded = useLoaderData<typeof loader>();
-  const shell = useShellData();
+  const shell = useSignalSessionData();
   const l = labelsIn(shell?.locale ?? "en", shell?.domainPack);
   const locale = shell?.locale ?? "en";
 

@@ -12,7 +12,7 @@ import { Badge, Button, Card, DateTime, EmptyState, Field, GuardrailNotice, Ref,
 import { ApiError, api, names } from "../api.server";
 import { cloudflare } from "../context";
 import { Gate } from "./staff";
-import { useShellData } from "./workspace";
+import { useScoutSessionData } from "./scout-shell";
 import {
   K_FLOOR,
   PERM,
@@ -272,7 +272,7 @@ export async function action({ request, context }: ActionFunctionArgs): Promise<
 export default function ScoutDataProducts() {
   const loaded = useLoaderData<typeof loader>();
   const result = useActionData<typeof action>();
-  const shell = useShellData();
+  const shell = useScoutSessionData();
   const navigation = useNavigation();
   const [params, setParams] = useSearchParams();
   const locale = shell?.locale ?? "en";

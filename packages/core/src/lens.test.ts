@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { EntitlementsJson, PolicyJson, id, schema } from "@lyra/db";
-import { defaultWorkspaceForRoles, recordLensUsage, resetLens, resolveLens } from "./lens.js";
+import { availableShellsForRoles, defaultWorkspaceForRoles, recordLensUsage, resetLens, resolveLens } from "./lens.js";
 import { permissionsForRole, type Actor } from "./rbac.js";
 import type { Ctx } from "./context.js";
 
@@ -65,6 +65,39 @@ describe("defaultWorkspaceForRoles", () => {
 
   it("falls back to north when no role matches anything", () => {
     expect(defaultWorkspaceForRoles([])).toBe("north");
+  });
+});
+
+describe("availableShellsForRoles", () => {
+  it("returns every distinct workspace a multi-role actor's roles resolve to", () => {
+    expect(availableShellsForRoles(["north.exec", "axis.agent"])).toEqual(
+      expect.arrayContaining(["north", "axis"])
+    );
+    expect(availableShellsForRoles(["north.exec", "axis.agent"])).toHaveLength(2);
+  });
+
+  it("returns exactly one shell for a single-role actor", () => {
+    expect(availableShellsForRoles(["north.exec"])).toEqual(["north"]);
+  });
+
+  it("collapses duplicate workspaces from different roles into one entry", () => {
+    expect(availableShellsForRoles(["tenant.compliance", "tenant.admin"])).toEqual(
+      expect.arrayContaining(["compliance", "admin"])
+    );
+    expect(availableShellsForRoles(["tenant.compliance", "tenant.admin"])).toHaveLength(2);
+  });
+
+  it("falls back to north when no role resolves to anything", () => {
+    expect(availableShellsForRoles([])).toEqual(["north"]);
+  });
+
+  it("grants orbit.retention the AXIS shell too, per ADR-0054", () => {
+    expect(availableShellsForRoles(["orbit.retention"])).toEqual(expect.arrayContaining(["orbit", "axis"]));
+    expect(availableShellsForRoles(["orbit.retention"])).toHaveLength(2);
+  });
+
+  it("does not extend the ADR-0054 exception to other roles holding cross-module reads", () => {
+    expect(availableShellsForRoles(["north.exec"])).toEqual(["north"]);
   });
 });
 

@@ -25,7 +25,7 @@ import { humanise } from "../modules/spec";
 import { cloudflare } from "../context";
 import { labelsFrom, type Label } from "./detail-kit";
 import { Gate } from "./staff";
-import { useShellData } from "./workspace";
+import { useAxisSessionData } from "./axis-shell";
 
 // The work that is stuck. Every AXIS list can be filtered to one resource's bad
 // state, but nobody's morning is "open six tabs and filter each one": an
@@ -425,7 +425,7 @@ export function phrase(problem: Refusal, l: Label): Refusal {
 export default function AxisExceptions() {
   const loaded = useLoaderData<typeof loader>();
   const result = useActionData<typeof action>();
-  const shell = useShellData();
+  const shell = useAxisSessionData();
   const navigation = useNavigation();
 
   const l = labelsIn(shell?.locale ?? "en", shell?.domainPack);

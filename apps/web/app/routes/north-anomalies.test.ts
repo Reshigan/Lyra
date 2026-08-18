@@ -1,5 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { driverWidth, headline, tone } from "./north-anomalies";
+
+vi.mock("../api.server", () => ({ api: vi.fn() }));
+vi.mock("../context", () => ({ cloudflare: { toString: () => "cloudflare-context" } }));
+
+import { api } from "../api.server";
+import { loader } from "./north-anomalies";
 
 const drivers = [
   { dimension: "channel", key: "alpha-brokers", contributionBps: -1180 },
@@ -58,5 +64,35 @@ describe("headline", () => {
 
   it("says every anomaly has an owner when none are unowned", () => {
     expect(headline([{ state: "explained" }, { state: "dismissed" }], l)).toBe("headline.owned");
+  });
+});
+
+function fakeContext() {
+  return { get: () => ({ env: {} }) };
+}
+
+describe("north-anomalies loader asOf", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("appends &to=<asOf> to the anomalies query when ?asOf= is present", async () => {
+    vi.mocked(api).mockResolvedValue({ data: [] });
+    await loader({
+      request: new Request("https://lyra.test/north/anomalies?asOf=1700000000000"),
+      context: fakeContext()
+    } as never);
+    const anomaliesCall = vi.mocked(api).mock.calls[0]?.[0] as string;
+    expect(anomaliesCall).toContain("&to=1700000000000");
+  });
+
+  it("omits &to= when ?asOf= is absent", async () => {
+    vi.mocked(api).mockResolvedValue({ data: [] });
+    await loader({
+      request: new Request("https://lyra.test/north/anomalies"),
+      context: fakeContext()
+    } as never);
+    const anomaliesCall = vi.mocked(api).mock.calls[0]?.[0] as string;
+    expect(anomaliesCall).not.toContain("&to=");
   });
 });

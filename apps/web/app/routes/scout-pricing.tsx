@@ -3,7 +3,7 @@ import { Badge, Card, EmptyState, GuardrailNotice, Table, type Column } from "@l
 import { api, names } from "../api.server";
 import { cloudflare } from "../context";
 import { who } from "../names";
-import { useShellData } from "./workspace";
+import { useScoutSessionData } from "./scout-shell";
 import {
   K_FLOOR,
   emptyPage,
@@ -66,7 +66,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
 export default function ScoutPricing() {
   const loaded = useLoaderData<typeof loader>();
-  const shell = useShellData();
+  const shell = useScoutSessionData();
   const locale = shell?.locale ?? "en";
   const l = labelsIn(locale, shell?.domainPack);
 

@@ -15,7 +15,7 @@ import { axis } from "../modules/axis";
 import { labelsFor, optionLabel } from "../modules/spec";
 import { labelsFrom, tag, type Label } from "./detail-kit";
 import { Gate } from "./staff";
-import { useShellData } from "./workspace";
+import { useAxisSessionData } from "./axis-shell";
 
 // docs/03 §AXIS admin. Three things an AXIS admin needs that no generated
 // list gives them: publishing a SOP version (the swap has to be atomic — see
@@ -260,7 +260,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
 export default function AxisAdmin() {
   const loaded = useLoaderData<typeof loader>();
   const result = useActionData<typeof action>();
-  const shell = useShellData();
+  const shell = useAxisSessionData();
   const locale = shell?.locale ?? "en";
   const t = translator(locale);
   const l = labelsIn(locale);

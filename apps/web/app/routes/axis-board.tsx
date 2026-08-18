@@ -24,7 +24,7 @@ import { who } from "../names";
 import { cloudflare } from "../context";
 import { labelsFrom } from "./detail-kit";
 import { Gate } from "./staff";
-import { useShellData } from "./workspace";
+import { useAxisSessionData } from "./axis-shell";
 
 // Where the work is, laid out as the pipeline it actually is. The cases tab can
 // sort and filter but it cannot answer "is anything piling up before approval",
@@ -459,7 +459,7 @@ export function phrase(problem: Refusal, l: Label): Refusal {
 export default function AxisBoard() {
   const loaded = useLoaderData<typeof loader>();
   const result = useActionData<typeof action>();
-  const shell = useShellData();
+  const shell = useAxisSessionData();
   const navigation = useNavigation();
 
   const l = labelsIn(shell?.locale ?? "en", shell?.domainPack);

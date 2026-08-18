@@ -1,5 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { deltaBps, headlineDirection } from "./north-explorer";
+
+vi.mock("../api.server", () => ({ api: vi.fn() }));
+vi.mock("../context", () => ({ cloudflare: { toString: () => "cloudflare-context" } }));
+
+import { api } from "../api.server";
+import { loader } from "./north-explorer";
 
 describe("deltaBps", () => {
   it("has no change to report with fewer than two snapshots", () => {
@@ -36,5 +42,37 @@ describe("headlineDirection", () => {
 
   it("reports nothing rather than a trend that isn't there", () => {
     expect(headlineDirection([100, 100])).toBeNull();
+  });
+});
+
+function fakeContext() {
+  return { get: () => ({ env: {} }) };
+}
+
+describe("north-explorer loader asOf", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("appends &to=<asOf> to the snapshots query when ?asOf= is present", async () => {
+    vi.mocked(api).mockResolvedValueOnce({ data: [{ key: "gwp", grain: "day" }] });
+    vi.mocked(api).mockResolvedValueOnce({ data: [] });
+    await loader({
+      request: new Request("https://lyra.test/north/explorer?asOf=1700000000000"),
+      context: fakeContext()
+    } as never);
+    const snapshotsCall = vi.mocked(api).mock.calls[1]?.[0] as string;
+    expect(snapshotsCall).toContain("&to=1700000000000");
+  });
+
+  it("omits &to= when ?asOf= is absent", async () => {
+    vi.mocked(api).mockResolvedValueOnce({ data: [{ key: "gwp", grain: "day" }] });
+    vi.mocked(api).mockResolvedValueOnce({ data: [] });
+    await loader({
+      request: new Request("https://lyra.test/north/explorer"),
+      context: fakeContext()
+    } as never);
+    const snapshotsCall = vi.mocked(api).mock.calls[1]?.[0] as string;
+    expect(snapshotsCall).not.toContain("&to=");
   });
 });
