@@ -4,7 +4,9 @@
 **Read [`01-system-overview.md`](01-system-overview.md) first** — this document
 assumes you know what `lyra-api` and `lyra-web` are.
 
-Describes commit `8afd07d` (2026-08-13).
+Describes commit `c7f1f57` on `main` (2026-08-18). Previous revision described
+`8afd07d` (2026-08-13); [`README.md` §7](README.md#7-revision-history) lists what
+changed in between, and which work is still on unmerged branches.
 
 > **No secret values appear in this document, and none should ever be added to
 > it.** Every secret below is named, and the command that sets it is given. The
@@ -250,6 +252,12 @@ for running the Playwright journeys against a deployed environment.
 ---
 
 ## 5. Where configuration lives
+
+**Unchanged since the first edition of this pack.** Neither wrangler config, nor
+the on-prem compose stack, nor the secret list moved between `a295218` and
+`c7f1f57` — the work in that window was web screens and ledger revenue lines,
+and none of it added a binding, a var or a secret. If you read this section on
+2026-08-13 you can skip it.
 
 | What | Where | Notes |
 |---|---|---|
