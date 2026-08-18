@@ -84,15 +84,20 @@ export function fraudSchema(): Record<string, unknown> {
  * The fraud-scoring prompt, in one place, shared verbatim between the eval
  * harness and the production engine (apps/api/src/engines/axis-fraud-scorer.ts),
  * per docs/27 F10's "the live eval must send the prompt production sends."
+ *
+ * CLAUDE.md §14: no domain-pack noun appears here. It reads "claim", "claimant"
+ * and "review queue", so the same prompt scores a warranty or a rebate abuse
+ * case without an edit. (`perilCode`, `amountMinor` and the rest are wire field
+ * names fixed by the schema, not vocabulary shown to a user.)
  */
 export function fraudMessages(ctx: FraudContext): { role: "system" | "user"; content: string }[] {
   return [
     {
       role: "system",
       content:
-        "You are scoring an insurance claim for referral to the Special Investigation Unit (SIU), from its " +
-        "peril, cause, the gap between incident and report, the claimed amount against policy limits, the " +
-        "holder's own prior claim history, and any document extraction results. Reply with JSON only, matching " +
+        "You are scoring one submitted claim for referral to a review queue, from its perilCode and causeCode, " +
+        "the gap between incidentAt and reportedAt, amountMinor against the limits given, the claimant's own " +
+        "prior claim history, and any document extraction results. Reply with JSON only, matching " +
         "the schema: score (0-100, how strongly the claim looks referable) and indicators (each with code, a " +
         "short slug naming the signal; weight, its contribution to the score; and evidenceRef, the specific " +
         "fact from the input that supports it — a prior claim id, document id, or field name). Every indicator " +
