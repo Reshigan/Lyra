@@ -739,6 +739,47 @@ describe("reinstatePolicy", () => {
     const after = await reread(ctx, plan.id);
     expect(after.state).toBe("active");
     expect(after.missedStreak).toBe(0);
+
+    // The reset is money-affecting — the sweep starts debiting again — so it
+    // leaves its own trail row keyed on the plan, not just on the policy.
+    const trail = await ctx.db.select().from(schema.auditLog)
+      .where(eq(schema.auditLog.subjectRef, plan.id));
+    expect(trail.map((r) => r.action)).toContain("ledger.financing.plan.reinstate");
+  });
+
+  it("leaves missedPaymentId on the missed rows so the next tick does not re-default", async () => {
+    // The stamp looks like stale bookkeeping, but it is the only thing stopping
+    // the sweep counting the same refused payment again: that payment is still
+    // the newest one for its instalment.
+    const { ctx, policy } = await seedTenantAndPolicy({ currency: "AED" });
+    const { plan } = await createPlan(ctx, policy, {
+      totalMinor: 120_000, currency: "AED", instalments: 12,
+      startAt: ctx.now - DAY, frequencyDays: 30, commissionMinor: 15_000
+    });
+    await insertPayment(ctx, plan.id, 1, "failed", { id: "pay_refused" });
+    // Let the sweep stamp the miss itself rather than hand-writing the row.
+    await sweepPremiumFinancing(ctx);
+    expect((await reread(ctx, plan.id)).missedStreak).toBe(1);
+    await ctx.db.update(schema.ledgerPaymentPlans)
+      .set({ state: "defaulted", missedStreak: DUNNING_LAPSE_THRESHOLD })
+      .where(eq(schema.ledgerPaymentPlans.id, plan.id));
+    await ctx.db.update(schema.axisPolicies)
+      .set({ status: "lapsed", lapsedAt: ctx.now - DAY })
+      .where(eq(schema.axisPolicies.id, policy.id));
+    const [lapsed] = await ctx.db.select().from(schema.axisPolicies).where(eq(schema.axisPolicies.id, policy.id));
+    await ctx.db.insert(schema.approvals).values({
+      id: newId("apr", ctx.now), tenantId: ctx.tenantId, subjectRef: `axis_reinstate:${policy.id}`,
+      policyKey: "axis.reinstate", module: "axis", requestedBy: "u_other", requestedAt: ctx.now - 1_000,
+      decidedBy: "u_test", decision: "approved", decidedAt: ctx.now - 500,
+      contextJson: JSON.stringify({ amountMinor: 50_000 })
+    } as never);
+
+    await reinstatePolicy(ctx, lapsed as PolicyRow, { arrearsMinor: 50_000, note: "arrears collected" });
+    await sweepPremiumFinancing(ctx);
+
+    const after = await reread(ctx, plan.id);
+    expect(after.state).toBe("active");
+    expect(after.missedStreak).toBe(0);
   });
 });
 

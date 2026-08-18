@@ -55,9 +55,13 @@ const FINANCEABLE_POLICY_STATES = ["bound", "active"];
 
 /**
  * A `missed` row is still collectable: the financier re-presents the debit and
- * it clears days later. Excluding it would lose real money that arrived, and
- * would keep the plan `active` forever (it can never satisfy "every row paid"),
- * occupying a SWEEP_MAX slot for the life of the tenant.
+ * it clears days later. Excluding it would drop the plan out of the sweep the
+ * moment it goes quiet — with nothing uncollected left, the plan completes and
+ * the re-presented debit is never posted. Real money in, silently unbooked.
+ *
+ * ponytail: no `written_off` state. A row nobody will ever collect is handled by
+ * cancelling the plan (cancelPlan), which un-earns the commission with it. Add a
+ * per-row write-off when a financier actually settles one instalment short.
  */
 const uncollected = (state: ScheduleRow["state"]): boolean =>
   state === "pending" || state === "due" || state === "missed";

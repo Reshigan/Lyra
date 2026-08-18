@@ -357,21 +357,48 @@ export async function reinstatePolicy(ctx: Ctx, policy: PolicyRow, input: Reinst
   // streak. A plan left `defaulted` is out of the premium-financing sweep for
   // good, so cover would go back on risk with the remaining instalments
   // silently abandoned. Legacy rows carry a `policy:`-prefixed subjectRef.
+  const planFilter = scoped(
+    ctx,
+    schema.ledgerPaymentPlans,
+    and(
+      inArray(schema.ledgerPaymentPlans.subjectRef, [policy.id, `policy:${policy.id}`]),
+      eq(schema.ledgerPaymentPlans.state, "defaulted")
+    )
+  );
+  // Read before the update: the prior missedStreak is the evidence of how many
+  // refused attempts were forgiven, and it is gone the moment the row is reset.
+  const revived = await ctx.db.select().from(schema.ledgerPaymentPlans).where(planFilter);
   await ctx.db
     .update(schema.ledgerPaymentPlans)
     .set({ state: "active", missedStreak: 0, updatedAt: ctx.now })
-    .where(
-      scoped(
-        ctx,
-        schema.ledgerPaymentPlans,
-        and(
-          inArray(schema.ledgerPaymentPlans.subjectRef, [policy.id, `policy:${policy.id}`]),
-          eq(schema.ledgerPaymentPlans.state, "defaulted")
-        )
-      )
-    );
+    .where(planFilter);
 
   await audit(ctx, { action: "axis.policy.reinstate", subjectRef: policy.id, before: policy, after });
+
+  // The plan reset gets its own audit row, keyed on the plan. Folded into the
+  // policy's row it would be invisible to anyone auditing the plan, which is
+  // where the money is: the sweep resumes debiting this customer tomorrow.
+  //
+  // `missedPaymentId` on the already-`missed` schedule rows is deliberately NOT
+  // cleared. It is not stale bookkeeping — it is what stops the sweep
+  // re-counting those rows. The newest payment for each of them is still the
+  // refused one, so a cleared stamp reads as a fresh miss on the very next tick
+  // and re-defaults the plan this just revived.
+  for (const plan of revived) {
+    await audit(ctx, {
+      action: "ledger.financing.plan.reinstate",
+      subjectRef: plan.id,
+      before: plan,
+      after: {
+        ...plan,
+        state: "active",
+        missedStreak: 0,
+        updatedAt: ctx.now,
+        reason: input.note ?? "reinstated",
+        policyId: policy.id
+      }
+    });
+  }
   await emit(ctx, {
     module: "axis",
     type: "axis.policy.reinstated",

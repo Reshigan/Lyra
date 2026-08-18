@@ -123,6 +123,10 @@ const HAND_WRITTEN: Op[] = [
   // the premium is collected, not the risk or price on the contract.
   { method: "post", path: "/v1/axis/policies/{id}/premium-financing-plan", summary: "Open a premium-financing plan on a bound policy", permission: "axis:policies:finance", tag: "axis", requestBody: true },
 
+  // A policy may hold only one live plan, so a plan opened against the wrong
+  // contract needs a way out. Cancelling un-earns the commission by reversal.
+  { method: "post", path: "/v1/axis/policies/{id}/premium-financing-plan/cancel", summary: "Cancel a policy's live premium-financing plan", permission: "axis:policies:finance", tag: "axis", requestBody: true },
+
   // docs/27 F27. The contract the customer can actually hold. AXIS issues and
   // attaches it to the version it describes; ORBIT delivers it.
   { method: "post", path: "/v1/axis/policies/{id}/documents", summary: "Issue a policy document for a version and attach it", permission: "axis:policies:document", tag: "axis", requestBody: true },

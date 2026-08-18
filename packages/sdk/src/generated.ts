@@ -2380,6 +2380,7 @@ export interface Operations {
   "POST /v1/axis/policies/{id}/lapse": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/axis/policies/{id}/ntu": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/axis/policies/{id}/premium-financing-plan": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
+  "POST /v1/axis/policies/{id}/premium-financing-plan/cancel": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/axis/policies/{id}/reinstate": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/axis/policies/{id}/renew": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/axis/policies/{id}/versions": Op<{ id: string }, never, never, Record<string, unknown>>;
@@ -3070,6 +3071,7 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "POST /v1/axis/policies/{id}/lapse": { tag: "axis", summary: "Lapse a policy for an unpaid instalment", permission: "axis:policies:lapse", public: false },
   "POST /v1/axis/policies/{id}/ntu": { tag: "axis", summary: "Mark a policy not-taken-up, clawing back the whole commission", permission: "axis:policies:ntu", public: false },
   "POST /v1/axis/policies/{id}/premium-financing-plan": { tag: "axis", summary: "Open a premium-financing plan on a bound policy", permission: "axis:policies:finance", public: false },
+  "POST /v1/axis/policies/{id}/premium-financing-plan/cancel": { tag: "axis", summary: "Cancel a policy's live premium-financing plan", permission: "axis:policies:finance", public: false },
   "POST /v1/axis/policies/{id}/reinstate": { tag: "axis", summary: "Put cover back on risk after arrears are cleared", permission: "axis:policies:reinstate", public: false },
   "POST /v1/axis/policies/{id}/renew": { tag: "axis", summary: "Bind a successor term and close the prior one", permission: "axis:policies:renew", public: false },
   "GET /v1/axis/policies/{id}/versions": { tag: "axis", summary: "The endorsement history of this policy, newest first", permission: "axis:policies:read", public: false },

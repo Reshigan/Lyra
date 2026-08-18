@@ -46,8 +46,12 @@ but nothing in LYRA has observed the cash. Consequences an operator should know:
 - A silent real-world failure (the debit bounced, the financier never collected)
   leaves LYRA showing a paid instalment and an `active` plan. The policy keeps
   running on premium nobody received.
-- Reversal is available (`reverse()` in `packages/ledger/src/txn.ts`) once the
+- Reversal is available (`reverseTxn()` in `packages/ledger/src/txn.ts`) once the
   truth arrives, so the correction path is a compensating entry, never an edit.
+  A plan opened against the wrong contract is cancelled rather than deleted
+  (`cancelPlan`), which reverses the recognised `FIN-CMSN` and frees the policy
+  to be financed again — the release valve for the one-live-plan-per-subject
+  rule the database now enforces (`ledger_payment_plans_live_uq`).
 
 ## The seam that closes it
 
@@ -59,8 +63,13 @@ engine change**:
 
 - `failed` / `charged_back` / `refunded` → the instalment is marked missed,
   `missed_streak` increments, a `DUNNING` transaction is posted carrying the
-  payment's id, state and `failureCode`, and three consecutive misses cascade
-  into policy lapse through `ledger.financing.lapse_due`.
+  payment's id, state and `failureCode`, and three consecutive refused
+  **attempts** cascade into policy lapse through `ledger.financing.lapse_due`.
+  Attempts, not instalments: a financier re-presenting instalment 1 three times
+  lapses the policy exactly as three different instalments missed in a row do.
+  Each attempt is a distinct `ledger_payments` row, so each is its own
+  `DUNNING` record; the record's idempotency key carries the payment id for
+  that reason.
 - `authorized` / `captured` / `settled` → collected, `PREM-INSTALMENT` posted.
 - no row → collected, as on a plan with no settlement signal at all.
 - `pending`, or any state this engine has never heard of → left alone for the
@@ -71,7 +80,9 @@ engine change**:
 The engine reads the latest row per `seq`, ordered by `created_at` then `id` so
 a same-millisecond tie is deterministic rather than scan-ordered. A `missed` row
 stays collectable: the row records the `ledger_payments` id that caused the miss
-(`missedPaymentId` on the schedule row), so a re-presented debit that settles
+(`missedPaymentId` on the schedule row — the schedule is a JSON blob, so this
+field has no column, no foreign key and no DB-layer validation; the engine that
+writes it is its only guarantee), so a re-presented debit that settles
 collects the instalment and clears the miss, while the same refused attempt seen
 again on later ticks counts once and only once. Only a payment row with a
 *different* id moves `missed_streak`. Building the intake is the follow-up work;
