@@ -110,8 +110,8 @@ export async function createPlan(
 
 export async function payInstalment(ctx: Ctx, plan: PaymentPlanRow, now: number): Promise<void> {
   const schedule: ScheduleRow[] = JSON.parse(plan.scheduleJson);
+  const previousMissedStreak = plan.missedStreak;
   let missedStreak = plan.missedStreak;
-  let dueDunned = false;
 
   for (const row of schedule) {
     if (row.state !== "pending" || row.dueAt > now) continue;
@@ -143,7 +143,6 @@ export async function payInstalment(ctx: Ctx, plan: PaymentPlanRow, now: number)
       // other cron job after sweepPremiumFinancing, has to keep running.
       row.state = "missed";
       missedStreak += 1;
-      dueDunned = true;
       await runTxn(ctx, {
         type: "DUNNING",
         idempotencyKey: `finance.dunning:${plan.id}:${row.seq}`,
@@ -159,7 +158,9 @@ export async function payInstalment(ctx: Ctx, plan: PaymentPlanRow, now: number)
     .set({ scheduleJson: JSON.stringify(schedule), missedStreak, updatedAt: now })
     .where(scoped(ctx, schema.ledgerPaymentPlans, eq(schema.ledgerPaymentPlans.id, plan.id)));
 
-  if (dueDunned && missedStreak >= DUNNING_LAPSE_THRESHOLD) {
+  // Fire exactly once: only on the tick where the streak actually crosses the
+  // threshold, not on every subsequent tick where it stays at or above it.
+  if (previousMissedStreak < DUNNING_LAPSE_THRESHOLD && missedStreak >= DUNNING_LAPSE_THRESHOLD) {
     const missedSeq = [...schedule].reverse().find((r) => r.state === "missed")?.seq ?? 0;
     await emit(ctx, {
       module: "ledger",

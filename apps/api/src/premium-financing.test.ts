@@ -186,6 +186,15 @@ describe("payInstalment", () => {
 
     const events = await ctx.db.select().from(schema.eventOutbox).where(eq(schema.eventOutbox.type, "ledger.financing.lapse_due"));
     expect(events).toHaveLength(1);
+
+    // A second tick where the plan misses again (streak now past the
+    // threshold already) must not re-fire the event.
+    const [rowAfterFirstMiss] = await ctx.db.select().from(schema.ledgerPaymentPlans).where(eq(schema.ledgerPaymentPlans.id, plan.id));
+    expect(rowAfterFirstMiss!.missedStreak).toBe(DUNNING_LAPSE_THRESHOLD);
+    await payInstalment(ctx, rowAfterFirstMiss!, ctx.now + 30 * 86_400_000);
+
+    const eventsAfterSecondTick = await ctx.db.select().from(schema.eventOutbox).where(eq(schema.eventOutbox.type, "ledger.financing.lapse_due"));
+    expect(eventsAfterSecondTick).toHaveLength(1);
   });
 });
 
