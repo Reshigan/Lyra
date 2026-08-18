@@ -1,4 +1,4 @@
-import { and, eq, like } from "drizzle-orm";
+import { and, eq, gte, like } from "drizzle-orm";
 import { schema } from "@lyra/db";
 import { checkKAnonymity, conflict, type Ctx } from "@lyra/core";
 
@@ -31,6 +31,18 @@ function fiscalYearOf(args: Record<string, unknown>): number {
   const y = args["fiscalYear"];
   if (typeof y !== "number" || !Number.isInteger(y)) throw conflict("fiscalYear is required");
   return y;
+}
+
+function requireString(args: Record<string, unknown>, key: string): string {
+  const v = args[key];
+  if (typeof v !== "string" || !v) throw conflict(`${key} is required`);
+  return v;
+}
+
+function requireNumber(args: Record<string, unknown>, key: string): number {
+  const v = args[key];
+  if (typeof v !== "number" || !Number.isFinite(v)) throw conflict(`${key} is required`);
+  return v;
 }
 
 /**
@@ -77,17 +89,26 @@ const yearNotAlreadyClosed: Precondition = async (ctx, args) => {
   }
 };
 
-function requireString(args: Record<string, unknown>, key: string): string {
-  const v = args[key];
-  if (typeof v !== "string" || !v) throw conflict(`${key} is required`);
-  return v;
-}
+const AD_PLACEMENT_STALENESS_MS = 24 * 60 * 60 * 1000;
 
-function requireNumber(args: Record<string, unknown>, key: string): number {
-  const v = args[key];
-  if (typeof v !== "number" || !Number.isFinite(v)) throw conflict(`${key} is required`);
-  return v;
-}
+const freshAdPlacementDisclosure: Precondition = async (ctx, args) => {
+  const subjectRef = requireString(args, "subjectRef");
+  const rows = await ctx.db
+    .select({ id: schema.disclosures.id })
+    .from(schema.disclosures)
+    .where(
+      and(
+        eq(schema.disclosures.tenantId, ctx.tenantId),
+        eq(schema.disclosures.subjectRef, subjectRef),
+        eq(schema.disclosures.key, "ad_placement"),
+        gte(schema.disclosures.ts, ctx.now - AD_PLACEMENT_STALENESS_MS)
+      )
+    )
+    .limit(1);
+  if (!rows.length) {
+    throw conflict(`no disclosure presented for ${subjectRef} in the last 24h; present one before placing this ad`);
+  }
+};
 
 /**
  * docs/19 §5.2 F: a data-product delivery whose result set is too small to
@@ -130,5 +151,6 @@ export const TXN_PRECONDITIONS: Record<string, Precondition> = {
     await yearNotAlreadyClosed(ctx, args);
     await fiscalYearSoftClosed(ctx, args);
   },
+  "AD-PLACEMENT": freshAdPlacementDisclosure,
   "DPROD-DELIVER": dataProductKAnonymity
 };

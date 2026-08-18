@@ -71,7 +71,7 @@ secret rotation; delivery log queryable; replay from admin console.
 core.customer.created|updated|erased      core.consent.updated
 axis.case.created|status_changed          axis.document.extracted
 axis.quote.added                          axis.policy.issued
-axis.approval.requested|decided
+axis.approval.requested|decided           axis.policy.broker_fee_charged
 orbit.conversation.started|handover|closed
 orbit.renewal.due|offered|accepted|lost   orbit.partner.txn
 signal.campaign.launched|paused           signal.experiment.concluded
@@ -79,6 +79,8 @@ signal.budget.moved                       signal.creative.flagged
 scout.whitespace.promoted                 scout.bench.updated
 north.anomaly.detected                    north.briefing.published
 ai.budget.threshold                       platform.key.rotated
+dist.referral.qualified                   dist.referral.settled
+compliance.disclosure.presented
 ```
 Envelope: `{id, ts, tenant_id, module, type, actor, subject, data, v:1}`.
 

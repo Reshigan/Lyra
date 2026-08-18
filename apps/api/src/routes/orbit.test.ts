@@ -39,6 +39,7 @@ let outsiderToken: string;
  *  orbit.admin is the only seeded persona holding it — `orbit.agent`
  *  (agentToken above) does not hold it. */
 let leadToken: string;
+let partnerToken: string;
 
 interface Res<T = any> {
   status: number;
@@ -165,6 +166,34 @@ beforeAll(async () => {
       updatedAt: now
     }
   ]);
+  await database.insert(schema.orbitPartners).values({
+    id: "ptn_1",
+    tenantId,
+    name: "Acme Telco",
+    kind: "telco",
+    revshareJson: JSON.stringify({ pct: 10 }),
+    sandboxFlag: true,
+    status: "active",
+    stage: "sandbox",
+    createdAt: now,
+    updatedAt: now
+  });
+  await database.insert(schema.orbitPartners).values({
+    id: "ptn_suspended",
+    tenantId,
+    name: "Suspended Co",
+    kind: "telco",
+    revshareJson: null,
+    sandboxFlag: true,
+    status: "suspended",
+    stage: "sandbox",
+    suspendedAt: now,
+    suspendedReason: "billing dispute",
+    createdAt: now,
+    updatedAt: now
+  });
+
+  partnerToken = await login("dana.aziz"); // orbit.partners
 }, 120_000);
 
 describe("POST /v1/orbit/conversations/:id/reply", () => {
@@ -221,5 +250,56 @@ describe("POST /v1/orbit/routing/sweep", () => {
   it("is 403 without orbit:conversations:assign", async () => {
     const res = await call(outsiderToken, "POST", "/v1/orbit/routing/sweep");
     expect(res.status).toBe(403);
+  });
+});
+
+describe("POST /v1/orbit/partners/:id/quotes", () => {
+  it("returns a synthetic sandbox quote for an active partner", async () => {
+    const res = await call(partnerToken, "POST", "/v1/orbit/partners/ptn_1/quotes", {
+      productLine: "motor",
+      amountMinor: 100_000,
+      currency: "AED"
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.partnerId).toBe("ptn_1");
+    expect(res.body.mode).toBe("sandbox");
+    expect(res.body.synthetic).toBe(true);
+    expect(res.body.quotedPremiumMinor).toBeGreaterThan(0);
+  });
+
+  it("rejects without orbit:partners:read", async () => {
+    const res = await call(outsiderToken, "POST", "/v1/orbit/partners/ptn_1/quotes", {
+      productLine: "motor",
+      amountMinor: 100_000,
+      currency: "AED"
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("404s for an unknown partner", async () => {
+    const res = await call(partnerToken, "POST", "/v1/orbit/partners/ptn_missing/quotes", {
+      productLine: "motor",
+      amountMinor: 100_000,
+      currency: "AED"
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("409s for a suspended partner", async () => {
+    const res = await call(partnerToken, "POST", "/v1/orbit/partners/ptn_suspended/quotes", {
+      productLine: "motor",
+      amountMinor: 100_000,
+      currency: "AED"
+    });
+    expect(res.status).toBe(409);
+  });
+
+  it("rejects a malformed body", async () => {
+    const res = await call(partnerToken, "POST", "/v1/orbit/partners/ptn_1/quotes", {
+      productLine: "motor",
+      amountMinor: -5,
+      currency: "AED"
+    });
+    expect(res.status).toBe(400);
   });
 });

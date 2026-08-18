@@ -1,13 +1,14 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { schema } from "@lyra/db";
-import { badRequest, require_, type Ctx } from "@lyra/core";
+import { badRequest, require_, withIdempotency, type Ctx } from "@lyra/core";
 import { body } from "../http.js";
 import { must } from "../rows.js";
 import { dispatchOutbound } from "../engines/orbit-channel-outbound.js";
 import { sweepRenewals } from "../engines/renewals.js";
 import { sweepRouting } from "../engines/orbit-routing.js";
 import { sweepConversationDrafts } from "../engines/orbit-draft.js";
+import { requestPartnerQuote } from "../engines/orbit-partner-quotes.js";
 import type { App } from "../env.js";
 
 // docs/16 H3: the AgentRoom Durable Object seam. One room per conversation,
@@ -104,4 +105,30 @@ orbitRoutes.post("/drafts/sweep", async (c) => {
   require_(ctx.actor, "orbit:ai:invoke", { tenantId: ctx.tenantId, module: "orbit" });
   require_(ctx.actor, "orbit:conversations:reply", { tenantId: ctx.tenantId, module: "orbit" });
   return c.json({ drafted: await sweepConversationDrafts(ctx, c.get("gateway")) });
+});
+
+const PartnerQuoteBody = z.object({
+  productLine: z.string().min(1),
+  amountMinor: z.number().int().positive(),
+  currency: z.string().length(3)
+});
+
+// F1 (docs spec Group B): the live path behind orbit-partner-quotes.ts's
+// requestPartnerQuote(), wired here. Gated on orbit:partners:read rather
+// than :update — a quote is a pricing lookup, it persists a log row but
+// never mutates the partner itself. Real rating integration stays a
+// separate, credential-gated line (see routes/dist.ts's quoterFor stub).
+orbitRoutes.post("/partners/:id/quotes", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "orbit:partners:read", { tenantId: ctx.tenantId, module: "orbit" });
+  const partnerId = c.req.param("id");
+  const input = await body(c, PartnerQuoteBody);
+  const result = await withIdempotency(
+    ctx,
+    c.req.header("idempotency-key"),
+    "orbit.partner_quote",
+    { partnerId, ...input },
+    () => requestPartnerQuote(ctx, partnerId, input)
+  );
+  return c.json(result, 201);
 });

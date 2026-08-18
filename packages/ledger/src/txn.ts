@@ -232,6 +232,34 @@ export interface RunOptions {
 }
 
 /**
+ * `args.subjectRef` and the transaction's `subjectRefs` are supplied
+ * separately by the caller (docs/ledger route), but only `subjectRefs` is what
+ * actually lands on the ledger transaction. A precondition (e.g. AD-PLACEMENT's
+ * disclosure gate) must judge the subject the transaction records against, not
+ * some other subject the caller happens to also mention — otherwise the gate is
+ * satisfiable by presenting a disclosure for an unrelated subject. If the
+ * caller names a subjectRef, it must be one of the transaction's subjectRefs;
+ * if it names none and there is exactly one, that one is authoritative.
+ */
+function reconcileSubjectRef(
+  subjectRefs: Record<string, string> | undefined,
+  args: Record<string, unknown>
+): Record<string, unknown> {
+  const values = subjectRefs ? Object.values(subjectRefs) : [];
+  const claimed = args["subjectRef"];
+  if (typeof claimed === "string") {
+    if (values.length && !values.includes(claimed)) {
+      throw conflict(`args.subjectRef "${claimed}" is not among this transaction's subjectRefs (${values.join(", ")})`);
+    }
+    return args;
+  }
+  // ponytail: only auto-fills the unambiguous single-subjectRef case; multiple
+  // subjectRefs with no args.subjectRef is left to the precondition itself
+  // (none of today's multi-subjectRef types has one) — revisit if that changes.
+  return values.length === 1 ? { ...args, subjectRef: values[0] } : args;
+}
+
+/**
  * Drive one transaction from initiated to settled: validate, gate, authorize,
  * execute, post, settle. Any throw lands the transaction in `failed` with the
  * reason recorded, so a stuck transaction is always visible rather than absent.
@@ -245,7 +273,7 @@ export async function runTxn(ctx: Ctx, input: OpenTxnInput, opts: RunOptions = {
   // would burn the idempotency key on a `failed` row, so the retry after the
   // months are closed would hit "already failed" forever.
   const precondition = TXN_PRECONDITIONS[def.code];
-  if (precondition) await precondition(ctx, opts.args ?? {});
+  if (precondition) await precondition(ctx, reconcileSubjectRef(input.subjectRefs, opts.args ?? {}));
 
   const txn = await openTxn(ctx, input);
 
