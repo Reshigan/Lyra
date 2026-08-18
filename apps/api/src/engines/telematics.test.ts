@@ -238,8 +238,14 @@ describe("TelematicsIngest.ingest", () => {
   it("refuses a point at exactly endAt: the reprice window is half-open, so nothing would price it", async () => {
     // Every reprice window is `[unpricedFrom, now)` and a reprice is refused at
     // `now >= endAt`, so no window ever contains `endAt`. Accepting a point there
-    // is accepting exposure that is structurally unbillable. The bound is pinned
-    // to the millisecond on both sides: `endAt` out, `endAt - 1` in.
+    // is accepting exposure that is structurally unbillable.
+    //
+    // `endAt - 1` is accepted below because the bound is the term bound,
+    // half-open — not because that point is priceable. It is not: the largest
+    // `now` a reprice can run at is `endAt - 1` and the window excludes its own
+    // end, so the last stamp any window reaches is `endAt - 2`. The final
+    // millisecond is a degenerate case carrying no material exposure, and
+    // pinning it would mean `- 1` arithmetic on a term bound.
     expect(
       await refusalDetail(() => ingester().ingest(subjectRef(), [{ at: policy.endAt, value: 5 }]))
     ).toMatch(/cover term/i);

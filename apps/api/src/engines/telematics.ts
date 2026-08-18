@@ -134,6 +134,13 @@ export class TelematicsIngest implements TimeseriesIngest {
       // Half-open, like every window that reads these points: a reprice prices
       // `[unpricedFrom, now)` and is refused at `now >= endAt`, so a point at
       // exactly `endAt` is in no window there will ever be.
+      //
+      // The bound is the term bound and nothing finer. Strictly, the largest
+      // `now` a reprice can run at is `endAt - 1` and the window excludes its
+      // own end, so the last stamp any window reaches is `endAt - 2` — the final
+      // millisecond is admitted here and never priced. That is deliberate: one
+      // millisecond of exposure pro-rates to zero, and `- 1` arithmetic on a
+      // term bound is a worse defect than the degenerate case it would close.
       if (p.at < this.policy.startAt || p.at >= this.policy.endAt) {
         throw badRequest(
           `point at ${p.at} falls outside the cover term [${this.policy.startAt}, ${this.policy.endAt})`
