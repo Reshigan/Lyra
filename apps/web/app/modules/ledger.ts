@@ -1152,9 +1152,10 @@ export const ledger: WorkspaceSpec = {
     {
       key: "payment-plans",
       api: "/v1/ledger/payment-plans",
+      // Read-only in the API: the plan is opened by the premium-financing route and
+      // its state is moved by the instalment/dunning sweep, never by hand. A create
+      // form or a state select here would be a control whose PATCH always fails.
       read: "ledger:payments:read",
-      create: "ledger:payments:create",
-      update: "ledger:payments:create",
       filters: [{ name: "state", options: ["active", "completed", "defaulted", "cancelled"] }],
       columns: [
         { name: "subjectRef", type: "text" },
@@ -1164,11 +1165,6 @@ export const ledger: WorkspaceSpec = {
         { name: "state", type: "text", badge: true },
         { name: "createdAt", type: "datetime", sortable: true }
       ],
-      // The plan is opened by PLAN-CREATE and each instalment posts its own
-      // transaction; a person only ever moves the plan's own state.
-      editable: [
-        { name: "state", type: "select", options: ["active", "completed", "defaulted", "cancelled"] }
-      ]
     },
     {
       key: "fx-rates",

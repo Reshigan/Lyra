@@ -53,6 +53,9 @@ async function seedPolicy(ctx: Ctx, currency: string): Promise<PolicyRow> {
     startAt: ctx.now - 30 * 86_400_000,
     endAt: ctx.now + 335 * 86_400_000,
     premiumMinor: 100_000,
+    // Gross is premium plus tax/fees, and gross is what a financier advances —
+    // so it is the ceiling createPlan enforces on totalMinor.
+    grossMinor: 120_000,
     currency,
     status: "active",
     createdAt: ctx.now,
@@ -208,7 +211,11 @@ describe("createPlan", () => {
   });
 
   it("throws badRequest when the plan currency has no fx rate to the tenant base currency", async () => {
-    const { ctx, policy } = await seedTenantAndPolicy({ currency: "AED" });
+    const { ctx } = await seedTenantAndPolicy({ currency: "AED" });
+    // The plan currency must equal the *policy's* currency, so an fx gap is only
+    // reachable through a policy written in something other than the tenant base
+    // currency — which is the case the pre-check exists for.
+    const policy = await seedPolicy(ctx, "JPY");
     // badRequest()'s Error.message is the fixed literal "Bad request" (docs/04
     // §1 problem+json); the reason lives on `.detail` — see apps/api/src/
     // analytics.test.ts for the same assertion shape.
@@ -231,6 +238,78 @@ describe("createPlan", () => {
     // an `active` plan row with an unpostable commission survives the call.
     expect(await ctx.db.select().from(schema.ledgerPaymentPlans)).toHaveLength(0);
     expect(await txnsOfType(ctx, "PLAN-CREATE")).toHaveLength(0);
+  });
+
+  it("refuses a plan whose currency is not the policy's currency", async () => {
+    const { ctx, policy } = await seedTenantAndPolicy({ currency: "AED" });
+    // Route input is a trust boundary: without this check a USD plan opens on an
+    // AED policy, and every instalment posts client money in USD against that
+    // policy's dim with nothing downstream to reconcile it against the premium.
+    let error: unknown;
+    try {
+      await createPlan(ctx, policy, {
+        totalMinor: 120_000, currency: "USD", instalments: 12,
+        startAt: ctx.now, frequencyDays: 30, commissionMinor: 15_000
+      });
+    } catch (e) {
+      error = e;
+    }
+    expect((error as { status?: number } | undefined)?.status).toBe(400);
+    expect((error as { detail?: string } | undefined)?.detail).toMatch(/does not match policy currency/);
+    expect(await ctx.db.select().from(schema.ledgerPaymentPlans)).toHaveLength(0);
+    expect(await txnsOfType(ctx, "PLAN-CREATE")).toHaveLength(0);
+    expect(await txnsOfType(ctx, "FIN-CMSN")).toHaveLength(0);
+  });
+
+  it("refuses a plan for more than the policy's gross, and allows exactly the gross", async () => {
+    const { ctx, policy } = await seedTenantAndPolicy({ currency: "AED" });
+    // Financing may cover premium plus tax/fees, so the ceiling is gross (120_000
+    // here) rather than premium — but above it the sweep over-collects real client
+    // money for the life of the plan on otherwise-valid route input.
+    let error: unknown;
+    try {
+      await createPlan(ctx, policy, {
+        totalMinor: 120_001, currency: "AED", instalments: 12,
+        startAt: ctx.now, frequencyDays: 30, commissionMinor: 15_000
+      });
+    } catch (e) {
+      error = e;
+    }
+    expect((error as { status?: number } | undefined)?.status).toBe(400);
+    expect((error as { detail?: string } | undefined)?.detail).toMatch(/exceeds financeable amount 120000/);
+    expect(await ctx.db.select().from(schema.ledgerPaymentPlans)).toHaveLength(0);
+
+    // The boundary itself is allowed: gross exactly is the normal financed case.
+    const { plan } = await createPlan(ctx, policy, {
+      totalMinor: 120_000, currency: "AED", instalments: 12,
+      startAt: ctx.now, frequencyDays: 30, commissionMinor: 15_000
+    });
+    expect(plan.totalMinor).toBe(120_000);
+  });
+
+  it("falls back to premium as the ceiling when the policy has no gross computed", async () => {
+    const { ctx, policy } = await seedTenantAndPolicy({ currency: "AED" });
+    // `grossMinor` defaults to 0 (H9 reserved: it is populated by the rating path
+    // and older/simpler policies never carry one), so the ceiling has to fall back
+    // to premium rather than refusing every plan on such a policy.
+    await ctx.db
+      .update(schema.axisPolicies)
+      .set({ grossMinor: 0 })
+      .where(eq(schema.axisPolicies.id, policy.id));
+    const [bare] = await ctx.db.select().from(schema.axisPolicies).where(eq(schema.axisPolicies.id, policy.id));
+
+    await expect(
+      createPlan(ctx, bare!, {
+        totalMinor: 100_001, currency: "AED", instalments: 12,
+        startAt: ctx.now, frequencyDays: 30, commissionMinor: 15_000
+      })
+    ).rejects.toMatchObject({ status: 400 });
+
+    const { plan } = await createPlan(ctx, bare!, {
+      totalMinor: 100_000, currency: "AED", instalments: 12,
+      startAt: ctx.now, frequencyDays: 30, commissionMinor: 15_000
+    });
+    expect(plan.totalMinor).toBe(100_000);
   });
 
   it("refuses a non-positive commission before anything is written, so the corrected retry succeeds (C-1)", async () => {

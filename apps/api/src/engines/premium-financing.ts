@@ -142,6 +142,27 @@ export async function createPlan(
   // A plan row is a live money-affecting record: the sweep collects it, and C3
   // makes it permanent. So nothing may be written until the whole plan is known
   // to be postable (CLAUDE.md #12).
+  // The plan collects in its own currency against this policy's dim, and nothing
+  // downstream reconciles the two: a ZAR policy carrying a USD plan would post
+  // client-money receipts nobody can match back to the premium owed. Route input
+  // is a trust boundary, so the equality is checked here rather than assumed.
+  if (input.currency !== policy.currency) {
+    throw badRequest(
+      `plan currency ${input.currency} does not match policy currency ${policy.currency}`
+    );
+  }
+
+  // Financing may cover more than bare premium (tax, fees), so the ceiling is the
+  // policy's gross where one was computed and the premium otherwise — not premium
+  // exactly. Without it a valid route call finances an arbitrary amount and the
+  // instalment sweep over-collects for the life of the plan.
+  const financeableMinor = Math.max(policy.grossMinor ?? 0, policy.premiumMinor);
+  if (input.totalMinor > financeableMinor) {
+    throw badRequest(
+      `totalMinor ${input.totalMinor} exceeds financeable amount ${financeableMinor} for policy ${policy.id}`
+    );
+  }
+
   const fxRatePpm = await fxRateFor(ctx, input.currency);
   if (!fxRatePpm) {
     throw badRequest(`no fx rate supplied for ${input.currency} -> ${ctx.policy.currency}`);
