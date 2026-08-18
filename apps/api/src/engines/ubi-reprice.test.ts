@@ -479,6 +479,66 @@ describe("repriceFromTelemetry", () => {
     expect(contextOfCall(two.stub, 0).series[0]!.total).toBe(10);
   });
 
+  it("still prices telemetry accepted before a forward-dated endorsement once that date arrives", async () => {
+    // Deriving the watermark from the version graph strands exposure. While the
+    // endorsement is pending, ingest accepts a point after the last priced
+    // window — that acceptance is the promise that some window will price it.
+    // When the forward date arrives the version in force jumps to it, and on any
+    // version-derived watermark every window from then on starts at the future
+    // date: the point sits after the last window's end and before every future
+    // window's start, and is never billed. A version boundary is where the price
+    // changed, not where pricing got up to.
+    await new TelematicsIngest(ctx, SOURCE, policy).ingest(`policy:${policy.id}`, [{ at: NOW - DAY, value: 100 }]);
+    const one = gatewayWithStub(reply(100_000));
+    const first = await repriceFromTelemetry(ctx, policy, one.gateway);
+    if (!first.repriced) throw new Error("expected the first sweep to reprice");
+    const firstUbi = ubiStamp(await currentVersion());
+    expect(firstUbi.windowEnd).toBe(NOW);
+
+    // A manual forward-dated endorsement — it stamps no `ubi`, so it prices
+    // nothing and must not move the watermark.
+    const future = await endorsePolicy(ctx, first.policy, {
+      changes: { harsh_braking: { weight: 1 } },
+      premiumMinor: 120_000,
+      effectiveFrom: NOW + 30 * DAY
+    });
+    expect(future.version.effectiveFrom).toBe(NOW + 30 * DAY);
+
+    // Accepted inside the gap `[lastPricedWindowEnd, forwardDate)`.
+    ctx.now = NOW + DAY;
+    await new TelematicsIngest(ctx, SOURCE, policy).ingest(`policy:${policy.id}`, [{ at: NOW + DAY, value: 500 }]);
+
+    // The forward date arrives.
+    ctx.now = NOW + 31 * DAY;
+    const two = gatewayWithStub(reply(100_000));
+    const second = await repriceFromTelemetry(ctx, future.policy, two.gateway);
+    expect(second.repriced).toBe(true);
+
+    // The window resumes where pricing actually got up to, not at the forward
+    // date: 500 km priced, not 0 (stranded) and not 600 (re-priced to inception).
+    const secondUbi = ubiStamp(await currentVersion());
+    expect(secondUbi.windowStart).toBe(firstUbi.windowEnd);
+    expect(secondUbi.windowStart).toBe(NOW);
+    expect(secondUbi.windowEnd).toBe(NOW + 31 * DAY);
+    expect(contextOfCall(two.stub, 0).series[0]!.total).toBe(500);
+  });
+
+  it("refuses a reprice on an ended term before spending a model call on it", async () => {
+    // `priceEndorsement` derives `effectiveFrom = max(now, current.effectiveFrom)`
+    // and refuses anything at or past `endAt`, so a reprice after the term ends is
+    // a guaranteed refusal. Discovering that after `gateway.complete` bills a
+    // model call and writes an `ai_audit_log` row for a price that was never
+    // going to move.
+    await ingestKm(100);
+    ctx.now = END + DAY;
+    const one = gatewayWithStub(reply(100_000));
+
+    expect(await refusalDetail(() => repriceFromTelemetry(ctx, policy, one.gateway))).toMatch(
+      /term has ended/
+    );
+    expect(one.stub.calls.length).toBe(0);
+  });
+
   it("clamps an absurd downward proposal, so one reply cannot move the price more than 25%", async () => {
     await ingestKm(20);
     // -900_000 ppm would be -90%; MAX_REPRICE_PPM clamps it to -25%.
