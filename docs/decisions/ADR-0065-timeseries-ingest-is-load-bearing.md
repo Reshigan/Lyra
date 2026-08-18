@@ -11,7 +11,7 @@ Usage-based pricing ships as an implementation *of* the H6 seam, not beside it.
 `TelematicsIngest` implements `TimeseriesIngest` verbatim, and a telemetry-driven
 price change runs through `endorsePolicy` — the same pricing call, referral
 guard, approval gate, posting recipe, audit trail and event as an
-underwriter-typed endorsement. Four choices follow from that and are frozen here.
+underwriter-typed endorsement. Five choices follow from that and are frozen here.
 
 **1. `source` is the series key, one adapter instance per series.**
 `TimeseriesIngest`'s point shape is `{ at, value }` — a value with no metric
@@ -130,6 +130,35 @@ double submit — two requests in flight together read the same current version,
 derive one key, and the later one is refused as in-flight before it reaches the
 model (pinned in `apps/api/src/axis-telemetry.test.ts`). A client that needs
 exactly-once across a lost response must send `Idempotency-Key`.
+
+**5. The priced watermark is pricing history. No version boundary participates.**
+Unpriced exposure starts at `max(policy.startAt, last stamped ubi.windowEnd)` —
+inception, because exposure before the cover began is not covered exposure, and
+the end of the last window a reprice actually priced, because that is the only
+thing already billed. Nothing else is consulted. A version boundary is where the
+*price* changed, not where *pricing* got up to, and three successive attempts to
+derive the watermark from one (`effective.effectiveFrom`, then `versionAt(now)`,
+then the max of that and the last window) each shipped a money defect: the last
+of them put the start in the future the moment a pending forward-dated
+endorsement's date arrived, stranding telemetry the ingest guard had already
+accepted. `unpricedFrom` (`apps/api/src/engines/telematics.ts`) is now two
+bounds and one query, and a change that reintroduces a version lookup there is
+reintroducing that class of defect.
+
+The invariant it exists to hold is **accepted implies priceable**: a point the
+ingest doorway accepts is a point some future window prices. That is why the
+ingest guard and the reprice window read the same function and not two
+expressions that happen to agree — a watermark that can move forward for a
+reason unrelated to pricing can always open a gap between the two, and exposure
+that falls in it is silently under-billed with a balanced journal every time, so
+no ledger invariant catches it.
+
+A test pinning this must assert **which exposure was priced** — in minor units,
+or in window bounds — not that a reprice happened. Every one of the four
+Criticals this rule has produced survived a suite that asserted liveness
+(`repriced === true`, a non-empty series, a bare status code). An assertion that
+would still pass if the window silently doubled or silently dropped a day is not
+the assertion.
 
 ## The gap this records
 

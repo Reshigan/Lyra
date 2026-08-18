@@ -185,7 +185,10 @@ the same recipe as ENDORSE", literally.
 
 `repriceFromTelemetry(ctx, policy, gateway)`:
 
-1. `aggregate()` the policy's points per source over the current version's window.
+1. `aggregate()` the policy's points per source over `[max(policy.startAt, last stamped
+   ubi.windowEnd), now)`. Not the current version's window: a version boundary is where
+   the price changed, not where pricing got up to — see ADR-0065 decision 5, which is
+   binding here.
 2. Refuse with `conflict` if there are no points — a reprice with no telemetry is a price
    change with no cause.
 3. `gateway.complete(ctx, { module: "axis", purpose: "axis.policy.ubi_reprice",
