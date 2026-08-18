@@ -1577,6 +1577,7 @@ export interface LedgerSubscriptions {
   seats?: number;
   startAt: number;
   endAt?: number;
+  nextInvoiceAt?: number;
   state?: string;
   termsJson?: string;
   createdAt?: number;
@@ -1650,6 +1651,8 @@ export interface LedgerUsageMeters {
   quantity?: number;
   includedQuantity?: number;
   unitPriceMicro?: number;
+  overageInvoicedQuantity?: number;
+  overageInvoicedAt?: number;
   updatedAt?: number;
 }
 
@@ -2372,6 +2375,8 @@ export interface Operations {
   "GET /v1/axis/policies/{id}": Op<{ id: string }, never, never, AxisPolicies>;
   "PATCH /v1/axis/policies/{id}": Op<{ id: string }, never, AxisPolicies, AxisPolicies>;
   "POST /v1/axis/policies/{id}/bind": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
+  "POST /v1/axis/policies/{id}/bind-group": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
+  "POST /v1/axis/policies/{id}/broker-fee": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/axis/policies/{id}/cancel": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/axis/policies/{id}/cancel/preview": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/axis/policies/{id}/documents": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
@@ -2413,6 +2418,7 @@ export interface Operations {
   "GET /v1/channels/{connectorId}/webhook": Op<{ connectorId: string }, never, never, Record<string, unknown>>;
   "POST /v1/channels/{connectorId}/webhook": Op<{ connectorId: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/compliance/disclosures": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<ComplianceDisclosures>>;
+  "POST /v1/compliance/disclosures/present": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/compliance/disclosures/{id}": Op<{ id: string }, never, never, ComplianceDisclosures>;
   "GET /v1/compliance/dsar-requests": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<ComplianceDsarRequests>>;
   "POST /v1/compliance/dsar-requests": Op<never, never, ComplianceDsarRequests, ComplianceDsarRequests>;
@@ -2598,6 +2604,8 @@ export interface Operations {
   "POST /v1/dist/quote-requests/{id}/share": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/dist/quote-responses": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<DistQuoteResponses>>;
   "GET /v1/dist/quote-responses/{id}": Op<{ id: string }, never, never, DistQuoteResponses>;
+  "POST /v1/dist/referrals/qualify": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
+  "POST /v1/dist/referrals/settle": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/ledger/account-balances": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<LedgerAccountBalances>>;
   "GET /v1/ledger/account-balances/{id}": Op<{ id: string }, never, never, LedgerAccountBalances>;
   "GET /v1/ledger/accounts": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<LedgerAccounts>>;
@@ -2776,6 +2784,7 @@ export interface Operations {
   "GET /v1/orbit/partners": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<OrbitPartners>>;
   "POST /v1/orbit/partners": Op<never, never, OrbitPartners, OrbitPartners>;
   "GET /v1/orbit/partners/{id}": Op<{ id: string }, never, never, OrbitPartners>;
+  "POST /v1/orbit/partners/{id}/quotes": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/orbit/qa-scores": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<OrbitQaScores>>;
   "POST /v1/orbit/qa-scores": Op<never, never, OrbitQaScores, OrbitQaScores>;
   "GET /v1/orbit/qa-scores/{id}": Op<{ id: string }, never, never, OrbitQaScores>;
@@ -3063,6 +3072,8 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "GET /v1/axis/policies/{id}": { tag: "axis", summary: "Fetch one policy", permission: "axis:policies:read", public: false },
   "PATCH /v1/axis/policies/{id}": { tag: "axis", summary: "Update a policy", permission: "axis:policies:update", public: false },
   "POST /v1/axis/policies/{id}/bind": { tag: "axis", summary: "Bind a draft policy, issuing version 1", permission: "axis:policies:bind", public: false },
+  "POST /v1/axis/policies/{id}/bind-group": { tag: "axis", summary: "Bind a group/SME scheme, posting a BIND-GROUP commission accrual (dual control)", permission: "axis:policies:bind", public: false },
+  "POST /v1/axis/policies/{id}/broker-fee": { tag: "axis", summary: "Post a FEE-BROK brokerage/advisory fee accrual on a policy", permission: "axis:policies:bind", public: false },
   "POST /v1/axis/policies/{id}/cancel": { tag: "axis", summary: "Cancel a policy, refunding the unearned premium", permission: "axis:policies:cancel", public: false },
   "POST /v1/axis/policies/{id}/cancel/preview": { tag: "axis", summary: "Price a cancellation without writing anything", permission: "axis:policies:cancel", public: false },
   "POST /v1/axis/policies/{id}/documents": { tag: "axis", summary: "Issue a policy document for a version and attach it", permission: "axis:policies:document", public: false },
@@ -3104,6 +3115,7 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "GET /v1/channels/{connectorId}/webhook": { tag: "orbit", summary: "Provider subscription handshake; echoes the challenge when the verify token matches", permission: null, public: true },
   "POST /v1/channels/{connectorId}/webhook": { tag: "orbit", summary: "Provider webhook delivery: signature-verified inbound messages and delivery receipts", permission: null, public: true },
   "GET /v1/compliance/disclosures": { tag: "compliance", summary: "List disclosures", permission: "compliance:disclosures:read", public: false },
+  "POST /v1/compliance/disclosures/present": { tag: "compliance", summary: "Record that a required disclosure was shown, hashing the wording as evidence", permission: "compliance:disclosures:present", public: false },
   "GET /v1/compliance/disclosures/{id}": { tag: "compliance", summary: "Fetch one disclosure", permission: "compliance:disclosures:read", public: false },
   "GET /v1/compliance/dsar-requests": { tag: "compliance", summary: "List dsar-requests", permission: "compliance:dsar:read", public: false },
   "POST /v1/compliance/dsar-requests": { tag: "compliance", summary: "Create a dsar request", permission: "compliance:dsar:create", public: false },
@@ -3289,6 +3301,8 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "POST /v1/dist/quote-requests/{id}/share": { tag: "dist", summary: "Share the comparison with the customer over their consented channel", permission: "dist:quote_requests:share", public: false },
   "GET /v1/dist/quote-responses": { tag: "dist", summary: "List quote-responses", permission: "dist:quote_requests:read", public: false },
   "GET /v1/dist/quote-responses/{id}": { tag: "dist", summary: "Fetch one quote respons", permission: "dist:quote_requests:read", public: false },
+  "POST /v1/dist/referrals/qualify": { tag: "dist", summary: "Record a qualified referral lead/approval event (REFERRAL-QUAL)", permission: "dist:commissions:adjust", public: false },
+  "POST /v1/dist/referrals/settle": { tag: "dist", summary: "Settle a qualified referral's revenue against the partner's statement (REFERRAL-SETL)", permission: "dist:commissions:settle", public: false },
   "GET /v1/ledger/account-balances": { tag: "ledger", summary: "List account-balances", permission: "ledger:accounts:read", public: false },
   "GET /v1/ledger/account-balances/{id}": { tag: "ledger", summary: "Fetch one account balance", permission: "ledger:accounts:read", public: false },
   "GET /v1/ledger/accounts": { tag: "ledger", summary: "List accounts", permission: "ledger:accounts:read", public: false },
@@ -3467,6 +3481,7 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "GET /v1/orbit/partners": { tag: "orbit", summary: "List partners", permission: "orbit:partners:read", public: false },
   "POST /v1/orbit/partners": { tag: "orbit", summary: "Create a partner", permission: "orbit:partners:create", public: false },
   "GET /v1/orbit/partners/{id}": { tag: "orbit", summary: "Fetch one partner", permission: "orbit:partners:read", public: false },
+  "POST /v1/orbit/partners/{id}/quotes": { tag: "orbit", summary: "Request a partner pricing quote (sandbox partners get clearly-marked synthetic pricing)", permission: "orbit:partners:read", public: false },
   "GET /v1/orbit/qa-scores": { tag: "orbit", summary: "List qa-scores", permission: "orbit:qa:read", public: false },
   "POST /v1/orbit/qa-scores": { tag: "orbit", summary: "Create a qa score", permission: "orbit:qa:score", public: false },
   "GET /v1/orbit/qa-scores/{id}": { tag: "orbit", summary: "Fetch one qa score", permission: "orbit:qa:read", public: false },

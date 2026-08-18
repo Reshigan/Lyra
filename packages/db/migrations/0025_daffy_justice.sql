@@ -1,1 +1,0 @@
-ALTER TABLE `ledger_payment_plans` ADD `missed_streak` integer DEFAULT 0 NOT NULL;

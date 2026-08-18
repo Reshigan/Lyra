@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import {
   CLIENT_MONEY_ACCOUNT,
   CLIENT_MONEY_LIABILITY_ACCOUNT,
@@ -8,7 +8,7 @@ import {
   schema,
   type Write
 } from "@lyra/db";
-import { PPM, actorRef, applyPpm, badRequest, conflict, scoped, type Ctx } from "@lyra/core";
+import { PPM, actorRef, applyPpm, badRequest, conflict, type Ctx } from "@lyra/core";
 import { assertPostable, ensurePeriod, periodCode } from "./periods.js";
 
 // docs/19 §5. The double-entry engine. Every financial transaction in the system
@@ -24,22 +24,6 @@ import { assertPostable, ensurePeriod, periodCode } from "./periods.js";
 // a single atomic batch (docs/19 §5, the `atomically` seam in @lyra/db). A post
 // therefore lands whole or not at all: no header without its lines, no balance
 // bump without the lines it summarises.
-
-/**
- * Most recent stored rate for `currency -> ctx.policy.currency`, or PPM
- * (1_000_000) when they're the same currency. Undefined means "no rate on
- * file" — callers decide whether that's a hard stop or a skip-this-row.
- */
-export async function fxRateFor(ctx: Ctx, currency: string): Promise<number | undefined> {
-  if (currency === ctx.policy.currency) return PPM;
-  const rows = await ctx.db
-    .select({ ratePpm: schema.ledgerFxRates.ratePpm })
-    .from(schema.ledgerFxRates)
-    .where(scoped(ctx, schema.ledgerFxRates, eq(schema.ledgerFxRates.fromCurrency, currency), eq(schema.ledgerFxRates.toCurrency, ctx.policy.currency)))
-    .orderBy(desc(schema.ledgerFxRates.asOf))
-    .limit(1);
-  return rows[0]?.ratePpm;
-}
 
 export type Side = "debit" | "credit";
 
@@ -139,12 +123,44 @@ function assertClientMoneyShape(lines: readonly PostingLine[]): void {
   }
 }
 
+/**
+ * The tenant's rate from `from` to its reporting currency, parts per million, or
+ * undefined when it has none on file.
+ *
+ * `ledger_fx_rates` is where a tenant's rates live, and until now nothing read
+ * them: every caller had to hand `post()` a rate it had no way to know, so any
+ * transaction in a currency other than the tenant's default was refused outright
+ * (subscriptions, overages and data-product deliveries all bill in their own
+ * contract's currency). Resolving it here rather than in each caller means the
+ * rate is found once, on the one path that needs it.
+ *
+ * ponytail: newest row wins. A back-dated posting wanting the rate of its own
+ * value date filters on `as_of <= postedAt` — add that when back-dating exists.
+ */
+export async function fxRateFor(ctx: Ctx, from: string, to?: string): Promise<number | undefined> {
+  const base = to ?? ctx.policy.currency;
+  if (from === base) return PPM;
+  const [row] = await ctx.db
+    .select({ ratePpm: schema.ledgerFxRates.ratePpm })
+    .from(schema.ledgerFxRates)
+    .where(
+      and(
+        eq(schema.ledgerFxRates.tenantId, ctx.tenantId),
+        eq(schema.ledgerFxRates.fromCurrency, from),
+        eq(schema.ledgerFxRates.toCurrency, base)
+      )
+    )
+    .orderBy(sql`${schema.ledgerFxRates.asOf} desc`)
+    .limit(1);
+  return row?.ratePpm;
+}
+
 export async function post(ctx: Ctx, input: PostInput): Promise<PostedBatch> {
   if (input.lines.length < 2) throw badRequest("a journal batch needs at least two lines");
 
   const postedAt = input.postedAt ?? ctx.now;
   const baseCurrency = input.baseCurrency ?? ctx.policy.currency;
-  const fxRatePpm = input.fxRatePpm ?? (input.currency === baseCurrency ? PPM : undefined);
+  const fxRatePpm = input.fxRatePpm ?? (await fxRateFor(ctx, input.currency, baseCurrency));
   if (!fxRatePpm) throw badRequest(`no fx rate supplied for ${input.currency} -> ${baseCurrency}`);
   if (fxRatePpm <= 0) throw badRequest("fx rate must be positive");
 

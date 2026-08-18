@@ -182,23 +182,27 @@ ADR-0061 (shell per module). See file 08 §4.2.
 
 ### Work in flight — NOT on `main`, and not in production
 
-The pack documents `main`. Three further revenue lines are built or building
-on branches and will change the ledger, the schema and the cron chain when
-they merge. They are listed here so that a reader who pulls a feature branch,
-or who reads this pack a week after a merge, knows what to expect.
+The pack body documents `main` at `c7f1f57`. Three further revenue lines were
+built or building on branches at that point and change the ledger, the schema
+and the cron chain as they merge. They are listed here so that a reader who
+pulls a feature branch, or who reads this pack a week after a merge, knows what
+to expect. **F2/F3 has since merged** as `8331e86`; the rest of the pack does
+not yet describe it.
 
 | Line | Branch / PR | State | What it adds |
 |---|---|---|---|
-| **F2/F3** — whitelabel billing + data products | PR #25, `worktree-revenue-lines-group-c` | Open, 9 of 10 checks green, `mutation` still running | Revenue-schedule and usage-meter tables (migrations `0025_lonely_hedge_knight`, `0026_concerned_winter_soldier`), `recordUsage` and `sweepBilling` engines (invoicing, overages, revenue recognition), data-product subscribe/deliver, a k-anonymity precondition, and ADRs 0062–0064 |
-| **F4** — premium financing | `group-d-premium-financing` | Built, in final review, not pushed | A new non-financial `PLAN-CREATE` transaction type chaining a financial `FIN-CMSN` (income `4080`, receivable `1150`) by `parentTxnId`; `PREM-INSTALMENT` collection off the plan's instalment schedule; a `DUNNING` escalation that cascades into the existing policy-lapse path after three refused attempts; a `sweepPremiumFinancing` cron sweep; a plan-cancel route; migrations `0025_daffy_justice`, `0026_motionless_robbie_robertson`, `0027_productive_starfox`; and ADR-0066 |
+| **F2/F3** — whitelabel billing + data products | PR #25, `worktree-revenue-lines-group-c` | **Merged 2026-08-18 as `8331e86`** (all 10 checks green; `mutation` took 4h14m — see file 08 §2.4) | Revenue-schedule and usage-meter tables (migrations `0025_lonely_hedge_knight`, `0026_concerned_winter_soldier`), `recordUsage` and `sweepBilling` engines (invoicing, overages, revenue recognition), data-product subscribe/deliver, a k-anonymity precondition, and ADRs 0062–0064 |
+| **F4** — premium financing | `group-d-premium-financing` | Built, in final review, not pushed | A new non-financial `PLAN-CREATE` transaction type chaining a financial `FIN-CMSN` (income `4080`, receivable `1150`) by `parentTxnId`; `PREM-INSTALMENT` collection off the plan's instalment schedule; a `DUNNING` escalation that cascades into the existing policy-lapse path after three refused attempts; a `sweepPremiumFinancing` cron sweep; a plan-cancel route; migration `0027_empty_garia`; and ADR-0066 |
 | **F5** — telematics / usage-based insurance | not started | ADR-0065 is reserved for it and is not yet written | — |
 
-**Migration numbering hazard.** Groups C and D were both cut from the same
-commit and both claim `0025` and `0026`. Whichever merges second must be
-renumbered to the next free index and `pnpm db:generate` re-run. Migrations are
-forward-only and never edited after they are applied — this renumber happens
-*before* either branch's migrations have ever run anywhere, which is the only
-window in which it is legal.
+**Migration numbering hazard — resolved.** Groups C and D were both cut from
+the same commit and both claimed `0025` and `0026`. C merged first and kept its
+numbers; D dropped its three files, took `main`'s journal and snapshots, and
+re-ran `pnpm db:generate`, which emitted all three of its changes as the single
+`0027_empty_garia`. Migrations are forward-only and never edited after they are
+applied — this renumber happened *before* either branch's migrations had run
+anywhere, which is the only window in which it is legal. **F5 must do the same
+check before it generates anything.**
 
 ### 2026-08-13 — commit `a295218` (first edition)
 

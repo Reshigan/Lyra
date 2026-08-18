@@ -105,6 +105,12 @@ const HAND_WRITTEN: Op[] = [
   { method: "post", path: "/v1/axis/policies/{id}/bind", summary: "Bind a draft policy, issuing version 1", permission: "axis:policies:bind", tag: "axis", requestBody: true },
   { method: "post", path: "/v1/axis/referrals/{id}/decide", summary: "Accept, decline, or counter an open underwriting-authority referral", permission: "axis:policies:decide_referral", tag: "axis", requestBody: true },
 
+  // docs/18 C3. Group & SME brokerage: a census-based scheme binds through its
+  // own transaction (BIND-GROUP, dual control) rather than the individual
+  // bind's; the advisory fee is a second, separate accrual on top of it.
+  { method: "post", path: "/v1/axis/policies/{id}/bind-group", summary: "Bind a group/SME scheme, posting a BIND-GROUP commission accrual (dual control)", permission: "axis:policies:bind", tag: "axis", requestBody: true },
+  { method: "post", path: "/v1/axis/policies/{id}/broker-fee", summary: "Post a FEE-BROK brokerage/advisory fee accrual on a policy", permission: "axis:policies:bind", tag: "axis", requestBody: true },
+
   // docs/27 F5. Mid-term change: the preview prices it and writes nothing, the
   // endorse appends a priced version and moves the pro-rated money.
   { method: "post", path: "/v1/axis/policies/{id}/endorse/preview", summary: "Price a mid-term change without writing anything", permission: "axis:policies:endorse", tag: "axis", requestBody: true },
@@ -168,6 +174,12 @@ const HAND_WRITTEN: Op[] = [
   { method: "post", path: "/v1/dist/next-best-offers/propose", summary: "Rank cross-sell and upsell offers for a customer", permission: "dist:offers:surface", tag: "dist", requestBody: true },
   { method: "post", path: "/v1/dist/next-best-offers/{id}/surface", summary: "Record that an offer was shown, and where", permission: "dist:offers:override", tag: "dist", requestBody: true },
   { method: "post", path: "/v1/dist/next-best-offers/{id}/decide", summary: "Record the customer's decision on a surfaced offer", permission: "dist:offers:override", tag: "dist", requestBody: true },
+
+  // docs/18 C5. Banking product referrals: cost-per-lead qualifies (REFERRAL-QUAL),
+  // cost-per-approved-account settles against it (REFERRAL-SETL) once the
+  // partner's statement confirms the outcome.
+  { method: "post", path: "/v1/dist/referrals/qualify", summary: "Record a qualified referral lead/approval event (REFERRAL-QUAL)", permission: "dist:commissions:adjust", tag: "dist", requestBody: true },
+  { method: "post", path: "/v1/dist/referrals/settle", summary: "Settle a qualified referral's revenue against the partner's statement (REFERRAL-SETL)", permission: "dist:commissions:settle", tag: "dist", requestBody: true },
 
   { method: "post", path: "/v1/ledger/txn/{type}", summary: "Open a transaction of the given type and run its opening postings", permission: "ledger:txns:create", tag: "ledger", requestBody: true },
   { method: "get", path: "/v1/ledger/txn/{id}", summary: "One transaction with its state, transitions and journal batches", permission: "ledger:txns:read", tag: "ledger" },
@@ -236,6 +248,11 @@ const HAND_WRITTEN: Op[] = [
   { method: "get", path: "/v1/compliance/evidence-bundles/{id}/download", summary: "Download an assembled evidence bundle", permission: "compliance:evidence:read", tag: "compliance" },
   { method: "post", path: "/v1/compliance/retention/run", summary: "Run a retention class and record what it purged", permission: "compliance:retention:run", tag: "compliance", requestBody: true },
 
+  // docs/18 C7. Sponsored placement is gated on a disclosure shown first
+  // (docs/19 §AD-PLACEMENT requires DISCLOSURE-PRESENT); this records the hash
+  // of the exact wording shown, not the wording itself, as the evidence.
+  { method: "post", path: "/v1/compliance/disclosures/present", summary: "Record that a required disclosure was shown, hashing the wording as evidence", permission: "compliance:disclosures:present", tag: "compliance", requestBody: true },
+
   // The dataset list carries no permission of its own: it returns only the
   // datasets the caller may already read, so an empty list is the answer for
   // someone with no analytics rights at all.
@@ -302,6 +319,7 @@ const HAND_WRITTEN: Op[] = [
   { method: "post", path: "/v1/orbit/renewals/sweep", summary: "Force the renewal sweep now (also runs on the scheduled tick)", permission: "orbit:renewals:update", tag: "orbit" },
   { method: "post", path: "/v1/orbit/routing/sweep", summary: "Force the routing sweep now — SLA breach escalation and absence reassignment (also runs on the scheduled tick)", permission: "orbit:conversations:assign", tag: "orbit" },
   { method: "post", path: "/v1/orbit/drafts/sweep", summary: "Force the AI reply-draft sweep now — drafts a pending agent_ai reply for every conversation waiting on us (also runs on the scheduled tick)", permission: "orbit:ai:invoke", tag: "orbit" },
+  { method: "post", path: "/v1/orbit/partners/{id}/quotes", summary: "Request a partner pricing quote (sandbox partners get clearly-marked synthetic pricing)", permission: "orbit:partners:read", tag: "orbit", requestBody: true },
 
   // Signal. Brief in, N compliance-checked ar/en variants out — the
   // Meta/Google publish half is credential-blocked and out of scope.

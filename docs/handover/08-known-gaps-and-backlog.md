@@ -133,6 +133,16 @@ Worth knowing because they surprise people:
   `packages/config` has one. Separately, `apps/api` has no `lint` script at all —
   invisible today, and it will surface the moment the flat-config migration
   lands.
+- **The `mutation` CI gate can take hours.** Stryker is diff-scoped
+  (`STRYKER_SINCE`, set by the `mutation` job in
+  [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml)) because a
+  whole-tree sweep of `packages/core` alone is 14,277 mutants and never
+  finished inside the runner's six-hour ceiling. Scoped, it is normally ~28
+  minutes — but PR #25 changed one file, `packages/core/src/seed/ledger.ts`,
+  and took **4h14m**, because `vitest: { dir: "packages/core" }` puts all 551
+  of that package's tests in the runner and the seed tests each replay every
+  migration into a fresh in-memory database. It passed. Budget for it, and do
+  not read a still-running `mutation` check as a hang.
 - **The `commissionMinor <= 0` guard on group binds has no covering test.** The
   refusal is real (`apps/api/src/engines/group-commission.ts`) and correct;
   nothing asserts it. See §5.1.

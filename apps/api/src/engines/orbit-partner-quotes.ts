@@ -32,7 +32,7 @@ function mockPremium(amountMinor: number): number {
   return Math.round(amountMinor * SYNTHETIC_RATE);
 }
 
-function revshareFor(revshareJson: string | null, premiumMinor: number): number {
+export function revshareFor(revshareJson: string | null, premiumMinor: number): number {
   if (!revshareJson) return 0;
   try {
     const parsed = JSON.parse(revshareJson) as { pct?: number };

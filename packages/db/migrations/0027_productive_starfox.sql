@@ -1,1 +1,0 @@
-CREATE UNIQUE INDEX `ledger_payment_plans_live_uq` ON `ledger_payment_plans` (`tenant_id`,`subject_ref`) WHERE state IN ('active','defaulted');

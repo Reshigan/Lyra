@@ -1,1 +1,0 @@
-CREATE INDEX `ledger_payments_ref_idx` ON `ledger_payments` (`tenant_id`,`provider_ref`);

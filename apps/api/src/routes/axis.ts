@@ -40,6 +40,7 @@ import { body } from "../http.js";
 import { readUpload } from "../upload.js";
 import { must } from "../rows.js";
 import { EndorseBody, endorsePolicy, priceEndorsement } from "../engines/axis-endorse.js";
+import { bindGroup, brokerFee } from "../engines/group-commission.js";
 import {
   CancelBody,
   LapseBody,
@@ -1065,6 +1066,38 @@ axisRoutes.post("/policies/:id/bind", async (c) => {
   const input = await body(c, z.object({ terms: z.record(z.string(), z.unknown()).optional() }));
   const out = await withIdempotency(ctx, c.req.header("idempotency-key"), `POST ${c.req.path}`, input, () =>
     bindPolicy(ctx, before, { ...(input.terms ? { terms: input.terms } : {}) })
+  );
+  return c.json(out, 201);
+});
+
+axisRoutes.post("/policies/:id/bind-group", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:policies:bind", { tenantId: ctx.tenantId, module: "axis" });
+  const before = await must(ctx, schema.axisPolicies, c.req.param("id"), "policies");
+  const input = await body(
+    c,
+    z.object({
+      channelMinor: z.number().int().nonnegative().optional(),
+      terms: z.record(z.string(), z.unknown()).optional()
+    })
+  );
+  const opts = {
+    ...(input.channelMinor !== undefined ? { channelMinor: input.channelMinor } : {}),
+    ...(input.terms ? { terms: input.terms } : {})
+  };
+  const out = await withIdempotency(ctx, c.req.header("idempotency-key"), `POST ${c.req.path}`, input, () =>
+    bindGroup(ctx, before, opts)
+  );
+  return c.json(out, 201);
+});
+
+axisRoutes.post("/policies/:id/broker-fee", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:policies:bind", { tenantId: ctx.tenantId, module: "axis" });
+  const before = await must(ctx, schema.axisPolicies, c.req.param("id"), "policies");
+  const input = await body(c, z.object({ feeMinor: z.number().int().positive() }));
+  const out = await withIdempotency(ctx, c.req.header("idempotency-key"), `POST ${c.req.path}`, input, () =>
+    brokerFee(ctx, before, input)
   );
   return c.json(out, 201);
 });

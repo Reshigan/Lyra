@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "2b917d52-88bd-49bf-aac1-f56fe0d63371",
-  "prevId": "97adf7c5-fd4e-4297-90fd-f2e462389c57",
+  "id": "2d12051e-6447-4b3b-ba79-8e7a663bcbc7",
+  "prevId": "f6ba9e67-5695-4ca8-a430-5626e614d0a2",
   "tables": {
     "ai_agents": {
       "name": "ai_agents",
@@ -12204,14 +12204,6 @@
           "autoincrement": false,
           "default": "'active'"
         },
-        "missed_streak": {
-          "name": "missed_streak",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
         "created_at": {
           "name": "created_at",
           "type": "integer",
@@ -12368,14 +12360,6 @@
           "columns": [
             "tenant_id",
             "settlement_batch"
-          ],
-          "isUnique": false
-        },
-        "ledger_payments_ref_idx": {
-          "name": "ledger_payments_ref_idx",
-          "columns": [
-            "tenant_id",
-            "provider_ref"
           ],
           "isUnique": false
         }
@@ -13170,6 +13154,13 @@
           "notNull": false,
           "autoincrement": false
         },
+        "next_invoice_at": {
+          "name": "next_invoice_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "state": {
           "name": "state",
           "type": "text",
@@ -13207,6 +13198,14 @@
             "tenant_id",
             "state",
             "customer_ref"
+          ],
+          "isUnique": false
+        },
+        "ledger_subscriptions_next_invoice_idx": {
+          "name": "ledger_subscriptions_next_invoice_idx",
+          "columns": [
+            "tenant_id",
+            "next_invoice_at"
           ],
           "isUnique": false
         }
@@ -13712,6 +13711,21 @@
           "notNull": true,
           "autoincrement": false,
           "default": 0
+        },
+        "overage_invoiced_quantity": {
+          "name": "overage_invoiced_quantity",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "overage_invoiced_at": {
+          "name": "overage_invoiced_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         },
         "updated_at": {
           "name": "updated_at",

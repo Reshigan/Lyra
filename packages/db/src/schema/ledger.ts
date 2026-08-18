@@ -278,12 +278,16 @@ export const subscriptions = sqliteTable(
     seats: integer("seats").notNull().default(1),
     startAt: integer("start_at").notNull(),
     endAt: integer("end_at"),
+    nextInvoiceAt: integer("next_invoice_at"),
     state: text("state").notNull().default("active"), // active|paused|cancelled|past_due
     termsJson: text("terms_json"),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull()
   },
-  (t) => [index("ledger_subscriptions_idx").on(t.tenantId, t.state, t.customerRef)]
+  (t) => [
+    index("ledger_subscriptions_idx").on(t.tenantId, t.state, t.customerRef),
+    index("ledger_subscriptions_next_invoice_idx").on(t.tenantId, t.nextInvoiceAt)
+  ]
 );
 
 export const invoices = sqliteTable(
@@ -344,6 +348,10 @@ export const usageMeters = sqliteTable(
     quantity: integer("quantity").notNull().default(0),
     includedQuantity: integer("included_quantity").notNull().default(0),
     unitPriceMicro: integer("unit_price_micro").notNull().default(0),
+    /** Overage units already invoiced, so a later tick bills only the new ones. */
+    overageInvoicedQuantity: integer("overage_invoiced_quantity").notNull().default(0),
+    /** Set once the period is closed and no further overage can arrive for it. */
+    overageInvoicedAt: integer("overage_invoiced_at"),
     updatedAt: integer("updated_at").notNull()
   },
   (t) => [uniqueIndex("ledger_usage_uq").on(t.tenantId, t.subscriptionId, t.meter, t.period)]

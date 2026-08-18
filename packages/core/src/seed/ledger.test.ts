@@ -945,6 +945,11 @@ describe("subscriptions", () => {
     expect(s.currency).toBe("USD");
     expect(s.interval).toBe("year");
     expect(JSON.parse(s.termsJson!)).toEqual({ noticeDays: 60, autoRenew: true, exportOfServices: true });
+    // The whole year is invoiced already (invFalconAnnual), so the next invoice
+    // falls due a year after the term started — not at next month's boundary,
+    // which would have the billing sweep raise a second full year eleven months
+    // early.
+    expect(s.nextInvoiceAt).toBeGreaterThanOrEqual(s.startAt + 365 * DAY);
   });
 
   it("subOryx: past_due, no terms", async () => {
@@ -1062,7 +1067,7 @@ describe("revenue schedules", () => {
     expect(rows[0]!.currency).toBe("USD");
   });
 
-  it("Meridian's February row is scheduled, nothing recognized yet", async () => {
+  it("Meridian's February row is cancelled with the term, never recognized", async () => {
     const invMeridianJan = await invoiceByNumber(`INV-${THIS_MONTH.replace("-", "")}-0052`);
     const [row] = await db
       .select()
@@ -1070,7 +1075,10 @@ describe("revenue schedules", () => {
       .where(eq(schema.ledgerRevenueSchedules.invoiceId, invMeridianJan.id));
     expect(row!.plannedMinor).toBe(1_800_000);
     expect(row!.recognizedMinor).toBe(0);
-    expect(row!.state).toBe("scheduled");
+    // Gulf Health cancelled mid-term and this invoice posted no journal, so
+    // nothing was ever deferred for the sweep to release: left `scheduled` the
+    // recognition sweep drove deferred revenue 2300 negative on this invoice.
+    expect(row!.state).toBe("cancelled");
   });
 });
 
