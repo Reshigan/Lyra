@@ -130,6 +130,16 @@ describe("parseUbi", () => {
     expect(parseUbi(reply({ premiumDeltaPpm: 0, factors: [] })).confidence).toBe(0);
   });
 
+  // This is a *purity* assertion, not a fairness gate, and the difference matters.
+  // parseUbi takes one string and reads six named fields off it; it has no access to
+  // the subject, so it cannot price a protected attribute however hard it tried. The
+  // real exclusion is upstream: `UbiContext` carries only series, totals, baselines
+  // and a window, so no protected attribute or proxy is ever sent (docs/12 §4,
+  // "pricing-adjacent models exclude protected attributes" — enforced at the input
+  // boundary, which is the only place "exclude" is enforceable). What this test buys
+  // is a regression guard: a future parser that started reading `postcodeBand` off the
+  // reply would fail here. It cannot measure model fairness, so it does not live in
+  // evals/ — a gate that can only ever report 0 is not evidence of anything.
   it("never reads a protected proxy: two replies differing only in one parse identically", () => {
     const body = (postcodeBand: string, driverAgeBand: string): string =>
       reply({
@@ -139,7 +149,12 @@ describe("parseUbi", () => {
         driverAgeBand,
         factors: [evidenced()]
       });
-    expect(parseUbi(body("A", "18-24"))).toEqual(parseUbi(body("F", "55-64")));
+    const bandA = parseUbi(body("A", "18-24"));
+    expect(bandA).toEqual(parseUbi(body("F", "55-64")));
+    // Pinned, not just equal: two identically-zeroed results are also "equal", and
+    // would pass a bare toEqual while proving nothing about the proxy.
+    expect(bandA.premiumDeltaPpm).toBe(42_000);
+    expect(bandA.factors).toHaveLength(1);
   });
 
   it("drops a factor whose code or weight is unusable", () => {
