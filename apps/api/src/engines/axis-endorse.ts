@@ -84,8 +84,17 @@ export async function effectiveVersion(ctx: Ctx, policyId: string) {
   return row;
 }
 
-/** The two statuses that carry risk: the contract exists and has not left it. */
-const onRisk = (policy: PolicyRow): boolean => policy.status === "bound" || policy.status === "active";
+/**
+ * The statuses that carry risk: the contract exists and has not left it.
+ *
+ * Named once because both predicates below need it — `endorsementBlocker` asks
+ * whether the cover is in this set now, `ingestBlocker` asks whether it can
+ * still walk into it — and two encodings of "can this cover carry risk" is
+ * exactly the drift that has produced this rule's last defects.
+ */
+const ON_RISK_STATES = ["bound", "active"] as const;
+
+const onRisk = (policy: PolicyRow): boolean => (ON_RISK_STATES as readonly string[]).includes(policy.status);
 
 /**
  * The term bound, in one place because both predicates below need it and two
@@ -141,7 +150,8 @@ export function ingestBlocker(policy: PolicyRow, now: number): string | null {
   // unrecognised status has no row in `POLICY_TRANSITIONS`, and indexing it
   // would turn a device-facing 400 into a 500. Unknown means unwalkable, which
   // is exactly the answer this predicate wants.
-  const reachesRisk = isPolicyState(policy.status) && canPolicyReach(policy.status, "active");
+  const status = policy.status;
+  const reachesRisk = isPolicyState(status) && ON_RISK_STATES.some((to) => canPolicyReach(status, to));
   if (!onRisk(policy) && !reachesRisk) {
     return "this cover can no longer go on risk; telemetry cannot be priced into it";
   }

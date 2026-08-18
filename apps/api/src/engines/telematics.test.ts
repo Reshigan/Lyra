@@ -296,6 +296,21 @@ describe("TelematicsIngest.ingest", () => {
     expect(await points()).toHaveLength(3);
   });
 
+  it("accepts ingest on a draft cover, buffering exposure the first window will price", async () => {
+    // A device fitted before the cover goes on risk is the ordinary case, not an
+    // edge one: `draft` reaches `active` through `bound`, so a future window can
+    // price these points and a 400 here would destroy them for good. The
+    // assertion is that the rows land, and that admitting a not-yet-on-risk
+    // cover moves no money: the ingest's own TELEM-INGEST transaction posts no
+    // journal batch, exactly as it does for an active one.
+    const draft = await withStatus("draft");
+    await new TelematicsIngest(ctx, SOURCE, draft).ingest(subjectRef(), batch(ctx.now - DAY, 3));
+    expect(await points()).toHaveLength(3);
+    const txns = await telemTxns();
+    expect(txns).toHaveLength(1);
+    expect(txns[0]!.ledgerBatchId).toBeNull();
+  });
+
   it("refuses a status the state machine does not know, as a 400 and not a crash", async () => {
     // `axis_policies.status` is an unconstrained text column, so the doorway
     // reads a string, not an enum. An unrecognised one has no row in
