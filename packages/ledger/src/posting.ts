@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import {
   CLIENT_MONEY_ACCOUNT,
   CLIENT_MONEY_LIABILITY_ACCOUNT,
@@ -8,7 +8,7 @@ import {
   schema,
   type Write
 } from "@lyra/db";
-import { PPM, actorRef, applyPpm, badRequest, conflict, type Ctx } from "@lyra/core";
+import { PPM, actorRef, applyPpm, badRequest, conflict, scoped, type Ctx } from "@lyra/core";
 import { assertPostable, ensurePeriod, periodCode } from "./periods.js";
 
 // docs/19 §5. The double-entry engine. Every financial transaction in the system
@@ -24,6 +24,22 @@ import { assertPostable, ensurePeriod, periodCode } from "./periods.js";
 // a single atomic batch (docs/19 §5, the `atomically` seam in @lyra/db). A post
 // therefore lands whole or not at all: no header without its lines, no balance
 // bump without the lines it summarises.
+
+/**
+ * Most recent stored rate for `currency -> ctx.policy.currency`, or PPM
+ * (1_000_000) when they're the same currency. Undefined means "no rate on
+ * file" — callers decide whether that's a hard stop or a skip-this-row.
+ */
+export async function fxRateFor(ctx: Ctx, currency: string): Promise<number | undefined> {
+  if (currency === ctx.policy.currency) return PPM;
+  const rows = await ctx.db
+    .select({ ratePpm: schema.ledgerFxRates.ratePpm })
+    .from(schema.ledgerFxRates)
+    .where(scoped(ctx, schema.ledgerFxRates, eq(schema.ledgerFxRates.fromCurrency, currency), eq(schema.ledgerFxRates.toCurrency, ctx.policy.currency)))
+    .orderBy(desc(schema.ledgerFxRates.asOf))
+    .limit(1);
+  return rows[0]?.ratePpm;
+}
 
 export type Side = "debit" | "credit";
 
