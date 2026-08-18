@@ -353,6 +353,24 @@ export async function reinstatePolicy(ctx: Ctx, policy: PolicyRow, input: Reinst
     ...(txn ? { lastTxnId: txn.id } : {})
   });
 
+  // The arrears that cured the lapse also cured the financing plan's dunning
+  // streak. A plan left `defaulted` is out of the premium-financing sweep for
+  // good, so cover would go back on risk with the remaining instalments
+  // silently abandoned. Legacy rows carry a `policy:`-prefixed subjectRef.
+  await ctx.db
+    .update(schema.ledgerPaymentPlans)
+    .set({ state: "active", missedStreak: 0, updatedAt: ctx.now })
+    .where(
+      scoped(
+        ctx,
+        schema.ledgerPaymentPlans,
+        and(
+          inArray(schema.ledgerPaymentPlans.subjectRef, [policy.id, `policy:${policy.id}`]),
+          eq(schema.ledgerPaymentPlans.state, "defaulted")
+        )
+      )
+    );
+
   await audit(ctx, { action: "axis.policy.reinstate", subjectRef: policy.id, before: policy, after });
   await emit(ctx, {
     module: "axis",
