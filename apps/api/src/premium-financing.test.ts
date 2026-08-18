@@ -398,17 +398,45 @@ describe("payInstalment", () => {
     // guard raises conflict("… already failed") on the second attempt.
     await ctx.db.insert(schema.ledgerTxns).values({
       id: newId("txn", ctx.now), tenantId: ctx.tenantId, type: "DUNNING",
-      idempotencyKey: `finance.dunning:${plan.id}:1`, state: "failed",
+      idempotencyKey: `finance.dunning:${plan.id}:1:pay_already_failed`, state: "failed",
       actorKind: "system", actorId: "sys", currency: "AED", baseCurrency: "AED",
       createdAt: ctx.now, updatedAt: ctx.now
     } as never);
-    await insertPayment(ctx, plan.id, 1, "failed");
+    await insertPayment(ctx, plan.id, 1, "failed", { id: "pay_already_failed" });
 
     await expect(payInstalment(ctx, plan, ctx.now)).resolves.toBeUndefined();
 
     const after = await reread(ctx, plan.id);
     expect(after.missedStreak).toBe(1);
     expect(JSON.parse(after.scheduleJson)[0].state).toBe("missed");
+  });
+
+  it("posts one DUNNING per refused attempt when the same instalment bounces three times", async () => {
+    // The threshold counts refused *attempts*, not distinct instalments: a
+    // financier re-presenting instalment 1 three times lapses the policy on the
+    // third, and each attempt is its own dunning record.
+    const { ctx, policy } = await seedTenantAndPolicy({ currency: "AED" });
+    const { plan } = await createPlan(ctx, policy, {
+      totalMinor: 120_000, currency: "AED", instalments: 12,
+      startAt: ctx.now, frequencyDays: 30, commissionMinor: 15_000
+    });
+
+    for (const attempt of [1, 2, 3]) {
+      await insertPayment(ctx, plan.id, 1, "failed", {
+        at: ctx.now + attempt * DAY,
+        id: `pay_attempt_${attempt}`
+      });
+      await payInstalment(ctx, await reread(ctx, plan.id), ctx.now + attempt * DAY);
+    }
+
+    const after = await reread(ctx, plan.id);
+    expect(after.missedStreak).toBe(DUNNING_LAPSE_THRESHOLD);
+    expect(after.state).toBe("defaulted");
+    const dunning = await txnsOfType(ctx, "DUNNING");
+    expect(dunning).toHaveLength(3);
+    expect(dunning.map((t) => JSON.parse(t.metadataJson!).paymentId).sort()).toEqual([
+      "pay_attempt_1", "pay_attempt_2", "pay_attempt_3"
+    ]);
   });
 
   it.each(["authorized", "captured", "settled"])("collects the instalment on a %s payment", async (paymentState) => {
@@ -736,6 +764,49 @@ describe("sweepPremiumFinancing", () => {
     expect(JSON.parse(goodAfter.scheduleJson)[0].state).toBe("paid");
     expect(badAfter.missedStreak).toBe(0);
     expect(JSON.parse(badAfter.scheduleJson)[0].state).toBe("pending");
+  });
+
+  it("leaves a plan belonging to another subject kind alone", async () => {
+    // `payment_plans` is a shared table (docs/19): an instalment plan on an
+    // invoice or an order is a legitimate row a sibling module may own. This
+    // engine's whole vocabulary is policy-shaped — policyIdOf, the ledger
+    // `policy` dim, the lapse cascade — so it collects only what it owns.
+    const { ctx, policy } = await seedTenantAndPolicy({ currency: "AED" });
+    const mine = await createPlan(ctx, policy, {
+      totalMinor: 120_000, currency: "AED", instalments: 12,
+      startAt: ctx.now, frequencyDays: 30, commissionMinor: 15_000
+    });
+    await ctx.db.insert(schema.ledgerPaymentPlans).values({
+      id: "finplan_foreign", tenantId: ctx.tenantId, subjectRef: "invoice:inv_1",
+      financierRef: null, totalMinor: 10_000, currency: "AED", instalments: 1,
+      scheduleJson: JSON.stringify([{ seq: 1, dueAt: ctx.now, amountMinor: 10_000, state: "pending" }]),
+      state: "active", missedStreak: 0, createdAt: ctx.now - 1, updatedAt: ctx.now - 1
+    } as never);
+
+    // Oldest-first, so the foreign plan would be swept before ours if it were
+    // in the set at all.
+    expect(await sweepPremiumFinancing(ctx)).toBe(1);
+
+    expect(JSON.parse((await reread(ctx, mine.plan.id)).scheduleJson)[0].state).toBe("paid");
+    const foreign = await reread(ctx, "finplan_foreign");
+    expect(JSON.parse(foreign.scheduleJson)[0].state).toBe("pending");
+    expect(await txnsOfType(ctx, "PREM-INSTALMENT")).toHaveLength(1);
+  });
+
+  it("does not block a plan on another subject kind for the same id", async () => {
+    // C3 is a per-policy rule, not a per-id one: `invoice:X` must not make
+    // `policy:X` unopenable.
+    const { ctx, policy } = await seedTenantAndPolicy({ currency: "AED" });
+    await ctx.db.insert(schema.ledgerPaymentPlans).values({
+      id: "finplan_foreign2", tenantId: ctx.tenantId, subjectRef: `invoice:${policy.id}`,
+      financierRef: null, totalMinor: 10_000, currency: "AED", instalments: 1,
+      scheduleJson: "[]", state: "active", missedStreak: 0, createdAt: ctx.now, updatedAt: ctx.now
+    } as never);
+
+    await expect(createPlan(ctx, policy, {
+      totalMinor: 120_000, currency: "AED", instalments: 12,
+      startAt: ctx.now, frequencyDays: 30, commissionMinor: 15_000
+    })).resolves.toBeDefined();
   });
 
   it("does not rewrite a plan with nothing due", async () => {

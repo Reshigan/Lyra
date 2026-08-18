@@ -1,4 +1,4 @@
-import { asc, eq, inArray } from "drizzle-orm";
+import { asc, eq, inArray, like } from "drizzle-orm";
 import { id as newId, schema } from "@lyra/db";
 import { badRequest, conflict, emit, scoped, type Ctx } from "@lyra/core";
 import { buildRecipe, fxRateFor, runTxn } from "@lyra/ledger";
@@ -43,7 +43,11 @@ export interface CreatePlanInput {
   commissionTaxMinor?: number | undefined;
 }
 
-/** Three consecutive missed instalments cascade into policy lapse. */
+/**
+ * Three consecutive refused attempts cascade into policy lapse. Attempts, not
+ * instalments: three re-presentations of instalment 1 lapse the policy just as
+ * three different instalments missed in a row do. Any collection resets it.
+ */
 export const DUNNING_LAPSE_THRESHOLD = 3;
 
 /** Only a live policy has premium left to finance. */
@@ -277,7 +281,13 @@ export async function payInstalment(ctx: Ctx, plan: PaymentPlanRow, now: number)
         try {
           await runTxn(ctx, {
             type: "DUNNING",
-            idempotencyKey: `finance.dunning:${plan.id}:${row.seq}`,
+            // Keyed by the payment, not the instalment: a financier re-presenting the
+            // same instalment produces a new refused payment, which is a second
+            // refused attempt and so a second dunning record. Keyed by seq alone the
+            // second and third attempts replayed onto the first record, silently
+            // under-recording exactly the escalation this table exists to evidence.
+            // (`missedPaymentId` still guarantees one record per payment id.)
+            idempotencyKey: `finance.dunning:${plan.id}:${row.seq}:${payment.id}`,
             currency: plan.currency,
             subjectRefs: { policy: policyId, plan: plan.id },
             metadata: {
@@ -377,7 +387,20 @@ export async function sweepPremiumFinancing(ctx: Ctx): Promise<number> {
   const plans = await ctx.db
     .select()
     .from(schema.ledgerPaymentPlans)
-    .where(scoped(ctx, schema.ledgerPaymentPlans, eq(schema.ledgerPaymentPlans.state, "active")))
+    .where(
+      scoped(
+        ctx,
+        schema.ledgerPaymentPlans,
+        eq(schema.ledgerPaymentPlans.state, "active"),
+        // `payment_plans` is shared: an instalment plan on an invoice or an order
+        // is a legitimate row a sibling module may own. The discriminator is the
+        // subject prefix, not `financierRef` — everything below is policy-shaped
+        // (policyIdOf, the ledger `policy` dim, the lapse cascade), so a foreign
+        // row swept here would post instalments against a policy id that does
+        // not exist.
+        like(schema.ledgerPaymentPlans.subjectRef, "policy:%")
+      )
+    )
     // ponytail: oldest-first, so the plan waiting longest is collected first if a
     // tenant ever exceeds SWEEP_MAX active plans. Cursor paging when one does.
     .orderBy(asc(schema.ledgerPaymentPlans.createdAt))
