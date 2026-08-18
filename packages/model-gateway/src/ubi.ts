@@ -62,7 +62,21 @@ export interface UbiRepriceResult {
   confidence: number;
 }
 
-/** JSON schema handed to `ModelRequest.responseSchema` (gateway.ts, docs/02 §5). */
+/**
+ * JSON schema for `ModelRequest.responseSchema` (gateway.ts, docs/02 §5). Both
+ * provider paths honour it — openai-compat and workers-ai each map it onto
+ * `response_format: { type: "json_schema" }`.
+ *
+ * NOT CURRENTLY WIRED. `repriceFromTelemetry` (apps/api/src/engines/telematics.ts)
+ * calls `complete` without a `responseSchema`, so today the reply shape is asked
+ * for in prose by `ubiMessages` and enforced only by `parseUbi`. That is not a
+ * correctness hole — `parseUbi` is the trust boundary either way and drops
+ * anything unevidenced — but it is weaker than it reads, so: this schema is an
+ * available constraint, not an applied one, until that call passes it. Same state
+ * as slaSchema, fraudSchema, reserveSchema and triageSchema; only extractionSchema
+ * is wired today (axis.ts). It stays exported rather than deleted because it is
+ * the seam the engine is meant to use (CLAUDE.md §15) and it is unit-tested.
+ */
 export function ubiSchema(): Record<string, unknown> {
   return {
     name: "axis_usage_price_adjustment",
