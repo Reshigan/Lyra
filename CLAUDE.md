@@ -143,3 +143,30 @@ wins.
 
 Follow docs/14-roadmap.md milestones M0→M6. Do not start a milestone before the
 previous one's acceptance checklist passes (checklists are in that file).
+
+## Current status (2026-08-17)
+
+Executing the revenue-lines build via `docs/superpowers/specs/2026-08-16-revenue-lines-full-build-design.md`,
+worked group-by-group (A→B→C→D→E) inside isolated worktrees, each via
+`superpowers:subagent-driven-development`. Progress ledgers live at
+`.superpowers/sdd/progress.md` per worktree — read that first on resume.
+
+- **Group A** (accrual-only: BIND-GROUP, FEE-BROK, REFERRAL-QUAL, REFERRAL-SETL,
+  AD-PLACEMENT, DISCLOSURE-PRESENT) — worktree `revenue-lines-group-a`, branch
+  `worktree-revenue-lines-group-a`. Tasks 1-5 complete. Two whole-branch review
+  passes done: first found 4 Important findings (RBAC gap, test coverage gap,
+  subjectRef reconciliation gap, missing OpenAPI/SDK docs), all fixed; second
+  (re-review of the fix range) found 2 more Important findings (wrong
+  `axis.policy.group_issued` event name, DISCLOSURE-PRESENT idempotency gap)
+  plus 3 Minor doc/wording issues, all fixed (commits `02d29eb`, `b9f4319`,
+  `56ba868`, plus a self-caught stale-SDK regen `7dd4cfc`). 0 Critical/Important
+  findings remain open; 6 Minor findings triaged as non-blocking follow-ups.
+  Next: `superpowers:finishing-a-development-branch`, then start Group B.
+- **Groups B-E** (partner bind chain; whitelabel billing + data products;
+  premium financing; telematics/UBI) not yet started.
+
+Running under a self-paced `/loop` toward "full roadmap to production"
+(M0-M6, through deployment to lyra.vantax.co.za). Loop iteration is
+autonomous, but `pnpm deploy:prod` and any git push stay gated on explicit
+user confirmation at the moment they'd happen — autonomy covers task
+execution cadence, not irreversible/shared-system actions.

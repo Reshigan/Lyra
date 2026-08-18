@@ -23,6 +23,7 @@ import { one } from "../rows.js";
 import type { ProviderQuoter, QuoteOutcome } from "../engines/rating.js";
 import { runShop } from "../engines/shop.js";
 import { decideOffer, markSurfaced, proposeOffers } from "../engines/nbo.js";
+import { qualifyReferral, settleReferral } from "../engines/referral-settlement.js";
 import type { App } from "../env.js";
 
 // docs/05 §4-6. The aggregator's own verbs: shop a risk across the panel, show
@@ -389,6 +390,40 @@ distRoutes.post("/commission-entries/:id/clawback", async (c) => {
     return reversal;
   });
   return created(c, row as { id: string });
+});
+
+/* --------------------------------------------------------- referrals */
+
+const QualifyReferralBody = z.object({
+  referralRef: z.string().min(1).max(200),
+  channelId: z.string().min(1).max(64).optional()
+});
+
+distRoutes.post("/referrals/qualify", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "dist:commissions:adjust", { tenantId: ctx.tenantId, module: "dist" });
+  const input = await body(c, QualifyReferralBody);
+  const out = await withIdempotency(ctx, c.req.header("idempotency-key"), "dist.referral.qualify", input, () =>
+    qualifyReferral(ctx, input)
+  );
+  return c.json(out, 201);
+});
+
+const SettleReferralBody = z.object({
+  referralRef: z.string().min(1).max(200),
+  currency: z.string().length(3),
+  grossMinor: z.number().int().positive(),
+  channelMinor: z.number().int().nonnegative().optional()
+});
+
+distRoutes.post("/referrals/settle", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "dist:commissions:settle", { tenantId: ctx.tenantId, module: "dist" });
+  const input = await body(c, SettleReferralBody);
+  const out = await withIdempotency(ctx, c.req.header("idempotency-key"), "dist.referral.settle", input, () =>
+    settleReferral(ctx, input)
+  );
+  return c.json(out, 201);
 });
 
 /** What each counterparty owes or is owed right now, from the entries alone. */
