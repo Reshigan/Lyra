@@ -79,6 +79,32 @@ beforeEach(async () => {
   policy = await seedPolicy();
 });
 
+/** An effective version, whose `effectiveFrom` is the priced watermark. */
+async function seedVersion(effectiveFrom: number): Promise<void> {
+  await ctx.db.insert(schema.axisPolicyVersions).values({
+    id: newId("pver", ctx.now),
+    tenantId: ctx.tenantId,
+    policyId: policy.id,
+    versionSeq: 1,
+    reason: "issue",
+    effectiveFrom,
+    effectiveTo: policy.endAt,
+    premiumMinor: policy.premiumMinor,
+    taxMinor: 0,
+    feesMinor: 0,
+    commissionMinor: 0,
+    currency: policy.currency,
+    premiumDeltaMinor: 0,
+    proRataDays: 365,
+    termsJson: "{}",
+    state: "effective",
+    issuedBy: "user:u_test",
+    issuedAt: ctx.now,
+    createdAt: ctx.now,
+    updatedAt: ctx.now
+  } as never);
+}
+
 const subjectRef = (): string => `policy:${policy.id}`;
 
 function ingester(source = SOURCE): TelematicsIngest {
@@ -227,6 +253,43 @@ describe("TelematicsIngest.ingest", () => {
     expect(lines).toHaveLength(0);
   });
 
+  it("counts what the caller submitted the same way on the transaction and the event", async () => {
+    // Two fields called `submittedCount` that disagree for any batch containing a
+    // repeated instant are two facts, not one.
+    const at = ctx.now - 5 * DAY;
+    await ingester().ingest(subjectRef(), [
+      { at, value: 10 },
+      { at, value: 99 },
+      { at: at + DAY, value: 5 }
+    ]);
+
+    const [txn] = await telemTxns();
+    const [event] = await ingestedEvents();
+    const meta = JSON.parse(txn!.metadataJson!) as { submittedCount: number };
+    const data = JSON.parse(event!.envelopeJson).data as { submittedCount: number; acceptedCount: number };
+    expect(meta.submittedCount).toBe(data.submittedCount);
+    expect(data).toMatchObject({ submittedCount: 3, acceptedCount: 2 });
+  });
+
+  it("refuses points older than the priced watermark instead of accepting exposure nothing will price", async () => {
+    // A reprice reads `[current.effectiveFrom, now)`, and each reprice advances
+    // `effectiveFrom`. A device flushing a stale offline buffer would otherwise
+    // get `acceptedCount` for kilometres no window will ever bill.
+    const effectiveFrom = ctx.now - 3 * DAY;
+    await seedVersion(effectiveFrom);
+
+    expect(
+      await refusalDetail(() => ingester().ingest(subjectRef(), [{ at: effectiveFrom - 1, value: 5 }]))
+    ).toMatch(/priced watermark/);
+    expect(await telemTxns()).toHaveLength(0);
+    expect(await points()).toHaveLength(0);
+
+    // The watermark itself is in the next window (half-open at the bottom), so a
+    // point at exactly that instant is priced once, not refused and not twice.
+    await ingester().ingest(subjectRef(), [{ at: effectiveFrom, value: 5 }]);
+    expect(await points()).toHaveLength(1);
+  });
+
   it("@seam:H6 TelematicsIngest satisfies TimeseriesIngest and its points land", async () => {
     // The seam's real contract test: assigned to the interface, called through
     // it, and nothing about the interface's shape is widened to make it fit.
@@ -252,7 +315,7 @@ describe("telemetryBySource", () => {
       { at: base + DAY, value: 2 }
     ]);
 
-    const agg = await telemetryBySource(ctx, subjectRef(), { from: base, to: base + 2 * DAY });
+    const agg = await telemetryBySource(ctx, subjectRef(), { from: base, to: base + 3 * DAY });
     expect(agg.get("telematics:obd:km")).toEqual({
       source: "telematics:obd:km",
       total: 50,
@@ -263,6 +326,22 @@ describe("telemetryBySource", () => {
       toAt: base + 2 * DAY
     });
     expect(agg.get("telematics:obd:harsh_brake")).toMatchObject({ total: 2, count: 1, fromAt: base + DAY, toAt: base + DAY });
+  });
+
+  it("is half-open, so consecutive windows sharing an endpoint cannot count a point twice", async () => {
+    const base = ctx.now - 10 * DAY;
+    await ingester().ingest(subjectRef(), [
+      { at: base, value: 12 },
+      { at: base + DAY, value: 30 },
+      { at: base + 2 * DAY, value: 8 }
+    ]);
+
+    // `to` becomes the next window's `from`; inclusive at both ends, the point at
+    // that instant would be priced in both.
+    const first = await telemetryBySource(ctx, subjectRef(), { from: base, to: base + 2 * DAY });
+    const second = await telemetryBySource(ctx, subjectRef(), { from: base + 2 * DAY, to: base + 3 * DAY });
+    expect(first.get(SOURCE)).toMatchObject({ count: 2, total: 42 });
+    expect(second.get(SOURCE)).toMatchObject({ count: 1, total: 8 });
   });
 
   it("excludes points outside the window and returns an empty map when nothing matches", async () => {

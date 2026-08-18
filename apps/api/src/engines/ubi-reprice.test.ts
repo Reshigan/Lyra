@@ -5,9 +5,9 @@ import { drizzle } from "drizzle-orm/libsql";
 import { and, eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import { EntitlementsJson, PolicyJson, schema } from "@lyra/db";
-import { permissionsForRole, sha256Hex, type Ctx } from "@lyra/core";
+import { decide, hashObject, permissionsForRole, type Ctx } from "@lyra/core";
 import { Gateway, makeStub } from "@lyra/model-gateway";
-import { endorsePolicy } from "./axis-endorse.js";
+import { changeSetHashOf, endorsePolicy } from "./axis-endorse.js";
 import { TelematicsIngest, repriceFromTelemetry, type PolicyRow } from "./telematics.js";
 
 // docs/27 F5 (Group E, task 4): a telemetry-driven price change is an
@@ -52,9 +52,7 @@ function gatewayWith(...replies: string[]): Gateway {
 
 /** The change set `repriceFromTelemetry` builds from `reply()`, and its hash. */
 async function changeSetHashFor(code = "km_band"): Promise<string> {
-  return sha256Hex(
-    JSON.stringify({ changes: { [code]: { weight: 1, evidenceRef: SOURCE } }, reason: "ubi_reprice" })
-  );
+  return changeSetHashOf({ changes: { [code]: { weight: 1, evidenceRef: SOURCE } }, reason: "ubi_reprice" });
 }
 
 /**
@@ -285,20 +283,85 @@ describe("repriceFromTelemetry", () => {
     expect((await txns("UBI-REPRICE"))).toHaveLength(1);
   });
 
-  it("clamps an absurd downward proposal, so the premium cannot be inverted", async () => {
+  it("clamps an absurd downward proposal, so one reply cannot move the price more than 25%", async () => {
     await ingestKm(20);
-    // -900_000 ppm would be -90%; MAX_REPRICE_PPM clamps it to -25%. The engine's
-    // own `Math.max(0, …)` floor sits behind that clamp as defence in depth — it
-    // is unreachable through `parseUbi` from a positive premium, which is the
-    // point: two guards, either of which alone keeps the premium non-negative.
+    // -900_000 ppm would be -90%; MAX_REPRICE_PPM clamps it to -25%. The clamp
+    // bounds one reply, not the drift of many, which is why the zero-premium
+    // refusal below exists rather than a floor that would silently absorb it.
     const hash = await changeSetHashFor();
-    const subjectRef = `axis_endorse:${policy.id}:${hash}`;
+    const subjectRef = `axis_ubi_reprice:${policy.id}:${hash}`;
     await preApprove(`${subjectRef}:refund`, "ledger.refund", 100_000);
 
     const out = await repriceFromTelemetry(ctx, policy, gatewayWith(reply(-900_000)));
     expect(out.repriced).toBe(true);
     expect(out.repriced && out.premiumMinor).toBe(75_000);
     expect(out.repriced && out.premiumDeltaPpm).toBe(-250_000);
+  });
+
+  it("refuses rather than writing a zero premium, which would freeze tax and commission forever", async () => {
+    // `quoteEndorsement` prices the delta as a ratio of the current premium, so a
+    // contract at 0 accrues no tax and no commission on any later move. Nothing
+    // caps cumulative drift across reprices, so this state is reachable, and the
+    // refusal — not a `Math.max(0, …)` floor — is what keeps it out of the book.
+    await ctx.db
+      .update(schema.axisPolicyVersions)
+      .set({ premiumMinor: 0 })
+      .where(eq(schema.axisPolicyVersions.id, "pver_1"));
+    await ingestKm(20);
+
+    expect(await refusalDetail(() => repriceFromTelemetry(ctx, policy, gatewayWith(reply(-250_000))))).toMatch(
+      /zero or negative premium/
+    );
+    expect(await txns("UBI-REPRICE")).toHaveLength(0);
+    expect((await currentVersion()).versionSeq).toBe(1);
+  });
+
+  it("refuses when the product declares no pricing inputs, before any model call", async () => {
+    // The referral guard is the only thing between an invented factor code and a
+    // priced one, and with no declared inputs it has no allowlist to check
+    // against. A model-proposed change may not proceed unchecked.
+    await ctx.db
+      .update(schema.products)
+      .set({ pricingInputsJson: null })
+      .where(eq(schema.products.id, "prod_ubi"));
+    await ingestKm(120);
+
+    expect(await refusalDetail(() => repriceFromTelemetry(ctx, policy, gatewayWith(reply(100_000))))).toMatch(
+      /declares no pricing inputs/
+    );
+    expect(await ctx.db.select().from(schema.aiAuditLog)).toHaveLength(0);
+    expect(await txns("UBI-REPRICE")).toHaveLength(0);
+  });
+
+  it("refuses a proposal that repeats a factor code instead of keeping the last one", async () => {
+    // `Object.fromEntries` would keep the second, leaving the priced change set
+    // with one weight and the stamp recording two.
+    await ingestKm(120);
+    const dup = JSON.stringify({
+      premiumDeltaPpm: 100_000,
+      factors: [
+        { code: "km_band", weight: 1, evidenceRef: SOURCE },
+        { code: "km_band", weight: 9, evidenceRef: SOURCE }
+      ],
+      confidence: 0.8
+    });
+    expect(await refusalDetail(() => repriceFromTelemetry(ctx, policy, gatewayWith(dup)))).toMatch(
+      /repeats a factor code/
+    );
+    expect(await txns("UBI-REPRICE")).toHaveLength(0);
+    expect((await currentVersion()).versionSeq).toBe(1);
+  });
+
+  it("propagates a gateway failure instead of returning a silent zero-delta reprice", async () => {
+    await ingestKm(120);
+    const broken = {
+      complete: async () => {
+        throw new Error("provider unavailable");
+      }
+    } as unknown as Gateway;
+    await expect(repriceFromTelemetry(ctx, policy, broken)).rejects.toThrow(/provider unavailable/);
+    expect(await txns("UBI-REPRICE")).toHaveLength(0);
+    expect((await currentVersion()).versionSeq).toBe(1);
   });
 
   it("refers a factor code the product does not price on, instead of pricing it", async () => {
@@ -330,6 +393,34 @@ describe("repriceFromTelemetry", () => {
     expect(logged?.purpose).toBe("axis.policy.ubi_reprice");
   });
 
+  it("does not carry the stamp onto a later manual endorsement", async () => {
+    await ingestKm(120, 95);
+    const out = await repriceFromTelemetry(ctx, policy, gatewayWith(reply(100_000)));
+    const manual = await endorsePolicy(ctx, out.repriced ? out.policy : policy, {
+      changes: { harsh_braking: { weight: 1 } },
+      premiumMinor: 120_000
+    });
+    // `ubi` describes the version that produced it. Carried forward, every later
+    // version would claim a model moved its price.
+    expect(JSON.parse(manual.version.termsJson!)).not.toHaveProperty("ubi");
+    // …while the reprice's factors are ordinary terms and do carry forward.
+    expect(JSON.parse(manual.version.termsJson!)).toHaveProperty("km_band");
+  });
+
+  it("writes the provenance in the version's own insert, not a second write after it", async () => {
+    await ingestKm(120, 95);
+    const out = await repriceFromTelemetry(ctx, policy, gatewayWith(reply(100_000)));
+    // The row the insert returned already carries it: a stamp added afterwards
+    // could fail and leave a moved premium with no audit id, window or factors.
+    expect(JSON.parse((out.repriced && out.version.termsJson) || "{}")).toHaveProperty("ubi");
+    const versions = await ctx.db
+      .select()
+      .from(schema.axisPolicyVersions)
+      .where(and(eq(schema.axisPolicyVersions.tenantId, ctx.tenantId), eq(schema.axisPolicyVersions.versionSeq, 2)));
+    expect(versions).toHaveLength(1);
+    expect(JSON.parse(versions[0]!.termsJson!)).toHaveProperty("ubi");
+  });
+
   it("still requires the axis.endorse approval when the tenant has not automated it", async () => {
     ctx.policy = PolicyJson.parse({ currency: "ZAR" });
     await ingestKm(120, 95);
@@ -341,5 +432,70 @@ describe("repriceFromTelemetry", () => {
     expect(pending?.decision).toBe("pending");
     expect(await txns("UBI-REPRICE")).toHaveLength(0);
     expect((await currentVersion()).versionSeq).toBe(1);
+
+    // The approver has to see what they are authorising: a policy id and a hash
+    // do not distinguish a model's proposal from an underwriter's own change
+    // (CLAUDE.md #11 — every AI artifact carries an inspectable "why").
+    const context = JSON.parse(pending!.contextJson!) as {
+      txnType: string;
+      reason: string;
+      source: string;
+      ubi: { aiAuditId: string; premiumDeltaPpm: number; windowStart: number; factors: { code: string }[] };
+    };
+    expect(context.txnType).toBe("UBI-REPRICE");
+    expect(context.reason).toBe("ubi_reprice");
+    expect(context.source).toBe("telematics");
+    expect(context.ubi.premiumDeltaPpm).toBe(100_000);
+    expect(context.ubi.windowStart).toBe(START);
+    expect(context.ubi.factors.map((f) => f.code)).toEqual(["km_band"]);
+    const [logged] = await ctx.db
+      .select()
+      .from(schema.aiAuditLog)
+      .where(eq(schema.aiAuditLog.id, context.ubi.aiAuditId));
+    expect(logged?.purpose).toBe("axis.policy.ubi_reprice");
+  });
+
+  it("reprices once a desk approves the pending request, the way production does", async () => {
+    ctx.policy = PolicyJson.parse({ currency: "ZAR" });
+    await ingestKm(120, 95);
+    const gw = gatewayWith(reply(100_000), reply(100_000));
+    await expect(repriceFromTelemetry(ctx, policy, gw)).rejects.toThrow();
+    const [pending] = await ctx.db
+      .select()
+      .from(schema.approvals)
+      .where(eq(schema.approvals.policyKey, "axis.endorse"));
+
+    // Dual control: the approver must not be the initiator, and must actually
+    // hold the deciding permission (`axis:policies:endorse`).
+    const initiator = ctx.actor;
+    ctx.actor = {
+      ...initiator,
+      id: "u_desk",
+      grants: [{ roleKey: "axis.lead", permissions: permissionsForRole("axis.lead") }]
+    };
+    await decide(ctx, pending!.id, "approved");
+    ctx.actor = initiator;
+
+    const out = await repriceFromTelemetry(ctx, policy, gw);
+    expect(out.repriced).toBe(true);
+    expect((await currentVersion()).premiumMinor).toBe(110_000);
+    expect(await txns("UBI-REPRICE")).toHaveLength(1);
+    // Single use: the approval is spent, not left standing for the next reprice.
+    const [spent] = await ctx.db.select().from(schema.approvals).where(eq(schema.approvals.id, pending!.id));
+    expect(spent?.decision).toBe("consumed");
+  });
+});
+
+describe("changeSetHashOf", () => {
+  it("hashes the same factors in either order to the same value", async () => {
+    // A reprice builds `changes` from the model's reply order, and the hash is
+    // both the approval subject ref and the idempotency key: order-sensitivity
+    // would fork the key on nothing, so a granted approval stops matching.
+    const changes = { km_band: { weight: 1 }, harsh_braking: { weight: 2 } };
+    const reversed = { harsh_braking: { weight: 2 }, km_band: { weight: 1 } };
+    const a = await changeSetHashOf({ changes, reason: "ubi_reprice" });
+    expect(a).toBe(await changeSetHashOf({ changes: reversed, reason: "ubi_reprice" }));
+    expect(a).toBe(await hashObject({ changes: reversed, reason: "ubi_reprice" }));
+    expect(a).not.toBe(await changeSetHashOf({ changes: { km_band: { weight: 1 } }, reason: "ubi_reprice" }));
   });
 });

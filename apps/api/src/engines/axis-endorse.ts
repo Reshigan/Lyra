@@ -8,9 +8,9 @@ import {
   conflict,
   emit,
   gate,
+  hashObject,
   quoteEndorsement,
   scoped,
-  sha256Hex,
   type Ctx
 } from "@lyra/core";
 import { autoApprovable, buildRecipe, runTxn } from "@lyra/ledger";
@@ -31,6 +31,41 @@ export const EndorseBody = z.object({
   premiumMinor: z.number().int().nonnegative().optional()
 });
 export type EndorseInput = z.infer<typeof EndorseBody>;
+
+/**
+ * The identity of a change set, and with it the approval subject ref and the
+ * idempotency key. Canonical (sorted keys) rather than `JSON.stringify`: the
+ * same factors in a different order are the same change, and a reprice builds
+ * `changes` from the model's reply order, so a stringify hash forks the key on
+ * nothing and a granted approval stops matching on retry.
+ */
+export const changeSetHashOf = (input: Pick<EndorseInput, "changes" | "reason">): Promise<string> =>
+  hashObject({ changes: input.changes, reason: input.reason ?? null });
+
+/**
+ * Terms blocks that describe *the version that produced them* and must not be
+ * inherited by the next one. `ubi` is the model's price-move provenance: carried
+ * forward, every later manual endorsement would claim a model moved its price.
+ */
+const VERSION_SCOPED_TERMS = ["ubi"];
+
+/**
+ * What the product declares it prices on (§D.4's `allowedChanges`), or `null`
+ * when it declares nothing. A product that declares nothing constrains nothing —
+ * which is fine for a human endorsement and is not fine for a model-proposed
+ * one, so the reprice path refuses on `null` rather than trusting it.
+ */
+export async function declaredPricingInputs(ctx: Ctx, policy: PolicyRow): Promise<string[] | null> {
+  const product = policy.productId
+    ? (
+        await ctx.db
+          .select()
+          .from(schema.products)
+          .where(scoped(ctx, schema.products, eq(schema.products.id, policy.productId)))
+      )[0]
+    : undefined;
+  return product?.pricingInputsJson ? Object.keys(JSON.parse(product.pricingInputsJson)) : null;
+}
 
 /** The one version a policy is currently on (§C.2: exactly one is `effective`). */
 export async function effectiveVersion(ctx: Ctx, policyId: string) {
@@ -74,15 +109,7 @@ export async function priceEndorsement(ctx: Ctx, policy: PolicyRow, input: Endor
   // §D.4's `allowedChanges` comes from what the product declares it prices on.
   // `pricingInputsJson` is that declaration (horizon seam H6); a product that
   // declares nothing constrains nothing, so there is nothing to refer.
-  const product = policy.productId
-    ? (
-        await ctx.db
-          .select()
-          .from(schema.products)
-          .where(scoped(ctx, schema.products, eq(schema.products.id, policy.productId)))
-      )[0]
-    : undefined;
-  const declared = product?.pricingInputsJson ? Object.keys(JSON.parse(product.pricingInputsJson)) : null;
+  const declared = await declaredPricingInputs(ctx, policy);
   const needsReferral = declared ? Object.keys(input.changes).some((k) => !declared.includes(k)) : false;
 
   return {
@@ -94,24 +121,37 @@ export async function priceEndorsement(ctx: Ctx, policy: PolicyRow, input: Endor
     // approval gate. Whether the tenant's allowlist satisfies that gate without
     // a human is a tenant setting, not a property of the change.
     needsApproval: quote.chargeMinor !== 0,
-    changeSetHash: await sha256Hex(JSON.stringify({ changes: input.changes, reason: input.reason ?? null }))
+    changeSetHash: await changeSetHashOf(input)
   };
 }
 
 /**
  * `opts.type` is the transaction type the change is recorded under, and with it
- * the idempotency-key prefix. A telemetry-driven reprice (`UBI-REPRICE`) is an
- * endorsement in every other respect — same pricing, same gate, same recipe,
- * same event — so it rides this function rather than a second copy of it, and
- * only the provenance of the change differs. Distinct prefixes matter because a
- * reprice and a manual endorsement of the same contract can carry the identical
- * change set, and their refund legs share one transaction type.
+ * the idempotency-key prefix and the approval subject ref. A telemetry-driven
+ * reprice (`UBI-REPRICE`) is an endorsement in every other respect — same
+ * pricing, same gate, same recipe, same event — so it rides this function rather
+ * than a second copy of it, and only the provenance of the change differs.
+ *
+ * The type belongs in the *approval* subject ref and not only in the ledger key:
+ * `openTxn` already keys idempotency on (tenant, type, key), but an approval is
+ * looked up on (tenant, subjectRef, policyKey) with no type in it. Without the
+ * type, a manual endorsement whose change set happens to equal a reprice's
+ * factor set shares one subject ref, and a `/reprice` could then consume the
+ * human decision granted for the manual change.
+ *
+ * `opts.termsStamp` is merged into the new version's `termsJson` in the same
+ * insert — provenance a later write could fail to add is provenance a disputed
+ * premium does not have. `opts.approvalContext` is what the approver is shown.
  */
 export async function endorsePolicy(
   ctx: Ctx,
   policy: PolicyRow,
   input: EndorseInput,
-  opts: { type?: string } = {}
+  opts: {
+    type?: string;
+    termsStamp?: Record<string, unknown>;
+    approvalContext?: Record<string, unknown>;
+  } = {}
 ) {
   const { current, effectiveFrom, quote, needsReferral, changeSetHash } = await priceEndorsement(ctx, policy, input);
   if (needsReferral) throw badRequest("this change is outside the product's rating inputs and needs referral");
@@ -120,7 +160,9 @@ export async function endorsePolicy(
   // `ENDORSE` -> `axis.endorse`, unchanged from before this parameter existed.
   const keyPrefix = `axis.${type.toLowerCase()}`;
 
-  const subjectRef = `axis_endorse:${policy.id}:${changeSetHash}`;
+  // `ENDORSE` -> `axis_endorse:<policy>:<hash>`, the convention
+  // docs/specs/gap-axis-design.md §B.1 fixed and ORBIT's tool path shares.
+  const subjectRef = `axis_${type.toLowerCase().replaceAll("-", "_")}:${policy.id}:${changeSetHash}`;
   const refundMinor = quote.refundMinor;
 
   // Both gates run before the first write. Settling the commission move and
@@ -129,14 +171,25 @@ export async function endorsePolicy(
   // ponytail: a refused refund has already consumed the endorse approval, so
   // the retry needs it re-granted. Chaining the two into one approval record is
   // the fix if desks feel it.
+  //
+  // The context is what the approver actually reads: without it the pending row
+  // is a policy id and a SHA-256, and a model-driven reprice is indistinguishable
+  // from a manual change (CLAUDE.md #11 — every AI artifact carries an
+  // inspectable "why", and this is the surface where a human authorises one).
+  const context = { txnType: type, reason: input.reason ?? null, ...(opts.approvalContext ?? {}) };
   if (quote.chargeMinor !== 0) {
-    await gate(ctx, { policyKey: "axis.endorse", subjectRef, amountMinor: Math.abs(quote.chargeMinor) });
+    await gate(ctx, { policyKey: "axis.endorse", subjectRef, amountMinor: Math.abs(quote.chargeMinor), context });
   }
   if (refundMinor > 0) {
     if (!autoApprovable("REFUND-ISSUE") && ctx.policy.autoApprove.includes("ledger.refund")) {
       throw conflict("REFUND-ISSUE may not be auto-approved (docs/19 §7)");
     }
-    await gate(ctx, { policyKey: "ledger.refund", subjectRef: `${subjectRef}:refund`, amountMinor: refundMinor });
+    await gate(ctx, {
+      policyKey: "ledger.refund",
+      subjectRef: `${subjectRef}:refund`,
+      amountMinor: refundMinor,
+      context
+    });
   }
 
   // ponytail: a change that moves no commission posts no journal — a zero-value
@@ -199,7 +252,9 @@ export async function endorsePolicy(
     .set({ state: "superseded", effectiveTo: effectiveFrom, supersededAt: ctx.now, updatedAt: ctx.now })
     .where(scoped(ctx, schema.axisPolicyVersions, eq(schema.axisPolicyVersions.id, current.id)));
 
-  const terms = { ...(JSON.parse(current.termsJson ?? "{}") as Record<string, unknown>), ...input.changes };
+  const carried = JSON.parse(current.termsJson ?? "{}") as Record<string, unknown>;
+  for (const k of VERSION_SCOPED_TERMS) delete carried[k];
+  const terms = { ...carried, ...input.changes, ...(opts.termsStamp ?? {}) };
   const version = {
     id: newId("pver", ctx.now),
     tenantId: ctx.tenantId,

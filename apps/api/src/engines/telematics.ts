@@ -1,9 +1,9 @@
-import { eq, gte, lte } from "drizzle-orm";
+import { eq, gte, lt, lte } from "drizzle-orm";
 import { id as newId, schema } from "@lyra/db";
 import { badRequest, conflict, emit, hashObject, scoped, type Ctx, type TimeseriesIngest } from "@lyra/core";
 import { runTxn } from "@lyra/ledger";
 import { parseUbi, ubiMessages, type Gateway, type UbiContext } from "@lyra/model-gateway";
-import { effectiveVersion, endorsePolicy } from "./axis-endorse.js";
+import { declaredPricingInputs, effectiveVersion, endorsePolicy } from "./axis-endorse.js";
 
 // docs/27 group E — telematics/UBI. First real implementation of the H6 seam
 // (`TimeseriesIngest`, packages/core/src/seams.ts): usage/sensor points arriving
@@ -29,9 +29,8 @@ const ROWS_PER_INSERT = 11; // 8 columns per row
 
 type Point = { at: number; value: number };
 
-/** Legacy/loose callers may name the bare policy id; the stored form is prefixed. */
-const namesPolicy = (subjectRef: string, policy: PolicyRow): boolean =>
-  subjectRef === `policy:${policy.id}` || subjectRef === policy.id;
+/** The seam hands us a subjectRef; it must be the one cover this adapter holds. */
+const namesPolicy = (subjectRef: string, policy: PolicyRow): boolean => subjectRef === `policy:${policy.id}`;
 
 /**
  * H6 for one series on one contract. Aggregated telemetry only becomes
@@ -45,24 +44,28 @@ export class TelematicsIngest implements TimeseriesIngest {
     private readonly policy: PolicyRow
   ) {}
 
-  async ingest(loose: string, points: ReadonlyArray<Point>): Promise<void> {
+  async ingest(ref: string, points: ReadonlyArray<Point>): Promise<void> {
     const ctx = this.ctx;
 
     // Everything that can refuse the batch happens before `runTxn`, so a
     // refusal leaves no transaction row and the corrected batch is not stuck
     // behind a burnt idempotency key (docs/19 §3, same ordering as runTxn's own
     // preconditions).
-    if (!namesPolicy(loose, this.policy)) {
-      throw badRequest(`subjectRef ${loose} is not policy ${this.policy.id}`);
+    if (!namesPolicy(ref, this.policy)) {
+      throw badRequest(`subjectRef ${ref} is not policy ${this.policy.id}`);
     }
-    // Stored in the prefixed form whichever form the caller used: a reprice
-    // reads one subjectRef, so points split across `pol_1` and `policy:pol_1`
-    // would be read as half the exposure and priced on it.
-    const subjectRef = `policy:${this.policy.id}`;
+    const subjectRef = ref;
     if (points.length === 0) throw badRequest("no points to ingest");
     if (points.length > MAX_POINTS_PER_BATCH) {
       throw badRequest(`too many points: ${points.length} exceeds MAX_POINTS_PER_BATCH (${MAX_POINTS_PER_BATCH})`);
     }
+
+    // The priced watermark. A reprice reads `[current.effectiveFrom, now)` and
+    // each reprice advances `effectiveFrom`, so a point stamped before it is
+    // exposure no window will ever price. A device that buffers offline and
+    // flushes stale points must hear that, not get `acceptedCount: 400` for
+    // readings nothing will bill.
+    const priced = (await effectiveVersion(ctx, this.policy.id))?.effectiveFrom ?? 0;
 
     // Dedup inside the batch as well as against the table: two rows for the
     // same instant would collide on `axis_telem_point_uq` and make
@@ -77,6 +80,9 @@ export class TelematicsIngest implements TimeseriesIngest {
         throw badRequest(
           `point at ${p.at} falls outside the cover term (${this.policy.startAt}..${this.policy.endAt})`
         );
+      }
+      if (p.at < priced) {
+        throw badRequest(`point at ${p.at} predates the priced watermark ${priced}; no reprice window will price it`);
       }
       if (!Number.isFinite(p.value)) throw badRequest(`point value ${p.value} is not finite`);
       if (p.value < 0) throw badRequest(`point value ${p.value} is negative`);
@@ -93,11 +99,13 @@ export class TelematicsIngest implements TimeseriesIngest {
       idempotencyKey: `axis.telemetry:${subjectRef}:${this.source}:${batchHash}`,
       currency: this.policy.currency,
       subjectRefs: { policy: this.policy.id },
-      metadata: { source: this.source, submittedCount: batch.length }
+      // `submittedCount` means the same thing here and on the event below: what
+      // the caller sent. The post-dedup number is `acceptedCount` on the event.
+      metadata: { source: this.source, submittedCount: points.length }
     });
 
     // What is already stored inside this batch's span, read over
-    // `axis_telem_subject_idx` rather than as one `in (…)` of up to 1000 `at`
+    // `axis_telem_point_uq` rather than as one `in (…)` of up to 1000 `at`
     // values (D1 would refuse that). `onConflictDoNothing` below is still the
     // guard that makes a concurrent writer harmless — this read only makes the
     // accepted count exact.
@@ -168,8 +176,10 @@ export interface TelemetryAggregate {
 }
 
 /**
- * Per-source aggregates for one subject over `[from, to]` inclusive — what a
- * reprice reads to turn raw points into a rating input. Keyed by source, in the
+ * Per-source aggregates for one subject over `[from, to)` — what a reprice reads
+ * to turn raw points into a rating input. Half-open because consecutive reprice
+ * windows share an endpoint (`to` becomes the next `from`), and an inclusive one
+ * would count a point at exactly that instant in both. Keyed by source, in the
  * shape of premium-financing's `paymentsBySeq`.
  *
  * ponytail: reduces in memory over one indexed scan rather than a SQL GROUP BY.
@@ -191,7 +201,7 @@ export async function telemetryBySource(
         schema.axisTelemetryPoints,
         eq(schema.axisTelemetryPoints.subjectRef, subjectRef),
         gte(schema.axisTelemetryPoints.at, window.from),
-        lte(schema.axisTelemetryPoints.at, window.to)
+        lt(schema.axisTelemetryPoints.at, window.to)
       )
     );
 
@@ -251,6 +261,15 @@ export async function repriceFromTelemetry(ctx: Ctx, policy: PolicyRow, gateway:
   // Exposure since the version being replaced, not since inception: the last
   // reprice already priced everything before it, and counting it twice would
   // charge for the same kilometres on every run.
+  // The whole safety of a model-proposed factor is `priceEndorsement`'s referral
+  // guard, and that guard is inert when the product declares no pricing inputs
+  // (there is no allowlist to check against). A human endorsement may proceed
+  // unconstrained; a model-proposed one may not, or an invented factor code is
+  // priced with nothing having checked it.
+  if ((await declaredPricingInputs(ctx, policy)) === null) {
+    throw conflict("policy's product declares no pricing inputs; a model-proposed factor cannot be validated");
+  }
+
   const windowStart = current.effectiveFrom;
   const windowEnd = ctx.now;
   const subjectRef = `policy:${policy.id}`;
@@ -285,27 +304,42 @@ export async function repriceFromTelemetry(ctx: Ctx, policy: PolicyRow, gateway:
   const proposal = parseUbi(reply.text);
   if (proposal.premiumDeltaPpm === 0) return { repriced: false as const };
 
-  // Integer minor units throughout — no float ever holds money. Floored at 0: a
-  // large enough negative adjustment must not invert the premium.
-  const premiumMinor = Math.max(
-    0,
-    current.premiumMinor + Math.round((current.premiumMinor * proposal.premiumDeltaPpm) / 1_000_000)
-  );
+  // Integer minor units throughout — no float ever holds money.
+  const premiumMinor = current.premiumMinor + Math.round((current.premiumMinor * proposal.premiumDeltaPpm) / 1_000_000);
+
+  // Refused, not floored at 0. `quoteEndorsement` divides the new premium by the
+  // current one, so a contract sitting at 0 has `taxDeltaMinor` and
+  // `commissionDeltaMinor` frozen at 0 forever after — it could then be repriced
+  // back up with no tax and no commission accruing. A price of nothing is not a
+  // price this engine is allowed to write (docs/19, ADR-0065 decision 3).
+  if (premiumMinor <= 0) {
+    throw conflict(
+      `reprice would take the premium to ${premiumMinor} minor units; a zero or negative premium is not a price`
+    );
+  }
 
   // The change set is keyed by factor code deliberately: `priceEndorsement`
   // refuses codes absent from the product's `pricingInputsJson`, which is the
   // guard that stops a model inventing a rating factor and having it silently
   // priced. The codes go in exactly as the model named them.
+  //
+  // Keyed means collapsing: two factors sharing a code would leave `changes`
+  // with one entry and the stamp below with two different weights, so the priced
+  // change set and its own provenance would disagree. Refuse rather than pick.
+  const codes = proposal.factors.map((f) => f.code);
+  if (new Set(codes).size !== codes.length) {
+    throw conflict(`proposal repeats a factor code (${codes.join(", ")}); the change set and its stamp would disagree`);
+  }
   const changes = Object.fromEntries(
     proposal.factors.map((f) => [f.code, { weight: f.weight, evidenceRef: f.evidenceRef }])
   );
 
-  const out = await endorsePolicy(ctx, policy, { changes, reason: "ubi_reprice", premiumMinor }, { type: "UBI-REPRICE" });
-
-  // Stamped after the endorsement rather than passed through `changes`, because
-  // anything in `changes` is a rating factor and would be referred as an
-  // undeclared one. When a customer disputes a premium, this is the first thing
-  // asked for (docs/27 F5).
+  // Passed as a terms stamp rather than through `changes`, because anything in
+  // `changes` is a rating factor and would be referred as an undeclared one —
+  // and written in the version's own insert rather than after it, because a
+  // second write can fail and leave a moved premium with no provenance at all.
+  // When a customer disputes a premium, this is the first thing asked for
+  // (docs/27 F5).
   const ubi: UbiStamp = {
     aiAuditId: reply.auditId,
     premiumDeltaPpm: proposal.premiumDeltaPpm,
@@ -315,19 +349,25 @@ export async function repriceFromTelemetry(ctx: Ctx, policy: PolicyRow, gateway:
     droppedFactorCount: proposal.droppedFactorCount,
     confidence: proposal.confidence
   };
-  const termsJson = JSON.stringify({
-    ...(JSON.parse(out.version.termsJson ?? "{}") as Record<string, unknown>),
-    ubi
-  });
-  await ctx.db
-    .update(schema.axisPolicyVersions)
-    .set({ termsJson, updatedAt: ctx.now })
-    .where(scoped(ctx, schema.axisPolicyVersions, eq(schema.axisPolicyVersions.id, out.version.id)));
+
+  const out = await endorsePolicy(
+    ctx,
+    policy,
+    { changes, reason: "ubi_reprice", premiumMinor },
+    {
+      type: "UBI-REPRICE",
+      termsStamp: { ubi },
+      // What the approver is shown (CLAUDE.md #11): without it the pending row is
+      // a policy id and a hash, and the human cannot tell a model's proposal from
+      // an underwriter's own change, let alone inspect why.
+      approvalContext: { ubi, source: "telematics" }
+    }
+  );
 
   return {
     repriced: true as const,
     policy: out.policy,
-    version: { ...out.version, termsJson },
+    version: out.version,
     txn: out.txn,
     premiumMinor,
     premiumDeltaPpm: proposal.premiumDeltaPpm,
