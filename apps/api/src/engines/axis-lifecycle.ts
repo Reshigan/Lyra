@@ -12,7 +12,8 @@ import {
   isPolicyState,
   quoteEndorsement,
   scoped,
-  type Ctx
+  type Ctx,
+  type Envelope
 } from "@lyra/core";
 import { autoApprovable, buildRecipe, runTxn } from "@lyra/ledger";
 import { SWEEP_MAX } from "./sweep.js";
@@ -400,6 +401,21 @@ export async function lapsePolicy(ctx: Ctx, policy: PolicyRow, missedSeq: number
   // CLAUDE.md §6: ORBIT learns a renewal died from the bus, never from a call.
   await emit(ctx, { module: "axis", type: "orbit.renewal.lost", subject: policy.id, data });
   return { policy: after, txn };
+}
+
+/** Task 5's dunning sweep crossing DUNNING_LAPSE_THRESHOLD feeds the same
+ * lapse cascade as a missed instalment on a plain payment plan — the event
+ * bus is the only coupling to premium-financing.ts (CLAUDE.md §6). */
+export async function onFinancingLapseDue(ctx: Ctx, envelope: Envelope): Promise<void> {
+  const data = envelope.data as { policyId: string; planId: string; missedStreak: number; missedSeq: number };
+  const [policy] = await ctx.db
+    .select()
+    .from(schema.axisPolicies)
+    .where(scoped(ctx, schema.axisPolicies, eq(schema.axisPolicies.id, data.policyId)));
+  if (!policy) return; // policy already gone (deleted/merged) — nothing to lapse
+  if (policy.status === "lapsed") return; // already lapsed, e.g. by a concurrent path
+
+  await lapsePolicy(ctx, policy, data.missedSeq, `premium financing plan ${data.planId}: ${data.missedStreak} consecutive missed instalments`);
 }
 
 /* ------------------------------------------------------------------ renewal */

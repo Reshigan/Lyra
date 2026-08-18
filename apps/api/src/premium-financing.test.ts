@@ -5,8 +5,9 @@ import { drizzle } from "drizzle-orm/libsql";
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { EntitlementsJson, PolicyJson, id as newId, schema } from "@lyra/db";
-import type { Ctx } from "@lyra/core";
+import { pendingOutbox, type Ctx } from "@lyra/core";
 import { createPlan, payInstalment, sweepPremiumFinancing, DUNNING_LAPSE_THRESHOLD, type PolicyRow } from "./engines/premium-financing.js";
+import { onFinancingLapseDue } from "./engines/axis-lifecycle.js";
 
 // docs/27 group D — premium financing createPlan(). Flat/local-helper
 // convention (no shared fixtures export seedTenantAndPolicy/testCtx in this
@@ -195,6 +196,29 @@ describe("payInstalment", () => {
 
     const eventsAfterSecondTick = await ctx.db.select().from(schema.eventOutbox).where(eq(schema.eventOutbox.type, "ledger.financing.lapse_due"));
     expect(eventsAfterSecondTick).toHaveLength(1);
+  });
+});
+
+describe("onFinancingLapseDue", () => {
+  it("lapses the policy via the existing lapsePolicy cascade", async () => {
+    const { ctx, policy } = await seedTenantAndPolicy({ currency: "AED" });
+    const { plan } = await createPlan(ctx, policy, {
+      totalMinor: 120_000, currency: "AED", instalments: 12,
+      startAt: ctx.now, frequencyDays: 30, commissionMinor: 15_000
+    });
+    await ctx.db.update(schema.ledgerPaymentPlans)
+      .set({ currency: "JPY", missedStreak: DUNNING_LAPSE_THRESHOLD - 1 })
+      .where(eq(schema.ledgerPaymentPlans.id, plan.id));
+
+    await sweepPremiumFinancing(ctx); // this tick's miss crosses the threshold and emits
+
+    const envelope = (await pendingOutbox(ctx.db)).find((e) => e.type === "ledger.financing.lapse_due");
+    expect(envelope).toBeDefined();
+
+    await onFinancingLapseDue(ctx, envelope!);
+
+    const [after] = await ctx.db.select().from(schema.axisPolicies).where(eq(schema.axisPolicies.id, policy.id));
+    expect(after!.status).toBe("lapsed");
   });
 });
 

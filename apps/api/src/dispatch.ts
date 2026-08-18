@@ -10,6 +10,7 @@ import {
   type Ctx,
   type Envelope
 } from "@lyra/core";
+import { onFinancingLapseDue } from "./engines/axis-lifecycle.js";
 import { onConsentUpdated } from "./engines/signal-suppression.js";
 
 // The outbox drain. Events are written in the same request that changed the row,
@@ -56,10 +57,13 @@ export async function drainOutbox(ctx: Ctx, queue?: EventQueue, limit = 100): Pr
       // Internal consumers run in the same drain tick as external delivery, so a
       // consent withdrawal reaches SIGNAL's suppression audience in one drain
       // pass rather than waiting on a dedicated cron (docs/25 M4 SIGNAL row).
-      // ponytail: one `if`, not a registry — add a second internal consumer here
-      // when a second one exists, not before.
+      // ponytail: a couple of `if`s, not a registry — promote to a type->handler
+      // map when a third one makes the list unwieldy, not before.
       if (event.type === "core.consent.updated") {
         await consume(ctx.db, event, "signal.suppression", (e) => onConsentUpdated(ctx, e), ctx.now);
+      }
+      if (event.type === "ledger.financing.lapse_due") {
+        await consume(ctx.db, event, "axis.lifecycle", (e) => onFinancingLapseDue(ctx, e), ctx.now);
       }
 
       if (queue) {
