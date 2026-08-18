@@ -388,6 +388,7 @@ export const paymentPlans = sqliteTable(
     instalments: integer("instalments").notNull(),
     scheduleJson: text("schedule_json").notNull(),
     state: text("state").notNull().default("active"), // active|completed|defaulted|cancelled
+    missedStreak: integer("missed_streak").notNull().default(0),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull()
   },

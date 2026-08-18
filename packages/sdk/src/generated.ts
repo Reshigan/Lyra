@@ -1443,6 +1443,7 @@ export interface LedgerPaymentPlans {
   instalments: number;
   scheduleJson: string;
   state?: string;
+  missedStreak?: number;
   createdAt?: number;
   updatedAt?: number;
 }
