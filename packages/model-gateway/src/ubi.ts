@@ -104,9 +104,12 @@ export function ubiSchema(): Record<string, unknown> {
 }
 
 /**
- * The reprice prompt, in one place, shared verbatim between the eval harness
- * (evals/ubi-reprice) and the production engine, per docs/27 F10's "the live
- * eval must send the prompt production sends."
+ * The reprice prompt, in one place, so the production engine and any caller
+ * that sends a live request send the same text. `evals/ubi-reprice` replays
+ * recorded replies through `parseUbi` and does not send this prompt, so nothing
+ * here is measured against a golden set — docs/27 F10's "the live eval must
+ * send the prompt production sends" is satisfied only once a live suite exists
+ * for it, on the pattern of evals/live.ts's extraction suite.
  *
  * CLAUDE.md §14: no domain-pack noun appears here. It reads "subject",
  * "measurement series" and "price", so the same prompt prices a fleet lease or

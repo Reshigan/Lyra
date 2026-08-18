@@ -81,9 +81,13 @@ export function fraudSchema(): Record<string, unknown> {
 }
 
 /**
- * The fraud-scoring prompt, in one place, shared verbatim between the eval
- * harness and the production engine (apps/api/src/engines/axis-fraud-scorer.ts),
- * per docs/27 F10's "the live eval must send the prompt production sends."
+ * The fraud-scoring prompt, in one place, so the production engine
+ * (apps/api/src/engines/axis-fraud-scorer.ts) and any caller that sends a live
+ * request send the same text. The `axis-fraud` eval replays recorded replies
+ * through `parseFraud` and does not send this prompt, so nothing here is
+ * measured against a golden set — docs/27 F10's "the live eval must send the
+ * prompt production sends" is satisfied only once a live suite exists for it,
+ * on the pattern of evals/live.ts's extraction suite.
  *
  * CLAUDE.md §14: no domain-pack noun appears here. It reads "claim", "claimant"
  * and "review queue", so the same prompt scores a warranty or a rebate abuse

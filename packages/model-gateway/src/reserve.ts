@@ -56,9 +56,13 @@ export function reserveSchema(): Record<string, unknown> {
 }
 
 /**
- * The reserve-recommendation prompt, in one place, shared verbatim between the
- * eval harness and the production engine (apps/api/src/engines/axis-reserve-advisor.ts),
- * per docs/27 F10's "the live eval must send the prompt production sends."
+ * The reserve-recommendation prompt, in one place, so the production engine
+ * (apps/api/src/engines/axis-reserve-advisor.ts) and any caller that sends a
+ * live request send the same text. The `axis-reserve` eval replays recorded
+ * replies through `parseReserve` and does not send this prompt, so nothing here
+ * is measured against a golden set — docs/27 F10's "the live eval must send the
+ * prompt production sends" is satisfied only once a live suite exists for it,
+ * on the pattern of evals/live.ts's extraction suite.
  *
  * CLAUDE.md §14: no domain-pack noun appears here. It reads "claim" and "the
  * amount to set aside", so the same prompt reserves a warranty repair or a

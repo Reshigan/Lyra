@@ -1188,6 +1188,14 @@ axisRoutes.post("/policies/:id/reprice", async (c) => {
   // instead is the key itself — it fingerprints the unpriced telemetry, so it
   // changes exactly when the exposure to be priced changes. New telemetry mints
   // a new key and prices; no new telemetry replays.
+  //
+  // ponytail: the version component is redundant against the fingerprint for
+  // telemetry alone, and a manual endorsement moves it without moving the
+  // exposure — one extra billed no-op for an endorse-then-reprice. Kept because
+  // the stored body carries `premiumMinor`, computed off the version's base:
+  // dropping it would let a replay hand back a price struck against a premium
+  // that has since been endorsed away. Drop it if that body ever stops naming
+  // an absolute amount.
   const key =
     c.req.header("idempotency-key") ??
     `axis_ubi_reprice:${policy.id}:${policy.currentVersionId ?? policy.versionSeq}:${await unpricedExposureKey(ctx, policy)}`;

@@ -500,11 +500,12 @@ describe("POST /policies/:id/reprice", () => {
   });
 
   it("mints a new fallback key when new telemetry arrives, so the next window prices it", async () => {
-    // The other half of keeping a no-op's key: the key names the *exposure* to
-    // be priced, not the version it starts from, so it changes exactly when new
-    // unpriced telemetry lands. Without that, one no-op would suppress this
-    // cover for 24h while kilometres pile up unpriced — the money property, not
-    // the call count, is what pins it: the second POST must actually price.
+    // Pins the key *format*: it names the exposure to be priced, not the version
+    // it starts from, so it changes exactly when new unpriced telemetry lands.
+    // Without that, one no-op would suppress this cover for 24h while kilometres
+    // pile up unpriced. (Keeping a no-op's key is pinned by the two tests above,
+    // which are the ones that fail if the key is released — this one passes
+    // either way, since a released key would also let the second POST price.)
     const { ctx, policy } = await seedTenantAndPolicy({ permissions: ["axis:policies:endorse"] });
     const app = testApp(ctx, gatewayWith(reply(0), reply(100_000)));
     const route = `/v1/axis/policies/${policy.id}/reprice`;
@@ -533,7 +534,8 @@ describe("POST /policies/:id/reprice", () => {
     // *behind* the newest point already stored. A key that named only the max
     // instant would not move for that batch, and the kilometres it carries would
     // replay a no-op until the key expired. The key counts the unpriced points
-    // as well as dating them, so this prices.
+    // as well as dating them, so this prices. (Like the test above, this pins
+    // the key format, not the decision to keep a no-op's key.)
     const { ctx, policy } = await seedTenantAndPolicy({ permissions: ["axis:policies:endorse"] });
     const app = testApp(ctx, gatewayWith(reply(0), reply(100_000)));
     const route = `/v1/axis/policies/${policy.id}/reprice`;
