@@ -90,12 +90,20 @@ async function unpricedWindow(ctx: Ctx, policy: PolicyRow): Promise<{ from: numb
  * instant in it and how many points it holds.
  *
  * The reprice route builds its fallback idempotency key from this. That key
- * must change exactly when the exposure to be priced changes: a run that comes
- * back `repriced:false` has still billed a model call and written an audit row,
- * so its key is kept rather than released — and keeping a key derived from the
+ * must change when the telemetry to be priced changes: a run that comes back
+ * `repriced:false` has still billed a model call and written an audit row, so
+ * its key is kept rather than released — and keeping a key derived from the
  * *version* would replay "nothing happened" for 24h over telemetry that landed
  * afterwards. Keyed on what will be priced, new telemetry mints a new key and
  * no new telemetry replays.
+ *
+ * ponytail: the points, not the window's end, though the end reaches the model
+ * as `windowEnd`. So an idle device's same kilometres spread over a longer
+ * window — which a model may read as a discount — replays the stored no-op for
+ * up to the key's TTL. Deliberate: `to` is `ctx.now`, so putting it in the key
+ * would mint a fresh key every millisecond and there would be no collapse left
+ * to speak of. Quantise `to` into the key (to the hour, say) if that delay ever
+ * costs more than the retry storms it is buying protection from.
  *
  * The count is why this is not just the max: a device that buffers and uploads
  * out of order backfills points *older* than the newest one already stored, and
@@ -425,8 +433,8 @@ export async function repriceFromTelemetry(ctx: Ctx, policy: PolicyRow, gateway:
       // map when a book actually carries one.
       baseline: null
     })),
-    windowStart,
-    windowEnd
+    windowStart: new Date(windowStart).toISOString(),
+    windowEnd: new Date(windowEnd).toISOString()
   };
 
   // CLAUDE.md §3: the model is reached only through the gateway, so the call is

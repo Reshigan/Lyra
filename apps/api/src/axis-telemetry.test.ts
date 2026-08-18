@@ -33,6 +33,7 @@ function statements(): string[] {
 }
 
 const DAY = 86_400_000;
+const HOUR = 3_600_000;
 const SOURCE = "telematics:obd:km";
 const NOW = Date.UTC(2026, 5, 15, 12);
 const START = NOW - 30 * DAY;
@@ -597,10 +598,13 @@ describe("POST /policies/:id/reprice", () => {
 
     await ingestAt(NOW - DAY, 120);
     await app.request(route, { method: "POST" });
-    await ingestAt(NOW + DAY, 400);
+    await ingestAt(NOW + HOUR * 12, 400);
     await app.request(route, { method: "POST" });
 
-    ctx.now = NOW + 2 * DAY;
+    // Inside the key's 24h TTL deliberately: past it the third POST runs on an
+    // expired slot whatever the key says, and the test would pass with the key
+    // stubbed to a constant — pinning the TTL rather than the window bound.
+    ctx.now = NOW + HOUR * 13;
     const out = (await (await app.request(route, { method: "POST" })).json()) as {
       repriced: boolean;
       premiumMinor?: number;
@@ -616,10 +620,10 @@ describe("POST /policies/:id/reprice", () => {
     expect(await modelCalls(ctx)).toHaveLength(2);
     const priced = JSON.parse(stub.calls[1]!.messages.at(-1)!.content) as {
       series: { total: number }[];
-      windowEnd: number;
+      windowEnd: string;
     };
     expect(priced.series[0]!.total).toBe(520);
-    expect(priced.windowEnd).toBe(NOW + 2 * DAY);
+    expect(priced.windowEnd).toBe(new Date(NOW + HOUR * 13).toISOString());
   });
 
   it("rejects without axis:policies:endorse, before any write", async () => {
