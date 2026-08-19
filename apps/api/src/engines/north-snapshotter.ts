@@ -132,15 +132,17 @@ const activePolicies: Compute = async (ctx, p) => {
   return row?.n ?? 0;
 };
 
+/** SIGNAL media spend booked in the window — the numerator every acquisition-cost metric divides. */
+async function signalSpendMinor(ctx: Ctx, p: Period): Promise<number> {
+  const [row] = await ctx.db
+    .select({ v: sql<number>`coalesce(sum(${schema.signalSpend.amountMinor}), 0)` })
+    .from(schema.signalSpend)
+    .where(and(eq(schema.signalSpend.tenantId, ctx.tenantId), gte(schema.signalSpend.ts, p.since), lt(schema.signalSpend.ts, p.until)));
+  return row?.v ?? 0;
+}
+
 const cacPerPolicy: Compute = async (ctx, p) => {
-  const [spend, issued] = await Promise.all([
-    ctx.db
-      .select({ v: sql<number>`coalesce(sum(${schema.signalSpend.amountMinor}), 0)` })
-      .from(schema.signalSpend)
-      .where(and(eq(schema.signalSpend.tenantId, ctx.tenantId), gte(schema.signalSpend.ts, p.since), lt(schema.signalSpend.ts, p.until)))
-      .then((r) => r[0]?.v ?? 0),
-    countPolicies(ctx, p)
-  ]);
+  const [spend, issued] = await Promise.all([signalSpendMinor(ctx, p), countPolicies(ctx, p)]);
   return issued > 0 ? Math.round(spend / issued) : null;
 };
 
@@ -515,11 +517,7 @@ const whitespacePromotionRate: Compute = async (ctx, p) => {
  */
 const campaignReturnOnSpend: Compute = async (ctx, p) => {
   const [spent, returned] = await Promise.all([
-    ctx.db
-      .select({ v: sql<number>`coalesce(sum(${schema.signalSpend.amountMinor}), 0)` })
-      .from(schema.signalSpend)
-      .where(and(eq(schema.signalSpend.tenantId, ctx.tenantId), gte(schema.signalSpend.ts, p.since), lt(schema.signalSpend.ts, p.until)))
-      .then((r) => r[0]?.v ?? 0),
+    signalSpendMinor(ctx, p),
     ctx.db
       .select({ v: sql<number>`coalesce(sum(${schema.signalAttributionEvents.valueMinor}), 0)` })
       .from(schema.signalAttributionEvents)
@@ -534,6 +532,98 @@ const campaignReturnOnSpend: Compute = async (ctx, p) => {
       .then((r) => r[0]?.v ?? 0)
   ]);
   return spent > 0 ? Math.round((returned / spent) * 10_000) : null;
+};
+
+/* ------------------------------------------- unit economics of acquisition */
+
+/** Attributed touches of one type in the window. One `bind` row is one contract, the same basis `campaign_return_on_spend` values. */
+async function attributedTouches(ctx: Ctx, p: Period, touchType: string): Promise<number> {
+  const [row] = await ctx.db
+    .select({ n: sql<number>`count(*)` })
+    .from(schema.signalAttributionEvents)
+    .where(
+      and(
+        eq(schema.signalAttributionEvents.tenantId, ctx.tenantId),
+        eq(schema.signalAttributionEvents.touchType, touchType),
+        gte(schema.signalAttributionEvents.ts, p.since),
+        lt(schema.signalAttributionEvents.ts, p.until)
+      )
+    );
+  return row?.n ?? 0;
+}
+
+/**
+ * Commission that actually accrued in the window: `earned_at` is when an entry
+ * became ours, so an entry earned on collection and not yet collected is
+ * deliberately absent rather than counted early. Net, not gross — gross is the
+ * underwriter's cheque, net is what survives the channel's share and tax.
+ * A clawback copies the original's `earned_at`, so a reversal nets against the
+ * month the sale was booked in rather than inventing a negative month.
+ */
+async function commissionAccruedMinor(ctx: Ctx, p: Period): Promise<number> {
+  const [row] = await ctx.db
+    .select({ v: sql<number>`coalesce(sum(${schema.distCommissionEntries.netCommissionMinor}), 0)` })
+    .from(schema.distCommissionEntries)
+    .where(
+      and(
+        eq(schema.distCommissionEntries.tenantId, ctx.tenantId),
+        isNotNull(schema.distCommissionEntries.earnedAt),
+        gte(schema.distCommissionEntries.earnedAt, p.since),
+        lt(schema.distCommissionEntries.earnedAt, p.until)
+      )
+    );
+  return row?.v ?? 0;
+}
+
+/**
+ * What one lead costs. Spend with no lead against it is not an infinitely
+ * expensive lead — there is no lead to price, so the month has no figure.
+ */
+const costPerLead: Compute = async (ctx, p) => {
+  const [spend, leads] = await Promise.all([signalSpendMinor(ctx, p), attributedTouches(ctx, p, "lead")]);
+  return leads > 0 ? Math.round(spend / leads) : null;
+};
+
+/**
+ * What one acquisition costs. Unlike `cac_per_policy`, which spreads spend over
+ * every contract the business wrote, this divides only by the contracts SIGNAL
+ * is credited with — so it answers "what did the media buy", not "what did the
+ * whole book cost". Nothing attributed means nothing to price.
+ */
+const costPerAcquisition: Compute = async (ctx, p) => {
+  const [spend, binds] = await Promise.all([signalSpendMinor(ctx, p), attributedTouches(ctx, p, "bind")]);
+  return binds > 0 ? Math.round(spend / binds) : null;
+};
+
+/**
+ * Revenue per contract written. Commission earned in the month over contracts
+ * bound in it — the same mixed-cohort window `quote_to_bind_rate` uses, not a
+ * cohort followed forward. A month that bound nothing still collects commission
+ * off the back book, and dividing that by zero contracts would be a fiction.
+ */
+const commissionPerPolicy: Compute = async (ctx, p) => {
+  const [commission, bound] = await Promise.all([commissionAccruedMinor(ctx, p), countPolicies(ctx, p)]);
+  return bound > 0 ? Math.round(commission / bound) : null;
+};
+
+/**
+ * A period LTV proxy against `cost_per_acquisition`: the same commission over
+ * the distinct customers who took a contract this month, so a customer who
+ * bought twice counts once. Not a true lifetime value — no cohort is followed
+ * past the month — which is why it is named per-customer revenue, not LTV.
+ */
+const revenuePerCustomer: Compute = async (ctx, p) => {
+  const [commission, [row]] = await Promise.all([
+    commissionAccruedMinor(ctx, p),
+    ctx.db
+      .select({ n: sql<number>`count(distinct ${schema.axisPolicies.customerId})` })
+      .from(schema.axisPolicies)
+      .where(
+        and(eq(schema.axisPolicies.tenantId, ctx.tenantId), gte(schema.axisPolicies.createdAt, p.since), lt(schema.axisPolicies.createdAt, p.until))
+      )
+  ]);
+  const customers = row?.n ?? 0;
+  return customers > 0 ? Math.round(commission / customers) : null;
 };
 
 /**
@@ -566,7 +656,11 @@ const REGISTRY: Record<string, Compute> = {
   open_claim_count: openClaimCount,
   outstanding_reserve: outstandingReserve,
   whitespace_promotion_rate: whitespacePromotionRate,
-  campaign_return_on_spend: campaignReturnOnSpend
+  campaign_return_on_spend: campaignReturnOnSpend,
+  cost_per_lead: costPerLead,
+  cost_per_acquisition: costPerAcquisition,
+  commission_per_policy: commissionPerPolicy,
+  revenue_per_customer: revenuePerCustomer
 };
 
 /** Same move/threshold basis every unit family uses for a naive, seasonal-unaware anomaly flag (ADR-0024). */

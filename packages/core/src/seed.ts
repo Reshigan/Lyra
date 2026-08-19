@@ -1459,6 +1459,55 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
       owner: "yusuf.karim",
       sensitivity: "restricted",
       target: { value: 12_000_000, scale: "minor", currency: "AED" }
+    },
+    // The unit economics a buyer doing diligence asks for: what a lead costs,
+    // what an acquisition costs, and what each contract and each customer pays
+    // back against it. Noor Jamal owns the cost side (she already owns
+    // cac_per_policy) and the LTV proxy that is read against it; Faisal Omar
+    // owns the commission the finance book actually recognises.
+    {
+      key: "cost_per_lead",
+      en: "Cost per lead",
+      ar: "تكلفة العميل المحتمل",
+      def: "SUM(signal_spend.amount_minor) / COUNT(signal_attribution_events WHERE touch_type='lead')",
+      unit: "money",
+      grain: "month",
+      direction: "down",
+      owner: "noor.jamal",
+      target: { value: 3_500, scale: "minor", currency: "AED" }
+    },
+    {
+      key: "cost_per_acquisition",
+      en: "Cost per acquisition",
+      ar: "تكلفة الاكتساب",
+      def: "SUM(signal_spend.amount_minor) / COUNT(signal_attribution_events WHERE touch_type='bind')",
+      unit: "money",
+      grain: "month",
+      direction: "down",
+      owner: "noor.jamal",
+      target: { value: 25_000, scale: "minor", currency: "AED" }
+    },
+    {
+      key: "commission_per_policy",
+      en: "Commission per policy",
+      ar: "العمولة لكل وثيقة",
+      def: "SUM(dist_commission_entries.net_commission_minor WHERE earned_at in period) / COUNT(axis_policies bound in period)",
+      unit: "money",
+      grain: "month",
+      direction: "up",
+      owner: "faisal.omar",
+      target: { value: 48_000, scale: "minor", currency: "AED" }
+    },
+    {
+      key: "revenue_per_customer",
+      en: "Revenue per customer",
+      ar: "الإيراد لكل عميل",
+      def: "SUM(dist_commission_entries.net_commission_minor WHERE earned_at in period) / COUNT(DISTINCT axis_policies.customer_id bound in period)",
+      unit: "money",
+      grain: "month",
+      direction: "up",
+      owner: "noor.jamal",
+      target: { value: 58_000, scale: "minor", currency: "AED" }
     }
   ];
 
@@ -1505,7 +1554,20 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
     // The demand loop the board reads across: what SCOUT raised and the desk
     // acted on, and what SIGNAL's spend brought back against it.
     whitespace_promotion_rate: [2_000, 2_500, 3_300, 2_800],
-    campaign_return_on_spend: [24_000, 27_500, 31_200, 29_000]
+    campaign_return_on_spend: [24_000, 27_500, 31_200, 29_000],
+    // Acquisition unit economics, in minor units. The cost side falls through
+    // the quarter as the autopilot moves budget off social and onto search,
+    // then turns up in the open month — the same shape cac_per_policy has,
+    // because it is the same spend seen a different way. An acquisition costs
+    // more than a blended policy does (18_900 last month) because only the
+    // contracts SIGNAL is credited with divide it. Revenue per customer stays
+    // above cost per acquisition all quarter: the business is not buying
+    // customers at a loss, and it is above commission per policy because some
+    // customers hold more than one contract.
+    cost_per_lead: [3_950, 3_720, 3_480, 4_210],
+    cost_per_acquisition: [28_600, 26_400, 24_100, 29_800],
+    commission_per_policy: [44_200, 45_900, 47_600, 46_100],
+    revenue_per_customer: [51_300, 53_700, 56_400, 54_200]
   };
   const DAILY: Record<string, readonly [number, number, number, number, number]> = {
     policies_issued: [41, 38, 52, 61, 57],
