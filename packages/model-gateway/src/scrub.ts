@@ -61,6 +61,23 @@ function luhn(value: string): boolean {
   return sum % 10 === 0;
 }
 
+/**
+ * A CARD hit that is far more likely a caller's epoch-millisecond instant than a
+ * card number: exactly 13 digits, and a value inside [1e12, 2e12) — 2001-09-09 to
+ * 2033-05-18. It is still redacted; a real PAN in that shape must not leak. The
+ * point of telling them apart is the flag, which reaches ai_audit_log
+ * (`guardrailFlagsJson`): a run full of `card_maybe_instant` says a caller is
+ * sending millis where ISO-8601 belongs, not that a tenant pastes card numbers.
+ *
+ * 13-digit Visa PANs start with `4`, so they land in [4e12, 5e12) and never here.
+ */
+function looksLikeEpochMs(hit: string): boolean {
+  const digits = hit.replace(/\D/g, "");
+  if (digits.length !== 13) return false;
+  const n = Number(digits);
+  return n >= 1e12 && n < 2e12;
+}
+
 /** Shared across the messages of one request so the same value keeps one placeholder. */
 export interface ScrubState {
   /** original -> placeholder */
@@ -84,6 +101,8 @@ export function scrub(input: string, state: ScrubState = newScrubState()): Scrub
         state.flags.add("secret_in_prompt");
         return "[[REDACTED]]";
       }
+      // Before the dedupe return, so a repeated instant still raises it.
+      if (rule.kind === "CARD" && looksLikeEpochMs(hit)) state.flags.add("card_maybe_instant");
       const existing = state.seen.get(hit);
       if (existing) return existing;
       const token = `[[${rule.kind}_${countOf(state, rule.kind) + 1}]]`;
