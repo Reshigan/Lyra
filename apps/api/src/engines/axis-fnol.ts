@@ -4,6 +4,7 @@ import { id as newId, schema } from "@lyra/db";
 import { audit, emit, notFound, scoped, type Ctx } from "@lyra/core";
 import { runTxn } from "@lyra/ledger";
 import { parseTriage, triageMessages, type Gateway, type Triage } from "@lyra/model-gateway";
+import { InstantMs } from "../http.js";
 
 // docs/27 F24 / docs/specs/gap-axis-design.md §D.1. Two rules, and everything
 // here follows from them. The cover that answers a loss is the cover that was
@@ -32,16 +33,6 @@ export interface Coverage {
   excessMinor: number;
   warnings: string[];
 }
-
-/**
- * An instant a `Date` can actually hold (ECMA-262: ±8.64e15 ms from the epoch).
- * `z.number().int()` alone is a *safe*-integer check, so it lets through the band
- * (8.64e15, 9.007e15] — and every renderer downstream (`new Date(ms).toISOString()`,
- * the fraud prompt, the claim UI) throws on those. It threw inside a blanket
- * `catch`, so a claimant filing with a big number silently turned their own fraud
- * scoring off. Rejected at the trust boundary; `promptInstant` is the second layer.
- */
-const InstantMs = z.number().int().min(-8.64e15).max(8.64e15);
 
 export const CoverageCheckBody = z.object({
   policyId: z.string().min(1),

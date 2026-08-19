@@ -34,6 +34,19 @@ export function parse<T extends z.ZodTypeAny>(schema: T, raw: unknown): z.infer<
   throw badRequest("validation failed", errors);
 }
 
+/**
+ * An instant a `Date` can actually hold (ECMA-262: ±8.64e15 ms from the epoch).
+ * `z.number().int()` alone is a *safe*-integer check, so it lets through the band
+ * (8.64e15, 9.007e15] — and every renderer downstream (`new Date(ms).toISOString()`,
+ * the fraud prompt, the claim UI) throws on those. It threw inside a blanket
+ * `catch`, so a claimant filing with a big number silently turned their own fraud
+ * scoring off. Rejected at the trust boundary; `promptInstant` is the second layer.
+ *
+ * Lives here rather than beside one endpoint because every write surface needs
+ * the same bound: the AXIS FNOL bodies, and the generated CRUD shape (crud.ts).
+ */
+export const InstantMs = z.number().int().min(-8.64e15).max(8.64e15);
+
 /* ------------------------------------------------------------- pagination */
 
 export const MAX_PAGE = 200;

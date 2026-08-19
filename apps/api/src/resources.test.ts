@@ -308,6 +308,63 @@ describe("money columns in the generated shape", () => {
   });
 });
 
+describe("timestamp columns in the generated shape", () => {
+  // Regression: `z.number().int()` is a *safe*-integer check, so the generated
+  // shape let through (8.64e15, 9.007e15] — instants no `Date` can hold. AXIS
+  // bounded them at its own FNOL endpoints, but `axisPolicies`/`axisClaims` are
+  // also registered on this generic router with `update`, so
+  // `PATCH /v1/axis/policies/:id {"endAt": 9e15}` walked straight past that
+  // bound and persisted a value every downstream renderer throws on.
+  const policies = (): Resource => {
+    const r = BY_MODULE.axis?.find((x) => x.path === "policies");
+    if (!r) throw new Error("no axis/policies resource");
+    return r;
+  };
+
+  beforeAll(async () => {
+    await ctx.db.insert(schema.axisPolicies).values({
+      id: "pol_instant",
+      tenantId: ctx.tenantId,
+      customerId: "cus_instant",
+      providerId: "prv_instant",
+      policyNo: "POL-INSTANT",
+      startAt: NOW,
+      endAt: NOW,
+      premiumMinor: 1000,
+      currency: "AED",
+      status: "active",
+      createdAt: NOW,
+      updatedAt: NOW
+    } as never);
+  });
+
+  const endAtOf = async (): Promise<number | undefined> => {
+    const [row] = await ctx.db
+      .select()
+      .from(schema.axisPolicies)
+      .where(eq(schema.axisPolicies.id, "pol_instant"));
+    return row?.endAt;
+  };
+
+  it("refuses an *At past the end of the Date range", async () => {
+    const res = await send(router(policies()), "PATCH", "/pol_instant", { endAt: 9e15 });
+    expect(res.status).toBe(400);
+    expect(await endAtOf()).toBe(NOW);
+  });
+
+  it("refuses an *At past the start of the Date range", async () => {
+    const res = await send(router(policies()), "PATCH", "/pol_instant", { endAt: -9e15 });
+    expect(res.status).toBe(400);
+    expect(await endAtOf()).toBe(NOW);
+  });
+
+  it("still accepts an instant a Date can hold", async () => {
+    const res = await send(router(policies()), "PATCH", "/pol_instant", { endAt: NOW + 86_400_000 });
+    expect(res.status).toBe(200);
+    expect(await endAtOf()).toBe(NOW + 86_400_000);
+  });
+});
+
 describe("invoice state machine through generic CRUD", () => {
   const invoices = () => router(ledgerResource("invoices"));
   const create = async (n: number, over: Record<string, unknown> = {}) => {
