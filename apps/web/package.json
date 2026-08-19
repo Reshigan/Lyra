@@ -19,7 +19,7 @@
     "react-router": "^8.3.0"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "^1.51.2",
+    "@cloudflare/vite-plugin": "^1.52.1",
     "@lyra/config": "workspace:*",
     "@react-router/dev": "^8.3.0",
     "@tailwindcss/vite": "^4.3.3",
@@ -30,6 +30,6 @@
     "typescript": "^6.0.3",
     "vite": "^8.2.1",
     "vitest": "^3.2.7",
-    "wrangler": "^4.120.1"
+    "wrangler": "^4.123.0"
   }
 }
