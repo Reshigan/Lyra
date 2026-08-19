@@ -71,6 +71,14 @@ describe("DateTime — values no Date can hold", () => {
     expect(markup).toContain("Date unavailable");
   });
 
+  // `NoData` puts the same words on `title`, so a sighted reader gets the
+  // reason on hover too. The degraded date omitted it, which is the same cell
+  // in the same table telling two different readers two different things.
+  it("puts the reason on hover, the way an empty cell does", () => {
+    const markup = renderToStaticMarkup(<DateTime value={9e15} locale="en" />);
+    expect(markup).toContain('title="Date unavailable"');
+  });
+
   // Kit chrome, so it comes from the kit's own catalogue (text.tsx) in the
   // locale the date is being rendered in — CLAUDE.md §7, no English leaking
   // into an Arabic screen.

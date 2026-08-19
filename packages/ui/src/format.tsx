@@ -356,12 +356,13 @@ export function DateTime({
   // kit's own catalogue in this date's locale (text.tsx), not the caller's job.
   const date = instantOf(value);
   if (date === null) {
+    // `title` after the spread, as `NoData` does: any `title` the caller passed
+    // describes a date that is not being rendered, so the reason wins.
+    const reason = uiText(locale)("dateUnavailable");
     return (
-      <span {...props} className={cn("text-subtle tabular-nums", className)}>
+      <span {...props} title={reason} className={cn("text-subtle tabular-nums", className)}>
         <span aria-hidden="true">{DASH}</span>
-        <span className="sr-only absolute h-px w-px overflow-hidden">
-          {uiText(locale)("dateUnavailable")}
-        </span>
+        <span className="sr-only absolute h-px w-px overflow-hidden">{reason}</span>
       </span>
     );
   }
