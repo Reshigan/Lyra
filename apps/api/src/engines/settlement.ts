@@ -15,6 +15,7 @@ import {
 } from "@lyra/core";
 import { assertPostable, buildRecipe, ensurePeriod, runTxn, type ReportTable } from "@lyra/ledger";
 import { render, type BrowserBinding, type ExportFormat, type Rendered } from "./export/render.js";
+import { IsoMonth, monthRangeMs } from "../http.js";
 
 // docs/19 §5 — what a channel earned becomes what a channel is paid.
 //
@@ -85,16 +86,17 @@ export interface SettlementTerms {
 
 /* ------------------------------------------------------------------ inputs */
 
-const PERIOD_RE = /^\d{4}-(?:0[1-9]|1[0-2])$/;
-
+// One month validator and one bounds helper for the whole API, both in http.ts.
+// This file used to carry its own pair; they drifted from the bordereaux pair
+// on the month axis and agreed with it on the century bug, which is how a
+// review round guards one and misses the other.
 function assertPeriodCode(period: string): void {
-  if (!PERIOD_RE.test(period)) throw badRequest(`period must be YYYY-MM, got ${period}`);
+  if (!IsoMonth.safeParse(period).success) throw badRequest(`period must be YYYY-MM, got ${period}`);
 }
 
-/** Half-open bounds of a UTC month. Financial periods do not move with a timezone. */
 function monthBounds(period: string): { startAt: number; endAt: number } {
-  const [y, m] = period.split("-").map(Number) as [number, number];
-  return { startAt: Date.UTC(y, m - 1, 1), endAt: Date.UTC(y, m, 1) };
+  const { start, end } = monthRangeMs(period);
+  return { startAt: start, endAt: end };
 }
 
 function assertPayable(kind: string): PayableKind {

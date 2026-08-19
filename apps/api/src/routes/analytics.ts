@@ -33,7 +33,7 @@ import {
 import { render, type BrowserBinding, type Rendered } from "../engines/export/render.js";
 import { meterEgress } from "../engines/egress.js";
 import { grantsFor } from "../auth.js";
-import { body, decodeCursor, encodeCursor, listParams, parse, MAX_PAGE } from "../http.js";
+import { body, decodeCursor, encodeCursor, instantParam, InstantMsParam, listParams, parse, MAX_PAGE } from "../http.js";
 import { must } from "../rows.js";
 import type { App } from "../env.js";
 
@@ -387,7 +387,7 @@ analyticsRoutes.get("/exports/:id/download", async (c) => {
 
 const FeedQuery = z.object({
   /** Epoch-ms watermark on the dataset's time column, for the first poll. */
-  since: z.coerce.number().int().optional(),
+  since: InstantMsParam.optional(),
   /** Opaque keyset cursor; preferred over `since` once a poll has run once. */
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(MAX_PAGE).default(MAX_PAGE)
@@ -693,10 +693,11 @@ analyticsRoutes.delete("/saved-views/:id", async (c) => {
 analyticsRoutes.get("/unit-economics", async (c) => {
   const ctx = c.get("ctx");
   require_(ctx.actor, "analytics:reports:read", { tenantId: ctx.tenantId });
-  const rawSince = c.req.query("since");
-  const since = rawSince === undefined ? 0 : Number(rawSince);
-  // A NaN here would silently drop the filter and ship the full table.
-  if (!Number.isFinite(since) || since < 0) throw badRequest("since must be a non-negative epoch-ms number");
+  // `instantParam` 400s on NaN and on an instant no `Date` can hold; a NaN here
+  // would otherwise silently drop the filter and ship the full table. The
+  // non-negative floor is this endpoint's own: cost accrues after the epoch.
+  const since = instantParam(c.req.query("since")) ?? 0;
+  if (since < 0) throw badRequest("since must be a non-negative epoch-ms number");
   const rows = await ctx.db
     .select()
     .from(schema.unitEconomics)

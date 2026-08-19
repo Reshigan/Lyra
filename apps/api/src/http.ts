@@ -49,10 +49,24 @@ export function parse<T extends z.ZodTypeAny>(schema: T, raw: unknown): z.infer<
  * can see one. An earlier version of this paragraph called that a hypothetical
  * "fourth way in"; it was already live. `?asOf=` on the finance reports reached
  * a SQL bind param, `Math.floor((asOf - postedAt) / DAY)` and `generatedAt` in
- * a rendered document header at once. `instantParam` is the bound for that
- * shape — every query parameter naming an instant goes through it.
+ * a rendered document header at once. Three shapes carry the bound, and an
+ * instant-valued query parameter takes whichever matches its endpoint's
+ * contract on garbage — nothing else:
+ *
+ * - `instantParam`, read straight off the request, 400s on garbage;
+ * - `InstantMsParam`, the same in a query *schema*, where the value arrives as
+ *   a string and has to be coerced first;
+ * - `intParam(raw, def, { max: MAX_INSTANT_MS })`, where the endpoint's tested
+ *   contract is that garbage falls back to the default rather than failing.
+ *
+ * Three rounds running, this paragraph claimed a coverage it did not have and
+ * the next wave believed it. Keep it a list of what exists, not a slogan.
  */
-export const InstantMs = z.number().int().min(-8.64e15).max(8.64e15);
+export const MAX_INSTANT_MS = 8.64e15;
+export const InstantMs = z.number().int().min(-MAX_INSTANT_MS).max(MAX_INSTANT_MS);
+
+/** `InstantMs` for a query schema, where every value starts life as a string. */
+export const InstantMsParam = z.coerce.number().pipe(InstantMs);
 
 /**
  * A query parameter that names an instant. `Number("abc")` is NaN, and `??`
@@ -82,11 +96,32 @@ export const IsoDay = z
     return Number.isFinite(ms) && new Date(ms).toISOString().slice(0, 10) === s;
   }, "is not a real calendar day");
 
-/** The same check a month at a time: `2026-99` rolls over into a wrong window. */
+/**
+ * The same check a month at a time: `2026-99` rolls over into a wrong window.
+ * Turn one into bounds with `monthRangeMs`, never with `Date.UTC` — see there.
+ */
 export const IsoMonth = z
   .string()
   .regex(/^\d{4}-\d{2}$/, "must be YYYY-MM")
   .refine((s) => Number(s.slice(5)) >= 1 && Number(s.slice(5)) <= 12, "is not a real calendar month");
+
+/**
+ * Half-open UTC bounds of an `IsoMonth`. Financial periods do not move with a
+ * timezone, and they do not move with a century either: `Date.UTC(y, m - 1, 1)`
+ * maps years 0-99 onto 1900-1999, so `"0050-06"` silently summed June *1950*
+ * under a 0050 label. `Date.parse` on the ISO string has no such mapping. Two
+ * engines had hand-rolled the `Date.UTC` version independently, which is why
+ * this lives here rather than beside either.
+ */
+export function monthRangeMs(period: string): { start: number; end: number } {
+  const [y, m] = period.split("-").map(Number) as [number, number];
+  const iso = (year: number, month: number) =>
+    `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-01T00:00:00Z`;
+  return {
+    start: Date.parse(iso(y, m)),
+    end: Date.parse(m === 12 ? iso(y + 1, 1) : iso(y, m + 1))
+  };
+}
 
 /**
  * Whether a field name means "epoch milliseconds", by convention — the schema
@@ -188,9 +223,9 @@ export const ListQuery = z.object({
   /** Include soft-deleted rows. Requires the resource's delete permission. */
   deleted: z.coerce.boolean().default(false),
   count: z.coerce.boolean().default(false),
-  /** ISO or epoch-ms window on the sort column. */
-  from: z.coerce.number().int().optional(),
-  to: z.coerce.number().int().optional()
+  /** Epoch-ms window on the sort column. */
+  from: InstantMsParam.optional(),
+  to: InstantMsParam.optional()
 });
 export type ListQuery = z.infer<typeof ListQuery>;
 
