@@ -1,6 +1,6 @@
 import { badRequest } from "@lyra/core";
 import type { ReportTable } from "@lyra/ledger";
-import { isoDay } from "@lyra/model-gateway";
+import { isoDay, promptInstant } from "@lyra/model-gateway";
 import { majorUnits, minorExponent, rowCurrency } from "./money.js";
 import { toXlsx } from "./xlsx.js";
 import { pdfSafe, toPdf } from "./pdf.js";
@@ -140,7 +140,7 @@ function tableHtml(table: ReportTable & { rowCount?: number }, opts: RenderOptio
   </style></head><body>
     ${opts.watermark ? `<div class="watermark">${escapeHtml(opts.watermark)}</div>` : ""}
     <h1>${escapeHtml(table.title)}</h1>
-    <div class="generated">Generated ${new Date(table.generatedAt).toISOString().replace("T", " ").slice(0, 19)}</div>
+    <div class="generated">Generated ${promptInstant(table.generatedAt).replace("T", " ").slice(0, 19)}</div>
     ${meta}
     <table><thead><tr>${head}</tr></thead><tbody>${rows}${totalsRow}</tbody></table>
   </body></html>`;

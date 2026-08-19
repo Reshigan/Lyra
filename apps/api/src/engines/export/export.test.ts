@@ -260,4 +260,21 @@ describe("a date column holding an instant no Date can hold", () => {
     expect(pdfText(dated(at))).toContain("2026-06-15");
     expect(new TextDecoder().decode(toXlsx([dated(at)]))).toContain("2026-06-15");
   });
+
+  // `generatedAt` is the table's own stamp, not a cell: routes/ledger.ts reads
+  // `?asOf=` off the query string and reports.ts carries it straight into
+  // `generatedAt`, so the header line is fed by caller input. The three cell
+  // renderers were guarded and this one was not, and it sits in the RTL path —
+  // the browser HTML — which is where an Arabic tenant's every export goes.
+  it("renders the degraded marker in the generated-at header, not a RangeError", async () => {
+    let sawHtml = "";
+    const browser: BrowserBinding = {
+      async fetch(req) {
+        sawHtml = (JSON.parse(await req.text()) as { html: string }).html;
+        return new Response(new TextEncoder().encode("%PDF-fake"), { status: 200 });
+      }
+    };
+    await render("pdf", { ...dated(Date.parse("2026-06-15T09:30:00Z")), title: "نقد", generatedAt: 9e15 }, {}, browser);
+    expect(sawHtml).toContain("Generated unknown");
+  });
 });
