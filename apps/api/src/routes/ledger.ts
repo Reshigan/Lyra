@@ -41,7 +41,7 @@ import {
   type ReportTable,
   type TxnState
 } from "@lyra/ledger";
-import type { Gateway } from "@lyra/model-gateway";
+import { promptInstant, type Gateway } from "@lyra/model-gateway";
 import { EXPORT_FORMATS, isExportFormat, render } from "../engines/export/render.js";
 import { meterEgress } from "../engines/egress.js";
 import { utf8, zip } from "../engines/export/zip.js";
@@ -703,7 +703,7 @@ ledgerRoutes.post("/recon/runs", async (c) => {
  * Pass 3. The model only ever *proposes* — every ai_proposed match lands in
  * `proposed` and needs a human `decide`, so a hallucinated join can never post.
  */
-function aiProposer(ctx: Ctx, gateway: Gateway): MatchProposer {
+export function aiProposer(ctx: Ctx, gateway: Gateway): MatchProposer {
   return async (unmatched, open) => {
     if (!open.length) return [];
     const res = await gateway.complete(ctx, {
@@ -742,7 +742,14 @@ function aiProposer(ctx: Ctx, gateway: Gateway): MatchProposer {
         },
         {
           role: "user",
-          content: JSON.stringify({ statementLines: unmatched.slice(0, 200), ourTransactions: open.slice(0, 400) })
+          // Dates go over as ISO-8601, never epoch ms. A bare 13-digit instant is a
+          // card-shaped run: ~1 in 10 passes Luhn and the scrubber replaces it with
+          // `[[CARD_n]]`, so the model would be asked to agree on a date it cannot
+          // see. The ledger's own `postedAt` stays numeric — only this payload renders.
+          content: JSON.stringify({
+            statementLines: unmatched.slice(0, 200).map((l) => ({ ...l, postedAt: l.postedAt === undefined ? undefined : promptInstant(l.postedAt) })),
+            ourTransactions: open.slice(0, 400).map((t) => ({ ...t, postedAt: promptInstant(t.postedAt) }))
+          })
         }
       ]
     });
