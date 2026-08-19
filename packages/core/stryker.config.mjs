@@ -10,8 +10,12 @@ import { changedSources } from "../../scripts/stryker-changed.mjs";
 // Never mutated, whether the run is whole-tree or diff-scoped.
 const excluded = [
   "!packages/core/src/**/*.test.ts",
-  // side-effecting CLI entrypoint, no exported logic to test
+  // side-effecting CLI entrypoints, no exported logic to test. Everything either
+  // of them decides without a network lives in a sibling module that IS mutated
+  // (seed-history-cli.ts -> seed-history-d1.ts); if one of these grows a branch,
+  // move the branch out rather than widening this list.
   "!packages/core/src/seed-cli.ts",
+  "!packages/core/src/seed-history-cli.ts",
   // no unit coverage in this package; exercised indirectly via apps/api
   "!packages/core/src/crypto.ts",
   "!packages/core/src/totp.ts",
