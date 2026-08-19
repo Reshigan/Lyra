@@ -23,3 +23,20 @@ const MAX_TIME_VALUE = 8.64e15;
 export function promptInstant(ms: number): string {
   return Number.isFinite(ms) && Math.abs(ms) <= MAX_TIME_VALUE ? new Date(ms).toISOString() : "unknown";
 }
+
+/**
+ * The `YYYY-MM-DD` day of an instant, for a prompt line, a rendered document or
+ * a report cell. Total for the same reason `promptInstant` is — a stored row
+ * written before the API bounded its write surfaces can hold an instant no
+ * `Date` can, and a `RangeError` mid-render is a whole missing document rather
+ * than one unreadable cell.
+ *
+ * Split on the `T` rather than sliced to ten characters: ISO-8601 years are not
+ * always four digits. An in-range instant far enough from now renders as
+ * `-251540-02-03T09:46:40.000Z`, and ten characters of that is `-251540-02` — a
+ * month with no day, presented as if it were a whole date. The degraded
+ * `"unknown"` has no `T` either and survives whole.
+ */
+export function isoDay(ms: number): string {
+  return promptInstant(ms).split("T")[0]!;
+}

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { id as newId, schema } from "@lyra/db";
 import { audit, conflict, emit, notFound, scoped, sha256Hex, type Ctx } from "@lyra/core";
 import type { ReportTable } from "@lyra/ledger";
+import { isoDay } from "@lyra/model-gateway";
 import { pdfSafe, toPdf } from "./export/pdf.js";
 
 // docs/27 F27 / docs/specs/gap-axis-design.md §D.11. A contract the customer
@@ -97,8 +98,6 @@ function nameOf(json: string | null | undefined, locale: string): string {
     return "";
   }
 }
-
-const isoDay = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
 
 /** The version the document is about: asked for, else on risk, else the last. */
 async function versionFor(ctx: Ctx, policy: PolicyRow, versionId?: string): Promise<VersionRow> {

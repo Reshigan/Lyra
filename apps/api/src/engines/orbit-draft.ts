@@ -1,7 +1,7 @@
 import { and, desc, eq, gte, ne } from "drizzle-orm";
 import { id as newId, schema } from "@lyra/db";
 import { verifyGroundedness, type Ctx } from "@lyra/core";
-import { promptInstant, type Gateway } from "@lyra/model-gateway";
+import { isoDay, type Gateway } from "@lyra/model-gateway";
 import { activePrompt, findAgent } from "./ai-agent.js";
 
 // docs/27 F7. The draft loop had two ends and no middle: apps/web's
@@ -261,17 +261,3 @@ function nameOf(json: string | null | undefined, locale: string): string {
   }
 }
 
-/**
- * The day part of an instant, for a line that goes into a prompt. Via
- * `promptInstant` because `new Date(ms).toISOString()` throws outside the Date
- * range, and this runs in `buildContext` — before the aiRuns insert and outside
- * draftReply's try, so a throw here was swallowed by the sweep's catch and the
- * conversation was skipped on every tick with nothing written down.
- *
- * Split on the `T` rather than sliced to 10 characters: ISO-8601 years are not
- * always four digits. An in-range instant far enough from now renders as
- * `-251540-02-03T09:46:40.000Z`, and ten characters of that is `-251540-02` — a
- * month with no day, handed to the model as if it were a whole date.
- * `promptInstant`'s degraded `"unknown"` has no `T` either and survives whole.
- */
-const isoDay = (ms: number): string => promptInstant(ms).split("T")[0]!;

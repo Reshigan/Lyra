@@ -1,5 +1,6 @@
 import { and, asc, eq, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { id as newId, schema } from "@lyra/db";
+import { isoDay } from "@lyra/model-gateway";
 import {
   actorRef,
   audit,
@@ -677,7 +678,7 @@ export async function statementTable(
       text("agreement", "Agreement")
     ],
     rows: entries.map((e) => ({
-      earnedOn: new Date(earnedAtOf(e)).toISOString().slice(0, 10),
+      earnedOn: isoDay(earnedAtOf(e)),
       policyId: e.policyId,
       kind: e.kind,
       bucket: earnedAtOf(e) >= startAt ? settlement.period : "carried in",
