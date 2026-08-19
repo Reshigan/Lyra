@@ -627,11 +627,12 @@ export async function renewPolicy(ctx: Ctx, prior: PolicyRow, input: RenewInput)
 /**
  * First instalment still unpaid past its grace window, if any.
  *
- * `PaymentPlanJson` (packages/db) rather than a shape local to this file: the
- * write door validates against the same one (resources.ts), so a plan that gets
- * stored is a plan this can read. The parse stays lenient and fail-open all the
- * same — nothing here renders `dueAt` through `new Date()`, and refusing to
- * read a plan means declining to lapse a policy that has gone unpaid.
+ * `PaymentPlanJson` (packages/db) rather than a shape local to this file, and
+ * deliberately not the stricter `PaymentPlanWrite` the write door uses: a plan
+ * seeded or migrated in from outside the API carries keys the write shape never
+ * modelled, and refusing to read one means declining to lapse a policy that has
+ * gone unpaid. Lenient and fail-open is safe here because nothing in this
+ * function renders `dueAt` through `new Date()` — it only compares it to `now`.
  */
 function missedInstalment(planJson: string | null, now: number): { seq: number; dueAt: number } | null {
   if (!planJson) return null;

@@ -1,6 +1,6 @@
 import { eq, inArray } from "drizzle-orm";
 import { id } from "@lyra/db";
-import { PaymentPlanJson, schema } from "@lyra/db";
+import { PaymentPlanWrite, schema } from "@lyra/db";
 import { badRequest, can, checkKAnonymity, CUSTOMER_PII, DEFAULT_K_FLOOR, gate, scoped, sealFields } from "@lyra/core";
 import { SENSITIVE_EXTRACTION_FIELDS } from "@lyra/model-gateway";
 import { fieldKey } from "./env.js";
@@ -332,7 +332,11 @@ export const AXIS = register(
           throw badRequest("paymentPlanJson is not valid JSON");
         }
       }
-      const plan = PaymentPlanJson.safeParse(parsed);
+      // `PaymentPlanWrite`, not the sweep's own `PaymentPlanJson`: that one
+      // defaults every field so the sweep can read a partial plan, which at a
+      // write door means `{"foo":"bar"}` stores as a plan with lapse-on-missed
+      // silently off.
+      const plan = PaymentPlanWrite.safeParse(parsed);
       if (!plan.success) throw badRequest("paymentPlanJson is not a payment plan the lapse sweep can read");
       return values;
     }

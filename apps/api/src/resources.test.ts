@@ -414,6 +414,34 @@ describe("payment plans in the generated shape", () => {
     expect(await planOf()).toBeNull();
   });
 
+  // The doc comment on `PaymentPlanJson` said the `dueAt` bound "belongs on the
+  // write door (apps/api/src/resources.ts)" — and the write door validated with
+  // the same unbounded shape, so the bound existed nowhere at all.
+  it("refuses an instalment due past the end of the Date range", async () => {
+    const res = await send(router(policies()), "PATCH", "/pol_plan", {
+      paymentPlanJson: { lapseOnMissed: true, instalments: [{ seq: 1, dueAt: 9e15, state: "due" }] }
+    });
+    expect(res.status).toBe(400);
+    expect(await planOf()).toBeNull();
+  });
+
+  // Every field defaults, so a plan-shaped-but-not-a-plan object parsed clean
+  // and stored as `lapseOnMissed: false` — a "validated" plan that quietly
+  // switched the lapse sweep off, while the 400 message promised the opposite.
+  it("refuses an object that is not a plan rather than defaulting it", async () => {
+    const res = await send(router(policies()), "PATCH", "/pol_plan", { paymentPlanJson: { foo: "bar" } });
+    expect(res.status).toBe(400);
+    expect(await planOf()).toBeNull();
+  });
+
+  it("refuses an unknown key on an instalment", async () => {
+    const res = await send(router(policies()), "PATCH", "/pol_plan", {
+      paymentPlanJson: { lapseOnMissed: true, instalments: [{ seq: 1, dueAt: NOW, state: "due", paid: true }] }
+    });
+    expect(res.status).toBe(400);
+    expect(await planOf()).toBeNull();
+  });
+
   it("accepts a plan the sweep can read", async () => {
     const plan = { graceDays: 7, lapseOnMissed: true, instalments: [{ seq: 1, dueAt: NOW, state: "due" }] };
     const res = await send(router(policies()), "PATCH", "/pol_plan", { paymentPlanJson: plan });
