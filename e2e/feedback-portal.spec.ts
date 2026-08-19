@@ -29,15 +29,28 @@ interface Conversation {
   csat: number | null;
 }
 
-async function ratableConversation(token: string): Promise<Conversation> {
+async function conversations(token: string): Promise<Conversation[]> {
   const res = await fetch(`${API_ORIGIN}/v1/orbit/conversations?limit=100`, {
     headers: { authorization: `Bearer ${token}` }
   });
   expect(res.status).toBe(200);
   const { data } = (await res.json()) as { data: Conversation[] };
-  const closed = data.find((row) => row.state === "closed" && row.csat === null);
+  return data;
+}
+
+async function ratableConversation(token: string): Promise<Conversation> {
+  const closed = (await conversations(token)).find((row) => row.state === "closed" && row.csat === null);
+  // seed/orbit.ts leaves exactly one closed thread unrated for this journey.
   if (!closed) throw new Error("no unrated closed conversation in the seed to rate");
   return closed;
+}
+
+// The wall test only needs an id that exists — rating it is the other test's
+// job, and the unrated thread is gone once that test has run.
+async function anyConversation(token: string): Promise<Conversation> {
+  const row = (await conversations(token))[0];
+  if (!row) throw new Error("no conversation in the seed");
+  return row;
 }
 
 async function linkFor(token: string, kind: string, id: string): Promise<string> {
@@ -77,7 +90,7 @@ test("J-C2 the rating page opens for nobody without the token in the link @journ
   page
 }) => {
   const token = await staffToken(PERSONAS.orbitAgent.email);
-  const conversation = await ratableConversation(token);
+  const conversation = await anyConversation(token);
   const path = (await linkFor(token, "feedback", conversation.id)).split("?")[0]!;
 
   const headings: string[] = [];

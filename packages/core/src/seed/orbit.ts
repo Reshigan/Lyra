@@ -136,7 +136,8 @@ export async function seedOrbit(ctx: SeedContext): Promise<void> {
     broker: id("cnv", now + 14),
     callback: id("cnv", now + 15),
     faqAr: id("cnv", now + 16),
-    certificate: id("cnv", now + 17)
+    certificate: id("cnv", now + 17),
+    awaitingRating: id("cnv", now + 18)
   };
 
   /* ---- the desk itself --------------------------------------------------
@@ -394,6 +395,31 @@ export async function seedOrbit(ctx: SeedContext): Promise<void> {
       closedAt: ctx.issuedAt + 5 * HOUR + 10 * MINUTE,
       createdAt: ctx.issuedAt + 5 * HOUR,
       updatedAt: ctx.issuedAt + 5 * HOUR + 10 * MINUTE
+    },
+    {
+      // Closed this morning and not yet rated: the rating request went out with
+      // the closure and the customer has not tapped it. Every other closed
+      // thread here carries its `csat`, which left the CSAT collection half of
+      // orbit.md §5 with nothing to collect — J-C2's hosted page
+      // (/portal/:tenantSlug/feedback/:id) has no conversation to offer and the
+      // demo cannot walk the journey. This row is that conversation.
+      id: conv.awaitingRating,
+      tenantId,
+      customerId: ctx.customerId,
+      channel: "whatsapp",
+      externalRef: "wa:971501234567:driver",
+      state: "closed",
+      assigneeRef: sara,
+      teamId: ctx.teams.motor,
+      summary: "Asked to add her husband as a named driver; endorsement priced and confirmed, thread closed.",
+      lang: "en",
+      intent: "policy.endorsement",
+      sentiment: 38,
+      firstResponseMs: 3 * MINUTE,
+      lastMessageAt: now - 3 * HOUR,
+      closedAt: now - 2 * HOUR,
+      createdAt: now - 3 * HOUR - 20 * MINUTE,
+      updatedAt: now - 2 * HOUR
     }
   ]);
 

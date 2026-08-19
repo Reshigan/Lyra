@@ -63,7 +63,11 @@ export default defineConfig({
         PORT: String(API_PORT),
         APP_ORIGIN: WEB_ORIGIN,
         SESSION_COOKIE: "lyra_session",
-        ENVIRONMENT: "local"
+        ENVIRONMENT: "local",
+        // Field encryption and the portal-link HMAC (routes/portal.ts) fail
+        // closed without it, so the hosted renewal/feedback pages have no
+        // credential to mint. A fixed test value: real ones are secrets.
+        FIELD_KEY: "e2e-field-key"
       },
       reuseExistingServer: !process.env.CI,
       timeout: 30_000,
