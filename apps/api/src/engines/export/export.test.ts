@@ -211,3 +211,53 @@ describe("render() pdf fallback for Arabic", () => {
     expect(new TextDecoder("latin1").decode(out.bytes).startsWith("%PDF")).toBe(true);
   });
 });
+
+/**
+ * `north_decisions.review_at` is a nullable stored instant on a read-write
+ * resource, and it is the one `kind: "date"` column in the board-pack tree. A
+ * row written before the API bounded its write surfaces can hold 9e15, which no
+ * `Date` can. `new Date(9e15).toISOString()` throws `RangeError`, and all three
+ * renderers called it — so one such row meant a 500 and no board pack at all,
+ * rather than one unreadable cell.
+ */
+describe("a date column holding an instant no Date can hold", () => {
+  const dated = (v: unknown): ReportTable => ({
+    title: "Open decisions",
+    columns: [
+      { key: "title", label: "Decision", kind: "text" },
+      { key: "reviewAt", label: "Review by", kind: "date" }
+    ],
+    rows: [{ title: "Renew the binder", reviewAt: v }],
+    generatedAt: Date.parse("2026-06-15T00:00:00Z")
+  });
+
+  it("renders the degraded marker in the PDF instead of throwing", () => {
+    const out = pdfText(dated(9e15));
+    expect(out.startsWith("%PDF")).toBe(true);
+    expect(out).toContain("unknown");
+  });
+
+  it("renders the degraded marker in the spreadsheet instead of throwing", () => {
+    const xml = new TextDecoder().decode(toXlsx([dated(9e15)]));
+    expect(xml).toContain("unknown");
+  });
+
+  it("renders the degraded marker in the HTML the browser prints", async () => {
+    let sawHtml = "";
+    const browser: BrowserBinding = {
+      async fetch(req) {
+        sawHtml = (JSON.parse(await req.text()) as { html: string }).html;
+        return new Response(new TextEncoder().encode("%PDF-fake"), { status: 200 });
+      }
+    };
+    // Arabic in the title forces the browser path, which is the one `cellText` feeds.
+    await render("pdf", { ...dated(9e15), title: "نقد" }, {}, browser);
+    expect(sawHtml).toContain("unknown");
+  });
+
+  it("still renders a date a Date can hold", () => {
+    const at = Date.parse("2026-06-15T09:30:00Z");
+    expect(pdfText(dated(at))).toContain("2026-06-15");
+    expect(new TextDecoder().decode(toXlsx([dated(at)]))).toContain("2026-06-15");
+  });
+});

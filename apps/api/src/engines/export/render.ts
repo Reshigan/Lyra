@@ -1,5 +1,6 @@
 import { badRequest } from "@lyra/core";
 import type { ReportTable } from "@lyra/ledger";
+import { isoDay } from "@lyra/model-gateway";
 import { majorUnits, minorExponent, rowCurrency } from "./money.js";
 import { toXlsx } from "./xlsx.js";
 import { pdfSafe, toPdf } from "./pdf.js";
@@ -100,7 +101,10 @@ function cellText(v: unknown, kind: ReportTable["columns"][number]["kind"], row:
     return `${currency} ${majorUnits(Number(v), currency).toLocaleString("en-US", { minimumFractionDigits: minorExponent(currency), maximumFractionDigits: minorExponent(currency) })}`;
   }
   if (kind === "number") return Number(v).toLocaleString("en-US");
-  if (kind === "date") return new Date(Number(v)).toISOString().slice(0, 10);
+  // `isoDay`, not `new Date(...).toISOString()`: `v` comes off a stored row, and
+  // a row written before the API bounded its write surfaces can hold an instant
+  // no `Date` can. The throw costs the whole document, not this one cell.
+  if (kind === "date") return isoDay(Number(v));
   return String(v);
 }
 

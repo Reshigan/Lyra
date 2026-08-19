@@ -1,4 +1,5 @@
 import type { ReportTable } from "@lyra/ledger";
+import { promptInstant } from "@lyra/model-gateway";
 import { majorUnits, minorExponent, rowCurrency } from "./money.js";
 import { utf8, zip } from "./zip.js";
 
@@ -251,8 +252,14 @@ function sheetName(raw: string, i: number): string {
   return cleaned || `Sheet${i + 1}`;
 }
 
+/**
+ * `YYYY-MM-DD HH:MM:SS` for a date cell. Through `promptInstant` because `ms` is
+ * a stored value: an instant no `Date` can hold degrades to `"unknown"` — the
+ * same marker `isoDay` leaves — rather than throwing `RangeError` and costing
+ * the whole workbook.
+ */
 function iso(ms: number): string {
-  return new Date(ms).toISOString().replace("T", " ").slice(0, 19);
+  return promptInstant(ms).replace("T", " ").slice(0, 19);
 }
 
 function esc(s: string): string {
