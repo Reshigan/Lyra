@@ -268,8 +268,10 @@ function nameOf(json: string | null | undefined, locale: string): string {
  * draftReply's try, so a throw here was swallowed by the sweep's catch and the
  * conversation was skipped on every tick with nothing written down.
  *
- * `promptInstant`'s degraded return is the literal `"unknown"`, which is shorter
- * than 10 characters and so survives the slice whole — the model is told the day
- * is unknown rather than shown a truncated fragment of one.
+ * Split on the `T` rather than sliced to 10 characters: ISO-8601 years are not
+ * always four digits. An in-range instant far enough from now renders as
+ * `-251540-02-03T09:46:40.000Z`, and ten characters of that is `-251540-02` — a
+ * month with no day, handed to the model as if it were a whole date.
+ * `promptInstant`'s degraded `"unknown"` has no `T` either and survives whole.
  */
-const isoDay = (ms: number): string => promptInstant(ms).slice(0, 10);
+const isoDay = (ms: number): string => promptInstant(ms).split("T")[0]!;
