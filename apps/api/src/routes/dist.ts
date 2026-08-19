@@ -20,7 +20,8 @@ import {
 import { body, created, listParams } from "../http.js";
 import { isUniqueViolation } from "../crud.js";
 import { one } from "../rows.js";
-import type { ProviderQuoter, QuoteOutcome } from "../engines/rating.js";
+import type { QuoteOutcome } from "../engines/rating.js";
+import { quoterFor } from "../engines/dist-quoter.js";
 import { runShop } from "../engines/shop.js";
 import { decideOffer, markSurfaced, proposeOffers } from "../engines/nbo.js";
 import { qualifyReferral, settleReferral } from "../engines/referral-settlement.js";
@@ -92,7 +93,7 @@ distRoutes.post("/quote-requests/shop", async (c) => {
         },
         channelKey: channel.key,
         inputs: input.inputs,
-        quoter: quoterFor(c)
+        quoter: quoterFor(c.env)
       });
 
       await audit(ctx, {
@@ -564,17 +565,6 @@ distRoutes.post("/next-best-offers/:id/decide", async (c) => {
 
 function canSeeMargin(ctx: Ctx): boolean {
   return ctx.actor.kind !== "customer";
-}
-
-/**
- * Live underwriter adapters. None are wired yet — every offering on the seeded
- * panel prices from a table — so an `api` offering returns a visible error row
- * rather than a fake quote.
- *
- * ponytail: no adapter registry until there is a second adapter to register.
- */
-function quoterFor(_c: unknown): ProviderQuoter | undefined {
-  return undefined;
 }
 
 export type { QuoteOutcome };

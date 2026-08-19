@@ -1,7 +1,7 @@
 import {
+  affluenceBandOf,
   estimateReach,
   isTargetable,
-  lsmBandOf,
   verifyGroundedness,
   type Attribute,
   type AttributeCount
@@ -60,9 +60,16 @@ export interface TargetingProposal {
   demographics: Attribute[];
   /** The same cells with their justifications — the user-visible "why these". */
   reasons: DemographicReason[];
-  /** LSM bands among the accepted cells, ascending. Empty for a pack that does
-   *  not tag on LSM; this is a convenience for the ZA media-plan UI, not a
-   *  second source of truth. */
+  /** Bands on the pack's affluence scale among the accepted cells, ascending.
+   *  Empty for a pack that bands on nothing; a convenience for the media-plan
+   *  UI, not a second source of truth.
+   *
+   *  ponytail: still spelled `lsm`, and it is no longer only LSM. The name is a
+   *  wire field — `signal_audiences.definitionJson.targeting.lsm`, read back by
+   *  apps/api's planAudience and apps/web's signal.shared.ts — so renaming it
+   *  silently blanks the band line for every audience already stored. Upgrade
+   *  path when it is worth a migration: write both `lsm` and `bands`, read
+   *  `bands ?? lsm`, drop `lsm` a release later (ADR-0069). */
   lsm: number[];
   /** The resolver-ready tree, built here rather than by the model. */
   rule: AudienceRule;
@@ -96,6 +103,10 @@ export interface AudienceEvidence {
   counts: readonly AttributeCount[];
   /** The k-anonymity floor those counts were suppressed at. */
   floor: number;
+  /** The tenant's domain pack, which decides which axes are targetable at all
+   *  and what the affluence bands mean. Omitted reads as the default pack, so
+   *  an existing ZA caller keeps exactly the prompt it had. */
+  pack?: string;
 }
 
 /** JSON schema handed to `ModelRequest.responseSchema` (gateway.ts, docs/02 §5). */
@@ -129,8 +140,10 @@ export function audienceProposalSchema(): Record<string, unknown> {
  * The evidence, one fact per line — the exact lines `verifyGroundedness` scores
  * the reply against, so the prompt and the groundedness pool cannot drift apart.
  *
- * The LSM label rides on the same line as the count so the model is grounded in
- * what a band *means* rather than inventing a lifestyle for a number. Lines for
+ * The affluence label rides on the same line as the count so the model is
+ * grounded in what a band *means* rather than inventing a lifestyle for a
+ * number — LSM 7 for a ZA book, the top income quintile for a Gulf one, off
+ * whichever scale the pack declares. Lines for
  * momentum and signal count are omitted entirely when null: a "not measured"
  * line invites the model to reason about the absence, and a scenario has nothing
  * to reason about there.
@@ -144,7 +157,7 @@ export function audienceEvidenceLines(ev: AudienceEvidence, nouns: PromptNouns):
     `Active ${nouns.contracts} are sold to these customers; counts below are per attribute, not per ${nouns.contract}.`,
     `Counts below are suppressed under a k-anonymity floor of ${ev.floor}; nothing thinner is shown.`,
     ...ev.counts.map((c) => {
-      const band = c.axis === "lsm" ? lsmBandOf(c.value) : null;
+      const band = affluenceBandOf(c.axis, c.value, ev.pack);
       const head = `Attribute ${c.axis}=${c.value}: ${c.count} customers`;
       return band ? `${head}. ${band.label}` : head;
     })
@@ -230,7 +243,7 @@ export function parseAudienceProposal(
     const value = text(sel.value, 80);
     const reason = text(sel.reason, 300);
     if (!axis || value === null || reason === null) continue;
-    if (!isTargetable(axis)) continue;
+    if (!isTargetable(axis, ev.pack)) continue;
     // The cell has to be one the model was shown. A value it never saw is either
     // invented or below the floor, and both are refusals for the same reason.
     const shown = ev.counts.find((c) => c.axis === axis && c.value === value);
@@ -247,19 +260,19 @@ export function parseAudienceProposal(
     summary,
     demographics,
     reasons,
-    lsm: lsmBandsIn(reasons),
+    lsm: affluenceBandsIn(reasons, ev.pack),
     rule: ruleFor(demographics),
     estimatedReach: estimateReach(demographics, ev.counts),
     confidence: Math.round((reasons.length / proposed.length) * 100)
   };
 }
 
-/** The LSM bands among a set of selections, ascending. A non-LSM axis and an
- *  unrecognised band both contribute nothing rather than a hole in the list. */
-function lsmBandsIn(reasons: readonly DemographicReason[]): number[] {
+/** The affluence bands among a set of selections, ascending. Another axis and
+ *  an unrecognised band both contribute nothing rather than a hole in the list. */
+function affluenceBandsIn(reasons: readonly DemographicReason[], pack?: string): number[] {
   return reasons
-    .flatMap((r) => (r.axis === "lsm" ? [lsmBandOf(r.value)] : []))
-    .flatMap((b) => (b ? [b.band as number] : []))
+    .flatMap((r) => affluenceBandOf(r.axis, r.value, pack) ?? [])
+    .map((b) => b.band)
     .sort((a, b) => a - b);
 }
 
@@ -298,7 +311,7 @@ export function fallbackTargetingProposal(ev: AudienceEvidence, nouns: PromptNou
   const picked: AttributeCount[] = [];
   const axes = new Set<string>();
   for (const c of ev.counts) {
-    if (axes.has(c.axis) || !isTargetable(c.axis)) continue;
+    if (axes.has(c.axis) || !isTargetable(c.axis, ev.pack)) continue;
     axes.add(c.axis);
     picked.push(c);
     if (picked.length === 2) break;
@@ -319,7 +332,7 @@ export function fallbackTargetingProposal(ev: AudienceEvidence, nouns: PromptNou
       `No model proposed this pool; narrow it before committing ${nouns.contract} spend.`,
     demographics,
     reasons,
-    lsm: lsmBandsIn(reasons),
+    lsm: affluenceBandsIn(reasons, ev.pack),
     rule: ruleFor(demographics),
     estimatedReach: estimateReach(demographics, ev.counts),
     confidence: 0

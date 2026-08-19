@@ -72,8 +72,11 @@ export async function attributeCounts(
     // alone, and inflates the reach a human funds a campaign against.
     .where(and(eq(schema.customers.tenantId, ctx.tenantId), isNull(schema.customers.deletedAt)));
 
+  // Which axes count at all is the tenant's domain pack's answer (ADR-0069):
+  // a Gulf book is cut on income quintiles, a ZA one on LSM.
+  const pack = ctx.policy.domainPack;
   const tagSets = rows.map((r) => tagsOf(r.tagsJson));
-  return { counts: targetablePool(countAttributes(tagSets), floor), bookSize: rows.length };
+  return { counts: targetablePool(countAttributes(tagSets, pack), floor, pack), bookSize: rows.length };
 }
 
 /**
@@ -100,7 +103,7 @@ export async function suggestTargeting(
     throw conflict(`no customer attributes survive a k-anonymity floor of ${floor}`);
   }
 
-  const ev: AudienceEvidence = { ...subject, bookSize, counts, floor };
+  const ev: AudienceEvidence = { ...subject, bookSize, counts, floor, pack: ctx.policy.domainPack };
   const drafted = await proposePool(ctx, gateway, ev);
 
   const audienceId = newId("aud", ctx.now);

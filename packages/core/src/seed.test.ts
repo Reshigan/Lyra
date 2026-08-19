@@ -273,7 +273,7 @@ describe("seed", () => {
     expect(JSON.parse(byName["Falcon Insurance"]!.linesJson!)).toEqual(["motor", "home"]);
     expect(JSON.parse(byName["Falcon Insurance"]!.quoteEndpointJson!)).toEqual({
       url: "https://api.falcon.example/quote",
-      authRef: "FALCON_API_KEY"
+      authRef: "CARRIER_FALCON_API_KEY"
     });
     expect(JSON.parse(byName["Falcon Insurance"]!.settlementTermsJson!)).toEqual({ frequency: "monthly", netDays: 30 });
 

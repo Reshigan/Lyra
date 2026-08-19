@@ -119,7 +119,7 @@ const PartnerQuoteBody = z.object({
 // requestPartnerQuote(), wired here. Gated on orbit:partners:read rather
 // than :update — a quote is a pricing lookup, it persists a log row but
 // never mutates the partner itself. Real rating integration stays a
-// separate, credential-gated line (see routes/dist.ts's quoterFor stub).
+// separate, credential-gated line (see engines/dist-quoter.ts).
 orbitRoutes.post("/partners/:id/quotes", async (c) => {
   const ctx = ctxOf(c);
   require_(ctx.actor, "orbit:partners:read", { tenantId: ctx.tenantId, module: "orbit" });

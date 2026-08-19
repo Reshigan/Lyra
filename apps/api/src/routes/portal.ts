@@ -18,6 +18,7 @@ import {
   type Criterion
 } from "../engines/rating.js";
 import { runShop } from "../engines/shop.js";
+import { quoterFor } from "../engines/dist-quoter.js";
 import type { App, Env } from "../env.js";
 
 // The public comparison site (yallacompare-style). No session exists at all —
@@ -283,7 +284,8 @@ portalRoutes.post("/:tenantSlug/leads", async (c) => {
   const shopped = await runShop(ctx, {
     request: { ...baseRow, portalTokenHash: await sha256Hex(token) },
     channelKey: DIRECT_WEB_CHANNEL_KEY,
-    inputs
+    inputs,
+    quoter: quoterFor(c.env)
   });
   await audit(ctx, {
     action: "dist.quote_requests.create",
