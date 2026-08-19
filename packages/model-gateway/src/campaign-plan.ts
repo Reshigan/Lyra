@@ -313,7 +313,7 @@ export function fallbackCampaignPlan(ev: CampaignPlanEvidence, nouns: PromptNoun
     {
       name: `${ev.subject} — direct to the pool`,
       angle: `Speak only to ${pool}, on the single strongest attribute in it.`,
-      offer: `A ${nouns.contract} priced for the band that already carries the most customers.`,
+      offer: `The ${nouns.contract} priced for the band that already carries the most customers.`,
       channels: ["email", "meta"],
       probability: base,
       why: [`Demand momentum sits at ${momentum} against ${reach} reachable customers.`],
