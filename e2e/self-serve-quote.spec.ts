@@ -33,13 +33,15 @@ test("J-C1 a visitor prices the panel and picks an offer without signing in @jou
   await expect(page.getByText("Ranked by total price, cheapest first.")).toBeVisible();
   await expect(page.getByText("Cheapest", { exact: true })).toBeVisible();
 
-  const offers = page.getByRole("listitem");
-  expect(await offers.count()).toBeGreaterThan(1);
+  // The comparison is row-wise — one row per criterion, one column per offer —
+  // so an offer is a column header, not a card in a list. Only the offer `th`s
+  // are `scope="col"`; the row labels are `scope="row"` and read as rowheaders.
+  expect(await page.getByRole("columnheader").count()).toBeGreaterThan(1);
 
   // Nothing the back office keeps to itself leaks onto a public page.
   await expect(page.getByText(/commission|value score|declined because/i)).toHaveCount(0);
 
-  await offers.first().getByRole("button", { name: "Choose this cover" }).click();
+  await page.getByRole("button", { name: "Choose this cover" }).first().click();
 
   // Accepting converts the request; it does not bind cover or take money.
   await expect(page.getByRole("heading", { name: "Next: send your documents" })).toBeVisible();
