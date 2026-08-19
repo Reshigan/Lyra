@@ -16,6 +16,10 @@ kill switches, consent, entitlements, MFA — all of these produce errors that
 look like faults and are not. Roughly a third of tickets in the first month will
 be one of these. Every entry in §4 tells you which is which.
 
+Describes commit `c7f1f57` on `main` (2026-08-18). Previous revision described
+`a295218`/`8afd07d` (2026-08-13); [`README.md` §7](README.md#7-revision-history)
+lists what changed in between, and which work is still on unmerged branches.
+
 ---
 
 ## Contents
@@ -23,7 +27,7 @@ be one of these. Every entry in §4 tells you which is which.
 1. [How to read an error](#1-how-to-read-an-error)
 2. [Reproducing a user's problem](#2-reproducing-a-users-problem)
 3. [The triage decision tree](#3-the-triage-decision-tree)
-4. [Symptom catalogue](#4-symptom-catalogue) — 16 entries
+4. [Symptom catalogue](#4-symptom-catalogue) — 21 entries
 5. [Escalation ladder](#5-escalation-ladder)
 6. [What to attach to an escalation](#6-what-to-attach-to-an-escalation)
 
@@ -233,7 +237,10 @@ Work down. Stop at the first branch that matches.
    ├─ 503 ai_paused         → §4 S-05
    ├─ 500 internal          → real fault. Straight to §5, tier 2.
    └─ 200 but "nothing happened" → §4 S-08, S-09, S-15 (async work: events,
-                                    webhooks, cron)
+                                    webhooks, cron), S-19 (commission not
+                                    booked), S-21 (one module blank)
+   └─ 409 precondition_failed  → §4 S-20 (a ledger precondition refused the
+                                  posting — usually a stale disclosure)
 
 3. Did it ever work?
    ├─ Broke after a specific date/time → correlate with the last deploy
@@ -876,6 +883,142 @@ like a bad translation). In the browser, inspect `<html dir>` and the
 **Standing caveat:** a native-speaker review of the Arabic catalogue is still
 outstanding. Translation-quality complaints are known, expected, and should be
 collected rather than escalated one at a time.
+
+---
+
+### S-19 — "The commission never appeared" after a bind, a group bind or a broker fee
+
+**Likely cause.** Every revenue line in LYRA is a **ledger recipe**, not code
+scattered through the routes. A line either posted, or it was refused, or
+nothing called it. Those three are distinguishable and the distinction is the
+whole ticket.
+
+The lines and their accounts are catalogued in
+[`01-system-overview.md` §8.1](01-system-overview.md). The recipes themselves
+are in [`packages/ledger/src/recipes.ts`](../../packages/ledger/src/recipes.ts).
+
+**How to confirm.** In order — stop at the first one that answers it:
+
+1. **Did a transaction exist at all?** Query `ledger_transactions` for the
+   subject (the policy id). No row for the expected type (`BIND-GROUP`,
+   `FEE-BROK`, `REFERRAL-SETL`, `PARTNER-BIND`) means nothing called the line —
+   the user did a *different* action than they think they did. A single bind is
+   `BIND`; a group bind is `BIND-GROUP`, and only the group route posts group
+   commission.
+2. **Is there a `failed` transaction?** Then it was attempted and refused. The
+   stored reason is the answer; go to S-20 if it names a precondition.
+3. **Right amount, wrong number?** The recipe computes it. Flat-rate commission
+   is the only supported model today (recorded as a known gap in
+   [`08-known-gaps-and-backlog.md` §2.4](08-known-gaps-and-backlog.md)) — a
+   tenant expecting tiered or sliding-scale commission is not seeing a bug.
+
+**Fix or escalate.**
+
+- Nothing called the line → user education, no code change. Show them which
+  route posts which line.
+- Refused with a precondition → S-20.
+- Posted, balanced, but the tenant disputes the rate → commercial, not
+  engineering.
+- Posted **unbalanced**, or the journal lines do not sum to zero → **stop and
+  escalate as Sev-2 immediately.** Ledger invariants are property-tested; a real
+  imbalance in production means a test-level invariant was defeated, and that is
+  never a support fix.
+
+**Known trap.** `FIN-CMSN` (financing commission, account 4080) has a recipe on
+`main` but nothing on `main` calls it yet — the engine that does is on an
+unmerged branch (see [`README.md` §7](README.md#7-revision-history)). "Financing
+commission is missing" in production is not a defect; the feature is not shipped.
+
+---
+
+### S-20 — "It refused to post and said something about a disclosure"
+
+**Likely cause.** A **ledger precondition**. Some revenue lines cannot post
+until a compliance fact is on record, and the check runs at posting time, in
+[`packages/ledger/src/preconditions.ts`](../../packages/ledger/src/preconditions.ts).
+The one you will meet is `AD-PLACEMENT`, whose precondition
+(`freshAdPlacementDisclosure`) requires a `disclosures` row with
+`key = "ad_placement"` for that exact subject, presented **within the last 24
+hours**. The refusal is a 409 and the message says so verbatim:
+
+```
+no disclosure presented for <subjectRef> in the last 24h; present one before placing this ad
+```
+
+Three distinct situations produce that one message, and the user will insist —
+correctly, from their point of view — that they already did the disclosure:
+
+1. Never presented.
+2. Presented, but more than 24 hours ago. **The window is short on purpose.** A
+   disclosure from last week is not evidence that this ad was disclosed.
+3. Presented for a *different* subject. The precondition compares
+   `args.subjectRef` against the transaction's `subjectRefs`, so a fresh
+   disclosure on the wrong subject fails too.
+
+**How to confirm.** Query the `disclosures` table — **not**
+`ledger_transactions` — for that `subject_ref` with `key = 'ad_placement'`, and
+read `ts`. Absent → case 1. Older than 24h → case 2. Present for a neighbouring
+subject → case 3.
+
+(There *is* also a `DISCLOSURE-PRESENT` ledger transaction, posted alongside the
+row. It is non-financial — an audited, idempotent envelope carrying no journal
+lines. The precondition does not read it; the `disclosures` row is the evidence.)
+
+**Fix or escalate.** Re-present the disclosure
+(`POST /v1/compliance/disclosures/present` — held by `axis.lead` and
+`signal.lead` via `compliance:disclosures:present`), then retry the placement
+inside the window. The user can do both; no engineering involvement. **Do not**
+look for a way to bypass the precondition — it exists because the placement
+carries a regulated disclosure obligation, and there is no supported override.
+
+---
+
+### S-21 — "The whole of ORBIT is blank" (one module broken, the others fine)
+
+**Likely cause.** Each module now renders inside **its own shell route** rather
+than one shared shell (ADR-0061; see
+[`01-system-overview.md` §4.4](01-system-overview.md)). The practical
+consequence for you is a diagnostic shortcut and a trap in equal measure:
+
+- **Shortcut:** breakage confined to exactly one module, with every other module
+  healthy, points at that module's shell route or its data hook — not at the
+  platform. Check `/health` once to rule out the platform, then stop looking
+  there.
+- **Trap:** the five shells are siblings, not one file. A fix to one does **not**
+  propagate to the other four, and the module chrome may legitimately differ
+  between modules. "ORBIT's header looks different from AXIS's" is not
+  automatically a bug.
+
+**How to confirm.** Load a different module for the same user. If AXIS renders
+and ORBIT does not, it is the module shell. Then check `GET /v1/me` →
+`entitlements.modules` to rule out S-01 (an unentitled module is a 403, not a
+blank page — a *blank* page is a render fault).
+
+**Fix or escalate.** **Tier 2**, with the module name and the exact route path.
+There is nothing a support engineer can configure here.
+
+---
+
+### S-22 — Symptoms from features that are not in production yet
+
+Before you triage anything involving **premium financing, instalment plans,
+dunning, whitelabel billing or data products**, check whether the feature is
+actually deployed. Those lines exist in the codebase on unmerged branches and
+are catalogued in [`README.md` §7](README.md#7-revision-history) under "Work in
+flight". A ticket about a feature that has never been deployed is a
+sales/expectation issue, not a defect, and escalating it wastes a tier-2 cycle.
+
+Two of them will generate real tickets the day they *do* ship, so they are worth
+pre-reading now:
+
+- **A policy lapsed and the customer says they never asked to cancel.** Three
+  refused instalment collections lapse the policy via the ordinary lapse path,
+  so the policy's own audit trail looks like a normal lapse. The evidence is the
+  `DUNNING` records on the financing plan. See
+  [`03-operations-runbook.md` §6.1](03-operations-runbook.md).
+- **A plan is stuck in `defaulted` and the customer has since paid.**
+  Reinstating the policy resets the plan; there is also a plan-cancel route. Do
+  not attempt to edit plan rows directly.
 
 ---
 

@@ -3,6 +3,7 @@ import { PolicyJson, EntitlementsJson } from "@lyra/db";
 import { notFound, pruneIdempotency, type Envelope } from "@lyra/core";
 import { drainOutbox, deliverQueued } from "./dispatch.js";
 import { sweepPolicyLifecycle } from "./engines/axis-lifecycle.js";
+import { sweepPremiumFinancing } from "./engines/premium-financing.js";
 import { sweepRenewals } from "./engines/renewals.js";
 import { sweepRouting } from "./engines/orbit-routing.js";
 import { sweepBilling } from "./engines/billing.js";
@@ -188,6 +189,9 @@ export default {
             // before the renewal sweep so a policy that expired this tick is in
             // the right state when renewals look at it.
             await sweepPolicyLifecycle(ctx);
+            // Collect due instalments and detect dunning cascades before renewals
+            // look at this tenant's policies this tick.
+            await sweepPremiumFinancing(ctx);
             await sweepRenewals(ctx, env.WF);
             // Conversations that missed their SLA clock get escalated and, if their
             // agent went quiet, requeued — before anything else touches assignment

@@ -13,6 +13,10 @@ Each part is alphabetised independently. Terms are cross-referenced with
 A note on why the two parts are separate is in §3: LYRA deliberately keeps
 industry nouns out of its code.
 
+Describes commit `c7f1f57` on `main` (2026-08-18). Previous revision described
+`a295218`/`8afd07d` (2026-08-13); [`README.md` §7](README.md#7-revision-history)
+lists what changed in between, and which work is still on unmerged branches.
+
 ---
 
 ## Part A — LYRA platform vocabulary
@@ -133,6 +137,12 @@ to every handler. It is *everything a handler is allowed to know*: `db`,
 [`packages/core/src/context.ts`](../../packages/core/src/context.ts). `now` is a
 single request-start clock, so all rows written by one request share a
 timestamp.
+
+### Data product
+
+A packaged, sellable extract of aggregated data — the SCOUT-side revenue line.
+Never row-level: a data product carries a **k-anonymity precondition**, so a
+cohort below the threshold is refused rather than thinned.
 
 ### Delegation
 
@@ -271,6 +281,13 @@ Playwright specs (`@journey:J-XX`) and product telemetry
 When a user describes a workflow, mapping it to a J-ID is the fastest way to
 find both the spec and the test.
 
+### k-anonymity precondition
+
+A ledger-style precondition (see *Precondition*) on data products: an extract
+may only be sold if every cohort in it contains at least *k* subjects. The check
+runs before the posting, not after, so a too-small cohort produces a refusal and
+no transaction at all.
+
 ### Kill switch
 
 The platform-wide agent pause (`packages/model-gateway/src/kill.ts`). Engaging
@@ -327,6 +344,23 @@ import is `packages/core`.
 | SCOUT | Market | Market signals, clusters, whitespace, panel benchmarking |
 | NORTH | Insight | Metrics, snapshots, briefings, anomalies, board packs |
 
+### Module shell
+
+The layout component and route layer that wraps one module's screens — its own
+rail, its own chrome. There are five, one per module (ADR-0061). A workspace
+(LEDGER, Administration, Distribution, Settings, Platform) has **no** shell of
+its own. An actor without a module's entitlement gets **403** from its shell, not
+401 — identity was already proven at session bootstrap.
+
+### Module switcher
+
+The control that moves an actor between module shells. It renders **only when
+that actor's roles reach more than one shell**, and never lists the shell they
+are already in. A single-module user seeing no switcher is correct behaviour, not
+a defect. ADR-0052 ("the rail is one") is **narrowed** by ADR-0061, not
+reversed — what still holds is that there is no redundant second navigation list
+*within* one shell.
+
 ### NORTH
 
 The **Insight** module. Executive intelligence. Reads views and nightly
@@ -368,6 +402,14 @@ known ceiling and upgrade path. `// ponytail: global lock, per-account locks if
 throughput matters`. When you find one, the simplification was a decision, not
 an oversight — but the ceiling it names is real.
 
+### Precondition
+
+A check a transaction recipe runs **before** posting, which refuses the whole
+transaction if unmet. Distinct from validation: a precondition may read a
+different table than the one it protects — the ad-placement line reads the
+`disclosures` table, not the ledger — and its refusal is a 409, not a 400. See
+also *k-anonymity precondition*.
+
 ### Purpose
 
 The declared reason for a model call (`packages/model-gateway/src/purposes.ts`).
@@ -378,8 +420,24 @@ budget on?" answerable.
 ### Rail
 
 The persistent left-hand navigation. Always text-labelled, with no collapsed or
-icon-only state (ADR-0011), and it *is* the module switcher (ADR-0052). Rail
-glyphs carry whisper dots when a module's agent has found something.
+icon-only state (ADR-0011). Rail glyphs carry whisper dots when a module's agent
+has found something. Since ADR-0061 each module shell has its **own** rail
+listing only that module's screens; the *module switcher* is a separate control
+(see both terms).
+
+### Recipe
+
+The declarative definition of one transaction type: which journal lines it posts,
+to which accounts, in which order, and which preconditions must hold. Recipes
+live in `packages/ledger`. A recipe with no caller is inert, not broken — do not
+read the recipe list as a list of live features.
+
+### Revenue line
+
+One way the business earns money, expressed as a recipe plus (usually) a route.
+Group binds, broker fees, referral settlements, ad placements, partner binds and
+premium-financing commission are each a revenue line. Adding one is normally a
+recipe and a route, **not** a schema change.
 
 ### Rulepack
 
@@ -572,6 +630,13 @@ erasure. SLA-tracked in `compliance_dsar_requests`, with a public intake form.
 *unverified* and a human must verify identity before anything is fulfilled.
 Journey J-C4.
 
+### Dunning
+
+The sequence of chases after a missed payment. In LYRA it is a sweep, not a
+mailshot: each tick advances a `missed_streak` counter on the payment plan, and
+after N consecutive misses the plan cascades into the existing policy-lapse
+route rather than a bespoke cancellation path.
+
 ### Endorsement
 
 A mid-term change to a policy — added driver, changed sum insured, corrected
@@ -584,6 +649,12 @@ contiguous, non-overlapping timeline with exactly one `effective` at a time.
 The moment a customer first reports that something has happened. It opens the
 claim and starts every downstream clock. LYRA has an FNOL triage eval suite
 (`packages/model-gateway/evals/axis-fnol-triage`).
+
+### Instalment
+
+One scheduled payment of a premium being paid over time, rather than in one
+amount. The schedule lives on the payment plan; each instalment posts as a
+client-money receipt when its due date arrives (see *Premium financing*).
 
 ### Insurer / underwriter / provider
 
@@ -645,6 +716,14 @@ The price of the cover. Held in minor units with a currency. Two limitations
 you will hit: LYRA's premium accounting is **cash-basis only** — there is no
 earned/unearned split (docs/27 F14) — and there is **no tax/fee split**, so a
 premium is a single number (docs/27 F25).
+
+### Premium financing
+
+Letting a customer pay a premium in *instalments* instead of one amount. The plan
+is created once (which also earns the financing commission), then instalments
+post as they fall due and missed ones enter *dunning*. Cancelling a plan
+un-earns the commission with it. This is an in-flight branch, not yet on `main` —
+[`README.md` §7](README.md#7-revision-history).
 
 ### Recovery
 

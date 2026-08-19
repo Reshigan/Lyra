@@ -308,6 +308,360 @@ describe("money columns in the generated shape", () => {
   });
 });
 
+describe("timestamp columns in the generated shape", () => {
+  // Regression: `z.number().int()` is a *safe*-integer check, so the generated
+  // shape let through (8.64e15, 9.007e15] — instants no `Date` can hold. AXIS
+  // bounded them at its own FNOL endpoints, but `axisPolicies`/`axisClaims` are
+  // also registered on this generic router with `update`, so
+  // `PATCH /v1/axis/policies/:id {"endAt": 9e15}` walked straight past that
+  // bound and persisted a value every downstream renderer throws on.
+  const policies = (): Resource => {
+    const r = BY_MODULE.axis?.find((x) => x.path === "policies");
+    if (!r) throw new Error("no axis/policies resource");
+    return r;
+  };
+
+  beforeAll(async () => {
+    await ctx.db.insert(schema.axisPolicies).values({
+      id: "pol_instant",
+      tenantId: ctx.tenantId,
+      customerId: "cus_instant",
+      providerId: "prv_instant",
+      policyNo: "POL-INSTANT",
+      startAt: NOW,
+      endAt: NOW,
+      premiumMinor: 1000,
+      currency: "AED",
+      status: "active",
+      createdAt: NOW,
+      updatedAt: NOW
+    } as never);
+  });
+
+  const endAtOf = async (): Promise<number | undefined> => {
+    const [row] = await ctx.db
+      .select()
+      .from(schema.axisPolicies)
+      .where(eq(schema.axisPolicies.id, "pol_instant"));
+    return row?.endAt;
+  };
+
+  it("refuses an *At past the end of the Date range", async () => {
+    const res = await send(router(policies()), "PATCH", "/pol_instant", { endAt: 9e15 });
+    expect(res.status).toBe(400);
+    expect(await endAtOf()).toBe(NOW);
+  });
+
+  it("refuses an *At past the start of the Date range", async () => {
+    const res = await send(router(policies()), "PATCH", "/pol_instant", { endAt: -9e15 });
+    expect(res.status).toBe(400);
+    expect(await endAtOf()).toBe(NOW);
+  });
+
+  it("still accepts an instant a Date can hold", async () => {
+    const res = await send(router(policies()), "PATCH", "/pol_instant", { endAt: NOW + 86_400_000 });
+    expect(res.status).toBe(200);
+    expect(await endAtOf()).toBe(NOW + 86_400_000);
+  });
+});
+
+describe("payment plans in the generated shape", () => {
+  // The generated shape validates a `*Json` column as "an object, an array, or
+  // a string" and stops there, so `axis_policies.payment_plan_json` — the
+  // schedule the lapse sweep reads to decide whether cover ends unpaid
+  // (engines/axis-lifecycle.ts) — was writable as anything at all. A plan the
+  // sweep cannot parse is not a loud failure: `missedInstalment` fails open, so
+  // lapse-on-missed silently stops applying and the policy stays on risk.
+  const policies = (): Resource => {
+    const r = BY_MODULE.axis?.find((x) => x.path === "policies");
+    if (!r) throw new Error("no axis/policies resource");
+    return r;
+  };
+
+  beforeAll(async () => {
+    await ctx.db.insert(schema.axisPolicies).values({
+      id: "pol_plan",
+      tenantId: ctx.tenantId,
+      customerId: "cus_plan",
+      providerId: "prv_plan",
+      policyNo: "POL-PLAN",
+      startAt: NOW,
+      endAt: NOW,
+      premiumMinor: 1000,
+      currency: "AED",
+      status: "active",
+      createdAt: NOW,
+      updatedAt: NOW
+    } as never);
+  });
+
+  const planOf = async (): Promise<string | null | undefined> => {
+    const [row] = await ctx.db.select().from(schema.axisPolicies).where(eq(schema.axisPolicies.id, "pol_plan"));
+    return row?.paymentPlanJson;
+  };
+
+  it("refuses a plan the lapse sweep cannot read", async () => {
+    const res = await send(router(policies()), "PATCH", "/pol_plan", {
+      paymentPlanJson: { lapseOnMissed: true, instalments: [{ seq: "one", dueAt: "next month", state: "due" }] }
+    });
+    expect(res.status).toBe(400);
+    expect(await planOf()).toBeNull();
+  });
+
+  it("refuses a plan that is not a plan at all", async () => {
+    const res = await send(router(policies()), "PATCH", "/pol_plan", { paymentPlanJson: [1, 2, 3] });
+    expect(res.status).toBe(400);
+    expect(await planOf()).toBeNull();
+  });
+
+  // The doc comment on `PaymentPlanJson` said the `dueAt` bound "belongs on the
+  // write door (apps/api/src/resources.ts)" — and the write door validated with
+  // the same unbounded shape, so the bound existed nowhere at all.
+  it("refuses an instalment due past the end of the Date range", async () => {
+    const res = await send(router(policies()), "PATCH", "/pol_plan", {
+      paymentPlanJson: { lapseOnMissed: true, instalments: [{ seq: 1, dueAt: 9e15, state: "due" }] }
+    });
+    expect(res.status).toBe(400);
+    expect(await planOf()).toBeNull();
+  });
+
+  // Every field defaults, so a plan-shaped-but-not-a-plan object parsed clean
+  // and stored as `lapseOnMissed: false` — a "validated" plan that quietly
+  // switched the lapse sweep off, while the 400 message promised the opposite.
+  it("refuses an object that is not a plan rather than defaulting it", async () => {
+    const res = await send(router(policies()), "PATCH", "/pol_plan", { paymentPlanJson: { foo: "bar" } });
+    expect(res.status).toBe(400);
+    expect(await planOf()).toBeNull();
+  });
+
+  it("refuses an unknown key on an instalment", async () => {
+    const res = await send(router(policies()), "PATCH", "/pol_plan", {
+      paymentPlanJson: { lapseOnMissed: true, instalments: [{ seq: 1, dueAt: NOW, state: "due", paid: true }] }
+    });
+    expect(res.status).toBe(400);
+    expect(await planOf()).toBeNull();
+  });
+
+  // The sweep filters `state !== "paid" && state !== "waived"`, so a plan
+  // stored with `"Paid"` reads as unpaid and lapses cover on a customer who
+  // paid — through a PATCH that needs only `axis:policies:update`.
+  it("refuses an instalment state the sweep would read as unpaid", async () => {
+    const res = await send(router(policies()), "PATCH", "/pol_plan", {
+      paymentPlanJson: { lapseOnMissed: true, instalments: [{ seq: 1, dueAt: NOW, state: "Paid" }] }
+    });
+    expect(res.status).toBe(400);
+    expect(await planOf()).toBeNull();
+  });
+
+  // `graceDays` defaults to 0 in the write shape, and the default only reaches
+  // the column if the normalised parse is what gets stored.
+  it("stores the normalised plan, not the raw body", async () => {
+    const res = await send(router(policies()), "PATCH", "/pol_plan", {
+      paymentPlanJson: { lapseOnMissed: true, instalments: [{ seq: 1, dueAt: NOW, state: "due" }] }
+    });
+    expect(res.status).toBe(200);
+    expect(JSON.parse((await planOf()) as string).graceDays).toBe(0);
+  });
+
+  it("accepts a plan the sweep can read", async () => {
+    const plan = { graceDays: 7, lapseOnMissed: true, instalments: [{ seq: 1, dueAt: NOW, state: "due" }] };
+    const res = await send(router(policies()), "PATCH", "/pol_plan", { paymentPlanJson: plan });
+    expect(res.status).toBe(200);
+    expect(JSON.parse((await planOf()) as string)).toEqual(plan);
+  });
+});
+
+describe("effective-dating columns in the generated shape", () => {
+  // `dist/offerings` gates its updates on `dist.offering_publish`; the gate is
+  // cleared the way a tenant clears it, by putting the key on its own
+  // `autoApprove` allowlist, so the 400 below is the instant bound and nothing
+  // else.
+  const autoApproved: Partial<Ctx> = { policy: PolicyJson.parse({ autoApprove: ["dist.offering_publish"] }) };
+
+  // The `*At` bound above missed the other name the schema uses for an instant.
+  // `dist/offerings` is registered read-write, so
+  // `PATCH /v1/dist/offerings/:id {"effectiveFrom": 9e15}` returned 200 and
+  // persisted — and apps/web's product detail renders it through
+  // `<DateTime>`, which calls `toISOString()` on the resulting Invalid Date and
+  // takes the page down for that tenant with a RangeError.
+  const offerings = (): Resource => {
+    const r = BY_MODULE.dist?.find((x) => x.path === "offerings");
+    if (!r) throw new Error("no dist/offerings resource");
+    return r;
+  };
+
+  beforeAll(async () => {
+    await ctx.db.insert(schema.distOfferings).values({
+      id: "off_instant",
+      tenantId: ctx.tenantId,
+      productId: "prd_instant",
+      providerId: "prv_instant",
+      code: "OFF-INSTANT",
+      nameJson: JSON.stringify({ en: "Instant" }),
+      currency: "AED",
+      effectiveFrom: NOW,
+      createdAt: NOW,
+      updatedAt: NOW
+    } as never);
+  });
+
+  const effectiveFromOf = async (): Promise<number | undefined> => {
+    const [row] = await ctx.db.select().from(schema.distOfferings).where(eq(schema.distOfferings.id, "off_instant"));
+    return row?.effectiveFrom;
+  };
+
+  it("refuses an effectiveFrom past the end of the Date range", async () => {
+    const res = await send(router(offerings(), autoApproved), "PATCH", "/off_instant", { effectiveFrom: 9e15 });
+    expect(res.status).toBe(400);
+    expect(await effectiveFromOf()).toBe(NOW);
+  });
+
+  it("still accepts an effectiveFrom a Date can hold", async () => {
+    const res = await send(router(offerings(), autoApproved), "PATCH", "/off_instant", { effectiveFrom: NOW + 86_400_000 });
+    expect(res.status).toBe(200);
+    expect(await effectiveFromOf()).toBe(NOW + 86_400_000);
+  });
+});
+
+describe("expiry columns in the generated shape", () => {
+  // The third name the schema uses for an instant, and the one two review
+  // rounds waved through on the claim that no registered read-write resource
+  // carried it. `core/mandates` and `core/memories` are `ru("core:settings")`
+  // (read + create/update/remove) and `core/consents` is creatable, so
+  // `PATCH /v1/core/mandates/:id {"expiry": 9e15}` fell through `shapeOf` to a
+  // plain `z.number().int()`, persisted, and reached
+  // `packages/ui/src/format.tsx` `<DateTime>` — `toISOString()` on an Invalid
+  // Date, RangeError, page down.
+  const mandates = (): Resource => {
+    const r = BY_MODULE.core?.find((x) => x.path === "mandates");
+    if (!r) throw new Error("no core/mandates resource");
+    return r;
+  };
+
+  beforeAll(async () => {
+    await ctx.db.insert(schema.mandates).values({
+      id: "mnd_instant",
+      tenantId: ctx.tenantId,
+      principalRef: "customer:cus_instant",
+      agentIdentity: "agent:test",
+      scopeJson: JSON.stringify({ purchase: true }),
+      expiry: NOW,
+      createdAt: NOW
+    } as never);
+  });
+
+  const expiryOf = async (): Promise<number | null | undefined> => {
+    const [row] = await ctx.db.select().from(schema.mandates).where(eq(schema.mandates.id, "mnd_instant"));
+    return row?.expiry;
+  };
+
+  it("refuses an expiry past the end of the Date range", async () => {
+    const res = await send(router(mandates()), "PATCH", "/mnd_instant", { expiry: 9e15 });
+    expect(res.status).toBe(400);
+    expect(await expiryOf()).toBe(NOW);
+  });
+
+  it("refuses an expiry past the start of the Date range", async () => {
+    const res = await send(router(mandates()), "PATCH", "/mnd_instant", { expiry: -9e15 });
+    expect(res.status).toBe(400);
+    expect(await expiryOf()).toBe(NOW);
+  });
+
+  it("still accepts an expiry a Date can hold", async () => {
+    const res = await send(router(mandates()), "PATCH", "/mnd_instant", { expiry: NOW + 86_400_000 });
+    expect(res.status).toBe(200);
+    expect(await expiryOf()).toBe(NOW + 86_400_000);
+  });
+});
+
+describe("instant columns named outside the four rules", () => {
+  // The `isInstantKey` census claimed none of the seven off-rule instant columns
+  // sat on a writable resource. Two do: `signal/aeo-pages` is `rw("signal:aeo")`
+  // (resources.ts:608 — create + update + remove) and `signal/budget-moves`
+  // takes `update` (resources.ts:604). So `freshness` and `reversibleUntil` fell
+  // through `shapeOf` to a plain `z.number().int()` — a *safe*-integer check,
+  // which lets (8.64e15, 9.007e15] through — and persisted an instant no `Date`
+  // can hold. Both render through the guarded `<DateTime>` today, so the hole
+  // was open rather than bleeding; it is closed at the write door here.
+  const resource = (module: string, path: string): Resource => {
+    const r = BY_MODULE[module]?.find((x) => x.path === path);
+    if (!r) throw new Error(`no ${module}/${path} resource`);
+    return r;
+  };
+
+  // `signal/budget-moves` gates its update on `signal.budget_move`; cleared the
+  // way a tenant clears it, so the 400 below is the instant bound and nothing else.
+  const autoApproved: Partial<Ctx> = {
+    policy: PolicyJson.parse({ autoApprove: ["signal.budget_move"] })
+  };
+
+  beforeAll(async () => {
+    await ctx.db.insert(schema.signalAeoPages).values({
+      id: "aeo_instant",
+      tenantId: ctx.tenantId,
+      queryCluster: "motor-renewal",
+      contentRef: "cnt_instant",
+      freshness: NOW,
+      createdAt: NOW,
+      updatedAt: NOW
+    } as never);
+    await ctx.db.insert(schema.signalBudgetMoves).values({
+      id: "bmv_instant",
+      tenantId: ctx.tenantId,
+      fromRef: "camp_a",
+      toRef: "camp_b",
+      amountMinor: 5000,
+      currency: "AED",
+      reason: "underspend",
+      approvedBy: "auto",
+      reversibleUntil: NOW,
+      ts: NOW
+    } as never);
+  });
+
+  const freshnessOf = async (): Promise<number | null | undefined> => {
+    const [row] = await ctx.db.select().from(schema.signalAeoPages).where(eq(schema.signalAeoPages.id, "aeo_instant"));
+    return row?.freshness;
+  };
+  const reversibleUntilOf = async (): Promise<number | undefined> => {
+    const [row] = await ctx.db
+      .select()
+      .from(schema.signalBudgetMoves)
+      .where(eq(schema.signalBudgetMoves.id, "bmv_instant"));
+    return row?.reversibleUntil;
+  };
+
+  it("refuses a freshness past the end of the Date range", async () => {
+    const res = await send(router(resource("signal", "aeo-pages")), "PATCH", "/aeo_instant", { freshness: 9e15 });
+    expect(res.status).toBe(400);
+    expect(await freshnessOf()).toBe(NOW);
+  });
+
+  it("still accepts a freshness a Date can hold", async () => {
+    const res = await send(router(resource("signal", "aeo-pages")), "PATCH", "/aeo_instant", {
+      freshness: NOW + 86_400_000
+    });
+    expect(res.status).toBe(200);
+    expect(await freshnessOf()).toBe(NOW + 86_400_000);
+  });
+
+  it("refuses a reversibleUntil past the end of the Date range", async () => {
+    const res = await send(router(resource("signal", "budget-moves"), autoApproved), "PATCH", "/bmv_instant", {
+      reversibleUntil: 9e15
+    });
+    expect(res.status).toBe(400);
+    expect(await reversibleUntilOf()).toBe(NOW);
+  });
+
+  it("still accepts a reversibleUntil a Date can hold", async () => {
+    const res = await send(router(resource("signal", "budget-moves"), autoApproved), "PATCH", "/bmv_instant", {
+      reversibleUntil: NOW + 86_400_000
+    });
+    expect(res.status).toBe(200);
+    expect(await reversibleUntilOf()).toBe(NOW + 86_400_000);
+  });
+});
+
 describe("invoice state machine through generic CRUD", () => {
   const invoices = () => router(ledgerResource("invoices"));
   const create = async (n: number, over: Record<string, unknown> = {}) => {

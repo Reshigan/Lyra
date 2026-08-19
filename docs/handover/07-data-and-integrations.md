@@ -11,6 +11,10 @@ configured / not built verdict for each.
 Read [`01-system-overview.md`](01-system-overview.md) first; this file assumes
 you know what the modules are.
 
+Describes commit `c7f1f57` on `main` (2026-08-18). Previous revision described
+`a295218`/`8afd07d` (2026-08-13); [`README.md` §7](README.md#7-revision-history)
+lists what changed in between, and which work is still on unmerged branches.
+
 ---
 
 ## 1. Database engines — one schema, two homes
@@ -51,14 +55,14 @@ Every table follows these, so you can predict a table you have never seen:
 
 ## 2. Where the schema lives
 
-[`packages/db/src/schema/`](../../packages/db/src/schema) — **11 files, 150 tables.**
+[`packages/db/src/schema/`](../../packages/db/src/schema) — **11 files, 151 tables.**
 One file per group; the group is also the table-name prefix.
 
 | File | Tables | Prefix | Owns |
 |---|---:|---|---|
 | [`core.ts`](../../packages/db/src/schema/core.ts) | 36 | `core_` (plus `ai_audit_log`) | Tenancy, identity, RBAC, the customer spine, audit, events, platform plumbing |
 | [`ledger.ts`](../../packages/db/src/schema/ledger.ts) | 20 | `ledger_` | Transactions, double-entry journals, periods, billing, payments, reconciliation |
-| [`axis.ts`](../../packages/db/src/schema/axis.ts) | 20 | `axis_` | Operations: cases, policies, claims, bordereaux, complaints |
+| [`axis.ts`](../../packages/db/src/schema/axis.ts) | 21 | `axis_` | Operations: cases, policies, claims, bordereaux, complaints, telemetry |
 | [`orbit.ts`](../../packages/db/src/schema/orbit.ts) | 16 | `orbit_` | Conversations, channels, renewals, journeys, partners, agent teams |
 | [`compliance.ts`](../../packages/db/src/schema/compliance.ts) | 10 | `compliance_` | DSARs, erasure, disclosures, screening, retention, legal hold, evidence |
 | [`ai.ts`](../../packages/db/src/schema/ai.ts) | 9 | `ai_` | Agents, prompts, runs, tool calls, suggestions, budgets, evals, guardrails |
@@ -67,6 +71,19 @@ One file per group; the group is also the table-name prefix.
 | [`dist.ts`](../../packages/db/src/schema/dist.ts) | 8 | `dist_` | Distribution: channels, offerings, commission, comparative quoting |
 | [`signal.ts`](../../packages/db/src/schema/signal.ts) | 8 | `signal_` | Marketing: campaigns, audiences, creatives, budget autopilot, attribution |
 | [`scout.ts`](../../packages/db/src/schema/scout.ts) | 6 | `scout_` | Market intelligence: signals, clusters, whitespace, panel bench |
+
+> **Unchanged since the first edition of this pack: still 11 files, still 150
+> tables.** The revenue lines added between `a295218` and `c7f1f57` added **no
+> tables** — they post through the existing ledger tables and read the existing
+> `compliance_disclosures`. That is the intended shape: a revenue line is a
+> *recipe*, not a schema. The in-flight branches (README §7) follow the same
+> rule — premium financing adds one column (`ledger_payment_plans.missed_streak`)
+> and two indexes, and no table at all.
+>
+> **One exception, and it is the honest one:** telematics/UBI adds
+> `axis_telemetry_points` (the 151st table). A recipe needs no storage; a
+> measurement series does. Nothing else in that branch adds schema — the
+> reprice reuses `axis_policy_versions` and the existing ledger tables.
 
 Two more files in [`packages/db/src/`](../../packages/db/src) matter when you
 are reading data:
@@ -142,7 +159,7 @@ transaction engine.
 | `ledger_tax_rules` | Tax treatment by jurisdiction/product |
 | `ledger_settlements` | Payout control. Carries `external_ref` / `paid_via` **because there is no PSP connector** — the payout is made outside LYRA and recorded here (see §6) |
 
-### 2.3 `axis_` — operations (20 tables)
+### 2.3 `axis_` — operations (21 tables)
 
 | Table | Purpose |
 |---|---|
@@ -165,6 +182,7 @@ transaction engine.
 | `axis_complaints` | Regulated complaints. `due_at` is the **regulatory** clock, not an SLA |
 | `axis_siu_referrals` | Special Investigations Unit records (distinct from the lightweight `claims.siu_state` flag) |
 | `axis_referrals` | Underwriting referrals — risks outside delegated authority |
+| `axis_telemetry_points` | Usage/sensor readings against a contract, one row per `(subject_ref, source, at)`. `source` is the series key (`telematics:obd:km`), and the unique index is what stops a replayed batch double-counting the exposure a reprice is priced on. Read-only through the API — see file 08 |
 
 ### 2.4 `orbit_` — conversations, renewals and partners (16 tables)
 
@@ -338,6 +356,14 @@ Deploy/rollback procedure is in
 here: **a schema change cannot be rolled back by redeploying the previous
 Worker.** Code rolls back; migrations do not.
 
+> **Two unmerged branches have each generated a `0025` and a `0026`.** Whichever
+> merges second must renumber its files past the other's highest number and
+> re-run `pnpm db:generate` so the `meta/` journal matches. This is legal only
+> because **neither set has ever been applied to any database** — once a
+> migration has run anywhere, staging included, it is frozen and the answer to
+> a collision becomes a new forward migration, never a rename. Full procedure:
+> [`03-operations-runbook.md` §4.1](03-operations-runbook.md).
+
 ---
 
 ## 5. The event bus
@@ -381,6 +407,15 @@ zod schema in [`packages/core/src/events.ts`](../../packages/core/src/events.ts)
 `scout.bench.updated`, `north.anomaly.detected`, `north.briefing.published`,
 `ai.budget.threshold`, `platform.key.rotated`.
 
+**Added since the first edition** (the revenue lines — README §7):
+`axis.policy.broker_fee_charged`, `dist.referral.qualified`,
+`dist.referral.settled`, `compliance.disclosure.presented`,
+`orbit.partner.bound`. Note that **binding a group scheme emits the existing
+`axis.policy.issued`**, not a new type — a group bind is a bind, and consumers
+of `axis.policy.issued` see it without change. Since these types also feed
+outbound webhooks, adding one is an additive contract change (§6, Versioning):
+free to add, never free to rename.
+
 **Modules may not import each other.** Cross-module integration is events only;
 the sole permitted direct import is from `packages/core`.
 
@@ -414,6 +449,35 @@ changes, regenerate the SDK — the contract tests will otherwise fail.
 
 Surface map by module is in [`docs/04-api.md`](../04-api.md) §4.
 
+**Routes added since the first edition of this pack**, with the permission each
+requires (source of truth: [`apps/api/src/openapi.ts`](../../apps/api/src/openapi.ts)):
+
+| Route | Permission | Note |
+|---|---|---|
+| `POST /v1/axis/policies/{id}/bind-group` | `axis:policies:bind` | Dual control |
+| `POST /v1/axis/policies/{id}/broker-fee` | `axis:policies:bind` | — |
+| `POST /v1/dist/referrals/qualify` | `dist:commissions:adjust` | Non-financial; moves no money |
+| `POST /v1/dist/referrals/settle` | `dist:commissions:settle` | The paying half |
+| `POST /v1/compliance/disclosures/present` | `compliance:disclosures:present` | Held by `axis.lead` and `signal.lead` |
+| `POST /v1/orbit/partners/{id}/quotes` | `orbit:partners:read` | — |
+
+Two absences are deliberate, not oversights:
+
+- **Ad placement has no module route.** It posts through the generic
+  `POST /v1/ledger/txn/AD-PLACEMENT`, and a ledger precondition refuses it
+  unless a matching disclosure was presented for that subject within 24 hours
+  ([`04-support-playbook.md`](04-support-playbook.md) S-20).
+- **Partner *bind* has no route at all.** `bindPartner()`
+  ([`apps/api/src/engines/partner-bind.ts`](../../apps/api/src/engines/partner-bind.ts))
+  is engine-only and its own header comment says why: `orbit_partners` has no
+  commission-rate column, and the recipe's receivable account still defaults to
+  `1100` where the sibling revenue line pairs income 4075 with `1160`. Resolve
+  both before giving it a route.
+
+**The revenue lines live in [`apps/api/src/engines/`](../../apps/api/src/engines).**
+There is no `packages/agents` or `apps/agents` despite what the target layout in
+[`CLAUDE.md`](../../CLAUDE.md) implies — the engine directory is the runtime.
+
 ---
 
 ## 7. Scheduled jobs
@@ -444,6 +508,20 @@ the hour themselves): `backupTenant` (D1 → R2 `EXPORTS`), `anchorAudit`
 (hash-chain tamper evidence pinned outside D1 — a break is logged as
 `audit chain broken` and **nothing in the system can repair it**),
 `nudgeApiKeyRotation`, `runSnapshotter` (NORTH nightly metrics).
+
+**Two more sweeps join this list when the in-flight branches merge** (README §7):
+`sweepBilling` (whitelabel billing and data products) and
+`sweepPremiumFinancing`, which inserts **between `sweepPolicyLifecycle` and
+`sweepRenewals`** so instalment collection and dunning escalation happen before
+renewals look at the same policies.
+
+**The order in this table is load-bearing, and so is the per-tenant `try`.** An
+uncaught throw from an early job skips **every job below it for that tenant, that
+tick** — classically a currency-dependent posting reaching `fxRateFor()` and
+throwing `no fx rate supplied for <A> -> <B>`. Every currency-dependent posting
+site therefore carries a pre-check and a per-row `try`/`continue`, so one bad row
+is skipped and logged rather than taking the tenant's whole tick down with it.
+See [`03-operations-runbook.md` §6.1](03-operations-runbook.md).
 
 Sweeps take a bounded bite per tick (`SWEEP_MAX`) — ADR-0050, which also records
 the one sweep that is still uncapped.

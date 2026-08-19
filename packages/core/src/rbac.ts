@@ -121,6 +121,17 @@ export const PERMISSIONS = [
   // that may reinstate, and NTU unwinds a contract nobody was ever on risk for.
   "axis:policies:bind", "axis:policies:endorse", "axis:policies:ntu", "axis:policies:lapse",
   "axis:policies:reinstate", "axis:policies:renew",
+  // Opening a premium-financing plan on a bound policy (docs/27 group D):
+  // its own lifecycle verb, distinct from `:endorse` — a financing plan
+  // changes how the premium is collected, not the risk or price on the
+  // contract.
+  "axis:policies:finance",
+  // Submitting sensor readings (docs/27 F5, UBI) is a machine/device authority,
+  // not an underwriting one: a telematics device or fleet integration should be
+  // able to post kilometres without also being able to change a price, and the
+  // desk that approves a reprice has no reason to be a data ingest endpoint.
+  // That separation is why this is not folded into `:endorse`.
+  "axis:policies:telemetry",
   // Issuing the document a customer holds is its own authority (design §D.11):
   // a schedule or certificate is evidence of cover, so reissuing one is not
   // covered by `:read` and is not a side effect of `:bind`.
@@ -361,6 +372,8 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     "axis:tasks:write", "axis:policies:create", "axis:policies:bind",
     "axis:policies:endorse", "axis:policies:update", "axis:policies:cancel",
     "axis:policies:ntu", "axis:policies:lapse", "axis:policies:reinstate", "axis:policies:renew",
+    "axis:policies:finance",
+    "axis:policies:telemetry",
     "axis:policies:document",
     "axis:claims:create", "axis:claims:update", "axis:claims:approve", "axis:sops:write",
     // The lead handles claims end to end but does not sign off their own

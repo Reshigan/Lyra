@@ -1,6 +1,6 @@
 import { and, asc, eq, inArray, isNotNull, lte } from "drizzle-orm";
 import { z } from "zod";
-import { id as newId, schema } from "@lyra/db";
+import { id as newId, schema, PaymentPlanJson } from "@lyra/db";
 import {
   actorRef,
   assertPolicyTransition,
@@ -12,10 +12,12 @@ import {
   isPolicyState,
   quoteEndorsement,
   scoped,
-  type Ctx
+  type Ctx,
+  type Envelope
 } from "@lyra/core";
 import { autoApprovable, buildRecipe, runTxn } from "@lyra/ledger";
 import { SWEEP_MAX } from "./sweep.js";
+import { InstantMs } from "../http.js";
 
 type PolicyRow = typeof schema.axisPolicies.$inferSelect;
 type TxnRow = Awaited<ReturnType<typeof runTxn>>;
@@ -62,7 +64,7 @@ async function stampHead(ctx: Ctx, policy: PolicyRow, stamp: Partial<PolicyRow>)
 
 export const CancelBody = z.object({
   /** Defaults to now. Forward-dating is normal: notice periods are contractual. */
-  effectiveAt: z.number().int().optional(),
+  effectiveAt: InstantMs.optional(),
   reasonCode: z.string().min(1).max(64),
   /** `none` = forfeited premium: cover ends, the customer gets nothing back. */
   refundMethod: z.enum(["credit", "bank", "none"]).default("credit"),
@@ -352,7 +354,52 @@ export async function reinstatePolicy(ctx: Ctx, policy: PolicyRow, input: Reinst
     ...(txn ? { lastTxnId: txn.id } : {})
   });
 
+  // The arrears that cured the lapse also cured the financing plan's dunning
+  // streak. A plan left `defaulted` is out of the premium-financing sweep for
+  // good, so cover would go back on risk with the remaining instalments
+  // silently abandoned. Legacy rows carry a `policy:`-prefixed subjectRef.
+  const planFilter = scoped(
+    ctx,
+    schema.ledgerPaymentPlans,
+    and(
+      inArray(schema.ledgerPaymentPlans.subjectRef, [policy.id, `policy:${policy.id}`]),
+      eq(schema.ledgerPaymentPlans.state, "defaulted")
+    )
+  );
+  // Read before the update: the prior missedStreak is the evidence of how many
+  // refused attempts were forgiven, and it is gone the moment the row is reset.
+  const revived = await ctx.db.select().from(schema.ledgerPaymentPlans).where(planFilter);
+  await ctx.db
+    .update(schema.ledgerPaymentPlans)
+    .set({ state: "active", missedStreak: 0, updatedAt: ctx.now })
+    .where(planFilter);
+
   await audit(ctx, { action: "axis.policy.reinstate", subjectRef: policy.id, before: policy, after });
+
+  // The plan reset gets its own audit row, keyed on the plan. Folded into the
+  // policy's row it would be invisible to anyone auditing the plan, which is
+  // where the money is: the sweep resumes debiting this customer tomorrow.
+  //
+  // `missedPaymentId` on the already-`missed` schedule rows is deliberately NOT
+  // cleared. It is not stale bookkeeping — it is what stops the sweep
+  // re-counting those rows. The newest payment for each of them is still the
+  // refused one, so a cleared stamp reads as a fresh miss on the very next tick
+  // and re-defaults the plan this just revived.
+  for (const plan of revived) {
+    await audit(ctx, {
+      action: "ledger.financing.plan.reinstate",
+      subjectRef: plan.id,
+      before: plan,
+      after: {
+        ...plan,
+        state: "active",
+        missedStreak: 0,
+        updatedAt: ctx.now,
+        reason: input.note ?? "reinstated",
+        policyId: policy.id
+      }
+    });
+  }
   await emit(ctx, {
     module: "axis",
     type: "axis.policy.reinstated",
@@ -402,14 +449,33 @@ export async function lapsePolicy(ctx: Ctx, policy: PolicyRow, missedSeq: number
   return { policy: after, txn };
 }
 
+/** Task 5's dunning sweep crossing DUNNING_LAPSE_THRESHOLD feeds the same
+ * lapse cascade as a missed instalment on a plain payment plan — the event
+ * bus is the only coupling to premium-financing.ts (CLAUDE.md §6). */
+export async function onFinancingLapseDue(ctx: Ctx, envelope: Envelope): Promise<void> {
+  const data = envelope.data as { policyId: string; planId: string; missedStreak: number; missedSeq: number };
+  const [policy] = await ctx.db
+    .select()
+    .from(schema.axisPolicies)
+    .where(scoped(ctx, schema.axisPolicies, eq(schema.axisPolicies.id, data.policyId)));
+  if (!policy) return; // policy already gone (deleted/merged) — nothing to lapse
+  // POLICY_TRANSITIONS allows only active -> lapsed, so any other status makes
+  // lapsePolicy throw a conflict the queue cannot resolve: consume() would burn
+  // six retries and dead-letter an event whose work is genuinely moot
+  // (cancelled, expired, or already lapsed by a concurrent path).
+  if (policy.status !== "active") return;
+
+  await lapsePolicy(ctx, policy, data.missedSeq, `premium financing plan ${data.planId}: ${data.missedStreak} consecutive missed instalments`);
+}
+
 /* ------------------------------------------------------------------ renewal */
 
 export const RenewBody = z.object({
   /** Defaults to the prior number suffixed with the renewal sequence. */
   policyNo: z.string().min(1).max(64).optional(),
   /** Defaults to a term that starts the instant the prior one ends. */
-  startAt: z.number().int().optional(),
-  endAt: z.number().int().optional(),
+  startAt: InstantMs.optional(),
+  endAt: InstantMs.optional(),
   premiumMinor: z.number().int().nonnegative().optional(),
   taxMinor: z.number().int().nonnegative().optional(),
   feesMinor: z.number().int().nonnegative().optional(),
@@ -558,18 +624,19 @@ export async function renewPolicy(ctx: Ctx, prior: PolicyRow, input: RenewInput)
 
 /* ----------------------------------------------------------------- the sweep */
 
-const PaymentPlan = z.object({
-  graceDays: z.number().int().nonnegative().default(0),
-  lapseOnMissed: z.boolean().default(false),
-  instalments: z
-    .array(z.object({ seq: z.number().int(), dueAt: z.number().int(), state: z.string() }))
-    .default([])
-});
-
-/** First instalment still unpaid past its grace window, if any. */
+/**
+ * First instalment still unpaid past its grace window, if any.
+ *
+ * `PaymentPlanJson` (packages/db) rather than a shape local to this file, and
+ * deliberately not the stricter `PaymentPlanWrite` the write door uses: a plan
+ * seeded or migrated in from outside the API carries keys the write shape never
+ * modelled, and refusing to read one means declining to lapse a policy that has
+ * gone unpaid. Lenient and fail-open is safe here because nothing in this
+ * function renders `dueAt` through `new Date()` — it only compares it to `now`.
+ */
 function missedInstalment(planJson: string | null, now: number): { seq: number; dueAt: number } | null {
   if (!planJson) return null;
-  const parsed = PaymentPlan.safeParse(JSON.parse(planJson));
+  const parsed = PaymentPlanJson.safeParse(JSON.parse(planJson));
   if (!parsed.success || !parsed.data.lapseOnMissed) return null;
   const grace = parsed.data.graceDays * DAY_MS;
   const missed = parsed.data.instalments

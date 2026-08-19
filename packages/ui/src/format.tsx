@@ -5,7 +5,7 @@
 import * as React from "react";
 import { cn } from "./cn.js";
 import { Input } from "./primitives.js";
-import { useUiCalendar, useUiLocale, useUiTimeZone, type CalendarPreference } from "./text.js";
+import { uiText, useUiCalendar, useUiLocale, useUiTimeZone, type CalendarPreference } from "./text.js";
 
 /** Minor-unit exponent for a currency (AED/USD → 2, JPY → 0, KWD → 3). */
 function minorUnits(currency: string, locale: string): number {
@@ -281,6 +281,40 @@ export function formatDate(
   }).format(date);
 }
 
+/** What a cell shows when it has nothing renderable in it — see `NoData`. */
+const DASH = "—";
+
+/**
+ * `value` as a `Date`, or `null` when no `Date` can hold it (ECMA-262 bounds a
+ * `Date` to ±8.64e15 ms from the epoch). The API bounds every write surface
+ * now, but rows written before those bounds landed are still in the tables, and
+ * `Intl.DateTimeFormat.format` and `toISOString` both throw `RangeError` on the
+ * Invalid Date such a row makes. A throw inside a render takes the whole route
+ * to the error boundary, so one unreadable field costs the page.
+ */
+export function instantOf(value: Date | string | number): Date | null {
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/**
+ * An instant as text, degraded to the dash rather than thrown — the same guard
+ * `DateTime` uses, for the renderers that cannot be a component: a lede
+ * sentence and a form's input value need a string, and the portal screens pass
+ * `Intl` options `formatDate` does not carry (`dateStyle`). Route a date
+ * through here and it inherits the guard; hand-roll `new Date(x)` beside an
+ * `Intl` formatter and it does not.
+ *
+ * ponytail: the bare dash, not the `sr-only` explanation `DateTime` renders —
+ * a string cannot carry an element into its caller's sentence, and this
+ * function has no locale to pick the words in. Upgrade path is a
+ * caller-supplied fallback argument the day a screen needs to say why.
+ */
+export function formatInstant(value: Date | string | number, render: (date: Date) => string): string {
+  const date = instantOf(value);
+  return date === null ? DASH : render(date);
+}
+
 function relativeText(date: Date, locale: string): string {
   const rtf = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
   let delta = (date.getTime() - Date.now()) / 1000;
@@ -310,7 +344,29 @@ export function DateTime({
   // is a UTC Worker on one pass and a reader's laptop on the next. See
   // UiTimeZoneProvider — that mismatch error-boundaries the entire route.
   const zone = timeZone ?? inheritedZone;
-  const date = value instanceof Date ? value : new Date(value);
+
+  // An instant no `Date` can hold (`instantOf`) — degrade to the same dash an
+  // empty cell uses rather than throwing the route away.
+  //
+  // The dash is `aria-hidden` for `NoData`'s reason: punctuation standing in
+  // for content is read as "dash" or as silence, and neither says a date was
+  // expected. So the reason goes in an `sr-only` span beside it, exactly as
+  // `NoData` does — an `aria-label` on this bare `<span>` would not do it, that
+  // is a name-prohibited role in ARIA 1.2. The words are kit chrome, from the
+  // kit's own catalogue in this date's locale (text.tsx), not the caller's job.
+  const date = instantOf(value);
+  if (date === null) {
+    // `title` after the spread, as `NoData` does: any `title` the caller passed
+    // describes a date that is not being rendered, so the reason wins.
+    const reason = uiText(locale)("dateUnavailable");
+    return (
+      <span {...props} title={reason} className={cn("text-subtle tabular-nums", className)}>
+        <span aria-hidden="true">{DASH}</span>
+        <span className="sr-only absolute h-px w-px overflow-hidden">{reason}</span>
+      </span>
+    );
+  }
+
   const format = (calendar?: "islamic-umalqura") =>
     formatDate(date, { locale, precision, calendar, timeZone: zone });
 
@@ -351,7 +407,7 @@ export function NoData({
 }: { reason: string } & React.HTMLAttributes<HTMLSpanElement>) {
   return (
     <span {...props} title={reason} className={cn("text-subtle", className)}>
-      <span aria-hidden="true">—</span>
+      <span aria-hidden="true">{DASH}</span>
       <span className="sr-only absolute h-px w-px overflow-hidden">{reason}</span>
     </span>
   );

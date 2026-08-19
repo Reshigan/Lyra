@@ -3,6 +3,7 @@ import { z } from "zod";
 import { id as newId, schema } from "@lyra/db";
 import { actorRef, audit, conflict, emit, gate, scoped, type Ctx } from "@lyra/core";
 import { buildRecipe, runTxn } from "@lyra/ledger";
+import { InstantMs } from "../http.js";
 
 // docs/27 F23 / docs/specs/gap-axis-design.md §H task 8. Paying a claim is the
 // only AXIS action that moves other people's money out of the door, so it is
@@ -147,7 +148,7 @@ export const RecoveryOpenBody = z.object({
   kind: z.enum(["subrogation", "salvage", "excess", "reinsurance", "third_party"]),
   counterpartyRef: z.string().max(200).nullish(),
   expectedMinor: z.number().int().nonnegative().default(0),
-  nextActionAt: z.number().int().nullish(),
+  nextActionAt: InstantMs.nullish(),
   /** 0-100 likelihood of recovering. AI-scored later; hand-set on open. */
   prospects: z.number().int().min(0).max(100).nullish()
 });

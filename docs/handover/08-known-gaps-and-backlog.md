@@ -8,12 +8,16 @@ This is the honest state-of-the-build. It has four parts:
 
 1. **§2** — outstanding entries from the feature-gap register ([`docs/27`](../27-feature-gap-register.md))
 2. **§3** — go-live checklist items still open ([`docs/25`](../25-go-live-checklist.md))
-3. **§4** — **every** architectural decision that defers work (all 59 ADRs catalogued in §4.2)
+3. **§4** — **every** architectural decision that defers work (ADR-0001 to ADR-0059 catalogued in §4.2; §4.3 covers the ones added since)
 4. **§5** — **owner action required**: things nobody on the support or
    engineering team can do, because they need the account owner
 
 **No credential values appear in this file.** Where an item needs a secret, the
 secret's *name* is given and nothing more.
+
+Describes commit `c7f1f57` on `main` (2026-08-18). Previous revision described
+`a295218`/`8afd07d` (2026-08-13); [`README.md` §7](README.md#7-revision-history)
+lists what changed in between, and which work is still on unmerged branches.
 
 ---
 
@@ -125,6 +129,26 @@ Worth knowing because they surprise people:
   (`apps/mobile/app/j/campaigns.tsx` lists campaigns, not variants) and no SVG
   renderer on its dependency list, so parity here is a new mobile journey plus
   `react-native-svg`, not a port. Deliberately not built.
+- **`pnpm lint` fails in every package.** ESLint 9 wants flat config and only
+  `packages/config` has one. Separately, `apps/api` has no `lint` script at all —
+  invisible today, and it will surface the moment the flat-config migration
+  lands.
+- **The `mutation` CI gate can take hours.** Stryker is diff-scoped
+  (`STRYKER_SINCE`, set by the `mutation` job in
+  [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml)) because a
+  whole-tree sweep of `packages/core` alone is 14,277 mutants and never
+  finished inside the runner's six-hour ceiling. Scoped, it is normally ~28
+  minutes — but PR #25 changed one file, `packages/core/src/seed/ledger.ts`,
+  and took **4h14m**, because `vitest: { dir: "packages/core" }` puts all 551
+  of that package's tests in the runner and the seed tests each replay every
+  migration into a fresh in-memory database. It passed. Budget for it, and do
+  not read a still-running `mutation` check as a hang.
+- **The `commissionMinor <= 0` guard on group binds has no covering test.** The
+  refusal is real (`apps/api/src/engines/group-commission.ts`) and correct;
+  nothing asserts it. See §5.1.
+- **A recipe can exist with no caller.** `FIN-CMSN` is the current example on
+  `main`. Recipes are declarative, so an unrouted one is inert rather than
+  broken — but do not read the chart of recipes as a list of live features.
 
 ---
 
@@ -185,9 +209,14 @@ Google developer accounts, **a PSP merchant account**.
 
 ### 4.1 How to use the ADRs
 
-[`docs/decisions/`](../decisions) holds **59 ADRs**, `ADR-0001` through
-`ADR-0059`. Before raising anything in this file as a defect, check here — a
-surprising behaviour is frequently a recorded decision.
+[`docs/decisions/`](../decisions) holds **61 ADRs** on `main`, `ADR-0001`
+through `ADR-0061`. Before raising anything in this file as a defect, check here
+— a surprising behaviour is frequently a recorded decision.
+
+The catalogue in §4.2 covers ADR-0001 to ADR-0059, which is what existed when
+this pack was first written. **ADR-0060 and ADR-0061 are in §4.3**, along with
+the numbers claimed by unmerged branches — read §4.3 before assuming a gap in
+the numbering is a mistake.
 
 Format: a `Status` / `Date` header, then `## Context`, `## Decision`,
 `## Consequences`. Status is one of `accepted`, `open`, `superseded by
@@ -263,7 +292,7 @@ The **Defers** column marks an ADR that leaves work undone. **25 of the 59 do.**
 | 0049 | Two autonomy ladders, each named once | There are two real ladders — the agent ladder and the SIGNAL campaign ladder — each declared in exactly one place | |
 | 0050 | Scheduled sweeps take a bounded bite, or say why not | A sweep takes at most `SWEEP_MAX` rows per tick; **the instalment sweep remains uncapped** | ✔ |
 | 0051 | The toast host is mounted; in-place notices stay default | `ToastProvider` wraps the shell; inline notices remain the default pattern | |
-| 0052 | No separate module switcher — the rail is one | The labelled sidebar *is* the module switcher | |
+| 0052 | No separate module switcher — the rail is one | The labelled sidebar *is* the module switcher. **Narrowed by ADR-0061 (§4.3):** each module now has its own shell and rail, and a switcher does exist for multi-shell actors. What survives is "no redundant second navigation list *within* one shell" | |
 | 0053 | Charts are SVG in the kit, not a library | No charting dependency; `packages/ui` draws what is needed. **Zoom, brushing and rich tooltips are the acknowledged ceiling** | ✔ |
 | 0054 | The retention desk binds its own renewal | `orbit.retention` gains `axis:policies:renew` | |
 | 0055 | The cold open never holds the door | A `pointer-events: none`, `aria-hidden` decorative overlay | |
@@ -271,6 +300,27 @@ The **Defers** column marks an ADR that leaves work undone. **25 of the 59 do.**
 | 0057 | Home is composed by permission, not a role layout table | No role→layout table; **per-role panel ordering is deferred** | ✔ |
 | 0058 | The draft is the lock | `sweepConversationDrafts` uses the draft itself as the concurrency lock | |
 | 0059 | The companion rail is opt-in, lazy and permission-scoped | Opens closed, fetches on first open, absent without `ai:runs:read` | |
+
+### 4.3 ADRs added since the first edition of this pack
+
+| ADR | Decision | Where it lives |
+|---|---|---|
+| 0060 | Imagery generation | `main` |
+| 0061 | Shell-per-module (NORTH reference build) | `main` |
+| 0062 | Revenue-schedule recognition timing | **Unmerged** — Group C branch (PR #25) |
+| 0063 | Income-account inference from `accountCode` | **Unmerged** — Group C branch (PR #25) |
+| 0064 | `runTxn` permanent failure burns the idempotency key | **Unmerged** — Group C branch (PR #25) |
+| 0065 | The H6 timeseries seam is load-bearing, and a reprice is an endorsement | **Unmerged** — telematics/UBI branch |
+| 0066 | Premium-financing settlement signal | **Unmerged** — premium-financing branch |
+
+**ADR-0061 narrows ADR-0052 rather than superseding it.** ADR-0052 forbids a
+second switcher widget beside a rail that already lists every destination the
+actor can reach. Under shell-per-module there is no longer one shared rail, so
+the multi-shell switcher is not a redundant second list — it is the only route
+to a *different* shell's rail, and it renders only when the actor's roles
+resolve to more than one shell. ADR-0052's reasoning still holds within any one
+shell. A user with one module's roles seeing no switcher is correct behaviour.
+See [`01-system-overview.md`](01-system-overview.md) §4.4.
 
 ---
 
@@ -291,6 +341,64 @@ Not a full defect list — the ones most likely to reach first-line support.
 | "SAML login fails" | SAML is a seam and refuses at runtime (ADR-0001). OIDC works but has no IdP registered | By design |
 | "It says a policy can't be deleted" | Six resources are delete-exempt; they transition state instead (ADR-0013) | By design |
 | Arabic content passes a guardrail it should not | Six guardrail regexes are English-only (F41), and there are no Arabic eval cases for five suites (F46) | Known, unmeasured |
+| "The financing commission never posted" | `FIN-CMSN` has a recipe in `packages/ledger/src/recipes.ts` on `main` but **nothing on `main` calls it** — the feature that posts it is on an unmerged branch | By design, until that branch merges |
+| "Nothing happened when I bound through a partner" | `bindPartner()` is engine-only and deliberately has no route (§5.1) | By design |
+| "The commission is the wrong amount" | Only a **flat rate** is modelled (§2.4). There is no tiered, sliding-scale or override commission | Known limitation |
+
+### 5.1 Deliberate incompleteness in the revenue lines
+
+These are recorded here so a reader does not open a defect against a decision.
+
+- **`bindPartner()` has no route, on purpose.** Its own header comment names the
+  two blockers: `orbit_partners` has no commission-rate column, and the recipe's
+  receivable account still defaults to `1100` where the sibling revenue line
+  pairs income `4075` with `1160`. Both must be resolved before it gets a route.
+  Until then the partner *quote* route works and the bind is untestable
+  end-to-end.
+- **`FIN-CMSN` is a recipe without a caller on `main`.** Not dead code and not a
+  defect — the caller is on the premium-financing branch.
+- **`apps/api` has no `lint` script.** Noted for whoever fixes the ESLint 9
+  flat-config migration; `pnpm lint` currently fails in every package
+  ([`01-system-overview.md`](01-system-overview.md) §3.1), so `apps/api`'s
+  missing script is invisible today and will surface the moment lint is fixed.
+
+**On the unmerged premium-financing branch** — listed now so they are not
+rediscovered as surprises at merge time, and all three are recorded in the
+branch's own review trail:
+
+- `PREM-INSTALMENT` **posts on the instalment's due date, not on confirmed
+  cash** (ADR-0066 records the settlement-signal design this rests on). Cash
+  arriving late is reconciled afterwards rather than gating the posting.
+- The dunning cursor `missedPaymentId` lives inside `schedule_json`, with no
+  column, no foreign key and no database-level validation. `missed_streak` *is*
+  a real column; the payment cursor is not.
+- `cancelPlan()` **cancels the whole plan, not pro-rata** — its own `ponytail:`
+  comment says so. A part-collected plan that should keep the collected portion
+  needs a separate path.
+
+**On the unmerged telematics/UBI branch** — same reason, and all recorded in
+[ADR-0065](../decisions/ADR-0065-timeseries-ingest-is-load-bearing.md):
+
+- **Consent is not enforced at telemetry ingest.** docs/16 §H6 names a consent
+  purpose `telemetry`; nothing checks it. LYRA's only consent store is
+  `signal_contacts.consent_purposes`, which is marketing-scoped and
+  contact-scoped, with no link to a cover. Ingest authorises on the RBAC
+  permission `axis:policies:telemetry` and on the batch naming the right cover,
+  and stops there. This is a real compliance gap, recorded rather than closed
+  because closing it needs a subject-scoped consent model LYRA does not have.
+  **No tenant should add `axis.endorse` to its `auto_approve` allowlist while
+  usage-based pricing is enabled.**
+- **`UBI-REPRICE`'s recipe is deliberately identical to `ENDORSE`'s**, and
+  `endorsePolicy` builds `ENDORSE`'s recipe whatever transaction type it is
+  given. That divergence between type and recipe is intentional, commented at
+  both sites, and is not a copy-paste defect.
+- **Nothing calls the telemetry routes.** No device integration, no fleet
+  import, no scheduled reprice sweep. A price moves only when an operator
+  posts to `/reprice`. Seeded environments carry no telemetry points, so the
+  first tick after the branch ships changes nothing on its own.
+- **The premium floor in `repriceFromTelemetry` is unreachable.** `parseUbi`
+  clamps at ±25%, so the `Math.max(0, …)` guard is defence-in-depth against a
+  future second caller, not live logic.
 
 ---
 
@@ -360,7 +468,7 @@ reference them by name only.
 ## 8. If you are triaging a ticket right now
 
 1. Search this file for the symptom. A third of first-month tickets are here.
-2. If it is not here, search [`docs/decisions/`](../decisions) — 59 ADRs, and
+2. If it is not here, search [`docs/decisions/`](../decisions) — 61 ADRs, and
    surprising behaviour is often a recorded decision rather than a defect.
 3. If it is neither, check [`docs/27-feature-gap-register.md`](../27-feature-gap-register.md)
    for the numbered finding.

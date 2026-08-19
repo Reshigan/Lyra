@@ -689,6 +689,23 @@ describe("remittance advice", () => {
     expect(table.rows.every((r) => r.agreement === "v3")).toBe(true);
   });
 
+  // A legacy row. `earnedAt` was unbounded before the write surfaces were, and
+  // the period filter is `earned < endAt` — so every *past* instant is in scope,
+  // including one no `Date` can hold. `new Date(-9e15).toISOString()` throws
+  // RangeError, and the throw is inside the row map, so one unreadable cell took
+  // the whole remittance advice down instead of rendering as unreadable.
+  it("renders a line whose earned instant no Date can hold", async () => {
+    await partner(ctx, 0);
+    await entry(ctx, 30_000, NOW - 2 * DAY);
+    await entry(ctx, 1_000, -9e15);
+
+    const { settlement } = await run(ctx);
+    const { table } = await statementTable(ctx, settlement);
+
+    expect(table.rows).toHaveLength(2);
+    expect(table.rows.map((r) => r.earnedOn)).toContain("unknown");
+  });
+
   it("keeps the rendered advice and points the settlement at it", async () => {
     await partner(ctx, 0);
     await entry(ctx, 30_000, NOW - 2 * DAY);

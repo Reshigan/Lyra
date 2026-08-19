@@ -18,6 +18,10 @@ exist. Every command below has been read out of the repository as it stands at
 handover; nothing here is aspirational unless it is explicitly labelled
 **OPEN ITEM**.
 
+Describes commit `c7f1f57` on `main` (2026-08-18). Previous revision described
+`a295218`/`8afd07d` (2026-08-13); [`README.md` §7](README.md#7-revision-history)
+lists what changed in between, and which work is still on unmerged branches.
+
 ---
 
 ## Contents
@@ -128,6 +132,14 @@ passes. `ci.yml` has five jobs:
 | `eval-live` | `pnpm --filter @lyra/model-gateway eval:live` | Calls the real model. Skipped on pull requests (`if: github.event_name != 'pull_request'`) because it costs money and needs credentials that forks do not get. |
 | `e2e` | `pnpm exec playwright install --with-deps chromium` then `pnpm e2e` | Playwright journeys. Accessibility (axe-core, WCAG 2.2 AA) runs *inside* these specs via [`e2e/a11y.ts`](../../e2e/a11y.ts) — there is no separate a11y job. On failure it uploads `test-results/` as the `e2e-failures` artifact, 7-day retention. |
 | `mutation` | `pnpm mutation` with `STRYKER_SINCE` set to the base ref | Stryker mutation testing on `packages/core` and `packages/model-gateway`, break threshold 70%. Diff-scoped — a whole-tree run takes ~10 hours and gets killed by the runner. |
+
+**Change since the first edition of this pack:** the `e2e` job no longer runs
+the journeys against `vite dev`. [`playwright.config.ts`](../../playwright.config.ts)
+now builds `apps/web` and serves the built Worker under `wrangler dev`. This is
+closer to production and catches server-only-module leaks the dev server hid,
+but it means an `e2e` failure can now be a *build* failure wearing an e2e
+costume. When `e2e` goes red, read the top of the job log for the build step
+before reading the spec failures.
 
 Before a **production** dispatch, additionally confirm by hand:
 
@@ -406,6 +418,17 @@ This writes a new SQL file into `packages/db/migrations/`. **Read it.**
 drizzle-kit occasionally chooses a table rebuild where you expected an
 `ALTER TABLE`; on a large table that is a very different operation. Commit the
 generated file with the schema change in the same commit.
+
+**Migration numbers are allocated by whoever generates first, and that collides
+across branches.** `main` currently ends at `0024_sharp_hiroim.sql`. Two
+unmerged revenue-line branches each generated their own `0025` and `0026`
+against that same base, so the second one to merge will carry filenames that
+already exist. The fix is done at merge time, not later: renumber the
+second branch's files past the first branch's highest number, then re-run
+`pnpm db:generate` so the journal matches. **This is only legal because neither
+set has ever been applied to any database.** Once a migration has run anywhere —
+staging included — it is frozen (§1.3), and the correct response to a collision
+becomes a new forward migration, never a rename.
 
 ### 4.2 Applying migrations
 
@@ -728,6 +751,34 @@ A failure in one tenant logs `scheduled tick failed for tenant` and does **not**
 stop the others. That is deliberate, and it also means a single tenant can be
 quietly broken for a long time. Check the log string, not just the overall
 health.
+
+**The order in that table is load-bearing, and the try/catch is what makes it
+survivable.** Every sweep in the loop shares one tenant iteration, so an
+uncaught throw from an early sweep skips every sweep below it *for that tenant,
+that tick*. The classic source is a currency-dependent posting reaching
+`fxRateFor()` with no rate configured — the error message is
+`no fx rate supplied for <A> -> <B>`. If a tenant reports that "the renewals
+stopped" and nothing else changed, look for that string first: the fault is
+usually in a sweep that runs *before* renewals, not in renewals.
+
+**Two more sweeps join this loop when the in-flight revenue lines merge**
+(see [`README.md` §7](README.md#7-revision-history)):
+
+| Job | Line | Where it slots in | What to watch |
+|---|---|---|---|
+| `sweepBilling` | F2/F3 — whitelabel billing and data products | with the other billing work | invoices, overages and revenue recognition all post from here; a stalled sweep means unbilled usage, not lost usage |
+| `sweepPremiumFinancing` | F4 — premium financing | **between `sweepPolicyLifecycle` and `sweepRenewals`** | it collects due instalments and escalates dunning before renewals look at the same policies |
+
+`sweepPremiumFinancing` has a consequence worth knowing before the first
+ticket: **three refused collection attempts on a financing plan lapse the
+policy.** It does this by emitting `ledger.financing.lapse_due` onto the event
+bus, which cascades into the existing policy-lapse path — the same path a
+manual lapse uses. So a customer can lose cover because their debit order
+failed three times, and the lapse will look, in the policy's own audit trail,
+like an ordinary lapse. The evidence that it was dunning-driven is the
+`DUNNING` transaction records on the plan. Reinstating the policy resets the
+plan's missed-attempt streak and writes a
+`ledger.financing.plan.reinstate` audit row.
 
 ### 6.2 The nightly window
 

@@ -12,6 +12,10 @@ Companion document: [`05-use-cases.md`](./05-use-cases.md) has the business
 context for each flow (actors, what gets written, why the gates exist). This
 document is the mechanics.
 
+Describes commit `c7f1f57` on `main` (2026-08-18). Previous revision described
+`a295218`/`8afd07d` (2026-08-13); [`README.md` §7](README.md#7-revision-history)
+lists what changed in between, and which work is still on unmerged branches.
+
 ---
 
 ## Part A — Manual UAT scripts
@@ -407,6 +411,28 @@ gap to all 23 journeys. Run before a release.
 | 13 | Cancellation | Same policy → **Cancel** → **"Price this cancellation"** → **Refund** and **Commission clawback** shown → confirm. | **"This cancellation needs an approval first"** — money out never writes on one person's say-so. | |
 | 14 | Renewal desk | `/axis/renewals`: **"Auto re-quote"**, **"Do not contact"**, then **"Bind renewal"**. | The first two read **"Recorded."**; binding reads **"Waiting on an approval"**. | |
 
+### UAT-12 — Revenue lines (API only)
+
+**Why this one has no UI steps.** The revenue lines added since the first
+edition of this pack are ledger-first: the money had to be right before a
+screen was worth building, so there is no staging screen to click. Drive these
+with an API client, as the developer persona. Business context for each is in
+[`05-use-cases.md`](./05-use-cases.md) UC-30 – UC-34.
+
+| # | Line | Call | Actor | Expected | Pass |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Group commission | `POST /v1/axis/policies/<id>/bind-group` | needs `axis:policies:bind` (e.g. `axis.lead`) | A `BIND-GROUP` transaction crediting income **4000**, held under **dual control**. A policy with zero or negative commission is refused **400**: `cannot bind-group with no commission: BIND-GROUP posts a commission accrual`. | |
+| 2 | Broker fee | `POST /v1/axis/policies/<id>/broker-fee` | `axis:policies:bind` | A `FEE-BROK` transaction, Dr **1160** / Cr **4020** — a separate line from commission, disputable on its own. | |
+| 3 | Referral | `POST /v1/dist/referrals/qualify`, then `POST /v1/dist/referrals/settle` | `finance.controller` (holds `dist:commissions:*`) | Qualify posts a **non-financial** record and moves no money; only settle posts `REFERRAL-SETL`, Dr **1160** / Cr **4030**. Qualifying and seeing no payment is the design, not a bug. | |
+| 4 | Ad placement | `POST /v1/compliance/disclosures/present` with `key: "ad_placement"`, then `POST /v1/ledger/txn/AD-PLACEMENT` for the **same** subject | present: `axis.lead` or `signal.lead` | With a fresh disclosure: `AD-PLACEMENT` posts Dr **1160** / Cr **4070**. Without one — or with one older than **24 hours**, or one presented for a *different* subject — **409**: `no disclosure presented for <subjectRef> in the last 24h; present one before placing this ad`. Repeat the placement 24h+ later without re-presenting to prove the window closes. | |
+| 5 | Partner quote | `POST /v1/orbit/partners/<id>/quotes` | `orbit:partners:read` (e.g. `orbit.partners`) | Sandbox partners return clearly-marked **synthetic** pricing. **Stop there** — the bind that would follow (`PARTNER-BIND`, income **4075**, chaining `RSHARE-ACCR`) is engine-only and deliberately has no route yet, so there is nothing to test end-to-end. | |
+
+> **Step 4's failure mode is the one support sees.** All three causes — never
+> presented, presented too long ago, presented for the wrong subject — produce
+> that one identical message. The precondition reads the **`disclosures`
+> table**, not `ledger_transactions`. See [`04-support-playbook.md`](./04-support-playbook.md)
+> S-20.
+
 ---
 
 ## Part B — Automated suite map
@@ -442,9 +468,10 @@ Rough distribution of test files:
 
 | Package | Test files | Notable |
 | --- | --- | --- |
-| `apps/api` | 82 | `journeys.test.ts` is the acceptance suite (`@accept:Mx`); `ledger*.test.ts`, `settlement.test.ts`, `axis-*.test.ts`, `compliance.test.ts`, `portal.test.ts`, `mfa.test.ts`, `api-keys.test.ts`, `partner-signup.test.ts`. |
-| `apps/web` | 80 | One per route: `approvals`, `claim-detail`, `claims-desk`, `fnol-intake`, `policy-endorse`, `policy-cancel`, `renewal-desk`, `settlement`, `settings-brand`, `ledger.shared`, `ledger-money-map`, `labels.shared`, `module.denied`. |
+| `apps/api` | 87 | `journeys.test.ts` is the acceptance suite (`@accept:Mx`); `ledger*.test.ts`, `settlement.test.ts`, `axis-*.test.ts`, `compliance.test.ts`, `portal.test.ts`, `mfa.test.ts`, `api-keys.test.ts`, `partner-signup.test.ts`. |
+| `apps/web` | 126 | One per route: `approvals`, `claim-detail`, `claims-desk`, `fnol-intake`, `policy-endorse`, `policy-cancel`, `renewal-desk`, `settlement`, `settings-brand`, `ledger.shared`, `ledger-money-map`, `labels.shared`, `module.denied` — plus the module screens and one per module shell (`north-shell.test.tsx` and its four siblings). |
 | `packages/core` | 35 | Tenancy, RBAC, approvals, ledger invariants (property-tested). |
+| `packages/ledger` | 3 | Recipes, postings, and the transaction preconditions (§B.6 note). |
 | `packages/model-gateway` | 10 | Provider abstraction, audit-log emission, routing. |
 | `packages/ui` | 10 | Constellation components. |
 | `packages/db` | 6 | Schema and migration shape. |
@@ -452,6 +479,13 @@ Rough distribution of test files:
 | `apps/mobile` | 1 | — |
 | `scripts` | 2 | The `lyra` CLI. |
 | `packages/agents` | 0 | Covered through `apps/api`. |
+
+> **These counts moved since the first edition of this pack.** `apps/api` went
+> 82 → 87 and `apps/web` went 80 → 126 — the web jump is the module screens
+> and the five module-shell component tests (ADR-0061), not a change in testing
+> policy. `packages/ledger` was missing from the first edition's table
+> altogether. Counts are a snapshot; the commands above are the truth. To
+> re-count: `git ls-files 'apps/api/src/**/*.test.ts' | wc -l`.
 
 ### B.3 End-to-end (local)
 
@@ -489,7 +523,21 @@ pnpm e2e -- --debug e2e/save-desk.spec.ts           # inspector
 npx playwright show-trace test-results/<...>/trace.zip
 ```
 
-Journey tags are literal text in the test title, so `-g` matches them directly.
+Journey tags are literal text in the test title, so `-g` matches them directly
+— with the exception of the five module-shell specs, whose tags live in a
+header comment (see §B.4).
+
+**In CI, `e2e` runs against a built Worker, not `vite dev`.**
+[`playwright.config.ts`](../../playwright.config.ts) builds `apps/web` and
+serves the build under `wrangler dev`; the first edition of this pack described
+the older `vite dev` arrangement. Two consequences:
+
+1. **An `e2e` failure can be a *build* failure wearing an e2e costume.** When
+   the job goes red, read the top of the log for the build step before reading
+   any spec failure.
+2. **Worker-runtime differences are now caught here rather than at deploy.**
+   That is the point of the change — but it means `e2e` is slower and its
+   failures are no longer exclusively about UI behaviour.
 
 **Shared helpers**
 
@@ -511,7 +559,13 @@ permission and no UI trigger).
 
 ### B.4 Spec inventory
 
-Every spec under [`e2e/`](../../e2e), what it covers, and its tags.
+Every spec under [`e2e/`](../../e2e), what it covers, and its tags. There are
+**32** spec files in total as of this revision — 28 directly under `e2e/`,
+three under `e2e/live/`, and one under `e2e/sim/` (plus `live/sign-in.ts`,
+which is a helper, not a spec). The first edition of this pack described 26;
+the six additions are the five module-shell specs and
+`live/show-filter.spec.ts`. To re-count:
+`git ls-files 'e2e/**/*.spec.ts' | wc -l`.
 
 | Spec | Covers | Tags |
 | --- | --- | --- |
@@ -539,12 +593,47 @@ Every spec under [`e2e/`](../../e2e), what it covers, and its tags.
 | [`staff.spec.ts`](../../e2e/staff.spec.ts) | a11y on `/admin/staff`; invite a teammate with a role bundle; row reads Invited. | `@journey:J-A2 @accept:M1` |
 | [`tenant-onboarding.spec.ts`](../../e2e/tenant-onboarding.spec.ts) | Roles and agents provisioned; the tenants list holds exactly one row — your own. Its header documents the platform-admin flow that does **not** exist. | `@journey:J-A1 @accept:M1` |
 
+**Module shells (added since the first edition — ADR-0061, see [`01-system-overview.md`](01-system-overview.md) §4.4)**
+
+One spec per module shell, all five built to the same shape: the module's own
+persona lands in its shell and sees **only that module's rail**; the module
+switcher renders only when the actor's roles resolve to more than one shell;
+and an actor without a role resolving to that module gets **403, not 401** —
+`bootstrapSession()` already proved identity, so the failure is entitlement,
+not authentication. NORTH carries one extra test because Meridian is
+NORTH-only.
+
+| Spec | Covers | Tags |
+| --- | --- | --- |
+| [`axis-shell.spec.ts`](../../e2e/axis-shell.spec.ts) | `axis.agent` lands in `AxisShell`, AXIS's rail only; non-entitled actor gets 403 on `/axis/*`. | `@journey:J-AXIS-SHELL` |
+| [`north-shell.spec.ts`](../../e2e/north-shell.spec.ts) | Same for `north.exec`, plus `?asOf=` replaying the Meridian scrubber to that moment (not just the URL). | `@journey:J-NORTH-SHELL` |
+| [`orbit-shell.spec.ts`](../../e2e/orbit-shell.spec.ts) | Same for `orbit.agent`. | `@journey:J-ORBIT-SHELL` |
+| [`signal-shell.spec.ts`](../../e2e/signal-shell.spec.ts) | Same for `signal.lead`. | `@journey:J-SIGNAL-SHELL` |
+| [`scout-shell.spec.ts`](../../e2e/scout-shell.spec.ts) | Same for `scout.lead`. | `@journey:J-SCOUT-SHELL` |
+
+> **These five tags are in a header comment, not in the test titles.** `-g`
+> matches test titles only (§B.3), so `pnpm e2e -- -g "@journey:J-AXIS-SHELL"`
+> selects **nothing**. Run them by filename instead:
+> `pnpm e2e -- e2e/axis-shell.spec.ts`. Each header comment also cites that
+> shell's own design spec under `docs/superpowers/specs/`, which is the place
+> to read what the shell is supposed to do before calling a difference a bug.
+
+> **No Meridian outside NORTH.** ADR-0061 is explicit that the Meridian
+> scrubber is NORTH-only. A user asking why AXIS has no scrubber is asking
+> about a decision, not a defect.
+
+> **Two `<nav aria-label="Primary">` landmarks render on every shell page** —
+> one `md:hidden`, one `hidden md:flex`, the responsive pair. Specs use
+> `.first()`; a strict-mode "resolved to 2 elements" failure in a new spec
+> means you forgot it, not that the page is broken.
+
 **Live (read-only, against the deployed site)**
 
 | Spec | Covers |
 | --- | --- |
 | [`live/smoke.spec.ts`](../../e2e/live/smoke.spec.ts) | `/`, `/approvals`, `/settings` load; the nav's accessible name is `Primary` / `التنقل الرئيسي`; **no raw i18n keys** reach a screen; no "Something went wrong" / "Unexpected Server Error"; axe on `/login` and on the tenant admin's home. |
 | [`live/ledger-history.spec.ts`](../../e2e/live/ledger-history.spec.ts) | `/ledger/transactions`, `/statement`, `/period-close`, `/reports/trial-balance`, `/year-end`, `/journal`, `/reports/balance-sheet` all render; the year-end preview contains account **3100** (Retained Earnings); the transaction list exceeds 18 rows, proving the history backfill ran. |
+| [`live/show-filter.spec.ts`](../../e2e/live/show-filter.spec.ts) | The anomaly **Show** filter reads its selected option rather than an ellipsis — a regression spec for a live rendering defect. *Untagged.* |
 | [`live/sign-in.ts`](../../e2e/live/sign-in.ts) | Helper, not a spec: opens the collapsed **Demo sign-in** disclosure and clicks the persona's button. |
 
 **Simulation (staging, stateful)**

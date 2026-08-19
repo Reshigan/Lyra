@@ -81,6 +81,17 @@ describe("parseExtraction", () => {
     const { values } = parseExtraction('{"fullName":"  Ahmed  ","idNumber":"   "}', fields);
     expect(values).toEqual({ fullName: "Ahmed", idNumber: null });
   });
+
+  // Regression: `JSON.parse` returns null, 42 or "a string" for replies that are
+  // valid JSON but not objects, and the first property read on null threw a
+  // TypeError straight through the never-throws contract.
+  it.each(["null", "42", '"a string"'])("extracts nothing from valid non-object JSON: %s", (reply) => {
+    expect(() => parseExtraction(reply, fields)).not.toThrow();
+    expect(parseExtraction(reply, fields)).toEqual({
+      values: { fullName: null, idNumber: null },
+      confidence: 0
+    });
+  });
 });
 
 describe("SENSITIVE_EXTRACTION_FIELDS", () => {
@@ -234,6 +245,13 @@ describe("parseVisionExtraction", () => {
   it("strips a code fence the same way the text path does", () => {
     const reply = "```json\n" + JSON.stringify({ fullName: evidence("Ahmed") }) + "\n```";
     expect(parseVisionExtraction(reply, ["fullName"]).confidence).toBe(100);
+  });
+
+  // Regression: same non-object JSON crash path as parseExtraction above.
+  it.each(["null", "42", '"a string"'])("extracts nothing from valid non-object JSON: %s", (reply) => {
+    expect(() => parseVisionExtraction(reply, fields)).not.toThrow();
+    expect(parseVisionExtraction(reply, fields).values.fullName).toEqual({ value: null, page: null, bbox: null });
+    expect(parseVisionExtraction(reply, fields).confidence).toBe(0);
   });
 
   it("scores an empty field list as zero rather than dividing by zero", () => {

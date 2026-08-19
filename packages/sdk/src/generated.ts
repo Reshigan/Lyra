@@ -609,6 +609,17 @@ export interface AxisTasks {
   updatedAt?: number;
 }
 
+export interface AxisTelemetryPoints {
+  id?: string;
+  tenantId?: string;
+  subjectRef: string;
+  source: string;
+  at: number;
+  value: number;
+  txnId: string;
+  createdAt?: number;
+}
+
 export interface ComplianceDisclosures {
   id?: string;
   tenantId?: string;
@@ -1443,6 +1454,7 @@ export interface LedgerPaymentPlans {
   instalments: number;
   scheduleJson: string;
   state?: string;
+  missedStreak?: number;
   createdAt?: number;
   updatedAt?: number;
 }
@@ -2383,8 +2395,12 @@ export interface Operations {
   "POST /v1/axis/policies/{id}/endorse/preview": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/axis/policies/{id}/lapse": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/axis/policies/{id}/ntu": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
+  "POST /v1/axis/policies/{id}/premium-financing-plan": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
+  "POST /v1/axis/policies/{id}/premium-financing-plan/cancel": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/axis/policies/{id}/reinstate": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/axis/policies/{id}/renew": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
+  "POST /v1/axis/policies/{id}/reprice": Op<{ id: string }, never, never, Record<string, unknown>>;
+  "POST /v1/axis/policies/{id}/telemetry": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/axis/policies/{id}/versions": Op<{ id: string }, never, never, Record<string, unknown>>;
   "GET /v1/axis/process-events": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<AxisProcessEvents>>;
   "GET /v1/axis/process-events/{id}": Op<{ id: string }, never, never, AxisProcessEvents>;
@@ -2412,6 +2428,8 @@ export interface Operations {
   "GET /v1/axis/tasks/{id}": Op<{ id: string }, never, never, AxisTasks>;
   "PATCH /v1/axis/tasks/{id}": Op<{ id: string }, never, AxisTasks, AxisTasks>;
   "DELETE /v1/axis/tasks/{id}": Op<{ id: string }, never, never, void>;
+  "GET /v1/axis/telemetry-points": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<AxisTelemetryPoints>>;
+  "GET /v1/axis/telemetry-points/{id}": Op<{ id: string }, never, never, AxisTelemetryPoints>;
   "GET /v1/channels/{connectorId}/webhook": Op<{ connectorId: string }, never, never, Record<string, unknown>>;
   "POST /v1/channels/{connectorId}/webhook": Op<{ connectorId: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/compliance/disclosures": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<ComplianceDisclosures>>;
@@ -2627,9 +2645,7 @@ export interface Operations {
   "GET /v1/ledger/journal-lines": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<LedgerJournalLines>>;
   "GET /v1/ledger/journal-lines/{id}": Op<{ id: string }, never, never, LedgerJournalLines>;
   "GET /v1/ledger/payment-plans": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<LedgerPaymentPlans>>;
-  "POST /v1/ledger/payment-plans": Op<never, never, LedgerPaymentPlans, LedgerPaymentPlans>;
   "GET /v1/ledger/payment-plans/{id}": Op<{ id: string }, never, never, LedgerPaymentPlans>;
-  "PATCH /v1/ledger/payment-plans/{id}": Op<{ id: string }, never, LedgerPaymentPlans, LedgerPaymentPlans>;
   "GET /v1/ledger/payments": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<LedgerPayments>>;
   "GET /v1/ledger/payments/{id}": Op<{ id: string }, never, never, LedgerPayments>;
   "GET /v1/ledger/period/{code}": Op<{ code: string }, never, never, Record<string, unknown>>;
@@ -3080,8 +3096,12 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "POST /v1/axis/policies/{id}/endorse/preview": { tag: "axis", summary: "Price a mid-term change without writing anything", permission: "axis:policies:endorse", public: false },
   "POST /v1/axis/policies/{id}/lapse": { tag: "axis", summary: "Lapse a policy for an unpaid instalment", permission: "axis:policies:lapse", public: false },
   "POST /v1/axis/policies/{id}/ntu": { tag: "axis", summary: "Mark a policy not-taken-up, clawing back the whole commission", permission: "axis:policies:ntu", public: false },
+  "POST /v1/axis/policies/{id}/premium-financing-plan": { tag: "axis", summary: "Open a premium-financing plan on a bound policy", permission: "axis:policies:finance", public: false },
+  "POST /v1/axis/policies/{id}/premium-financing-plan/cancel": { tag: "axis", summary: "Cancel a policy's live premium-financing plan", permission: "axis:policies:finance", public: false },
   "POST /v1/axis/policies/{id}/reinstate": { tag: "axis", summary: "Put cover back on risk after arrears are cleared", permission: "axis:policies:reinstate", public: false },
   "POST /v1/axis/policies/{id}/renew": { tag: "axis", summary: "Bind a successor term and close the prior one", permission: "axis:policies:renew", public: false },
+  "POST /v1/axis/policies/{id}/reprice": { tag: "axis", summary: "Reprice a cover from its telemetry, endorsing it if the price moved", permission: "axis:policies:endorse", public: false },
+  "POST /v1/axis/policies/{id}/telemetry": { tag: "axis", summary: "Ingest a batch of sensor points against this cover", permission: "axis:policies:telemetry", public: false },
   "GET /v1/axis/policies/{id}/versions": { tag: "axis", summary: "The endorsement history of this policy, newest first", permission: "axis:policies:read", public: false },
   "GET /v1/axis/process-events": { tag: "axis", summary: "List process-events", permission: "axis:metrics:read", public: false },
   "GET /v1/axis/process-events/{id}": { tag: "axis", summary: "Fetch one process event", permission: "axis:metrics:read", public: false },
@@ -3109,6 +3129,8 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "GET /v1/axis/tasks/{id}": { tag: "axis", summary: "Fetch one task", permission: "axis:tasks:read", public: false },
   "PATCH /v1/axis/tasks/{id}": { tag: "axis", summary: "Update a task", permission: "axis:tasks:write", public: false },
   "DELETE /v1/axis/tasks/{id}": { tag: "axis", summary: "Soft-delete a task", permission: "axis:tasks:write", public: false },
+  "GET /v1/axis/telemetry-points": { tag: "axis", summary: "List telemetry-points", permission: "axis:policies:read", public: false },
+  "GET /v1/axis/telemetry-points/{id}": { tag: "axis", summary: "Fetch one telemetry point", permission: "axis:policies:read", public: false },
   "GET /v1/channels/{connectorId}/webhook": { tag: "orbit", summary: "Provider subscription handshake; echoes the challenge when the verify token matches", permission: null, public: true },
   "POST /v1/channels/{connectorId}/webhook": { tag: "orbit", summary: "Provider webhook delivery: signature-verified inbound messages and delivery receipts", permission: null, public: true },
   "GET /v1/compliance/disclosures": { tag: "compliance", summary: "List disclosures", permission: "compliance:disclosures:read", public: false },
@@ -3324,9 +3346,7 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "GET /v1/ledger/journal-lines": { tag: "ledger", summary: "List journal-lines", permission: "ledger:journals:read", public: false },
   "GET /v1/ledger/journal-lines/{id}": { tag: "ledger", summary: "Fetch one journal line", permission: "ledger:journals:read", public: false },
   "GET /v1/ledger/payment-plans": { tag: "ledger", summary: "List payment-plans", permission: "ledger:payments:read", public: false },
-  "POST /v1/ledger/payment-plans": { tag: "ledger", summary: "Create a payment plan", permission: "ledger:payments:create", public: false },
   "GET /v1/ledger/payment-plans/{id}": { tag: "ledger", summary: "Fetch one payment plan", permission: "ledger:payments:read", public: false },
-  "PATCH /v1/ledger/payment-plans/{id}": { tag: "ledger", summary: "Update a payment plan", permission: "ledger:payments:create", public: false },
   "GET /v1/ledger/payments": { tag: "ledger", summary: "List payments", permission: "ledger:payments:read", public: false },
   "GET /v1/ledger/payments/{id}": { tag: "ledger", summary: "Fetch one payment", permission: "ledger:payments:read", public: false },
   "GET /v1/ledger/period/{code}": { tag: "ledger", summary: "One accounting period and its close checklist", permission: "ledger:periods:read", public: false },

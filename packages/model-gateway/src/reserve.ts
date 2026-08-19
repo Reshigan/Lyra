@@ -1,3 +1,5 @@
+import { parseJsonObject } from "./parse.js";
+
 // docs/specs/gap-axis-design.md §G.3. Reserve recommendation: given the peril,
 // cause, severity signal (complexity), policy limits/excess, and the tenant's
 // own comparable closed claims, suggest what the indemnity reserve should be.
@@ -54,44 +56,42 @@ export function reserveSchema(): Record<string, unknown> {
 }
 
 /**
- * The reserve-recommendation prompt, in one place, shared verbatim between the
- * eval harness and the production engine (apps/api/src/engines/axis-reserve-advisor.ts),
- * per docs/27 F10's "the live eval must send the prompt production sends."
+ * The reserve-recommendation prompt, in one place, so the production engine
+ * (apps/api/src/engines/axis-reserve-advisor.ts) and any caller that sends a
+ * live request send the same text. The `axis-reserve` eval replays recorded
+ * replies through `parseReserve` and does not send this prompt, so nothing here
+ * is measured against a golden set — docs/27 F10's "the live eval must send the
+ * prompt production sends" is satisfied only once a live suite exists for it,
+ * on the pattern of evals/live.ts's extraction suite.
+ *
+ * CLAUDE.md §14: no domain-pack noun appears here. It reads "claim" and "the
+ * amount to set aside", so the same prompt reserves a warranty repair or a
+ * service-credit case without an edit. (`perilCode`, `excessMinor` and the rest
+ * are wire field names fixed by the schema, not vocabulary shown to a user.)
  */
 export function reserveMessages(ctx: ReserveContext): { role: "system" | "user"; content: string }[] {
   return [
     {
       role: "system",
       content:
-        "You are estimating the indemnity reserve for an insurance claim from its peril, cause, complexity, " +
-        "the policy's excess and limits, and a list of the tenant's own comparable closed claims (same peril, " +
-        "closed within the last 24 months). Reply with JSON only, matching the schema: " +
+        "You are estimating the amount to set aside for one open claim, from its perilCode, causeCode, " +
+        "complexity, excessMinor, the limits given, and a list of the tenant's own comparable closed claims " +
+        "(same perilCode, closed within the last 24 months). Reply with JSON only, matching the schema: " +
         "recommendedMinor (the point estimate, in minor currency units), bandLowMinor and bandHighMinor " +
         "(a plausible low/high range around it, bandLowMinor <= recommendedMinor <= bandHighMinor), and " +
         "comparables (the ids, from the list given, of the comparable claims you actually weighed). " +
-        "Never recommend above the policy limit for the matching cover, and never below the excess. " +
+        "Never recommend above the limit that matches the claim, and never below excessMinor. " +
         "If there are no useful comparables, say so by returning an empty comparables array rather than inventing one."
     },
     { role: "user", content: JSON.stringify(ctx) }
   ];
 }
 
-/** Models sometimes wrap JSON in a code fence despite `responseSchema`; strip it before parsing. */
-function stripFence(text: string): string {
-  const m = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  return (m?.[1] ?? text).trim();
-}
-
 const FIELDS = ["recommendedMinor", "bandLowMinor", "bandHighMinor", "comparables"] as const;
 
 /** Parses one model reply. Never throws — a bad reply recommends nothing. */
 export function parseReserve(reply: string): ReserveRecommendation {
-  let parsed: Record<string, unknown> = {};
-  try {
-    parsed = JSON.parse(stripFence(reply)) as Record<string, unknown>;
-  } catch {
-    parsed = {};
-  }
+  const parsed = parseJsonObject(reply) ?? {};
 
   const rawRecommended = parsed.recommendedMinor;
   const rawLow = parsed.bandLowMinor;

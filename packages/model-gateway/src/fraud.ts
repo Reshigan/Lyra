@@ -1,3 +1,5 @@
+import { parseJsonObject } from "./parse.js";
+
 // docs/specs/gap-axis-design.md §G.2. Fraud/SIU scoring: given a claim, its
 // policy cover snapshot, the holder's own claim history, and any document
 // extraction results, score how referable the claim is to SIU and name the
@@ -15,7 +17,8 @@ export interface FraudHistoryClaim {
   status: string;
   amountMinor: number | null;
   settledMinor: number | null;
-  closedAt: number | null;
+  /** ISO-8601, for the same reason as `FraudContext.reportedAt`. */
+  closedAt: string | null;
 }
 
 export interface FraudDocument {
@@ -27,8 +30,11 @@ export interface FraudDocument {
 export interface FraudContext {
   perilCode: string | null;
   causeCode: string | null;
-  incidentAt: number | null;
-  reportedAt: number;
+  /** ISO-8601, not epoch ms — a bare 13-digit instant is redacted as a card
+   * number on the way out (scrub.ts), and the gap between these two is the
+   * first signal this prompt asks for. */
+  incidentAt: string | null;
+  reportedAt: string;
   amountMinor: number | null;
   limits: Record<string, number> | null;
   history: FraudHistoryClaim[];
@@ -79,18 +85,27 @@ export function fraudSchema(): Record<string, unknown> {
 }
 
 /**
- * The fraud-scoring prompt, in one place, shared verbatim between the eval
- * harness and the production engine (apps/api/src/engines/axis-fraud-scorer.ts),
- * per docs/27 F10's "the live eval must send the prompt production sends."
+ * The fraud-scoring prompt, in one place, so the production engine
+ * (apps/api/src/engines/axis-fraud-scorer.ts) and any caller that sends a live
+ * request send the same text. The `axis-fraud` eval replays recorded replies
+ * through `parseFraud` and does not send this prompt, so nothing here is
+ * measured against a golden set — docs/27 F10's "the live eval must send the
+ * prompt production sends" is satisfied only once a live suite exists for it,
+ * on the pattern of evals/live.ts's extraction suite.
+ *
+ * CLAUDE.md §14: no domain-pack noun appears here. It reads "claim", "claimant"
+ * and "review queue", so the same prompt scores a warranty or a rebate abuse
+ * case without an edit. (`perilCode`, `amountMinor` and the rest are wire field
+ * names fixed by the schema, not vocabulary shown to a user.)
  */
 export function fraudMessages(ctx: FraudContext): { role: "system" | "user"; content: string }[] {
   return [
     {
       role: "system",
       content:
-        "You are scoring an insurance claim for referral to the Special Investigation Unit (SIU), from its " +
-        "peril, cause, the gap between incident and report, the claimed amount against policy limits, the " +
-        "holder's own prior claim history, and any document extraction results. Reply with JSON only, matching " +
+        "You are scoring one submitted claim for referral to a review queue, from its perilCode and causeCode, " +
+        "the gap between incidentAt and reportedAt, amountMinor against the limits given, the claimant's own " +
+        "prior claim history, and any document extraction results. Reply with JSON only, matching " +
         "the schema: score (0-100, how strongly the claim looks referable) and indicators (each with code, a " +
         "short slug naming the signal; weight, its contribution to the score; and evidenceRef, the specific " +
         "fact from the input that supports it — a prior claim id, document id, or field name). Every indicator " +
@@ -101,22 +116,11 @@ export function fraudMessages(ctx: FraudContext): { role: "system" | "user"; con
   ];
 }
 
-/** Models sometimes wrap JSON in a code fence despite `responseSchema`; strip it before parsing. */
-function stripFence(text: string): string {
-  const m = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  return (m?.[1] ?? text).trim();
-}
-
 const FIELDS = ["score", "indicators"] as const;
 
 /** Parses one model reply. Never throws — a bad reply scores nothing. */
 export function parseFraud(reply: string): FraudScoreResult {
-  let parsed: Record<string, unknown> = {};
-  try {
-    parsed = JSON.parse(stripFence(reply)) as Record<string, unknown>;
-  } catch {
-    parsed = {};
-  }
+  const parsed = parseJsonObject(reply) ?? {};
 
   const rawScore = parsed.score;
   const rawIndicators = parsed.indicators;

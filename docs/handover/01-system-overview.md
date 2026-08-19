@@ -4,7 +4,9 @@
 **Goal:** after reading this you should be able to take any user-visible symptom
 and name the two or three files most likely responsible.
 
-Describes commit `8afd07d` (2026-08-13).
+Describes commit `c7f1f57` on `main` (2026-08-18). Previous revision described
+`8afd07d` (2026-08-13); [`README.md` §7](README.md#7-revision-history) lists what
+changed in between, and which work is still on unmerged branches.
 
 ---
 
@@ -264,6 +266,48 @@ a page component. Screens that are genuinely their own thing (quote comparison,
 trial balance, the approvals queue) do get their own file in
 [`apps/web/app/routes/`](../../apps/web/app/routes).
 
+### 4.4 One shell per module (ADR-0061)
+
+Between the first edition of this pack and this one, the single shared
+application shell was **forked into one shell per product module**. Each module
+now has its own layout route, and its own routes are declared as children of it:
+
+| Module | Shell route |
+|---|---|
+| AXIS | [`axis-shell.tsx`](../../apps/web/app/routes/axis-shell.tsx) |
+| ORBIT | [`orbit-shell.tsx`](../../apps/web/app/routes/orbit-shell.tsx) |
+| SIGNAL | [`signal-shell.tsx`](../../apps/web/app/routes/signal-shell.tsx) |
+| SCOUT | [`scout-shell.tsx`](../../apps/web/app/routes/scout-shell.tsx) |
+| NORTH | [`north-shell.tsx`](../../apps/web/app/routes/north-shell.tsx) |
+
+Each shell loads its own module's session data through a per-module hook rather
+than the previously shared `useShellData`. The reasoning is in
+[ADR-0061](../decisions/ADR-0061-shell-per-module.md); the practical effects for
+support are:
+
+- **A blank or broken module is now a one-module fault.** Read that module's
+  shell route first. Before the fork, one shell error took every module down
+  together — a useful diagnostic signal that no longer exists.
+- **Chrome can legitimately differ between modules.** If a user says "the rail
+  looks different in SCOUT than in AXIS", that is possible by design now. It is
+  only a defect if the difference breaks a documented behaviour.
+- **A fix to one module's shell does not fix the others.** When you escalate a
+  shell bug, name the module.
+
+There is now a **module switcher**, which is a change from the first edition of
+this pack. Each shell's rail lists only its own module's screens, so the rail is
+no longer one shared list of everywhere the actor can go. The switcher is the
+only way to reach a different shell's rail, and it renders **only when the
+actor's roles resolve to more than one module shell** — the shell you are
+already in is not a destination, and the shared workspaces (ledger, admin,
+distribution, settings, platform) have no shell of their own to switch to.
+
+[ADR-0052](../decisions/ADR-0052-no-module-switcher-the-rail-is-one.md) is
+**narrowed, not reversed**, by ADR-0061 §"ADR-0052 narrowing": no redundant
+second control *within* one shell, which still holds; choosing *between* shells
+is not that case. If a user with one module's roles reports "the module
+switcher is missing", that is correct behaviour, not a defect.
+
 ## 5. The event bus
 
 Modules do not import each other. They integrate by publishing events. Direct
@@ -413,6 +457,57 @@ pass**. Client money is segregated as a first-class concept
 (`clientMoney` on accounts). Money out is dual-control — which is why the seed
 fixture deliberately contains *two* finance controllers.
 
+### 8.1 The revenue lines
+
+The platform earns in more than one way, and each way is a **transaction type**
+in the registry ([`types.ts`](../../packages/ledger/src/types.ts)) with a
+**recipe** ([`recipes.ts`](../../packages/ledger/src/recipes.ts)) naming the
+accounts it posts to. Nothing books money without one. The lines live on `main`
+as of this revision:
+
+| Type | Financial? | Income | Receivable | Earned when |
+|---|---|---|---|---|
+| `BIND` / `BIND-GROUP` | yes | `4000` | default | a policy or a group scheme binds |
+| `FEE-BROK` | yes | `4020` | `1160` | a broker fee is charged on a policy |
+| `REFERRAL-QUAL` | no | — | — | a referral qualifies (evidence only, no posting) |
+| `REFERRAL-SETL` | yes | `4030` | `1160` | a qualified referral settles |
+| `AD-PLACEMENT` | yes | `4070` | `1160` | a paid placement runs |
+| `PARTNER-BIND` | yes | `4075` | default | a distribution partner binds through the API |
+| `FIN-CMSN` | yes | `4080` | `1150` | a premium-financing plan is opened |
+| `DISCLOSURE-PRESENT` | no | — | — | a required disclosure is shown (evidence only) |
+| `TELEM-INGEST` | no | — | — | a batch of usage/sensor readings is stored (evidence only) |
+| `UBI-REPRICE` | yes | `4000` | default | telemetry moves a contract's price mid-term |
+
+Two of these have behaviour that generates support tickets:
+
+- **`AD-PLACEMENT` refuses to post without a fresh disclosure.** The
+  `freshAdPlacementDisclosure` precondition in
+  [`preconditions.ts`](../../packages/ledger/src/preconditions.ts) blocks it. A
+  refused placement is nearly always a missing `DISCLOSURE-PRESENT`, not a
+  ledger fault.
+- **Commission is flat-rate only.** No tiered or sliding scales exist anywhere
+  in the recipes (file 08 §2.4). "The commission is wrong" is far more often
+  "the rate the tenant expected is not the rate configured".
+
+`FIN-CMSN` has a recipe on `main` but nothing calls it yet — the engine that
+opens financing plans is on an unmerged branch. See
+[`README.md` §7](README.md#7-revision-history).
+
+`TELEM-INGEST` and `UBI-REPRICE` are likewise unmerged. Two things about the
+pair are worth knowing before the first support call:
+
+- **`UBI-REPRICE` posts exactly what `ENDORSE` posts.** The recipes are
+  deliberately identical; the two codes differ in *provenance*, not in money. A
+  reprice tells you a sensor moved the price rather than an underwriter, which
+  is the first question when a customer disputes a premium. Reporting grouped by
+  transaction type sees them apart; reporting grouped by account does not.
+- **A price cannot move more than 25% in one reprice.** The clamp lives in the
+  model gateway (`MAX_REPRICE_PPM`), before any engine sees the reply, and a
+  proposed factor with no evidence is dropped rather than priced. "The model
+  wanted +40%" is a clamped reprice, not a fault.
+
+See [ADR-0065](../decisions/ADR-0065-timeseries-ingest-is-load-bearing.md).
+
 ## 9. Two homes: Cloudflare and on-prem
 
 The same code runs in two places. Nothing below
@@ -467,6 +562,8 @@ is the second.
 | Cannot log in | [`apps/api/src/auth.ts`](../../apps/api/src/auth.ts), then [`apps/web/app/routes/login.tsx`](../../apps/web/app/routes/login.tsx) |
 | "Not permitted" / missing menu item | [`packages/core/src/rbac.ts`](../../packages/core/src/rbac.ts), then the workspace spec in [`apps/web/app/modules/`](../../apps/web/app/modules) |
 | Whole module missing for a tenant | [`packages/core/src/entitlements.ts`](../../packages/core/src/entitlements.ts) |
+| One module blank or its chrome broken, others fine | That module's shell route — `<module>-shell.tsx` in [`apps/web/app/routes/`](../../apps/web/app/routes) (§4.4) |
+| Commission booked but the wrong amount, or not booked at all | The line's recipe in [`packages/ledger/src/recipes.ts`](../../packages/ledger/src/recipes.ts) and its precondition in [`preconditions.ts`](../../packages/ledger/src/preconditions.ts) (§8.1) |
 | A list is empty that should not be | Tenancy scoping — `scoped()` in [`packages/core/src/context.ts`](../../packages/core/src/context.ts) — and the RBAC team-scope on the user's grant |
 | AI answer is wrong, slow, or refused | [`packages/model-gateway/src/gateway.ts`](../../packages/model-gateway/src/gateway.ts), the AI audit log, and the relevant eval under [`packages/model-gateway/evals/`](../../packages/model-gateway/evals) |
 | AI stopped working entirely mid-day | Budget hard stop: [`packages/model-gateway/src/budget.ts`](../../packages/model-gateway/src/budget.ts) |

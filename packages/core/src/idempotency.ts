@@ -8,6 +8,14 @@ import type { Ctx, CoreDb } from "./context.js";
 
 export const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
 
+/** The (tenant, key, route) triple that IS the slot, in one place. */
+const slot = (ctx: Ctx, key: string, route: string) =>
+  and(
+    eq(schema.idempotencyKeys.tenantId, ctx.tenantId),
+    eq(schema.idempotencyKeys.key, key),
+    eq(schema.idempotencyKeys.route, route)
+  );
+
 /**
  * Run `fn` at most once per (tenant, key, route). A replay with the same body
  * returns the stored response; a replay with a different body is a 409 — the
@@ -23,17 +31,7 @@ export async function withIdempotency<T>(
   if (!key) return fn();
 
   const requestHash = await sha256Hex(canonicalJson(request));
-  const existing = await ctx.db
-    .select()
-    .from(schema.idempotencyKeys)
-    .where(
-      and(
-        eq(schema.idempotencyKeys.tenantId, ctx.tenantId),
-        eq(schema.idempotencyKeys.key, key),
-        eq(schema.idempotencyKeys.route, route)
-      )
-    )
-    .limit(1);
+  const existing = await ctx.db.select().from(schema.idempotencyKeys).where(slot(ctx, key, route)).limit(1);
 
   const row = existing[0];
   if (row) {

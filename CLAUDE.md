@@ -144,26 +144,43 @@ wins.
 Follow docs/14-roadmap.md milestones M0→M6. Do not start a milestone before the
 previous one's acceptance checklist passes (checklists are in that file).
 
-## Current status (2026-08-17)
+## Current status (2026-08-19)
 
 Executing the revenue-lines build via `docs/superpowers/specs/2026-08-16-revenue-lines-full-build-design.md`,
-worked group-by-group (A→B→C→D→E) inside isolated worktrees, each via
-`superpowers:subagent-driven-development`. Progress ledgers live at
-`.superpowers/sdd/progress.md` per worktree — read that first on resume.
+worked group-by-group (A→B→C→D→E) via `superpowers:subagent-driven-development`.
+Progress ledgers live at `.superpowers/sdd/progress.md` per worktree — read that
+first on resume.
+
+Groups A and B landed on `main`. **Groups C, D and E are stacked on one branch**,
+`group-e-telematics-ubi` in worktree `revenue-lines-group-c` — 111 commits ahead
+of `main`. They merge as a single branch, not three.
 
 - **Group A** (accrual-only: BIND-GROUP, FEE-BROK, REFERRAL-QUAL, REFERRAL-SETL,
-  AD-PLACEMENT, DISCLOSURE-PRESENT) — worktree `revenue-lines-group-a`, branch
-  `worktree-revenue-lines-group-a`. Tasks 1-5 complete. Two whole-branch review
-  passes done: first found 4 Important findings (RBAC gap, test coverage gap,
-  subjectRef reconciliation gap, missing OpenAPI/SDK docs), all fixed; second
-  (re-review of the fix range) found 2 more Important findings (wrong
-  `axis.policy.group_issued` event name, DISCLOSURE-PRESENT idempotency gap)
-  plus 3 Minor doc/wording issues, all fixed (commits `02d29eb`, `b9f4319`,
-  `56ba868`, plus a self-caught stale-SDK regen `7dd4cfc`). 0 Critical/Important
-  findings remain open; 6 Minor findings triaged as non-blocking follow-ups.
-  Next: `superpowers:finishing-a-development-branch`, then start Group B.
-- **Groups B-E** (partner bind chain; whitelabel billing + data products;
-  premium financing; telematics/UBI) not yet started.
+  AD-PLACEMENT, DISCLOSURE-PRESENT) — complete, merged.
+- **Group B** (partner bind chain) — complete, merged.
+- **Group C** (whitelabel billing + data products) — tasks 1-7 complete.
+- **Group D** (premium financing) — complete on the same branch.
+- **Group E** (telematics/UBI) — complete on the same branch.
+
+Seventeen whole-branch review rounds run so far. Round 16 raised 8 findings
+(1 Critical, 7 Important, including the unguarded-`Date`/NaN-instant family);
+all 8 closed in commits `4f115cd eee6f44 4925eaf 21e7d69 cecc256 ed32020
+2e0dd89 09a3299`. Round 17 is reviewing `bb2730c..09a3299` plus a branch-wide
+enumeration of that same family.
+
+Local CI parity on the branch: lint, typecheck (9/9), unit tests, `@lyra/web`
+build and the eval gate are all green. `pnpm e2e` and `pnpm mutation` are the
+remaining gates before `superpowers:finishing-a-development-branch` and merge.
+
+Note: `pnpm eval` cannot be invoked by script name in an isolated worktree (the
+guard rejects any command containing `eval`). Run it as
+`pnpm --filter @lyra/model-gateway exec tsx evals/run.ts`.
+
+Note: before `pnpm e2e` in a worktree, check nothing else already listens on
+5173/8797 (`lsof -nP -iTCP:5173 -iTCP:8797 -sTCP:LISTEN`). `reuseExistingServer`
+is on locally, so a dev server left running by the main checkout is silently
+reused and the whole suite then tests *that* tree against a DB this one seeded.
+It reads as thirteen unrelated journey failures, not as a wrong-server error.
 
 Running under a self-paced `/loop` toward "full roadmap to production"
 (M0-M6, through deployment to lyra.vantax.co.za). Loop iteration is

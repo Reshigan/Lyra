@@ -1,7 +1,8 @@
 # LYRA — Transition-to-Support Handover Pack
 
-**Document date:** 2026-08-13
-**Describes commit:** `a295218` on `main` (`feat(web): add the Horizon companion rail and its header toggle`)
+**Document date:** 2026-08-18
+**Describes commit:** `c7f1f57` on `main` (`feat(orbit): partner bind chain — C6, F1 (#24)`)
+**Previous revision:** 2026-08-13, commit `a295218` — see §7 for what changed
 **Repository:** <https://github.com/Reshigan/Lyra>
 **Live system:** <https://lyra.vantax.co.za> (API: <https://api.lyra.vantax.co.za>)
 
@@ -104,9 +105,106 @@ specifications are:
 
 ## 6. Keeping this pack current
 
-The pack describes commit `a295218`. It goes stale the moment the code moves.
+The pack describes commit `c7f1f57`. It goes stale the moment the code moves.
 When you change behaviour that this pack documents, update the affected file in
 the same pull request — the same rule the build team followed for
 [`docs/`](../) (see "Definition of done" in [`CLAUDE.md`](../../CLAUDE.md)).
 Update the commit hash and date at the top of this page whenever the pack is
-substantively revised.
+substantively revised, and add a dated entry to §7 saying what moved.
+
+---
+
+## 7. Revision history
+
+### 2026-08-18 — commit `c7f1f57` (this revision)
+
+Thirty-eight commits landed on `main` between `a295218` (the previous
+revision) and `c7f1f57`. Nothing in the pack's environment, secret or
+deployment material changed. What changed is the web surface and the ledger's
+revenue lines.
+
+**Module shells were forked (ADR-0061).** Every product module now has its own
+layout route and its own session hook instead of sharing one shell:
+[`north-shell.tsx`](../../apps/web/app/routes/north-shell.tsx),
+[`axis-shell.tsx`](../../apps/web/app/routes/axis-shell.tsx),
+[`orbit-shell.tsx`](../../apps/web/app/routes/orbit-shell.tsx),
+[`signal-shell.tsx`](../../apps/web/app/routes/signal-shell.tsx),
+[`scout-shell.tsx`](../../apps/web/app/routes/scout-shell.tsx). A module's
+routes are children of its own shell, and each shell loads its module's data
+with a per-module hook rather than the previous shared `useShellData`. When a
+user reports "the whole module is blank", the shell route is now the first
+file to read, and the blast radius is one module rather than all of them.
+
+**Roughly thirty module screens were added**, completing the §4 screen lists
+in the module specs: NORTH Explorer, Anomalies (with channel-level driver
+decomposition), Scenarios, Board Room (plus the pack PDF download), Decisions
+register, Admin and Dev; ORBIT Dev (conversation simulator), Supervisor wall,
+Admin and the public Partner Portal; SIGNAL Experiments, Admin, Dev and AI
+creative-image generation (ADR-0060); SCOUT Whitespace, Data-product
+catalogue, Admin, Dev and the integrator bench. All screens were also unified
+on the answer-bar hero pattern (`212ef48`), so the top of every screen looks
+the same — that is intended, not a routing bug.
+
+**Six revenue lines went live in the ledger** (`d30393c`, PR #23 — "Group A"),
+each as a transaction type with a recipe and an income account:
+
+| Transaction type | Financial? | Income account | Receivable | Entry point |
+|---|---|---|---|---|
+| `BIND-GROUP` | yes | `4000` | default | `POST /v1/axis/policies/:id/bind-group` |
+| `FEE-BROK` | yes | `4020` | `1160` | `POST /v1/axis/policies/:id/broker-fee` |
+| `REFERRAL-QUAL` | no | — | — | `POST /v1/dist/referrals/qualify` |
+| `REFERRAL-SETL` | yes | `4030` | `1160` | `POST /v1/dist/referrals/settle` |
+| `AD-PLACEMENT` | yes | `4070` | `1160` | posted by the placement path; gated by a fresh disclosure |
+| `DISCLOSURE-PRESENT` | no | — | — | `POST /v1/compliance/disclosures/present` |
+
+`AD-PLACEMENT` carries a precondition (`freshAdPlacementDisclosure` in
+[`preconditions.ts`](../../packages/ledger/src/preconditions.ts)): it will not
+post unless a `DISCLOSURE-PRESENT` record exists and is fresh. A refused
+ad-placement posting is usually a missing disclosure, not a ledger fault.
+
+**The partner bind chain landed** (`c7f1f57`, PR #24 — "Group B"):
+[`partner-bind.ts`](../../apps/api/src/engines/partner-bind.ts),
+`POST /v1/orbit/partners/:id/quotes`, and the `PARTNER-BIND` transaction type
+posting commission to income account `4075`.
+
+**Two fixes worth knowing about in support:** `/v1/search` now masks PII and
+never runs a `LIKE` against a wholly-redacted column (`420b88f`), and tenants
+seeded before the all-access demo login existed are topped up on the next boot
+(`f4a7220`), so an old staging tenant no longer lacks the demo user.
+
+**New engines on `main`:**
+[`group-commission.ts`](../../apps/api/src/engines/group-commission.ts),
+[`referral-settlement.ts`](../../apps/api/src/engines/referral-settlement.ts),
+[`partner-bind.ts`](../../apps/api/src/engines/partner-bind.ts).
+
+**ADR count moved from 59 to 61** — ADR-0060 (imagery generation) and
+ADR-0061 (shell per module). See file 08 §4.2.
+
+### Work in flight — NOT on `main`, and not in production
+
+The pack body documents `main` at `c7f1f57`. Three further revenue lines were
+built or building on branches at that point and change the ledger, the schema
+and the cron chain as they merge. They are listed here so that a reader who
+pulls a feature branch, or who reads this pack a week after a merge, knows what
+to expect. **F2/F3 has since merged** as `8331e86`; the rest of the pack does
+not yet describe it.
+
+| Line | Branch / PR | State | What it adds |
+|---|---|---|---|
+| **F2/F3** — whitelabel billing + data products | PR #25, `worktree-revenue-lines-group-c` | **Merged 2026-08-18 as `8331e86`** (all 10 checks green; `mutation` took 4h14m — see file 08 §2.4) | Revenue-schedule and usage-meter tables (migrations `0025_lonely_hedge_knight`, `0026_concerned_winter_soldier`), `recordUsage` and `sweepBilling` engines (invoicing, overages, revenue recognition), data-product subscribe/deliver, a k-anonymity precondition, and ADRs 0062–0064 |
+| **F4** — premium financing | `group-d-premium-financing` | Built, in final review, not pushed | A new non-financial `PLAN-CREATE` transaction type chaining a financial `FIN-CMSN` (income `4080`, receivable `1150`) by `parentTxnId`; `PREM-INSTALMENT` collection off the plan's instalment schedule; a `DUNNING` escalation that cascades into the existing policy-lapse path after three refused attempts; a `sweepPremiumFinancing` cron sweep; a plan-cancel route; migration `0027_empty_garia`; and ADR-0066 |
+| **F5** — telematics / usage-based insurance | `group-e-telematics-ubi` | Built, in final review, not pushed | `axis_telemetry_points` (migration `0028_youthful_lethal_legion`) — the only new table any of these lines adds; a non-financial `TELEM-INGEST` batch receipt; a financial `UBI-REPRICE` whose recipe is deliberately identical to `ENDORSE`'s; `TelematicsIngest` (the H6 seam's first production implementation) and `repriceFromTelemetry`, which prices through the existing `endorsePolicy`; the `axis:policies:telemetry` permission and two routes; and ADR-0065 |
+
+**Migration numbering hazard — resolved.** Groups C and D were both cut from
+the same commit and both claimed `0025` and `0026`. C merged first and kept its
+numbers; D dropped its three files, took `main`'s journal and snapshots, and
+re-ran `pnpm db:generate`, which emitted all three of its changes as the single
+`0027_empty_garia`. Migrations are forward-only and never edited after they are
+applied — this renumber happened *before* either branch's migrations had run
+anywhere, which is the only window in which it is legal. **F5 ran the same
+check** and generated `0028_youthful_lethal_legion`, clear of both C's and D's
+numbers, so it needs no renumber.
+
+### 2026-08-13 — commit `a295218` (first edition)
+
+Initial transition-to-support pack.

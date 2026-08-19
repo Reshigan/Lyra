@@ -4,6 +4,7 @@ import { id as newId, schema } from "@lyra/db";
 import { audit, emit, notFound, scoped, type Ctx } from "@lyra/core";
 import { runTxn } from "@lyra/ledger";
 import { parseTriage, triageMessages, type Gateway, type Triage } from "@lyra/model-gateway";
+import { InstantMs } from "../http.js";
 
 // docs/27 F24 / docs/specs/gap-axis-design.md §D.1. Two rules, and everything
 // here follows from them. The cover that answers a loss is the cover that was
@@ -35,7 +36,7 @@ export interface Coverage {
 
 export const CoverageCheckBody = z.object({
   policyId: z.string().min(1),
-  incidentAt: z.number().int()
+  incidentAt: InstantMs
 });
 
 /**
@@ -44,7 +45,7 @@ export const CoverageCheckBody = z.object({
  * someone relied on — but `superseded` ones are the whole point: an endorsement
  * closes version 1's window, it does not erase the term it covered.
  */
-async function versionAt(ctx: Ctx, policyId: string, incidentAt: number): Promise<VersionRow | undefined> {
+export async function versionAt(ctx: Ctx, policyId: string, incidentAt: number): Promise<VersionRow | undefined> {
   const [row] = await ctx.db
     .select()
     .from(schema.axisPolicyVersions)
@@ -132,8 +133,8 @@ export const FnolBody = z.object({
   customerId: z.string().min(1).optional(),
   claimNo: z.string().min(1).max(64).optional(),
   /** Absent on a notification where nobody can yet say when it happened. */
-  incidentAt: z.number().int().nullish(),
-  reportedAt: z.number().int().optional(),
+  incidentAt: InstantMs.nullish(),
+  reportedAt: InstantMs.optional(),
   perilCode: z.string().max(64).nullish(),
   causeCode: z.string().max(64).nullish(),
   catCode: z.string().max(64).nullish(),

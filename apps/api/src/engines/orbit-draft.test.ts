@@ -162,4 +162,72 @@ describe("sweepConversationDrafts", () => {
       .set({ status: "active" })
       .where(and(eq(schema.aiAgents.tenantId, tenantId), eq(schema.aiAgents.key, "service")));
   });
+
+  // Regression: `isoDay` was `new Date(ms).toISOString()`, which throws
+  // RangeError outside ±8.64e15. It runs inside `buildContext`, i.e. *before*
+  // the aiRuns insert and outside draftReply's try — so the throw landed in the
+  // sweep's own catch and that customer was skipped on every tick, forever,
+  // with no run row and no error code to see it by.
+  it("gives the model a whole day for an expiry outside the four-digit years", async () => {
+    // `promptInstant` has a third return the docstring on `isoDay` did not
+    // count: an in-range instant far enough from now that ISO-8601 uses the
+    // expanded year form, `-251540-02-03T09:46:40.000Z` — what a bad import or a
+    // sign flip puts in a date column. Ten characters of that is `-251540-02`, a
+    // month with no day, handed to the model as if it were a whole date.
+    const convId = await seedWaitingConversation();
+    const [conv] = await ctx.db
+      .select()
+      .from(schema.orbitConversations)
+      .where(eq(schema.orbitConversations.id, convId));
+
+    await ctx.db.insert(schema.axisPolicies).values({
+      id: newId("pol", ctx.now),
+      tenantId,
+      customerId: conv!.customerId!,
+      providerId: "prv_wide",
+      policyNo: "POL-WIDE-1",
+      startAt: -8e15,
+      endAt: ctx.now + 365 * 86_400_000,
+      premiumMinor: 100_000,
+      currency: "AED",
+      status: "active",
+      createdAt: ctx.now,
+      updatedAt: ctx.now
+    } as never);
+
+    const stub = makeStub({ replies: ["I will confirm shortly."] });
+    const gateway = new Gateway({ env: {}, providers: { "workers-ai": stub, anthropic: stub, "openai-compat": stub } });
+    expect(await sweepConversationDrafts(ctx, gateway)).toBe(1);
+
+    const sent = stub.calls[0]!.messages.map((m) => m.content).join("\n");
+    expect(sent).toContain("-251540-02-03");
+  });
+
+  it("still drafts when a policy carries an instant no Date can hold", async () => {
+    const convId = await seedWaitingConversation();
+    const [conv] = await ctx.db
+      .select()
+      .from(schema.orbitConversations)
+      .where(eq(schema.orbitConversations.id, convId));
+
+    await ctx.db.insert(schema.axisPolicies).values({
+      id: newId("pol", ctx.now),
+      tenantId,
+      customerId: conv!.customerId!,
+      providerId: "prv_range",
+      policyNo: "POL-RANGE-1",
+      startAt: ctx.now,
+      endAt: 9e15,
+      premiumMinor: 100_000,
+      currency: "AED",
+      status: "active",
+      createdAt: ctx.now,
+      updatedAt: ctx.now
+    } as never);
+
+    expect(await sweepConversationDrafts(ctx, gatewayWith("I will confirm shortly."))).toBe(1);
+
+    const [run] = await ctx.db.select().from(schema.aiRuns).where(eq(schema.aiRuns.subjectRef, convId));
+    expect(run?.state).toBe("succeeded");
+  });
 });

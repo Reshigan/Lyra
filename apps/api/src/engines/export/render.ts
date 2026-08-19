@@ -1,5 +1,6 @@
 import { badRequest } from "@lyra/core";
 import type { ReportTable } from "@lyra/ledger";
+import { isoDay, promptInstant } from "@lyra/model-gateway";
 import { majorUnits, minorExponent, rowCurrency } from "./money.js";
 import { toXlsx } from "./xlsx.js";
 import { pdfSafe, toPdf } from "./pdf.js";
@@ -100,7 +101,10 @@ function cellText(v: unknown, kind: ReportTable["columns"][number]["kind"], row:
     return `${currency} ${majorUnits(Number(v), currency).toLocaleString("en-US", { minimumFractionDigits: minorExponent(currency), maximumFractionDigits: minorExponent(currency) })}`;
   }
   if (kind === "number") return Number(v).toLocaleString("en-US");
-  if (kind === "date") return new Date(Number(v)).toISOString().slice(0, 10);
+  // `isoDay`, not `new Date(...).toISOString()`: `v` comes off a stored row, and
+  // a row written before the API bounded its write surfaces can hold an instant
+  // no `Date` can. The throw costs the whole document, not this one cell.
+  if (kind === "date") return isoDay(Number(v));
   return String(v);
 }
 
@@ -136,7 +140,7 @@ function tableHtml(table: ReportTable & { rowCount?: number }, opts: RenderOptio
   </style></head><body>
     ${opts.watermark ? `<div class="watermark">${escapeHtml(opts.watermark)}</div>` : ""}
     <h1>${escapeHtml(table.title)}</h1>
-    <div class="generated">Generated ${new Date(table.generatedAt).toISOString().replace("T", " ").slice(0, 19)}</div>
+    <div class="generated">Generated ${promptInstant(table.generatedAt).replace("T", " ").slice(0, 19)}</div>
     ${meta}
     <table><thead><tr>${head}</tr></thead><tbody>${rows}${totalsRow}</tbody></table>
   </body></html>`;

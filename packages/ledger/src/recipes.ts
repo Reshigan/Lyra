@@ -478,6 +478,11 @@ export const RECIPES: Record<string, RecipeSpec> = {
   "BIND-GROUP": spec(CommissionArgs, commissionAccrual, { incomeAccount: "4000" }),
   RENEW: spec(CommissionArgs, commissionAccrual, { incomeAccount: "4010" }),
   ENDORSE: spec(CommissionArgs, commissionAccrual, { incomeAccount: "4000" }),
+  // Deliberately identical to ENDORSE: a telemetry-driven reprice is an
+  // endorsement that posts to the same income account. The row exists because
+  // every financial type needs one for `POST /v1/txn/{type}`, and identical
+  // rows are the point — the two codes differ in provenance, not in posting.
+  "UBI-REPRICE": spec(CommissionArgs, commissionAccrual, { incomeAccount: "4000" }),
   REINSTATE: spec(CommissionArgs, commissionAccrual, { incomeAccount: "4010" }),
   CANCEL: spec(ClawbackArgs, commissionClawback),
   "PARTNER-BIND": spec(CommissionArgs, commissionAccrual, { incomeAccount: "4075" }),

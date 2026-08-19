@@ -141,8 +141,33 @@ policy({ key: "axis.recovery_writeoff", module: "axis", decide: "axis:claims:app
 `apps/api/src/engines/orbit-tools.ts:117-163`. Change its `decide` to
 `axis:policies:endorse` in the same commit that adds the key; the subject-ref
 hash convention there (`axis_endorse:${policyId}:${sha256Hex(...)}`) is kept
-verbatim by the new endorsement endpoint so an agent-raised request and a
-desk-raised request for the identical change-set share one approval identity.
+by the new endorsement endpoint so an agent-raised request and a desk-raised
+request for the identical change-set share one approval identity.
+
+**Amended (ADR-0065, group-e-telematics-ubi).** The shape now carries the id of
+the version being superseded: `axis_endorse:${policyId}:${versionId}:${hash}`,
+and the ledger idempotency key alongside it. The hash covers `{changes, reason}`
+and not the price, so two endorsements naming the same factors at different
+premiums shared one ledger key and the second replayed the first's settled
+transaction while still superseding the version — money state with no journal
+(CLAUDE.md #12). Exactly one endorsement can supersede a given version (§C.2),
+so the version id is the scope. The shared-approval property is unaffected:
+both raisers read the same current version.
+
+The **ledger** key carries two fields the subject ref does not — the quote's
+`premiumDeltaMinor` and `proRataDays`:
+`axis.endorse:${policyId}:${versionId}:${hash}:${premiumDeltaMinor}:${proRataDays}`,
+and `axis.endorse.refund:…` on the same two for the refund leg. The version stops
+being the full scope when a retry re-reads it (the charge settled, the version
+insert never landed) and prices differently, which is the reprice case where a
+model returns another `premiumDeltaPpm` for the same factor codes. Off a fixed
+version those two fields determine the whole quote — the new premium is
+`current.premiumMinor + premiumDeltaMinor`, everything else derives from it and
+the day count — where neither posted amount does: `share()` rounds a band of
+deltas onto one `chargeMinor`, and the delta alone cannot separate a back-dated
+re-issue at the same target premium. A genuine duplicate still collides. The
+quote stays off the subject ref deliberately: the approval identity is the
+request, not the price it computes to.
 
 ### A.4 Consequential actions and authority limits
 
@@ -993,7 +1018,14 @@ Confirm → `POST /v1/axis/policies/:id/endorse` (idempotency key = the
 request and a desk request for the same change share the approval).
 
 Empty/blocked states: policy not `active|bound` → "This cover is not on risk;
-endorsement is unavailable" with the reinstate/renew links as the exits.
+endorsement is unavailable" with the reinstate/renew links as the exits; term
+already ended (`now >= endAt`, whatever the status says — a policy stuck at
+`bound` is never expired by the sweep) → "Cover term has ended; there is no
+remaining term to price into", with renewal as the exit. Retrospectively
+amending a closed term is a different business act and needs its own verb, not
+an endorsement. Both refusals are `endorsementBlocker`
+(`apps/api/src/engines/axis-endorse.ts`); the screen's own copy is a deliberate
+duplicate, because `apps/web` cannot import from `apps/api`.
 
 ### D.5 Cancellation — `axis/policies/:id/cancel`
 

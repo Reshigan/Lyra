@@ -116,6 +116,13 @@ const HAND_WRITTEN: Op[] = [
   { method: "post", path: "/v1/axis/policies/{id}/endorse/preview", summary: "Price a mid-term change without writing anything", permission: "axis:policies:endorse", tag: "axis", requestBody: true },
   { method: "post", path: "/v1/axis/policies/{id}/endorse", summary: "Endorse a policy, appending a priced version", permission: "axis:policies:endorse", tag: "axis", requestBody: true },
 
+  // docs/27 F5. Usage-based insurance: a device/integration posts raw sensor
+  // points against its own series (machine authority, never `:endorse`), and
+  // a reprice turns what has accrued since the last version into a priced
+  // endorsement through the same approval gate as a manual one.
+  { method: "post", path: "/v1/axis/policies/{id}/telemetry", summary: "Ingest a batch of sensor points against this cover", permission: "axis:policies:telemetry", tag: "axis", requestBody: true },
+  { method: "post", path: "/v1/axis/policies/{id}/reprice", summary: "Reprice a cover from its telemetry, endorsing it if the price moved", permission: "axis:policies:endorse", tag: "axis" },
+
   // docs/27 F5 part 2. The ways cover stops. Cancellation refunds the unearned
   // share and claws the matching commission; NTU unwinds a contract that never
   // went on risk; lapse and reinstatement are the unpaid-instalment pair.
@@ -124,6 +131,14 @@ const HAND_WRITTEN: Op[] = [
   { method: "post", path: "/v1/axis/policies/{id}/ntu", summary: "Mark a policy not-taken-up, clawing back the whole commission", permission: "axis:policies:ntu", tag: "axis", requestBody: true },
   { method: "post", path: "/v1/axis/policies/{id}/lapse", summary: "Lapse a policy for an unpaid instalment", permission: "axis:policies:lapse", tag: "axis", requestBody: true },
   { method: "post", path: "/v1/axis/policies/{id}/reinstate", summary: "Put cover back on risk after arrears are cleared", permission: "axis:policies:reinstate", tag: "axis", requestBody: true },
+
+  // docs/27 group D. Opens a premium-financing plan on a bound policy — how
+  // the premium is collected, not the risk or price on the contract.
+  { method: "post", path: "/v1/axis/policies/{id}/premium-financing-plan", summary: "Open a premium-financing plan on a bound policy", permission: "axis:policies:finance", tag: "axis", requestBody: true },
+
+  // A policy may hold only one live plan, so a plan opened against the wrong
+  // contract needs a way out. Cancelling un-earns the commission by reversal.
+  { method: "post", path: "/v1/axis/policies/{id}/premium-financing-plan/cancel", summary: "Cancel a policy's live premium-financing plan", permission: "axis:policies:finance", tag: "axis", requestBody: true },
 
   // docs/27 F27. The contract the customer can actually hold. AXIS issues and
   // attaches it to the version it describes; ORBIT delivers it.

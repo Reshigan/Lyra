@@ -25,8 +25,18 @@ export interface Period {
   state: PeriodState;
 }
 
-/** UTC month. Financial periods do not move with a tenant's timezone. */
+/**
+ * UTC month. Financial periods do not move with a tenant's timezone.
+ *
+ * Fail-closed on an instant no `Date` can hold, rather than degrading to a
+ * marker the way a renderer does: the return value names the period a batch
+ * posts into, and a batch filed under a made-up period is worse than a batch
+ * refused. Every caller passes `ctx.now` today, but `post()` takes a caller's
+ * `postedAt` and this is exported — unguarded it threw a bare `RangeError:
+ * Invalid time value` from the middle of a posting.
+ */
 export function periodCode(at: number): string {
+  if (!Number.isFinite(at) || Math.abs(at) > 8.64e15) throw badRequest(`not an instant a Date can hold: ${at}`);
   return new Date(at).toISOString().slice(0, 7);
 }
 

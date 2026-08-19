@@ -398,3 +398,57 @@ describe("F2 worked example: subscription + overage + recognition", () => {
     expect(tick4).toEqual({ invoicesRaised: 0, overagesApplied: 0, recognitionsPosted: 0 });
   });
 });
+
+describe("a subscription whose nextInvoiceAt no Date can hold", () => {
+  // `nextInvoiceAt` is nullable and stored, and rows predating the API's bound
+  // still hold anything. The catch-up guard `cursor <= ctx.now` filters large
+  // positives and NaN but not large negatives, so `currentPeriod(-9e15)` gave
+  // `"NaN-NaN"` — the invoice idempotency key `sub-invoice:<id>:NaN-NaN`, the
+  // `ledger_revenue_schedules.period` it wrote, and `NaN` written back to
+  // `nextInvoiceAt`. A poisoned key does not match on the next tick, so the
+  // same period bills again.
+  it("skips the row instead of billing it under a NaN period", async () => {
+    const now = Date.parse("2026-03-01T00:00:00Z");
+    const ctx = await testCtx(now);
+    const subId = "sub_bad_cursor";
+
+    await ctx.db.insert(schema.ledgerSubscriptions).values({
+      id: subId,
+      tenantId: ctx.tenantId,
+      customerRef: "cust_bad",
+      plan: "growth",
+      priceMinor: 20000,
+      currency: "USD",
+      interval: "month",
+      seats: 1,
+      startAt: now,
+      nextInvoiceAt: -9e15,
+      state: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+
+    const tick = await sweepBilling(ctx);
+    expect(tick.invoicesRaised).toBe(0);
+
+    const invoices = await ctx.db
+      .select()
+      .from(schema.ledgerInvoices)
+      .where(eq(schema.ledgerInvoices.tenantId, ctx.tenantId));
+    expect(invoices.length).toBe(0);
+
+    const schedules = await ctx.db
+      .select()
+      .from(schema.ledgerRevenueSchedules)
+      .where(eq(schema.ledgerRevenueSchedules.tenantId, ctx.tenantId));
+    expect(schedules.map((s) => s.period)).not.toContain("NaN-NaN");
+
+    // The cursor is left alone: a row nobody could bill must still be findable
+    // by the same query next tick, not overwritten with NaN.
+    const [row] = await ctx.db
+      .select()
+      .from(schema.ledgerSubscriptions)
+      .where(eq(schema.ledgerSubscriptions.id, subId));
+    expect(row?.nextInvoiceAt).toBe(-9e15);
+  });
+});

@@ -1,7 +1,8 @@
 import { eq } from "drizzle-orm";
 import { id as newId, schema } from "@lyra/db";
 import { AppError, badRequest, hashObject, notFound, require_, scoped, type Ctx } from "@lyra/core";
-import type { Message, ToolCall, ToolDef } from "@lyra/model-gateway";
+import { promptInstant, type Message, type ToolCall, type ToolDef } from "@lyra/model-gateway";
+import { isInstantKey } from "../http.js";
 import { endorsePolicy } from "./axis-endorse.js";
 
 // docs/15. The seam between "the model wants X" and "X actually happened":
@@ -220,7 +221,17 @@ export async function executeOrbitToolCalls(
       durationMs: Date.now() - startedAt,
       ts: ctx.now
     });
-    messages.push({ role: "tool", toolCallId: call.id, name: call.name, content: JSON.stringify(result) });
+    // A tool result is prompt text, and an epoch instant is a 13-digit run —
+    // which the scrubber's card rule eats whenever it passes Luhn, so
+    // `fetch_policy` handed the model `"startAt":[[CARD_1]]` for a policy it had
+    // just read successfully. Rendered by field *name*, never by magnitude: a
+    // premium in fils is the same size as an instant and must stay a number.
+    // One replacer here covers every tool, because every tool's result lands on
+    // this line.
+    const content = JSON.stringify(result, (key, value) =>
+      typeof value === "number" && isInstantKey(key) ? promptInstant(value) : (value as unknown)
+    );
+    messages.push({ role: "tool", toolCallId: call.id, name: call.name, content });
   }
   return messages;
 }

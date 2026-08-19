@@ -176,6 +176,71 @@ export const GuardrailsJson = z.object({
 });
 export type GuardrailsJson = z.infer<typeof GuardrailsJson>;
 
+/* ---------------------------------------------------------- payment plans */
+
+/**
+ * `axis_policies.payment_plan_json` — the instalment schedule the lapse sweep
+ * reads to decide whether cover ends unpaid (apps/api/src/engines/axis-lifecycle.ts).
+ *
+ * Every field defaults, because the sweep must be able to read a partial plan:
+ * a plan it cannot parse turns lapse-on-missed off silently, which is fail-open
+ * on a money path. That is also why `dueAt` carries no `InstantMs`-style bound
+ * here — bounding it made one unrenderable instalment fail the whole plan. The
+ * bound belongs on the write door, and now lives there: `PaymentPlanWrite`
+ * below, which apps/api/src/resources.ts validates against. Read lenient, write
+ * strict — the same shape could not be both.
+ */
+export const PaymentPlanJson = z.object({
+  graceDays: z.number().int().nonnegative().default(0),
+  lapseOnMissed: z.boolean().default(false),
+  instalments: z
+    .array(z.object({ seq: z.number().int(), dueAt: z.number().int(), state: z.string() }))
+    .default([])
+});
+export type PaymentPlanJson = z.infer<typeof PaymentPlanJson>;
+
+/**
+ * The same plan arriving from a caller. Everything the read shape forgives is
+ * refused here, because at the write door refusing is free:
+ *
+ * - `dueAt` bounded to what a `Date` can hold. Unbounded, the promise in the
+ *   comment above was empty: the write door parsed with the *read* shape, so
+ *   `{"dueAt": 9e15}` stored fine and every renderer of it threw afterwards.
+ * - `.strict()`, outer and per instalment. With every field defaulted,
+ *   `{"foo":"bar"}` parsed clean and stored as `lapseOnMissed: false` — a
+ *   "validated" plan that quietly switched the lapse sweep off. A typo in
+ *   `lapseOnMissed` did the same thing.
+ * - `lapseOnMissed` and a non-empty `instalments` required: a schedule with no
+ *   instalments, or one that will not say what a missed one means, is not a plan.
+ *
+ * ponytail: strict means a richer plan (per-instalment `grossMinor`, a
+ * `frequency`) is refused until its keys are added here. Plans seeded outside
+ * the API still carry such keys and still lapse, because the read shape above
+ * stays lenient — that asymmetry is the point, not an oversight.
+ */
+export const PaymentPlanWrite = z
+  .object({
+    graceDays: z.number().int().nonnegative().default(0),
+    lapseOnMissed: z.boolean(),
+    instalments: z
+      .array(
+        z
+          .object({
+            seq: z.number().int(),
+            dueAt: z.number().int().min(-8.64e15).max(8.64e15),
+            // The vocabulary axis-lifecycle.ts's lapse sweep branches on, taken
+            // from the sweep rather than from the seed data: it treats anything
+            // that is not exactly "paid" or "waived" as unpaid, so `"Paid"` on
+            // a settled instalment lapses cover on a customer who paid. Casing
+            // follows the sweep. Widen this enum and the sweep in one commit.
+            state: z.enum(["due", "paid", "waived"])
+          })
+          .strict()
+      )
+      .min(1)
+  })
+  .strict();
+
 /* ------------------------------------------------------------------- lens */
 
 export const LensJson = z.object({

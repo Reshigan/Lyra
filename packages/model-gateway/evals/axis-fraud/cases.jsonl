@@ -58,3 +58,7 @@
 {"id":"clean-28","text":"{\"score\":25,\"indicators\":[{\"code\":\"first_claim_on_policy\",\"weight\":25,\"evidenceRef\":\"history_27\"}]}","expectFraud":false,"cohort":"cohortB"}
 {"id":"clean-29","text":"{\"score\":0,\"indicators\":[]}","expectFraud":false,"cohort":"cohortA"}
 {"id":"clean-30","text":"{\"score\":0,\"indicators\":[]}","expectFraud":false,"cohort":"cohortB"}
+{"id":"fraud-61","text":"{\"score\":78,\"indicators\":[{\"code\":\"late_report\",\"weight\":26,\"evidenceRef\":\"reportedAt_60\"},{\"code\":\"amount_near_limit\",\"weight\":26,\"evidenceRef\":\"amountMinor_60\"},{\"code\":\"claimant_seems_evasive\",\"weight\":26}]}","expectFraud":true,"cohort":"cohortA","expectDroppedIndicators":1}
+{"id":"fraud-62","text":"{\"score\":84,\"indicators\":[{\"code\":\"repeat_holder_claims\",\"weight\":28,\"evidenceRef\":\"history_61\"},{\"code\":\"staged_incident_pattern\",\"weight\":28,\"evidenceRef\":\"\"},{\"code\":\"general_impression\",\"weight\":28,\"evidenceRef\":\"   \"}]}","expectFraud":true,"cohort":"cohortB","expectDroppedIndicators":2}
+{"id":"fraud-63","text":"{\"score\":70,\"indicators\":[{\"code\":\"suspicious_overall\",\"weight\":40},{\"code\":\"gut_feel\",\"weight\":30,\"evidenceRef\":\"\"}]}","expectFraud":false,"cohort":"cohortA","expectDroppedIndicators":2}
+{"id":"fraud-64","text":"```json\n{\"score\":88,\"indicators\":[{\"code\":\"looks_organised\",\"weight\":44,\"evidenceRef\":null},{\"code\":\"prior_claim_vibes\",\"weight\":44,\"evidenceRef\":\" \"}]}\n```","expectFraud":false,"cohort":"cohortB","expectDroppedIndicators":2}

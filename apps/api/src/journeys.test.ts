@@ -1309,6 +1309,17 @@ describe("J-E1 the 7am read", () => {
     expect(seen.date).toBe("2026-01-06");
   });
 
+  // `^\d{4}-\d{2}-\d{2}$` accepts `9999-99-99`, which is not a day: the
+  // narrator builds `new Date("9999-99-99T00:00:00Z")` for the comparison
+  // period and throws `RangeError: Invalid time value` from inside briefing
+  // generation. Rejected at the door, where the message can say what is wrong.
+  it("refuses a date that matches the shape but is not a day", async () => {
+    for (const bad of ["9999-99-99", "2026-02-30", "2026-13-01"]) {
+      const res = await call("north.analyst", "POST", "/v1/north/briefings/generate", { date: bad });
+      expect(res.status, bad).toBe(400);
+    }
+  });
+
   it("a marketer cannot generate a briefing", async () => {
     const denied = await call("scout.lead", "POST", "/v1/north/briefings/generate", { date: "2026-01-07" });
     expect(denied.status).toBe(403);

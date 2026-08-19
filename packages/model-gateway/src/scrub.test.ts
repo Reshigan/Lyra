@@ -8,6 +8,9 @@ const CARD_16 = "4111111111111111"; // 16 digits, valid (well-known test PAN)
 const CARD_19 = "4444444444444444442"; // 19 digits, valid
 const CARD_16_BAD_LUHN = "4111111111111112"; // 16 digits, checksum fails
 const CARD_12_TOO_SHORT = "444444444442"; // 12 digits — below CARD regex's own 13 minimum
+// 2026-06-16T01:00:00.000Z in epoch ms. 13 digits and Luhn-valid, i.e. a date the
+// CARD rule cannot tell from a PAN — roughly 1 instant in 10 is like this.
+const INSTANT_MS = "1781571600000";
 
 describe("scrub — CARD / luhn", () => {
   // Note: the CARD regex's trailing `[ -]?` is part of its last repetition,
@@ -39,6 +42,32 @@ describe("scrub — CARD / luhn", () => {
     const { text, flags } = scrub(`ref ${CARD_12_TOO_SHORT} done`);
     expect(text).toBe(`ref ${CARD_12_TOO_SHORT} done`);
     expect(flags).toHaveLength(0);
+  });
+
+  // 2026-06-16T01:00:00.000Z as epoch ms: 13 digits, Luhn-valid, so
+  // indistinguishable from a PAN at the regex. It still gets redacted — a real
+  // PAN in that shape must not leak — but the extra flag reaches ai_audit_log,
+  // where a run full of them says "a caller is sending millis, go fix the caller"
+  // rather than "this tenant pastes a lot of card numbers".
+  it("flags a Luhn-valid 13-digit epoch instant as a suspected date, and still redacts it", () => {
+    const { text, flags } = scrub(`incident ${INSTANT_MS} reported`);
+    expect(text, "redaction behaviour must not change").toBe("incident [[CARD_1]]reported");
+    expect(flags).toContain("pii_card");
+    expect(flags).toContain("card_maybe_instant");
+  });
+
+  it("does not flag a real 13-digit PAN as a suspected date", () => {
+    // 13-digit Visa PANs start with 4, so they land in [4e12, 5e12) — decades past
+    // any plausible epoch-ms instant, which sits in [1e12, 2e12).
+    const { text, flags } = scrub(`card ${CARD_13} on file`);
+    expect(text).toBe("card [[CARD_1]]on file");
+    expect(flags).toContain("pii_card");
+    expect(flags).not.toContain("card_maybe_instant");
+  });
+
+  it("flags the instant even on the deduplicated second occurrence", () => {
+    const { flags } = scrub(`seen ${CARD_16} and ${INSTANT_MS} and ${INSTANT_MS} again`);
+    expect(flags).toContain("card_maybe_instant");
   });
 
   it("rehydrates a scrubbed card back to the original PAN", () => {

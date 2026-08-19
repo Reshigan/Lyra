@@ -143,6 +143,31 @@ describe("finance report exports", () => {
     expect((await fetchAs(null, "/v1/ledger/reports/trial-balance/export?format=csv")).status).toBe(401);
   });
 
+  // `?asOf=` is caller input on a money report. `Number("abc")` is NaN, which
+  // `??` does not catch, and it reached `lte(postedAt, asOf)` and
+  // `Math.floor((asOf - postedAt) / DAY)` as a bind param — a DrizzleQueryError
+  // 500 where 400 is the answer. `9e15` is worse: it survives the query and
+  // lands in `generatedAt`, which the document header renders.
+  it("refuses an asOf that is not an instant, on every report that takes one", async () => {
+    for (const key of ["balance-sheet", "aged", "trial-balance"]) {
+      for (const bad of ["abc", "9e15"]) {
+        expect((await fetchAs(CONTROLLER, `/v1/ledger/reports/${key}?asOf=${bad}`)).status, `${key} ${bad}`).toBe(400);
+        expect(
+          (await fetchAs(CONTROLLER, `/v1/ledger/reports/${key}/export?format=csv&asOf=${bad}`)).status,
+          `${key} ${bad} export`
+        ).toBe(400);
+      }
+    }
+    // The window params on the account statement are the same shape.
+    expect((await fetchAs(CONTROLLER, "/v1/ledger/accounts/1000/statement?from=abc")).status).toBe(400);
+    expect((await fetchAs(CONTROLLER, "/v1/ledger/accounts/1000/statement?to=9e15")).status).toBe(400);
+  });
+
+  it("still takes an asOf a Date can hold", async () => {
+    const res = await fetchAs(CONTROLLER, "/v1/ledger/reports/balance-sheet?asOf=" + Date.parse("2026-06-15T00:00:00Z"));
+    expect(res.status).toBe(200);
+  });
+
   it("writes an audit row for every export", async () => {
     const rows = await database
       .select()

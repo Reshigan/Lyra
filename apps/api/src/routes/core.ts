@@ -19,7 +19,7 @@ import {
 } from "@lyra/core";
 import { LOGIN_MAX, LOGIN_WINDOW_SEC, MFA_MAX, SESSION_TTL_MS } from "../auth.js";
 import { deliver } from "../dispatch.js";
-import { body, created } from "../http.js";
+import { body, created, InstantMs } from "../http.js";
 import { must } from "../rows.js";
 import type { App } from "../env.js";
 
@@ -45,7 +45,7 @@ const KeyBody = z
     mode: z.enum(["test", "live"]).default("test"),
     scopes: z.array(z.string().min(3).max(120)).max(200).default([]),
     /** Epoch ms. A key with no expiry is a key nobody ever rotates. */
-    expiresAt: z.number().int().positive().optional()
+    expiresAt: InstantMs.positive().optional()
   })
   .strict();
 

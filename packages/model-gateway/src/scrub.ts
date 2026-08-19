@@ -32,6 +32,11 @@ const RULES: Rule[] = [
   // PII.
   { kind: "EMAIL", re: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g },
   { kind: "IBAN", re: /\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b/g },
+  // A prompt must never carry a bare epoch-millisecond instant: it is a
+  // 13-digit run, one in ten passes Luhn, and the model then reads
+  // "[[CARD_1]]" where a date belonged. Prompt payloads carry ISO-8601
+  // strings, whose separators cannot match this. Widening the rule to spare
+  // them would spare real 13-digit PANs too.
   { kind: "CARD", re: /\b(?:\d[ -]?){13,19}\b/g },
   { kind: "EMIRATES_ID", re: /\b784[-\s]?\d{4}[-\s]?\d{7}[-\s]?\d\b/g },
   { kind: "PHONE", re: /\+\d[\d\s().-]{7,17}\d/g },
@@ -54,6 +59,30 @@ function luhn(value: string): boolean {
     dbl = !dbl;
   }
   return sum % 10 === 0;
+}
+
+/**
+ * A CARD hit that is far more likely a caller's epoch-millisecond instant than a
+ * card number. It is still redacted either way; a real PAN in that shape must not
+ * leak. The point of telling them apart is the flag, which reaches ai_audit_log
+ * (`guardrailFlagsJson`): a run full of `card_maybe_instant` says a caller is
+ * sending millis where ISO-8601 belongs, not that a tenant pastes card numbers.
+ *
+ * What it actually covers is narrower than "epoch-ms": exactly 13 digits and a
+ * value in [1e12, 2e12) — 2001-09-09 to 2033-05-18. Deliberately so, because
+ * 13-digit Visa PANs start with `4` and land in [4e12, 5e12); widening past 2e12
+ * would start labelling real card numbers as probable timestamps.
+ *
+ * So this flag is a hint, never a census. An instant outside the band — a
+ * 12-digit one before 2001, or `2500000000000` (year 2049) — is redacted with
+ * `pii_card` and no `card_maybe_instant`, and the count of prompt timestamps
+ * eaten by the CARD rule is therefore a floor, not a total.
+ */
+function looksLikeEpochMs(hit: string): boolean {
+  const digits = hit.replace(/\D/g, "");
+  if (digits.length !== 13) return false;
+  const n = Number(digits);
+  return n >= 1e12 && n < 2e12;
 }
 
 /** Shared across the messages of one request so the same value keeps one placeholder. */
@@ -79,6 +108,8 @@ export function scrub(input: string, state: ScrubState = newScrubState()): Scrub
         state.flags.add("secret_in_prompt");
         return "[[REDACTED]]";
       }
+      // Before the dedupe return, so a repeated instant still raises it.
+      if (rule.kind === "CARD" && looksLikeEpochMs(hit)) state.flags.add("card_maybe_instant");
       const existing = state.seen.get(hit);
       if (existing) return existing;
       const token = `[[${rule.kind}_${countOf(state, rule.kind) + 1}]]`;

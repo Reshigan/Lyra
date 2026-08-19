@@ -1,3 +1,5 @@
+import { parseJsonObject } from "./parse.js";
+
 // docs/specs/gap-axis-design.md §G.1. FNOL triage: fill `perilCode`/`causeCode`/
 // `complexity` from the free-text `description` when the human notifying the
 // loss left them blank. Kept in this package, not in apps/api, for the same
@@ -57,22 +59,11 @@ export function triageMessages(description: string): { role: "system" | "user"; 
   ];
 }
 
-/** Models sometimes wrap JSON in a code fence despite `responseSchema`; strip it before parsing. */
-function stripFence(text: string): string {
-  const m = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  return (m?.[1] ?? text).trim();
-}
-
 const FIELDS = ["perilCode", "causeCode", "complexity"] as const;
 
 /** Parses one model reply. Never throws — a bad reply triages nothing. */
 export function parseTriage(reply: string): Triage {
-  let parsed: Record<string, unknown> = {};
-  try {
-    parsed = JSON.parse(stripFence(reply)) as Record<string, unknown>;
-  } catch {
-    parsed = {};
-  }
+  const parsed = parseJsonObject(reply) ?? {};
 
   const rawPeril = parsed.perilCode;
   const rawCause = parsed.causeCode;

@@ -11,6 +11,7 @@
 // own vocabulary, and the domain pack may rename every noun in it (CLAUDE.md
 // §14), so nothing here is ever an English literal in a component.
 
+import { instantOf } from "@lyra/ui";
 import { pseudoText, translator } from "../i18n";
 import { vocabulary } from "./vocabulary";
 import { humanise } from "@lyra/core/words";
@@ -367,9 +368,14 @@ export function inputValue(field: FieldSpec, row: Row | undefined): string {
     }
     case "date":
     case "datetime": {
-      const ms = Number(value);
-      if (!Number.isFinite(ms)) return "";
-      const iso = new Date(ms).toISOString();
+      // `instantOf` rather than `Number.isFinite`: it also rejects the band no
+      // `Date` can hold (beyond ±8.64e15 ms), where `toISOString` throws
+      // `RangeError` — and this runs while the edit form renders, so the throw
+      // costs the whole record screen. Blank, not the app's dash: an
+      // `<input type="date">` can hold an empty value or a date, nothing else.
+      const at = instantOf(Number(value));
+      if (at === null) return "";
+      const iso = at.toISOString();
       return field.type === "date" ? (iso.slice(0, 10) as string) : iso.slice(0, 16);
     }
     default:

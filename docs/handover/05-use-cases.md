@@ -9,6 +9,10 @@ The source of truth is [`docs/06-roles-and-journeys.md`](../06-roles-and-journey
 [`docs/modules/`](../modules). Every route, button label and test filename in
 this document was verified against the code at the time of writing.
 
+Describes commit `c7f1f57` on `main` (2026-08-18). Previous revision described
+`a295218`/`8afd07d` (2026-08-13); [`README.md` §7](README.md#7-revision-history)
+lists what changed in between, and which work is still on unmerged branches.
+
 ---
 
 ## 1. How to read this document
@@ -1312,6 +1316,104 @@ permissive enough to skip it.
 
 ---
 
+### UC-30 — Bind a group scheme and earn group commission
+
+**Actor** `axis.lead` · **Route** `POST /v1/axis/policies/:id/bind-group`
+
+1. Bind the group policy through the group-bind route rather than the ordinary
+   bind. This is the whole use case: the two routes are different money.
+2. The engine
+   ([`apps/api/src/engines/group-commission.ts`](../../apps/api/src/engines/group-commission.ts))
+   posts a `BIND-GROUP` transaction, crediting income account **4000**.
+
+**Expected** — a balanced `BIND-GROUP` transaction on the policy, under dual
+control like any other bind. An ordinary bind posts `BIND` and earns **no** group
+commission; a tenant who binds a group scheme the ordinary way has not lost
+commission to a bug, they used the wrong route.
+
+A policy with `commissionMinor <= 0` is **rejected with a 400**, not bound
+silently at zero: `cannot bind-group with no commission: BIND-GROUP posts a
+commission accrual`. The line exists to accrue commission, so a zero-commission
+group bind is a data error worth surfacing rather than a no-op worth swallowing.
+
+---
+
+### UC-31 — Charge a broker fee
+
+**Actor** `axis.lead` · **Route** `POST /v1/axis/policies/:id/broker-fee`
+
+Posts `FEE-BROK`: Dr **1160** (receivable), Cr **4020** (fee income). Separate
+from commission, separately accounted, and separately disputed by tenants — keep
+the two apart when triaging.
+
+---
+
+### UC-32 — Qualify and settle a referral
+
+**Actor** `finance.controller` (holds `dist:commissions:*`) · **Routes**
+`POST /v1/dist/referrals/qualify` (`dist:commissions:adjust`), then
+`POST /v1/dist/referrals/settle` (`dist:commissions:settle`)
+
+1. **Qualify** the referral. This is a **non-financial** transaction — it records
+   that the referral met its criteria and posts no journal lines.
+2. **Settle** it. `REFERRAL-SETL` posts Dr **1160** / Cr **4030** via
+   [`apps/api/src/engines/referral-settlement.ts`](../../apps/api/src/engines/referral-settlement.ts).
+
+**Expected** — qualification alone moves no money. "The referral qualified but
+nothing was paid" is the designed two-step, not a stalled job.
+
+---
+
+### UC-33 — Place an advertisement, with its disclosure
+
+**Actor** `signal.lead` (or `axis.lead` — both hold
+`compliance:disclosures:present`) · **Routes**
+`POST /v1/compliance/disclosures/present`, then
+`POST /v1/ledger/txn/AD-PLACEMENT`
+
+1. Present the disclosure for the subject with `key: "ad_placement"`. This
+   inserts a `disclosures` row and posts a non-financial `DISCLOSURE-PRESENT`
+   transaction alongside it.
+2. Place the ad. `AD-PLACEMENT` posts Dr **1160** / Cr **4070**.
+
+**Expected** — step 1 is **not optional, not once-forever, and subject-specific.**
+`AD-PLACEMENT` carries a precondition (`freshAdPlacementDisclosure` in
+[`packages/ledger/src/preconditions.ts`](../../packages/ledger/src/preconditions.ts))
+that refuses the posting with a 409 unless a matching `disclosures` row exists
+for **that** subject, presented within the **last 24 hours**. Absent, stale and
+wrong-subject all produce the same message. This is the single most useful thing
+to know about the ad revenue line — see
+[`04-support-playbook.md` S-20](04-support-playbook.md).
+
+There is no dedicated module route for the placement; it posts through the
+generic ledger transaction endpoint.
+
+---
+
+### UC-34 — Quote through a partner (and the bind that is not yet routed)
+
+**Actor** `orbit.partners` · **Route** `POST /v1/orbit/partners/:id/quotes`
+(`orbit:partners:read`)
+
+Request a partner pricing quote. Sandbox partners return clearly-marked
+synthetic pricing.
+
+**The bind that follows is engine-only.**
+[`apps/api/src/engines/partner-bind.ts`](../../apps/api/src/engines/partner-bind.ts)
+implements `bindPartner()`, which posts `PARTNER-BIND` (income account **4075** —
+distinct from the direct-bind **4000**, so partner-origin revenue is separable in
+the ledger without a report-time join) and chains `RSHARE-ACCR` under the same
+`parentTxnId` when the revenue share is non-zero. **It has no route yet, by
+choice, and its own source says why:** `orbit_partners` has no commission-rate
+column, so the engine currently treats the quote's premium as gross commission,
+and its receivable account still defaults to `1100` where the sibling revenue
+line pairs 4075 with `1160`. Both must be resolved before the engine is exposed.
+
+So there is no user-facing partner-bind flow to test today. A tenant asking where
+it is should be told it is unshipped, not investigated as a defect.
+
+---
+
 ## 5. Cross-cutting behaviour a tester should expect on every screen
 
 | Behaviour | What you see | Where it comes from |
@@ -1345,12 +1447,28 @@ permissive enough to skip it.
 | Admin / dev / compliance | J-A1, J-A2, J-A3, J-D1, J-CO1 | UC-17 – UC-21 |
 | Public portal | J-C1, J-C4 | UC-22, UC-23 |
 | Supporting (no J-ID) | — | UC-24 – UC-29 |
+| Revenue lines (no J-ID) | — | UC-30 – UC-34 |
 
 Several journeys are covered **narrower than docs/06's prose** — deliberately,
 because the specs test what is built rather than what was imagined. Those gaps
 are called out inline above (J-A1 tenant creation, J-E2 distribution and read
 receipts, J-D1 webhook tester, J-M3 citation-share trend, J-X3 being API-only,
 J-A3's resume note, J-O2's census upload). Read them as scope, not as defects.
+
+**Two caveats on this table as of this revision.**
+
+**The module screens grew faster than this document did.** Roughly thirty new
+screens landed across the five modules, along with a unified answer-bar hero on
+the module landing pages. The journeys above still pass and still describe the
+flows that carry a J-ID, but a tester walking a module top to bottom will meet
+screens that have no UC entry here. Treat an unlisted screen as untested-by-name
+rather than as new behaviour, and read the module's route directory
+([`apps/web/app/routes/`](../../apps/web/app/routes)) as the authoritative list.
+
+**UC-30 – UC-34 are ledger-first use cases.** They are driven through the API
+because that is where the revenue lines live; the screens that will drive them
+are thinner than the accounting behind them. That asymmetry is deliberate for
+now — the money had to be right before the UI was worth building.
 
 **Related:** manual UAT scripts and the automated suite map are in
 [`06-test-scripts.md`](./06-test-scripts.md).

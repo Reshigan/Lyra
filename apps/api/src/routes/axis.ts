@@ -15,6 +15,7 @@ import {
   emit,
   forbidden,
   gate,
+  hashObject,
   notFound,
   openFields,
   require_,
@@ -33,13 +34,15 @@ import {
   extractionSchema,
   parseExtraction,
   parseVisionExtraction,
+  promptInstant,
   visionExtractionMessages,
   visionExtractionSchema
 } from "@lyra/model-gateway";
-import { body } from "../http.js";
+import { body, InstantMs } from "../http.js";
 import { readUpload } from "../upload.js";
 import { must } from "../rows.js";
-import { EndorseBody, endorsePolicy, priceEndorsement } from "../engines/axis-endorse.js";
+import { EndorseBody, changeSetHashOf, endorsePolicy, priceEndorsement } from "../engines/axis-endorse.js";
+import { MAX_POINTS_PER_BATCH, TelematicsIngest, repriceFromTelemetry, unpricedExposureKey } from "../engines/telematics.js";
 import { bindGroup, brokerFee } from "../engines/group-commission.js";
 import {
   CancelBody,
@@ -92,6 +95,7 @@ import {
   registerFnol
 } from "../engines/axis-fnol.js";
 import { GenerateBordereauBody, generateBordereaux, reconcileBordereaux } from "../engines/axis-bordereaux.js";
+import { cancelPlan, createPlan, livePlanOf } from "../engines/premium-financing.js";
 import { embedUpsert } from "../engines/vectorize.js";
 import { meterEgress } from "../engines/egress.js";
 import { fieldKey, type App } from "../env.js";
@@ -396,12 +400,12 @@ axisRoutes.post("/cases/:id/copilot", async (c) => {
     ]);
 
     const contextLines: string[] = [
-      `Case ${kase.ref}: kind ${kase.kind}, status ${kase.status}, priority ${kase.priority}, opened ${new Date(kase.createdAt).toISOString()}` +
-        (kase.slaDueAt ? `, SLA due ${new Date(kase.slaDueAt).toISOString()}` : "") +
+      `Case ${kase.ref}: kind ${kase.kind}, status ${kase.status}, priority ${kase.priority}, opened ${promptInstant(kase.createdAt)}` +
+        (kase.slaDueAt ? `, SLA due ${promptInstant(kase.slaDueAt)}` : "") +
         (kase.valueMinor !== null ? `, value ${kase.valueMinor / 100} ${kase.currency ?? ""}`.trimEnd() : "") +
         ".",
       ...documents.map((d) => `Document ${d.docType}: status ${d.status}.`),
-      ...events.map((e) => `Event ${e.step}: ${e.outcome ?? "in progress"} at ${new Date(e.ts).toISOString()}.`),
+      ...events.map((e) => `Event ${e.step}: ${e.outcome ?? "in progress"} at ${promptInstant(e.ts)}.`),
       ...tasks.map((t) => `Task ${t.titleKey}: state ${t.state}.`)
     ];
 
@@ -582,8 +586,8 @@ axisRoutes.post("/sops/:id/publish", async (c) => {
 
 const BindBody = z.object({
   policyNo: z.string().min(1).max(64),
-  startAt: z.number().int().positive(),
-  endAt: z.number().int().positive(),
+  startAt: InstantMs.positive(),
+  endAt: InstantMs.positive(),
   caseId: z.string().min(1).optional(),
   terms: z.record(z.string(), z.unknown()).optional()
 });
@@ -933,7 +937,7 @@ const ManualQuoteBody = z.object({
   feesMinor: z.number().int().nonnegative().optional(),
   commissionMinor: z.number().int().optional(),
   currency: z.string().length(3),
-  validUntil: z.number().int().optional(),
+  validUntil: InstantMs.optional(),
   coverage: z.record(z.string(), z.unknown()).optional()
 });
 
@@ -1119,10 +1123,86 @@ axisRoutes.post("/policies/:id/endorse", async (c) => {
   // Without a caller-supplied key the change-set is the key: submitting the same
   // change twice is one endorsement. A throw releases the slot, so the retry
   // that follows a granted approval runs rather than replaying the 403.
+  const key = c.req.header("idempotency-key") ?? `axis_endorse:${policy.id}:${await changeSetHashOf(input)}`;
+  const out = await withIdempotency(ctx, key, `POST ${c.req.path}`, input, () => endorsePolicy(ctx, policy, input));
+  return c.json(out, 200);
+});
+
+// docs/27 F5 — telematics/UBI. `/telemetry` is a device/integration doorway,
+// not an underwriting one (packages/core/src/rbac.ts): a fleet posting
+// kilometres must not also be able to move a price. `/reprice` is the opposite
+// shape — it produces a priced endorsement, so it stays behind the same
+// `axis:policies:endorse` gate as a manual one and invents no permission of
+// its own.
+
+/** The series key and points come from the body; the cover is the route's own
+ *  param, never the body's — `TelematicsIngest` refuses a mismatch anyway,
+ *  but the route should not hand it a ref to check against itself. */
+axisRoutes.post("/policies/:id/telemetry", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:policies:telemetry", { tenantId: ctx.tenantId, module: "axis" });
+  const policy = await must(ctx, schema.axisPolicies, c.req.param("id"), "policies");
+  // Bounded at the trust boundary, not only inside the engine: without `.max()`
+  // a 500 000-point body is parsed and validated in full before anything refuses
+  // it. The engine keeps its own copy of both checks (defence in depth).
+  const input = await body(
+    c,
+    z.object({
+      source: z.string().min(1),
+      points: z
+        .array(z.object({ at: InstantMs, value: z.number() }))
+        .min(1)
+        .max(MAX_POINTS_PER_BATCH)
+    })
+  );
+  // Plan §Task 5: absent a caller key the batch is the key, so a device that
+  // retries a flush after a timeout stores one set of rows, not two.
+  const key = c.req.header("idempotency-key") ?? `axis_telemetry:${policy.id}:${await hashObject(input)}`;
+  const run = async () => {
+    await new TelematicsIngest(ctx, input.source, policy).ingest(`policy:${policy.id}`, input.points);
+    return { accepted: true as const };
+  };
+  const out = await withIdempotency(ctx, key, `POST ${c.req.path}`, input, run);
+  return c.json(out, 201);
+});
+
+/**
+ * §F5: prices the exposure the cover's telemetry has recorded since its
+ * current version took effect and, if it moved, endorses the contract by that
+ * much — same pricing call, same referral guard, same `axis.endorse` approval
+ * gate as a manual endorsement (`repriceFromTelemetry`, engines/telematics.ts).
+ * `{ repriced: false }` is a genuine no-op, not an error: a model that proposed
+ * no change is a success, so it comes back 200 rather than a 4xx.
+ */
+axisRoutes.post("/policies/:id/reprice", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:policies:endorse", { tenantId: ctx.tenantId, module: "axis" });
+  const policy = await must(ctx, schema.axisPolicies, c.req.param("id"), "policies");
+  // Plan §Task 5: one reprice per exposure per retry storm. The body is empty,
+  // so without this a header-less retry storm is N model calls and N price
+  // moves.
+  //
+  // The key is kept whatever the outcome, `repriced:false` included: that answer
+  // is only reachable after `gateway.complete` has billed a provider call and
+  // written an `ai_audit_log` row, so a no-op is not a run that did nothing and
+  // releasing its key buys the next retry another billed call. What moves
+  // instead is the key itself — it fingerprints the unpriced telemetry, so it
+  // changes exactly when the exposure to be priced changes. New telemetry mints
+  // a new key and prices; no new telemetry replays.
+  //
+  // ponytail: the version component is redundant against the fingerprint for
+  // telemetry alone, and a manual endorsement moves it without moving the
+  // exposure — one extra billed no-op for an endorse-then-reprice. Kept because
+  // the stored body carries `premiumMinor`, computed off the version's base:
+  // dropping it would let a replay hand back a price struck against a premium
+  // that has since been endorsed away. Drop it if that body ever stops naming
+  // an absolute amount.
   const key =
     c.req.header("idempotency-key") ??
-    `axis_endorse:${policy.id}:${await sha256Hex(JSON.stringify({ changes: input.changes, reason: input.reason ?? null }))}`;
-  const out = await withIdempotency(ctx, key, `POST ${c.req.path}`, input, () => endorsePolicy(ctx, policy, input));
+    `axis_ubi_reprice:${policy.id}:${policy.currentVersionId ?? policy.versionSeq}:${await unpricedExposureKey(ctx, policy)}`;
+  const out = await withIdempotency(ctx, key, `POST ${c.req.path}`, {}, () =>
+    repriceFromTelemetry(ctx, policy, c.get("gateway"))
+  );
   return c.json(out, 200);
 });
 
@@ -1196,6 +1276,61 @@ axisRoutes.post("/policies/:id/reinstate", async (c) => {
   // Keyed on the lapse being cured, so a later lapse can be cured again.
   const key = c.req.header("idempotency-key") ?? `axis_reinstate:${policy.id}:${policy.lapsedAt ?? 0}`;
   const out = await withIdempotency(ctx, key, `POST ${c.req.path}`, input, () => reinstatePolicy(ctx, policy, input));
+  return c.json(out, 200);
+});
+
+/**
+ * docs/27 group D — opens a premium-financing plan on a bound policy.
+ * PLAN-CREATE itself moves no money (non-financial); the financing house's
+ * commission posts as a chained FIN-CMSN transaction inside createPlan().
+ */
+const PremiumFinancingPlanBody = z.object({
+  financierRef: z.string().min(1).optional(),
+  totalMinor: z.number().int().positive(),
+  currency: z.string().min(1),
+  instalments: z.number().int().positive(),
+  startAt: InstantMs.positive(),
+  frequencyDays: z.number().int().positive(),
+  // positive, not nonnegative: buildRecipe refuses a zero gross, so `0` was a
+  // route-legal body that only failed once the engine tried to post the chained
+  // FIN-CMSN. The engine re-checks it (that is the real fix); this stops it here.
+  commissionMinor: z.number().int().positive(),
+  commissionTaxMinor: z.number().int().nonnegative().optional()
+});
+
+axisRoutes.post("/policies/:id/premium-financing-plan", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:policies:finance", { tenantId: ctx.tenantId, module: "axis" });
+  const policy = await must(ctx, schema.axisPolicies, c.req.param("id"), "policies");
+  const input = await body(c, PremiumFinancingPlanBody);
+  // withIdempotency is a no-op without a key, and a policy is financed once:
+  // two plans on one contract double-book the commission and post a duplicate
+  // client-money receipt every tick for the plan's life. Key on the policy so a
+  // retrying client with no header still gets one plan.
+  const key = c.req.header("idempotency-key") ?? `axis_finance_plan:${policy.id}`;
+  const out = await withIdempotency(ctx, key, `POST ${c.req.path}`, input, () => createPlan(ctx, policy, input));
+  return c.json(out, 200);
+});
+
+const CancelFinancingPlanBody = z.object({ reason: z.string().min(1).max(500) });
+
+/**
+ * C3 gives a policy at most one live financing plan, which makes a plan opened
+ * against the wrong contract permanent without this route. Same permission as
+ * opening one: whoever may commit a contract to a financier may un-commit it.
+ */
+axisRoutes.post("/policies/:id/premium-financing-plan/cancel", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:policies:finance", { tenantId: ctx.tenantId, module: "axis" });
+  const policy = await must(ctx, schema.axisPolicies, c.req.param("id"), "policies");
+  const input = await body(c, CancelFinancingPlanBody);
+  const plan = await livePlanOf(ctx, policy.id);
+  // Keyed on the plan, not the policy: cancelling reverses a settled
+  // transaction, so a retrying client must not un-earn the commission twice.
+  const key = c.req.header("idempotency-key") ?? `axis_finance_cancel:${plan.id}`;
+  const out = await withIdempotency(ctx, key, `POST ${c.req.path}`, input, () =>
+    cancelPlan(ctx, plan, input.reason)
+  );
   return c.json(out, 200);
 });
 

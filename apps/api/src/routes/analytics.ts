@@ -33,7 +33,7 @@ import {
 import { render, type BrowserBinding, type Rendered } from "../engines/export/render.js";
 import { meterEgress } from "../engines/egress.js";
 import { grantsFor } from "../auth.js";
-import { body, decodeCursor, encodeCursor, listParams, parse, MAX_PAGE } from "../http.js";
+import { body, decodeCursor, encodeCursor, instantParam, InstantMsParam, listParams, parse, MAX_PAGE } from "../http.js";
 import { must } from "../rows.js";
 import type { App } from "../env.js";
 
@@ -387,7 +387,7 @@ analyticsRoutes.get("/exports/:id/download", async (c) => {
 
 const FeedQuery = z.object({
   /** Epoch-ms watermark on the dataset's time column, for the first poll. */
-  since: z.coerce.number().int().optional(),
+  since: InstantMsParam.optional(),
   /** Opaque keyset cursor; preferred over `since` once a poll has run once. */
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(MAX_PAGE).default(MAX_PAGE)
@@ -693,10 +693,11 @@ analyticsRoutes.delete("/saved-views/:id", async (c) => {
 analyticsRoutes.get("/unit-economics", async (c) => {
   const ctx = c.get("ctx");
   require_(ctx.actor, "analytics:reports:read", { tenantId: ctx.tenantId });
-  const rawSince = c.req.query("since");
-  const since = rawSince === undefined ? 0 : Number(rawSince);
-  // A NaN here would silently drop the filter and ship the full table.
-  if (!Number.isFinite(since) || since < 0) throw badRequest("since must be a non-negative epoch-ms number");
+  // `instantParam` 400s on NaN and on an instant no `Date` can hold; a NaN here
+  // would otherwise silently drop the filter and ship the full table. The
+  // non-negative floor is this endpoint's own: cost accrues after the epoch.
+  const since = instantParam(c.req.query("since")) ?? 0;
+  if (since < 0) throw badRequest("since must be a non-negative epoch-ms number");
   const rows = await ctx.db
     .select()
     .from(schema.unitEconomics)
@@ -1034,6 +1035,12 @@ export function nextRun(cron: string, from: number, timezone = "UTC"): number | 
 /** Offset of `timezone` from UTC at instant `at`, via Intl — no dependency. */
 function zoneOffsetMs(timezone: string, at: number): number {
   if (timezone === "UTC") return 0;
+  // Checked before the `try`, not caught inside it: `formatToParts` throws the
+  // same `RangeError` for an instant no `Date` can hold as for a zone Intl does
+  // not know, and reporting that as "unknown timezone: Asia/Dubai" sends the
+  // reader after a zone that is perfectly fine. `at` is `ctx.now` at every call
+  // site today, but `nextRun` is exported.
+  if (!Number.isFinite(at) || Math.abs(at) > 8.64e15) throw badRequest(`not an instant a Date can hold: ${at}`);
   let parts: Intl.DateTimeFormatPart[];
   try {
     parts = new Intl.DateTimeFormat("en-US", {

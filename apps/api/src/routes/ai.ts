@@ -14,7 +14,7 @@ import {
   type Ctx
 } from "@lyra/core";
 import { AI_KILL_SWITCH, checkBudget, isKnownPurpose, setLimits, type Message } from "@lyra/model-gateway";
-import { body, intParam } from "../http.js";
+import { body, intParam, MAX_INSTANT_MS } from "../http.js";
 import { executeOrbitToolCalls, orbitToolsFor } from "../engines/orbit-tools.js";
 import { embedQuery } from "../engines/vectorize.js";
 import { agentByKey, activePrompt } from "../engines/ai-agent.js";
@@ -518,7 +518,11 @@ aiRoutes.get("/audit", async (c) => {
   const ctx = ctxOf(c);
   require_(ctx.actor, "ai:audit:read", { tenantId: ctx.tenantId, module: "ai" });
   const module = c.req.query("module");
-  const since = intParam(c.req.query("since"), ctx.now - 7 * 86_400_000);
+  // Not `instantParam`: this endpoint's contract is that garbage falls back to
+  // the default rather than 400 (see ai.test.ts "numeric query params survive
+  // garbage input"). What it was missing is the ceiling — `intParam` clamps to
+  // MAX_SAFE_INTEGER by default, which is past any instant a `Date` holds.
+  const since = intParam(c.req.query("since"), ctx.now - 7 * 86_400_000, { max: MAX_INSTANT_MS });
   const rows = await ctx.db
     .select()
     .from(schema.aiAuditLog)

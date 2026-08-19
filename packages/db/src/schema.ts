@@ -72,7 +72,8 @@ export {
   bordereauLines as axisBordereauLines,
   complaints as axisComplaints,
   siuReferrals as axisSiuReferrals,
-  referrals as axisReferrals
+  referrals as axisReferrals,
+  telemetryPoints as axisTelemetryPoints
 } from "./schema/axis.js";
 
 export {

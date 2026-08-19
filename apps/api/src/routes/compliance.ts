@@ -19,7 +19,7 @@ import { runTxn, type ReportTable } from "@lyra/ledger";
 import { meterEgress } from "../engines/egress.js";
 import { render } from "../engines/export/render.js";
 import { utf8, zip } from "../engines/export/zip.js";
-import { body } from "../http.js";
+import { body, InstantMs } from "../http.js";
 import type { App } from "../env.js";
 
 // docs/12 §3–§5. Three compliance capabilities that a form cannot perform,
@@ -259,8 +259,8 @@ const ExportBody = z
     purpose: z.enum(["regulator", "audit", "dispute", "internal"]),
     /** Narrow to one subject: `customer:cus_…`, `case:cas_…`. Absent = the window. */
     subjectRef: z.string().min(1).max(200).optional(),
-    from: z.number().int().nonnegative().optional(),
-    to: z.number().int().nonnegative().optional(),
+    from: InstantMs.nonnegative().optional(),
+    to: InstantMs.nonnegative().optional(),
     /** Who asked for it — the regulator, the auditor. Not a delivery instruction. */
     deliveredTo: z.string().max(200).optional()
   })

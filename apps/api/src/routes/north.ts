@@ -4,7 +4,7 @@ import { and, eq, inArray, max } from "drizzle-orm";
 import type { ReportTable } from "@lyra/ledger";
 import { id, schema } from "@lyra/db";
 import { actorRef, audit, notFound, require_, sha256Hex, type Ctx } from "@lyra/core";
-import { body } from "../http.js";
+import { body, IsoDay } from "../http.js";
 import { must } from "../rows.js";
 import { meterEgress } from "../engines/egress.js";
 import { generateBriefing } from "../engines/narrator.js";
@@ -23,7 +23,7 @@ export const northRoutes = new Hono<App>();
 const ctxOf = (c: { get(k: "ctx"): Ctx }): Ctx => c.get("ctx");
 
 const GenerateBriefingBody = z.object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date must be YYYY-MM-DD"),
+  date: IsoDay,
   audience: z.string().optional(),
   locale: z.string().optional()
 });

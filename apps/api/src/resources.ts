@@ -1,6 +1,6 @@
 import { eq, inArray } from "drizzle-orm";
 import { id } from "@lyra/db";
-import { schema } from "@lyra/db";
+import { PaymentPlanWrite, schema } from "@lyra/db";
 import { badRequest, can, checkKAnonymity, CUSTOMER_PII, DEFAULT_K_FLOOR, gate, scoped, sealFields } from "@lyra/core";
 import { SENSITIVE_EXTRACTION_FIELDS } from "@lyra/model-gateway";
 import { fieldKey } from "./env.js";
@@ -306,7 +306,44 @@ export const AXIS = register(
     read: "axis:policies:read",
     create: "axis:policies:create",
     update: "axis:policies:update"
-  }, { searchable: ["policyNo"], approval: { create: "axis.bind", amountField: "premiumMinor" } }),
+  }, {
+    searchable: ["policyNo"],
+    // ponytail: the create is gated, the update is not — ADR-0067. `paymentPlanJson` and
+    // `premiumMinor` are both writable through PATCH with only
+    // `axis:policies:update`, so a bound policy's instalment schedule — what
+    // decides whether cover lapses unpaid — changes without a second pair of
+    // eyes (CLAUDE.md §12). Left as it is deliberately in this wave: widening
+    // the gate to `update` puts every routine field edit through approval, so
+    // the fix is a field-level gate (`approval.updateFields`) rather than a
+    // blanket one, and that is a crud.ts change with its own tests.
+    approval: { create: "axis.bind", amountField: "premiumMinor" },
+    // The shape crud.ts generates for a `*Json` column stops at "object, array
+    // or string" (see `isJsonColumn`), so without this the sweep's own input is
+    // whatever a caller typed. Validated here rather than in the shape because
+    // that is where the other JSON columns are checked (`extractionJson` above).
+    beforeWrite: (_ctx, values) => {
+      if (values.paymentPlanJson === undefined || values.paymentPlanJson === null) return values;
+      const raw = values.paymentPlanJson;
+      let parsed: unknown = raw;
+      if (typeof raw === "string") {
+        try {
+          parsed = JSON.parse(raw);
+        } catch {
+          throw badRequest("paymentPlanJson is not valid JSON");
+        }
+      }
+      // `PaymentPlanWrite`, not the sweep's own `PaymentPlanJson`: that one
+      // defaults every field so the sweep can read a partial plan, which at a
+      // write door means `{"foo":"bar"}` stores as a plan with lapse-on-missed
+      // silently off.
+      const plan = PaymentPlanWrite.safeParse(parsed);
+      if (!plan.success) throw badRequest("paymentPlanJson is not a payment plan the lapse sweep can read");
+      // The parsed value, not the raw one: `graceDays` has a `.default(0)` that
+      // only lands if the normalised object is what gets stored. crud.ts
+      // stringifies a `*Json` object on the way to the column.
+      return { ...values, paymentPlanJson: plan.data };
+    }
+  }),
   r("escrow-batches", schema.axisEscrowBatches, "esc", "axis", {
     read: "axis:escrow:read",
     update: "axis:escrow:reconcile"
@@ -375,7 +412,16 @@ export const AXIS = register(
         .where(scoped(ctx, schema.axisClaims, eq(schema.axisClaims.id, row.claimId as string)));
     }
   }),
-  r("referrals", schema.axisReferrals, "rfl", "axis", ro("axis:policies:decide_referral"))
+  r("referrals", schema.axisReferrals, "rfl", "axis", ro("axis:policies:decide_referral")),
+  // Read-only for the same reason as payments/settlements above:
+  // engines/telematics.ts's TelematicsIngest is the sole doorway (POST
+  // /v1/axis/policies/:id/telemetry) — it is the only writer that enforces the
+  // cover-term bounds, dedups against what is already stored, and stamps the
+  // TELEM-INGEST transaction id every row carries. A generic create would let
+  // a caller insert a point with an arbitrary `at`, an arbitrary `value` and a
+  // `txnId` pointing at nothing — which then feeds a reprice. This is the point
+  // that most matters here: a writable telemetry table is a writable premium.
+  r("telemetry-points", schema.axisTelemetryPoints, "telp", "axis", ro("axis:policies:read"))
 );
 
 /* ------------------------------------------------------------------- orbit */
@@ -830,11 +876,12 @@ export const LEDGER = register(
   // ledger module says exactly this and renders no create form). The generated
   // create accepted a client-settable `state` with no gate at all.
   r("payments", schema.ledgerPayments, "pay", "ledger", ro("ledger:payments:read")),
-  r("payment-plans", schema.ledgerPaymentPlans, "ppl", "ledger", {
-    read: "ledger:payments:read",
-    create: "ledger:payments:create",
-    update: "ledger:payments:create"
-  }),
+  // Read-only for the same reason as payments above: engines/premium-financing.ts
+  // owns writes now (POST /v1/axis/policies/:id/premium-financing-plan), with the
+  // fx-rate pre-check and chained FIN-CMSN commission the generic create knew
+  // nothing about. The generated create accepted an arbitrary schedule/state
+  // with no ledger entries behind it at all.
+  r("payment-plans", schema.ledgerPaymentPlans, "ppl", "ledger", ro("ledger:payments:read")),
   r("fx-rates", schema.ledgerFxRates, "fx", "ledger", rw("ledger:accounts"), { immutable: true }),
   r("tax-rules", schema.ledgerTaxRules, "tax", "ledger", rw("ledger:accounts")),
   // Read-only for the same reason as payments above: routes/settlement.ts is

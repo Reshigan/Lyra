@@ -8,7 +8,7 @@ import {
   type LoaderFunctionArgs,
   type MetaFunction
 } from "react-router";
-import { Badge, Button, Card, Field, Money } from "@lyra/ui";
+import { Badge, Button, Card, Field, Money, formatInstant } from "@lyra/ui";
 import { cloudflare } from "../context";
 import type { ReactNode } from "react";
 import { ApiError, api, asRouteError, type Brand } from "../api.server";
@@ -275,7 +275,7 @@ export default function PortalQuotes() {
                   {offer.validUntil ? (
                     <p className="mt-3 text-13 text-muted">
                       {l("quote.validUntil")}{" "}
-                      {new Intl.DateTimeFormat(locale, { dateStyle: "long" }).format(new Date(offer.validUntil))}
+                      {formatInstant(offer.validUntil, new Intl.DateTimeFormat(locale, { dateStyle: "long" }).format)}
                     </p>
                   ) : null}
 

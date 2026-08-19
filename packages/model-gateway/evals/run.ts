@@ -7,6 +7,7 @@ import { parseTriage } from "../src/triage.js";
 import { parseReserve } from "../src/reserve.js";
 import { parseFraud } from "../src/fraud.js";
 import { parseSla } from "../src/sla.js";
+import { parseUbi } from "../src/ubi.js";
 import { aggregateCxScore, localeGap } from "../src/cx-judge.js";
 import { verifyNumericClaims, verifyGroundedness, checkCompliance as checkSignalCompliance, type BriefingSnapshot } from "@lyra/core";
 import { loadCases, loadThresholds, metric, metricOk, type Metric } from "./harness.js";
@@ -282,6 +283,41 @@ function median(values: number[]): number {
   return sorted.length % 2 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
 }
 
+/**
+ * The shared shape of `unexplainedIndicatorRate` (scoreFraud) and
+ * `unexplainedFactorRate` (scoreUbi): how much of a parser's drop behaviour the
+ * golden set did not ask for, over every candidate the parser saw.
+ *
+ * Two decisions are baked in, both learned the hard way:
+ *
+ * 1. The denominator is *candidates* (`kept + dropped`), not the parser's kept
+ *    array. Neither parser can leave an unevidenced item in its kept array by
+ *    construction, so a rate measured against that array is a permanent zero that
+ *    would not move if the drop guard were deleted outright.
+ * 2. The numerator is `|dropped - expected|`, not raw drops. With a threshold of
+ *    0.0, raw drops make the gate unsatisfiable for any golden set that actually
+ *    contains an unevidenced item — so the set carries none, and the zero is
+ *    vacuous again. This form pins the count exactly: a parser that stops
+ *    dropping and one that starts over-dropping both fail.
+ *
+ * HISTORY: scoreFraud's metric used form (2) only from commit 9f231ab
+ * ("fix(model-gateway): stop parsers throwing on valid non-object JSON", which
+ * also added fraud-61..64). Before that its numerator was raw
+ * `droppedIndicatorCount` over a golden set carrying no unevidenced indicator at
+ * all — a structural zero. The gate is strictly stronger now, but a reading of
+ * `unexplainedIndicatorRate` from before that commit is not the same measurement.
+ * It lives in one function so the two rates cannot drift apart again.
+ */
+function unexplainedDropRate(rows: { kept: number; dropped: number; expected: number }[]): number {
+  let candidates = 0;
+  let unaccounted = 0;
+  for (const r of rows) {
+    unaccounted += Math.abs(r.dropped - r.expected);
+    candidates += r.kept + r.dropped;
+  }
+  return candidates ? unaccounted / candidates : 0;
+}
+
 // docs/specs/gap-axis-design.md §G.3. No live model call (deterministic/CI-safe,
 // docs/13 §4) — cases.jsonl bakes in canned model replies (clean, code-fenced,
 // missing band, inverted band, extra properties, wrong types) plus each case's
@@ -322,6 +358,8 @@ interface FraudCase {
   text: string;
   expectFraud: boolean;
   cohort: string;
+  /** Indicators the case deliberately leaves unevidenced; absent means none. */
+  expectDroppedIndicators?: number;
 }
 
 interface FraudThresholds {
@@ -352,17 +390,14 @@ async function scoreFraud(dir: string): Promise<Metric[]> {
   const referred = positives.filter((s) => s.result.score >= SIU_REFERRAL_THRESHOLD).length;
   const recall = positives.length ? referred / positives.length : 1;
 
-  // Rate is over raw indicator candidates, not the already-filtered `indicators`
-  // array — parseFraud can never leave an unlinked indicator in that array by
-  // construction, so measuring against it would report a permanent zero regardless
-  // of how often the drop actually fires.
-  let candidates = 0;
-  let dropped = 0;
-  for (const { result } of scored) {
-    dropped += result.droppedIndicatorCount;
-    candidates += result.indicators.length + result.droppedIndicatorCount;
-  }
-  const unexplainedIndicatorRate = candidates ? dropped / candidates : 0;
+  // Definition, and the commit its numerator changed on, are on unexplainedDropRate.
+  const unexplainedIndicatorRate = unexplainedDropRate(
+    scored.map(({ case: c, result }) => ({
+      kept: result.indicators.length,
+      dropped: result.droppedIndicatorCount,
+      expected: c.expectDroppedIndicators ?? 0
+    }))
+  );
 
   const metrics = [
     metric("precisionAtTop10", precisionAtTop10, { min: thresholds.precisionAtTop10Min }),
@@ -448,6 +483,74 @@ async function scoreSla(dir: string): Promise<Metric[]> {
     metric("auc", auc, { min: thresholds.aucMin }),
     metric("calibrationError", calibrationError, { max: thresholds.calibrationErrorMax }),
     metric("leadTimeMedianHours", leadTimeMedianHours, { min: thresholds.leadTimeMedianHoursMin })
+  ];
+}
+
+interface UbiCase {
+  id: string;
+  text: string;
+  /** The sign the parsed delta must carry. */
+  expectDirection: "up" | "down" | "flat";
+  /** Factors the case deliberately leaves unevidenced; absent means none. */
+  expectDroppedFactors?: number;
+}
+
+interface UbiThresholds {
+  directionAccuracyMin: number;
+  unexplainedFactorRateMax: number;
+}
+
+// docs/superpowers/specs/2026-08-16-revenue-lines-full-build-design.md (Group E).
+// No live model call (deterministic/CI-safe, docs/13 §4) — cases.jsonl bakes in
+// canned model replies (clean up/down/flat, code-fenced, unevidenced factors,
+// out-of-range deltas, garbage, and replies carrying fields parseUbi does not
+// model) and scores the exact `parseUbi` the UBI-REPRICE engine runs before it
+// proposes a price change. See the note above the return for why there is no
+// fairness metric here, unlike its sibling scorers.
+async function scoreUbi(dir: string): Promise<Metric[]> {
+  const cases = await loadCases<UbiCase>(dir);
+  const thresholds = await loadThresholds<UbiThresholds>(dir);
+
+  const scored = cases.map((c) => ({ case: c, result: parseUbi(c.text) }));
+
+  const sign = (ppm: number): UbiCase["expectDirection"] => (ppm > 0 ? "up" : ppm < 0 ? "down" : "flat");
+  const correct = scored.filter((s) => sign(s.result.premiumDeltaPpm) === s.case.expectDirection).length;
+
+  // Definition on unexplainedDropRate; shared verbatim with scoreFraud.
+  const unexplainedFactorRate = unexplainedDropRate(
+    scored.map(({ case: c, result }) => ({
+      kept: result.factors.length,
+      dropped: result.droppedFactorCount,
+      expected: c.expectDroppedFactors ?? 0
+    }))
+  );
+
+  // NO FAIRNESS METRIC HERE, deliberately. scoreFraud and scoreCxQuality carry a
+  // by-cohort spread gate; this scorer used to as well (maxDeltaPpmByProtectedProxy,
+  // over ubi-18/ubi-19 — two canned replies identical but for a postcodeBand and a
+  // driverAgeBand). It was removed because it could only ever report 0: parseUbi is
+  // handed one string, reads six named fields off it and ignores the rest, so no
+  // parser, prompt or model change could have moved that number. Reporting it as a
+  // passing fairness gate claimed a guarantee this scorer does not measure.
+  //
+  // Where the two real controls live instead:
+  //   - Exclusion (docs/12 §4, "pricing-adjacent models exclude protected
+  //     attributes") is enforced at the input boundary — `UbiContext` (src/ubi.ts)
+  //     carries only series keys, totals, point counts, baselines and a window, so
+  //     no protected attribute or proxy reaches the model to be priced on.
+  //   - That parseUbi stays blind to a proxy the model volunteers anyway is a purity
+  //     invariant, unit-tested in src/ubi.test.ts ("never reads a protected proxy").
+  // docs/12 §4 assigns proxy detection itself to a quarterly audit with logged
+  // findings and remediation owners — a review control, not a parser filter. Adding
+  // one here would mean this package deciding which factor codes name a protected
+  // attribute, which docs/12 does not define and CLAUDE.md forbids us inventing.
+  return [
+    metric("directionAccuracy", cases.length ? correct / cases.length : 1, {
+      min: thresholds.directionAccuracyMin
+    }),
+    metric("unexplainedFactorRate", unexplainedFactorRate, {
+      max: thresholds.unexplainedFactorRateMax
+    })
   ];
 }
 
@@ -615,6 +718,7 @@ const SCORERS: Record<string, (dir: string) => Promise<Metric[]>> = {
   "axis-reserve": scoreReserve,
   "axis-fraud": scoreFraud,
   "axis-sla": scoreSla,
+  "ubi-reprice": scoreUbi,
   "cx-quality": scoreCxQuality,
   north: scoreNorth,
   signal: scoreSignal

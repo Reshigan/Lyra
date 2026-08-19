@@ -28,6 +28,10 @@ const en = {
   action: "Action",
   target: "Target",
   detail: "Detail",
+  // DateTime, degraded. A stored instant no `Date` can hold renders as the same
+  // dash an empty cell uses; the dash is `aria-hidden`, so this is what is left
+  // to say a date was expected and is not readable.
+  dateUnavailable: "Date unavailable",
   // Timeline
   waiting: "Waiting",
   done: "Done",
@@ -66,6 +70,7 @@ const ar: Record<KitKey, string> = {
   action: "الإجراء",
   target: "الهدف",
   detail: "التفاصيل",
+  dateUnavailable: "التاريخ غير متاح",
   waiting: "قيد الانتظار",
   done: "تم",
   aiGenerated: "من إنشاء الذكاء الاصطناعي",

@@ -63,6 +63,11 @@ export const TXN_TYPES: Record<string, TxnTypeDef> = def([
   ["BIND", true, "axis.bind"],
   ["BIND-GROUP", true, "axis.bind_group"],
   ["ENDORSE", true, "axis.endorse"],
+  // A telemetry-driven mid-term price change is an endorsement: same pricing
+  // path, same recipe, same gate. Its own code exists only so the ledger can
+  // tell an underwriter-initiated change from a sensor-initiated one, which is
+  // the first question asked when a customer disputes a premium (docs/27 F5).
+  ["UBI-REPRICE", true, "axis.endorse"],
   // Inception, expiry, lapse and NTU move no money, but they are transactions
   // rather than column writes because `runTxn` is the only writer that produces
   // a reversible, idempotent, audited state hop — and a mis-fired scheduler has
@@ -79,6 +84,11 @@ export const TXN_TYPES: Record<string, TxnTypeDef> = def([
   ["FNOL-REGISTER", false, null],
   ["CLAIM-SYNC", false, null],
   ["PARAM-TRIGGER", false, null],
+  // Usage/sensor points arriving against a contract. Posts no journal — raw
+  // telemetry is an input to a price, not a balance — but it is a transaction
+  // so a replayed batch is idempotent and an ingest is auditable back to the
+  // reprice it caused (H6 seam, docs/16).
+  ["TELEM-INGEST", false, null],
 
   // 4.1b claims (design §B.3). The claim's own state hops post no journal — the
   // reserve is a memorandum figure, not a ledger balance — but the money legs
@@ -100,6 +110,9 @@ export const TXN_TYPES: Record<string, TxnTypeDef> = def([
 
   // 4.2 money in
   ["PREM-COLLECT", true, null],
+  // Opening a financing plan moves no money itself — it's the FIN-CMSN txn
+  // chained off it (via parentTxnId) that posts the commission.
+  ["PLAN-CREATE", false, null],
   ["PREM-INSTALMENT", true, null],
   ["DEPOSIT-TAKE", true, null],
   ["PSP-SETTLE", true, null],

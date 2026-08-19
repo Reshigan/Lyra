@@ -1,4 +1,5 @@
 import type { ReportTable } from "@lyra/ledger";
+import { promptInstant } from "@lyra/model-gateway";
 import { majorUnits, minorExponent } from "./money.js";
 import { concat, utf8 } from "./zip.js";
 
@@ -354,6 +355,7 @@ function assemble(pages: readonly string[], size: { w: number; h: number }, foot
   return concat(parts);
 }
 
+/** Same guard, same reason as the XLSX writer's `iso`: `ms` comes off a stored row. */
 function iso(ms: number): string {
-  return new Date(ms).toISOString().replace("T", " ").slice(0, 19);
+  return promptInstant(ms).replace("T", " ").slice(0, 19);
 }

@@ -48,15 +48,31 @@ beforeAll(async () => {
   };
 }, 120_000);
 
-function stubbedGateway(opts?: { replies?: string[]; fail?: Error }): { gw: Gateway } {
+function stubbedGateway(opts?: { replies?: string[]; fail?: Error }): { gw: Gateway; stub: ReturnType<typeof makeStub> } {
   const stub = makeStub(opts?.fail ? { fail: opts.fail } : opts?.replies ? { replies: opts.replies } : {});
-  return { gw: new Gateway({ env: {}, providers: { "workers-ai": stub, anthropic: stub, "openai-compat": stub } }) };
+  return { gw: new Gateway({ env: {}, providers: { "workers-ai": stub, anthropic: stub, "openai-compat": stub } }), stub };
 }
+
+/** `stub.calls` records what the provider was handed — i.e. after the gateway scrubbed it. */
+function lastPromptSentToProvider(stub: ReturnType<typeof makeStub>, n = 0): string {
+  return stub.calls[n]!.messages.at(-1)!.content;
+}
+
+// 2026-06-16T01:00:00.000Z. Chosen because its epoch-ms form passes Luhn, which is
+// what makes it a live round-trip test: sent raw it is a 13-digit run the CARD rule
+// redacts to `[[CARD_1]]`, and the model then scores a claim with no incident date.
+const LUHN_MS = 1_781_571_600_000;
 
 type ClaimRow = typeof schema.axisClaims.$inferSelect;
 
 /** A minimal, currently-open claim ready for fraud scoring. */
-async function seedClaim(opts: { customerId?: string; caseId?: string | null; amountMinor?: number | null }): Promise<ClaimRow> {
+async function seedClaim(opts: {
+  customerId?: string;
+  caseId?: string | null;
+  amountMinor?: number | null;
+  incidentAt?: number;
+  reportedAt?: number;
+}): Promise<ClaimRow> {
   const at = ctx.now;
   const id = newId("clm", at);
   const row: ClaimRow = {
@@ -66,8 +82,8 @@ async function seedClaim(opts: { customerId?: string; caseId?: string | null; am
     customerId: opts.customerId ?? `cust_${id}`,
     caseId: opts.caseId ?? null,
     claimNo: `CLM-${id}`,
-    incidentAt: at,
-    reportedAt: at,
+    incidentAt: opts.incidentAt ?? at,
+    reportedAt: opts.reportedAt ?? at,
     amountMinor: opts.amountMinor ?? 100_000,
     settledMinor: null,
     currency: "AED",
@@ -216,6 +232,35 @@ describe("scoreFraud / scoreAndReferClaim §G.2", () => {
 
     const rows = await ctx.db.select().from(schema.axisSiuReferrals).where(eq(schema.axisSiuReferrals.claimId, claim.id));
     expect(rows.length).toBe(1);
+  });
+
+  it("sends the incident date as a date the model can read, not an epoch run the scrubber eats", async () => {
+    const claim = await seedClaim({ incidentAt: LUHN_MS, reportedAt: LUHN_MS + 86_400_000 });
+    const { gw, stub } = stubbedGateway({ replies: ['{"score":10,"indicators":[]}'] });
+
+    await scoreFraud(ctx, claim, gw);
+
+    const sent = lastPromptSentToProvider(stub);
+    expect(sent).toContain("2026-06-16T01:00:00.000Z");
+    expect(sent).toContain("2026-06-17T01:00:00.000Z");
+    expect(sent, "an epoch instant reached the scrubber and was redacted as a card number").not.toContain("[[CARD_");
+  });
+
+  it("still scores a claim whose stored instant is outside the range a Date can hold", async () => {
+    // FNOL rejects these at the door now, but rows predate that bound and a
+    // backfill can write anything. The failure mode here is the quiet one:
+    // `new Date(9e15).toISOString()` throws, `scoreFraud`'s catch returns null,
+    // and the claim goes unscored with no error anywhere. `promptInstant` renders
+    // it "unknown" instead, so the rest of the claim is still assessed.
+    const claim = await seedClaim({ incidentAt: 9e15 });
+    const { gw, stub } = stubbedGateway({
+      replies: ['{"score":30,"indicators":[{"code":"late_report","weight":30,"evidenceRef":"reportedAt"}]}']
+    });
+
+    const scored = await scoreFraud(ctx, claim, gw);
+    expect(scored, "an unrenderable instant silently disabled fraud scoring").not.toBeNull();
+    expect(scored!.result.score).toBe(30);
+    expect(lastPromptSentToProvider(stub)).toContain("unknown");
   });
 
   it("drops indicators with no evidenceRef and forces the score to zero when none survive", async () => {
