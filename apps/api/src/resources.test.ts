@@ -525,6 +525,94 @@ describe("expiry columns in the generated shape", () => {
   });
 });
 
+describe("instant columns named outside the four rules", () => {
+  // The `isInstantKey` census claimed none of the seven off-rule instant columns
+  // sat on a writable resource. Two do: `signal/aeo-pages` is `rw("signal:aeo")`
+  // (resources.ts:608 — create + update + remove) and `signal/budget-moves`
+  // takes `update` (resources.ts:604). So `freshness` and `reversibleUntil` fell
+  // through `shapeOf` to a plain `z.number().int()` — a *safe*-integer check,
+  // which lets (8.64e15, 9.007e15] through — and persisted an instant no `Date`
+  // can hold. Both render through the guarded `<DateTime>` today, so the hole
+  // was open rather than bleeding; it is closed at the write door here.
+  const resource = (module: string, path: string): Resource => {
+    const r = BY_MODULE[module]?.find((x) => x.path === path);
+    if (!r) throw new Error(`no ${module}/${path} resource`);
+    return r;
+  };
+
+  // `signal/budget-moves` gates its update on `signal.budget_move`; cleared the
+  // way a tenant clears it, so the 400 below is the instant bound and nothing else.
+  const autoApproved: Partial<Ctx> = {
+    policy: PolicyJson.parse({ autoApprove: ["signal.budget_move"] })
+  };
+
+  beforeAll(async () => {
+    await ctx.db.insert(schema.signalAeoPages).values({
+      id: "aeo_instant",
+      tenantId: ctx.tenantId,
+      queryCluster: "motor-renewal",
+      contentRef: "cnt_instant",
+      freshness: NOW,
+      createdAt: NOW,
+      updatedAt: NOW
+    } as never);
+    await ctx.db.insert(schema.signalBudgetMoves).values({
+      id: "bmv_instant",
+      tenantId: ctx.tenantId,
+      fromRef: "camp_a",
+      toRef: "camp_b",
+      amountMinor: 5000,
+      currency: "AED",
+      reason: "underspend",
+      approvedBy: "auto",
+      reversibleUntil: NOW,
+      ts: NOW
+    } as never);
+  });
+
+  const freshnessOf = async (): Promise<number | null | undefined> => {
+    const [row] = await ctx.db.select().from(schema.signalAeoPages).where(eq(schema.signalAeoPages.id, "aeo_instant"));
+    return row?.freshness;
+  };
+  const reversibleUntilOf = async (): Promise<number | undefined> => {
+    const [row] = await ctx.db
+      .select()
+      .from(schema.signalBudgetMoves)
+      .where(eq(schema.signalBudgetMoves.id, "bmv_instant"));
+    return row?.reversibleUntil;
+  };
+
+  it("refuses a freshness past the end of the Date range", async () => {
+    const res = await send(router(resource("signal", "aeo-pages")), "PATCH", "/aeo_instant", { freshness: 9e15 });
+    expect(res.status).toBe(400);
+    expect(await freshnessOf()).toBe(NOW);
+  });
+
+  it("still accepts a freshness a Date can hold", async () => {
+    const res = await send(router(resource("signal", "aeo-pages")), "PATCH", "/aeo_instant", {
+      freshness: NOW + 86_400_000
+    });
+    expect(res.status).toBe(200);
+    expect(await freshnessOf()).toBe(NOW + 86_400_000);
+  });
+
+  it("refuses a reversibleUntil past the end of the Date range", async () => {
+    const res = await send(router(resource("signal", "budget-moves"), autoApproved), "PATCH", "/bmv_instant", {
+      reversibleUntil: 9e15
+    });
+    expect(res.status).toBe(400);
+    expect(await reversibleUntilOf()).toBe(NOW);
+  });
+
+  it("still accepts a reversibleUntil a Date can hold", async () => {
+    const res = await send(router(resource("signal", "budget-moves"), autoApproved), "PATCH", "/bmv_instant", {
+      reversibleUntil: NOW + 86_400_000
+    });
+    expect(res.status).toBe(200);
+    expect(await reversibleUntilOf()).toBe(NOW + 86_400_000);
+  });
+});
+
 describe("invoice state machine through generic CRUD", () => {
   const invoices = () => router(ledgerResource("invoices"));
   const create = async (n: number, over: Record<string, unknown> = {}) => {
