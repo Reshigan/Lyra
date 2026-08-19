@@ -122,8 +122,11 @@ async function seedQuoteCluster(category: string, count: number, at: number): Pr
 
 describe("sweepWhitespace", () => {
   it("drafts a candidate's description through the gateway and persists the reply", async () => {
-    await seedQuoteCluster("home", 20, ctx.now);
-    const { stub, gw } = stubbedGateway({ replies: ["Home demand is climbing fast against a thin book."] });
+    // Not "home" or "motor": the sweep skips any category that already has a
+    // live whitespace, and seedScout seeds those. "cyber" has neither a
+    // product nor a seeded row, so it is genuinely fresh.
+    await seedQuoteCluster("cyber", 20, ctx.now);
+    const { stub, gw } = stubbedGateway({ replies: ["Cyber demand is climbing fast against a thin book."] });
 
     const count = await sweepWhitespace(ctx, gw);
     expect(count).toBe(1);
@@ -134,9 +137,9 @@ describe("sweepWhitespace", () => {
     const [row] = await ctx.db
       .select()
       .from(schema.scoutWhitespaces)
-      .where(and(eq(schema.scoutWhitespaces.tenantId, tenantId), eq(schema.scoutWhitespaces.category, "home")));
+      .where(and(eq(schema.scoutWhitespaces.tenantId, tenantId), eq(schema.scoutWhitespaces.category, "cyber")));
     expect(row).toBeDefined();
-    expect(row!.description).toBe("Home demand is climbing fast against a thin book.");
+    expect(row!.description).toBe("Cyber demand is climbing fast against a thin book.");
   });
 
   it("falls back to the deterministic template when the gateway call fails", async () => {

@@ -138,13 +138,18 @@ export async function promoteWhitespace(
   // audit row and the event, because signal_campaigns has no whitespace_id
   // column. Upgrade path is that column; then this comment and the variantGroup
   // convention both go away and the join is direct.
+  //
+  // Same doctrine as `draftBrief` below (docs/15 §4 — AI drafts, it does not
+  // gate): a generator failure leaves the promotion with zero drafts, not a 500.
+  // The campaign, the state hop, the audit row and the event carry no model
+  // output, and the tray already reads "Handed over. Nothing drafted yet."
   const generated = await generateCreatives(ctx, gateway, {
     campaignId,
     kind: "ad",
     brief: `${drafted.brief.proposition}\n\n${drafted.brief.brief}`,
     variantGroup: whitespaceId,
     count: DRAFT_VARIANTS
-  });
+  }).catch(() => ({ variants: [], auditIds: [] }) as Awaited<ReturnType<CreativeGenerator>>);
 
   await ctx.db
     .update(schema.scoutWhitespaces)

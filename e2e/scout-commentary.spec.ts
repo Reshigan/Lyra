@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { content, goto, loginAsScoutLead } from "./fixtures.js";
+import { content, goto, loginAsScoutLead, loginAsSignalLead } from "./fixtures.js";
 
 // J-P1 "the pivot" (docs/06-roles-and-journeys.md), the radar half: the reader's
 // commentary on a whitespace is read where the decision is argued, and the
@@ -24,8 +24,11 @@ test("J-P1 whitespace commentary reads on hover and on focus, then converts into
   await goto(page, "/scout/radar");
 
   // Dots are named by their cluster's theme (scout.shared.ts dots()). Seeded in
-  // packages/core/src/seed/scout.ts.
-  const dot = content(page).getByRole("link", { name: /Agency repair lost at renewal/ }).first();
+  // packages/core/src/seed/scout.ts. "EV motor cover" is the `validating` row:
+  // the handover below is a hop to `validated`, and the seed's `validated` row
+  // ("Agency repair lost at renewal") already has a campaign, so promoting it
+  // again is a 409 by design (WHITESPACE_TRANSITIONS has no validated self-hop).
+  const dot = content(page).getByRole("link", { name: /EV motor cover/ }).first();
   await expect(dot).toBeVisible();
 
   const ghostId = await dot.getAttribute("aria-describedby");
@@ -92,6 +95,17 @@ test("J-P1 whitespace commentary reads on hover and on focus, then converts into
   // "none sent" is the point: the model wrote, it did not publish.
   await expect(tray).toContainText(/Handed over\./);
   await expect(tray).toContainText(/none sent\.|Nothing drafted yet\./);
-  await tray.getByRole("link", { name: "Read the drafts" }).click();
-  await page.waitForURL(/\/signal\/studio\?campaignId=/);
+  // The tray offers no studio link here, and that is the RBAC answer, not a gap:
+  // scout.lead has no signal permission (packages/core/src/rbac.ts), so SIGNAL is
+  // not in its shell list and the link would lead to a 403. J-P1 ends at the
+  // handover; the campaign is picked up on the other side of the bus.
+  await expect(tray.getByRole("link", { name: "Read the drafts" })).toHaveCount(0);
+
+  // The other side: the campaign the handover created is waiting as a draft in
+  // the studio for the person who owns campaigns. With no model bound in e2e the
+  // brief is the deterministic fallback, so its name is `<category> — unserved
+  // demand` (fallbackWhitespaceBrief) — "EV motor cover" sits on the motor line.
+  await loginAsSignalLead(page);
+  await goto(page, "/signal/studio");
+  await expect(content(page).getByText("motor — unserved demand").first()).toBeVisible();
 });

@@ -98,6 +98,22 @@ beforeAll(async () => {
       updatedAt: NOW
     },
     {
+      // No model at all reaches this one: the promotion still has to commit.
+      id: "wsp_nomodel",
+      tenantId,
+      description: "Marine demand with nothing on the book, briefed with no model available.",
+      category: "marine",
+      clusterId: null,
+      evidenceRefsJson: REFS,
+      demandEstimate: 55,
+      competitionScore: 20,
+      status: "candidate",
+      owner: null,
+      promotedAt: null,
+      createdAt: NOW,
+      updatedAt: NOW
+    },
+    {
       // The deterministic fallback sentence: carries no ✦, by construction.
       id: "wsp_fallback",
       tenantId,
@@ -419,5 +435,50 @@ describe("POST /whitespaces/:id/promote-to-signal", () => {
     expect(res.body.briefSource).toBe("fallback");
     expect(res.body.brief).toMatchObject({ confidence: 0, objective: "acq" });
     expect(JSON.stringify(res.body.brief)).not.toContain("4.2m");
+  });
+
+  it("promotes with no drafts when the creative generator has no usable model", async () => {
+    // docs/15 §4 — AI drafts, it does not gate. `draftBrief` has always fallen
+    // back; the creative call did not, so anywhere without a model binding (e2e,
+    // a provider outage) the whole promotion 500'd and the SCOUT -> SIGNAL
+    // handover was unreachable. The campaign, the hop and the event do not
+    // depend on a model; only the draft count does.
+    const dead = new Gateway({
+      env: {},
+      providers: (() => {
+        const stub = makeStub({ fail: new Error("workers-ai: AI binding missing") });
+        return { "workers-ai": stub, anthropic: stub, "openai-compat": stub };
+      })()
+    });
+
+    const first = await send(app({}, dead), "POST", "/whitespaces/wsp_nomodel/promote-to-signal");
+    expect(first.body.code).toBe("approval_required");
+    const [pending] = await ctx.db
+      .select()
+      .from(schema.approvals)
+      .where(and(eq(schema.approvals.tenantId, tenantId), eq(schema.approvals.subjectRef, "whitespaces:wsp_nomodel")));
+    await decide(ctx, pending!.id, "approved");
+
+    const res = await send(app({}, dead), "POST", "/whitespaces/wsp_nomodel/promote-to-signal");
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({ state: "committed", drafts: 0, briefSource: "fallback" });
+    expect(res.body.creatives).toEqual([]);
+    expect(await draftsFor("wsp_nomodel")).toHaveLength(0);
+
+    // The parts that never needed a model still happened.
+    expect(await promoted((res.body.brief as unknown as { name: string }).name)).toHaveLength(1);
+    const [row] = await ctx.db
+      .select({ status: schema.scoutWhitespaces.status })
+      .from(schema.scoutWhitespaces)
+      .where(and(eq(schema.scoutWhitespaces.tenantId, tenantId), eq(schema.scoutWhitespaces.id, "wsp_nomodel")));
+    expect(row!.status).toBe("validated");
+    // The subject lives inside the envelope — event_outbox has no column for it.
+    const events = await ctx.db
+      .select({ envelopeJson: schema.eventOutbox.envelopeJson })
+      .from(schema.eventOutbox)
+      .where(
+        and(eq(schema.eventOutbox.tenantId, tenantId), eq(schema.eventOutbox.type, "scout.whitespace.promoted"))
+      );
+    expect(events.filter((e) => (JSON.parse(e.envelopeJson) as { subject?: string }).subject === "wsp_nomodel")).toHaveLength(1);
   });
 });
