@@ -126,6 +126,23 @@ describe("AXIS bordereaux (docs/27 §E)", () => {
     expect(generated.bordereau.commissionMinor).toBe(expectedCommission);
   });
 
+  // `^\d{4}-\d{2}$` accepts `2026-13`, and `Date.UTC(2026, 12, 1)` rolls into
+  // January 2027 without complaining — a bordereau labelled one month and
+  // summing another, which is a regulatory return.
+  it("refuses a period that is not a real month", async () => {
+    const policyId = await boundPolicy(`BDX-BAD-${Date.now()}`, Date.now());
+    const providerId = (await policyRow(policyId)).providerId;
+
+    const res = await call("POST", "/v1/axis/bordereaux", {
+      direction: "outbound",
+      counterpartyKind: "provider",
+      counterpartyId: providerId,
+      kind: "premium",
+      period: "2026-13"
+    });
+    expect(res.status).toBe(400);
+  });
+
   it("regenerating the same period is idempotent", async () => {
     const policyId = await boundPolicy(`BDX-I-${Date.now()}`, Date.now());
     await accrueCommission(policyId);

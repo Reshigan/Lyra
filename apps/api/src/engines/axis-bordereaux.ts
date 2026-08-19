@@ -2,6 +2,7 @@ import { and, eq, gte, lt } from "drizzle-orm";
 import { z } from "zod";
 import { id as newId, schema } from "@lyra/db";
 import { actorRef, audit, badRequest, conflict, emit, scoped, type Ctx } from "@lyra/core";
+import { IsoMonth } from "../http.js";
 
 // docs/27 §E. A bordereau is the periodic reconciliation file between us and
 // a provider/channel/partner: what we say happened this period vs what they
@@ -31,7 +32,10 @@ export const GenerateBordereauBody = z.object({
   counterpartyKind: z.enum(["provider", "channel", "partner"]),
   counterpartyId: z.string().min(1),
   kind: z.enum(["premium", "claims", "combined"]),
-  period: z.string().regex(/^\d{4}-\d{2}$/, "period must be YYYY-MM"),
+  // `IsoMonth`, not the bare shape: `2026-13` matched, and `Date.UTC(2026, 12,
+  // 1)` in `periodRange` rolls it into January 2027 — a regulatory return
+  // labelled one month and summing another, with nothing to notice it.
+  period: IsoMonth,
   currency: z.string().length(3).default("AED"),
   lines: z.array(RawLine).default([])
 });

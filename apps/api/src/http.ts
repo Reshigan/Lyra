@@ -65,6 +65,30 @@ export function instantParam(raw: string | undefined): number | undefined {
 }
 
 /**
+ * A calendar day, and a real one: `^\d{4}-\d{2}-\d{2}$` alone accepts
+ * `9999-99-99` and `2026-02-30`, which the readers downstream turn into
+ * `new Date("9999-99-99T00:00:00Z")` — `Invalid Date`, then `RangeError` from
+ * the middle of whatever was being generated. The round trip is the check:
+ * `Date` normalises Feb 30 to Mar 2, so a string that does not come back
+ * unchanged was never a day.
+ */
+export const IsoDay = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "must be YYYY-MM-DD")
+  .refine((s) => {
+    // `Date.parse` first: `toISOString()` on an unparseable string throws, and
+    // a validator that throws is the defect it is here to prevent.
+    const ms = Date.parse(`${s}T00:00:00Z`);
+    return Number.isFinite(ms) && new Date(ms).toISOString().slice(0, 10) === s;
+  }, "is not a real calendar day");
+
+/** The same check a month at a time: `2026-99` rolls over into a wrong window. */
+export const IsoMonth = z
+  .string()
+  .regex(/^\d{4}-\d{2}$/, "must be YYYY-MM")
+  .refine((s) => Number(s.slice(5)) >= 1 && Number(s.slice(5)) <= 12, "is not a real calendar month");
+
+/**
  * Whether a field name means "epoch milliseconds", by convention — the schema
  * has no marker for it, so the name is all there is to go on.
  *
