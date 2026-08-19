@@ -365,6 +365,63 @@ describe("timestamp columns in the generated shape", () => {
   });
 });
 
+describe("payment plans in the generated shape", () => {
+  // The generated shape validates a `*Json` column as "an object, an array, or
+  // a string" and stops there, so `axis_policies.payment_plan_json` — the
+  // schedule the lapse sweep reads to decide whether cover ends unpaid
+  // (engines/axis-lifecycle.ts) — was writable as anything at all. A plan the
+  // sweep cannot parse is not a loud failure: `missedInstalment` fails open, so
+  // lapse-on-missed silently stops applying and the policy stays on risk.
+  const policies = (): Resource => {
+    const r = BY_MODULE.axis?.find((x) => x.path === "policies");
+    if (!r) throw new Error("no axis/policies resource");
+    return r;
+  };
+
+  beforeAll(async () => {
+    await ctx.db.insert(schema.axisPolicies).values({
+      id: "pol_plan",
+      tenantId: ctx.tenantId,
+      customerId: "cus_plan",
+      providerId: "prv_plan",
+      policyNo: "POL-PLAN",
+      startAt: NOW,
+      endAt: NOW,
+      premiumMinor: 1000,
+      currency: "AED",
+      status: "active",
+      createdAt: NOW,
+      updatedAt: NOW
+    } as never);
+  });
+
+  const planOf = async (): Promise<string | null | undefined> => {
+    const [row] = await ctx.db.select().from(schema.axisPolicies).where(eq(schema.axisPolicies.id, "pol_plan"));
+    return row?.paymentPlanJson;
+  };
+
+  it("refuses a plan the lapse sweep cannot read", async () => {
+    const res = await send(router(policies()), "PATCH", "/pol_plan", {
+      paymentPlanJson: { lapseOnMissed: true, instalments: [{ seq: "one", dueAt: "next month", state: "due" }] }
+    });
+    expect(res.status).toBe(400);
+    expect(await planOf()).toBeNull();
+  });
+
+  it("refuses a plan that is not a plan at all", async () => {
+    const res = await send(router(policies()), "PATCH", "/pol_plan", { paymentPlanJson: [1, 2, 3] });
+    expect(res.status).toBe(400);
+    expect(await planOf()).toBeNull();
+  });
+
+  it("accepts a plan the sweep can read", async () => {
+    const plan = { graceDays: 7, lapseOnMissed: true, instalments: [{ seq: 1, dueAt: NOW, state: "due" }] };
+    const res = await send(router(policies()), "PATCH", "/pol_plan", { paymentPlanJson: plan });
+    expect(res.status).toBe(200);
+    expect(JSON.parse((await planOf()) as string)).toEqual(plan);
+  });
+});
+
 describe("effective-dating columns in the generated shape", () => {
   // `dist/offerings` gates its updates on `dist.offering_publish`; the gate is
   // cleared the way a tenant clears it, by putting the key on its own

@@ -1,6 +1,6 @@
 import { eq, inArray } from "drizzle-orm";
 import { id } from "@lyra/db";
-import { schema } from "@lyra/db";
+import { PaymentPlanJson, schema } from "@lyra/db";
 import { badRequest, can, checkKAnonymity, CUSTOMER_PII, DEFAULT_K_FLOOR, gate, scoped, sealFields } from "@lyra/core";
 import { SENSITIVE_EXTRACTION_FIELDS } from "@lyra/model-gateway";
 import { fieldKey } from "./env.js";
@@ -306,7 +306,37 @@ export const AXIS = register(
     read: "axis:policies:read",
     create: "axis:policies:create",
     update: "axis:policies:update"
-  }, { searchable: ["policyNo"], approval: { create: "axis.bind", amountField: "premiumMinor" } }),
+  }, {
+    searchable: ["policyNo"],
+    // ponytail: the create is gated, the update is not. `paymentPlanJson` and
+    // `premiumMinor` are both writable through PATCH with only
+    // `axis:policies:update`, so a bound policy's instalment schedule — what
+    // decides whether cover lapses unpaid — changes without a second pair of
+    // eyes (CLAUDE.md §12). Left as it is deliberately in this wave: widening
+    // the gate to `update` puts every routine field edit through approval, so
+    // the fix is a field-level gate (`approval.updateFields`) rather than a
+    // blanket one, and that is a crud.ts change with its own tests.
+    approval: { create: "axis.bind", amountField: "premiumMinor" },
+    // The shape crud.ts generates for a `*Json` column stops at "object, array
+    // or string" (see `isJsonColumn`), so without this the sweep's own input is
+    // whatever a caller typed. Validated here rather than in the shape because
+    // that is where the other JSON columns are checked (`extractionJson` above).
+    beforeWrite: (_ctx, values) => {
+      if (values.paymentPlanJson === undefined || values.paymentPlanJson === null) return values;
+      const raw = values.paymentPlanJson;
+      let parsed: unknown = raw;
+      if (typeof raw === "string") {
+        try {
+          parsed = JSON.parse(raw);
+        } catch {
+          throw badRequest("paymentPlanJson is not valid JSON");
+        }
+      }
+      const plan = PaymentPlanJson.safeParse(parsed);
+      if (!plan.success) throw badRequest("paymentPlanJson is not a payment plan the lapse sweep can read");
+      return values;
+    }
+  }),
   r("escrow-batches", schema.axisEscrowBatches, "esc", "axis", {
     read: "axis:escrow:read",
     update: "axis:escrow:reconcile"

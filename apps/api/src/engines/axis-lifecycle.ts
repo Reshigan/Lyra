@@ -1,6 +1,6 @@
 import { and, asc, eq, inArray, isNotNull, lte } from "drizzle-orm";
 import { z } from "zod";
-import { id as newId, schema } from "@lyra/db";
+import { id as newId, schema, PaymentPlanJson } from "@lyra/db";
 import {
   actorRef,
   assertPolicyTransition,
@@ -624,23 +624,18 @@ export async function renewPolicy(ctx: Ctx, prior: PolicyRow, input: RenewInput)
 
 /* ----------------------------------------------------------------- the sweep */
 
-const PaymentPlan = z.object({
-  graceDays: z.number().int().nonnegative().default(0),
-  lapseOnMissed: z.boolean().default(false),
-  // Not `InstantMs`: this parses the stored `paymentPlanJson`, not a request
-  // body, and nothing here renders `dueAt` through `new Date()`. Bounding it
-  // made one unrenderable instalment fail `safeParse` for the whole plan, which
-  // turns lapse-on-missed off — fail-open on a money path. The trust boundary
-  // is whatever writes the column.
-  instalments: z
-    .array(z.object({ seq: z.number().int(), dueAt: z.number().int(), state: z.string() }))
-    .default([])
-});
-
-/** First instalment still unpaid past its grace window, if any. */
+/**
+ * First instalment still unpaid past its grace window, if any.
+ *
+ * `PaymentPlanJson` (packages/db) rather than a shape local to this file: the
+ * write door validates against the same one (resources.ts), so a plan that gets
+ * stored is a plan this can read. The parse stays lenient and fail-open all the
+ * same — nothing here renders `dueAt` through `new Date()`, and refusing to
+ * read a plan means declining to lapse a policy that has gone unpaid.
+ */
 function missedInstalment(planJson: string | null, now: number): { seq: number; dueAt: number } | null {
   if (!planJson) return null;
-  const parsed = PaymentPlan.safeParse(JSON.parse(planJson));
+  const parsed = PaymentPlanJson.safeParse(JSON.parse(planJson));
   if (!parsed.success || !parsed.data.lapseOnMissed) return null;
   const grace = parsed.data.graceDays * DAY_MS;
   const missed = parsed.data.instalments

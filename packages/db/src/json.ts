@@ -176,6 +176,28 @@ export const GuardrailsJson = z.object({
 });
 export type GuardrailsJson = z.infer<typeof GuardrailsJson>;
 
+/* ---------------------------------------------------------- payment plans */
+
+/**
+ * `axis_policies.payment_plan_json` — the instalment schedule the lapse sweep
+ * reads to decide whether cover ends unpaid (apps/api/src/engines/axis-lifecycle.ts).
+ *
+ * Every field defaults, because the sweep must be able to read a partial plan:
+ * a plan it cannot parse turns lapse-on-missed off silently, which is fail-open
+ * on a money path. That is also why `dueAt` carries no `InstantMs`-style bound
+ * here — bounding it made one unrenderable instalment fail the whole plan. The
+ * bound belongs on the write door (apps/api/src/resources.ts), which is where
+ * rejecting the value refuses a write instead of dropping a lapse.
+ */
+export const PaymentPlanJson = z.object({
+  graceDays: z.number().int().nonnegative().default(0),
+  lapseOnMissed: z.boolean().default(false),
+  instalments: z
+    .array(z.object({ seq: z.number().int(), dueAt: z.number().int(), state: z.string() }))
+    .default([])
+});
+export type PaymentPlanJson = z.infer<typeof PaymentPlanJson>;
+
 /* ------------------------------------------------------------------- lens */
 
 export const LensJson = z.object({
