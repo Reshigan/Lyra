@@ -11,6 +11,13 @@ import type { Env } from "./env.js";
  * twin and CI keep posting these forms unchallenged. It turns itself on the day
  * the account owner applies `infra/cloudflare/turnstile.tf` and sets the secret —
  * no code change, no flag to remember.
+ *
+ * Turning it on is two settings, not one, and the order matters. This secret is
+ * the half that refuses; `TURNSTILE_SITE_KEY` in apps/web/wrangler.jsonc is the
+ * half that renders the widget the token comes from. Set the secret while web
+ * still has no site key and every one of these forms 403s. Set the site key
+ * first, deploy web, then put the secret. apps/web/wrangler.jsonc says the same
+ * next to the var.
  */
 export const SITEVERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 

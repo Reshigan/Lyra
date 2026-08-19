@@ -20,6 +20,14 @@
     // fallbacks here (logout.tsx, settings.tsx) clear nothing if their Domain
     // differs from the one the API set.
     "SESSION_COOKIE_DOMAIN": "lyra.vantax.co.za"
+    // Turnstile is a PAIR, and half of it is worse than none of it. The API's
+    // gate turns itself on the moment `TURNSTILE_SECRET` is bound (apps/api/src
+    // /turnstile.ts) and from then on refuses any submission without a token.
+    // The token only exists if the widget rendered, and the widget only renders
+    // if this var is set (components/turnstile.tsx). Setting the secret without
+    // adding `"TURNSTILE_SITE_KEY": "0x…"` here 403s every portal lead capture
+    // (J-C1) and every public DSAR intake (J-C4). Turn both on together, in this
+    // order: this var first, deploy web, then `wrangler secret put TURNSTILE_SECRET`.
   },
   "routes": [{ "pattern": "lyra.vantax.co.za", "custom_domain": true }],
   "env": {
@@ -35,6 +43,14 @@
         // fallbacks here (logout.tsx, settings.tsx) clear nothing if their Domain
         // differs from the one the API set.
         "SESSION_COOKIE_DOMAIN": "lyra.vantax.co.za"
+        // Turnstile is a PAIR, and half of it is worse than none of it. The API's
+        // gate turns itself on the moment `TURNSTILE_SECRET` is bound (apps/api/src
+        // /turnstile.ts) and from then on refuses any submission without a token.
+        // The token only exists if the widget rendered, and the widget only renders
+        // if this var is set (components/turnstile.tsx). Setting the secret without
+        // adding `"TURNSTILE_SITE_KEY": "0x…"` here 403s every portal lead capture
+        // (J-C1) and every public DSAR intake (J-C4). Turn both on together, in this
+        // order: this var first, deploy web, then `wrangler secret put TURNSTILE_SECRET`.
       },
       "routes": [{ "pattern": "staging.lyra.vantax.co.za", "custom_domain": true }]
     }
