@@ -8,7 +8,7 @@ import { audit, chainFor, verifyChain } from "./audit.js";
 import { consume, emit, markPublishFailed, MAX_ATTEMPTS, pendingOutbox, type Envelope } from "./events.js";
 import { assertChannel, assertPurpose, recordConsent } from "./consent.js";
 import { decide, gate } from "./approvals.js";
-import { withIdempotency } from "./idempotency.js";
+import { IDEMPOTENCY_TTL_MS, pruneIdempotency, withIdempotency } from "./idempotency.js";
 import { permissionsForRole, type Actor } from "./rbac.js";
 import type { Ctx } from "./context.js";
 import { AppError } from "./errors.js";
@@ -233,6 +233,110 @@ describe("idempotency", () => {
     expect(
       await withIdempotency(ctx, "k2", "POST /v1/axis/cases", { a: 1 }, async () => ({ ok: true }))
     ).toEqual({ ok: true });
+  });
+
+  // No key means no slot: the handler runs every time and nothing is stored, so
+  // a caller who never sends the header is never silently de-duplicated.
+  it.each([
+    ["undefined", undefined],
+    ["an empty string", ""]
+  ])("runs every time and stores nothing when the key is %s", async (_label, key) => {
+    let calls = 0;
+    const run = () => withIdempotency(ctx, key, "POST /v1/axis/cases", { a: 1 }, async () => ({ n: ++calls }));
+    expect(await run()).toEqual({ n: 1 });
+    expect(await run()).toEqual({ n: 2 });
+    expect((await client.execute("SELECT id FROM core_idempotency_keys")).rows).toHaveLength(0);
+  });
+
+  // The slot is (tenant, key, route) — all three. Drop any one and a key reused
+  // legitimately on another route, or by another tenant, replays the wrong body.
+  it("scopes the slot to the route, so the same key on another route runs again", async () => {
+    await withIdempotency(ctx, "k3", "POST /v1/axis/cases", { a: 1 }, async () => ({ id: "cs_1" }));
+    expect(await withIdempotency(ctx, "k3", "POST /v1/axis/claims", { a: 1 }, async () => ({ id: "cl_1" }))).toEqual({
+      id: "cl_1"
+    });
+  });
+
+  it("scopes the slot to the tenant, so another tenant's identical key is its own", async () => {
+    await withIdempotency(ctx, "k4", "POST /v1/axis/cases", { a: 1 }, async () => ({ id: "cs_1" }));
+    const other = { ...ctx, tenantId: "t_2" };
+    expect(await withIdempotency(other, "k4", "POST /v1/axis/cases", { a: 1 }, async () => ({ id: "cs_2" }))).toEqual({
+      id: "cs_2"
+    });
+  });
+
+  // 24h exactly, and the boundary is inclusive of the stored instant: a row whose
+  // expiresAt has arrived is dead, not live.
+  it("honours a key for 24h, then hands the slot to the next caller", async () => {
+    let calls = 0;
+    const run = (now: number) =>
+      withIdempotency({ ...ctx, now }, "k5", "POST /v1/axis/cases", { a: 1 }, async () => ({ n: ++calls }));
+
+    expect(await run(ctx.now)).toEqual({ n: 1 });
+    // One millisecond before expiry: still a replay.
+    expect(await run(ctx.now + IDEMPOTENCY_TTL_MS - 1)).toEqual({ n: 1 });
+    // At expiry: the slot is taken over, and only one row survives.
+    expect(await run(ctx.now + IDEMPOTENCY_TTL_MS)).toEqual({ n: 2 });
+    expect((await client.execute("SELECT id FROM core_idempotency_keys")).rows).toHaveLength(1);
+  });
+
+  it("is 24 hours", () => {
+    expect(IDEMPOTENCY_TTL_MS).toBe(86_400_000);
+  });
+
+  // A replay that lands while the first attempt is still running must not run the
+  // handler a second time — it is a 409, distinct from the reused-key 409.
+  it("refuses a concurrent replay of a key still in flight", async () => {
+    let release = (): void => {};
+    const first = withIdempotency(
+      ctx,
+      "k6",
+      "POST /v1/axis/cases",
+      { a: 1 },
+      () => new Promise<{ id: string }>((resolve) => (release = () => resolve({ id: "cs_1" })))
+    );
+    await expect(
+      withIdempotency(ctx, "k6", "POST /v1/axis/cases", { a: 1 }, async () => ({ id: "cs_2" }))
+    ).rejects.toMatchObject({ code: "conflict", detail: expect.stringContaining("still in flight") });
+    // The row that conflict was read off: the prefixed id and the status word
+    // are contract — the replay path and the prune sweep both read them back.
+    const inFlight = await client.execute("SELECT id, status, response_json FROM core_idempotency_keys");
+    expect(inFlight.rows).toHaveLength(1);
+    expect(String(inFlight.rows[0]!.id)).toMatch(/^idm_/);
+    expect(inFlight.rows[0]!.status).toBe("in_flight");
+    expect(inFlight.rows[0]!.response_json).toBeNull();
+    release();
+    expect(await first).toEqual({ id: "cs_1" });
+    const done = await client.execute("SELECT id, status FROM core_idempotency_keys");
+    expect(done.rows[0]!.id).toBe(inFlight.rows[0]!.id);
+    expect(done.rows[0]!.status).toBe("done");
+  });
+
+  it("hashes the request body canonically, so key order alone is not a different body", async () => {
+    let calls = 0;
+    const run = (request: unknown) =>
+      withIdempotency(ctx, "k7", "POST /v1/axis/cases", request, async () => ({ n: ++calls }));
+    expect(await run({ a: 1, b: 2 })).toEqual({ n: 1 });
+    expect(await run({ b: 2, a: 1 })).toEqual({ n: 1 });
+  });
+
+  it("replays a handler that returned nothing without re-running it", async () => {
+    let calls = 0;
+    const run = () =>
+      withIdempotency(ctx, "k8", "POST /v1/axis/cases", { a: 1 }, async () => {
+        calls++;
+      });
+    expect(await run()).toBeUndefined();
+    expect(await run()).toBeNull(); // stored as JSON null; the point is it did not re-run
+    expect(calls).toBe(1);
+  });
+
+  it("prunes only the keys that have already expired", async () => {
+    await withIdempotency(ctx, "k9", "POST /v1/axis/cases", { a: 1 }, async () => ({ id: "cs_1" }));
+    await pruneIdempotency(ctx.db, ctx.now + IDEMPOTENCY_TTL_MS);
+    expect((await client.execute("SELECT id FROM core_idempotency_keys")).rows).toHaveLength(1);
+    await pruneIdempotency(ctx.db, ctx.now + IDEMPOTENCY_TTL_MS + 1);
+    expect((await client.execute("SELECT id FROM core_idempotency_keys")).rows).toHaveLength(0);
   });
 });
 
