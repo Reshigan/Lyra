@@ -7,9 +7,18 @@
 //
 // extract.ts re-exports `stripFence` for callers that already import it from there.
 
-/** Models sometimes wrap JSON in a code fence despite `responseSchema`; strip it before parsing. */
+/**
+ * Models sometimes wrap JSON in a code fence despite `responseSchema`; strip it
+ * before parsing.
+ *
+ * No `\s*` after the opening fence: `[\s\S]*?` already matches whitespace, so
+ * the two overlapped and a reply of "```" followed by many spaces and no closing
+ * fence backtracked quadratically (CodeQL js/polynomial-redos). The captured
+ * group is trimmed either way, so dropping it changes no output — every reply
+ * that stripped before strips to the same string now.
+ */
 export function stripFence(text: string): string {
-  const m = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const m = text.match(/```(?:json)?([\s\S]*?)```/i);
   return (m?.[1] ?? text).trim();
 }
 
