@@ -251,6 +251,21 @@ async function invoiceSubscription(ctx: Ctx, sub: typeof schema.ledgerSubscripti
   let cursor = sub.nextInvoiceAt ?? ctx.now;
   let count = 0;
 
+  // `nextInvoiceAt` is a stored, nullable column, so it holds whatever was
+  // written before the API bounded it. The catch-up guard below (`cursor <=
+  // ctx.now`) filters large positives and NaN but not large negatives, and
+  // `currentPeriod` of one of those is `"NaN-NaN"`: it became the invoice's
+  // idempotency key, the revenue schedule's period, and the value written back
+  // to `nextInvoiceAt`. A key that is not the period it claims to be does not
+  // match on the next tick, so the same period bills a second time — this is
+  // the one place in the sweep where degrading beats proceeding. Skipped and
+  // logged, like the missing-FX-rate case above, and the cursor is left alone
+  // so the row still shows up next tick for whoever fixes it.
+  if (!Number.isFinite(cursor) || Math.abs(cursor) > 8.64e15) {
+    console.error(`billing: subscription ${sub.id} has a nextInvoiceAt no Date can hold (${cursor}); skipped`);
+    return 0;
+  }
+
   // A subscription bills in its own contract's currency, which need not be the
   // one the tenant reports in. Resolve the rate *before* opening the transaction:
   // posting without one is refused, a refused post fails the transaction, and a
