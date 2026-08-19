@@ -63,13 +63,20 @@ function luhn(value: string): boolean {
 
 /**
  * A CARD hit that is far more likely a caller's epoch-millisecond instant than a
- * card number: exactly 13 digits, and a value inside [1e12, 2e12) — 2001-09-09 to
- * 2033-05-18. It is still redacted; a real PAN in that shape must not leak. The
- * point of telling them apart is the flag, which reaches ai_audit_log
+ * card number. It is still redacted either way; a real PAN in that shape must not
+ * leak. The point of telling them apart is the flag, which reaches ai_audit_log
  * (`guardrailFlagsJson`): a run full of `card_maybe_instant` says a caller is
  * sending millis where ISO-8601 belongs, not that a tenant pastes card numbers.
  *
- * 13-digit Visa PANs start with `4`, so they land in [4e12, 5e12) and never here.
+ * What it actually covers is narrower than "epoch-ms": exactly 13 digits and a
+ * value in [1e12, 2e12) — 2001-09-09 to 2033-05-18. Deliberately so, because
+ * 13-digit Visa PANs start with `4` and land in [4e12, 5e12); widening past 2e12
+ * would start labelling real card numbers as probable timestamps.
+ *
+ * So this flag is a hint, never a census. An instant outside the band — a
+ * 12-digit one before 2001, or `2500000000000` (year 2049) — is redacted with
+ * `pii_card` and no `card_maybe_instant`, and the count of prompt timestamps
+ * eaten by the CARD rule is therefore a floor, not a total.
  */
 function looksLikeEpochMs(hit: string): boolean {
   const digits = hit.replace(/\D/g, "");
