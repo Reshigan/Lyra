@@ -228,7 +228,12 @@ export const PaymentPlanWrite = z
           .object({
             seq: z.number().int(),
             dueAt: z.number().int().min(-8.64e15).max(8.64e15),
-            state: z.string()
+            // The vocabulary axis-lifecycle.ts's lapse sweep branches on, taken
+            // from the sweep rather than from the seed data: it treats anything
+            // that is not exactly "paid" or "waived" as unpaid, so `"Paid"` on
+            // a settled instalment lapses cover on a customer who paid. Casing
+            // follows the sweep. Widen this enum and the sweep in one commit.
+            state: z.enum(["due", "paid", "waived"])
           })
           .strict()
       )

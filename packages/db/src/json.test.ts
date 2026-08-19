@@ -50,7 +50,10 @@ describe("PaymentPlanJson vs PaymentPlanWrite", () => {
     instalments: [{ seq: 1, dueAt: -9e15, grossMinor: 8_333, state: "due" }]
   };
 
-  it("reads a stored plan carrying keys and instants the write door refuses", () => {
+  // One `it`, because the lenient read and the strict write are one decision —
+  // and because the read half alone passes against any version of this file and
+  // so proves nothing on its own.
+  it("reads a stored plan the write door refuses", () => {
     const plan = PaymentPlanJson.parse(stored);
 
     // The sweep only compares `dueAt` to `now`; it never builds a `Date` from
@@ -58,10 +61,27 @@ describe("PaymentPlanJson vs PaymentPlanWrite", () => {
     // instalment rather than turning lapse-on-missed off.
     expect(plan.lapseOnMissed).toBe(true);
     expect(plan.instalments[0]!.dueAt).toBe(-9e15);
+    expect(PaymentPlanWrite.safeParse(stored).success).toBe(false);
   });
 
-  it("refuses that same plan at the write door", () => {
-    expect(PaymentPlanWrite.safeParse(stored).success).toBe(false);
+  it("refuses an instalment state the lapse sweep does not recognise", () => {
+    // `state` was the one field the write door left as `z.string()`, and it is
+    // the field the sweep branches on: axis-lifecycle.ts filters
+    // `state !== "paid" && state !== "waived"`, so a stored `"Paid"` reads as
+    // unpaid — `axis.policy.lapsed` fires and cover ends on a customer who paid.
+    const plan = (state: string): unknown => ({
+      graceDays: 0,
+      lapseOnMissed: true,
+      instalments: [{ seq: 1, dueAt: 1_760_000_000_000, state }]
+    });
+
+    for (const bad of ["Paid", "PAID", "settled"]) {
+      expect(PaymentPlanWrite.safeParse(plan(bad)).success, bad).toBe(false);
+    }
+    // The vocabulary the sweep actually recognises still writes.
+    for (const good of ["due", "paid", "waived"]) {
+      expect(PaymentPlanWrite.safeParse(plan(good)).success, good).toBe(true);
+    }
   });
 
   it("refuses a plan-shaped object rather than defaulting lapse-on-missed off", () => {

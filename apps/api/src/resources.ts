@@ -338,7 +338,10 @@ export const AXIS = register(
       // silently off.
       const plan = PaymentPlanWrite.safeParse(parsed);
       if (!plan.success) throw badRequest("paymentPlanJson is not a payment plan the lapse sweep can read");
-      return values;
+      // The parsed value, not the raw one: `graceDays` has a `.default(0)` that
+      // only lands if the normalised object is what gets stored. crud.ts
+      // stringifies a `*Json` object on the way to the column.
+      return { ...values, paymentPlanJson: plan.data };
     }
   }),
   r("escrow-batches", schema.axisEscrowBatches, "esc", "axis", {

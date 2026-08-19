@@ -442,6 +442,27 @@ describe("payment plans in the generated shape", () => {
     expect(await planOf()).toBeNull();
   });
 
+  // The sweep filters `state !== "paid" && state !== "waived"`, so a plan
+  // stored with `"Paid"` reads as unpaid and lapses cover on a customer who
+  // paid — through a PATCH that needs only `axis:policies:update`.
+  it("refuses an instalment state the sweep would read as unpaid", async () => {
+    const res = await send(router(policies()), "PATCH", "/pol_plan", {
+      paymentPlanJson: { lapseOnMissed: true, instalments: [{ seq: 1, dueAt: NOW, state: "Paid" }] }
+    });
+    expect(res.status).toBe(400);
+    expect(await planOf()).toBeNull();
+  });
+
+  // `graceDays` defaults to 0 in the write shape, and the default only reaches
+  // the column if the normalised parse is what gets stored.
+  it("stores the normalised plan, not the raw body", async () => {
+    const res = await send(router(policies()), "PATCH", "/pol_plan", {
+      paymentPlanJson: { lapseOnMissed: true, instalments: [{ seq: 1, dueAt: NOW, state: "due" }] }
+    });
+    expect(res.status).toBe(200);
+    expect(JSON.parse((await planOf()) as string).graceDays).toBe(0);
+  });
+
   it("accepts a plan the sweep can read", async () => {
     const plan = { graceDays: 7, lapseOnMissed: true, instalments: [{ seq: 1, dueAt: NOW, state: "due" }] };
     const res = await send(router(policies()), "PATCH", "/pol_plan", { paymentPlanJson: plan });
