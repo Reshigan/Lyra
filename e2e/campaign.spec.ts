@@ -20,15 +20,15 @@ import {
 //      but still writes to the audit log.
 //   3. a marketer without the launch permission is refused.
 //
-// The docs' "20 ar/en variants" and "compliance lane" have no UI behind them
-// in this acceptance test's real scope: signal:creatives has a create form
-// (apps/web/app/modules/signal.ts) but authoring 20 localized variants in one
-// action is not a real affordance (one row per submit, no bulk-generate
-// button), and "compliance lane" — a creative's complianceStatus edit — is
-// gated on a *different* permission (signal:creatives:approve) that this test
-// never exercises. Per CLAUDE.md's TDD rule, the test matches the
-// journeys.test.ts scope, not the docs' aspirational prose; creatives are not
-// touched here.
+// The docs' "20 ar/en variants" and "compliance lane" are outside this
+// acceptance test's scope, but both do have a UI now: the studio
+// (apps/web/app/routes/signal-studio.tsx) generates `count` variants across
+// the ticked `locales` in one submit, and clears or blocks each one
+// ("clear-variant" -> passed, "discard-variant" -> blocked) — that lane is
+// still gated on a different permission (signal:creatives:approve) than the
+// launch this test exercises. Per CLAUDE.md's TDD rule, the test matches the
+// journeys.test.ts scope, not the docs' prose; creatives are not touched here,
+// and the cockpit half of the journey is the last test in this file.
 //
 // Two further, real gaps in what the UI can reach:
 //   - The campaign create form's `objective` select only offers
@@ -134,4 +134,33 @@ test("J-M1 a marketer without the launch permission is refused the whole campaig
   // refused (root.tsx's ErrorBoundary renders the RFC 9457 status as prose,
   // apps/web/app/i18n/en.ts "error.forbidden") before a launch is ever tried.
   await expect(page.getByText("Your roles do not include access to this area.")).toBeVisible();
+});
+
+// The cockpit close of J-M1: "publish -> cockpit shows CAC by evening"
+// (docs/06-roles-and-journeys.md:66-67), on /signal/cockpit. CAC is derived,
+// not stored — signal.shared.ts's cacMinor(spend, binds) is null when nothing
+// bound — so what the figure has to be is checked against the binds figure
+// beside it rather than against a number baked into this spec.
+test("J-M1 the growth cockpit shows CAC for the window @journey:J-M1 @accept:M4", async ({ page }) => {
+  await loginAsSignalLead(page);
+
+  // The widest window the cockpit offers, so the seeded year of spend and
+  // binds is inside it (signal.shared.ts WINDOWS).
+  await goto(page, "/signal/cockpit?days=90");
+
+  // KPIWall is a plain grid div (packages/ui/src/data.tsx) with no accessible
+  // name, so its inline template is what pins the reads to the wall rather than
+  // to a table cell that happens to say the same word. Stat draws the label
+  // span and then the value span, so the value is the label's next sibling.
+  const wall = page.locator("div[style*='auto-fill']");
+  const stat = (label: string) => wall.getByText(label, { exact: true }).locator("xpath=following-sibling::span[1]");
+  await expect(stat("Spent this window")).toBeVisible();
+  const binds = Number((await stat("Signed").innerText()).replace(/[^0-9]/g, ""));
+  const cac = stat("Cost per acquisition");
+  if (binds > 0) {
+    // Money, so it carries digits — "Not enough data yet" would not.
+    await expect(cac).toHaveText(/[0-9]/);
+  } else {
+    await expect(cac).toHaveText("Not enough data yet");
+  }
 });

@@ -1,7 +1,8 @@
 import { expect, test } from "@playwright/test";
 import { goto, loginAsScoutLead, loginAsNorthExec } from "./fixtures.js";
 
-// @journey:J-SCOUT-SHELL (docs/superpowers/specs/2026-08-16-scout-shell-fork-design.md):
+// @journey:J-P1 — where J-P1 radar quarterly is worked
+// (docs/06-roles-and-journeys.md:73, docs/superpowers/specs/2026-08-16-scout-shell-fork-design.md):
 // ScoutShell is its own scoped shell — an actor with a scout.*-resolving role
 // lands in it and sees only SCOUT's own rail (never another module's,
 // ModuleSwitcher only appears once an actor's roles resolve to more than one

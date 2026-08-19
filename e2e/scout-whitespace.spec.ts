@@ -81,3 +81,29 @@ test("J-P1 a whitespace candidate is validated and given an owner @journey:J-P1 
   await expect(page.locator("dl").getByText("Validated", { exact: true })).toBeVisible();
   await expect(page.locator("dl").getByText("tariq.mansour", { exact: true })).toBeVisible();
 });
+
+// The close of J-P1: a promoted whitespace runs as a bounded experiment and
+// someone records the call on it (/scout/experiments). The decision is logged
+// against the person making it (scout-experiments.tsx "xp.decideHint"), so the
+// screen states it as a form, not as a row edit.
+test("J-P1 a scout lead records a decision on an experiment @journey:J-P1 @accept:M5", async ({ page }) => {
+  await loginAsScoutLead(page);
+  await goto(page, "/scout/experiments");
+
+  const table = page.getByRole("table", { name: "Experiments", exact: true });
+  const first = table.locator("tbody tr").first();
+  await expect(first).toBeVisible();
+  // The picker's default is the same first row (defaultValue rows[0].id), so
+  // only the decision has to be chosen — and it has to be a decision this
+  // experiment is not already sitting on, or the assertion would pass without
+  // anything happening.
+  const parked = (await first.innerText()).includes("Parked");
+  const decision = parked ? "Running" : "Parked";
+
+  // The star is part of the label text Field renders for a required field
+  // (packages/ui/src/primitives.tsx), and getByLabel reads label text.
+  await chooseOption(page, "Decision*", decision);
+  await page.getByRole("button", { name: "Record a decision", exact: true }).click();
+  await expect(page.getByRole("status")).toHaveText("Decision recorded.");
+  await expect(table.locator("tbody tr").first()).toContainText(decision);
+});

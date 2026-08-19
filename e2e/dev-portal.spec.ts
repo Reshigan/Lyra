@@ -11,12 +11,15 @@ import { confirmAction, goto, loginAsTenantAdmin } from "./fixtures.js";
 //   2. /health needs no credential; /v1/me does.
 //   3. a garbage bearer token is refused (401), not silently treated as absent.
 //
-// There is no dev-portal route anywhere in apps/web/app/routes.ts, no SDK
-// snippet, no webhook tester, and no "dev.admin" role in
-// packages/core/src/rbac.ts — none of the docs' aspirational surfaces exist.
-// The one real, reachable developer-facing surface in this app is the API
-// keys panel on Settings (apps/web/app/routes/settings.tsx:951-982, reached
-// from the account menu, not the module rail — apps/web/app/routing.ts:30):
+// The dev portal and the webhook tester now exist — apps/web/app/routes
+// /admin-developer.tsx, registered at /admin/developer, whose per-endpoint
+// "Send test event" really posts a signed delivery (POST /v1/core/webhooks
+// /:id/test -> apps/api/src/dispatch.ts's deliver()) and reports the verdict.
+// The third test below covers it. Still absent: an SDK snippet anywhere in
+// apps/web, and any "dev.admin" role in packages/core/src/rbac.ts.
+// The other real developer-facing surface is the API keys panel on Settings
+// (apps/web/app/routes/settings.tsx:951-982, reached from the account menu,
+// not the module rail — apps/web/app/routing.ts:30):
 // mint a test or live key, see the plaintext once, list it, revoke it.
 // "Promote to live" is not a distinct approval step either: routes/core.ts's
 // POST /v1/core/api-keys never calls gate() — minting a "live" key takes the
@@ -117,4 +120,27 @@ test("J-D1 a tenant admin issues a test key from Settings, calls the API with it
     headers: { authorization: `Bearer ${secret}` }
   });
   expect(after.status()).toBe(401);
+});
+
+// "webhook tester green" (docs/06-roles-and-journeys.md:94-95). The verdict is
+// asserted as either verdict on purpose: the seeded endpoints point at
+// https://ops.gonxt.ae (packages/core/src/seed/admin.ts:443-500) and nothing
+// in this stack can answer as that host, so a green here would only mean the
+// runner had internet. What is under test is that the button performs a real
+// delivery attempt and reports its outcome — a status code or an error — and
+// not that the outside world is reachable.
+test("J-D1 the developer portal's webhook tester sends a test delivery and reports the verdict @journey:J-D1 @accept:M1", async ({
+  page
+}) => {
+  await loginAsTenantAdmin(page);
+
+  await goto(page, "/admin/developer");
+  const hooks = page.getByRole("table", { name: "Webhook endpoints and their signing state", exact: true });
+  const row = hooks.locator("tbody tr").first();
+  await expect(row).toBeVisible();
+
+  await row.getByRole("button", { name: "Send test event", exact: true }).click();
+
+  await expect(page.getByRole("heading", { name: "Test delivery", exact: true })).toBeVisible();
+  await expect(page.getByText(/^(Delivered|Failed)$/)).toBeVisible();
 });

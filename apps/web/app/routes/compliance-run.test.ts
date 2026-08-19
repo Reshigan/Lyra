@@ -37,12 +37,26 @@ describe("runHeadline", () => {
     ).toBe("headline.evidenceReady:2");
   });
 
+  // Both fixtures are the shapes apps/api/src/routes/compliance.ts actually
+  // returns, not the shape this screen assumed: the purge answers the stored
+  // retention_runs row, which has a `state` and no `dryRun` key. A fixture that
+  // sends `dryRun: false` tests a branch the server never produces.
   it("distinguishes a retention preview from an actual purge", () => {
     expect(
-      runHeadline({ kind: "retention", problem: null, retention: { dryRun: true, rowsAffected: 5 } as never }, l)
+      runHeadline(
+        {
+          kind: "retention",
+          problem: null,
+          retention: { dryRun: true, rowsAffected: 5, retentionMonths: 24 } as never
+        },
+        l
+      )
     ).toBe("headline.retentionPlan:5");
     expect(
-      runHeadline({ kind: "retention", problem: null, retention: { dryRun: false, rowsAffected: 5 } as never }, l)
+      runHeadline(
+        { kind: "retention", problem: null, retention: { state: "done", rowsAffected: 5 } as never },
+        l
+      )
     ).toBe("headline.retentionDone:5");
   });
 });

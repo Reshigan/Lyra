@@ -1,7 +1,8 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { goto, loginAsAxisAgent } from "./fixtures.js";
 
-// @journey:J-HERO-DRILLDOWN (apps/web/app/components/hero.tsx):
+// @journey:J-O1 — the "only failed items" promise of J-O1 exception clearing
+// (docs/06-roles-and-journeys.md:47, apps/web/app/components/hero.tsx):
 // The figure at the top of a screen is a door: clicking it shows exactly the
 // rows it counted. These specs are the only place that claim is checked against
 // a real database rather than a fixture — they read the number the tile printed,

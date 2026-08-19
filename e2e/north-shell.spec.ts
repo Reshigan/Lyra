@@ -1,7 +1,8 @@
 import { expect, test } from "@playwright/test";
 import { goto, loginAsAxisAgent, loginAsNorthExec } from "./fixtures.js";
 
-// @journey:J-NORTH-SHELL (docs/superpowers/specs/2026-08-15-north-shell-fork-design.md):
+// @journey:J-E1 — where J-E1's 7am read is opened, Meridian included
+// (docs/06-roles-and-journeys.md:79, docs/superpowers/specs/2026-08-15-north-shell-fork-design.md):
 // NorthShell is its own scoped shell — an actor with a north.*-resolving role
 // lands in it and sees only NORTH's own rail (never another module's,
 // ModuleSwitcher only appears once an actor's roles resolve to more than one

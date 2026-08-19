@@ -61,9 +61,12 @@ const POLICY_KEYS = ["messages"] as const;
 
 /* ------------------------------------------------------------- the payloads */
 
-// Shapes as apps/api returns them. Declared locally because the web app does not
-// depend on the API's types — if these drift, the API's own contract test is
-// what should fail rather than a build here.
+// Shapes as apps/api/src/routes/compliance.ts returns them — that file is what
+// these three mirror, and it is what to re-read before changing one. Declared
+// locally because the web app does not depend on the API's types; if these
+// drift, the API's own contract test is what should fail rather than a build
+// here — which is exactly why a field the server never sends can sit in one of
+// these for months, so mirror the response, not the shape you expected.
 
 interface ScreeningHit {
   listRef: string;
@@ -104,8 +107,16 @@ interface Bundle {
   manifest: { files: ManifestFile[]; truncated: boolean };
 }
 
+/**
+ * Mirrors the two answers of `POST /v1/compliance/retention/run` in
+ * apps/api/src/routes/compliance.ts §retention. The preview answers `dryRun:
+ * true` with `retentionMonths`; the purge answers the stored `retention_runs`
+ * row, which carries `state` and *no `dryRun` key at all*. So "did it delete?"
+ * is `dryRun !== true` — `dryRun === false` is a branch the server can never
+ * take, and `dryRun?: true` is what makes writing it a type error.
+ */
 interface RetentionResult {
-  dryRun?: boolean;
+  dryRun?: true;
   policyKey: string;
   tableName: string;
   cutoffAt: number;
@@ -385,9 +396,11 @@ export function runHeadline(fresh: ActionResult | undefined, l: Label): string |
       ? l("headline.evidenceFailed")
       : l("headline.evidenceReady", { count: String(fresh.bundle.manifest.files.length) });
   }
-  return fresh.retention.dryRun === false
-    ? l("headline.retentionDone", { count: String(fresh.retention.rowsAffected) })
-    : l("headline.retentionPlan", { count: String(fresh.retention.rowsAffected) });
+  // Same test the result card makes (`planned`), for the same reason: the purge
+  // response omits `dryRun` rather than setting it false.
+  return fresh.retention.dryRun
+    ? l("headline.retentionPlan", { count: String(fresh.retention.rowsAffected) })
+    : l("headline.retentionDone", { count: String(fresh.retention.rowsAffected) });
 }
 
 export async function action({ request, params, context }: ActionFunctionArgs): Promise<ActionResult> {

@@ -55,3 +55,47 @@ test("J-M3 an AEO page is authored against a query cluster @journey:J-M3", async
   await expect(page.locator("dl").getByText(cluster, { exact: true })).toBeVisible();
   await expect(page.locator("dl").getByText(contentRef, { exact: true })).toBeVisible();
 });
+
+// The measure half of J-M3, on /signal/answer-engines: citation share is
+// derived on the way out (signal.shared.ts aeoCoverage: cited / published,
+// rounded), never stored, so what is under test is that the wall agrees with
+// its own parts and moves when a page is published.
+test("J-M3 publishing an answer page moves the citation-share read @journey:J-M3 @accept:M4", async ({ page }) => {
+  await loginAsSignalLead(page);
+
+  const suffix = Date.now();
+  const cluster = `motor excess citation share ${suffix}`;
+  await goto(page, "/signal/aeo-pages");
+  await page.locator("summary", { hasText: "New" }).click();
+  await page.getByLabel("Query cluster*", { exact: true }).fill(cluster);
+  await page.getByLabel("Content*", { exact: true }).fill(`cms:aeo/share-${suffix}`);
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+  await expect(page.getByRole("row", { name: new RegExp(String(suffix)) })).toBeVisible();
+
+  await goto(page, "/signal/answer-engines");
+  // KPIWall is a plain grid div (packages/ui/src/data.tsx) with no accessible
+  // name, so its inline template is what pins these reads to the wall rather
+  // than to the table below, where "Published" is also a badge. Stat draws the
+  // label span then the value span.
+  const wall = page.locator("div[style*='auto-fill']");
+  const stat = async (label: string) =>
+    Number(
+      (await wall.getByText(label, { exact: true }).locator("xpath=following-sibling::span[1]").innerText()).replace(
+        /[^0-9]/g,
+        ""
+      )
+    );
+  const published = await stat("Published");
+  const cited = await stat("Cited");
+  expect(await stat("Citation share")).toBe(published === 0 ? 0 : Math.round((cited / published) * 100));
+
+  // The page just authored is a draft nothing has cited, so publishing it adds
+  // to the denominator only: the share must fall, not hold.
+  const row = page.getByRole("row", { name: new RegExp(String(suffix)) });
+  await row.getByRole("button", { name: "Publish", exact: true }).click();
+  // The revalidation is done when the move that was just made is no longer
+  // offered on that row (StatusControls drops "Publish" once published).
+  await expect(row.getByRole("button", { name: "Publish", exact: true })).toHaveCount(0);
+  expect(await stat("Published")).toBe(published + 1);
+  expect(await stat("Citation share")).toBe(Math.round((cited / (published + 1)) * 100));
+});
