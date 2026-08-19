@@ -18,11 +18,11 @@ import {
   Input,
   KPIWall,
   Money,
-  Stat,
   shortRef,
   type BadgeTone
 } from "@lyra/ui";
 import { ApiError, api, names } from "../api.server";
+import { HeroStat, lensOf, useFocus, type Lens } from "../components/hero";
 import { cloudflare } from "../context";
 import { RefPicker, type RefOption } from "../components/ref-picker";
 import { Gate } from "./staff";
@@ -272,6 +272,37 @@ export function deskGroups(cases: DeskCase[], quotes: DeskQuote[], now: number):
       expiringSoon: bids.filter((bid) => bid.expiry === "soon").length
     };
   });
+}
+
+/**
+ * What each drillable hero figure counted. Two families because the wall counts
+ * two different things: `stat.silent` counts cases, the other two count the bids
+ * underneath them. `stat.cases` is the whole desk and needs no lens.
+ */
+export const GROUP_LENSES: Record<string, Lens<BidGroup>> = {
+  silent: (entry) => entry.bids.length === 0
+};
+
+export const BID_LENSES: Record<string, Lens<Bid>> = {
+  quotes: (bid) => bid.expiry !== "expired",
+  expiring: (bid) => bid.expiry === "soon"
+};
+
+/**
+ * The desk narrowed to one hero figure's rows. A case lens filters the cards; a
+ * bid lens filters the bids inside each card and drops the cards it emptied —
+ * otherwise a case with nothing expiring would appear inside the "expiring"
+ * drill-down. Either way the rows on screen are the ones the figure counted.
+ */
+export function deskFocus(groups: BidGroup[], focus: string | null): BidGroup[] {
+  if (focus === null) return groups;
+  const byCase = GROUP_LENSES[focus];
+  if (byCase) return groups.filter(byCase);
+  const byBid = BID_LENSES[focus];
+  if (!byBid) return groups;
+  return groups
+    .map((entry) => ({ ...entry, bids: entry.bids.filter(byBid) }))
+    .filter((entry) => entry.bids.length > 0);
 }
 
 /** Cases nobody has answered first, then the ones with something expiring. */
@@ -556,9 +587,16 @@ export default function AxisQuoteDesk() {
   const group = loaded.kind === "group_medical";
 
   const groups = deskGroups(loaded.cases, loaded.quotes, now).sort(byPressure);
-  const live = loaded.quotes.filter((quote) => expiryOf(quote, now) !== "expired");
-  const expiring = loaded.quotes.filter((quote) => expiryOf(quote, now) === "soon");
-  const silent = groups.filter((entry) => entry.bids.length === 0);
+  // Every figure on the wall is counted through the same lens the card list is
+  // filtered by, so clicking one cannot show a different number of rows than it
+  // printed. The bid figures count bids-in-groups rather than `loaded.quotes`
+  // for that reason: the cards are what a reader would count.
+  const { focus, href } = useFocus({ ...GROUP_LENSES, ...BID_LENSES });
+  const shown = deskFocus(groups, focus);
+  const bids = groups.flatMap((entry) => entry.bids);
+  const live = lensOf(bids, BID_LENSES, "quotes");
+  const expiring = lensOf(bids, BID_LENSES, "expiring");
+  const silent = lensOf(groups, GROUP_LENSES, "silent");
   const picked = loaded.quotes.filter((quote) => quote.winFlag);
   // `groups` is already sorted by pressure, so its head is the same case the
   // headline is talking about whenever there is one worth narrating.
@@ -593,16 +631,32 @@ export default function AxisQuoteDesk() {
         </p>
       ) : null}
 
+      {/* The case total is the whole desk, so it doubles as the way back out. */}
       <KPIWall>
-        <Stat label={l("stat.cases")} value={groups.length} />
-        <Stat label={l("stat.quotes")} value={live.length} />
-        <Stat label={l("stat.expiring")} value={expiring.length} />
-        <Stat label={l("stat.silent")} value={silent.length} />
+        <HeroStat label={l("stat.cases")} value={groups.length} to={href(null)} active={focus === null} />
+        <HeroStat
+          label={l("stat.quotes")}
+          value={live.length}
+          to={href("quotes")}
+          active={focus === "quotes"}
+        />
+        <HeroStat
+          label={l("stat.expiring")}
+          value={expiring.length}
+          to={href("expiring")}
+          active={focus === "expiring"}
+        />
+        <HeroStat
+          label={l("stat.silent")}
+          value={silent.length}
+          to={href("silent")}
+          active={focus === "silent"}
+        />
       </KPIWall>
 
-      {groups.length === 0 ? <EmptyState title={l("empty.title")} body={l("empty.body")} /> : null}
+      {shown.length === 0 ? <EmptyState title={l("empty.title")} body={l("empty.body")} /> : null}
 
-      {groups.map((entry) => (
+      {shown.map((entry) => (
         <Card
           key={entry.case.id}
           title={

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LABELS, firstCall, usageTotals, type PartnerTxn } from "./portal.$tenantSlug.partners";
+import { LABELS, actionError, amountMinorFrom, firstCall, usageTotals, type PartnerTxn } from "./portal.$tenantSlug.partners";
 
 // docs/modules/orbit.md §4 screen 5. The only logic on the page is the money:
 // what the partner has written, what their share of it is, and what has not
@@ -64,6 +64,49 @@ describe("firstCall", () => {
     const command = firstCall("https://api.lyra.example", "qvk_test_ABCDEF");
     expect(command).toContain("Authorization: Bearer qvk_test_ABCDEF");
     expect(command).toContain("https://api.lyra.example/v1/dist/offerings");
+  });
+});
+
+// J-X3's last step: sandbox key -> mock quote. The amount goes to an API that
+// wants a positive integer of minor units, and the box it comes from accepts
+// anything a keyboard can type.
+describe("amountMinorFrom", () => {
+  it("takes a whole number of minor units", () => {
+    expect(amountMinorFrom("120000")).toBe(120_000);
+    expect(amountMinorFrom("  500 ")).toBe(500);
+  });
+
+  it("refuses anything the API would answer with a 400", () => {
+    for (const bad of ["", "0", "-5", "12.50", "1e6", "abc", "12 000", "١٢٠", "9".repeat(16)]) {
+      expect(amountMinorFrom(bad), bad).toBeNull();
+    }
+  });
+});
+
+describe("actionError", () => {
+  it("says the same thing for a bad key, a forbidden row and a missing one", () => {
+    // The API refuses another tenant's partner and a nonexistent partner the
+    // same way; the copy must not undo that by distinguishing them.
+    for (const status of [401, 403, 404]) {
+      expect(actionError("status", status)).toBe("partners.error.key");
+      expect(actionError("quote", status)).toBe("partners.error.key");
+    }
+  });
+
+  it("explains a suspended account rather than blaming the key", () => {
+    expect(actionError("quote", 409)).toBe("partners.quote.suspended");
+    expect(actionError("quote", 400)).toBe("partners.error.validation");
+  });
+
+  it("keeps the signup mapping for the signup form, intent or not", () => {
+    expect(actionError("signup", 429)).toBe("partners.error.throttled");
+    expect(actionError("signup", 404)).toBe("partners.error.tenant");
+    expect(actionError("", 404)).toBe("partners.error.tenant");
+  });
+
+  it("falls back to the generic label on anything else", () => {
+    expect(actionError("quote", 500)).toBe("partners.error.generic");
+    expect(actionError("status", 500)).toBe("partners.error.generic");
   });
 });
 

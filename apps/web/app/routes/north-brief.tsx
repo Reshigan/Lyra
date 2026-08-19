@@ -379,7 +379,7 @@ export default function NorthBrief() {
   return (
     <div className="flex flex-col gap-6">
       {/* A reading column, capped where prose stops being readable (docs/07). */}
-      <div className="mx-auto flex w-full max-w-[68ch] flex-col gap-5">
+      <div className="mx-auto flex w-full max-w-[var(--measure-prose)] flex-col gap-5">
         <header className="flex flex-wrap items-baseline justify-between gap-3">
           <span className="font-mono text-12 uppercase tracking-[0.14em] text-subtle">
             {l("title")}

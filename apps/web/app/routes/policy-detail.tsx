@@ -1,5 +1,20 @@
 import { Link, useLoaderData, type LoaderFunctionArgs } from "react-router";
-import { Badge, Button, Card, DateTime, EmptyState, Money, Ref, Stat, Table, formatInstant, type Column } from "@lyra/ui";
+import {
+  Badge,
+  Button,
+  Card,
+  DateTime,
+  EmptyState,
+  Money,
+  Ref,
+  Stat,
+  StateFlow,
+  Table,
+  formatInstant,
+  type Column,
+  type FlowMachine,
+  type FlowVisit
+} from "@lyra/ui";
 import { api, fetchMe, names } from "../api.server";
 import { cloudflare } from "../context";
 import { translator } from "../i18n";
@@ -99,8 +114,80 @@ export const PERM = {
   renew: "axis:policies:renew",
   claims: "axis:claims:read",
   commissions: "dist:commissions:read",
-  files: "core:files:read"
+  files: "core:files:read",
+  audit: "core:audit:read"
 } as const;
+
+/** One line of the tenant's audit trail, as /v1/core/audit-log returns it. */
+export interface AuditRow {
+  id: string;
+  action: string;
+  actorRef: string;
+  ts: number;
+}
+
+/**
+ * Mirrors POLICY_TRANSITIONS in packages/core/src/lifecycle.ts. The web app
+ * cannot import @lyra/core (same reason claim-detail.tsx and case-detail.tsx
+ * restate their machines), and the API refuses a hop this map would wrongly
+ * allow, so drift is caught where it matters rather than shipped as a wrong
+ * diagram.
+ */
+export const POLICY_TRANSITIONS: Record<string, readonly string[]> = {
+  draft: ["bound", "ntu"],
+  bound: ["active", "ntu", "cancelled"],
+  active: ["lapsed", "cancelled", "expired", "renewed"],
+  lapsed: ["active", "cancelled", "expired"],
+  cancelled: [],
+  expired: ["renewed"], // late renewal inside the grace window
+  renewed: [],
+  ntu: []
+};
+
+/**
+ * The flow the diagram draws. The spine is the life of an agreement that goes
+ * well: quoted into a draft, bound, incepted, and renewed at term. Every other
+ * ending — never taken up, lapsed for non-payment, cancelled, or run out
+ * without renewal — is an exit, so a live agreement is never told it is pending
+ * its own expiry. `lapsed` still offers reinstatement because the machine
+ * documents `lapsed → active`, and `expired` still offers a late renewal.
+ * `flowPlan` refuses a spine whose consecutive pair is not a documented edge of
+ * `POLICY_TRANSITIONS`, so this literal cannot drift from the machine above
+ * without a test failing.
+ */
+export const POLICY_FLOW: FlowMachine = {
+  transitions: POLICY_TRANSITIONS,
+  spine: ["draft", "bound", "active", "renewed"],
+  exits: ["ntu", "lapsed", "cancelled", "expired"]
+};
+
+/**
+ * The policy trail records *verbs*, not states: engines/axis-lifecycle.ts writes
+ * `axis.policy.cancel` for the hop that lands on `cancelled`, and `incept` and
+ * `reinstate` both land on `active`. So a state has to be read off the verb.
+ * Anything that changes an agreement without moving it — an endorsement, an
+ * issued document, a referral, a broker fee — is not a hop and is dropped
+ * rather than guessed at. `draft` is absent on purpose: routes/axis.ts inserts a
+ * draft with no audit row of its own (the bind that follows writes the first
+ * one), so no trail can ever claim it.
+ */
+const STATE_OF_VERB: Record<string, string> = {
+  bind: "bound",
+  bind_group: "bound",
+  incept: "active",
+  reinstate: "active",
+  lapse: "lapsed",
+  cancel: "cancelled",
+  expire: "expired",
+  renew: "renewed",
+  ntu: "ntu"
+};
+
+export function stateOfAudit(action: string): string | null {
+  const prefix = "axis.policy.";
+  if (!action.startsWith(prefix)) return null;
+  return STATE_OF_VERB[action.slice(prefix.length)] ?? null;
+}
 
 /* ---------------------------------------------------------------- labels */
 
@@ -122,6 +209,8 @@ export const LABELS: Record<string, Record<string, string>> = {
     paymentPlanTitle: "Payment plan",
     docsTitle: "Schedule and wording",
     claimsCaption: "Every claim reported against this agreement.",
+    flowTitle: "Where it stands",
+    flowLabel: "Agreement lifecycle",
     historyTitle: "Endorsement history",
     historyCaption: "Every version of this agreement, newest first.",
     moneyTitle: "Commission trail",
@@ -164,6 +253,8 @@ export const LABELS: Record<string, Record<string, string>> = {
     paymentPlanTitle: "خطة السداد",
     docsTitle: "الجدول والصيغة",
     claimsCaption: "كل مطالبة مسجّلة على هذه الاتفاقية.",
+    flowTitle: "موضعها الآن",
+    flowLabel: "دورة حياة الاتفاقية",
     historyTitle: "سجل التعديلات",
     historyCaption: "كل إصدار من هذه الاتفاقية، الأحدث أولًا.",
     moneyTitle: "مسار العمولة",
@@ -225,6 +316,7 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
     entries: [] as EntryRow[],
     documents: [] as FileRow[],
     versions: [] as VersionRow[],
+    trail: [] as AuditRow[],
     named: {} as Record<string, string>,
     may
   };
@@ -233,7 +325,7 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   const policy = await safe(() => api<Policy>(`/v1/axis/policies/${id}`, options), null);
   if (!policy) return empty;
 
-  const [claims, entries, documents, versions, named] = await Promise.all([
+  const [claims, entries, documents, versions, trail, named] = await Promise.all([
     held.has(PERM.claims)
       ? safe(() => api<Page<ClaimRow>>(`/v1/axis/claims?policyId=${id}&limit=50`, options), null)
       : null,
@@ -253,6 +345,19 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
     // This agreement's own versions (F5). The old query asked for every other
     // contract the same holder owns, which is a different question entirely.
     safe(() => api<Page<VersionRow>>(`/v1/axis/policies/${id}/versions`, options), null),
+    // The state hops, so the flow can say when each one happened and who did it.
+    // The versions above are a different history: they record what the paper
+    // said, not where the agreement stood.
+    held.has(PERM.audit)
+      ? safe(
+          () =>
+            api<Page<AuditRow>>(
+              `/v1/core/audit-log?subjectRef=${encodeURIComponent(id)}&sort=ts&order=desc&limit=25`,
+              options
+            ),
+          null
+        )
+      : null,
     // Everything this agreement points at, named in one call: a person reads
     // "Amina Haddad", not `cu_01KE…`.
     names(
@@ -270,6 +375,7 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
     entries: rowsOf(entries),
     documents: rowsOf(documents),
     versions: rowsOf(versions),
+    trail: rowsOf(trail),
     named
   };
 }
@@ -293,6 +399,16 @@ export default function PolicyDetail() {
   }
 
   const policy = loaded.policy;
+
+  // Ascending, because the trail arrives newest-first and a flow reads forwards.
+  // The trail is capped at 25 rows and is withheld without `core:audit:read`, so
+  // these are the hops this actor can see — never a claim that there were no
+  // others. `flowPlan` draws the current state and what is still owed either
+  // way, so an agreement with no visible history is still honestly placed.
+  const visits: FlowVisit[] = [...loaded.trail].reverse().flatMap((row) => {
+    const state = stateOfAudit(row.action);
+    return state ? [{ state, at: row.ts, actor: row.actorRef }] : [];
+  });
 
   const claimColumns: Array<Column<ClaimRow>> = [
     {
@@ -510,6 +626,17 @@ export default function PolicyDetail() {
           </div>
         </Card>
       ) : null}
+
+      <Card title={l("flowTitle")}>
+        <StateFlow
+          machine={POLICY_FLOW}
+          visits={visits}
+          current={policy.status}
+          label={l("flowLabel")}
+          labelFor={(state) => tag(l, "status", state)}
+          locale={locale}
+        />
+      </Card>
 
       <Card title={l("claims")} padded={false}>
         <Table

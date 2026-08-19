@@ -20,7 +20,9 @@ import {
   Select,
   Table,
   type BadgeTone,
-  type Column
+  type Column,
+  type FlowMachine,
+  type FlowVisit
 } from "@lyra/ui";
 import { ApiError, api, fetchMe, names } from "../api.server";
 import { refOptions } from "../refs.server";
@@ -119,6 +121,55 @@ const TONES: Record<string, BadgeTone> = {
 
 export function settlementTone(state: string): BadgeTone {
   return TONES[state] ?? "neutral";
+}
+
+/* ------------------------------------------------------------------- flow */
+
+/**
+ * The payout machine as apps/api/src/engines/settlement.ts enforces it: a draft
+ * approves or is disputed, an approved settlement pays or is disputed, a dispute
+ * reopens as a draft, and paid is the end. `settlement.test.ts` pins it against
+ * that engine; the diagram may draw this and nothing else.
+ */
+export const SETTLEMENT_FLOW: FlowMachine = {
+  transitions: {
+    draft: ["approved", "disputed"],
+    approved: ["paid", "disputed"],
+    paid: [],
+    disputed: ["draft"]
+  },
+  spine: ["draft", "approved", "paid"],
+  exits: ["disputed"]
+};
+
+/**
+ * What a settlement row can honestly say about its own past. The engine will
+ * not pay what was not approved, so a paid settlement's approval is a fact even
+ * though the row carries no history — but only its drafting and its last change
+ * carry a timestamp, and the inferred middle carries none.
+ *
+ * ponytail: derived from four columns because `ledger_settlements` keeps no
+ * transition log. Read the log instead the day the engine writes one — a
+ * reopened settlement's earlier lap is invisible here.
+ */
+export function settlementVisits(
+  settlement: Pick<Settlement, "state" | "createdAt" | "updatedAt" | "approvedBy">
+): FlowVisit[] {
+  const spine = SETTLEMENT_FLOW.spine;
+  const reached = spine.indexOf(settlement.state);
+  const path = reached >= 0 ? spine.slice(0, reached + 1) : [spine[0] as string, settlement.state];
+  const approvedAt = path.indexOf("approved");
+  return path.map((state, i) => ({
+    state,
+    tone: settlementTone(state),
+    // The two instants the row actually holds. Everything between them is known
+    // to have happened, not known to have happened *when*.
+    ...(i === 0 ? { at: settlement.createdAt } : {}),
+    ...(i === path.length - 1 && i > 0 ? { at: settlement.updatedAt } : {}),
+    ...(settlement.approvedBy && approvedAt >= 0 && i >= approvedAt
+      ? { actor: settlement.approvedBy }
+      : {})
+  }));
 }
 
 /** `125_000` ppm is 12.5%. A rate rendered as its raw integer is a bug. */

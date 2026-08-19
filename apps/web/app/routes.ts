@@ -18,6 +18,8 @@ export default [
   route("portal/:tenantSlug/privacy", "routes/portal.$tenantSlug.privacy.tsx"),
   route("portal/:tenantSlug/quotes/:id", "routes/portal.$tenantSlug.quotes.$id.tsx"),
   route("portal/:tenantSlug/partners", "routes/portal.$tenantSlug.partners.tsx"),
+  route("portal/:tenantSlug/renewals/:id", "routes/portal.$tenantSlug.renewals.$id.tsx"),
+  route("portal/:tenantSlug/feedback/:id", "routes/portal.$tenantSlug.feedback.$id.tsx"),
   layout("routes/workspace.tsx", [
     index("routes/home.tsx"),
 

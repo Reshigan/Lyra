@@ -19,6 +19,14 @@ import {
   Ref
 } from "@lyra/ui";
 import { ApiError, api } from "../api.server";
+import { promoteToSignal, readCommentary } from "../components/whitespace-api.server";
+import {
+  CommentaryChip,
+  CommentaryGhost,
+  commentaryLabels,
+  type WhitespaceCommentary
+} from "../components/whitespace-commentary";
+import { DraftTray, PromoteToSignal, type PromotedToSignal } from "../components/signal-handover";
 import { cloudflare } from "../context";
 import { Gate } from "./staff";
 import { useScoutSessionData } from "./scout-shell";
@@ -29,7 +37,6 @@ import {
   emptyPage,
   evidenceOf,
   explain,
-  labelsIn,
   mintKey,
   refuse,
   safe,
@@ -68,7 +75,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = context.get(cloudflare).env;
   const selected = new URL(request.url).searchParams.get("w");
 
-  const [clusters, whitespaces] = await Promise.all([
+  // The commentary is read here, beside the dots, not when a pointer arrives:
+  // hovering a dot must cost nothing. It is one batch keyed by the same limit
+  // rather than a lookup per id, so it adds no round trip to the page.
+  const [clusters, whitespaces, commentary] = await Promise.all([
     safe(
       () =>
         api<Page<ClusterRow>>(`/v1/scout/clusters?sort=momentumScore&order=desc&limit=${LIMIT}`, { env, request }),
@@ -81,9 +91,11 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
           request
         }),
       emptyPage<WhitespaceRow>()
-    )
+    ),
+    safe(() => readCommentary({ env, request, limit: LIMIT }), emptyPage<WhitespaceCommentary>())
   ]);
 
+  const said = new Map(commentary.data.map((row) => [row.whitespaceId, row]));
   const plotted = dots(whitespaces.data, clusters.data, selected);
   const chosen =
     whitespaces.data.find((row) => row.id === selected) ??
@@ -92,10 +104,15 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const cluster = chosen?.clusterId ? (clusters.data.find((row) => row.id === chosen.clusterId) ?? null) : null;
 
   return {
-    dots: plotted.map((dot) => ({ ...dot, selected: dot.id === (chosen?.id ?? null) })),
+    dots: plotted.map((dot) => ({
+      ...dot,
+      selected: dot.id === (chosen?.id ?? null),
+      commentary: said.get(dot.id) ?? null
+    })),
     unplotted: unplotted(whitespaces.data, clusters.data),
     chosen,
     cluster,
+    commentary: chosen ? (said.get(chosen.id) ?? null) : null,
     evidence: chosen ? evidenceOf(chosen) : null,
     // One key per load: a double-submitted sweep is one sweep.
     key: mintKey("scout-radar")
@@ -104,7 +121,11 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
 export interface ActionResult {
   problem: Problemish | null;
-  done: { intent: "sweep"; candidates: number } | { intent: "experiment"; id: string } | null;
+  done:
+    | { intent: "sweep"; candidates: number }
+    | { intent: "experiment"; id: string }
+    | ({ intent: "promote-signal" } & PromotedToSignal)
+    | null;
 }
 
 export async function action({ request, context }: ActionFunctionArgs): Promise<ActionResult> {
@@ -140,6 +161,15 @@ export async function action({ request, context }: ActionFunctionArgs): Promise<
       return { problem: null, done: { intent: "experiment", id: created.id } };
     }
 
+    if (intent === "promote-signal") {
+      const whitespaceId = String(form.get("whitespaceId") ?? "");
+      if (whitespaceId === "") return refuse("whitespace_required");
+      // Consequential: the answer may be "queued", and the UI says so rather
+      // than claiming the campaign exists (CLAUDE.md §4).
+      const handed = await promoteToSignal({ env, request, whitespaceId, key });
+      return { problem: null, done: { intent: "promote-signal", ...handed } };
+    }
+
     return refuse("bad_intent");
   } catch (error) {
     if (error instanceof ApiError) return { problem: error.problem, done: null };
@@ -153,7 +183,7 @@ export default function ScoutRadar() {
   const shell = useScoutSessionData();
   const navigation = useNavigation();
   const locale = shell?.locale ?? "en";
-  const l = labelsIn(locale, shell?.domainPack);
+  const l = commentaryLabels(locale, shell?.domainPack);
   const may = new Set(shell?.permissions ?? []);
   const busy = navigation.state !== "idle";
   const chosen = loaded.chosen;
@@ -184,13 +214,21 @@ export default function ScoutRadar() {
           </Link>
         </p>
       ) : null}
+      {result?.done?.intent === "promote-signal" ? (
+        <DraftTray
+          promoted={result.done}
+          mayOpen={shell?.availableShells.includes("signal") ?? false}
+          l={l}
+          locale={locale}
+        />
+      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
         <Card>
           {loaded.dots.length === 0 ? (
             <EmptyState title={l("radar.empty")} />
           ) : (
-            <Quadrant dots={loaded.dots} l={l} />
+            <Quadrant dots={loaded.dots} l={l} locale={locale} />
           )}
           <p className="mt-8 font-ui text-12 text-subtle">{l("radar.axisY")}</p>
           {loaded.unplotted > 0 ? (
@@ -227,6 +265,8 @@ export default function ScoutRadar() {
               ) : null}
 
               <p className="font-ui text-13 leading-relaxed text-text">{chosen.description}</p>
+
+              <CommentaryChip commentary={loaded.commentary} l={l} locale={locale} />
 
               <dl className="grid grid-cols-2 gap-2">
                 <Metric label={l("radar.demand")} value={chosen.demandEstimate === null ? l("none") : number(chosen.demandEstimate)} />
@@ -291,6 +331,14 @@ export default function ScoutRadar() {
                   <span className="font-ui text-12 text-subtle">{l("radar.experimentHint")}</span>
                 </Form>
               ) : null}
+
+              <PromoteToSignal
+                whitespaceId={chosen.id}
+                formKey={loaded.key}
+                may={may.has(PERM.whitespacesPromote)}
+                busy={busy}
+                l={l}
+              />
             </div>
           )}
         </Card>
@@ -327,7 +375,15 @@ export default function ScoutRadar() {
  * and keyboard order follows the list order; the theme name is inside the link,
  * which is what gives each dot its accessible name.
  */
-function Quadrant({ dots: plotted, l }: { dots: Dot[]; l: Label }) {
+function Quadrant({
+  dots: plotted,
+  l,
+  locale
+}: {
+  dots: (Dot & { commentary: WhitespaceCommentary | null })[];
+  l: Label;
+  locale: string;
+}) {
   return (
     <div className="pb-10">
       <div className="relative h-[370px] border-b border-s border-line">
@@ -340,30 +396,48 @@ function Quadrant({ dots: plotted, l }: { dots: Dot[]; l: Label }) {
           {l("radar.park")}
         </span>
         {plotted.map((dot) => (
-          <Link
+          // The `group` is the wrapper, not the link, so pointer and keyboard
+          // reveal the same commentary: hover on the group, focus-within for
+          // the link inside it. Zero width plus `items-center` centres the dot
+          // on the point in both writing directions, which a -translate-x-1/2
+          // would not.
+          <div
             key={dot.id}
-            to={`/scout/radar?w=${encodeURIComponent(dot.id)}`}
-            aria-current={dot.selected ? "true" : undefined}
-            // Zero width plus `items-center` centres the dot on the point in
-            // both writing directions, which a -translate-x-1/2 would not.
-            className="absolute flex w-0 flex-col items-center gap-1"
+            className="group absolute w-0"
             style={{ insetInlineStart: `${dot.fit}%`, bottom: `${dot.momentum}%` }}
           >
-            <span
-              aria-hidden="true"
-              className={`block rounded-full border-2 border-module-scout ${dot.selected ? "bg-module-scout" : ""}`}
-              style={{ width: dotSize(dot.evidence), height: dotSize(dot.evidence) }}
-            />
-            {/* Bounded and wrapped, not `whitespace-nowrap`: a theme called
-                "Agency repair lost at renewal" ran a single line straight
-                across its neighbours' dots. Two lines, then the title. */}
-            <span
-              title={dot.label}
-              className={`line-clamp-2 w-28 text-center font-ui text-12 ${dot.selected ? "text-text" : "text-subtle"}`}
+            <Link
+              to={`/scout/radar?w=${encodeURIComponent(dot.id)}`}
+              aria-current={dot.selected ? "true" : undefined}
+              // The commentary is the dot's description, so a screen reader
+              // reads it on focus — a hover-only reveal would be information
+              // only a mouse can reach.
+              aria-describedby={dot.commentary === null ? undefined : `wc-${dot.id}`}
+              className="flex w-0 flex-col items-center gap-1"
             >
-              {dot.label}
-            </span>
-          </Link>
+              <span
+                aria-hidden="true"
+                className={`block rounded-full border-2 border-module-scout ${dot.selected ? "bg-module-scout" : ""}`}
+                style={{ width: dotSize(dot.evidence), height: dotSize(dot.evidence) }}
+              />
+              {/* Bounded and wrapped, not `whitespace-nowrap`: a theme called
+                  "Agency repair lost at renewal" ran a single line straight
+                  across its neighbours' dots. Two lines, then the title. */}
+              <span
+                title={dot.label}
+                className={`line-clamp-2 w-28 text-center font-ui text-12 ${dot.selected ? "text-text" : "text-subtle"}`}
+              >
+                {dot.label}
+              </span>
+            </Link>
+            <CommentaryGhost
+              id={`wc-${dot.id}`}
+              commentary={dot.commentary}
+              side={dot.momentum > 65 ? "below" : "above"}
+              l={l}
+              locale={locale}
+            />
+          </div>
         ))}
       </div>
       <p className="mt-2 text-center font-ui text-12 text-subtle">{l("radar.axisX")}</p>

@@ -1,4 +1,22 @@
-import { POST_RATIOS, postCardSvg, type PostRatio } from "@lyra/ui";
+import {
+  POST_RATIOS,
+  PostingFlow,
+  StateFlow,
+  postCardSvg,
+  type FlowBalance,
+  type FlowLeg,
+  type FlowMachine,
+  type FlowVisit,
+  type PostRatio
+} from "@lyra/ui";
+import { FOCUS, HeroStat, HeroWall } from "../components/hero";
+import { DraftTray } from "../components/signal-handover";
+import {
+  CommentaryChip,
+  CommentaryGhost,
+  commentaryLabels,
+  type WhitespaceCommentary
+} from "../components/whitespace-commentary";
 import { labelsFrom } from "./detail-kit";
 import { useShellData } from "./workspace";
 
@@ -63,6 +81,97 @@ export const IN_HAND = [
   { key: "exposure", value: "41.8M", delta: "+2.1%", hue: "text-tx4" }
 ] as const;
 
+/**
+ * The specimen machine. Not a copy of a real one — a real one lives beside the
+ * screen that draws it (routes/txn-detail.tsx, claim-detail.tsx, case-detail.tsx,
+ * policy-detail.tsx) — but the same shape, so the playground documents the two
+ * decisions every caller has to make: which path is the spine, and which states
+ * are exits rather than steps.
+ */
+export const SPECIMEN_MACHINE: FlowMachine = {
+  transitions: {
+    drafted: ["approved", "rejected"],
+    approved: ["posting", "rejected"],
+    posting: ["posted", "failed"],
+    posted: [],
+    rejected: [],
+    failed: ["posting"]
+  },
+  spine: ["drafted", "approved", "posting", "posted"],
+  exits: ["rejected", "failed"]
+};
+
+/**
+ * A history with an `at` and an `actor` on each hop, because a flow that cannot
+ * say when or by whom is a picture rather than a record. Fixed instants, not
+ * `Date.now()`: a doctrine page that shifts every hour is a page no screenshot
+ * can review.
+ */
+export const SPECIMEN_VISITS: readonly FlowVisit[] = [
+  { state: "drafted", at: 1_763_000_000_000, actor: "svc:axis-lifecycle" },
+  { state: "approved", at: 1_763_003_600_000, actor: "user:underwriter" }
+];
+
+/**
+ * A balanced posting, and the legs a real one carries: an account code, the
+ * reader's name for it, a side, a minor-unit amount, and the seal docs/19 §10
+ * asks to make visible on a line that can no longer move.
+ */
+export const SPECIMEN_LEGS: readonly FlowLeg[] = [
+  { id: "l1", account: "1100", label: "Receivable", side: "debit", amountMinor: 428_50, sealed: true },
+  { id: "l2", account: "4000", label: "Written premium", side: "credit", amountMinor: 372_61, sealed: true },
+  { id: "l3", account: "2200", label: "Levy payable", side: "credit", amountMinor: 55_89, sealed: true }
+];
+
+/**
+ * A commentary the server would serve: the sentence, the evidence it was
+ * grounded against, the grounding lines verbatim, and the provenance of the run
+ * that wrote it. `coverage` is a COUNT of contracts on the book — the specimen
+ * says so out loud because an earlier version of this component printed it as a
+ * percentage under the word "Uncovered".
+ */
+export const SPECIMEN_COMMENTARY: WhitespaceCommentary = {
+  whitespaceId: "wsp_specimen",
+  category: "motor",
+  status: "validated",
+  commentary: "Demand is firm on this line and only one rival on the panel covers it.",
+  evidence: { category: "motor", momentum: 78, coverage: 2400, competitionScore: 30, signalCount: 34 },
+  why: [
+    "Category: motor",
+    "Demand momentum score (0-100): 78",
+    "Active policies on the book for this category: 2400",
+    "Competition score (0-100, share of the panel that bids): 30",
+    "Demand signals behind this candidate: 34"
+  ],
+  ai: {
+    marker: "\u2726",
+    auditId: "aud_specimen",
+    model: "claude-sonnet-5",
+    provider: "anthropic",
+    tier: "cloud",
+    at: 1_763_000_000_000
+  },
+  suppressed: false
+};
+
+/** The same cell under the k-anonymity floor: no sentence, no evidence, no ✦. */
+export const SPECIMEN_SUPPRESSED: WhitespaceCommentary = {
+  ...SPECIMEN_COMMENTARY,
+  commentary: null,
+  evidence: null,
+  why: [],
+  ai: null,
+  suppressed: true
+};
+
+/** The ledger's totals, as `balanceCheck` returns them — never re-derived here. */
+export const SPECIMEN_BALANCE: FlowBalance = {
+  debitMinor: 428_50,
+  creditMinor: 428_50,
+  deltaMinor: 0,
+  balanced: true
+};
+
 const LABELS: Labels = {
   en: {
     eyebrow: "Horizon — the doctrine",
@@ -110,6 +219,37 @@ const LABELS: Labels = {
     "voice.display.note": "Module marks and micro-labels, tracked wide, never bolder than 600.",
     "voice.mono.sample": "41.8M · 6.2 min · −18.4%",
     "voice.mono.note": "Every figure, reference and tick — so columns of numbers line up.",
+    "hero.heading": "Hero figures — every number is a door",
+    "hero.note":
+      "The figure at the top of a screen counts rows, so clicking it lists exactly those rows: one predicate over one array, never a second query that can disagree with the first. The tile whose lens is showing is marked; a figure with no rows behind it — a median, a rate, an age — is plain text and does not pretend to be clickable.",
+    "hero.inert": "A duration, not a set of rows",
+    heroAll: "Show everything",
+    "flow.heading": "Process flows — the machine, not a drawing of one",
+    "flow.note":
+      "A flow is rendered from two things that are already true: the state machine the transaction is documented to follow, and the journal lines it posted. The spine is the path when nothing goes wrong; an exit is how it ends instead of continuing, so a live transaction is never told it is pending its own failure. A state the data claims but the machine does not document is reported as drift and refused, never drawn.",
+    "flow.state.title": "Where it stands",
+    "flow.state.label": "Specimen transaction lifecycle",
+    "flow.post.title": "Value moving",
+    "flow.post.label": "Specimen journal posting",
+    "flow.post.note": "Totals come from the ledger. The legs on screen are re-added only to check they say the same thing — a mismatch downgrades the verdict, it never gets smoothed over.",
+    "flow.state.drafted": "Drafted",
+    "flow.state.approved": "Approved",
+    "flow.state.posting": "Posting",
+    "flow.state.posted": "Posted",
+    "flow.state.rejected": "Rejected",
+    "flow.state.failed": "Failed",
+    "flow.debits": "Out of",
+    "flow.credits": "Into",
+    "ai.heading": "Ambient AI — a chip, a ghost and a tray",
+    "ai.note":
+      "Model output never arrives as a modal and is never sent on its own. It sits beside the thing it is about: a hover reading that is in the accessibility tree before any hover, a chip whose evidence opens as the exact lines the sentence was written from, and a tray of drafts to read rather than something that already happened. The ✦ is a claim that a model wrote it — a deterministic fallback sentence carries none, and a cell below the k-anonymity floor says why it is silent instead of going blank.",
+    "ai.ghost": "Hover reading",
+    "ai.ghostNote": "Hover or tab to the dot. Present in the markup either way.",
+    "ai.dot": "Specimen whitespace",
+    "ai.chip": "With a reading",
+    "ai.chipHidden": "Under the k-anonymity floor",
+    "ai.tray": "Drafts, queued",
+    "ai.trayDone": "Drafts, written",
     "hand.heading": "In hand",
     "hand.note":
       "The same doctrine at 328px: one narrated line, figures in mono, the ambient draft as a card beside the work rather than a dialogue over it. Nothing is re-styled for the phone — the tokens are the tokens.",
@@ -179,6 +319,37 @@ const LABELS: Labels = {
     "voice.display.note": "علامات الوحدات والتسميات الدقيقة، متباعدة الأحرف، ولا أثقل من 600.",
     "voice.mono.sample": "41.8M · 6.2 min · −18.4%",
     "voice.mono.note": "كل رقم ومرجع وعلامة قياس — حتى تصطف أعمدة الأرقام.",
+    "hero.heading": "الأرقام الرئيسية — كل رقم باب",
+    "hero.note":
+      "الرقم في أعلى الشاشة يعدّ سطورًا، فالنقر عليه يعرض تلك السطور بعينها: محدد واحد على مصفوفة واحدة، لا استعلامًا ثانيًا قد يخالف الأول. والبطاقة التي عدستها معروضة مُعلَّمة؛ والرقم الذي لا سطور خلفه — وسيط أو نسبة أو عمر — نص عادي لا يتظاهر بأنه قابل للنقر.",
+    "hero.inert": "مدة زمنية لا مجموعة سطور",
+    heroAll: "إظهار الكل",
+    "flow.heading": "مسارات العمليات — الآلة نفسها لا رسمًا لها",
+    "flow.note":
+      "يُرسم المسار من أمرين قائمين بالفعل: آلة الحالات الموثّقة التي تتبعها الحركة، وسطور اليومية التي سجّلتها. العمود الفقري هو المسار حين لا يحدث خطأ؛ والمخرج هو كيف تنتهي بدل أن تستمر، فلا تُخبر حركة قائمة أنها في انتظار فشلها. وأي حالة تدّعيها البيانات ولا توثّقها الآلة تُعلَن انحرافًا وتُرفَض، ولا تُرسَم أبدًا.",
+    "flow.state.title": "موضعها الآن",
+    "flow.state.label": "دورة حياة حركة نموذجية",
+    "flow.post.title": "القيمة تتحرّك",
+    "flow.post.label": "قيد يومية نموذجي",
+    "flow.post.note": "الإجماليات من دفتر الأستاذ. وتُجمَع السطور المعروضة للتحقق أنها ذاتها التي أنتجت الإجماليات — والتعارض يخفض الحكم ولا يُغطّى أبدًا.",
+    "flow.state.drafted": "مسودة",
+    "flow.state.approved": "معتمدة",
+    "flow.state.posting": "قيد الترحيل",
+    "flow.state.posted": "مُرحَّلة",
+    "flow.state.rejected": "مرفوضة",
+    "flow.state.failed": "فاشلة",
+    "flow.debits": "من",
+    "flow.credits": "إلى",
+    "ai.heading": "ذكاء محيطي — شارة وطيف ودرج",
+    "ai.note":
+      "لا يصل ناتج النموذج في نافذة منبثقة ولا يُرسل من تلقائه. بل يجلس بجوار ما يتحدث عنه: قراءة تظهر عند التحويم وهي أصلًا في شجرة الوصول قبله، وشارة تفتح أدلتها كالسطور ذاتها التي كُتبت منها الجملة، ودرج مسودات يُقرأ لا أمر وقع بالفعل. والعلامة ✦ ادّعاء بأن نموذجًا كتبها — فالجملة الاحتياطية الحتمية لا تحملها، والخانة تحت حد إخفاء الهوية تقول سبب صمتها بدل أن تُترك فارغة.",
+    "ai.ghost": "قراءة التحويم",
+    "ai.ghostNote": "حوّم أو انتقل بالتبويب إلى النقطة. وهي حاضرة في الترميز في الحالتين.",
+    "ai.dot": "فجوة نموذجية",
+    "ai.chip": "مع قراءة",
+    "ai.chipHidden": "تحت حد إخفاء الهوية",
+    "ai.tray": "مسودات في الانتظار",
+    "ai.trayDone": "مسودات مكتوبة",
     "hand.heading": "في اليد",
     "hand.note":
       "العقيدة نفسها بعرض 328 بكسل: سطر مروي واحد، وأرقام بخط أحادي، والمسودة المحيطة بطاقة بجوار العمل لا نافذة فوقه. لا شيء يُعاد تنسيقه للهاتف — الرموز هي الرموز.",
@@ -215,6 +386,9 @@ export function Doctrine({
   accent?: string | undefined;
 }) {
   const l = labelsFrom(LABELS)(locale);
+  // The SCOUT specimens read from SCOUT's own catalogue, not this page's:
+  // a playground that re-labels a component documents labels nobody ships.
+  const wl = commentaryLabels(locale);
 
   return (
     <div className="lyra-enter mx-auto flex max-w-[1000px] flex-col gap-8 py-2">
@@ -271,6 +445,130 @@ export function Doctrine({
           </ul>
         </section>
       </div>
+
+      {/* components/hero.tsx, shown in the state that matters: one tile drilled
+          into, its siblings still reachable, the way back out present, and one
+          figure that is deliberately not a link. The hrefs are this page's own
+          `?focus=` so the specimen is clickable rather than drawn — it filters
+          nothing here, which is the point: the wiring is per-screen, only the
+          affordance is shared. Mobile parity: the same three figures stack in
+          the 328px frame below, where they are the rows of the shift list. */}
+      <section className="flex flex-col gap-4 border-t border-line2 pt-7">
+        <div className="flex flex-col gap-3">
+          <h2 className="font-display text-16 font-600 text-tx">{l("hero.heading")}</h2>
+          <p className="max-w-[60ch] text-13 leading-body text-tx4">{l("hero.note")}</p>
+        </div>
+        <HeroWall focus="open" allLabel={l("heroAll")}>
+          {IN_HAND.slice(0, 2).map((row, i) => (
+            <HeroStat
+              key={row.key}
+              label={l(`hand.${row.key}`)}
+              value={row.value}
+              to={`?${FOCUS}=${row.key}`}
+              active={i === 0}
+            />
+          ))}
+          <HeroStat label={l("hand.response")} value="6.2m" hint={l("hero.inert")} />
+        </HeroWall>
+      </section>
+
+      {/* packages/ui/src/flow.tsx, both components, in the state that carries the
+          doctrine: a history with timestamps and actors behind it, a current
+          state, the pending remainder the machine documents, and the two exits
+          drawn as endings rather than steps. `posting` is current here on
+          purpose — it is the one state with both a past and a future, so the
+          three step tones are all on screen at once. The posting beside it is
+          balanced and sealed; the discrepancy path is exercised in
+          packages/ui/src/flow.test.tsx rather than drawn, because a doctrine
+          page asserting a broken ledger reads as one. */}
+      <section className="flex flex-col gap-4 border-t border-line2 pt-7">
+        <div className="flex flex-col gap-3">
+          <h2 className="font-display text-16 font-600 text-tx">{l("flow.heading")}</h2>
+          <p className="max-w-[78ch] text-13 leading-body text-tx4">{l("flow.note")}</p>
+        </div>
+        <div className="grid gap-5 lg:grid-cols-2">
+          <div className="flex flex-col gap-3 rounded-3 border border-line2 bg-s2 px-[18px] py-[17px]">
+            <h3 className="font-display text-14 font-600 text-tx">{l("flow.state.title")}</h3>
+            <StateFlow
+              machine={SPECIMEN_MACHINE}
+              visits={SPECIMEN_VISITS}
+              current="posting"
+              label={l("flow.state.label")}
+              labelFor={(state) => l(`flow.state.${state}`)}
+              locale={locale}
+            />
+          </div>
+          <div className="flex flex-col gap-3 rounded-3 border border-line2 bg-s2 px-[18px] py-[17px]">
+            <h3 className="font-display text-14 font-600 text-tx">{l("flow.post.title")}</h3>
+            <PostingFlow
+              legs={SPECIMEN_LEGS}
+              currency="ZAR"
+              balance={SPECIMEN_BALANCE}
+              fromLabel={l("flow.debits")}
+              toLabel={l("flow.credits")}
+              label={l("flow.post.label")}
+              note={l("flow.post.note")}
+              locale={locale}
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* components/whitespace-commentary.tsx and components/signal-handover.tsx:
+          the three ambient-AI surfaces SCOUT added, each in the two states that
+          carry the rule. The ghost is drawn twice — once with a reading, once
+          suppressed — because "blank" and "we will not describe this few people"
+          are different answers and the reader has to be able to tell them apart.
+          The tray is drawn queued as well as written: a consequential action may
+          come back waiting for approval, and that is not a failure state. */}
+      <section className="flex flex-col gap-4 border-t border-line2 pt-7">
+        <div className="flex flex-col gap-3">
+          <h2 className="font-display text-16 font-600 text-tx">{l("ai.heading")}</h2>
+          <p className="max-w-[78ch] text-13 leading-body text-tx4">{l("ai.note")}</p>
+        </div>
+        <div className="grid gap-5 lg:grid-cols-2">
+          <div className="flex flex-col gap-3 rounded-3 border border-line2 bg-s2 px-[18px] py-[17px]">
+            <h3 className="font-display text-14 font-600 text-tx">{l("ai.ghost")}</h3>
+            <p className="text-13 leading-body text-tx4">{l("ai.ghostNote")}</p>
+            {/* The `group` and the height are the dot's job on the real chart
+                (routes/scout-radar.tsx); the ghost only positions itself. */}
+            <div className="group relative flex h-32 items-end justify-center pb-2">
+              <button
+                type="button"
+                aria-describedby="wc-specimen"
+                className="size-3 rounded-full bg-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+              >
+                <span className="sr-only">{l("ai.dot")}</span>
+              </button>
+              <CommentaryGhost id="wc-specimen" commentary={SPECIMEN_COMMENTARY} l={wl} locale={locale} />
+            </div>
+          </div>
+          <div className="flex flex-col gap-3 rounded-3 border border-line2 bg-s2 px-[18px] py-[17px]">
+            <h3 className="font-display text-14 font-600 text-tx">{l("ai.chip")}</h3>
+            <CommentaryChip commentary={SPECIMEN_COMMENTARY} l={wl} locale={locale} />
+            <h3 className="font-display text-14 font-600 text-tx">{l("ai.chipHidden")}</h3>
+            <CommentaryChip commentary={SPECIMEN_SUPPRESSED} l={wl} locale={locale} />
+          </div>
+          <div className="flex flex-col gap-3 rounded-3 border border-line2 bg-s2 px-[18px] py-[17px]">
+            <h3 className="font-display text-14 font-600 text-tx">{l("ai.tray")}</h3>
+            <DraftTray
+              promoted={{ state: "pending_approval", campaignId: null, drafts: 0 }}
+              mayOpen={false}
+              l={wl}
+              locale={locale}
+            />
+          </div>
+          <div className="flex flex-col gap-3 rounded-3 border border-line2 bg-s2 px-[18px] py-[17px]">
+            <h3 className="font-display text-14 font-600 text-tx">{l("ai.trayDone")}</h3>
+            <DraftTray
+              promoted={{ state: "committed", campaignId: "cmp_specimen", drafts: 3 }}
+              mayOpen={true}
+              l={wl}
+              locale={locale}
+            />
+          </div>
+        </div>
+      </section>
 
       {/* CLAUDE.md's definition of done asks every UI change to note its mobile
           parity; this is where that is noted. A specimen, not a control: the

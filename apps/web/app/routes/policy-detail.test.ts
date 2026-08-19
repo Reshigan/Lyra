@@ -1,7 +1,17 @@
+import { flowPlan } from "@lyra/ui";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LoaderFunctionArgs } from "react-router";
 import type { Env } from "../env";
-import { LABELS, PERM, labelsIn, loader, policyLede } from "./policy-detail";
+import {
+  LABELS,
+  PERM,
+  POLICY_FLOW,
+  POLICY_TRANSITIONS,
+  labelsIn,
+  loader,
+  policyLede,
+  stateOfAudit
+} from "./policy-detail";
 
 // This screen reads. Its one historic bug (F5) was reading the wrong thing:
 // "endorsement history" asked for every other contract the same holder owns,
@@ -163,5 +173,113 @@ describe("loader", () => {
     const loaded = await loader(args());
 
     expect(loaded.may).toMatchObject({ read: true, cancel: true, endorse: false, renew: false });
+  });
+});
+
+// The diagram is only as true as the machine it is handed, and the history it
+// draws is only as true as the trail it reads. These pin both.
+
+describe("POLICY_FLOW", () => {
+  it("is the screen's machine by reference, not a second copy of it", () => {
+    expect(POLICY_FLOW.transitions).toBe(POLICY_TRANSITIONS);
+  });
+
+  it("names no state the machine does not document", () => {
+    for (const state of [...POLICY_FLOW.spine, ...(POLICY_FLOW.exits ?? [])]) {
+      expect(POLICY_TRANSITIONS[state]).toBeDefined();
+    }
+  });
+
+  it("draws every state the machine documents, on the spine or off it", () => {
+    // A status the API can hold that the diagram cannot place is a page that
+    // silently loses the agreement it is describing.
+    const drawn = new Set([...POLICY_FLOW.spine, ...(POLICY_FLOW.exits ?? [])]);
+    expect([...drawn].sort()).toEqual(Object.keys(POLICY_TRANSITIONS).sort());
+  });
+
+  it("is a spine of documented transitions, whole", () => {
+    // `flowPlan` throws on an undocumented spine edge, so this both plans and
+    // proves the happy path is one the lifecycle engine can actually walk.
+    const plan = flowPlan(POLICY_FLOW, [], "draft");
+    expect(plan.steps.map((step) => step.state)).toEqual([...POLICY_FLOW.spine]);
+    expect(plan.unknown).toEqual([]);
+  });
+
+  it("can draw every state the machine can reach", () => {
+    for (const state of Object.keys(POLICY_TRANSITIONS)) {
+      const plan = flowPlan(POLICY_FLOW, [{ state }], state);
+      expect(plan.steps.map((step) => step.state)).toContain(state);
+      expect(plan.unknown).toEqual([]);
+    }
+  });
+
+  it("never tells a live agreement it is pending its own lapse or expiry", () => {
+    for (const state of POLICY_FLOW.spine) {
+      const plan = flowPlan(POLICY_FLOW, [], state);
+      for (const exit of POLICY_FLOW.exits ?? []) {
+        expect(plan.steps.map((step) => step.state)).not.toContain(exit);
+      }
+    }
+  });
+
+  it("promises nothing further once an agreement is renewed, cancelled or never taken up", () => {
+    for (const state of ["renewed", "cancelled", "ntu"]) {
+      const plan = flowPlan(POLICY_FLOW, [{ state }], state);
+      expect(plan.steps.filter((step) => step.status === "pending")).toEqual([]);
+    }
+  });
+
+  it("offers a lapsed agreement reinstatement, because the machine documents it", () => {
+    const plan = flowPlan(POLICY_FLOW, [{ state: "active" }], "lapsed");
+    expect(plan.steps.map((step) => step.state)).toEqual(["active", "lapsed", "active"]);
+  });
+
+  it("offers an expired agreement the late renewal inside the grace window", () => {
+    const plan = flowPlan(POLICY_FLOW, [{ state: "expired" }], "expired");
+    expect(plan.steps.map((step) => step.state)).toEqual(["expired", "renewed"]);
+  });
+});
+
+describe("stateOfAudit", () => {
+  it("reads a state out of the verb the lifecycle engine wrote", () => {
+    // The trail records what was done, not where it landed, so every verb has
+    // to be mapped: `cancel` lands on `cancelled`, `incept` on `active`.
+    expect(stateOfAudit("axis.policy.bind")).toBe("bound");
+    expect(stateOfAudit("axis.policy.bind_group")).toBe("bound");
+    expect(stateOfAudit("axis.policy.incept")).toBe("active");
+    expect(stateOfAudit("axis.policy.reinstate")).toBe("active");
+    expect(stateOfAudit("axis.policy.lapse")).toBe("lapsed");
+    expect(stateOfAudit("axis.policy.cancel")).toBe("cancelled");
+    expect(stateOfAudit("axis.policy.expire")).toBe("expired");
+    expect(stateOfAudit("axis.policy.renew")).toBe("renewed");
+    expect(stateOfAudit("axis.policy.ntu")).toBe("ntu");
+  });
+
+  it("only names states the machine documents", () => {
+    for (const verb of ["bind", "bind_group", "incept", "reinstate", "lapse", "cancel", "expire", "renew", "ntu"]) {
+      const state = stateOfAudit(`axis.policy.${verb}`);
+      expect(state).not.toBeNull();
+      expect(POLICY_TRANSITIONS[state as string]).toBeDefined();
+    }
+  });
+
+  it("is not a state change for anything else on the trail", () => {
+    for (const entry of [
+      // These change an agreement without moving it.
+      "axis.policy.endorse",
+      "axis.policy.document_issued",
+      "axis.policy.refer",
+      "axis.policy.broker_fee",
+      // A resulting state is not a verb: the engine never writes these.
+      "axis.policy.bound",
+      "axis.policy.active",
+      "axis.claim.assessing",
+      "axis.case.quoting",
+      "core.approval.decided",
+      "axis.policy.",
+      ""
+    ]) {
+      expect(stateOfAudit(entry)).toBeNull();
+    }
   });
 });

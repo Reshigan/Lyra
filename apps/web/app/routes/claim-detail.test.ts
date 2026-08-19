@@ -1,7 +1,9 @@
+import { flowPlan } from "@lyra/ui";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import type { Env } from "../env";
 import {
+  CLAIM_FLOW,
   CLAIM_TRANSITIONS,
   LABELS,
   PERM,
@@ -9,6 +11,7 @@ import {
   action,
   claimLede,
   hopsFor,
+  stateOfAudit,
   labelsIn,
   loader,
   payeeOptions
@@ -413,5 +416,91 @@ describe("payeeOptions", () => {
 
   it("offers nothing when the holder cannot be named, leaving the typed ref", () => {
     expect(payeeOptions("cu_01KE953T000WTENZD6WY9TPYA0", null)).toEqual([]);
+  });
+});
+
+// The diagram is only as true as the machine it is handed, and the history it
+// draws is only as true as the trail it reads. These pin both.
+
+describe("CLAIM_FLOW", () => {
+  it("is the screen's machine by reference, not a second copy of it", () => {
+    expect(CLAIM_FLOW.transitions).toBe(CLAIM_TRANSITIONS);
+  });
+
+  it("names no state the machine does not document", () => {
+    for (const state of [...CLAIM_FLOW.spine, ...(CLAIM_FLOW.exits ?? [])]) {
+      expect(CLAIM_TRANSITIONS[state]).toBeDefined();
+    }
+  });
+
+  it("is a spine of documented transitions, whole", () => {
+    // `flowPlan` throws on an undocumented spine edge, so this both plans and
+    // proves the happy path is one the claims engine can actually walk.
+    const plan = flowPlan(CLAIM_FLOW, [], "reported");
+    expect(plan.steps.map((step) => step.state)).toEqual([...CLAIM_FLOW.spine]);
+    expect(plan.unknown).toEqual([]);
+  });
+
+  it("can draw every state the machine can reach, on the spine or off it", () => {
+    for (const state of Object.keys(CLAIM_TRANSITIONS)) {
+      const plan = flowPlan(CLAIM_FLOW, [{ state }], state);
+      expect(plan.steps.map((step) => step.state)).toContain(state);
+      expect(plan.unknown).toEqual([]);
+    }
+  });
+
+  it("never tells a live claim it is pending rejection or withdrawal", () => {
+    // An exit is how a claim ends instead of continuing, so it is never drawn
+    // as work still owed on a claim that is still going.
+    for (const state of CLAIM_FLOW.spine) {
+      const plan = flowPlan(CLAIM_FLOW, [], state);
+      for (const exit of CLAIM_FLOW.exits ?? []) {
+        expect(plan.steps.map((step) => step.state)).not.toContain(exit);
+      }
+    }
+  });
+
+  it("promises nothing further once a claim is withdrawn", () => {
+    const plan = flowPlan(CLAIM_FLOW, [{ state: "withdrawn" }], "withdrawn");
+    expect(plan.steps.map((step) => step.state)).toEqual(["withdrawn"]);
+  });
+
+  it("offers a rejected claim exactly the hops the machine documents", () => {
+    // Rejection is not the end of the road the way withdrawal is: the machine
+    // says a rejected claim may be reopened or closed, so the flow says so too.
+    const plan = flowPlan(CLAIM_FLOW, [{ state: "rejected" }], "rejected");
+    expect(plan.steps.map((step) => step.state)).toEqual(["rejected", "reopened", "closed"]);
+  });
+});
+
+describe("stateOfAudit", () => {
+  it("reads the state out of a transition the lifecycle engine wrote", () => {
+    expect(stateOfAudit("axis.claim.assessing")).toBe("assessing");
+    expect(stateOfAudit("axis.claim.withdrawn")).toBe("withdrawn");
+  });
+
+  it("reads registration as the state a claim is born in", () => {
+    expect(stateOfAudit("axis.claim.registered")).toBe("reported");
+  });
+
+  it("is not a state change for anything else on the trail", () => {
+    for (const entry of [
+      "axis.claim.reserve_set",
+      "axis.claim.payment",
+      "axis.claim.recovery_opened",
+      "axis.claim.recovery_received",
+      "axis.claim.recovery_written_off",
+      "core.approval.decided",
+      "axis.policy.bound",
+      ""
+    ]) {
+      expect(stateOfAudit(entry)).toBeNull();
+    }
+  });
+
+  it("does not read a bare state name that carries no claim prefix", () => {
+    // Another module's audit row could name a word this machine happens to use;
+    // only the claims engine's own prefix counts as a claim transition.
+    expect(stateOfAudit("orbit.renewal.closed")).toBeNull();
   });
 });

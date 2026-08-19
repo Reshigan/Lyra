@@ -14,13 +14,12 @@ import {
   DateTime,
   EmptyState,
   Field,
-  KPIWall,
   Select,
-  Stat,
   Table,
   Textarea,
   type BadgeTone
 } from "@lyra/ui";
+import { FOCUS, HeroStat, HeroWall, lensOf, useFocus, type Lens } from "../components/hero";
 import { api, asRouteError, fetchMe, names, type Names, type Problem as ProblemShape } from "../api.server";
 import { who } from "../names";
 import { cloudflare } from "../context";
@@ -101,6 +100,15 @@ export function alertOf(row: SupervisedConversation, now: number): AlertKind | n
   return null;
 }
 
+/**
+ * The wall's one drillable figure: an open conversation that has missed
+ * something. Same predicate `alertsFrom` triages by, so the figure and the
+ * alerts table can never disagree on what counts as breached.
+ */
+export function lensesAt(now: number): Record<string, Lens<SupervisedConversation>> {
+  return { breached: (row) => alertOf(row, now) !== null };
+}
+
 export function alertsFrom(rows: readonly SupervisedConversation[], now: number): Alert[] {
   return rows
     .flatMap((row) => {
@@ -160,6 +168,7 @@ export const LABELS: Labels = {
     headlineClear: "Nothing open right now",
 
     openNow: "Open now",
+    heroAll: "Show everything",
     heldByAgent: "Held by the agent",
     contained: "Agent containment",
     containedHint: "Share of what is open that no person has had to touch",
@@ -225,6 +234,7 @@ export const LABELS: Labels = {
     headlineClear: "لا شيء مفتوح الآن",
 
     openNow: "مفتوح الآن",
+    heroAll: "إظهار الكل",
     heldByAgent: "بيد الوكيل الذكي",
     contained: "اكتفاء الوكيل الذاتي",
     containedHint: "نسبة المفتوح الذي لم يضطر أي موظف للتدخل فيه",
@@ -402,7 +412,10 @@ export default function OrbitSupervisor() {
   const l = labelsIn(loaded.locale);
   const busy = navigation.state === "submitting";
 
-  const alerts = alertsFrom(loaded.open, loaded.now);
+  const LENSES = lensesAt(loaded.now);
+  const { focus, href } = useFocus(LENSES);
+  // Lensed, then ranked: the table lists exactly what the figure counted.
+  const alerts = alertsFrom(lensOf(loaded.open, LENSES, "breached"), loaded.now);
   const staff = staffing(loaded.presence);
   const waitingLong = loaded.open.filter((row) => waitingMs(row, loaded.now) >= SLOW_MS).length;
   const nameOf = (row: SupervisedConversation) =>
@@ -433,6 +446,9 @@ export default function OrbitSupervisor() {
           ) : null}
         </div>
         <Form method="get" replace className="flex items-center gap-3">
+          {/* A GET form submits its fields as the whole query, so without this a
+              refresh would drop the lens the reader drilled into. */}
+          {focus ? <input type="hidden" name={FOCUS} value={focus} /> : null}
           <span className="font-ui text-12 text-subtle">
             {l("asOf")} <DateTime value={loaded.now} locale={loaded.locale} precision="minute" />
           </span>
@@ -454,17 +470,33 @@ export default function OrbitSupervisor() {
         </div>
       ) : null}
 
-      <KPIWall>
-        <Stat label={l("openNow")} value={String(loaded.counts.open)} />
-        <Stat label={l("heldByAgent")} value={String(loaded.counts.bot)} />
-        <Stat
+      <HeroWall focus={focus} allLabel={l("heroAll")}>
+        {/* No door: a server count across every state, of which this screen
+            holds one capped page. */}
+        <HeroStat label={l("openNow")} value={String(loaded.counts.open)} />
+        {/* One state, one endpoint, one declared filter (modules/orbit.ts). */}
+        <HeroStat
+          label={l("heldByAgent")}
+          value={String(loaded.counts.bot)}
+          to="/orbit/conversations?state=bot"
+        />
+        {/* No door: a ratio has no rows. */}
+        <HeroStat
           label={l("contained")}
           value={loaded.counts.contained === null ? "—" : `${Math.round(loaded.counts.contained * 100)}%`}
           hint={l("containedHint")}
         />
-        <Stat label={l("waitingLong")} value={String(waitingLong)} live={waitingLong > 0} />
-        <Stat label={l("breached")} value={String(alerts.length)} live={alerts.length > 0} />
-      </KPIWall>
+        {/* No door: the console counts this over 100 rows per state and this
+            wall over 50, so the two figures are not the same set. */}
+        <HeroStat label={l("waitingLong")} value={String(waitingLong)} live={waitingLong > 0} />
+        <HeroStat
+          label={l("breached")}
+          value={String(alerts.length)}
+          live={alerts.length > 0}
+          to={href("breached")}
+          active={focus === "breached"}
+        />
+      </HeroWall>
 
       <Card title={l("alerts")} description={l("alertsBody")}>
         {alerts.length === 0 ? (
@@ -526,93 +558,100 @@ export default function OrbitSupervisor() {
         )}
       </Card>
 
-      <Card title={l("roster")} description={l("rosterBody")}>
-        <div className="mb-4 flex flex-wrap gap-4">
-          <Badge tone="success">
-            {l("presence.available")} {staff.available}
-          </Badge>
-          <Badge tone="warning">
-            {l("presence.away")} {staff.away}
-          </Badge>
-          <Badge tone="neutral">
-            {l("presence.offline")} {staff.offline}
-          </Badge>
-          <Badge tone="info">
-            {l("holding")} {staff.holding}
-          </Badge>
-        </div>
-        {loaded.presence.length === 0 ? (
-          <EmptyState title={l("noRoster")} body={l("noRosterBody")} />
-        ) : (
-          <Table
-            caption={l("roster")}
-            rows={loaded.presence}
-            rowKey={(row) => row.id}
-            density="compact"
-            columns={[
-              {
-                key: "userId",
-                header: l("agentName"),
-                render: (row) => who(row.userId, loaded.names) ?? "—"
-              },
-              {
-                key: "status",
-                header: l("presence"),
-                render: (row) => (
-                  <Badge tone={PRESENCE_TONE[row.status] ?? "neutral"}>{l(`presence.${row.status}`)}</Badge>
-                )
-              },
-              { key: "activeCount", header: l("holding"), render: (row) => String(row.activeCount ?? 0) },
-              {
-                key: "updatedAt",
-                header: l("since"),
-                render: (row) =>
-                  row.updatedAt ? (
-                    <DateTime value={row.updatedAt} locale={loaded.locale} precision="minute" />
-                  ) : (
-                    "—"
-                  )
-              }
-            ]}
-          />
-        )}
-      </Card>
+      {/* Neither the roster nor the step-in picker is a breached conversation,
+          so while the lens is on they are rows the figure above disowns. Back
+          on "show everything". */}
+      {focus ? null : (
+        <>
+          <Card title={l("roster")} description={l("rosterBody")}>
+            <div className="mb-4 flex flex-wrap gap-4">
+              <Badge tone="success">
+                {l("presence.available")} {staff.available}
+              </Badge>
+              <Badge tone="warning">
+                {l("presence.away")} {staff.away}
+              </Badge>
+              <Badge tone="neutral">
+                {l("presence.offline")} {staff.offline}
+              </Badge>
+              <Badge tone="info">
+                {l("holding")} {staff.holding}
+              </Badge>
+            </div>
+            {loaded.presence.length === 0 ? (
+              <EmptyState title={l("noRoster")} body={l("noRosterBody")} />
+            ) : (
+              <Table
+                caption={l("roster")}
+                rows={loaded.presence}
+                rowKey={(row) => row.id}
+                density="compact"
+                columns={[
+                  {
+                    key: "userId",
+                    header: l("agentName"),
+                    render: (row) => who(row.userId, loaded.names) ?? "—"
+                  },
+                  {
+                    key: "status",
+                    header: l("presence"),
+                    render: (row) => (
+                      <Badge tone={PRESENCE_TONE[row.status] ?? "neutral"}>{l(`presence.${row.status}`)}</Badge>
+                    )
+                  },
+                  { key: "activeCount", header: l("holding"), render: (row) => String(row.activeCount ?? 0) },
+                  {
+                    key: "updatedAt",
+                    header: l("since"),
+                    render: (row) =>
+                      row.updatedAt ? (
+                        <DateTime value={row.updatedAt} locale={loaded.locale} precision="minute" />
+                      ) : (
+                        "—"
+                      )
+                  }
+                ]}
+              />
+            )}
+          </Card>
 
-      {loaded.may.barge || loaded.may.whisper ? (
-        <Card title={l("stepIn")} description={l("stepInBody")}>
-          {loaded.open.length === 0 ? (
-            <EmptyState title={l("noneOpen")} body={l("noneOpenBody")} />
-          ) : (
-            <Form method="post" className="flex flex-col gap-4">
-              <Field label={l("pick")} className="max-w-md">
-                <Select
-                  name="id"
-                  placeholder={l("pickNone")}
-                  options={loaded.open.map((row) => ({
-                    value: row.id,
-                    label: `${nameOf(row)} — ${row.channel}`
-                  }))}
-                />
-              </Field>
-              <Field label={l("text")} hint={l("textHint")}>
-                <Textarea name="text" rows={3} />
-              </Field>
-              <div className="flex flex-wrap gap-3">
-                {loaded.may.barge ? (
-                  <Button type="submit" name="intent" value="barge" variant="primary" loading={busy}>
-                    {l("barge")}
-                  </Button>
-                ) : null}
-                {loaded.may.whisper ? (
-                  <Button type="submit" name="intent" value="whisper" variant="secondary" loading={busy}>
-                    {l("whisper")}
-                  </Button>
-                ) : null}
-              </div>
-            </Form>
-          )}
-        </Card>
-      ) : null}
+          {loaded.may.barge || loaded.may.whisper ? (
+            <Card title={l("stepIn")} description={l("stepInBody")}>
+              {loaded.open.length === 0 ? (
+                <EmptyState title={l("noneOpen")} body={l("noneOpenBody")} />
+              ) : (
+                <Form method="post" className="flex flex-col gap-4">
+                  <Field label={l("pick")} className="max-w-md">
+                    <Select
+                      name="id"
+                      placeholder={l("pickNone")}
+                      options={loaded.open.map((row) => ({
+                        value: row.id,
+                        label: `${nameOf(row)} — ${row.channel}`
+                      }))}
+                    />
+                  </Field>
+                  <Field label={l("text")} hint={l("textHint")}>
+                    <Textarea name="text" rows={3} />
+                  </Field>
+                  <div className="flex flex-wrap gap-3">
+                    {loaded.may.barge ? (
+                      <Button type="submit" name="intent" value="barge" variant="primary" loading={busy}>
+                        {l("barge")}
+                      </Button>
+                    ) : null}
+                    {loaded.may.whisper ? (
+                      <Button type="submit" name="intent" value="whisper" variant="secondary" loading={busy}>
+                        {l("whisper")}
+                      </Button>
+                    ) : null}
+                  </div>
+                </Form>
+              )}
+            </Card>
+          ) : null}
+        </>
+      )}
     </div>
   );
 }

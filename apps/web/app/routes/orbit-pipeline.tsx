@@ -13,11 +13,10 @@ import {
   Card,
   DateTime,
   EmptyState,
-  KPIWall,
-  Stat,
   shortRef,
   type BadgeTone
 } from "@lyra/ui";
+import { HeroStat, HeroWall, lensOf, useFocus, type Lens } from "../components/hero";
 import { api, asRouteError, fetchMe, names, type Problem as ProblemShape } from "../api.server";
 import { cloudflare } from "../context";
 import { who } from "../names";
@@ -65,6 +64,16 @@ export function urgency(days: number | null): "gone" | "now" | "soon" | "later" 
   return "later";
 }
 
+/**
+ * The two drillable figures on the wall, as one rule each over the same cards
+ * the open columns render. Both read `urgency`, so a change to the day bands
+ * moves the figure and the drilled-in board together and cannot move only one.
+ */
+export function lensesAt(now: number): Record<string, Lens<Renewal>> {
+  const band = (row: Renewal) => urgency(daysUntil(row.expiryAt, now));
+  return { soon: (row) => band(row) === "now", overdue: (row) => band(row) === "gone" };
+}
+
 const URGENCY_CLASS: Record<ReturnType<typeof urgency>, string> = {
   gone: "border-danger/60 bg-danger/8",
   now: "border-warning/60 bg-warning/8",
@@ -94,6 +103,7 @@ export const LABELS: Labels = {
     expiringWeek: "Expiring within 7 days",
     overdue: "Past expiry, undecided",
     winRate: "Win rate on decided",
+    heroAll: "Show everything",
     sweep: "Raise due renewals",
     sweepBody: "Scans for policies approaching expiry and raises a renewal for each.",
     sweeping: "Raising",
@@ -128,6 +138,7 @@ export const LABELS: Labels = {
     expiringWeek: "تنتهي خلال ٧ أيام",
     overdue: "تجاوزت الانتهاء دون قرار",
     winRate: "نسبة الفوز من المحسوم",
+    heroAll: "إظهار الكل",
     sweep: "ارفع التجديدات المستحقة",
     sweepBody: "يبحث عن الوثائق التي تقارب الانتهاء ويرفع تجديدًا لكل منها.",
     sweeping: "جارٍ الرفع",
@@ -239,9 +250,13 @@ export default function RenewalPipeline() {
   const l = labelsIn(loaded.locale);
   const busy = navigation.state === "submitting";
 
+  const LENSES = lensesAt(loaded.now);
+  const { focus, href } = useFocus(LENSES);
   const open = [...loaded.board.scheduled.data, ...loaded.board.offered.data];
-  const soon = open.filter((row) => urgency(daysUntil(row.expiryAt, loaded.now)) === "now").length;
-  const gone = open.filter((row) => urgency(daysUntil(row.expiryAt, loaded.now)) === "gone").length;
+  // One lens counts the figure and filters the columns, so the board a reader
+  // drills into is the arithmetic they clicked on.
+  const soon = lensOf(open, LENSES, "soon").length;
+  const gone = lensOf(open, LENSES, "overdue").length;
   const won = loaded.board.accepted.total ?? loaded.board.accepted.data.length;
   const lost = loaded.board.lost.total ?? loaded.board.lost.data.length;
   const winRate = won + lost === 0 ? 0 : Math.round((won / (won + lost)) * 100);
@@ -288,17 +303,30 @@ export default function RenewalPipeline() {
         </div>
       ) : null}
 
-      <KPIWall>
-        <Stat label={l("inFlight")} value={String(openTotal)} />
-        <Stat label={l("expiringWeek")} value={String(soon)} live={soon > 0} />
-        <Stat label={l("overdue")} value={String(gone)} />
-        <Stat label={l("winRate")} value={`${winRate}%`} hint={l("sweepBody")} />
-      </KPIWall>
+      <HeroWall focus={focus} allLabel={l("heroAll")}>
+        {/* No door: two server counts added, and the columns below hold at most
+            25 cards each — the board is not the rows this figure counted. */}
+        <HeroStat label={l("inFlight")} value={String(openTotal)} />
+        <HeroStat
+          label={l("expiringWeek")}
+          value={String(soon)}
+          live={soon > 0}
+          to={href("soon")}
+          active={focus === "soon"}
+        />
+        <HeroStat label={l("overdue")} value={String(gone)} to={href("overdue")} active={focus === "overdue"} />
+        {/* No door: a ratio has no rows. */}
+        <HeroStat label={l("winRate")} value={`${winRate}%`} hint={l("sweepBody")} />
+      </HeroWall>
 
-      <div className="grid gap-4 lg:grid-cols-4">
+      <div className={`grid gap-4 ${focus ? "lg:grid-cols-2" : "lg:grid-cols-4"}`}>
         {STAGES.map((stage) => {
           const column = loaded.board[stage];
-          const count = column.total ?? column.data.length;
+          // Both doors counted open cards only, so a decided column is rows the
+          // focused figure disowns — away until the reader shows everything.
+          if (focus && (stage === "accepted" || stage === "lost")) return null;
+          const cards = lensOf(column.data, LENSES, focus);
+          const count = focus ? cards.length : (column.total ?? column.data.length);
           return (
             <Card
               key={stage}
@@ -309,11 +337,11 @@ export default function RenewalPipeline() {
                 </span>
               }
             >
-              {column.data.length === 0 ? (
+              {cards.length === 0 ? (
                 <EmptyState title={l("empty")} body={l("emptyBody")} />
               ) : (
                 <ul className="flex flex-col gap-2">
-                  {column.data.map((row) => {
+                  {cards.map((row) => {
                     const days = daysUntil(row.expiryAt, loaded.now);
                     const heat = urgency(days);
                     return (

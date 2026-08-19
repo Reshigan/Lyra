@@ -20,6 +20,7 @@ import {
   type BadgeTone
 } from "@lyra/ui";
 import { ApiError, api, directory, names } from "../api.server";
+import { HeroStat, useFocus } from "../components/hero";
 import { who } from "../names";
 import { humanise } from "../modules/spec";
 import { cloudflare } from "../context";
@@ -207,6 +208,47 @@ export interface ComplaintRow {
   caseId: string | null;
   ownerRef: string | null;
   dueAt: number;
+}
+
+/** The five queues this screen shows, in the order it shows them. */
+export interface Buckets {
+  cases: CaseRow[];
+  documents: DocumentRow[];
+  tasks: TaskRow[];
+  escrow: EscrowRow[];
+  complaints: ComplaintRow[];
+}
+
+const NO_ROWS: Buckets = { cases: [], documents: [], tasks: [], escrow: [], complaints: [] };
+
+/** Rows across every queue — what `stat.total` prints. */
+export function countIn(buckets: Buckets): number {
+  return (
+    buckets.cases.length +
+    buckets.documents.length +
+    buckets.tasks.length +
+    buckets.escrow.length +
+    buckets.complaints.length
+  );
+}
+
+/**
+ * The queues one hero figure counted. `breached` spans two of them — a case past
+ * its deadline, plus every complaint, since the loader only asks for late ones —
+ * so its drill-down keeps both and empties the other three rather than leaving
+ * unrelated rows on screen under a figure that never counted them. Each figure
+ * is `countIn(exceptionFocus(…))`, so the number and the rows are one call.
+ */
+export function exceptionFocus(buckets: Buckets, focus: string | null, now: number): Buckets {
+  if (focus === "breached")
+    return {
+      ...NO_ROWS,
+      cases: buckets.cases.filter((row) => severityOf(row, now) === "breach"),
+      complaints: buckets.complaints
+    };
+  if (focus === "urgent")
+    return { ...NO_ROWS, cases: buckets.cases.filter((row) => row.priority === "urgent") };
+  return buckets;
 }
 
 /* ---------------------------------------------------------------- helpers */
@@ -433,12 +475,22 @@ export default function AxisExceptions() {
   const busy = navigation.state !== "idle";
   const now = loaded.now;
 
-  const cases = [...loaded.cases].sort(bySeverity(now));
-  const total = cases.length + loaded.documents.length + loaded.tasks.length + loaded.escrow.length + loaded.complaints.length;
-  // Every complaint row returned is already past its regulatory deadline (loader's `to=` filter).
-  const breached = cases.filter((row) => severityOf(row, now) === "breach").length + loaded.complaints.length;
-  const urgent = cases.filter((row) => row.priority === "urgent").length;
-  const oldest = cases.reduce((min, row) => Math.min(min, row.createdAt), now);
+  const all: Buckets = {
+    cases: [...loaded.cases].sort(bySeverity(now)),
+    documents: loaded.documents,
+    tasks: loaded.tasks,
+    escrow: loaded.escrow,
+    complaints: loaded.complaints
+  };
+  // Each figure is the size of the very set its own link shows, so clicking one
+  // cannot land on a different number of rows than the tile printed.
+  const { focus, href } = useFocus({ breached: 1, urgent: 1 });
+  const shown = exceptionFocus(all, focus, now);
+  const total = countIn(all);
+  const breached = countIn(exceptionFocus(all, "breached", now));
+  const urgent = countIn(exceptionFocus(all, "urgent", now));
+  const cases = shown.cases;
+  const oldest = all.cases.reduce((min, row) => Math.min(min, row.createdAt), now);
 
   // A queue the actor cannot fully see is stated, not silently short.
   const hidden = [PERM.cases, PERM.documents, PERM.tasks, PERM.escrow, PERM.complaints].some((p) => !held.has(p));
@@ -467,10 +519,17 @@ export default function AxisExceptions() {
         </p>
       ) : null}
 
+      {/* The total is every queue, so it doubles as the way back to all of them.
+          The oldest figure is an age, not a set of rows, so it is not a link. */}
       <KPIWall>
-        <Stat label={l("stat.total")} value={total} />
-        <Stat label={l("stat.breached")} value={breached} />
-        <Stat label={l("stat.urgent")} value={urgent} />
+        <HeroStat label={l("stat.total")} value={total} to={href(null)} active={focus === null} />
+        <HeroStat
+          label={l("stat.breached")}
+          value={breached}
+          to={href("breached")}
+          active={focus === "breached"}
+        />
+        <HeroStat label={l("stat.urgent")} value={urgent} to={href("urgent")} active={focus === "urgent"} />
         <Stat label={l("stat.oldest")} value={total ? ageIn(now - oldest, l) : "—"} />
       </KPIWall>
 
@@ -481,7 +540,7 @@ export default function AxisExceptions() {
         </div>
       ) : null}
 
-      {total === 0 ? <EmptyState title={l("empty.title")} body={l("empty.body")} /> : null}
+      {countIn(shown) === 0 ? <EmptyState title={l("empty.title")} body={l("empty.body")} /> : null}
 
       {cases.length ? (
         <Card title={l("bucket.cases")}>
@@ -510,10 +569,10 @@ export default function AxisExceptions() {
         </Card>
       ) : null}
 
-      {loaded.documents.length ? (
+      {shown.documents.length ? (
         <Card title={l("bucket.documents")}>
           <ul className="flex flex-col divide-y divide-border">
-            {loaded.documents.map((row) => (
+            {shown.documents.map((row) => (
               <li key={row.id} className="flex flex-wrap items-center gap-3 py-2">
                 <Link
                   to={`/axis/documents/${row.id}`}
@@ -533,10 +592,10 @@ export default function AxisExceptions() {
         </Card>
       ) : null}
 
-      {loaded.tasks.length ? (
+      {shown.tasks.length ? (
         <Card title={l("bucket.tasks")}>
           <ul className="flex flex-col divide-y divide-border">
-            {loaded.tasks.map((row) => (
+            {shown.tasks.map((row) => (
               <li key={row.id} className="flex flex-wrap items-center gap-3 py-2">
                 <Link
                   to={`/axis/tasks/${row.id}`}
@@ -568,10 +627,10 @@ export default function AxisExceptions() {
         </Card>
       ) : null}
 
-      {loaded.escrow.length ? (
+      {shown.escrow.length ? (
         <Card title={l("bucket.escrow")}>
           <ul className="flex flex-col divide-y divide-border">
-            {loaded.escrow.map((row) => (
+            {shown.escrow.map((row) => (
               <li key={row.id} className="flex flex-wrap items-center gap-3 py-2">
                 <Link
                   to={`/axis/escrow-batches/${row.id}`}
@@ -593,10 +652,10 @@ export default function AxisExceptions() {
         </Card>
       ) : null}
 
-      {loaded.complaints.length ? (
+      {shown.complaints.length ? (
         <Card title={l("bucket.complaints")}>
           <ul className="flex flex-col divide-y divide-border">
-            {loaded.complaints.map((row) => (
+            {shown.complaints.map((row) => (
               <li key={row.id} className="flex flex-wrap items-center gap-3 py-2">
                 <span className="font-mono text-12 text-text">{row.ref}</span>
                 <Badge tone={TONE.breach} size="sm" dot>

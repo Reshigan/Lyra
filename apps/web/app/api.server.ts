@@ -217,3 +217,15 @@ export function relayCookies(from: Response, to: Headers): Headers {
   for (const cookie of cookies) to.append("set-cookie", cookie);
   return to;
 }
+
+/**
+ * The session cookie, emptied. Only for the two paths that end a session with no
+ * API response to relay — everything else uses `relayCookies` above, so the
+ * attributes come from apps/api and cannot disagree. Here they can, and the one
+ * that matters is `Domain`: clearing a domain-scoped cookie with a host-only
+ * header leaves the real cookie in place and adds a second, empty one.
+ */
+export function clearedSessionCookie(env: Env): string {
+  const domain = env.SESSION_COOKIE_DOMAIN ? `; Domain=${env.SESSION_COOKIE_DOMAIN}` : "";
+  return `${env.SESSION_COOKIE}=; Path=/${domain}; HttpOnly; SameSite=Lax; Max-Age=0`;
+}

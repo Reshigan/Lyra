@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { lensOf } from "../components/hero";
 import {
   LABELS,
   alertOf,
   alertsFrom,
   labelsIn,
+  lensesAt,
   staffing,
   supervisorHeadline,
   type Presence,
@@ -118,6 +120,23 @@ describe("supervisorHeadline", () => {
     expect(supervisorHeadline(5, 0, 3, l)).toBe(l("headlineWaiting", { n: "3" }));
     expect(supervisorHeadline(5, 0, 0, l)).toBe(l("headlineOpen", { n: "5" }));
     expect(supervisorHeadline(0, 0, 0, l)).toBe(l("headlineClear"));
+  });
+});
+
+// A hero figure with a drill-down promises the rows it counted
+// (components/hero.tsx); the breached figure and the alerts table have to agree
+// on what "breached" means or the wall lies about its own triage.
+describe("the wall's breached door", () => {
+  it("counts exactly the rows the alerts table lists", () => {
+    const rows = [
+      conv({ id: "cnv_res", resolutionBreachedAt: NOW - 1 }),
+      conv({ id: "cnv_ok" }),
+      conv({ id: "cnv_due", firstResponseDueAt: NOW - 1 })
+    ];
+    const shown = lensOf(rows, lensesAt(NOW), "breached");
+
+    expect(shown.map((row) => row.id).sort()).toEqual(["cnv_due", "cnv_res"]);
+    expect(shown).toHaveLength(alertsFrom(rows, NOW).length);
   });
 });
 

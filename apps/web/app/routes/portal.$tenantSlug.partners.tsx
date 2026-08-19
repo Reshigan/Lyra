@@ -75,6 +75,18 @@ export const LABELS: Record<string, Record<string, string>> = {
     "partners.console.run": "Check my account",
     "partners.console.running": "Checking…",
     "partners.console.ok": "The key works. Here is what the API answered.",
+    "partners.quote.title": "Your first quote",
+    "partners.quote.body":
+      "Price a test case with your sandbox key. The number that comes back is made up — a working call, not a real price.",
+    "partners.quote.line": "Which product line?",
+    "partners.quote.amount": "Amount, in the smallest unit of the currency",
+    "partners.quote.currency": "Currency (three letters)",
+    "partners.quote.run": "Get a test quote",
+    "partners.quote.running": "Pricing…",
+    "partners.quote.result": "Quoted",
+    "partners.quote.synthetic": "Made-up number, sandbox only",
+    "partners.quote.ref": "Quote reference",
+    "partners.quote.suspended": "This account cannot quote right now. Please contact us.",
     "partners.status.title": "Account",
     "partners.status.name": "Name",
     "partners.status.sandbox": "Sandbox only",
@@ -138,6 +150,17 @@ export const LABELS: Record<string, Record<string, string>> = {
     "partners.console.run": "افحص حسابي",
     "partners.console.running": "جارٍ الفحص…",
     "partners.console.ok": "المفتاح يعمل. هذا ما ردّت به الواجهة.",
+    "partners.quote.title": "أول تسعير لك",
+    "partners.quote.body": "سعّر حالة تجريبية بمفتاحك. الرقم العائد غير حقيقي — طلب ناجح، لا سعر فعلي.",
+    "partners.quote.line": "أي خط منتجات؟",
+    "partners.quote.amount": "المبلغ، بأصغر وحدة للعملة",
+    "partners.quote.currency": "العملة (ثلاثة أحرف)",
+    "partners.quote.run": "احصل على تسعير تجريبي",
+    "partners.quote.running": "جارٍ التسعير…",
+    "partners.quote.result": "السعر",
+    "partners.quote.synthetic": "رقم غير حقيقي، للتجربة فقط",
+    "partners.quote.ref": "مرجع التسعير",
+    "partners.quote.suspended": "لا يمكن لهذا الحساب التسعير حاليًا. تواصل معنا.",
     "partners.status.title": "الحساب",
     "partners.status.name": "الاسم",
     "partners.status.sandbox": "تجريبي فقط",
@@ -262,15 +285,55 @@ interface Offering {
   name: string;
 }
 
+/** What POST /v1/orbit/partners/:id/quotes answers with — see
+ *  apps/api/src/engines/orbit-partner-quotes.ts. `synthetic` is the engine's own
+ *  word for "this price is invented", and it is shown rather than hidden. */
+export interface SandboxQuote {
+  id: string;
+  mode: string;
+  synthetic: boolean;
+  quotedPremiumMinor: number;
+  currency: string;
+}
+
 type ActionData =
   | { ok: "signup"; partner: Partner; sandboxKey: string }
   | { ok: "status"; partner: Partner; txns: PartnerTxn[]; offerings: Offering[] }
+  | { ok: "quote"; quote: SandboxQuote }
   | { ok: false; errorKey: string };
+
+/**
+ * The amount the quote API will accept, or null if the box does not hold one.
+ * `<input type="number">` is a text box a determined visitor can put anything
+ * in, and the API wants a positive integer of minor units — so the string is
+ * rejected here rather than sent as a NaN the API answers with a 400.
+ */
+export function amountMinorFrom(raw: string): number | null {
+  if (!/^\d{1,15}$/.test(raw.trim())) return null;
+  const value = Number(raw.trim());
+  return value > 0 ? value : null;
+}
 
 function signupError(status: number): string {
   if (status === 429) return "partners.error.throttled";
   if (status === 404) return "partners.error.tenant";
   if (status === 400) return "partners.error.validation";
+  return "partners.error.generic";
+}
+
+/**
+ * Which label an API failure earns. The bearer-key hops share one rule: 401,
+ * 403 and 404 are all "that key or id was not accepted" — the API refuses a
+ * missing row and another tenant's row identically, and so must this page, or
+ * the copy would tell a stranger which ids exist.
+ */
+export function actionError(intent: string, status: number): string {
+  // Anything that is not one of the two key-bearing intents took the signup
+  // path, including a missing intent — same fallback as the action itself.
+  if (intent !== "status" && intent !== "quote") return signupError(status);
+  if (status === 401 || status === 403 || status === 404) return "partners.error.key";
+  if (intent === "quote" && status === 409) return "partners.quote.suspended";
+  if (intent === "quote" && status === 400) return "partners.error.validation";
   return "partners.error.generic";
 }
 
@@ -296,6 +359,30 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
       return { ok: "status", partner, txns: txns.data, offerings: offerings.data } satisfies ActionData;
     }
 
+    if (intent === "quote") {
+      const key = String(form.get("key") ?? "").trim();
+      const id = String(form.get("id") ?? "").trim();
+      const productLine = String(form.get("productLine") ?? "").trim();
+      const amountMinor = amountMinorFrom(String(form.get("amountMinor") ?? ""));
+      const currency = String(form.get("currency") ?? "")
+        .trim()
+        .toUpperCase();
+      if (!key || !id || !productLine || amountMinor === null || currency.length !== 3) {
+        return { ok: false, errorKey: "partners.error.validation" } satisfies ActionData;
+      }
+      // ponytail: no idempotency key. The call logs a sandbox quote and moves no
+      // money, so a double-tap costing one extra log row is cheaper than minting
+      // and threading a key through a public form. Add one if this ever prices
+      // live business.
+      const quote = await api<SandboxQuote>(`/v1/orbit/partners/${id}/quotes`, {
+        env,
+        method: "POST",
+        headers: { authorization: `Bearer ${key}` },
+        body: { productLine, amountMinor, currency }
+      });
+      return { ok: "quote", quote } satisfies ActionData;
+    }
+
     const created = await api<SignupResponse>("/v1/onboarding/partners/signup", {
       env,
       method: "POST",
@@ -311,13 +398,7 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
     return { ok: "signup", partner, sandboxKey } satisfies ActionData;
   } catch (error) {
     if (!(error instanceof ApiError)) throw error;
-    const errorKey =
-      intent === "status"
-        ? error.status === 401 || error.status === 403 || error.status === 404
-          ? "partners.error.key"
-          : "partners.error.generic"
-        : signupError(error.status);
-    return { ok: false, errorKey } satisfies ActionData;
+    return { ok: false, errorKey: actionError(intent, error.status) } satisfies ActionData;
   }
 }
 
@@ -331,6 +412,7 @@ export default function PortalPartners() {
 
   const signed = result && result.ok === "signup" ? result : null;
   const status = result && result.ok === "status" ? result : null;
+  const quoted = result && result.ok === "quote" ? result : null;
   const totals = status ? usageTotals(status.txns) : null;
   const stage = (value: string) => l(`partners.stage.${value}`);
   const money = (minor: number, currency: string | null) =>
@@ -434,6 +516,70 @@ export default function PortalPartners() {
               {busy && submitting === "status" ? l("partners.console.running") : l("partners.console.run")}
             </Button>
           </Form>
+        </Card>
+
+        <Card title={l("partners.quote.title")} description={l("partners.quote.body")} className="mb-8">
+          <Form method="post" className="flex flex-col gap-5">
+            <input type="hidden" name="intent" value="quote" />
+            <Field label={l("partners.console.key")} id="partners-quote-key" required>
+              <Input name="key" type="password" required autoComplete="off" spellCheck={false} />
+            </Field>
+            <Field label={l("partners.console.id")} id="partners-quote-id" required>
+              <Input
+                name="id"
+                required
+                autoComplete="off"
+                spellCheck={false}
+                defaultValue={signed?.partner.id ?? status?.partner.id ?? ""}
+              />
+            </Field>
+            <Field label={l("partners.quote.line")} id="partners-quote-line" required>
+              <Input
+                name="productLine"
+                required
+                maxLength={120}
+                autoComplete="off"
+                defaultValue={status?.offerings[0]?.name ?? ""}
+              />
+            </Field>
+            <Field label={l("partners.quote.amount")} id="partners-quote-amount" required>
+              <Input name="amountMinor" type="number" required min={1} step={1} inputMode="numeric" />
+            </Field>
+            <Field label={l("partners.quote.currency")} id="partners-quote-currency" required>
+              <Input
+                name="currency"
+                required
+                minLength={3}
+                maxLength={3}
+                autoComplete="off"
+                spellCheck={false}
+                className="uppercase"
+              />
+            </Field>
+            <Button type="submit" loading={busy && submitting === "quote"}>
+              {busy && submitting === "quote" ? l("partners.quote.running") : l("partners.quote.run")}
+            </Button>
+          </Form>
+
+          {quoted ? (
+            <dl className="mt-6 grid grid-cols-2 gap-3 border-t border-border pt-4 text-13">
+              <div>
+                <dt className="text-muted">{l("partners.quote.result")}</dt>
+                <dd role="status" className="flex flex-wrap items-center gap-2">
+                  <Money
+                    amountMinor={quoted.quote.quotedPremiumMinor}
+                    currency={quoted.quote.currency}
+                    locale={locale}
+                  />
+                  {quoted.quote.synthetic ? <Badge tone="warning">{l("partners.quote.synthetic")}</Badge> : null}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-muted">{l("partners.quote.ref")}</dt>
+                <dd className="font-mono">{quoted.quote.id}</dd>
+              </div>
+            </dl>
+          ) : null}
         </Card>
 
         {status && totals ? (

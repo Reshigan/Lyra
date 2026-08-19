@@ -25,7 +25,7 @@ export function ShiftRail({ t, shift }: { t: Translate; shift: Shift | null }) {
   if (!shift) return null;
 
   return (
-    <div className="mb-2 border-b border-border pb-2">
+    <div className="border-b border-border pb-2">
       <div className="flex items-center gap-[11px] px-1 pb-3">
         <svg width="38" height="38" viewBox="0 0 38 38" aria-hidden="true" className="shrink-0">
           <circle cx="19" cy="19" r="16" fill="none" stroke="var(--surface-3)" strokeWidth="3" />

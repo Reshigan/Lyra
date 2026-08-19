@@ -22,10 +22,13 @@ import {
   Select,
   Skeleton,
   Stat,
+  StateFlow,
   Table,
   Textarea,
   formatInstant,
-  type Column
+  type Column,
+  type FlowMachine,
+  type FlowVisit
 } from "@lyra/ui";
 import { ApiError, api, fetchMe, names, type Problem } from "../api.server";
 import { cloudflare } from "../context";
@@ -100,6 +103,14 @@ export interface TaskRow {
   dueAt?: number | null;
 }
 
+/** One line of the tenant's audit trail, as /v1/core/audit-log returns it. */
+export interface AuditRow {
+  id: string;
+  action: string;
+  actorRef: string;
+  ts: number;
+}
+
 export const PERM = {
   read: "axis:cases:read",
   update: "axis:cases:update",
@@ -110,7 +121,8 @@ export const PERM = {
   tasks: "axis:tasks:read",
   export: "compliance:evidence:export",
   download: "compliance:evidence:read",
-  copilot: "axis:cases:read"
+  copilot: "axis:cases:read",
+  audit: "core:audit:read"
 } as const;
 
 /** The case state machine as apps/db declares it (axis_cases.status). */
@@ -124,6 +136,53 @@ export const STATES = [
   "failed",
   "cancelled"
 ] as const;
+
+/**
+ * Mirrors CASE_TRANSITIONS in packages/core/src/lifecycle.ts. The web app cannot
+ * import @lyra/core (same reason claim-detail.tsx restates the claim machine),
+ * and the API refuses a hop this map would wrongly allow, so drift is caught
+ * where it matters rather than shipped as a wrong diagram.
+ */
+export const CASE_TRANSITIONS: Record<string, readonly string[]> = {
+  intake: ["quoting", "cancelled"],
+  quoting: ["awaiting_docs", "review", "cancelled"],
+  awaiting_docs: ["quoting", "review", "cancelled"],
+  review: ["approval", "awaiting_docs", "failed", "cancelled"],
+  approval: ["issued", "review", "failed", "cancelled"],
+  issued: [],
+  failed: ["intake"],
+  cancelled: []
+};
+
+/**
+ * The flow the diagram draws. The spine is the path a work item takes when it
+ * is quoted, reviewed, signed off and issued; `failed` and `cancelled` are how
+ * it ends instead, so they are exits rather than steps a live case is told it
+ * is pending. `awaiting_docs` is a real state but a detour off the spine, so it
+ * appears when the case is in it and not before. `flowPlan` refuses a spine
+ * whose consecutive pair is not a documented edge of `CASE_TRANSITIONS`, so
+ * this literal cannot drift away from the machine above without a test failing.
+ */
+export const CASE_FLOW: FlowMachine = {
+  transitions: CASE_TRANSITIONS,
+  spine: ["intake", "quoting", "review", "approval", "issued"],
+  exits: ["failed", "cancelled"]
+};
+
+/**
+ * A state change as the audit trail records it: engines/axis-case-lifecycle.ts
+ * writes `axis.case.${to}` on every hop it allows. Nothing else on the trail is
+ * a transition — a document verify, a copilot answer, the `axis.cases.create`
+ * the generic resource writes (whose status is whatever the caller posted, not
+ * necessarily `intake`) — so those return null and are dropped rather than
+ * guessed at.
+ */
+export function stateOfAudit(action: string): string | null {
+  const prefix = "axis.case.";
+  if (!action.startsWith(prefix)) return null;
+  const state = action.slice(prefix.length);
+  return state in CASE_TRANSITIONS ? state : null;
+}
 
 /* ---------------------------------------------------------------- labels */
 
@@ -168,6 +227,8 @@ export const LABELS: Record<string, Record<string, string>> = {
     stateRequired: "Choose a state to move to.",
     eventsTitle: "Steps",
     eventsCaption: "Every step recorded on this work item, newest first.",
+    flowTitle: "Where it is",
+    flowLabel: "Work item lifecycle",
     documentsTitle: "Documents",
     documentsCaption: "Evidence filed on this work item. Verifying one is a decision, and it is recorded.",
     verify: "Verify",
@@ -245,6 +306,8 @@ export const LABELS: Record<string, Record<string, string>> = {
     stateRequired: "اختر الحالة المطلوبة.",
     eventsTitle: "الخطوات",
     eventsCaption: "كل خطوة مسجّلة على بند العمل، الأحدث أولًا.",
+    flowTitle: "موضعه الآن",
+    flowLabel: "دورة حياة بند العمل",
     documentsTitle: "المستندات",
     documentsCaption: "الأدلة المرفقة بهذا البند. توثيق المستند قرار، ويُسجّل.",
     verify: "توثيق",
@@ -367,6 +430,7 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   const empty = {
     workItem: null as Case | null,
     events: [] as EventRow[],
+    trail: [] as AuditRow[],
     documents: [] as DocumentRow[],
     approvals: [] as CaseApprovalRow[],
     tasks: [] as TaskRow[],
@@ -377,10 +441,22 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
 
   if (!may.read) return empty;
   const scope = `?caseId=${encodeURIComponent(id)}&limit=50`;
-  const [workItem, events, documents, approvals, tasks] = await Promise.all([
+  const [workItem, events, trail, documents, approvals, tasks] = await Promise.all([
     safe(() => api<Case>(`/v1/axis/cases/${id}`, options), null),
     held.has(PERM.events)
       ? safe(() => api<Page<EventRow>>(`/v1/axis/process-events${scope}&sort=ts&order=desc`, options), null)
+      : null,
+    // The state hops, which the process-event steps are not: those are mining
+    // step names (`quote_fanout`, `documents_requested`), not case states.
+    held.has(PERM.audit)
+      ? safe(
+          () =>
+            api<Page<AuditRow>>(
+              `/v1/core/audit-log?subjectRef=${encodeURIComponent(id)}&sort=ts&order=desc&limit=25`,
+              options
+            ),
+          null
+        )
       : null,
     held.has(PERM.documents) ? safe(() => api<Page<DocumentRow>>(`/v1/axis/documents${scope}`, options), null) : null,
     held.has(PERM.approvals)
@@ -403,6 +479,7 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
     workItem,
     named,
     events: rowsOf(events),
+    trail: rowsOf(trail),
     documents: rowsOf(documents),
     approvals: rowsOf(approvals),
     tasks: rowsOf(tasks)
@@ -495,6 +572,16 @@ export default function CaseDetail() {
   }
 
   const workItem = loaded.workItem;
+
+  // Ascending, because the trail arrives newest-first and a flow reads forwards.
+  // The trail is capped at 25 rows and is withheld without `core:audit:read`, so
+  // these are the hops this actor can see — never a claim that there were no
+  // others. `flowPlan` draws the current state and what is still owed either
+  // way, so a case with no visible history is still honestly placed.
+  const visits: FlowVisit[] = [...loaded.trail].reverse().flatMap((row) => {
+    const state = stateOfAudit(row.action);
+    return state ? [{ state, at: row.ts, actor: row.actorRef }] : [];
+  });
 
   const eventColumns: Array<Column<EventRow>> = [
     { key: "step", header: l("colStep"), render: (row) => <span className="font-ui text-12">{tag(l, "step", row.step)}</span> },
@@ -686,6 +773,17 @@ export default function CaseDetail() {
       ) : null}
       {result?.done ? <p className="font-ui text-13 text-success">{l(result.done)}</p> : null}
       {result?.problem ? <Gate problem={result.problem} l={l} /> : null}
+
+      <Card title={l("flowTitle")}>
+        <StateFlow
+          machine={CASE_FLOW}
+          visits={visits}
+          current={workItem.status}
+          label={l("flowLabel")}
+          labelFor={(state) => tag(l, "status", state)}
+          locale={locale}
+        />
+      </Card>
 
       <Card title={l("eventsTitle")} padded={false}>
         <Table

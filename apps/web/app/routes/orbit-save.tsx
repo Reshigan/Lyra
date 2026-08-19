@@ -18,14 +18,13 @@ import {
   EvidenceLink,
   Field,
   GuardrailNotice,
-  KPIWall,
   Select,
-  Stat,
   Table,
   shortRef,
   type BadgeTone,
   type Column
 } from "@lyra/ui";
+import { HeroStat, HeroWall, lensOf, useFocus, type Lens } from "../components/hero";
 import { api, asRouteError, fetchMe, names, type Problem as ProblemShape } from "../api.server";
 import { cloudflare } from "../context";
 import { who, type Names } from "../names";
@@ -86,8 +85,17 @@ export const REASONS = [
   "expired_no_response"
 ] as const;
 
+/** One rule, so the hero's count and `atRisk`'s list cannot disagree. */
+const riskAt =
+  (floor: number): Lens<Renewal> =>
+  (row) =>
+    (row.churnScore ?? 0) >= floor;
+
+/** The wall's drillable figure: the risky head of the queue, as a lens. */
+export const LENSES: Record<string, Lens<Renewal>> = { risk: riskAt(HIGH_RISK_FLOOR) };
+
 export function atRisk(rows: Renewal[], floor = HIGH_RISK_FLOOR): Renewal[] {
-  return rows.filter((row) => (row.churnScore ?? 0) >= floor);
+  return rows.filter(riskAt(floor));
 }
 
 export function riskTone(score: number | null): BadgeTone {
@@ -124,6 +132,7 @@ export const LABELS: Labels = {
     headlineClear: "Nothing waiting on us right now",
     openRenewal: "Open the highest-risk renewal",
     atRisk: "High churn risk",
+    heroAll: "Show everything",
     scheduledCount: "Waiting on us",
     offeredCount: "Offer out",
     savedRate: "Saved this window",
@@ -193,6 +202,7 @@ export const LABELS: Labels = {
     headlineClear: "لا شيء بانتظارنا الآن",
     openRenewal: "افتح التجديد الأعلى خطرًا",
     atRisk: "خطر تسرب مرتفع",
+    heroAll: "إظهار الكل",
     scheduledCount: "بانتظار إجراء منّا",
     offeredCount: "عرض قائم",
     savedRate: "استُبقيت في هذه الفترة",
@@ -366,7 +376,10 @@ export default function SaveDesk() {
   const navigation = useNavigation();
   const l = labelsIn(loaded.locale);
   const busy = navigation.state === "submitting";
-  const risky = atRisk(loaded.queue.data);
+  const { focus, href } = useFocus(LENSES);
+  // Counted through the lens the queue below is filtered by, so the figure and
+  // the desk it opens are the same rows.
+  const risky = lensOf(loaded.queue.data, LENSES, "risk");
   const settledTotal = loaded.savedCount + loaded.lostCount;
   const savedRate = settledTotal === 0 ? 0 : Math.round((loaded.savedCount / settledTotal) * 100);
 
@@ -405,21 +418,36 @@ export default function SaveDesk() {
         </div>
       ) : null}
 
-      <KPIWall>
-        <Stat label={l("atRisk")} value={String(risky.length)} live={risky.length > 0} />
-        <Stat label={l("scheduledCount")} value={String(loaded.queue.total ?? loaded.queue.data.length)} />
-        <Stat
+      <HeroWall focus={focus} allLabel={l("heroAll")}>
+        <HeroStat
+          label={l("atRisk")}
+          value={String(risky.length)}
+          live={risky.length > 0}
+          to={href("risk")}
+          active={focus === "risk"}
+        />
+        {/* One state, one endpoint, one declared filter (modules/orbit.ts): the
+            list route counts exactly the rows behind this figure. */}
+        <HeroStat
+          label={l("scheduledCount")}
+          value={String(loaded.queue.total ?? loaded.queue.data.length)}
+          to="/orbit/renewals?state=scheduled"
+        />
+        <HeroStat
           label={l("offeredCount")}
           value={String(loaded.outstanding.total ?? loaded.outstanding.data.length)}
+          to="/orbit/renewals?state=offered"
         />
-        <Stat label={l("savedRate")} value={`${savedRate}%`} hint={l("noOffer")} />
-      </KPIWall>
+        {/* No door: a rate has no rows, and its two counts span states this
+            screen does not list in full. */}
+        <HeroStat label={l("savedRate")} value={`${savedRate}%`} hint={l("noOffer")} />
+      </HeroWall>
 
       <GuardrailNotice title={l("noOffer")} reason={l("noOfferBody")} tone="info" />
 
       <Card title={l("queue")} description={l("queueBody")}>
         <Desk
-          rows={loaded.queue.data}
+          rows={lensOf(loaded.queue.data, LENSES, focus)}
           l={l}
           locale={loaded.locale}
           resolved={loaded.resolved}
@@ -431,69 +459,76 @@ export default function SaveDesk() {
         />
       </Card>
 
-      <Card title={l("outstanding")} description={l("outstandingBody")}>
-        <Desk
-          rows={loaded.outstanding.data}
-          l={l}
-          locale={loaded.locale}
-          resolved={loaded.resolved}
-          now={loaded.now}
-          nonce={loaded.nonce}
-          writable={loaded.may.write}
-          busy={busy}
-          emptyTitle={l("noneOutstanding")}
-        />
-      </Card>
+      {/* Neither card holds a row the risk figure counted — an offer is out
+          and a settlement is done — so while the lens is on they would be lists
+          the wall above disowns. Back on "show everything". */}
+      {focus ? null : (
+        <>
+          <Card title={l("outstanding")} description={l("outstandingBody")}>
+            <Desk
+              rows={loaded.outstanding.data}
+              l={l}
+              locale={loaded.locale}
+              resolved={loaded.resolved}
+              now={loaded.now}
+              nonce={loaded.nonce}
+              writable={loaded.may.write}
+              busy={busy}
+              emptyTitle={l("noneOutstanding")}
+            />
+          </Card>
 
-      <Card title={l("settled")} description={l("settledBody")}>
-        {loaded.settled.length === 0 ? (
-          <EmptyState title={l("noneSettled")} body={l("noneBody")} />
-        ) : (
-          <Table
-            caption={l("settled")}
-            rows={loaded.settled}
-            rowKey={(row) => row.id}
-            density="compact"
-            columns={[
-              {
-                key: "customerId",
-                header: l("customer"),
-                render: (row) => (row.customerId ? who(row.customerId, loaded.resolved) : "—")
-              },
-              {
-                key: "policyRef",
-                header: l("policyRef"),
-                render: (row) =>
-                  row.policyRef ? (
-                    <span className="font-mono text-12" title={row.policyRef}>
-                      {shortRef(row.policyRef)}
-                    </span>
-                  ) : (
-                    "—"
-                  )
-              },
-              {
-                key: "state",
-                header: l("state"),
-                render: (row) => (
-                  <Badge tone={row.state === "accepted" ? "success" : "danger"}>{l(row.state)}</Badge>
-                )
-              },
-              {
-                key: "outcomeReason",
-                header: l("outcome"),
-                render: (row) => (row.outcomeReason ? l(row.outcomeReason) : "—")
-              },
-              {
-                key: "decidedAt",
-                header: l("decided"),
-                render: (row) =>
-                  row.decidedAt ? <DateTime value={row.decidedAt} locale={loaded.locale} relative /> : "—"
-              }
-            ] satisfies Column<Renewal>[]}
-          />
-        )}
-      </Card>
+          <Card title={l("settled")} description={l("settledBody")}>
+            {loaded.settled.length === 0 ? (
+              <EmptyState title={l("noneSettled")} body={l("noneBody")} />
+            ) : (
+              <Table
+                caption={l("settled")}
+                rows={loaded.settled}
+                rowKey={(row) => row.id}
+                density="compact"
+                columns={[
+                  {
+                    key: "customerId",
+                    header: l("customer"),
+                    render: (row) => (row.customerId ? who(row.customerId, loaded.resolved) : "—")
+                  },
+                  {
+                    key: "policyRef",
+                    header: l("policyRef"),
+                    render: (row) =>
+                      row.policyRef ? (
+                        <span className="font-mono text-12" title={row.policyRef}>
+                          {shortRef(row.policyRef)}
+                        </span>
+                      ) : (
+                        "—"
+                      )
+                  },
+                  {
+                    key: "state",
+                    header: l("state"),
+                    render: (row) => (
+                      <Badge tone={row.state === "accepted" ? "success" : "danger"}>{l(row.state)}</Badge>
+                    )
+                  },
+                  {
+                    key: "outcomeReason",
+                    header: l("outcome"),
+                    render: (row) => (row.outcomeReason ? l(row.outcomeReason) : "—")
+                  },
+                  {
+                    key: "decidedAt",
+                    header: l("decided"),
+                    render: (row) =>
+                      row.decidedAt ? <DateTime value={row.decidedAt} locale={loaded.locale} relative /> : "—"
+                  }
+                ] satisfies Column<Renewal>[]}
+              />
+            )}
+          </Card>
+        </>
+      )}
     </div>
   );
 }

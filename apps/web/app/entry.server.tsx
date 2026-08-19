@@ -36,6 +36,24 @@ export default async function handleRequest(
   routerContext: EntryContext
 ): Promise<Response> {
   let status = responseStatusCode;
+  // Once the Response below exists, its status is on the wire. An error React
+  // reports *after* that — a boundary blowing up mid-stream — can still be
+  // logged, but must not pretend it can change a status nobody reads again.
+  // Everything React reports before it (a boundary that errored during the
+  // shell pass, or anything at all on the crawler path, which waits for
+  // `allReady` first) does still change it: that is the read this guards.
+  let statusSent = false;
+  // React reports an abort exactly the way it reports a fault: onError with the
+  // signal's reason, plus a rejection of the shell promise if the shell had not
+  // flushed yet. The reason's shape is not dependable (workerd may abort with
+  // none, and React then invents `Error("The render was aborted by the server
+  // without a reason.")`), so the discriminator is the signal itself — the same
+  // one react-router's own default errorHandler uses. A client that walked away
+  // is not a server fault: never a 500, and never a line in the log, which
+  // Playwright pipes.
+  const rethrowUnlessAborted = (error: unknown) => {
+    if (!request.signal.aborted) throw error;
+  };
   // React Router hands the browser its router context and hydration call as
   // inline <script> tags. Under `default-src 'self'` the browser refuses to run
   // them, so the document renders and then nothing ever hydrates — every
@@ -46,12 +64,23 @@ export default async function handleRequest(
   const body = await renderToReadableStream(
     <ServerRouter context={routerContext} url={request.url} nonce={nonce} />,
     {
+      // Without this the render has no way to hear the client hang up, and
+      // finishes the whole document into a dead socket.
+      signal: request.signal,
       onError(error: unknown) {
-        status = 500;
+        if (request.signal.aborted) return;
+        if (!statusSent) status = 500;
         console.error(error);
       }
     }
-  );
+  ).catch((error: unknown) => {
+    rethrowUnlessAborted(error);
+    return null;
+  });
+  // Aborted before the shell flushed, so React rejected instead of resolving.
+  // Throwing here would make react-router render the whole document a second
+  // time to build an error page — for a client that is already gone.
+  if (!body) return new Response(null, { status: 499 });
 
   if (isbot(request.headers.get("user-agent") ?? "")) await body.allReady;
 
@@ -69,5 +98,6 @@ export default async function handleRequest(
   // foreign origin and 400s the request. strict-origin-when-cross-origin
   // keeps the same cross-origin/downgrade privacy guarantees without that.
   responseHeaders.set("referrer-policy", "strict-origin-when-cross-origin");
+  statusSent = true;
   return new Response(body, { status, headers: responseHeaders });
 }

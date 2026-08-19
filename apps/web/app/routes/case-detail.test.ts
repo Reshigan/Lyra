@@ -1,7 +1,17 @@
+import { flowPlan } from "@lyra/ui";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ActionFunctionArgs } from "react-router";
 import type { Env } from "../env";
-import { LABELS, STATES, action, caseLede, labelsIn } from "./case-detail";
+import {
+  CASE_FLOW,
+  CASE_TRANSITIONS,
+  LABELS,
+  STATES,
+  action,
+  caseLede,
+  labelsIn,
+  stateOfAudit
+} from "./case-detail";
 
 // The work item's two transitions are the only writes: move the state machine,
 // or mark one document verified. Both are the API's own state changes, so the
@@ -232,5 +242,96 @@ describe("action: export", () => {
 
     expect(result.problem?.status).toBe(403);
     expect(result.done).toBeNull();
+  });
+});
+
+// The diagram is only as true as the machine it is handed, and the history it
+// draws is only as true as the trail it reads. These pin both.
+
+describe("CASE_FLOW", () => {
+  it("is the screen's machine by reference, not a second copy of it", () => {
+    expect(CASE_FLOW.transitions).toBe(CASE_TRANSITIONS);
+  });
+
+  it("documents exactly the states the screen's picker offers", () => {
+    // The move form is built from STATES; a state it can send that the flow
+    // cannot draw would be a case the diagram silently loses.
+    expect(Object.keys(CASE_TRANSITIONS).sort()).toEqual([...STATES].sort());
+  });
+
+  it("names no state the machine does not document", () => {
+    for (const state of [...CASE_FLOW.spine, ...(CASE_FLOW.exits ?? [])]) {
+      expect(CASE_TRANSITIONS[state]).toBeDefined();
+    }
+  });
+
+  it("is a spine of documented transitions, whole", () => {
+    // `flowPlan` throws on an undocumented spine edge, so this both plans and
+    // proves the happy path is one the case engine can actually walk.
+    const plan = flowPlan(CASE_FLOW, [], "intake");
+    expect(plan.steps.map((step) => step.state)).toEqual([...CASE_FLOW.spine]);
+    expect(plan.unknown).toEqual([]);
+  });
+
+  it("can draw every state the machine can reach, on the spine or off it", () => {
+    for (const state of Object.keys(CASE_TRANSITIONS)) {
+      const plan = flowPlan(CASE_FLOW, [{ state }], state);
+      expect(plan.steps.map((step) => step.state)).toContain(state);
+      expect(plan.unknown).toEqual([]);
+    }
+  });
+
+  it("never tells a live case it is pending failure or cancellation", () => {
+    // An exit is how a case ends instead of continuing, so it is never drawn as
+    // work still owed on a case that is still going.
+    for (const state of CASE_FLOW.spine) {
+      const plan = flowPlan(CASE_FLOW, [], state);
+      for (const exit of CASE_FLOW.exits ?? []) {
+        expect(plan.steps.map((step) => step.state)).not.toContain(exit);
+      }
+    }
+  });
+
+  it("promises nothing further once a case is issued or cancelled", () => {
+    for (const state of ["issued", "cancelled"]) {
+      const plan = flowPlan(CASE_FLOW, [{ state }], state);
+      expect(plan.steps.filter((step) => step.status === "pending")).toEqual([]);
+    }
+  });
+
+  it("offers a failed case the one hop the machine documents", () => {
+    // Failure is not the end of the road the way cancellation is: the machine
+    // says a failed case may be taken back to intake, so the flow says so too.
+    const plan = flowPlan(CASE_FLOW, [{ state: "failed" }], "failed");
+    expect(plan.steps.map((step) => step.state)).toEqual(["failed", "intake"]);
+  });
+
+  it("shows the detour, not the spine, while a case waits on documents", () => {
+    const plan = flowPlan(CASE_FLOW, [{ state: "quoting" }], "awaiting_docs");
+    expect(plan.steps.map((step) => step.state)).toEqual(["quoting", "awaiting_docs", "quoting", "review"]);
+  });
+});
+
+describe("stateOfAudit", () => {
+  it("reads the state out of a hop the case lifecycle engine wrote", () => {
+    expect(stateOfAudit("axis.case.quoting")).toBe("quoting");
+    expect(stateOfAudit("axis.case.issued")).toBe("issued");
+    expect(stateOfAudit("axis.case.awaiting_docs")).toBe("awaiting_docs");
+  });
+
+  it("is not a state change for anything else on the trail", () => {
+    for (const entry of [
+      // The generic resource writes this on create; the status it created the
+      // row with is whatever the caller posted, so it is not read as `intake`.
+      "axis.cases.create",
+      "axis.cases.update",
+      "axis.documents.verify",
+      "core.approval.decided",
+      "axis.claim.assessing",
+      "axis.case.",
+      ""
+    ]) {
+      expect(stateOfAudit(entry)).toBeNull();
+    }
   });
 });

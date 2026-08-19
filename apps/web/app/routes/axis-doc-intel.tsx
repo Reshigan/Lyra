@@ -24,13 +24,13 @@ import {
   KPIWall,
   Ref,
   Select,
-  Stat,
   Textarea,
   cn,
   focusRing,
   type BadgeTone
 } from "@lyra/ui";
 import { ApiError, api } from "../api.server";
+import { FOCUS, HeroStat, lensOf, useFocus, type Lens } from "../components/hero";
 import { cloudflare } from "../context";
 import { labelsFrom, tag } from "./detail-kit";
 import { Gate } from "./staff";
@@ -229,6 +229,21 @@ export interface DocRow {
   verifiedAt: number | null;
   createdAt: number;
 }
+
+/**
+ * The three figures on the wall that stand for a set of rows, as predicates over
+ * the one page of documents the loader fetched. The wall's own counts are read
+ * through these too, so a figure and the list its link opens are the same
+ * `filter()` — see the accuracy test in axis-doc-intel.test.ts.
+ *
+ * `extracting` is fetched but carries no figure, and so deliberately has no lens:
+ * a filter nobody can read off a hero should not be reachable by typing it.
+ */
+export const DOC_LENSES: Record<string, Lens<DocRow>> = {
+  extracted: (doc) => doc.status === "extracted",
+  received: (doc) => doc.status === "received",
+  rejected: (doc) => doc.status === "rejected"
+};
 
 /* ---------------------------------------------------------------- helpers */
 
@@ -506,7 +521,12 @@ export default function AxisDocIntel() {
   const held = new Set(shell?.permissions ?? []);
   const busy = navigation.state !== "idle";
 
-  const counted = (status: string) => loaded.docs.filter((doc) => doc.status === status).length;
+  // The wall always counts the whole page; the reading list beside it narrows to
+  // whichever figure was clicked. Both go through DOC_LENSES, so the number on a
+  // tile and the rows its link shows are one `filter()` and cannot drift apart.
+  const { focus, href } = useFocus(DOC_LENSES);
+  const docs = lensOf(loaded.docs, DOC_LENSES, focus);
+  const counted = (lens: string) => lensOf(loaded.docs, DOC_LENSES, lens).length;
   const worst = worstDoc(loaded.docs);
   const headline = headlineFor(
     {
@@ -525,7 +545,7 @@ export default function AxisDocIntel() {
     setIndex(next);
     setBroken(false);
   };
-  const selected = loaded.docs[Math.min(index, Math.max(loaded.docs.length - 1, 0))];
+  const selected = docs[Math.min(index, Math.max(docs.length - 1, 0))];
   const model = selected ? fieldsOf(selected) : {};
   const names = Object.keys(model);
   const confidence = selected ? confidenceOf(selected) : null;
@@ -540,14 +560,14 @@ export default function AxisDocIntel() {
     function onKey(event: KeyboardEvent) {
       const focused = (event.target as HTMLElement | null)?.tagName;
       if (focused === "INPUT" || focused === "TEXTAREA" || focused === "SELECT") return;
-      if (event.key === "j") setIndex((i) => Math.min(i + 1, loaded.docs.length - 1));
+      if (event.key === "j") setIndex((i) => Math.min(i + 1, docs.length - 1));
       else if (event.key === "k") setIndex((i) => Math.max(i - 1, 0));
       else return;
       setBroken(false);
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [loaded.docs.length]);
+  }, [docs.length]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -568,14 +588,37 @@ export default function AxisDocIntel() {
         </p>
       ) : null}
 
+      {/* The desk total is its own way back to everything, so no separate escape link. */}
       <KPIWall>
-        <Stat label={l("stat.open")} value={loaded.docs.length} />
-        <Stat label={l("stat.extracted")} value={counted("extracted")} />
-        <Stat label={l("stat.received")} value={counted("received")} />
-        <Stat label={l("stat.rejected")} value={counted("rejected")} />
+        <HeroStat
+          label={l("stat.open")}
+          value={loaded.docs.length}
+          to={href(null)}
+          active={focus === null}
+        />
+        <HeroStat
+          label={l("stat.extracted")}
+          value={counted("extracted")}
+          to={href("extracted")}
+          active={focus === "extracted"}
+        />
+        <HeroStat
+          label={l("stat.received")}
+          value={counted("received")}
+          to={href("received")}
+          active={focus === "received"}
+        />
+        <HeroStat
+          label={l("stat.rejected")}
+          value={counted("rejected")}
+          to={href("rejected")}
+          active={focus === "rejected"}
+        />
       </KPIWall>
 
       <Form method="get" className="flex flex-wrap items-end gap-3">
+        {/* Applying a `show` change must not silently widen the clicked figure. */}
+        {focus ? <input type="hidden" name={FOCUS} value={focus} /> : null}
         <Field label={l("filter.label")} className="w-56">
           <Select
             name="show"
@@ -591,12 +634,12 @@ export default function AxisDocIntel() {
         </Button>
       </Form>
 
-      {loaded.docs.length === 0 ? <EmptyState title={l("empty.title")} body={l("empty.body")} /> : null}
+      {docs.length === 0 ? <EmptyState title={l("empty.title")} body={l("empty.body")} /> : null}
 
       {selected ? (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[220px_1fr_1fr]">
           <ul className="flex flex-col gap-1 lg:max-h-[70vh] lg:overflow-y-auto" aria-label={l("nav.label")}>
-            {loaded.docs.map((doc, i) => (
+            {docs.map((doc, i) => (
               <li key={doc.id}>
                 <button
                   type="button"

@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ActionFunctionArgs } from "react-router";
 import type { Env } from "../env";
+import { FOCUS, focusIn, lensOf } from "../components/hero";
 import {
+  DOC_LENSES,
   FIELD_PREFIX,
   OPEN_DOC_STATUSES,
   REVIEW_FLOOR,
@@ -535,5 +537,37 @@ describe("the documents on the desk", () => {
   it("are the ones not yet vouched for", () => {
     expect([...OPEN_DOC_STATUSES]).toEqual(["received", "extracting", "extracted", "rejected"]);
     expect(OPEN_DOC_STATUSES).not.toContain("verified");
+  });
+});
+
+describe("the hero figures and what clicking one shows", () => {
+  // The desk's four figures are counts over one page of documents, and the list
+  // beside them is that same page. So the drill-down is a lens over the array the
+  // figure counted — which is what makes a "Rejected: 3" that opens a list of two
+  // impossible rather than merely unlikely.
+  const rows = [
+    doc({ id: "a", status: "received" }),
+    doc({ id: "b", status: "extracted" }),
+    doc({ id: "c", status: "extracted" }),
+    doc({ id: "d", status: "rejected" }),
+    doc({ id: "e", status: "extracting" })
+  ];
+
+  it("lists exactly the rows each drillable figure counted", () => {
+    for (const lens of ["extracted", "received", "rejected"]) {
+      const listed = lensOf(rows, DOC_LENSES, lens);
+      expect(listed, lens).toHaveLength(rows.filter((row) => row.status === lens).length);
+      expect(
+        listed.every((row) => row.status === lens),
+        lens
+      ).toBe(true);
+    }
+  });
+
+  it("keeps the desk total meaning the whole page, so its own link clears the lens", () => {
+    expect(lensOf(rows, DOC_LENSES, null)).toHaveLength(rows.length);
+    // `extracting` is fetched but has no figure on the wall, so it has no lens: a
+    // filter nobody can read off a hero must not be reachable by hand-typing it.
+    expect(focusIn(new URLSearchParams(`${FOCUS}=extracting`), DOC_LENSES)).toBeNull();
   });
 });

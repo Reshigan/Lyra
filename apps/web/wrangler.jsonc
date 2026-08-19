@@ -15,7 +15,11 @@
   "vars": {
     "ENVIRONMENT": "production",
     "API_ORIGIN": "https://api.lyra.vantax.co.za",
-    "SESSION_COOKIE": "lyra_session"
+    "SESSION_COOKIE": "lyra_session",
+    // Must match apps/api's SESSION_COOKIE_DOMAIN: the two clear-the-cookie
+    // fallbacks here (logout.tsx, settings.tsx) clear nothing if their Domain
+    // differs from the one the API set.
+    "SESSION_COOKIE_DOMAIN": "lyra.vantax.co.za"
   },
   "routes": [{ "pattern": "lyra.vantax.co.za", "custom_domain": true }],
   "env": {
@@ -24,7 +28,13 @@
       "vars": {
         "ENVIRONMENT": "staging",
         "API_ORIGIN": "https://api-staging.lyra.vantax.co.za",
-        "SESSION_COOKIE": "lyra_session"
+        // Must match apps/api's staging SESSION_COOKIE, and must differ from
+        // production's: see the comment there.
+        "SESSION_COOKIE": "lyra_session_staging",
+        // Must match apps/api's SESSION_COOKIE_DOMAIN: the two clear-the-cookie
+        // fallbacks here (logout.tsx, settings.tsx) clear nothing if their Domain
+        // differs from the one the API set.
+        "SESSION_COOKIE_DOMAIN": "lyra.vantax.co.za"
       },
       "routes": [{ "pattern": "staging.lyra.vantax.co.za", "custom_domain": true }]
     }

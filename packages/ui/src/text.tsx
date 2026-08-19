@@ -35,6 +35,14 @@ const en = {
   // Timeline
   waiting: "Waiting",
   done: "Done",
+  // StateFlow / PostingFlow (docs/19 process flows)
+  flowNow: "Now",
+  outOfMachine: "Not a documented state: {states}",
+  valueFlow: "Value moving",
+  debits: "Debits",
+  credits: "Credits",
+  balanced: "Both sides agree",
+  unbalanced: "The two sides do not agree",
   // Ambient AI (docs/15)
   aiGenerated: "AI-generated",
   draftedBy: "Drafted by {agent}",
@@ -73,6 +81,13 @@ const ar: Record<KitKey, string> = {
   dateUnavailable: "التاريخ غير متاح",
   waiting: "قيد الانتظار",
   done: "تم",
+  flowNow: "الآن",
+  outOfMachine: "حالة غير موثّقة: {states}",
+  valueFlow: "حركة القيمة",
+  debits: "مدين",
+  credits: "دائن",
+  balanced: "الطرفان متساويان",
+  unbalanced: "الطرفان غير متساويين",
   aiGenerated: "من إنشاء الذكاء الاصطناعي",
   draftedBy: "صاغها {agent}",
   whyDrafted: "سبب هذه المسودة",

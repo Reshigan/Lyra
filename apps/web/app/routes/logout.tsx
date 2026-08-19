@@ -1,14 +1,15 @@
 import { redirect, type ActionFunctionArgs } from "react-router";
 import { cloudflare } from "../context";
-import { apiFetch, relayCookies } from "../api.server";
+import { apiFetch, clearedSessionCookie, relayCookies } from "../api.server";
 
 // Action only, no UI. POST so a link prefetch or a crawler cannot end a session.
 
 export async function action({ request, context }: ActionFunctionArgs) {
   const headers = new Headers();
+  const env = context.get(cloudflare).env;
   try {
     const response = await apiFetch("/v1/auth/logout", {
-      env: context.get(cloudflare).env,
+      env,
       request,
       method: "POST"
     });
@@ -17,7 +18,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
   } catch {
     // A failed logout still ends the session here: leaving someone signed in
     // because the API hiccuped is the worse outcome.
-    headers.append("set-cookie", "lyra_session=; Path=/; HttpOnly; Max-Age=0");
+    headers.append("set-cookie", clearedSessionCookie(env));
   }
   return redirect("/login", { headers });
 }

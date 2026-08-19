@@ -287,7 +287,7 @@ export default function NorthBoard() {
             above. Lede's classes rather than <Lede>: the page needs a real h1
             in the outline, and the component is a <p>. */}
         <h1 className="font-serif text-22 leading-[1.2] text-text">{headline(open, l)}</h1>
-        <p className="max-w-[68ch] font-ui text-13 text-subtle">{l("intro")}</p>
+        <p className="max-w-[var(--measure-prose)] font-ui text-13 text-subtle">{l("intro")}</p>
         {/* routing.ts documents /north/brief as reached from the workspace
             tools list; The Brief itself links back to /north/board, so this
             closes the loop the same way north-brief.tsx already does. */}
@@ -425,7 +425,7 @@ function PackDetail({
         <section className="flex flex-col gap-2">
           <h2 className="font-ui text-12 uppercase tracking-[0.14em] text-subtle">{l("detail.distribution")}</h2>
           {log.length === 0 ? (
-            <p className="max-w-[68ch] font-ui text-13 text-subtle">{l("detail.distribution.none")}</p>
+            <p className="max-w-[var(--measure-prose)] font-ui text-13 text-subtle">{l("detail.distribution.none")}</p>
           ) : (
             <ul className="flex flex-col gap-1">
               {log.map((entry, index) => (

@@ -273,7 +273,7 @@ export function Shell({
     // In-place `role="status"` notices stay the default: docs/15 asks for quiet
     // feedback beside the work, and AI never toasts for itself.
     <ToastProvider dismissLabel={t("common.dismiss")}>
-      <div className="lyra-field min-h-screen bg-bg text-text" style={brandStyle(brand)}>
+      <div className="lyra-field flex h-dvh flex-col overflow-hidden bg-bg text-text" style={brandStyle(brand)}>
         {/* Mounted first in the tree but painted over everything (ADR-0055),
             and only ever on the client — the workspace below is complete and
             interactive whether or not this ever renders. */}
@@ -289,7 +289,7 @@ export function Shell({
             from the surface being a step lighter than the field behind it, plus
             the hairline. `lyra-vt-chrome` holds the bar still while the workspace
             under it transitions, so navigation moves the content, not the frame. */}
-        <header className="lyra-vt-chrome sticky top-0 z-30 flex h-[50px] items-center gap-2 border-b border-border bg-surface-1 px-3 sm:gap-3 sm:px-4">
+        <header className="lyra-vt-chrome z-30 flex h-[var(--chrome-top)] shrink-0 items-center gap-2 border-b border-border bg-surface-1 px-[var(--gutter)] sm:gap-3">
           <div className="flex shrink-0 items-center gap-2">
             <NavLink
               to="/"
@@ -393,18 +393,19 @@ export function Shell({
         </header>
 
         {/* Today, before the work: the strip is the first thing under the bar
-            in the comp. It scrolls away rather than sticking — the rail below
-            is what has to stay put, and two sticky bands would eat a third of
-            a laptop screen before any content had been drawn. */}
+            in the comp, and part of the chrome rather than of the canvas
+            (horizon-1-shell.md §5.1 stacks it above the body split). Nothing
+            here is sticky — the root does not scroll, so the bands hold still
+            for free and only the canvas moves. */}
         <Meridian t={t} inbox={inbox} accent={accentFor(pathname)} onScrub={setAsOf} />
 
-        <div className="flex min-h-[calc(100vh-50px)] flex-col md:flex-row">
+        <div className="flex min-h-0 flex-1 flex-col md:flex-row">
           <nav
             aria-label={t("nav.primary")}
             className={[
               // Small screens: one scrollable row under the header, labels intact,
               // group headings dropped — there is no room for them in a strip.
-              "flex shrink-0 gap-1 overflow-x-auto border-b border-border bg-surface-1 p-2 md:hidden"
+              "flex min-h-[var(--chrome-module)] shrink-0 items-center gap-1 overflow-x-auto border-b border-border bg-surface-1 p-2 md:hidden"
             ].join(" ")}
           >
             {items.map((item) => (
@@ -414,7 +415,7 @@ export function Shell({
 
           <nav
             aria-label={t("nav.primary")}
-            className="lyra-vt-rail hidden md:sticky md:top-[50px] md:flex md:h-[calc(100vh-50px)] md:w-60 md:shrink-0 md:flex-col md:gap-0.5 md:overflow-y-auto md:border-e md:border-border md:p-3"
+            className="lyra-vt-rail hidden md:flex md:w-[var(--rail-width)] md:shrink-0 md:flex-col md:gap-0.5 md:overflow-y-auto md:border-e md:border-border md:p-[var(--gutter-rail)]"
           >
             {/* The shift sits above the destinations, not instead of them: the
                 comp has no nav menu at all (its search overlay is the
@@ -448,7 +449,7 @@ export function Shell({
             key={pathname}
             id="workspace"
             tabIndex={-1}
-            className="lyra-vt-workspace lyra-stagger mx-auto flex min-w-0 w-full max-w-[100rem] flex-1 flex-col gap-4 p-4 sm:p-6"
+            className="lyra-vt-workspace lyra-stagger mx-auto flex min-h-0 min-w-0 w-full max-w-[var(--measure-canvas)] flex-1 flex-col gap-[var(--stack-gap)] overflow-y-auto overflow-x-hidden p-[var(--gutter-canvas)]"
           >
             {/* Every screen carries the hue of the workspace it belongs to — the
                 same 2px the rail draws beside the current item. Drawn once, here,
@@ -474,7 +475,7 @@ export function Shell({
             announced by the lockup and the nav's current item — so `aria-hidden`
             sits on those spans rather than the footer, which would otherwise
             take the doctrine link out of the accessibility tree with them. */}
-        <footer className="lyra-vt-status sticky bottom-0 z-20 hidden h-7 items-center gap-2 border-t border-border bg-surface-1 px-4 font-mono text-12 text-subtle sm:flex">
+        <footer className="lyra-vt-status z-20 hidden h-[var(--chrome-status)] shrink-0 items-center gap-2 border-t border-border bg-surface-1 px-[var(--gutter)] font-mono text-12 text-subtle sm:flex">
           <span aria-hidden="true" className="truncate">
             {productName}
           </span>

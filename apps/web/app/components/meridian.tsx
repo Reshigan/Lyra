@@ -113,7 +113,7 @@ export function Meridian({
   return (
     <section
       aria-label={t("meridian.title")}
-      className="hidden h-[74px] shrink-0 border-b border-border bg-surface-1 px-4 pt-2 md:block"
+      className="hidden h-[var(--chrome-meridian)] shrink-0 border-b border-border bg-surface-1 px-[var(--gutter)] pt-2 md:block"
     >
       <div className="mb-1 flex items-baseline justify-between gap-3">
         <div className="flex items-baseline gap-2.5">
@@ -195,7 +195,7 @@ export function Meridian({
           className="pointer-events-none absolute inset-x-0 top-[15px] flex h-[13px] items-stretch justify-between"
         >
           {HOURS.map((hour) => (
-            <div key={hour} className="w-px bg-border-strong" style={{ height: hour % 6 === 0 ? "13px" : "6px" }} />
+            <div key={hour} className="w-px bg-border-strong" style={{ height: hour % 6 === 0 ? "13px" : hour % 2 === 0 ? "7px" : "4px" }} />
           ))}
         </div>
 
@@ -246,7 +246,13 @@ export function Meridian({
   );
 }
 
-/** Midnight to midnight; every sixth tick is full height so the eye finds 06:00. */
+/**
+ * Midnight to midnight. Three tick weights, as horizon-1-shell.md §5.6 draws the
+ * rail: full height every sixth hour so the eye finds 06:00, medium on the other
+ * even hours, a hairline between. The comp's tick count is not portable — 29
+ * ticks cannot land on 24 hourly intervals — and the hour is load-bearing here
+ * (shift+arrow steps 1/24), so the weights come across and the count does not.
+ */
 const HOURS = Array.from({ length: 25 }, (_, i) => i);
 
 /** The playhead's moment for a screen reader, in the plain 24-hour clock. */

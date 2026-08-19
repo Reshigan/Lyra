@@ -74,7 +74,7 @@ export function Companion({ t }: { t: Translate }) {
   return (
     <aside
       aria-label={t("companion.title")}
-      className="hidden lg:sticky lg:top-[50px] lg:flex lg:h-[calc(100vh-50px)] lg:w-72 lg:shrink-0 lg:flex-col lg:border-s lg:border-border lg:bg-surface-1"
+      className="hidden lg:flex lg:w-[var(--companion-width)] lg:shrink-0 lg:flex-col lg:border-s lg:border-border lg:bg-surface-1"
     >
       <h2 className="border-b border-border px-3 py-2 font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">
         {t("companion.title")}

@@ -327,7 +327,7 @@ export default function NorthWhatIf() {
         {/* The headline narrates whichever scenario is open rather than
             repeating the "Scenarios" eyebrow — see headlineFor() above. */}
         <h1 className="font-serif text-22 leading-[1.2] text-text">{headlineFor(open, l)}</h1>
-        <p className="max-w-[68ch] font-ui text-13 text-subtle">{l("intro")}</p>
+        <p className="max-w-[var(--measure-prose)] font-ui text-13 text-subtle">{l("intro")}</p>
       </header>
 
       {shown ? <Gate problem={shown} l={l} /> : null}
@@ -452,7 +452,7 @@ function ScenarioDetail({
         <section className="flex flex-col gap-2">
           <h2 className="font-ui text-12 uppercase tracking-[0.14em] text-subtle">{l("detail.result")}</h2>
           {figures.length === 0 && prose.length === 0 ? (
-            <p className="max-w-[68ch] font-ui text-13 text-subtle">{l("detail.result.none")}</p>
+            <p className="max-w-[var(--measure-prose)] font-ui text-13 text-subtle">{l("detail.result.none")}</p>
           ) : (
             <>
               <dl className="grid gap-3 sm:grid-cols-2">
@@ -466,14 +466,14 @@ function ScenarioDetail({
                 ))}
               </dl>
               {prose.map(([key, value]) => (
-                <p key={key} className="max-w-[68ch] font-ui text-13 text-text">
+                <p key={key} className="max-w-[var(--measure-prose)] font-ui text-13 text-text">
                   {String(value)}
                 </p>
               ))}
               {/* docs/modules/north.md §2.4: no point estimate without a range.
                   Nothing stores a band, so the screen says so rather than
                   drawing one it does not have. */}
-              <p className="max-w-[68ch] font-ui text-12 text-subtle">{l("detail.point")}</p>
+              <p className="max-w-[var(--measure-prose)] font-ui text-12 text-subtle">{l("detail.point")}</p>
             </>
           )}
         </section>

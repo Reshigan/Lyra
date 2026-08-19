@@ -1,11 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ActionFunctionArgs } from "react-router";
 import type { Env } from "../env";
+import { FOCUS, focusIn, lensOf } from "../components/hero";
 import {
+  BID_LENSES,
   EXPIRY_SOON_MS,
+  GROUP_LENSES,
   OPEN_CASE_STATUSES,
   action,
   byPressure,
+  deskFocus,
   deskCustomers,
   deskGroups,
   deskHeadlineKey,
@@ -554,5 +558,55 @@ describe("deskCustomers", () => {
 
   it("skips a case that has no customer yet", () => {
     expect(deskCustomers([kase({ customerId: null })], { cu_1: "Amina Haddad" })).toEqual([]);
+  });
+});
+
+describe("the hero figures and what clicking one shows", () => {
+  // Three cases, one of them carrying three bids: one expired, one expiring
+  // soon, one long-dated. So the wall reads cases 3, quotes 2, expiring 1,
+  // silent 2.
+  const groups = deskGroups(
+    [
+      kase({ id: "a", ref: "C-a", quoteRequestId: "qr_a" }),
+      kase({ id: "b", ref: "C-b" }),
+      kase({ id: "c", ref: "C-c" })
+    ],
+    [
+      quote({ id: "q_old", requestId: "qr_a", caseId: "a", validUntil: NOW - DAY }),
+      quote({ id: "q_soon", requestId: "qr_a", caseId: "a", validUntil: NOW + DAY, premiumMinor: 400_000 }),
+      quote({ id: "q_live", requestId: "qr_a", caseId: "a", validUntil: NOW + 60 * DAY, premiumMinor: 600_000 })
+    ],
+    NOW
+  );
+  const bids = groups.flatMap((entry) => entry.bids);
+
+  it("shows exactly the cases the silent figure counted", () => {
+    const figure = lensOf(groups, GROUP_LENSES, "silent").length;
+    const shown = deskFocus(groups, focusIn(new URLSearchParams(`${FOCUS}=silent`), GROUP_LENSES));
+    expect(figure).toBe(2);
+    expect(shown).toHaveLength(figure);
+    expect(shown.every((entry) => entry.bids.length === 0)).toBe(true);
+  });
+
+  it("shows exactly the bids each bid figure counted, across every card left", () => {
+    for (const lens of ["quotes", "expiring"]) {
+      const counted = lensOf(bids, BID_LENSES, lens);
+      const shown = deskFocus(groups, lens).flatMap((entry) => entry.bids);
+      expect(shown.length, lens).toBe(counted.length);
+      expect(shown.map((bid) => bid.id).sort(), lens).toEqual(counted.map((bid) => bid.id).sort());
+    }
+    expect(lensOf(bids, BID_LENSES, "quotes")).toHaveLength(2);
+    expect(lensOf(bids, BID_LENSES, "expiring")).toHaveLength(1);
+  });
+
+  it("drops the cards a bid lens emptied rather than showing a card with no bids", () => {
+    // Otherwise the two silent cases would sit inside the "expiring" drill-down
+    // looking as if they each had a bid about to lapse.
+    expect(deskFocus(groups, "expiring")).toHaveLength(1);
+  });
+
+  it("keeps the case figure meaning the whole desk, so its link clears the lens", () => {
+    expect(deskFocus(groups, null)).toHaveLength(groups.length);
+    expect(focusIn(new URLSearchParams(`${FOCUS}=nonsense`), { ...GROUP_LENSES, ...BID_LENSES })).toBeNull();
   });
 });

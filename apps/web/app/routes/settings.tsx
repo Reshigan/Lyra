@@ -23,7 +23,7 @@ import {
   Table,
   type Column
 } from "@lyra/ui";
-import { ApiError, api, fetchMe, type Problem as ProblemBody } from "../api.server";
+import { ApiError, api, clearedSessionCookie, fetchMe, type Problem as ProblemBody } from "../api.server";
 import { cloudflare } from "../context";
 import { CATALOGUES, LOCALES, moduleName, pseudoText, translator, type Translate } from "../i18n";
 import { ConfirmButton } from "../components/confirm";
@@ -761,7 +761,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
       // Staying on the page would only show a screen whose next fetch is a 401,
       // so clear the cookie and say so plainly.
       return redirect("/login", {
-        headers: new Headers([["set-cookie", "lyra_session=; Path=/; HttpOnly; Max-Age=0"]])
+        headers: new Headers([["set-cookie", clearedSessionCookie(env)]])
       });
     }
 

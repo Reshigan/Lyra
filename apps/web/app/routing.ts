@@ -36,6 +36,10 @@ export const HIDDEN_ROUTES: Record<string, string> = {
     "public quote comparison, no session and no shell — reached only with the one-time token in the link (ADR-0043)",
   "/portal/:tenantSlug/partners":
     "public partner sign-up and sandbox console, no session and no shell — the key itself authenticates it (docs/modules/orbit.md §4 screen 5)",
+  "/portal/:tenantSlug/renewals/:id":
+    "public one-tap renewal page, no session and no shell — reached only with the link token (docs/modules/orbit.md §2.2)",
+  "/portal/:tenantSlug/feedback/:id":
+    "public CSAT tap, no session and no shell — reached only with the link token sent after the conversation closed (docs/modules/orbit.md §5)",
   "/logout": "action only, no UI",
   "/settings": "reached from the account menu in the header, not the module rail",
   "/settings/:tab": "one settings section — profile, sign-in, brand, regional, data — reached from the tabs on /settings",
