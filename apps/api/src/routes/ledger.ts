@@ -46,7 +46,7 @@ import { EXPORT_FORMATS, isExportFormat, render } from "../engines/export/render
 import { meterEgress } from "../engines/egress.js";
 import { utf8, zip } from "../engines/export/zip.js";
 import { must } from "../rows.js";
-import { body, InstantMs } from "../http.js";
+import { body, instantParam, InstantMs } from "../http.js";
 import type { App } from "../env.js";
 
 // docs/19. The ledger package holds the invariants; this file is the doorway.
@@ -292,10 +292,7 @@ const qOf =
   (key) =>
     c.req.query(key);
 
-const asOf = (q: Query): number | undefined => {
-  const raw = q("asOf");
-  return raw ? Number(raw) : undefined;
-};
+const asOf = (q: Query): number | undefined => instantParam(q("asOf"));
 
 /** Built once so the file and the screen are answers to the same question. */
 function trialBalanceOpts(q: Query): { periodCode?: string; currency?: string; asOf?: number } {
@@ -627,8 +624,8 @@ ledgerRoutes.get("/reports/:report/export", async (c) => {
 ledgerRoutes.get("/accounts/:code/statement", async (c) => {
   const ctx = ctxOf(c);
   require_(ctx.actor, "ledger:journals:read", { tenantId: ctx.tenantId, module: "ledger" });
-  const from = c.req.query("from") ? Number(c.req.query("from")) : undefined;
-  const to = c.req.query("to") ? Number(c.req.query("to")) : undefined;
+  const from = instantParam(c.req.query("from"));
+  const to = instantParam(c.req.query("to"));
   return c.json(
     await accountStatement(ctx, c.req.param("code"), {
       ...(c.req.query("currency") ? { currency: c.req.query("currency") as string } : {}),

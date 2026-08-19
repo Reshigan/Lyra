@@ -45,13 +45,24 @@ export function parse<T extends z.ZodTypeAny>(schema: T, raw: unknown): z.infer<
  * Lives here rather than beside one endpoint because every write surface needs
  * the same bound: the AXIS FNOL bodies, and the generated CRUD shape (crud.ts).
  *
- * Residue this bound does not reach: a query parameter read straight into a
- * number — `Number(c.req.query("from"))` at routes/ledger.ts:630-631 — touches
- * no schema at all, so no census of the zod shapes can see it. Those two are
- * harmless today (they reach only SQL bind params in packages/ledger, never a
- * `Date`), but a query parameter that ends up rendered would be a fourth way in.
+ * A query parameter touches no schema at all, so no census of the zod shapes
+ * can see one. An earlier version of this paragraph called that a hypothetical
+ * "fourth way in"; it was already live. `?asOf=` on the finance reports reached
+ * a SQL bind param, `Math.floor((asOf - postedAt) / DAY)` and `generatedAt` in
+ * a rendered document header at once. `instantParam` is the bound for that
+ * shape — every query parameter naming an instant goes through it.
  */
 export const InstantMs = z.number().int().min(-8.64e15).max(8.64e15);
+
+/**
+ * A query parameter that names an instant. `Number("abc")` is NaN, and `??`
+ * does not catch NaN, so garbage reached SQL and date arithmetic alike and
+ * surfaced as a 500 where 400 is the answer. Missing or empty stays
+ * `undefined`, so the endpoint's own default still applies.
+ */
+export function instantParam(raw: string | undefined): number | undefined {
+  return raw ? parse(InstantMs, Number(raw)) : undefined;
+}
 
 /**
  * Whether a field name means "epoch milliseconds", by convention — the schema
