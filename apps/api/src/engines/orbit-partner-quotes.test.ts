@@ -10,8 +10,8 @@ import { advancePartner } from "./onboarding.js";
 import { requestPartnerQuote } from "./orbit-partner-quotes.js";
 
 // docs/05 §Partner & Embedded Platform: "sandbox with mock quotes". No real
-// partner adapter exists anywhere in the repo (routes/dist.ts's `quoterFor`
-// always returns undefined) — a quote against a sandbox partner must be
+// partner adapter exists anywhere in the repo (`engines/dist-quoter.ts` dials
+// underwriters on our panel, not partners) — a quote against a sandbox partner must be
 // obviously synthetic, and promotion to live must go through the existing
 // `dist.partner_activate` approval gate, not a shortcut.
 

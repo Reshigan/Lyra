@@ -310,7 +310,7 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
       kind: "insurer",
       linesJson: JSON.stringify(["motor", "home"]),
       integrationJson: JSON.stringify({ mode: "api" }),
-      quoteEndpointJson: JSON.stringify({ url: "https://api.falcon.example/quote", authRef: "FALCON_API_KEY" }),
+      quoteEndpointJson: JSON.stringify({ url: "https://api.falcon.example/quote", authRef: "CARRIER_FALCON_API_KEY" }),
       settlementTermsJson: JSON.stringify({ frequency: "monthly", netDays: 30 }),
       currency: "AED",
       panelStatus: "active",
@@ -324,7 +324,7 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
       kind: "insurer",
       linesJson: JSON.stringify(["motor", "home", "travel"]),
       integrationJson: JSON.stringify({ mode: "api" }),
-      quoteEndpointJson: JSON.stringify({ url: "https://api.cedar.example/rate", authRef: "CEDAR_API_KEY" }),
+      quoteEndpointJson: JSON.stringify({ url: "https://api.cedar.example/rate", authRef: "CARRIER_CEDAR_API_KEY" }),
       settlementTermsJson: JSON.stringify({ frequency: "monthly", netDays: 45 }),
       currency: "AED",
       panelStatus: "active",
@@ -456,7 +456,11 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
     en: string,
     ar: string,
     baseCommissionPpm: number,
-    extra: Partial<typeof schema.distOfferings.$inferInsert> = {}
+    // `pricingMode` is required, not defaulted. `api` now dials a live carrier
+    // (ADR-0070) including from the public portal, so a forgotten mode must be a
+    // typecheck failure here rather than an outbound request at runtime.
+    extra: Partial<typeof schema.distOfferings.$inferInsert> &
+      Required<Pick<typeof schema.distOfferings.$inferInsert, "pricingMode">>
   ): typeof schema.distOfferings.$inferInsert => ({
     id: offerings[key],
     tenantId,
@@ -465,7 +469,6 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
     code,
     nameJson: JSON.stringify({ en, ar }),
     currency: "AED",
-    pricingMode: "api",
     baseCommissionPpm,
     effectiveFrom: now,
     status: "active",

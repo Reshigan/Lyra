@@ -86,6 +86,14 @@ export interface Env {
    * `turnstile.ts`.
    */
   TURNSTILE_SECRET?: string;
+  /**
+   * Live underwriter credentials — one wrangler secret per carrier, named by
+   * that provider's `quoteEndpointJson.authRef` (ADR-0070). The `CARRIER_`
+   * prefix is load-bearing and enforced in `engines/dist-quoter.ts`: provider
+   * rows are tenant-editable, so an unnamespaced ref would let a tenant name
+   * FIELD_KEY and have us post it to a host of their choosing.
+   */
+  [carrierSecret: `CARRIER_${string}`]: string | undefined;
 }
 
 /**

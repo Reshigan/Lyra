@@ -264,8 +264,12 @@ export interface QuoteOutcome {
 export interface ProviderQuoter {
   (args: {
     offering: typeof schema.distOfferings.$inferSelect;
+    /** The panel row's underwriter — carries the endpoint config an adapter dials. */
+    provider: typeof schema.providers.$inferSelect | undefined;
     inputs: Record<string, unknown>;
     timeoutMs: number;
+    /** The request's clock, so a quote's validity window is the shop's, not the adapter's. */
+    now: number;
   }): Promise<Omit<QuoteOutcome, "offeringId" | "providerId" | "latencyMs">>;
 }
 
@@ -325,7 +329,13 @@ export async function quoteOne(
       }
       case "api": {
         if (!quoter) return fail("error", "no provider adapter configured");
-        const res = await quoter({ offering, inputs, timeoutMs: offering.slaSeconds * 1000 });
+        const res = await quoter({
+          offering,
+          provider: entry.provider,
+          inputs,
+          timeoutMs: offering.slaSeconds * 1000,
+          now: ctx.now
+        });
         return { ...base, ...res, latencyMs: Date.now() - started };
       }
       case "manual":

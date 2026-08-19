@@ -3,10 +3,10 @@ import { audit, conflict, sha256Hex, type Ctx } from "@lyra/core";
 import { must } from "../rows.js";
 
 // docs/05 §Partner & Embedded Platform — "sandbox with mock quotes". A partner
-// integration is a promise, not code we have (routes/dist.ts's `quoterFor`
-// stub is the only "real" adapter in the repo, and it always returns
-// undefined) — so every quote is synthetic pricing, and the only thing that
-// changes at go-live (`onboarding.ts#advancePartner`, gated on
+// integration is a promise, not code we have: the one live adapter in the repo
+// (`engines/dist-quoter.ts`) prices an offering on our own panel, not a
+// partner's book — so every quote here is synthetic pricing, and the only
+// thing that changes at go-live (`onboarding.ts#advancePartner`, gated on
 // `dist.partner_activate` — reused here, not duplicated) is the `mode` label
 // on the response and the txn log.
 
