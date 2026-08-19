@@ -288,13 +288,24 @@ describe("idempotency", () => {
   // handler a second time — it is a 409, distinct from the reused-key 409.
   it("refuses a concurrent replay of a key still in flight", async () => {
     let release = (): void => {};
+    let entered = (): void => {};
+    const started = new Promise<void>((resolve) => (entered = resolve));
     const first = withIdempotency(
       ctx,
       "k6",
       "POST /v1/axis/cases",
       { a: 1 },
-      () => new Promise<{ id: string }>((resolve) => (release = () => resolve({ id: "cs_1" })))
+      () =>
+        new Promise<{ id: string }>((resolve) => {
+          release = () => resolve({ id: "cs_1" });
+          entered();
+        })
     );
+    // withIdempotency commits the in-flight row before it calls the handler, so
+    // the handler being entered is proof the row is there. Without this await the
+    // second call races the first's insert and wins on a slow machine — the
+    // handler runs twice and the test fails in CI having passed locally.
+    await started;
     await expect(
       withIdempotency(ctx, "k6", "POST /v1/axis/cases", { a: 1 }, async () => ({ id: "cs_2" }))
     ).rejects.toMatchObject({ code: "conflict", detail: expect.stringContaining("still in flight") });
