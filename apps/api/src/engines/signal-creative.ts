@@ -80,6 +80,27 @@ export interface GenerateCreativesResult {
 }
 
 /**
+ * Thrown when generation fails after earlier locales already wrote rows.
+ *
+ * There is no transaction around the locale loop and there cannot be one: each
+ * locale is its own model call, and the rows from the first are committed before
+ * the second is made. A bare throw would tell the caller "nothing happened"
+ * while `signal_creatives` holds drafts and `ai_audit_log` holds the call that
+ * made them, so every count downstream — the response, the tray, the audit
+ * after-state — would disagree with the database. This carries the committed
+ * work out with the failure; `cause` still holds what actually broke.
+ */
+export class PartialCreativesError extends Error {
+  readonly partial: GenerateCreativesResult;
+
+  constructor(partial: GenerateCreativesResult, cause: unknown) {
+    super("creative generation failed after some variants were written", { cause });
+    this.name = "PartialCreativesError";
+    this.partial = partial;
+  }
+}
+
+/**
  * Brief -> generate per locale (packages/model-gateway, standard tier, module
  * "signal" — docs §3 "Creative Generator: standard, no (drafts)") -> compliance
  * pre-flight per variant -> persist to `signal_creatives`. A flagged variant is
@@ -106,6 +127,31 @@ export async function generateCreatives(
     const n = base + (i < remainder ? 1 : 0);
     if (n === 0) continue;
 
+    try {
+      await generateLocale(ctx, gateway, brief, locale, n, variants, auditIds);
+    } catch (cause) {
+      // Nothing written yet: the caller wants the real error, not an empty
+      // partial it has to unwrap. Something written: see PartialCreativesError.
+      if (variants.length === 0 && auditIds.length === 0) throw cause;
+      throw new PartialCreativesError({ variants, auditIds }, cause);
+    }
+  }
+
+  return { variants, auditIds };
+}
+
+/** One locale: one gateway call, then a row per line it wrote. Split out so the
+ *  caller can tell "this locale failed" from "the whole batch failed". */
+async function generateLocale(
+  ctx: Ctx,
+  gateway: Gateway,
+  brief: CreativeBrief,
+  locale: CreativeLocale,
+  n: number,
+  variants: GeneratedVariant[],
+  auditIds: string[]
+): Promise<void> {
+  {
     const { system, user } = buildPrompt({ brief: brief.brief, locale, count: n });
     const res = await gateway.complete(ctx, {
       module: "signal",
@@ -156,8 +202,6 @@ export async function generateCreatives(
       });
     }
   }
-
-  return { variants, auditIds };
 }
 
 export interface ImageBrief {

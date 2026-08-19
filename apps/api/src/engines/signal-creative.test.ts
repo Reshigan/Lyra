@@ -7,7 +7,13 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { EntitlementsJson, PolicyJson, schema } from "@lyra/db";
 import { permissionsForRole, seed, type Ctx } from "@lyra/core";
 import { Gateway, makeStub } from "@lyra/model-gateway";
-import { checkCompliance, generateCreativeImage, generateCreatives, parseVariants } from "./signal-creative.js";
+import {
+  checkCompliance,
+  generateCreativeImage,
+  generateCreatives,
+  PartialCreativesError,
+  parseVariants
+} from "./signal-creative.js";
 
 // Same libSQL/drizzle in-memory harness as narrator.test.ts: run every
 // migration once, seed the demo tenant, and reuse one Ctx across tests.
@@ -185,6 +191,62 @@ describe("generateCreatives", () => {
       expect(audit!.module).toBe("signal");
       expect(audit!.purpose).toBe("creative.generate");
     }
+  });
+
+  it("reports the rows it already wrote when a later locale's call fails", async () => {
+    // There is no transaction around the loop and there cannot be one: each
+    // locale is a separate model call and the rows from the first are committed
+    // before the second is even made. So a failure half-way is not "nothing
+    // happened" — it is three English drafts sitting in signal_creatives and an
+    // ai_audit_log row for the call that made them. Throwing a bare error loses
+    // that, and every caller then reports a count the database disagrees with.
+    const ok = makeStub({ replies: [lines(3, "en")] });
+    let n = 0;
+    const flaky = {
+      ...ok,
+      async complete(req: Parameters<typeof ok.complete>[0]) {
+        if (n++ >= 1) throw new Error("workers-ai: 503");
+        return ok.complete(req);
+      }
+    };
+    const gw = new Gateway({ env: {}, providers: { "workers-ai": flaky, anthropic: flaky, "openai-compat": flaky } });
+
+    const err = await generateCreatives(ctx, gw, {
+      kind: "ad",
+      brief: "Motor renewal nudge, both locales.",
+      count: 6
+    }).then(
+      () => null,
+      (e: unknown) => e
+    );
+
+    expect(err).toBeInstanceOf(PartialCreativesError);
+    const partial = (err as PartialCreativesError).partial;
+    expect(partial.variants).toHaveLength(3);
+    expect(partial.variants.every((v) => v.locale === "en")).toBe(true);
+    expect(partial.auditIds).toHaveLength(1);
+    // The cause is kept, so a 502 upstream still says what actually broke.
+    expect((err as PartialCreativesError).cause).toBeInstanceOf(Error);
+
+    // What it reports is what the database holds — that is the whole point.
+    for (const v of partial.variants) {
+      const [row] = await ctx.db
+        .select()
+        .from(schema.signalCreatives)
+        .where(and(eq(schema.signalCreatives.tenantId, tenantId), eq(schema.signalCreatives.id, v.id)));
+      expect(row).toBeDefined();
+    }
+  });
+
+  it("throws the underlying error untouched when nothing was written", async () => {
+    // Nothing persisted, nothing to report: a caller learns the real failure
+    // rather than an empty partial it has to unwrap.
+    const dead = makeStub({ fail: new Error("workers-ai: AI binding missing") });
+    const gw = new Gateway({ env: {}, providers: { "workers-ai": dead, anthropic: dead, "openai-compat": dead } });
+
+    await expect(
+      generateCreatives(ctx, gw, { kind: "ad", brief: "Nothing gets written.", locales: ["en"], count: 3 })
+    ).rejects.toThrow("workers-ai: AI binding missing");
   });
 
   it("persists a flagged variant rather than dropping it, and never marks it passed", async () => {

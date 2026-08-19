@@ -98,6 +98,22 @@ beforeAll(async () => {
       updatedAt: NOW
     },
     {
+      // Half a model reaches this one: the en call lands, the ar call dies.
+      id: "wsp_partial",
+      tenantId,
+      description: "Aviation demand with nothing on the book, briefed while the model dies mid-way.",
+      category: "aviation",
+      clusterId: null,
+      evidenceRefsJson: REFS,
+      demandEstimate: 61,
+      competitionScore: 25,
+      status: "candidate",
+      owner: null,
+      promotedAt: null,
+      createdAt: NOW,
+      updatedAt: NOW
+    },
+    {
       // No model at all reaches this one: the promotion still has to commit.
       id: "wsp_nomodel",
       tenantId,
@@ -435,6 +451,59 @@ describe("POST /whitespaces/:id/promote-to-signal", () => {
     expect(res.body.briefSource).toBe("fallback");
     expect(res.body.brief).toMatchObject({ confidence: 0, objective: "acq" });
     expect(JSON.stringify(res.body.brief)).not.toContain("4.2m");
+  });
+
+  it("counts the drafts that survived when the generator dies between locales", async () => {
+    // The generator has no transaction and cannot have one: the en rows are
+    // committed before the ar call is made. Swallowing that failure into "zero
+    // drafts" would put a number in the audit row and in the tray that
+    // signal_creatives disagrees with — three drafts sitting in the table while
+    // the handover says nothing was written. Report what is actually there.
+    const ok = makeStub({ replies: [BRIEF_REPLY, variantLines(3, "en")] });
+    let n = 0;
+    const flaky = {
+      ...ok,
+      async complete(req: Parameters<typeof ok.complete>[0]) {
+        // 0 = the brief, 1 = en creatives, 2 = ar creatives.
+        if (n++ >= 2) throw new Error("workers-ai: 503");
+        return ok.complete(req);
+      }
+    };
+    const gw = new Gateway({ env: {}, providers: { "workers-ai": flaky, anthropic: flaky, "openai-compat": flaky } });
+
+    const first = await send(app({}, gw), "POST", "/whitespaces/wsp_partial/promote-to-signal");
+    expect(first.body.code).toBe("approval_required");
+    const [pending] = await ctx.db
+      .select()
+      .from(schema.approvals)
+      .where(and(eq(schema.approvals.tenantId, tenantId), eq(schema.approvals.subjectRef, "whitespaces:wsp_partial")));
+    await decide(ctx, pending!.id, "approved");
+
+    const res = await send(app({}, gw), "POST", "/whitespaces/wsp_partial/promote-to-signal");
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({ state: "committed", drafts: 3 });
+    expect(res.body.creatives).toHaveLength(3);
+
+    // The response and the table agree; the audit row hashes that same after-state.
+    const rows = await ctx.db
+      .select({ id: schema.signalCreatives.id, locale: schema.signalCreatives.locale })
+      .from(schema.signalCreatives)
+      .where(
+        and(eq(schema.signalCreatives.tenantId, tenantId), eq(schema.signalCreatives.variantGroup, "wsp_partial"))
+      );
+    expect(rows).toHaveLength(3);
+    expect(rows.every((r) => r.locale === "en")).toBe(true);
+    const entries = await ctx.db
+      .select({ id: schema.auditLog.id })
+      .from(schema.auditLog)
+      .where(
+        and(
+          eq(schema.auditLog.tenantId, tenantId),
+          eq(schema.auditLog.action, "scout.whitespace.promoted"),
+          eq(schema.auditLog.subjectRef, "wsp_partial")
+        )
+      );
+    expect(entries).toHaveLength(1);
   });
 
   it("promotes with no drafts when the creative generator has no usable model", async () => {

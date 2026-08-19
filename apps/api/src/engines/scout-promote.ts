@@ -140,16 +140,17 @@ export async function promoteWhitespace(
   // convention both go away and the join is direct.
   //
   // Same doctrine as `draftBrief` below (docs/15 §4 — AI drafts, it does not
-  // gate): a generator failure leaves the promotion with zero drafts, not a 500.
-  // The campaign, the state hop, the audit row and the event carry no model
-  // output, and the tray already reads "Handed over. Nothing drafted yet."
+  // gate): a generator failure leaves the promotion with the drafts it managed
+  // to write, not a 500. The campaign, the state hop, the audit row and the
+  // event carry no model output, and the tray reads "Handed over. Nothing
+  // drafted yet." when the count is zero.
   const generated = await generateCreatives(ctx, gateway, {
     campaignId,
     kind: "ad",
     brief: `${drafted.brief.proposition}\n\n${drafted.brief.brief}`,
     variantGroup: whitespaceId,
     count: DRAFT_VARIANTS
-  }).catch(() => ({ variants: [], auditIds: [] }) as Awaited<ReturnType<CreativeGenerator>>);
+  }).catch(partialOf);
 
   await ctx.db
     .update(schema.scoutWhitespaces)
@@ -254,7 +255,28 @@ export type CreativeGenerator = (
     variantGroup: string;
     count: number;
   }
-) => Promise<{
+) => Promise<CreativeResult>;
+
+interface CreativeResult {
   variants: { id: string; locale: string; complianceStatus: string }[];
   auditIds: string[];
-}>;
+}
+
+/**
+ * What survived a generator rejection.
+ *
+ * The generator writes a row per variant as it parses them and has no
+ * transaction to roll back (one model call per locale, the first locale's rows
+ * committed before the second call is made), so a rejection can still leave
+ * drafts in the table. It says so by hanging a `partial` off the error — read
+ * here by shape, not by `instanceof`: the class lives in a SIGNAL engine and
+ * importing it is the cross-module import CLAUDE.md rule 6 forbids, which is
+ * why the generator itself arrives injected. No partial, or a shape that does
+ * not match: nothing was written, so nothing is reported.
+ */
+function partialOf(err: unknown): CreativeResult {
+  const partial = (err as { partial?: unknown } | null)?.partial as CreativeResult | undefined;
+  return Array.isArray(partial?.variants) && Array.isArray(partial?.auditIds)
+    ? partial
+    : { variants: [], auditIds: [] };
+}
