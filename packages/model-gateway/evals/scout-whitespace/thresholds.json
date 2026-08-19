@@ -1,0 +1,6 @@
+{
+  "parseRateMin": 1.0,
+  "ungroundedAcceptMax": 0.0,
+  "objectiveAccuracyMin": 1.0,
+  "confidenceAccuracyMin": 1.0
+}

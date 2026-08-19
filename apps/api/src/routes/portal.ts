@@ -2,14 +2,15 @@ import { Hono, type Context } from "hono";
 import { and, eq, inArray, like } from "drizzle-orm";
 import { z } from "zod";
 import { id as newId, schema, BrandJson, EntitlementsJson, PolicyJson } from "@lyra/db";
-import { audit, conflict, emit, notFound, recordConsent, sha256Hex } from "@lyra/core";
+import { audit, conflict, emit, hmacHex, notFound, recordConsent, sha256Hex, timingSafeEqual } from "@lyra/core";
 import { body } from "../http.js";
 import { readUpload } from "../upload.js";
 import { verifyTurnstile } from "../turnstile.js";
 import { ctxFor, db as rawDb, throttle } from "../auth.js";
+import { fieldKey } from "../env.js";
 import { panelFor } from "../engines/rating.js";
 import { runShop } from "../engines/shop.js";
-import type { App } from "../env.js";
+import type { App, Env } from "../env.js";
 
 // The public comparison site (yallacompare-style). No session exists at all —
 // same reasoning as routes/onboarding.ts §partner signup — so this router
@@ -40,6 +41,10 @@ portalRoutes.get("/:tenantSlug/site", async (c) => {
   const database = rawDb(c.env);
   const tenant = await activeTenant(database, c.req.param("tenantSlug"));
   const brand = BrandJson.parse(tenant.brandJson ? JSON.parse(tenant.brandJson) : {});
+  // The active domain pack (CLAUDE.md §14, docs/21 §3). Public pages need it for
+  // the same reason the workspace does: a renewal page must not say "policy" to
+  // a tenant whose pack calls it an order. It is a vocabulary name, not data.
+  const domainPack = PolicyJson.parse(tenant.policyJson ? JSON.parse(tenant.policyJson) : {}).domainPack;
 
   const productRows = await database
     .select()
@@ -52,7 +57,7 @@ portalRoutes.get("/:tenantSlug/site", async (c) => {
   const providerNameById = new Map(providerRows.map((p) => [p.id, p.name]));
 
   return c.json({
-    tenant: { name: tenant.name, brand },
+    tenant: { name: tenant.name, brand, domainPack },
     products: productRows.map((p) => ({
       id: p.id,
       line: p.line,
@@ -642,4 +647,217 @@ portalRoutes.post("/:tenantSlug/privacy-requests", async (c) => {
   // 202, not 201: what was accepted is the request, not the outcome — nothing
   // is packaged or erased until a human verifies the subject.
   return c.json({ reference: requestRow.id, dueAt }, 202);
+});
+
+// ---------------------------------------------------------------------------
+// ORBIT's two messaged public pages: the one-tap renewal
+// (docs/modules/orbit.md §2.2 "one-tap renewal link (hosted page,
+// tenant-branded)", J-C3) and satisfaction capture (§5 "CSAT/NPS collection",
+// J-C2 "→ CSAT tap", §7 KPI "CSAT ≥ 4.5"). Both are reached from a link we sent
+// to one person about one row, so the link itself is the whole credential —
+// same reasoning as the quote-request token above.
+//
+// The token is *derived*, not stored: HMAC-SHA256(FIELD_KEY,
+// "portal-link.v1:<kind>:<tenantId>:<rowId>"). `orbit_renewals` and
+// `orbit_conversations` carry no token column and migrations are forward-only
+// (CLAUDE.md §9), so deriving avoids a schema change while still binding the
+// credential to one tenant and one row: a token minted for tenant A's renewal
+// does not verify against tenant B's row of the same id, and a leaked database
+// row yields no working link because the key never touches the database.
+//
+// ponytail: derived means no per-link revocation. Each row's own state machine
+// closes the link instead — an accepted renewal and a rated conversation both
+// refuse a second write. Add a token-hash column the day a tenant needs to kill
+// one link early.
+
+export type PortalLinkKind = "renewal" | "feedback";
+
+/** The credential in a renewal/feedback link. Staff read it back via
+ *  `GET /v1/orbit/portal-links/:kind/:id` (routes/orbit.ts) to send it. */
+export async function portalLinkToken(
+  env: Pick<Env, "FIELD_KEY">,
+  kind: PortalLinkKind,
+  tenantId: string,
+  rowId: string
+): Promise<string> {
+  return hmacHex(fieldKey(env), `portal-link.v1:${kind}:${tenantId}:${rowId}`);
+}
+
+/**
+ * Wrong token, token for another tenant's row, and unknown id all answer
+ * `404 <kind>` — the id is in the visitor's own URL, so any distinguishable
+ * answer would confirm that somebody else's row exists.
+ */
+async function assertPortalLink(
+  env: Pick<Env, "FIELD_KEY">,
+  kind: PortalLinkKind,
+  tenantId: string,
+  rowId: string,
+  token: string | undefined
+): Promise<void> {
+  const expected = await portalLinkToken(env, kind, tenantId, rowId);
+  if (!token || !timingSafeEqual(token, expected)) throw notFound(kind);
+}
+
+// A messaged link is opened by one person on one phone, often twice. These are
+// generous enough not to punish that and tight enough that the link is not a
+// free write endpoint.
+const LINK_ROW_MAX = 10;
+const LINK_IP_MAX = 40;
+
+async function throttleLink(env: App["Bindings"], kind: PortalLinkKind, rowId: string, ip: string | undefined) {
+  await throttle(env, `portal-${kind}:${rowId}`, LINK_ROW_MAX, LEAD_WINDOW_SEC);
+  if (ip) await throttle(env, `portal-${kind}-ip:${ip}`, LINK_IP_MAX, LEAD_WINDOW_SEC);
+}
+
+/**
+ * The renewal as the person whose cover it is may see it. `churnScore`,
+ * `strategy`, `ownerRef` and `outcomeReason` are internal scoring and internal
+ * wording (docs/12): they stay on the staff side of the wall.
+ */
+function renewalView(row: typeof schema.orbitRenewals.$inferSelect) {
+  return {
+    reference: row.policyRef,
+    expiryAt: row.expiryAt,
+    state: row.state,
+    decidedAt: row.decidedAt
+  };
+}
+
+async function renewalForLink(c: Context<App>, tenantId: string, rowId: string, token: string | undefined) {
+  await assertPortalLink(c.env, "renewal", tenantId, rowId, token);
+  const rows = await rawDb(c.env)
+    .select()
+    .from(schema.orbitRenewals)
+    .where(and(eq(schema.orbitRenewals.tenantId, tenantId), eq(schema.orbitRenewals.id, rowId)))
+    .limit(1);
+  const row = rows[0];
+  if (!row) throw notFound("renewal");
+  return row;
+}
+
+portalRoutes.get("/:tenantSlug/renewals/:id", async (c) => {
+  const database = rawDb(c.env);
+  const tenant = await activeTenant(database, c.req.param("tenantSlug"));
+  const row = await renewalForLink(c, tenant.id, c.req.param("id"), c.req.query("token"));
+  return c.json(renewalView(row));
+});
+
+const RenewalAcceptBody = z.object({ token: z.string().min(1) }).strict();
+
+/**
+ * J-C3 "Renew in one tap". What this writes is the customer's decision —
+ * `state: "accepted"`, which nothing else in the codebase ever sets — and
+ * nothing else. It does not issue cover, take payment or reprice: binding is
+ * `consequential: true` (CLAUDE.md §4) so a human picks the accepted renewal up
+ * from the desk, exactly as `/quote-requests/:id/accept` above hands its
+ * conversion to a person. `accepted` is terminal in renewal-campaign.ts's
+ * `resolved()`, so this also stops the 30-day nudge campaign.
+ *
+ * No `withIdempotency`: a browser sends no idempotency key, and the state
+ * machine already makes a second tap a no-op that returns the same body.
+ */
+portalRoutes.post("/:tenantSlug/renewals/:id/accept", async (c) => {
+  const now = Date.now();
+  const input = await body(c, RenewalAcceptBody);
+  const database = rawDb(c.env);
+  const tenant = await activeTenant(database, c.req.param("tenantSlug"));
+  const row = await renewalForLink(c, tenant.id, c.req.param("id"), input.token);
+  await throttleLink(c.env, "renewal", row.id, c.req.header("cf-connecting-ip"));
+
+  if (row.state === "accepted") return c.json(renewalView(row));
+  if (row.state === "lost") throw conflict("this renewal is closed");
+  if (row.expiryAt < now) throw conflict("this renewal has expired");
+
+  const after = { ...row, state: "accepted" as const, outcomeReason: "customer_accepted", decidedAt: now, updatedAt: now };
+  const ctx = await portalCtx(c, tenant.id, now, "portal-renewal-accept");
+  await ctx.db
+    .update(schema.orbitRenewals)
+    .set({ state: "accepted", outcomeReason: "customer_accepted", decidedAt: now, updatedAt: now })
+    .where(and(eq(schema.orbitRenewals.tenantId, tenant.id), eq(schema.orbitRenewals.id, row.id)));
+  await audit(ctx, { action: "orbit.renewal.accepted", subjectRef: row.id, before: row, after });
+  await emit(ctx, {
+    module: "orbit",
+    type: "orbit.renewal.accepted",
+    subject: row.id,
+    data: { policyRef: row.policyRef, customerId: row.customerId, via: "portal" }
+  });
+
+  return c.json(renewalView(after));
+});
+
+// The 1-5 scale orbit-analytics.tsx already averages (`outOf(loaded.csat, 5)`)
+// and seed/orbit.ts already writes. NPS is not here: `orbit_conversations` has
+// one `csat` integer and no NPS column, and inventing a second meaning for that
+// column would poison the KPI the same screen reports.
+const CSAT_MAX = 5;
+
+const FeedbackBody = z
+  .object({ token: z.string().min(1), rating: z.number().int().min(1).max(CSAT_MAX) })
+  .strict();
+
+/**
+ * Nothing about the conversation except whether it can be rated and what it was
+ * rated. No transcript, no AI summary, no assignee, no customer: the link holder
+ * is not authenticated as anybody, they merely hold a link to one row.
+ */
+function feedbackView(row: typeof schema.orbitConversations.$inferSelect) {
+  return {
+    ratable: row.state === "closed" && row.csat === null,
+    rating: row.csat,
+    scaleMax: CSAT_MAX,
+    closedAt: row.closedAt
+  };
+}
+
+async function conversationForLink(c: Context<App>, tenantId: string, rowId: string, token: string | undefined) {
+  await assertPortalLink(c.env, "feedback", tenantId, rowId, token);
+  const rows = await rawDb(c.env)
+    .select()
+    .from(schema.orbitConversations)
+    .where(and(eq(schema.orbitConversations.tenantId, tenantId), eq(schema.orbitConversations.id, rowId)))
+    .limit(1);
+  const row = rows[0];
+  if (!row) throw notFound("feedback");
+  return row;
+}
+
+portalRoutes.get("/:tenantSlug/feedback/:id", async (c) => {
+  const database = rawDb(c.env);
+  const tenant = await activeTenant(database, c.req.param("tenantSlug"));
+  return c.json(feedbackView(await conversationForLink(c, tenant.id, c.req.param("id"), c.req.query("token"))));
+});
+
+portalRoutes.post("/:tenantSlug/feedback/:id", async (c) => {
+  const now = Date.now();
+  const input = await body(c, FeedbackBody);
+  const database = rawDb(c.env);
+  const tenant = await activeTenant(database, c.req.param("tenantSlug"));
+  const row = await conversationForLink(c, tenant.id, c.req.param("id"), input.token);
+  await throttleLink(c.env, "feedback", row.id, c.req.header("cf-connecting-ip"));
+
+  // Rating a live conversation would corrupt the KPI (orbit-analytics samples
+  // closed ones), and a second rating would let one link move the average.
+  if (row.state !== "closed") throw conflict("this conversation is still open");
+  if (row.csat !== null) throw conflict("this conversation has already been rated");
+
+  const ctx = await portalCtx(c, tenant.id, now, "portal-feedback");
+  await ctx.db
+    .update(schema.orbitConversations)
+    .set({ csat: input.rating, updatedAt: now })
+    .where(and(eq(schema.orbitConversations.tenantId, tenant.id), eq(schema.orbitConversations.id, row.id)));
+  await audit(ctx, {
+    action: "orbit.conversation.rated",
+    subjectRef: row.id,
+    before: { csat: row.csat },
+    after: { csat: input.rating, via: "portal" }
+  });
+  await emit(ctx, {
+    module: "orbit",
+    type: "orbit.conversation.rated",
+    subject: row.id,
+    data: { csat: input.rating, scaleMax: CSAT_MAX, via: "portal" }
+  });
+
+  return c.json(feedbackView({ ...row, csat: input.rating }));
 });

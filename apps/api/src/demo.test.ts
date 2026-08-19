@@ -25,23 +25,30 @@ function statements(): string[] {
 const exec = { waitUntil() {}, passThroughOnException() {} };
 let database: Db;
 
-function envFor(environment: string): Env {
-  return { DB_CLIENT: database, ENVIRONMENT: environment, APP_ORIGIN: "http://localhost:5173" } as unknown as Env;
+function envFor(environment: string, extra: Partial<Env> = {}): Env {
+  return {
+    DB_CLIENT: database,
+    ENVIRONMENT: environment,
+    APP_ORIGIN: "http://localhost:5173",
+    ...extra
+  } as unknown as Env;
 }
 
 async function call<T = any>(
   environment: string,
   method: string,
   path: string,
-  payload?: unknown
+  payload?: unknown,
+  extra: Partial<Env> = {},
+  headers: Record<string, string> = {}
 ): Promise<{ status: number; body: T; headers: Headers }> {
   const res = await app.fetch(
     new Request(`http://api.test${path}`, {
       method,
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...headers },
       ...(payload !== undefined ? { body: JSON.stringify(payload) } : {})
     }),
-    envFor(environment) as never,
+    envFor(environment, extra) as never,
     exec as never
   );
   const text = res.headers.get("content-type")?.includes("json") ? await res.text() : "";
@@ -102,5 +109,65 @@ describe("demo sign-in", () => {
       email: "attacker@example.com"
     });
     expect(login.status).toBe(404);
+  });
+});
+
+// The session cookie's scope. Regression for the host-only cookie: web sits on
+// lyra.vantax.co.za and the API on api.lyra.vantax.co.za, so with no Domain the
+// browser never sends the session to the API — the SSO callback lands on a
+// cookie-less host and every direct-to-API download 401s. Invisible to
+// `pnpm e2e`, where both halves answer on 127.0.0.1 and cookies ignore the port.
+
+const DOMAIN: Partial<Env> = { SESSION_COOKIE_DOMAIN: "lyra.vantax.co.za" };
+
+/** The cookie's attributes, lower-cased, without the name=value pair. */
+function attrs(header: string | null): string[] {
+  return (header ?? "")
+    .split(";")
+    .slice(1)
+    .map((a) => a.trim().toLowerCase());
+}
+
+function domained(header: string | null): boolean {
+  return attrs(header).some((a) => a.startsWith("domain="));
+}
+
+async function demoSignIn(extra: Partial<Env> = {}) {
+  const login = await call("staging", "POST", "/v1/auth/demo/login", { email: "amina.saleh@gonxt.ae" }, extra);
+  expect(login.status).toBe(200);
+  return login.headers.get("set-cookie") ?? "";
+}
+
+describe("the session cookie", () => {
+  it("carries the configured domain, so it reaches the api host and not only the app", async () => {
+    expect(attrs(await demoSignIn(DOMAIN))).toContain("domain=lyra.vantax.co.za");
+  });
+
+  it("stays host-only when no domain is configured, which is what local dev wants", async () => {
+    const set = await demoSignIn();
+    expect(set).toContain("lyra_session=");
+    expect(domained(set)).toBe(false);
+  });
+
+  it("clears with the same attributes it set, or the browser keeps the session", async () => {
+    const set = await demoSignIn(DOMAIN);
+    const logout = await call("staging", "POST", "/v1/auth/logout", undefined, DOMAIN, {
+      cookie: set.split(";")[0] as string
+    });
+    expect(logout.status).toBe(204);
+    const cleared = logout.headers.get("set-cookie") ?? "";
+    expect(cleared).toContain("lyra_session=;");
+    // Max-Age is the one attribute that is meant to differ. A mismatch anywhere
+    // else — Domain above all — is a clear that clears nothing: the browser keeps
+    // the live cookie and takes an empty second one alongside it.
+    const ignoreAge = (list: string[]) => list.filter((a) => !a.startsWith("max-age="));
+    expect(ignoreAge(attrs(cleared))).toEqual(ignoreAge(attrs(set)));
+    expect(attrs(cleared)).toContain("max-age=0");
+  });
+
+  it("clears host-only when it would have set host-only", async () => {
+    const logout = await call("staging", "POST", "/v1/auth/logout");
+    expect(logout.status).toBe(204);
+    expect(domained(logout.headers.get("set-cookie"))).toBe(false);
   });
 });

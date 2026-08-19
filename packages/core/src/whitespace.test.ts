@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { computeWhitespaceCandidates } from "./whitespace.js";
+import {
+  assertWhitespaceTransition,
+  canWhitespaceTransition,
+  computeWhitespaceCandidates,
+  isWhitespaceState,
+  WHITESPACE_STATES,
+  WHITESPACE_TRANSITIONS
+} from "./whitespace.js";
 import type { RawSignal } from "./momentum.js";
 
 // docs/modules/scout.md §2.1/§8 — cold-start whitespace radar: from a real
@@ -90,5 +97,54 @@ describe("computeWhitespaceCandidates", () => {
     expect(out).toHaveLength(1);
     expect(out[0]!.category).toBe("health");
     expect(out[0]!.visible).toBe(true);
+  });
+});
+
+describe("whitespace state machine", () => {
+  it("promotes a fresh candidate", () => {
+    expect(canWhitespaceTransition("candidate", "validated")).toBe(true);
+    expect(() => assertWhitespaceTransition("candidate", "validated")).not.toThrow();
+  });
+
+  it("refuses a second promotion of the same candidate", () => {
+    expect(canWhitespaceTransition("validated", "validated")).toBe(false);
+    // 409 with the reason in `detail` — `conflict()`'s own message is "Conflict".
+    expect(() => assertWhitespaceTransition("validated", "validated")).toThrow(
+      expect.objectContaining({ status: 409, detail: "whitespace cannot move from validated to validated" })
+    );
+  });
+
+  it("refuses promoting a parked candidate without reopening it first", () => {
+    expect(() => assertWhitespaceTransition("parked", "validated")).toThrow();
+    expect(canWhitespaceTransition("parked", "candidate")).toBe(true);
+  });
+
+  it("refuses a status no vocabulary claims", () => {
+    expect(isWhitespaceState("promoted")).toBe(false);
+    expect(() => assertWhitespaceTransition("promoted", "validated")).toThrow(
+      expect.objectContaining({ status: 409, detail: "whitespace cannot move from promoted to validated" })
+    );
+  });
+
+  it("knows every documented status and nothing else", () => {
+    expect([...WHITESPACE_STATES]).toEqual(["candidate", "validating", "validated", "parked"]);
+    for (const s of WHITESPACE_STATES) expect(isWhitespaceState(s)).toBe(true);
+  });
+
+  // Every allowed hop, spelled out: a transition list quietly emptied is a
+  // route that starts answering 409 with nothing else failing.
+  it("allows exactly the documented hops", () => {
+    expect(WHITESPACE_TRANSITIONS).toEqual({
+      candidate: ["validating", "validated", "parked"],
+      validating: ["validated", "parked", "candidate"],
+      validated: ["parked"],
+      parked: ["candidate"]
+    });
+  });
+
+  it("only ever targets a real state", () => {
+    for (const s of WHITESPACE_STATES) {
+      for (const t of WHITESPACE_TRANSITIONS[s]) expect(isWhitespaceState(t)).toBe(true);
+    }
   });
 });

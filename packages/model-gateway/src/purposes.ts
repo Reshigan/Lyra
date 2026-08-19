@@ -60,6 +60,9 @@ export const PURPOSES: Record<string, PurposeDef> = {
   "market.scan": { module: "scout", customerFacing: false },
   "radar.summarise": { module: "scout", customerFacing: false },
   "whitespace.describe": { module: "scout", customerFacing: false },
+  // The brief a promoted whitespace hands SIGNAL. Internal: a human reviews the
+  // campaign and the creative generator's own purpose governs the copy that ships.
+  "whitespace.brief": { module: "scout", customerFacing: false },
   "scout.signal.embed": { module: "scout", customerFacing: false },
   "scout.signal.similar": { module: "scout", customerFacing: false },
 

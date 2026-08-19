@@ -12,6 +12,7 @@ import { toXlsx } from "./engines/export/xlsx.js";
 import { pdfSafe, toPdf } from "./engines/export/pdf.js";
 import { crc32 } from "./engines/export/zip.js";
 import { nextRun } from "./routes/analytics.js";
+import { COOKIE } from "./auth.js";
 import { openapi } from "./openapi.js";
 import { app } from "./index.js";
 
@@ -287,6 +288,22 @@ describe("openapi", () => {
     components: { schemas: Record<string, unknown> };
   };
   const resourceCount = Object.values(BY_MODULE).reduce((n, rs) => n + rs.length, 0);
+
+  it("names the cookie a client actually has to send", () => {
+    // openapi() takes the name rather than reading env, so the SDK can be
+    // generated with no environment; the default therefore duplicates auth.ts's
+    // COOKIE, and this is what stops the duplicate drifting. A deployment that
+    // renames the cookie serves its own name — index.ts passes it in.
+    const scheme = (openapi().components as { securitySchemes: { session: { name: string } } })
+      .securitySchemes.session;
+    expect(scheme.name).toBe(COOKIE);
+    const renamed = (
+      openapi("lyra_session_staging").components as {
+        securitySchemes: { session: { name: string } };
+      }
+    ).securitySchemes.session;
+    expect(renamed.name).toBe("lyra_session_staging");
+  });
 
   it("describes every registered resource", () => {
     expect(Object.keys(spec.components.schemas).length).toBeGreaterThanOrEqual(resourceCount);

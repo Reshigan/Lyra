@@ -15,7 +15,25 @@ const excluded = [
   // no unit coverage in this package; exercised indirectly via apps/api
   "!packages/core/src/crypto.ts",
   "!packages/core/src/totp.ts",
-  "!packages/core/src/onboarding-templates.ts"
+  "!packages/core/src/onboarding-templates.ts",
+  // The demo/e2e fixture dataset — ~27k of this package's ~31k source lines,
+  // and it is literal data, not behaviour. Stryker classifies 98% of its
+  // mutants static (seed.ts alone: 1,852 mutants, 1,821 of them static; a
+  // single touched fixture file, seed/ledger.ts at 1,914 lines, was enough to
+  // put a diff-scoped run past 2h), because a module-level table only executes
+  // while its file loads, so each mutant costs a full re-run of the suite.
+  // Mutating it measured nothing and cost everything: every run that included
+  // seed/ was killed by the runner ceiling, so the gate reported no score at
+  // all. Out of the mutate set, the 70% break threshold applies to the ~6.8k
+  // mutants of real domain logic and actually reports a number.
+  //
+  // WHAT THIS LEAVES UNGATED BY MUTATION SCORE: the seed dataset itself. Its
+  // correctness rests on packages/core/src/seed/*.test.ts (which do run under
+  // `pnpm test`) and on the e2e journeys that consume the fixture. If seed/
+  // ever grows real branching logic, move that logic out of seed/ rather than
+  // dropping this exclusion.
+  "!packages/core/src/seed.ts",
+  "!packages/core/src/seed/**"
 ];
 
 const changed = changedSources("packages/core/src");
@@ -43,10 +61,10 @@ export default {
     "test-results",
     "reports"
   ],
-  // A whole-tree run is 14,277 mutants — ~10h on a CI runner, past the job
-  // ceiling, so the gate was killed every time and reported nothing. With
-  // STRYKER_SINCE set (the `mutation` job in .github/workflows/ci.yml) the run
-  // covers only the files a change touched; unset, it is still the full sweep.
+  // With STRYKER_SINCE set (the `mutation` job in .github/workflows/ci.yml) the
+  // run covers only the files a change touched; unset, it is the full sweep.
+  // Scoping alone was never enough — one 1,914-line fixture file in the diff
+  // reproduced the whole-tree stall — hence the seed/ exclusion above.
   mutate: changed ? [...changed, ...excluded] : ["packages/core/src/**/*.ts", ...excluded],
   vitest: { dir: "packages/core" },
   thresholds: { high: 80, low: 70, break: 70 },

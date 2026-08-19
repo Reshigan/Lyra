@@ -2,6 +2,7 @@ import { drizzle } from "drizzle-orm/sqlite-proxy";
 import { and, eq } from "drizzle-orm";
 import { schema } from "@lyra/db";
 import { seedHistory } from "./seed/history.js";
+import { seedModuleHistory } from "./seed/history-modules.js";
 import type { CoreDb } from "./context.js";
 
 // Backfills a deployed tenant's ledger with trading history (see seed/history.ts).
@@ -10,7 +11,12 @@ import type { CoreDb } from "./context.js";
 // posts it, and the seeder is the same code the unit tests run against libsql.
 //
 //   CF_ACCOUNT_ID=… CF_API_TOKEN=… pnpm --filter @lyra/core seed:history \
-//     --database <d1-database-id> [--days 120] [--tenant <id>]
+//     --database <d1-database-id> [--days 365] [--tenant <id>]
+//
+// Two passes: the ledger (seed/history.ts) and the operating history the ledger
+// implies — contracts, claims, quotes, campaigns, statements
+// (seed/history-modules.ts). Both are idempotent, so a re-run costs read traffic
+// and writes nothing.
 //
 // The token needs D1 Write. Never pass it on the command line — it would land in
 // the shell history of whoever runs this.
@@ -26,7 +32,7 @@ function parseArgs(argv: string[]): Args {
   for (let i = 0; i < argv.length; i += 2) flags.set(argv[i]!.replace(/^--/, ""), argv[i + 1] ?? "");
   const database = flags.get("database");
   if (!database) throw new Error("seed:history: --database <d1-database-id> is required");
-  return { database, days: Number(flags.get("days") ?? 120), tenant: flags.get("tenant") || undefined };
+  return { database, days: Number(flags.get("days") ?? 365), tenant: flags.get("tenant") || undefined };
 }
 
 function makeD1Db(accountId: string, databaseId: string, token: string): CoreDb {
@@ -82,12 +88,13 @@ async function main(): Promise<void> {
     .where(and(eq(schema.users.tenantId, tenantId), eq(schema.users.email, "faisal.omar@gonxt.ae")))
     .limit(1);
 
-  const result = await seedHistory(db, tenantId, {
-    days: args.days,
-    now: Date.now(),
-    postedBy: controller?.id
-  });
-  console.log(`seed:history ${args.database} tenant=${tenantId}`, JSON.stringify(result));
+  const options = { days: args.days, now: Date.now(), postedBy: controller?.id };
+  const ledger = await seedHistory(db, tenantId, options);
+  const modules = await seedModuleHistory(db, tenantId, options);
+  console.log(
+    `seed:history ${args.database} tenant=${tenantId}`,
+    JSON.stringify({ ledger, modules })
+  );
 }
 
 main().catch((error: unknown) => {

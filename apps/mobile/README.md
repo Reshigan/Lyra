@@ -109,12 +109,17 @@ the Latin cuts carry no Arabic coverage.)
   disable it in any client anyway.
 - **The code field shows a number pad.** A recovery code (`XXXX-XXXX`) has to
   be pasted rather than typed on the verify screen.
-- **No per-resource UI.** A case, a campaign and a ledger transaction all
-  render as the same generic list row and the same key/value detail sheet. No
-  domain-pack vocabulary is applied to *field names* yet (nav labels are
-  translated; field keys are shown raw).
-- **No writes.** Read-only. No create, edit, approve, or delete — which also
-  means no transaction, idempotency-key, or approval flow lives here.
+- **No per-resource *detail* UI.** The journey screens (`app/j/*`) are
+  per-purpose lists, but every record still opens the one generic key/value
+  sheet (`app/m/[nav]/[id].tsx`): a case, a campaign and a ledger transaction
+  are all rendered as their fields in payload order. No domain-pack vocabulary
+  is applied to *field names* yet (nav labels are translated; field keys are
+  shown raw).
+- **Almost no writes.** The only ones are the ones a phone is actually for:
+  deciding an approval, replying on a thread, uploading a captured document,
+  asking for today's briefing. No create, edit or delete, and no state machine,
+  idempotency key or approval flow is implemented here — every one of those
+  belongs to the endpoint, and this app only reports what came back.
 - **No AI surfaces.** None of docs/15's ambient patterns (ghost text, chips,
   background drafts, the ✦ marker) are implemented.
 - **No pagination.** First 50 rows only. The API's `cursor` is parsed and
@@ -126,8 +131,9 @@ the Latin cuts carry no Arabic coverage.)
   password form to someone who is merely offline.
 - **No custom fonts bundled.** See *Typeface* above.
 - **No push notifications, no deep links** beyond the `lyra://` scheme being
-  declared, **no biometrics**, **no camera/document capture**, **no maps**,
-  **no tabs** (a single stack), **no web target**.
+  declared, **no maps**, **no web target**. (Biometrics, the document camera
+  and a tab bar have since landed — `src/biometric-gate.tsx`,
+  `app/j/capture.tsx`, `app/(tabs)/`.)
 - **No tenant switcher.** The session is whatever tenant the login resolved.
 - **Nav items the app cannot open** (an href with no known resource) render
   dimmed and labelled "Not on mobile yet" rather than being hidden — hiding
@@ -135,6 +141,53 @@ the Latin cuts carry no Arabic coverage.)
 - **`app.json` `name`/`slug` say "Lyra".** That is build-time app-store
   identity, not a user-facing brand string; a white-label build changes it at
   build time.
+
+## Web surfaces with no mobile counterpart
+
+CLAUDE.md's definition of done asks for mobile parity to be *noted*, not always
+built. These are the web surfaces deliberately not mirrored here, with what it
+would take to mirror them — so the next person reads a decision rather than an
+oversight.
+
+- **Process flows — `StateFlow` / `PostingFlow` (`packages/ui/src/flow.tsx`),
+  drawn by `ledger-transaction`, `settlement-detail`, `claim-detail`,
+  `case-detail` and `policy-detail`.** Not mirrored, and not mirrorable without
+  moving code that is not ours to move. `flowPlan` is the doctrine: it decides
+  what *done*, *now* and *pending* mean, and refuses a spine whose steps are not
+  documented edges of the machine. A copy of it on this side would be a second
+  opinion about the state machine, which is worse than drawing nothing — and it
+  cannot be imported as things stand, because `@lyra/ui` is not a dependency of
+  this package and its only export is the barrel, which drags `radix-ui` and
+  `react-dom` into a Metro bundle (the same wall `src/names.ts` hit, and why it
+  restates `shortRef` rather than importing it). The machines the planner needs
+  (`TXN_FLOW`, `CLAIM_FLOW`, `CASE_FLOW`, `POLICY_FLOW`) are literals in
+  `apps/web/app/routes/`, which is an app and not a package, so copying *those*
+  would just move the drift from the planner to the machine. `PostingFlow` has a
+  third problem on top: its verdict is `balanceCheck`
+  (`apps/web/app/routes/ledger.shared.ts`), computed on the server for the web,
+  and this app must never re-add money on the client — the API exposes no
+  balance verdict to read instead. **Unblocked by:** a `./flow` subpath export on
+  `@lyra/ui` (or `flowPlan` moved to `@lyra/core`, which is already a dependency
+  here), the machines moved beside it, and a balance verdict on the transaction
+  read. Note also that nothing in this suite can render a React Native component
+  (see *Tests*), so a flow view would ship untested until that changes. Until
+  then a transaction opens the generic detail sheet: the transitions the API
+  returned, as rows — history, with no claim about what is still owed.
+- **Hero drill-down (`apps/web/app/components/hero.tsx`).** A headline figure
+  that opens exactly the rows it counted, through one predicate over one array
+  (`lensOf`), addressed by `?focus=`. Not mirrored. `lensOf` would port cleanly;
+  the surface it exists for does not. There is no KPI wall here, and the journey
+  screens already *open* on the narrowed set — `app/j/money.tsx` lists money that
+  has not landed, rather than a total someone has to drill into. Port it when a
+  mobile screen first shows a figure standing for rows it does not already list.
+- **SCOUT whitespace commentary
+  (`apps/web/app/components/whitespace-commentary.tsx`).** The reader's stance,
+  confidence and note on one whitespace, as a ghost card on the radar and a chip
+  in the dossier. Not mirrored, and not designed for here yet: its web contract
+  is mid-rewrite, and this app has no ambient-AI surface at all (see *No AI
+  surfaces*) to carry the ✦ marker and its inspectable "why". `app/j/whitespace.tsx`
+  ranks the same cells by the two numbers the web radar plots and says nothing
+  the reader wrote — an omission, not a summary of one.
 
 ## Tests
 

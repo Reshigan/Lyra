@@ -1,0 +1,254 @@
+import { and, eq } from "drizzle-orm";
+import { id as newId, schema } from "@lyra/db";
+import {
+  actorRef,
+  assertWhitespaceTransition,
+  audit,
+  checkKAnonymity,
+  conflict,
+  DEFAULT_K_FLOOR,
+  emit,
+  gate,
+  notFound,
+  type Ctx
+} from "@lyra/core";
+import {
+  fallbackWhitespaceBrief,
+  parseWhitespaceBrief,
+  promptNouns,
+  whitespaceBriefMessages,
+  whitespaceBriefSchema,
+  type Gateway,
+  type WhitespaceBrief,
+  type WhitespaceEvidence
+} from "@lyra/model-gateway";
+import { coveragePerLine, evidenceRefCount } from "./scout-whitespace.js";
+
+// docs/modules/scout.md §4 ("whitespace approvals (promote/park)") ->
+// docs/specs/gap-signal-design.md §1523, which already catalogues
+// `scout.whitespace.promoted` as consumed by SIGNAL: "offers a brief". This is
+// the emitter that was specified and never written.
+//
+// docs/19 §2 shape, non-financial (⊘ — no journal lines, no money moves): an
+// idempotency key, a state machine hop, an approval gate, an audit row and one
+// event. SIGNAL is reached through the bus and through its own creative engine,
+// never by promoting straight into someone else's tables (CLAUDE.md rule 6).
+
+export interface PromoteResult {
+  /** Terminal state of the transaction. Only ever "committed" in a response body:
+   *  a promotion still waiting on its approval never returns one — `gate` throws
+   *  403 `approval_required` — so a caller can trust this to mean it happened. */
+  state: "committed";
+  whitespaceId: string;
+  campaignId: string;
+  /** How many creative drafts were written. None was sent. */
+  drafts: number;
+  brief: WhitespaceBrief;
+  /** Whether the brief came from the model or the deterministic fallback. */
+  briefSource: "ai" | "fallback";
+  /** The gateway audit row for the brief call; null when the fallback was used. */
+  briefAuditId: string | null;
+  creatives: { id: string; locale: string; complianceStatus: string }[];
+  /** Every ai_audit_log id this promotion produced — brief plus one per locale. */
+  auditIds: string[];
+}
+
+/** Six drafts (three per locale) — enough for a human to pick from, far short of
+ *  the 20 a real campaign brief asks for, because nobody has approved a spend yet. */
+const DRAFT_VARIANTS = 6;
+
+export async function promoteWhitespace(
+  ctx: Ctx,
+  gateway: Gateway,
+  generateCreatives: CreativeGenerator,
+  whitespaceId: string
+): Promise<PromoteResult> {
+  const rows = await ctx.db
+    .select({
+      id: schema.scoutWhitespaces.id,
+      category: schema.scoutWhitespaces.category,
+      status: schema.scoutWhitespaces.status,
+      demandEstimate: schema.scoutWhitespaces.demandEstimate,
+      competitionScore: schema.scoutWhitespaces.competitionScore,
+      evidenceRefsJson: schema.scoutWhitespaces.evidenceRefsJson
+    })
+    .from(schema.scoutWhitespaces)
+    .where(and(eq(schema.scoutWhitespaces.tenantId, ctx.tenantId), eq(schema.scoutWhitespaces.id, whitespaceId)))
+    .limit(1);
+
+  const row = rows[0];
+  if (!row) throw notFound("whitespace");
+  if (!row.category) throw conflict("whitespace has no category to brief against");
+
+  // The hop is checked before the approval is asked for: an already-promoted
+  // candidate is a 409, not a pending approval someone then has to decline.
+  assertWhitespaceTransition(row.status, "validated");
+
+  const signalCount = evidenceRefCount(row.evidenceRefsJson);
+  // A brief built from a thin cell would restate a handful of quotes as market
+  // demand, and every creative variant would carry it outward (docs/scout §2.5).
+  if (!checkKAnonymity(signalCount, DEFAULT_K_FLOOR).allowed) {
+    throw conflict("whitespace evidence is below the k-anonymity floor");
+  }
+
+  // CLAUDE.md rule 4 / docs/19: promotion commits the tenant to a campaign, so
+  // it needs the existing scout.whitespace_promote approval — the same policy the
+  // CRUD update path gates on, with the same `whitespaces:<id>` subjectRef, so one
+  // pending approval serves both routes rather than two queues for one decision.
+  await gate(ctx, {
+    policyKey: "scout.whitespace_promote",
+    subjectRef: `whitespaces:${whitespaceId}`,
+    context: { category: row.category, momentum: row.demandEstimate ?? 0 }
+  });
+
+  const coverageByLine = await coveragePerLine(ctx);
+  const ev: WhitespaceEvidence = {
+    category: row.category,
+    momentum: row.demandEstimate ?? 0,
+    coverage: coverageByLine.get(row.category) ?? 0,
+    competitionScore: row.competitionScore,
+    signalCount
+  };
+
+  const drafted = await draftBrief(ctx, gateway, ev);
+
+  const campaignId = newId("cmp", ctx.now);
+  await ctx.db.insert(schema.signalCampaigns).values({
+    id: campaignId,
+    tenantId: ctx.tenantId,
+    name: drafted.brief.name,
+    objective: drafted.brief.objective,
+    audienceId: null,
+    // No channel and no budget: those are spend decisions, and this route only
+    // creates the draft a human then funds (signal.budget_commit gates that).
+    channelsJson: "[]",
+    budgetJson: JSON.stringify({ currency: ctx.policy.currency, dailyMinor: 0, totalMinor: 0 }),
+    state: "draft",
+    guardrailChecksJson: null,
+    autonomyLevel: ctx.policy.autonomyDefault,
+    startAt: null,
+    endAt: null,
+    ownerRef: actorRef(ctx),
+    createdAt: ctx.now,
+    updatedAt: ctx.now
+  } as never);
+
+  // ponytail: provenance rides `variantGroup` (= the whitespace id) plus the
+  // audit row and the event, because signal_campaigns has no whitespace_id
+  // column. Upgrade path is that column; then this comment and the variantGroup
+  // convention both go away and the join is direct.
+  const generated = await generateCreatives(ctx, gateway, {
+    campaignId,
+    kind: "ad",
+    brief: `${drafted.brief.proposition}\n\n${drafted.brief.brief}`,
+    variantGroup: whitespaceId,
+    count: DRAFT_VARIANTS
+  });
+
+  await ctx.db
+    .update(schema.scoutWhitespaces)
+    .set({ status: "validated", promotedAt: ctx.now, owner: actorRef(ctx), updatedAt: ctx.now })
+    .where(and(eq(schema.scoutWhitespaces.tenantId, ctx.tenantId), eq(schema.scoutWhitespaces.id, whitespaceId)));
+
+  await audit(ctx, {
+    action: "scout.whitespace.promoted",
+    subjectRef: whitespaceId,
+    before: { status: row.status },
+    after: {
+      status: "validated",
+      campaignId,
+      briefSource: drafted.source,
+      briefAuditId: drafted.auditId,
+      creatives: generated.variants.length
+    }
+  });
+
+  // docs/04 §7 envelope, built by `emit`. SIGNAL (and anything else listening)
+  // learns about the promotion here rather than through a cross-module import.
+  await emit(ctx, {
+    module: "scout",
+    type: "scout.whitespace.promoted",
+    subject: whitespaceId,
+    data: {
+      campaignId,
+      category: ev.category,
+      objective: drafted.brief.objective,
+      momentum: ev.momentum,
+      coverage: ev.coverage,
+      signalCount: ev.signalCount,
+      briefSource: drafted.source
+    }
+  });
+
+  return {
+    state: "committed",
+    whitespaceId,
+    campaignId,
+    drafts: generated.variants.length,
+    brief: drafted.brief,
+    briefSource: drafted.source,
+    briefAuditId: drafted.auditId,
+    creatives: generated.variants.map((v) => ({
+      id: v.id,
+      locale: v.locale,
+      complianceStatus: v.complianceStatus
+    })),
+    auditIds: [...(drafted.auditId ? [drafted.auditId] : []), ...generated.auditIds]
+  };
+}
+
+/**
+ * The brief, through the gateway (CLAUDE.md rule 3 — module/purpose/tier/actor,
+ * one ai_audit_log row) and through the strict parser. A gateway failure or an
+ * unparseable/ungrounded reply falls back to the deterministic brief rather than
+ * aborting: docs/15 §4 — AI drafts, it does not gate. The caller still gets to
+ * see which happened via `source`, and a fallback carries confidence 0.
+ */
+async function draftBrief(
+  ctx: Ctx,
+  gateway: Gateway,
+  ev: WhitespaceEvidence
+): Promise<{ brief: WhitespaceBrief; source: "ai" | "fallback"; auditId: string | null }> {
+  const nouns = promptNouns(ctx.policy.domainPack);
+  try {
+    const res = await gateway.complete(ctx, {
+      module: "scout",
+      purpose: "whitespace.brief",
+      tier: "reasoning",
+      subjectRef: ev.category,
+      responseSchema: whitespaceBriefSchema(),
+      messages: whitespaceBriefMessages(ev, nouns)
+    });
+    const brief = parseWhitespaceBrief(res.text, ev, nouns);
+    return brief
+      ? { brief, source: "ai", auditId: res.auditId }
+      : { brief: fallbackWhitespaceBrief(ev, nouns), source: "fallback", auditId: res.auditId };
+  } catch {
+    return { brief: fallbackWhitespaceBrief(ev, nouns), source: "fallback", auditId: null };
+  }
+}
+
+/**
+ * SIGNAL's creative generator, passed in rather than imported.
+ *
+ * Not a speculative seam: `generateCreatives` lives in apps/api/src/engines/
+ * signal-creative.ts and calling it from a SCOUT engine is the cross-module
+ * import CLAUDE.md rule 6 forbids. The route supplies it, so the dependency
+ * points at the composition root instead of sideways between modules — and the
+ * promote tests get to assert what the brief handed the generator without a
+ * live model.
+ */
+export type CreativeGenerator = (
+  ctx: Ctx,
+  gateway: Gateway,
+  brief: {
+    campaignId: string;
+    kind: "ad";
+    brief: string;
+    variantGroup: string;
+    count: number;
+  }
+) => Promise<{
+  variants: { id: string; locale: string; complianceStatus: string }[];
+  auditIds: string[];
+}>;

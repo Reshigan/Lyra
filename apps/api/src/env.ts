@@ -69,6 +69,13 @@ export interface Env {
   OPENAI_COMPAT_API_KEY?: string;
   SESSION_COOKIE?: string;
   /**
+   * Cookie `Domain` for the session, when web and api sit on sibling hosts —
+   * the shared parent of both (`lyra.vantax.co.za`), never one of them. Unset
+   * means host-only, which is what local dev wants. See `sessionCookie` in
+   * auth.ts for why this is configured rather than derived from APP_ORIGIN.
+   */
+  SESSION_COOKIE_DOMAIN?: string;
+  /**
    * docs/12 §1 field-level encryption key (ADR-0032). A wrangler secret, never
    * a `vars` entry: the day it lands in wrangler.jsonc it is in git.
    */

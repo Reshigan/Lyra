@@ -8,6 +8,8 @@ import { parseReserve } from "../src/reserve.js";
 import { parseFraud } from "../src/fraud.js";
 import { parseSla } from "../src/sla.js";
 import { parseUbi } from "../src/ubi.js";
+import { parseWhitespaceBrief, type WhitespaceEvidence } from "../src/whitespace-brief.js";
+import { promptNouns } from "../src/vocabulary.js";
 import { aggregateCxScore, localeGap } from "../src/cx-judge.js";
 import { verifyNumericClaims, verifyGroundedness, checkCompliance as checkSignalCompliance, type BriefingSnapshot } from "@lyra/core";
 import { loadCases, loadThresholds, metric, metricOk, type Metric } from "./harness.js";
@@ -706,6 +708,62 @@ async function scoreGroundedness(dir: string): Promise<Metric[]> {
   ];
 }
 
+interface WhitespaceBriefCase {
+  id: string;
+  evidence: WhitespaceEvidence;
+  text: string;
+  /** Whether `parseWhitespaceBrief` should return a brief at all. */
+  expectParsed: boolean;
+  /** Present only on cases that parse. */
+  expectObjective?: string;
+  expectConfidence?: number;
+  /** Marks a case rejected specifically for stating a number the evidence lacked. */
+  ungrounded?: boolean;
+}
+interface WhitespaceBriefThresholds {
+  parseRateMin: number;
+  ungroundedAcceptMax: number;
+  objectiveAccuracyMin: number;
+  confidenceAccuracyMin: number;
+}
+
+/**
+ * SCOUT whitespace -> SIGNAL brief (src/whitespace-brief.ts). Canned replies, no
+ * live call, same posture as scoreReserve/scoreSla.
+ *
+ * `ungroundedAcceptRate` is the one that matters: a brief that states an invented
+ * demand figure gets persisted, shown with a ✦ and then generates creative copy
+ * off the invention, so the max is 0 and never moves.
+ */
+async function scoreWhitespaceBrief(dir: string): Promise<Metric[]> {
+  const cases = await loadCases<WhitespaceBriefCase>(dir);
+  const thresholds = await loadThresholds<WhitespaceBriefThresholds>(dir);
+  const nouns = promptNouns(undefined);
+
+  const scored = cases.map((c) => ({ case: c, brief: parseWhitespaceBrief(c.text, c.evidence, nouns) }));
+  const parsedAsExpected = scored.filter((s) => (s.brief !== null) === s.case.expectParsed).length;
+  const ungrounded = scored.filter((s) => s.case.ungrounded);
+  const ungroundedAccepted = ungrounded.filter((s) => s.brief !== null).length;
+
+  const withObjective = scored.filter((s) => s.case.expectObjective !== undefined);
+  const objectiveHits = withObjective.filter((s) => s.brief?.objective === s.case.expectObjective).length;
+  const withConfidence = scored.filter((s) => s.case.expectConfidence !== undefined);
+  const confidenceHits = withConfidence.filter((s) => s.brief?.confidence === s.case.expectConfidence).length;
+
+  return [
+    metric("parseRate", cases.length ? parsedAsExpected / cases.length : 0, { min: thresholds.parseRateMin }),
+    metric("ungroundedAcceptRate", ungrounded.length ? ungroundedAccepted / ungrounded.length : 0, {
+      max: thresholds.ungroundedAcceptMax
+    }),
+    metric("objectiveAccuracy", withObjective.length ? objectiveHits / withObjective.length : 0, {
+      min: thresholds.objectiveAccuracyMin
+    }),
+    metric("confidenceAccuracy", withConfidence.length ? confidenceHits / withConfidence.length : 0, {
+      min: thresholds.confidenceAccuracyMin
+    })
+  ];
+}
+
 const SCORERS: Record<string, (dir: string) => Promise<Metric[]>> = {
   injection: scoreInjection,
   "creative-image": scoreInjection,
@@ -721,7 +779,12 @@ const SCORERS: Record<string, (dir: string) => Promise<Metric[]>> = {
   "ubi-reprice": scoreUbi,
   "cx-quality": scoreCxQuality,
   north: scoreNorth,
-  signal: scoreSignal
+  signal: scoreSignal,
+  "scout-whitespace": scoreWhitespaceBrief,
+  // The commentary a hover shows is `verifyGroundedness` over the candidate's own
+  // evidence lines — the same function axis-copilot/orbit-draft are gated on, so
+  // the same scorer, not a third copy of it.
+  "scout-commentary": scoreGroundedness
 };
 
 async function main(): Promise<void> {
