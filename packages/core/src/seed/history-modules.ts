@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, like, sql } from "drizzle-orm";
 import { id, schema } from "@lyra/db";
 import { applyPpm } from "../commission.js";
 import { computeChainHash } from "../audit.js";
@@ -606,13 +606,94 @@ function build(days: number, now: number, refs: Refs, postedBy: string): Plan {
 /* ------------------------------------------------------------ the reference data */
 
 /**
+ * How many people the year's contracts belong to. The core seed writes exactly
+ * one customer — Rania Haddad, the demo's hero — so without a book behind her
+ * every one of a year's ~730 contracts, quotes and conversations landed on her.
+ * At two sales a trading day this is roughly four contracts a customer over the
+ * year, which is what a broker's book actually looks like.
+ */
+const HISTORY_CUSTOMERS = 180;
+
+const GIVEN = [
+  "Rania", "Omar", "Layla", "Yousef", "Mariam", "Khalid", "Noura", "Faisal",
+  "Hessa", "Tariq", "Salma", "Bilal", "Dana", "Ahmed", "Reem", "Saeed",
+  "Amina", "Nasser", "Huda", "Jamal"
+] as const;
+const FAMILY = [
+  "Haddad", "Al Mansoori", "Nasser", "Al Balushi", "Rahman", "Al Suwaidi",
+  "Karim", "Al Blooshi", "Farouk", "Al Zaabi", "Sultan", "Al Hammadi"
+] as const;
+const BUSINESS = [
+  "Trading", "Logistics", "Contracting", "Holdings", "Motors", "Clinic"
+] as const;
+
+/**
+ * The customers the year's contracts belong to, written once and matched on
+ * email thereafter (row ids are not reproducible across runs). A tenant that
+ * already has customers keeps them: they join the book rather than replace it.
+ */
+async function seedCustomers(
+  db: CoreDb,
+  tenantId: string,
+  first: number,
+  pid: (prefix: string, key: string) => string,
+  remap: Map<string, string>,
+  counts: Record<string, number>
+): Promise<void> {
+  const rows = Array.from({ length: HISTORY_CUSTOMERS }, (_, i) => {
+    const key = String(i).padStart(3, "0");
+    // Roughly one in six is a company — SME motor fleets and group medical are
+    // half the demo's product lines, and a person cannot hold either.
+    const business = i % 6 === 5;
+    const given = GIVEN[hashOf(`given:${key}`) % GIVEN.length]!;
+    const family = FAMILY[hashOf(`family:${key}`) % FAMILY.length]!;
+    const name = business ? `${family} ${BUSINESS[hashOf(`biz:${key}`) % BUSINESS.length]!}` : `${given} ${family}`;
+    return {
+      id: pid("cu", key),
+      tenantId,
+      type: business ? "business" : "person",
+      nameJson: JSON.stringify({ en: name }),
+      emailsJson: JSON.stringify([`hist.${key}@example.ae`]),
+      phonesJson: JSON.stringify([`+9715${String(2_000_000 + hashOf(`tel:${key}`) % 7_999_999)}`]),
+      nationalIdHash: null,
+      registrationNo: business ? `AE-${100_000 + hashOf(`reg:${key}`) % 899_999}` : null,
+      taxId: business ? `TRN${100_000_000_000_000 + hashOf(`trn:${key}`) % 899_999}` : null,
+      country: "AE",
+      kycStatus: hashOf(`kyc:${key}`) % 17 === 0 ? "pending" : "verified",
+      consentId: null,
+      tagsJson: null,
+      ltvCached: null,
+      riskFlagsJson: null,
+      locale: hashOf(`loc:${key}`) % 4 === 0 ? "ar" : "en",
+      // The book predates the window: these people were customers before the
+      // year of history opened, which is why they have a year of history.
+      createdAt: first,
+      updatedAt: first,
+      deletedAt: null
+    };
+  });
+  await insertNew(
+    db,
+    tenantId,
+    schema.customers,
+    "core_customers",
+    rows,
+    sql<string>`json_extract(emails_json, '$[0]')`,
+    (r) => JSON.parse(r.emailsJson)[0] as string,
+    remap,
+    counts
+  );
+}
+
+/**
  * The spine the history hangs off. Reads what the core seed already wrote and
  * falls back to synthetic refs so the generator also runs against a bare tenant
  * (the invariant tests do exactly that).
  *
  * ponytail: falls back rather than inserting the missing spine — an unseeded
- * tenant gets history whose customer/provider refs point nowhere. Upgrade path:
- * call `seed()` first, which is what the CLI does.
+ * tenant gets history whose provider/offering refs point nowhere. Upgrade path:
+ * call `seed()` first, which is what the CLI does. Customers are the exception:
+ * `seedCustomers` writes those, because one customer is not a book.
  */
 async function loadRefs(db: CoreDb, tenantId: string): Promise<Refs> {
   const fill = <T>(got: readonly T[], n: number, make: (i: number) => T): T[] =>
@@ -623,7 +704,7 @@ async function loadRefs(db: CoreDb, tenantId: string): Promise<Refs> {
       .select({ id: schema.customers.id })
       .from(schema.customers)
       .where(eq(schema.customers.tenantId, tenantId))
-      .limit(24)
+      .limit(HISTORY_CUSTOMERS * 2)
   ).map((r) => r.id);
   const users = (
     await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.tenantId, tenantId)).limit(4)
@@ -665,7 +746,7 @@ async function loadRefs(db: CoreDb, tenantId: string): Promise<Refs> {
   }));
 
   return {
-    customers: fill(customers, 24, (i) => `hist:customer:${String(i).padStart(2, "0")}`),
+    customers: fill(customers, HISTORY_CUSTOMERS, (i) => `hist:customer:${String(i).padStart(3, "0")}`),
     users: fill(users, 3, (i) => `user:hist:staff:${i}`),
     channels: fill(channels, 3, (i) => ({
       id: `hist:channel:${["direct", "broker", "embed"][i]}`,
@@ -741,14 +822,6 @@ export async function seedModuleHistory(
   let seq = 0;
   const nid = (prefix: string): string => id(prefix, now + seq++);
 
-  const refs = await loadRefs(db, tenantId);
-  const plan = build(days, now, refs, postedBy);
-
-  /* ------------------------------------------------------------- the money */
-  const posted = await postAll(db, tenantId, plan.postings, { now, postedBy, nid });
-  const txn = (key: string): string | null => posted.txnIds.get(key) ?? null;
-
-  /* -------------------------------------------------------------- the rows */
   const counts: Record<string, number> = {};
   const remap = new Map<string, string>();
   /** Planned id for a logical entity, stable within a run. */
@@ -765,14 +838,55 @@ export async function seedModuleHistory(
   /** Resolve a planned id onto whatever is actually in the DB. */
   const R = (planId: string): string => remap.get(planId) ?? planId;
 
+  /* -------------------------------------------------------------- the book */
+  // Written before the refs are read, because the refs are what it writes.
+  await seedCustomers(db, tenantId, now - days * DAY, pid, remap, counts);
+  const refs = await loadRefs(db, tenantId);
+  const plan = build(days, now, refs, postedBy);
+
+  /* ------------------------------------------------------------- the money */
+  const posted = await postAll(db, tenantId, plan.postings, { now, postedBy, nid });
+  // `history.ts` posts the premium and the commission for these same refs in a
+  // pass of its own, so its transactions are in the ledger but never in this
+  // pass's map. Read them back once: without this every `history:*` lookup
+  // below resolved to null and the money links were silently left empty.
+  const sibling = new Map<string, string>();
+  for (const row of await db
+    .select({ id: schema.ledgerTxns.id, key: schema.ledgerTxns.idempotencyKey })
+    .from(schema.ledgerTxns)
+    .where(and(eq(schema.ledgerTxns.tenantId, tenantId), like(schema.ledgerTxns.idempotencyKey, "history:%")))) {
+    sibling.set(row.key, row.id);
+  }
+  const txn = (key: string): string | null => posted.txnIds.get(key) ?? sibling.get(key) ?? null;
+
   const claims = plan.policies.filter((p): p is PolicyPlan & { claim: ClaimPlan } => p.claim !== null);
   const financed = plan.policies.filter((p): p is PolicyPlan & { finance: FinancePlan } => p.finance !== null);
 
   /* ------------------------------------------------------ DIST: the shopping */
-  // One converted comparison per contract plus one that expired, so bind rate
-  // and panel response rate have a denominator.
+  // One converted comparison per contract plus one that did not bind, so bind
+  // rate and panel response rate have a denominator.
   const lostRequests = plan.policies.filter((p) => p.sale === 0 && isBusinessDay(p.at));
   const responders = Math.min(3, refs.offerings.length);
+
+  /* --------------------------------------------------- the shops still open */
+  // A bound contract's case is finished: it issued. Every queue a human opens —
+  // the board's lanes (apps/web/app/routes/axis-board.tsx), the quote desk's
+  // OPEN_CASE_STATUSES, the exception queue's STUCK_CASE_STATUSES — reads the
+  // states *before* `issued`, so with the whole year issued they were empty.
+  // The work in them is the shops that have not bound: recent ones are live,
+  // and anything older than the window never bound and was cancelled.
+  const OPEN_SHOP_DAYS = 18;
+  const PIPELINE = ["intake", "quoting", "awaiting_docs", "review", "approval", "failed"] as const;
+  const shopAt = (p: PolicyPlan): number => new Date(p.at).setUTCHours(14, 0, 0, 0);
+  const openShops = lostRequests.filter((p) => shopAt(p) >= now - OPEN_SHOP_DAYS * DAY);
+  // Oldest first, so a shop open a fortnight sits further down the pipeline
+  // than one opened this morning — and every lane gets cards.
+  const laneOf = new Map(
+    openShops.map((p, i) => [
+      p.ref,
+      PIPELINE[PIPELINE.length - 1 - Math.floor((i * PIPELINE.length) / openShops.length)]!
+    ])
+  );
 
   await insertNew(
     db,
@@ -817,10 +931,11 @@ export async function seedModuleHistory(
         currency: BASE,
         sharedWithCustomerAt: null,
         portalTokenHash: null,
-        state: "expired",
-        expiresAt: p.at + 20 * DAY,
-        createdAt: new Date(p.at).setUTCHours(14, 0, 0, 0),
-        updatedAt: p.at + 20 * DAY
+        // A shop whose case is still on the board has not expired yet.
+        state: laneOf.has(p.ref) ? "fanned_out" : "expired",
+        expiresAt: shopAt(p) + 20 * DAY,
+        createdAt: shopAt(p),
+        updatedAt: Math.min(now, shopAt(p) + 20 * DAY)
       }))
     ],
     sql<string>`json_extract(inputs_json, '$.histRef')`,
@@ -917,30 +1032,64 @@ export async function seedModuleHistory(
     tenantId,
     schema.axisCases,
     "axis_cases",
-    plan.policies.map((p) => ({
-      id: pid("cas", p.ref),
-      tenantId,
-      ref: `HC-${p.dayKey}-${p.sale}`,
-      kind: p.renewalSeq > 0 ? "renewal_ops" : "bind",
-      customerId: p.customerId,
-      productLine: p.line,
-      channelId: p.channelId,
-      quoteRequestId: R(pid("qrq", p.ref)),
-      status: "issued",
-      slaDueAt: p.at + DAY,
-      ownerRef: p.ownerRef,
-      teamId: null,
-      priority: "normal",
-      source: p.channelKind === "b2c" ? "web" : "partner",
-      riskScore: hashOf(`risk:${p.ref}`) % 100,
-      valueMinor: p.grossMinor,
-      currency: BASE,
-      metaJson: null,
-      closedAt: p.at,
-      createdAt: p.at - 2 * HOUR,
-      updatedAt: p.at,
-      deletedAt: null
-    })),
+    [
+      ...plan.policies.map((p) => ({
+        id: pid("cas", p.ref),
+        tenantId,
+        ref: `HC-${p.dayKey}-${p.sale}`,
+        kind: p.renewalSeq > 0 ? "renewal_ops" : "bind",
+        customerId: p.customerId,
+        productLine: p.line,
+        channelId: p.channelId,
+        quoteRequestId: R(pid("qrq", p.ref)),
+        // It bound a contract, so it reached the end of the machine.
+        status: "issued",
+        slaDueAt: p.at + DAY,
+        ownerRef: p.ownerRef,
+        teamId: null,
+        priority: "normal",
+        source: p.channelKind === "b2c" ? "web" : "partner",
+        riskScore: hashOf(`risk:${p.ref}`) % 100,
+        valueMinor: p.grossMinor,
+        currency: BASE,
+        metaJson: null,
+        closedAt: p.at,
+        createdAt: p.at - 2 * HOUR,
+        updatedAt: p.at,
+        deletedAt: null
+      })),
+      ...lostRequests.map((p) => {
+        const at = shopAt(p);
+        const lane = laneOf.get(p.ref) ?? null;
+        return {
+          id: pid("cas", `${p.dayKey}:shop`),
+          tenantId,
+          ref: `HC-${p.dayKey}-shop`,
+          // One in five is a group scheme, so the quote desk's ?kind=group_medical
+          // bid screen has something to bid on.
+          kind: hashOf(`kind:${p.dayKey}`) % 5 === 0 ? "group_medical" : "quote",
+          customerId: pick(refs.customers, `lost:${p.dayKey}`),
+          productLine: p.line,
+          channelId: p.channelId,
+          quoteRequestId: R(pid("qrq", `${p.dayKey}:lost`)),
+          // Off the board once the shop expired without binding.
+          status: lane ?? "cancelled",
+          slaDueAt: at + 3 * DAY,
+          ownerRef: p.ownerRef,
+          teamId: null,
+          priority: (["low", "normal", "normal", "high", "urgent"] as const)[hashOf(`pri:${p.dayKey}`) % 5]!,
+          source: p.channelKind === "b2c" ? "web" : "partner",
+          riskScore: hashOf(`risk:${p.dayKey}:shop`) % 100,
+          valueMinor: p.grossMinor,
+          currency: BASE,
+          metaJson: null,
+          closedAt: lane === null ? Math.min(now, at + 20 * DAY) : null,
+          createdAt: at,
+          updatedAt: lane === null ? Math.min(now, at + 20 * DAY) : at + HOUR,
+          deletedAt: null
+        };
+      })
+    ],
     sql<string>`ref`,
     (r) => r.ref,
     remap,

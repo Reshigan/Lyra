@@ -7,6 +7,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { schema } from "@lyra/db";
 import type { CoreDb } from "../context.js";
 import { chainFor, verifyChain } from "../audit.js";
+import { CASE_STATES } from "../lifecycle.js";
 import { seedHistory } from "./history.js";
 import { seedModuleHistory, type ModuleHistoryResult } from "./history-modules.js";
 import { DAY } from "./context.js";
@@ -237,6 +238,92 @@ describe("seedModuleHistory", () => {
     expect(claimStates.length).toBeGreaterThan(2);
   });
 
+  it("points every contract at the transaction that paid for it", async () => {
+    // `history.ts` posts PREM-COLLECT/CMSN-ACCR in a pass of its own, so its
+    // ids are in the ledger but not in this pass's map. Looked up there they
+    // read null, and every money link on a policy, its version and its
+    // commission entry was silently empty.
+    const keyed = new Map(
+      (
+        await db
+          .select({ id: schema.ledgerTxns.id, key: schema.ledgerTxns.idempotencyKey })
+          .from(schema.ledgerTxns)
+          .where(eq(schema.ledgerTxns.tenantId, TENANT))
+      ).map((r) => [r.id, r.key])
+    );
+
+    const policies = await db
+      .select({
+        policyNo: schema.axisPolicies.policyNo,
+        txnId: schema.axisPolicies.lastTxnId
+      })
+      .from(schema.axisPolicies)
+      .where(eq(schema.axisPolicies.tenantId, TENANT));
+    expect(policies.filter((p) => p.txnId === null)).toEqual([]);
+    // `HIST-<day>-<sale>` and `history:prem-collect:<day>:<sale>` name one event.
+    for (const p of policies) {
+      const ref = p.policyNo.slice("HIST-".length).replace(/-(\d+)$/, ":$1");
+      expect(keyed.get(p.txnId!), p.policyNo).toBe(`history:prem-collect:${ref}`);
+    }
+
+    const versions = await db
+      .select({ txnId: schema.axisPolicyVersions.txnId })
+      .from(schema.axisPolicyVersions)
+      .where(eq(schema.axisPolicyVersions.tenantId, TENANT));
+    expect(versions.filter((v) => v.txnId === null)).toEqual([]);
+
+    const entries = await db
+      .select({ txnId: schema.distCommissionEntries.txnId })
+      .from(schema.distCommissionEntries)
+      .where(eq(schema.distCommissionEntries.tenantId, TENANT));
+    expect(entries.filter((e) => e.txnId === null)).toEqual([]);
+    for (const e of entries) {
+      expect(keyed.get(e.txnId!)?.startsWith("history:cmsn-accr:")).toBe(true);
+    }
+  });
+
+  it("spreads the year over a book of customers rather than one", async () => {
+    const known = new Set(
+      (
+        await db.select({ id: schema.customers.id }).from(schema.customers).where(eq(schema.customers.tenantId, TENANT))
+      ).map((r) => r.id)
+    );
+    expect(known.size).toBeGreaterThanOrEqual(120);
+
+    const owners = await db
+      .select({ customerId: schema.axisPolicies.customerId, n: sql<number>`count(*)` })
+      .from(schema.axisPolicies)
+      .where(eq(schema.axisPolicies.tenantId, TENANT))
+      .groupBy(schema.axisPolicies.customerId);
+    // Every contract hangs off a customer that exists, and no one customer owns
+    // the book: a year of contracts over the population is a handful each.
+    expect(owners.filter((o) => o.customerId === null || !known.has(o.customerId))).toEqual([]);
+    expect(owners.length).toBeGreaterThanOrEqual(100);
+    expect(Math.max(...owners.map((o) => o.n))).toBeLessThan(40);
+  });
+
+  it("leaves real work in the AXIS queues, not a year of closed cases", async () => {
+    const rows = await db
+      .select({ status: schema.axisCases.status, closed: schema.axisCases.closedAt, n: sql<number>`count(*)` })
+      .from(schema.axisCases)
+      .where(eq(schema.axisCases.tenantId, TENANT))
+      .groupBy(schema.axisCases.status, sql`closed_at is null`);
+
+    const states = new Set(rows.map((r) => r.status));
+    for (const state of CASE_STATES) expect([...states], `no case is ever ${state}`).toContain(state);
+
+    // The board (apps/web/app/routes/axis-board.tsx `LANES`), the quote desk
+    // (`OPEN_CASE_STATUSES`) and the exception queue (`STUCK_CASE_STATUSES`)
+    // each read a status filter. Every lane a human works needs cards in it.
+    const openBy = new Map<string, number>();
+    for (const r of rows) if (r.closed === null) openBy.set(r.status, (openBy.get(r.status) ?? 0) + r.n);
+    for (const lane of ["intake", "quoting", "awaiting_docs", "review", "approval", "failed"]) {
+      expect(openBy.get(lane) ?? 0, `queue ${lane} is empty`).toBeGreaterThan(0);
+    }
+    // A case that bound a contract is issued and closed — the bulk of the year.
+    expect(openBy.get("issued") ?? 0).toBe(0);
+  });
+
   it("leaves the audit chain verifiable after back-dating a year into it", async () => {
     const rows = await chainFor({ db, tenantId: TENANT } as never, 0, 100_000);
     expect(rows.length).toBeGreaterThan(50);
@@ -279,7 +366,8 @@ async function censusOf(target: CoreDb): Promise<Record<string, number>> {
     ["ledger_journal_lines", schema.ledgerJournalLines] as const,
     ["ledger_journal_batches", schema.ledgerJournalBatches] as const,
     ["ledger_txn_transitions", schema.ledgerTxnTransitions] as const,
-    ["ledger_periods", schema.ledgerPeriods] as const
+    ["ledger_periods", schema.ledgerPeriods] as const,
+    ["core_customers", schema.customers] as const
   ];
   for (const [name, table] of tables) {
     const [row] = await target.select({ n: sql<number>`count(*)` }).from(table);
