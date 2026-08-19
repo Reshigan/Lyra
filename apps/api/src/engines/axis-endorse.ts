@@ -16,6 +16,7 @@ import {
   type Ctx
 } from "@lyra/core";
 import { autoApprovable, buildRecipe, runTxn } from "@lyra/ledger";
+import { InstantMs } from "../http.js";
 
 type PolicyRow = typeof schema.axisPolicies.$inferSelect;
 
@@ -26,7 +27,7 @@ type PolicyRow = typeof schema.axisPolicies.$inferSelect;
 // so the two writes are one unit — never a new version left overlapping the old.
 
 export const EndorseBody = z.object({
-  effectiveFrom: z.number().int().optional(),
+  effectiveFrom: InstantMs.optional(),
   changes: z.record(z.string(), z.unknown()),
   reason: z.string().nullish(),
   /** New full-term premium. Absent means the change carries no price. */

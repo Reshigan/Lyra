@@ -206,6 +206,41 @@ describe("AXIS bind (docs/27 F4)", () => {
     expect(versions.length).toBe(1);
   });
 
+  // The hand-written `BindBody` is a trust boundary too, and it was not one:
+  // `z.number().int()` is a *safe*-integer check, so `endAt: 9e15` was accepted
+  // and persisted. `checkCoverage` then answers "in force" for the next 250 000
+  // years and apps/web's policy page throws RangeError formatting the term.
+  it("refuses an endAt outside the range a Date can hold, and still binds a real term", async () => {
+    const { responseId } = await selectedQuote();
+    const start = Date.now();
+
+    const bad = await call("POST", `/v1/axis/quote-responses/${responseId}/bind`, {
+      policyNo: "POL-BIND-RANGE",
+      startAt: start,
+      endAt: 9e15
+    });
+    expect(bad.status).toBe(400);
+    const written = await database
+      .select()
+      .from(schema.axisPolicies)
+      .where(
+        and(eq(schema.axisPolicies.tenantId, seeded.tenantId), eq(schema.axisPolicies.policyNo, "POL-BIND-RANGE"))
+      );
+    expect(written).toEqual([]);
+
+    // Positive control: the same response, the same policy number, a term a
+    // Date can hold — the bound refuses the unrenderable value and nothing else.
+    const good = ok(
+      await call("POST", `/v1/axis/quote-responses/${responseId}/bind`, {
+        policyNo: "POL-BIND-RANGE",
+        startAt: start,
+        endAt: start + 365 * DAY
+      }),
+      201
+    );
+    expect(good.policy.endAt).toBe(start + 365 * DAY);
+  });
+
   it("refuses to bind twice from the same response", async () => {
     const { responseId } = await selectedQuote();
     const start = Date.now();

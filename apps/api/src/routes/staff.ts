@@ -3,7 +3,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { schema } from "@lyra/db";
 import { require_, type Ctx } from "@lyra/core";
-import { body, created, listParams } from "../http.js";
+import { body, created, InstantMs, listParams } from "../http.js";
 import {
   changeRoles,
   expireDelegations,
@@ -38,7 +38,7 @@ const InviteBody = z
     roleKeys: z.array(z.string().min(1).max(64)).min(1).max(20),
     teamIds: z.array(z.string().min(1)).max(20).optional(),
     managerId: z.string().min(1).optional(),
-    dueAt: z.number().int().optional()
+    dueAt: InstantMs.optional()
   })
   .strict();
 
@@ -53,7 +53,7 @@ staffRoutes.post("/invitations", async (c) => {
 /** Re-run the joiner checklist for an account that already exists. */
 staffRoutes.post("/users/:id/onboarding", async (c) => {
   const ctx = ctxOf(c);
-  const input = await body(c, z.object({ ownerRef: z.string().optional(), dueAt: z.number().int().optional() }).strict());
+  const input = await body(c, z.object({ ownerRef: z.string().optional(), dueAt: InstantMs.optional() }).strict());
   const steps = await startStaffOnboarding(ctx, c.req.param("id"), input);
   return c.json({ steps });
 });
@@ -74,7 +74,7 @@ staffRoutes.post("/users/:id/roles", async (c) => {
 
 const OffboardBody = z
   .object({
-    lastDay: z.number().int(),
+    lastDay: InstantMs,
     reassignTo: z.string().min(1),
     reason: z.string().max(500).optional()
   })
@@ -113,8 +113,8 @@ const DelegationBody = z
       .optional(),
     maxAmountMinor: z.number().int().positive().optional(),
     currency: z.string().length(3).optional(),
-    startsAt: z.number().int(),
-    endsAt: z.number().int()
+    startsAt: InstantMs,
+    endsAt: InstantMs
   })
   .strict();
 

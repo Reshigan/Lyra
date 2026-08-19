@@ -38,7 +38,7 @@ import {
   visionExtractionMessages,
   visionExtractionSchema
 } from "@lyra/model-gateway";
-import { body } from "../http.js";
+import { body, InstantMs } from "../http.js";
 import { readUpload } from "../upload.js";
 import { must } from "../rows.js";
 import { EndorseBody, changeSetHashOf, endorsePolicy, priceEndorsement } from "../engines/axis-endorse.js";
@@ -586,8 +586,8 @@ axisRoutes.post("/sops/:id/publish", async (c) => {
 
 const BindBody = z.object({
   policyNo: z.string().min(1).max(64),
-  startAt: z.number().int().positive(),
-  endAt: z.number().int().positive(),
+  startAt: InstantMs.positive(),
+  endAt: InstantMs.positive(),
   caseId: z.string().min(1).optional(),
   terms: z.record(z.string(), z.unknown()).optional()
 });
@@ -937,7 +937,7 @@ const ManualQuoteBody = z.object({
   feesMinor: z.number().int().nonnegative().optional(),
   commissionMinor: z.number().int().optional(),
   currency: z.string().length(3),
-  validUntil: z.number().int().optional(),
+  validUntil: InstantMs.optional(),
   coverage: z.record(z.string(), z.unknown()).optional()
 });
 
@@ -1150,7 +1150,7 @@ axisRoutes.post("/policies/:id/telemetry", async (c) => {
     z.object({
       source: z.string().min(1),
       points: z
-        .array(z.object({ at: z.number().int(), value: z.number() }))
+        .array(z.object({ at: InstantMs, value: z.number() }))
         .min(1)
         .max(MAX_POINTS_PER_BATCH)
     })
@@ -1289,7 +1289,7 @@ const PremiumFinancingPlanBody = z.object({
   totalMinor: z.number().int().positive(),
   currency: z.string().min(1),
   instalments: z.number().int().positive(),
-  startAt: z.number().int().positive(),
+  startAt: InstantMs.positive(),
   frequencyDays: z.number().int().positive(),
   // positive, not nonnegative: buildRecipe refuses a zero gross, so `0` was a
   // route-legal body that only failed once the engine tried to post the chained

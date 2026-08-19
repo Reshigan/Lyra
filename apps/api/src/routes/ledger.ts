@@ -46,7 +46,7 @@ import { EXPORT_FORMATS, isExportFormat, render } from "../engines/export/render
 import { meterEgress } from "../engines/egress.js";
 import { utf8, zip } from "../engines/export/zip.js";
 import { must } from "../rows.js";
-import { body } from "../http.js";
+import { body, InstantMs } from "../http.js";
 import type { App } from "../env.js";
 
 // docs/19. The ledger package holds the invariants; this file is the doorway.
@@ -663,7 +663,7 @@ const StatementLine = z.object({
   amountMinor: z.number().int(),
   currency: z.string().length(3),
   ourRef: z.string().optional(),
-  postedAt: z.number().int().optional(),
+  postedAt: InstantMs.optional(),
   description: z.string().max(500).optional()
 });
 

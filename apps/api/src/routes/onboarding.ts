@@ -13,7 +13,7 @@ import {
   withIdempotency,
   type Ctx
 } from "@lyra/core";
-import { body } from "../http.js";
+import { body, InstantMs } from "../http.js";
 import { ctxFor, db as rawDb, throttle } from "../auth.js";
 import {
   STAGES,
@@ -53,7 +53,7 @@ const StartBody = z.object({
   template: z.string().min(1),
   /** Role key -> user id, so generated steps land in a named queue. */
   owners: z.record(z.string(), z.string()).optional(),
-  dueAt: z.number().int().optional()
+  dueAt: InstantMs.optional()
 });
 
 onboardingRoutes.post("/steps", async (c) => {
@@ -331,7 +331,7 @@ const DraftBody = z.object({
   /** docs/05: settlement, clawbackDays, exclusivity, territories, notice. */
   terms: z.record(z.string(), z.unknown()),
   documentFileId: z.string().optional(),
-  effectiveFrom: z.number().int().optional()
+  effectiveFrom: InstantMs.optional()
 });
 
 onboardingRoutes.post("/agreements", async (c) => {
@@ -352,7 +352,7 @@ onboardingRoutes.post("/agreements/:id/send", async (c) => {
 
 const SignBody = z.object({
   signedByPartnerName: z.string().min(2).max(200),
-  effectiveFrom: z.number().int().optional()
+  effectiveFrom: InstantMs.optional()
 });
 
 /**

@@ -17,6 +17,7 @@ import {
 } from "@lyra/core";
 import { autoApprovable, buildRecipe, runTxn } from "@lyra/ledger";
 import { SWEEP_MAX } from "./sweep.js";
+import { InstantMs } from "../http.js";
 
 type PolicyRow = typeof schema.axisPolicies.$inferSelect;
 type TxnRow = Awaited<ReturnType<typeof runTxn>>;
@@ -63,7 +64,7 @@ async function stampHead(ctx: Ctx, policy: PolicyRow, stamp: Partial<PolicyRow>)
 
 export const CancelBody = z.object({
   /** Defaults to now. Forward-dating is normal: notice periods are contractual. */
-  effectiveAt: z.number().int().optional(),
+  effectiveAt: InstantMs.optional(),
   reasonCode: z.string().min(1).max(64),
   /** `none` = forfeited premium: cover ends, the customer gets nothing back. */
   refundMethod: z.enum(["credit", "bank", "none"]).default("credit"),
@@ -473,8 +474,8 @@ export const RenewBody = z.object({
   /** Defaults to the prior number suffixed with the renewal sequence. */
   policyNo: z.string().min(1).max(64).optional(),
   /** Defaults to a term that starts the instant the prior one ends. */
-  startAt: z.number().int().optional(),
-  endAt: z.number().int().optional(),
+  startAt: InstantMs.optional(),
+  endAt: InstantMs.optional(),
   premiumMinor: z.number().int().nonnegative().optional(),
   taxMinor: z.number().int().nonnegative().optional(),
   feesMinor: z.number().int().nonnegative().optional(),
@@ -627,7 +628,7 @@ const PaymentPlan = z.object({
   graceDays: z.number().int().nonnegative().default(0),
   lapseOnMissed: z.boolean().default(false),
   instalments: z
-    .array(z.object({ seq: z.number().int(), dueAt: z.number().int(), state: z.string() }))
+    .array(z.object({ seq: z.number().int(), dueAt: InstantMs, state: z.string() }))
     .default([])
 });
 
