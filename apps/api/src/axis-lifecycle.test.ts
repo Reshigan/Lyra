@@ -318,6 +318,51 @@ describe("AXIS policy lifecycle (docs/27 F5)", () => {
     expect((await eventsFor(policyId, "orbit.renewal.lost")).length).toBe(1);
   });
 
+  // Regression: the stored plan is not a request body, so bounding `dueAt` to
+  // the Date range here only decided what to do when the column is already
+  // wrong — and `safeParse` failing makes `missedInstalment` return null, which
+  // switches lapse-on-missed off for the *whole* plan. One unrenderable
+  // instalment must not buy the other one free cover.
+  it("still lapses on a genuinely missed instalment when another one is out of Date range", async () => {
+    await autoApprove("axis.bind", "axis.underwriting_referral");
+    const now = Date.now();
+    const start = now - 60 * DAY;
+    const { id: policyId, premiumMinor } = await boundPolicy("POL-LAPSE-2", start);
+
+    await database
+      .update(schema.axisPolicies)
+      .set({
+        paymentPlanJson: JSON.stringify({
+          frequency: "monthly",
+          graceDays: 15,
+          lapseOnMissed: true,
+          instalments: [
+            { seq: 1, dueAt: start, grossMinor: Math.round(premiumMinor / 12), state: "paid" },
+            { seq: 2, dueAt: now - 40 * DAY, grossMinor: Math.round(premiumMinor / 12), state: "due" },
+            // Past the end of the Date range; no `new Date()` renderer here.
+            { seq: 3, dueAt: 9e15, grossMinor: Math.round(premiumMinor / 12), state: "due" }
+          ]
+        })
+      })
+      .where(eq(schema.axisPolicies.id, policyId));
+
+    const sysCtx: Ctx = {
+      db: database as unknown as Ctx["db"],
+      tenantId: seeded.tenantId,
+      actor: { kind: "system", id: "scheduler", tenantId: seeded.tenantId, grants: [] },
+      requestId: "req_sweep_oob",
+      now,
+      locale: "en",
+      policy: PolicyJson.parse({}),
+      entitlements: EntitlementsJson.parse({})
+    };
+    await sweepPolicyLifecycle(sysCtx);
+
+    const row = await policyRow(policyId);
+    expect(row.status).toBe("lapsed");
+    expect((await txnsOf(policyId, "LAPSE")).length).toBe(1);
+  });
+
   it("reinstatement always needs dual control", async () => {
     // `axis.reinstate` is on the allowlist and still gates: putting cover back
     // on risk after a lapse is never automatic (docs/19 §4.1).

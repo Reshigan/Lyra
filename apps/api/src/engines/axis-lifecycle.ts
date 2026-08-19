@@ -627,8 +627,13 @@ export async function renewPolicy(ctx: Ctx, prior: PolicyRow, input: RenewInput)
 const PaymentPlan = z.object({
   graceDays: z.number().int().nonnegative().default(0),
   lapseOnMissed: z.boolean().default(false),
+  // Not `InstantMs`: this parses the stored `paymentPlanJson`, not a request
+  // body, and nothing here renders `dueAt` through `new Date()`. Bounding it
+  // made one unrenderable instalment fail `safeParse` for the whole plan, which
+  // turns lapse-on-missed off — fail-open on a money path. The trust boundary
+  // is whatever writes the column.
   instalments: z
-    .array(z.object({ seq: z.number().int(), dueAt: InstantMs, state: z.string() }))
+    .array(z.object({ seq: z.number().int(), dueAt: z.number().int(), state: z.string() }))
     .default([])
 });
 
