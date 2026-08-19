@@ -73,28 +73,42 @@ export function instantParam(raw: string | undefined): number | undefined {
  * which the rules match 366 and every match is an instant (no false positives).
  *
  * `expiry`, `freshness` and `reversibleUntil` are whole keys rather than suffix
- * matches. Each is unique in the schema — `grep -nE '^\s+(expiry|freshness|
- * reversibleUntil):' packages/db/src/schema` returns one instant column each —
- * so naming them mis-bounds nothing. They earned their place by sitting on
- * registered *writable* resources whose values render as dates:
- * core/consents, core/mandates, core/memories (`expiry`),
- * signal/aeo-pages (`freshness`, `rw("signal:aeo")` at resources.ts:608, so
- * create + update + remove), signal/budget-moves (`reversibleUntil`,
- * `update: "signal:budget_moves:approve"` at resources.ts:604).
+ * matches. `freshness` and `reversibleUntil` are unique in the schema;
+ * `expiry` is four columns — `grep -rn '^\s*expiry:' packages/db/src/schema`
+ * gives core/consents, core/mandates, core/identityVerifications and
+ * core/memories — and all four are instants, so naming it mis-bounds nothing.
+ * They earned their place by sitting on registered *writable* resources whose
+ * values render as dates: core/consents, core/mandates, core/memories
+ * (`expiry`); signal/aeo-pages (`freshness`, `rw("signal:aeo")`, so create +
+ * update + remove); signal/budget-moves (`reversibleUntil`,
+ * `update: "signal:budget_moves:approve"`). The fourth `expiry`,
+ * core/identity-verifications, is `ro` — bounded anyway, and it stays bounded
+ * if that ever goes writable.
+ *
+ * No line numbers here on purpose: two fix waves in a row wrote them and both
+ * went stale inside the same wave. Grep the resource names against
+ * resources.ts.
  *
  * Ceiling: five instant columns are still named outside these rules and are NOT
  * recognised — `axis.telemetryPoints.at`, `axis.quotes.validUntil`,
  * `dist.quoteResponses.validUntil`, `scout.clusters.firstSeen`,
  * `scout.clusters.lastSeen`. Checked one by one against resources.ts rather
  * than asserted: `axis.telemetryPoints` and `dist.quoteResponses` are not
- * registered at all, `axis.quotes` is `ro` (resources.ts:273) and
- * `scout.clusters` is `ro` (resources.ts:663), so none of the five has a
- * generic-CRUD write surface today. The two that take caller input at all
- * (`at`, `validUntil`) are bounded by hand at their own endpoints
- * (routes/axis.ts). Register any of those tables writable, or upgrade either
- * `ro`, and this paragraph is the checklist — a previous version of it named
- * the wrong line and claimed the wrong tables, and two live holes hid behind
- * that. Verify against resources.ts, do not trust this list.
+ * registered at all, and `axis.quotes` and `scout.clusters` are both `ro`, so
+ * none of the five has a generic-CRUD write surface today. The two that take
+ * caller input at all (`at`, `validUntil`) are bounded by hand at their own
+ * endpoints (routes/axis.ts). Register any of those tables writable, or upgrade
+ * either `ro`, and this paragraph is the checklist — a previous version of it
+ * named the wrong line and claimed the wrong tables, and two live holes hid
+ * behind that. Verify against resources.ts, do not trust this list.
+ *
+ * Why `at` is not in the rules, censused rather than assumed:
+ * `axis.telemetryPoints.at` is the only `at:` column in the whole schema, so
+ * adding it would bound exactly one unregistered table and nothing else. An
+ * earlier note blamed a false positive on the orbit tools; that was wrong —
+ * the three registered tools (`fetch_policy`, `start_quote`,
+ * `create_endorsement_request`) return no row carrying `at`. The exclusion is
+ * harmless, not principled: add `at` when that table gets a write surface.
  *
  * Upgrade path is a marker on the column itself, which Drizzle has no room for
  * — so a declared set on Resource, a parallel list this exists to avoid
