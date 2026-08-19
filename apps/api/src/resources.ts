@@ -308,7 +308,7 @@ export const AXIS = register(
     update: "axis:policies:update"
   }, {
     searchable: ["policyNo"],
-    // ponytail: the create is gated, the update is not. `paymentPlanJson` and
+    // ponytail: the create is gated, the update is not — ADR-0067. `paymentPlanJson` and
     // `premiumMinor` are both writable through PATCH with only
     // `axis:policies:update`, so a bound policy's instalment schedule — what
     // decides whether cover lapses unpaid — changes without a second pair of
