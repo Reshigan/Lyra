@@ -398,12 +398,14 @@ function Quadrant({
         {plotted.map((dot) => (
           // The `group` is the wrapper, not the link, so pointer and keyboard
           // reveal the same commentary: hover on the group, focus-within for
-          // the link inside it. Zero width plus `items-center` centres the dot
-          // on the point in both writing directions, which a -translate-x-1/2
-          // would not.
+          // the link inside it. The wrapper is the zero-width anchor and centres
+          // its children on the point in both writing directions, which a
+          // -translate-x-1/2 would not; the link itself carries the label's
+          // width, because a zero-width box reads as `hidden` to a pointer and
+          // to Playwright even while its overflowing children paint and click.
           <div
             key={dot.id}
-            className="group absolute w-0"
+            className="group absolute flex w-0 flex-col items-center"
             style={{ insetInlineStart: `${dot.fit}%`, bottom: `${dot.momentum}%` }}
           >
             <Link
@@ -413,7 +415,7 @@ function Quadrant({
               // reads it on focus — a hover-only reveal would be information
               // only a mouse can reach.
               aria-describedby={dot.commentary === null ? undefined : `wc-${dot.id}`}
-              className="flex w-0 flex-col items-center gap-1"
+              className="flex w-28 flex-col items-center gap-1"
             >
               <span
                 aria-hidden="true"

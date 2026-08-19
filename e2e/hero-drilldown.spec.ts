@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { goto, loginAsAxisAgent, loginAsTenantAdmin } from "./fixtures.js";
+import { goto, loginAsAxisAgent } from "./fixtures.js";
 
 // @journey:J-HERO-DRILLDOWN (apps/web/app/components/hero.tsx):
 // The figure at the top of a screen is a door: clicking it shows exactly the
@@ -22,7 +22,7 @@ function tile(page: Page, label: RegExp): Locator {
 }
 
 test("a document status figure opens exactly the documents it counted", async ({ page }) => {
-  await loginAsTenantAdmin(page);
+  await loginAsAxisAgent(page);
   await goto(page, "/axis/doc-intelligence");
 
   const unread = tile(page, /not read yet/i);
