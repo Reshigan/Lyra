@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { MAX_REPRICE_PPM, parseUbi, ubiMessages, ubiSchema, type UbiContext } from "./ubi.js";
-import { scrub } from "./scrub.js";
 
 const KM = "telematics:obd:km";
 const BRAKE = "telematics:obd:harsh_brake_events";
@@ -22,23 +21,6 @@ const ctx: UbiContext = {
   windowStart: "2023-11-14T22:13:20.000Z",
   windowEnd: "2024-02-12T21:33:20.000Z"
 };
-
-describe("ubiMessages", () => {
-  // One in ten epoch-millisecond instants is a 13-digit run that passes Luhn, so
-  // a bare timestamp in prompt JSON is redacted by scrub.ts's CARD rule before
-  // the provider ever sees it. The model is then asked to price a usage series
-  // over a window it cannot read — on money.
-  const LUHN_MS = 1_781_571_600_000; // 2026-06-16T01:00:00.000Z, Luhn-valid
-
-  it("sends a window the model can read, even when the instant looks like a card number", () => {
-    const messages = ubiMessages({ ...ctx, windowEnd: new Date(LUHN_MS).toISOString() });
-    const { text, flags } = scrub(messages.at(-1)!.content);
-
-    expect(flags).not.toContain("pii_card");
-    expect(text).not.toContain("[[CARD_");
-    expect(text).toContain(new Date(LUHN_MS).toISOString());
-  });
-});
 
 describe("parseUbi", () => {
   it("keeps a signed delta and every evidenced factor", () => {

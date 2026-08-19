@@ -6,7 +6,7 @@ import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
 import { EntitlementsJson, PolicyJson, schema } from "@lyra/db";
-import { canonicalJson, notFound, sha256Hex, type Ctx } from "@lyra/core";
+import { IDEMPOTENCY_TTL_MS, canonicalJson, notFound, sha256Hex, type Ctx } from "@lyra/core";
 import { Gateway, makeStub } from "@lyra/model-gateway";
 import { axisRoutes } from "./routes/axis.js";
 import { crudRouter } from "./crud.js";
@@ -601,10 +601,16 @@ describe("POST /policies/:id/reprice", () => {
     await ingestAt(NOW + HOUR * 12, 400);
     await app.request(route, { method: "POST" });
 
-    // Inside the key's 24h TTL deliberately: past it the third POST runs on an
+    // Inside the key's TTL deliberately: past it the third POST runs on an
     // expired slot whatever the key says, and the test would pass with the key
-    // stubbed to a constant — pinning the TTL rather than the window bound.
-    ctx.now = NOW + HOUR * 13;
+    // stubbed to a constant — pinning the TTL rather than the window bound. Read
+    // from the constant so a shortened TTL fails here instead of quietly turning
+    // this into a different test.
+    const advance = HOUR * 13;
+    expect(advance, "the scenario must stay inside the idempotency window it is testing around").toBeLessThan(
+      IDEMPOTENCY_TTL_MS
+    );
+    ctx.now = NOW + advance;
     const out = (await (await app.request(route, { method: "POST" })).json()) as {
       repriced: boolean;
       premiumMinor?: number;
@@ -623,7 +629,7 @@ describe("POST /policies/:id/reprice", () => {
       windowEnd: string;
     };
     expect(priced.series[0]!.total).toBe(520);
-    expect(priced.windowEnd).toBe(new Date(NOW + HOUR * 13).toISOString());
+    expect(priced.windowEnd).toBe(new Date(NOW + advance).toISOString());
   });
 
   it("rejects without axis:policies:endorse, before any write", async () => {
