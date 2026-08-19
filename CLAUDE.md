@@ -146,31 +146,28 @@ previous one's acceptance checklist passes (checklists are in that file).
 
 ## Current status (2026-08-19)
 
-Executing the revenue-lines build via `docs/superpowers/specs/2026-08-16-revenue-lines-full-build-design.md`,
-worked group-by-group (A→B→C→D→E) via `superpowers:subagent-driven-development`.
-Progress ledgers live at `.superpowers/sdd/progress.md` per worktree — read that
-first on resume.
+The revenue-lines build (`docs/superpowers/specs/2026-08-16-revenue-lines-full-build-design.md`)
+is **merged**. Groups A-E all landed on `main`: A and B as PRs #23/#24, C as #25,
+and C/D/E's stacked branch `group-e-telematics-ubi` as **PR #26** (162 commits,
+138 files, +46,782/-355). No revenue-lines work remains on a branch.
 
-Groups A and B landed on `main`. **Groups C, D and E are stacked on one branch**,
-`group-e-telematics-ubi` in worktree `revenue-lines-group-c` — 111 commits ahead
-of `main`. They merge as a single branch, not three.
+Eighteen whole-branch review rounds ran. The last two waves closed the
+unguarded-`Date`/NaN-instant family (`4f115cd eee6f44 4925eaf 21e7d69 cecc256
+ed32020 2e0dd89 09a3299`), lifted `@lyra/model-gateway`'s mutation score from
+64.73% to 76.96% by testing the schema/prompt builders and not just the parsers
+(`893dd1f`), and killed the shared `stripFence` ReDoS that CodeQL reported five
+times over (`c0a2144`).
 
-- **Group A** (accrual-only: BIND-GROUP, FEE-BROK, REFERRAL-QUAL, REFERRAL-SETL,
-  AD-PLACEMENT, DISCLOSURE-PRESENT) — complete, merged.
-- **Group B** (partner bind chain) — complete, merged.
-- **Group C** (whitelabel billing + data products) — tasks 1-7 complete.
-- **Group D** (premium financing) — complete on the same branch.
-- **Group E** (telematics/UBI) — complete on the same branch.
+Deployment: merging #26 fired `deploy.yml` on push, which runs full CI then the
+staging deploy. The production job is `workflow_dispatch`-only and additionally
+gated on the `production` GitHub Environment (review from Reshigan). Both runs
+share concurrency group `deploy-deploy-refs/heads/main` with
+`cancel-in-progress: false`, so a dispatched production run queues *behind*
+staging rather than racing it.
 
-Seventeen whole-branch review rounds run so far. Round 16 raised 8 findings
-(1 Critical, 7 Important, including the unguarded-`Date`/NaN-instant family);
-all 8 closed in commits `4f115cd eee6f44 4925eaf 21e7d69 cecc256 ed32020
-2e0dd89 09a3299`. Round 17 is reviewing `bb2730c..09a3299` plus a branch-wide
-enumeration of that same family.
-
-Local CI parity on the branch: lint, typecheck (9/9), unit tests, `@lyra/web`
-build and the eval gate are all green. `pnpm e2e` and `pnpm mutation` are the
-remaining gates before `superpowers:finishing-a-development-branch` and merge.
+After a deploy, verify with `pnpm e2e:live` — `playwright.live.config.ts` points
+at https://lyra.vantax.co.za, or set `LIVE_BASE_URL` for staging. Those specs
+are read-only by construction; never add a writing spec under `e2e/live`.
 
 Note: `pnpm eval` cannot be invoked by script name in an isolated worktree (the
 guard rejects any command containing `eval`). Run it as
@@ -181,6 +178,10 @@ Note: before `pnpm e2e` in a worktree, check nothing else already listens on
 is on locally, so a dev server left running by the main checkout is silently
 reused and the whole suite then tests *that* tree against a DB this one seeded.
 It reads as thirteen unrelated journey failures, not as a wrong-server error.
+
+Note: the repo has no required status checks, so `gh pr merge --auto` merges
+immediately instead of queuing behind the checks. Read `gh pr checks` and wait
+for green yourself before merging.
 
 Running under a self-paced `/loop` toward "full roadmap to production"
 (M0-M6, through deployment to lyra.vantax.co.za). Loop iteration is
