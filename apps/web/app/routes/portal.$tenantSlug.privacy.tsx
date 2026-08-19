@@ -7,7 +7,7 @@ import {
   type LoaderFunctionArgs,
   type MetaFunction
 } from "react-router";
-import { Button, Card, Field, Input, RadioGroup, Textarea } from "@lyra/ui";
+import { Button, Card, Field, Input, RadioGroup, Textarea, formatInstant } from "@lyra/ui";
 import { cloudflare } from "../context";
 import { ApiError, api, asRouteError, type Brand } from "../api.server";
 import { DEFAULT_LOCALE, localeFrom, pseudoText } from "../i18n";
@@ -177,7 +177,7 @@ export default function PortalPrivacy() {
             <p role="status" className="text-14">
               {l("privacy.success.body").replace(
                 "{due}",
-                new Intl.DateTimeFormat(locale, { dateStyle: "long" }).format(new Date(result.dueAt))
+                formatInstant(result.dueAt, new Intl.DateTimeFormat(locale, { dateStyle: "long" }).format)
               )}
             </p>
             <p className="mt-3 text-13 text-muted">

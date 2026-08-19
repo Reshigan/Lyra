@@ -7,7 +7,7 @@ import {
   type LoaderFunctionArgs,
   type MetaFunction
 } from "react-router";
-import { Badge, Button, Card, EmptyState, Field, Input, Money, Select, Stat, Table } from "@lyra/ui";
+import { Badge, Button, Card, EmptyState, Field, Input, Money, Select, Stat, Table, formatInstant } from "@lyra/ui";
 import { cloudflare } from "../context";
 import { ApiError, api, asRouteError, type Brand } from "../api.server";
 import { DEFAULT_LOCALE, localeFrom, pseudoText } from "../i18n";
@@ -511,7 +511,8 @@ export default function PortalPartners() {
                     {
                       key: "when",
                       header: l("partners.usage.when"),
-                      render: (row) => new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(new Date(row.ts))
+                      render: (row) =>
+                        formatInstant(row.ts, new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format)
                     }
                   ]}
                 />

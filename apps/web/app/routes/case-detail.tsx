@@ -24,6 +24,7 @@ import {
   Stat,
   Table,
   Textarea,
+  formatInstant,
   type Column
 } from "@lyra/ui";
 import { ApiError, api, fetchMe, names, type Problem } from "../api.server";
@@ -293,7 +294,7 @@ export function caseLede(workItem: Pick<Case, "status" | "priority" | "slaDueAt"
   const priority = tag(l, "priority", workItem.priority);
   if (!workItem.slaDueAt) return l("heroLede", { status, priority });
   const fmt = new Intl.DateTimeFormat(locale, { year: "numeric", month: "short", day: "numeric" });
-  return l("heroLedeDue", { status, priority, due: fmt.format(new Date(workItem.slaDueAt)) });
+  return l("heroLedeDue", { status, priority, due: formatInstant(workItem.slaDueAt, fmt.format) });
 }
 
 /**

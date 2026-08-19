@@ -42,6 +42,24 @@ describe("a share the form writes as a percentage", () => {
   });
 });
 
+/**
+ * The generic edit form renders every module's records, so it meets the oldest
+ * rows in the tables — including instants written before `InstantMs` bounded
+ * the write surfaces, which `toISOString` refuses with `RangeError`. Thrown
+ * here it takes the record screen, not the field.
+ */
+describe("a date the form has to put in a date box", () => {
+  const when: FieldSpec = { name: "endAt", type: "date" };
+
+  it("blanks the box rather than throwing on an instant no Date can hold", () => {
+    expect(inputValue(when, { endAt: 9e15 })).toBe("");
+  });
+
+  it("still shows a date the box can hold", () => {
+    expect(inputValue(when, { endAt: 1_786_424_878_339 })).toBe("2026-08-11");
+  });
+});
+
 describe("a multiplier the form writes as itself", () => {
   it("keeps an FX rate a rate", () => {
     expect(inputValue(ratio, { ratePpm: 18_500_000 })).toBe("18.5");

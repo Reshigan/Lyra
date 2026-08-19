@@ -7,7 +7,7 @@
  */
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { DateTime } from "./format.js";
+import { DateTime, formatInstant } from "./format.js";
 
 // 2026-08-11T05:07:58.339Z — the instant from the tour log that exposed this.
 const INSTANT = 1786424878339;
@@ -49,5 +49,50 @@ describe("DateTime — values no Date can hold", () => {
     const markup = renderToStaticMarkup(<DateTime value={INSTANT} locale="en" />);
     expect(markup).toContain("05:07 AM");
     expect(markup).not.toContain("—");
+  });
+
+  // NoData's precedent (format.tsx): a dash is punctuation, not content. Read
+  // aloud as content it is "dash" or silence, with nothing saying a date was
+  // expected — and this package carries no copy of its own to say it with, so
+  // the dash is hidden and whatever the caller labelled the element with is
+  // what remains (CLAUDE.md §8).
+  it("hides the dash from assistive tech the way an empty cell does", () => {
+    const markup = renderToStaticMarkup(<DateTime value={9e15} locale="en" />);
+    expect(markup).toContain('aria-hidden="true"');
+  });
+
+  it("keeps a caller's own label on the degraded element", () => {
+    const markup = renderToStaticMarkup(
+      <DateTime value={9e15} locale="en" aria-label="cover ends" />
+    );
+    expect(markup).toContain('aria-label="cover ends"');
+  });
+});
+
+/**
+ * The same guard for the renderers that cannot be this component: a lede
+ * sentence and a form's input value need a string, and three portal screens
+ * pass `Intl` options `formatDate` does not carry. They shared nothing before,
+ * so `Intl.format(new Date(9e15))` threw `RangeError` mid-render on five
+ * screens the `<DateTime>` guard never touches.
+ */
+describe("formatInstant", () => {
+  it("degrades to the same dash rather than throwing", () => {
+    const fmt = new Intl.DateTimeFormat("en", { dateStyle: "long" });
+    expect(formatInstant(9e15, (d) => fmt.format(d))).toBe("—");
+    expect(formatInstant(Number.NaN, (d) => d.toISOString())).toBe("—");
+  });
+
+  it("formats an instant a Date can hold", () => {
+    expect(formatInstant(INSTANT, (d) => d.toISOString())).toBe("2026-08-11T05:07:58.339Z");
+  });
+
+  it("never calls the renderer with an unusable Date", () => {
+    let seen: number | null = null;
+    formatInstant(9e15, (d) => {
+      seen = d.getTime();
+      return "";
+    });
+    expect(seen).toBeNull();
   });
 });

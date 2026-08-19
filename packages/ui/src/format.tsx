@@ -281,6 +281,40 @@ export function formatDate(
   }).format(date);
 }
 
+/** What a cell shows when it has nothing renderable in it — see `NoData`. */
+const DASH = "—";
+
+/**
+ * `value` as a `Date`, or `null` when no `Date` can hold it (ECMA-262 bounds a
+ * `Date` to ±8.64e15 ms from the epoch). The API bounds every write surface
+ * now, but rows written before those bounds landed are still in the tables, and
+ * `Intl.DateTimeFormat.format` and `toISOString` both throw `RangeError` on the
+ * Invalid Date such a row makes. A throw inside a render takes the whole route
+ * to the error boundary, so one unreadable field costs the page.
+ */
+export function instantOf(value: Date | string | number): Date | null {
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/**
+ * An instant as text, degraded to the dash rather than thrown — the same guard
+ * `DateTime` uses, for the renderers that cannot be a component: a lede
+ * sentence and a form's input value need a string, and the portal screens pass
+ * `Intl` options `formatDate` does not carry (`dateStyle`). Route a date
+ * through here and it inherits the guard; hand-roll `new Date(x)` beside an
+ * `Intl` formatter and it does not.
+ *
+ * ponytail: no explanatory copy, because this package carries none (see
+ * text.tsx) — the dash is language-neutral, and unlike `DateTime` a string
+ * cannot carry `aria-hidden` into its caller's sentence. Upgrade path is a
+ * caller-supplied fallback argument the day a screen needs to say why.
+ */
+export function formatInstant(value: Date | string | number, render: (date: Date) => string): string {
+  const date = instantOf(value);
+  return date === null ? DASH : render(date);
+}
+
 function relativeText(date: Date, locale: string): string {
   const rtf = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
   let delta = (date.getTime() - Date.now()) / 1000;
@@ -310,22 +344,20 @@ export function DateTime({
   // is a UTC Worker on one pass and a reader's laptop on the next. See
   // UiTimeZoneProvider — that mismatch error-boundaries the entire route.
   const zone = timeZone ?? inheritedZone;
-  const date = value instanceof Date ? value : new Date(value);
 
-  // An instant no `Date` can hold. The API bounds every write surface now, but
-  // rows written before those bounds landed are still in the tables, and both
-  // `Intl.DateTimeFormat.format` and `toISOString` throw `RangeError` on an
-  // Invalid Date — a throw here takes the entire route to the error boundary,
-  // so one unreadable cell costs the whole page. Degrade to the same dash an
-  // empty cell uses.
+  // An instant no `Date` can hold (`instantOf`) — degrade to the same dash an
+  // empty cell uses rather than throwing the route away.
   //
-  // ponytail: no explanatory copy, because this package carries none (see
-  // text.tsx) — the dash is language-neutral. Upgrade path is an optional
-  // `invalidLabel` prop the day a screen needs to say why.
-  if (Number.isNaN(date.getTime())) {
+  // The dash is `aria-hidden` for `NoData`'s reason: punctuation standing in
+  // for content is read as "dash" or as silence, and neither says a date was
+  // expected. This package carries no copy of its own to say it with (text.tsx),
+  // so the caller's `aria-label`/`title` — which survives in `props` — is what
+  // is left to announce.
+  const date = instantOf(value);
+  if (date === null) {
     return (
       <span {...props} className={cn("text-subtle tabular-nums", className)}>
-        —
+        <span aria-hidden="true">{DASH}</span>
       </span>
     );
   }
@@ -370,7 +402,7 @@ export function NoData({
 }: { reason: string } & React.HTMLAttributes<HTMLSpanElement>) {
   return (
     <span {...props} title={reason} className={cn("text-subtle", className)}>
-      <span aria-hidden="true">—</span>
+      <span aria-hidden="true">{DASH}</span>
       <span className="sr-only absolute h-px w-px overflow-hidden">{reason}</span>
     </span>
   );

@@ -1,5 +1,5 @@
 import { Link, useLoaderData, type LoaderFunctionArgs } from "react-router";
-import { Badge, Button, Card, DateTime, EmptyState, Money, Ref, Stat, Table, type Column } from "@lyra/ui";
+import { Badge, Button, Card, DateTime, EmptyState, Money, Ref, Stat, Table, formatInstant, type Column } from "@lyra/ui";
 import { api, fetchMe, names } from "../api.server";
 import { cloudflare } from "../context";
 import { translator } from "../i18n";
@@ -199,8 +199,8 @@ export function policyLede(policy: Pick<Policy, "status" | "startAt" | "endAt">,
   const fmt = new Intl.DateTimeFormat(locale, { year: "numeric", month: "short", day: "numeric" });
   return l("heroLede", {
     status: tag(l, "status", policy.status),
-    from: fmt.format(new Date(policy.startAt)),
-    to: fmt.format(new Date(policy.endAt))
+    from: formatInstant(policy.startAt, fmt.format),
+    to: formatInstant(policy.endAt, fmt.format)
   });
 }
 

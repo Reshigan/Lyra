@@ -107,6 +107,20 @@ describe("policyLede", () => {
     expect(lede).toContain("2025");
     expect(lede).toContain("2026");
   });
+
+  /**
+   * `z.number().int()` is a *safe*-integer check, so before `InstantMs` landed
+   * the band (8.64e15, 9.007e15] was an accepted `endAt` — and those rows are
+   * still in `axis_policies`. `Intl.DateTimeFormat.format` throws `RangeError`
+   * on the Invalid Date such a value makes, this lede is built during the
+   * route's own render, and a throw there takes the whole policy page to the
+   * error boundary. One unreadable field must not cost the contract.
+   */
+  it("survives a stored instant no Date can hold", () => {
+    const lede = policyLede({ ...POLICY, endAt: 9e15 }, labelsIn("en"), "en");
+    expect(lede).toContain("Active");
+    expect(lede).toContain("—");
+  });
 });
 
 describe("loader", () => {

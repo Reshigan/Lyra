@@ -1,3 +1,4 @@
+import { formatInstant } from "@lyra/ui";
 import { vocabulary } from "../modules/vocabulary";
 import { pseudoText } from "../i18n";
 
@@ -524,8 +525,15 @@ export function windowDays(raw: string | null): number {
   return WINDOWS.some((allowed) => allowed === days) ? days : 30;
 }
 
+/**
+ * The `YYYY-MM` a touch landed in. `toISOString` throws `RangeError` on a
+ * stored instant no `Date` can hold, and that throw happens inside `cohorts()`
+ * during the growth screen's render — so one bad touch row took the page.
+ * Degrades to the same dash the rest of the app shows: a visible junk cohort,
+ * sorting last, rather than no screen at all.
+ */
 export function monthOf(ts: number): string {
-  return new Date(ts).toISOString().slice(0, 7);
+  return formatInstant(ts, (at) => at.toISOString().slice(0, 7));
 }
 
 export interface Cohort {
