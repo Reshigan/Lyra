@@ -1,3 +1,4 @@
+import { instantOf } from "@lyra/ui";
 import { who, type Names } from "../names";
 import { policyTitle } from "../policy";
 
@@ -119,7 +120,13 @@ export interface DayEvent {
  * a Worker renders in UTC and the two passes would disagree.
  */
 export function dayFraction(at: number): number {
-  const when = new Date(at);
+  // `instantOf` rather than a bare `new Date`: a stored `requestedAt` outside
+  // ±8.64e15 (or the `?asOf=` deep link, gated on `Number.isFinite` alone)
+  // gives an Invalid Date, whose `getHours()` is NaN — and that NaN reaches
+  // `aria-valuenow` on the Meridian slider, an accessibility defect. Midnight
+  // is a real position; NaN is not.
+  const when = instantOf(at);
+  if (!when) return 0;
   return (when.getHours() * 60 + when.getMinutes()) / 1440;
 }
 
@@ -198,8 +205,12 @@ export function inboxAsOf(inbox: Inbox | null | undefined, at: number): Inbox | 
 
 /** Same calendar day in the reader's zone — not the same 24 hours. */
 export function sameDay(a: number, b: number): boolean {
-  const one = new Date(a);
-  const two = new Date(b);
+  // An unusable instant belongs to no day, so `dayEvents` drops the row rather
+  // than drawing it at midnight. It already answered `false` — via `NaN === NaN`
+  // — but by accident, and `dayEvents` depends on it.
+  const one = instantOf(a);
+  const two = instantOf(b);
+  if (!one || !two) return false;
   return (
     one.getFullYear() === two.getFullYear() &&
     one.getMonth() === two.getMonth() &&

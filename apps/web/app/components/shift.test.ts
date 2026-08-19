@@ -114,12 +114,32 @@ describe("dayFraction", () => {
     expect(dayFraction(today(0, 0))).toBe(0);
     expect(dayFraction(today(12, 0))).toBeCloseTo(0.5, 5);
   });
+
+  // `north-shell.tsx` takes `?asOf=` off the URL through `Number()` and gates it
+  // on `Number.isFinite` alone, which passes 9e15 — an instant no `Date` can
+  // hold. `meridian.tsx` seeds the playhead from it, so the NaN lands in
+  // `aria-valuenow`, and a slider whose value is NaN is unreadable to a screen
+  // reader (CLAUDE.md §8). Midnight is the honest degrade: a real position.
+  it("parks an instant no Date can hold at the start of the strip, not at NaN", () => {
+    for (const bad of [9e15, -9e15, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(dayFraction(bad), String(bad)).toBe(0);
+    }
+  });
 });
 
 describe("sameDay", () => {
   it("compares calendar days, not the last 24 hours", () => {
     expect(sameDay(today(1), today(23))).toBe(true);
     expect(sameDay(today(1) - 86_400_000, today(1))).toBe(false);
+  });
+
+  // Today it answers `false` by accident — every `NaN === NaN` is false. Said
+  // out loud instead, because `dayEvents` leans on it to drop a row it cannot
+  // place, and an accident is not a contract.
+  it("says no when either side is not an instant", () => {
+    expect(sameDay(9e15, today(1))).toBe(false);
+    expect(sameDay(today(1), Number.NaN)).toBe(false);
+    expect(sameDay(9e15, 9e15)).toBe(false);
   });
 });
 
