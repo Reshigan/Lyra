@@ -44,6 +44,12 @@ export function parse<T extends z.ZodTypeAny>(schema: T, raw: unknown): z.infer<
  *
  * Lives here rather than beside one endpoint because every write surface needs
  * the same bound: the AXIS FNOL bodies, and the generated CRUD shape (crud.ts).
+ *
+ * Residue this bound does not reach: a query parameter read straight into a
+ * number — `Number(c.req.query("from"))` at routes/ledger.ts:630-631 — touches
+ * no schema at all, so no census of the zod shapes can see it. Those two are
+ * harmless today (they reach only SQL bind params in packages/ledger, never a
+ * `Date`), but a query parameter that ends up rendered would be a fourth way in.
  */
 export const InstantMs = z.number().int().min(-8.64e15).max(8.64e15);
 
@@ -58,10 +64,13 @@ export const InstantMs = z.number().int().min(-8.64e15).max(8.64e15);
  * recognised — `axis.telemetryPoints.at`, `axis.quotes.validUntil`,
  * `dist.quoteResponses.validUntil`, `signal.budgetMoves.reversibleUntil`,
  * `scout.clusters.firstSeen`, `scout.clusters.lastSeen`,
- * `signal.aeoPages.freshness`. None of those seven tables is registered in
- * resources.ts, so none has a generic-CRUD write surface; the two that take
- * caller input at all (`at`, `validUntil`) are bounded by hand at their own
- * endpoints (routes/axis.ts). Register any of those tables and this list is
+ * `signal.aeoPages.freshness`. None of those seven tables is registered
+ * *writable* in resources.ts, so none has a generic-CRUD write surface —
+ * `scout.clusters` is registered, read-only (`ro`, resources.ts:633), which is
+ * why its two columns are safe today and why widening it to `ru`/`rw` is one of
+ * the two ways this list bites. The two that take caller input at all (`at`,
+ * `validUntil`) are bounded by hand at their own endpoints (routes/axis.ts).
+ * Register any of these tables writable, or upgrade that `ro`, and this list is
  * the checklist. Upgrade path is a marker on the column itself, which Drizzle
  * has no room for — so a declared set on Resource, a parallel list this exists
  * to avoid maintaining.
