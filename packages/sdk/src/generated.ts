@@ -2800,6 +2800,7 @@ export interface Operations {
   "POST /v1/orbit/partners": Op<never, never, OrbitPartners, OrbitPartners>;
   "GET /v1/orbit/partners/{id}": Op<{ id: string }, never, never, OrbitPartners>;
   "POST /v1/orbit/partners/{id}/quotes": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
+  "GET /v1/orbit/portal-links/{kind}/{id}": Op<{ kind: string; id: string }, never, never, Record<string, unknown>>;
   "GET /v1/orbit/qa-scores": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<OrbitQaScores>>;
   "POST /v1/orbit/qa-scores": Op<never, never, OrbitQaScores, OrbitQaScores>;
   "GET /v1/orbit/qa-scores/{id}": Op<{ id: string }, never, never, OrbitQaScores>;
@@ -2840,11 +2841,15 @@ export interface Operations {
   "GET /v1/platform/incidents": Op<never, never, never, Record<string, unknown>>;
   "GET /v1/platform/ops/overview": Op<never, never, never, Record<string, unknown>>;
   "GET /v1/platform/slo": Op<never, never, never, Record<string, unknown>>;
+  "GET /v1/portal/{tenantSlug}/feedback/{id}": Op<{ tenantSlug: string; id: string }, never, never, Record<string, unknown>>;
+  "POST /v1/portal/{tenantSlug}/feedback/{id}": Op<{ tenantSlug: string; id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/portal/{tenantSlug}/leads": Op<{ tenantSlug: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/portal/{tenantSlug}/privacy-requests": Op<{ tenantSlug: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/portal/{tenantSlug}/quote-requests/{id}": Op<{ tenantSlug: string; id: string }, never, never, Record<string, unknown>>;
   "POST /v1/portal/{tenantSlug}/quote-requests/{id}/accept": Op<{ tenantSlug: string; id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/portal/{tenantSlug}/quote-requests/{id}/documents": Op<{ tenantSlug: string; id: string }, never, Record<string, unknown>, Record<string, unknown>>;
+  "GET /v1/portal/{tenantSlug}/renewals/{id}": Op<{ tenantSlug: string; id: string }, never, never, Record<string, unknown>>;
+  "POST /v1/portal/{tenantSlug}/renewals/{id}/accept": Op<{ tenantSlug: string; id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/portal/{tenantSlug}/site": Op<{ tenantSlug: string }, never, never, Record<string, unknown>>;
   "GET /v1/realtime": Op<never, never, never, Record<string, unknown>>;
   "GET /v1/scout/clusters": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<ScoutClusters>>;
@@ -2865,9 +2870,12 @@ export interface Operations {
   "POST /v1/scout/signals/similar": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/scout/signals/{id}": Op<{ id: string }, never, never, ScoutSignals>;
   "GET /v1/scout/whitespaces": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<ScoutWhitespaces>>;
+  "GET /v1/scout/whitespaces/commentary": Op<never, never, never, Record<string, unknown>>;
   "POST /v1/scout/whitespaces/compute": Op<never, never, never, Record<string, unknown>>;
   "GET /v1/scout/whitespaces/{id}": Op<{ id: string }, never, never, ScoutWhitespaces>;
   "PATCH /v1/scout/whitespaces/{id}": Op<{ id: string }, never, ScoutWhitespaces, ScoutWhitespaces>;
+  "GET /v1/scout/whitespaces/{id}/commentary": Op<{ id: string }, never, never, Record<string, unknown>>;
+  "POST /v1/scout/whitespaces/{id}/promote-to-signal": Op<{ id: string }, never, never, Record<string, unknown>>;
   "POST /v1/scout/wording-diff": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/search": Op<never, never, never, Record<string, unknown>>;
   "POST /v1/settlement/runs": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
@@ -3501,6 +3509,7 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "POST /v1/orbit/partners": { tag: "orbit", summary: "Create a partner", permission: "orbit:partners:create", public: false },
   "GET /v1/orbit/partners/{id}": { tag: "orbit", summary: "Fetch one partner", permission: "orbit:partners:read", public: false },
   "POST /v1/orbit/partners/{id}/quotes": { tag: "orbit", summary: "Request a partner pricing quote (sandbox partners get clearly-marked synthetic pricing)", permission: "orbit:partners:read", public: false },
+  "GET /v1/orbit/portal-links/{kind}/{id}": { tag: "orbit", summary: "The tenant-branded public link for a renewal (one-tap accept) or a closed conversation (CSAT)", permission: "orbit:renewals:read", public: false },
   "GET /v1/orbit/qa-scores": { tag: "orbit", summary: "List qa-scores", permission: "orbit:qa:read", public: false },
   "POST /v1/orbit/qa-scores": { tag: "orbit", summary: "Create a qa score", permission: "orbit:qa:score", public: false },
   "GET /v1/orbit/qa-scores/{id}": { tag: "orbit", summary: "Fetch one qa score", permission: "orbit:qa:read", public: false },
@@ -3541,11 +3550,15 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "GET /v1/platform/incidents": { tag: "platform", summary: "Outage incidents across every tenant, newest first", permission: "admin:diagnostics:read", public: false },
   "GET /v1/platform/ops/overview": { tag: "platform", summary: "Outbox backlog, DLQ depth and pending approvals, per tenant", permission: "admin:diagnostics:read", public: false },
   "GET /v1/platform/slo": { tag: "platform", summary: "Every SLO definition with its actual and burn percent over its window", permission: "admin:diagnostics:read", public: false },
+  "GET /v1/portal/{tenantSlug}/feedback/{id}": { tag: "portal", summary: "Whether a closed conversation can still be rated, and its rating if already given", permission: null, public: true },
+  "POST /v1/portal/{tenantSlug}/feedback/{id}": { tag: "portal", summary: "Submit the CSAT rating (1-5) for a closed conversation; one rating per conversation", permission: null, public: true },
   "POST /v1/portal/{tenantSlug}/leads": { tag: "portal", summary: "Submit a quote lead from the public storefront; rate-limited per email", permission: null, public: true },
   "POST /v1/portal/{tenantSlug}/privacy-requests": { tag: "portal", summary: "Data subject lodges an access/erasure/rectification request (J-C4); recorded unverified, staff verify before fulfilment", permission: null, public: true },
   "GET /v1/portal/{tenantSlug}/quote-requests/{id}": { tag: "portal", summary: "Re-open a self-serve comparison with the one-time token", permission: null, public: true },
   "POST /v1/portal/{tenantSlug}/quote-requests/{id}/accept": { tag: "portal", summary: "Customer accepts a quoted offer; converts the request, does not bind cover", permission: null, public: true },
   "POST /v1/portal/{tenantSlug}/quote-requests/{id}/documents": { tag: "portal", summary: "Upload a supporting document against a self-serve quote (multipart)", permission: null, public: true },
+  "GET /v1/portal/{tenantSlug}/renewals/{id}": { tag: "portal", summary: "Open a renewal offer with its link token (reference, expiry and state only)", permission: null, public: true },
+  "POST /v1/portal/{tenantSlug}/renewals/{id}/accept": { tag: "portal", summary: "Customer accepts a renewal in one tap; records the decision, does not bind or charge", permission: null, public: true },
   "GET /v1/portal/{tenantSlug}/site": { tag: "portal", summary: "A tenant's public storefront: brand and active products", permission: null, public: true },
   "GET /v1/realtime": { tag: "realtime", summary: "Server-Sent Events stream of the caller's own live updates", permission: null, public: false },
   "GET /v1/scout/clusters": { tag: "scout", summary: "List clusters", permission: "scout:clusters:read", public: false },
@@ -3566,9 +3579,12 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "POST /v1/scout/signals/similar": { tag: "scout", summary: "Nearest signals to a phrase, from the market embedding index", permission: "scout:signals:read", public: false },
   "GET /v1/scout/signals/{id}": { tag: "scout", summary: "Fetch one signal", permission: "scout:signals:read", public: false },
   "GET /v1/scout/whitespaces": { tag: "scout", summary: "List whitespaces", permission: "scout:whitespaces:read", public: false },
+  "GET /v1/scout/whitespaces/commentary": { tag: "scout", summary: "Why each live whitespace is whitespace: the cached one-line commentary plus the evidence it was grounded against, for every candidate at once (the Radar's hover prefetch)", permission: "scout:whitespaces:read", public: false },
   "POST /v1/scout/whitespaces/compute": { tag: "scout", summary: "Run the whitespace sweep now against real quote demand vs. policy coverage", permission: "scout:whitespaces:promote", public: false },
   "GET /v1/scout/whitespaces/{id}": { tag: "scout", summary: "Fetch one whitespace", permission: "scout:whitespaces:read", public: false },
   "PATCH /v1/scout/whitespaces/{id}": { tag: "scout", summary: "Update a whitespace", permission: "scout:whitespaces:promote", public: false },
+  "GET /v1/scout/whitespaces/{id}/commentary": { tag: "scout", summary: "One candidate's commentary, evidence and AI provenance", permission: "scout:whitespaces:read", public: false },
+  "POST /v1/scout/whitespaces/{id}/promote-to-signal": { tag: "scout", summary: "Promote a whitespace into a draft SIGNAL campaign with AI-drafted brief and creative variants (approval-gated, idempotent, nothing sent)", permission: "scout:whitespaces:promote", public: false },
   "POST /v1/scout/wording-diff": { tag: "scout", summary: "Word-level diff of two coverage-wording texts (PDF extraction deferred, see ADR-0016)", permission: "scout:panel_bench:read", public: false },
   "GET /v1/search": { tag: "search", summary: "Search across every resource the caller may read", permission: "core:search:read", public: false },
   "POST /v1/settlement/runs": { tag: "settlement", summary: "Draft a counterparty's commission settlement for a period (arithmetic only, nothing posts)", permission: "dist:commissions:settle", public: false },

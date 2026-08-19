@@ -54,6 +54,13 @@ describe("contract", () => {
       public: false
     });
     expect(OPERATIONS["POST /v1/auth/login"]?.public).toBe(true);
+    // Reading why a candidate is whitespace is an analyst's read; turning it
+    // into a campaign is the promote grant. Two different permissions on
+    // neighbouring paths, so a caller cannot infer one from the other.
+    expect(OPERATIONS["GET /v1/scout/whitespaces/commentary"]?.permission).toBe("scout:whitespaces:read");
+    expect(OPERATIONS["POST /v1/scout/whitespaces/{id}/promote-to-signal"]?.permission).toBe(
+      "scout:whitespaces:promote"
+    );
   });
 });
 

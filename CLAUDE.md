@@ -158,6 +158,24 @@ ed32020 2e0dd89 09a3299`), lifted `@lyra/model-gateway`'s mutation score from
 (`893dd1f`), and killed the shared `stripFence` ReDoS that CodeQL reported five
 times over (`c0a2144`).
 
+Since #26 a second wave landed in this worktree: the Horizon/Instrument UI pass
+(tokenised frames and spacing, the chrome bands and module rail recorded in
+ADR-0068, a hero wall whose figures drill down, `StateFlow`/`PostingFlow` in
+`packages/ui/src/flow.tsx` drawn on transaction, settlement, claim, case and
+policy), ORBIT's four public portals, SCOUT's whitespace commentary with its
+promote-to-signal handover, a year of seeded module history, and a doctrine
+route at `/design` that is the design-system playground CLAUDE.md's definition
+of done has always asked for.
+
+One thing that wave taught, worth keeping: `apps/web/app/components/whitespace-commentary.tsx`
+was written against an *assumed* contract while the API was built in parallel,
+and shipped a `WhitespaceCommentary` sharing exactly one field with what
+`GET /v1/scout/whitespaces/commentary` actually returns. Every rendered figure
+read `undefined`, and the tests stayed green because the fixtures mocked the
+assumption rather than the server. A web type that mirrors an API type belongs
+next to a comment naming the file it mirrors, and its fixture belongs in the
+shape the server sends.
+
 Deployment: merging #26 fired `deploy.yml` on push, which runs full CI then the
 staging deploy. The production job is `workflow_dispatch`-only and additionally
 gated on the `production` GitHub Environment (review from Reshigan). Both runs
