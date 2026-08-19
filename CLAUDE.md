@@ -167,6 +167,20 @@ promote-to-signal handover, a year of seeded module history, and a doctrine
 route at `/design` that is the design-system playground CLAUDE.md's definition
 of done has always asked for.
 
+Three more PRs closed after that: **#27** (`f3e1a80`), **#28** (`8a69aea`,
+mutation tests and a race fix) and **#29** (`7c83eea`, the pack-driven affluence
+axis in `packages/core/src/targeting.ts` + the live carrier quoter in
+`apps/api/src/engines/dist-quoter.ts`, ADR-0069/ADR-0070).
+**Production is live and verified**: `curl https://api.lyra.vantax.co.za/health`
+returns 200 `{"ok":true,"environment":"demo",…}` (the health path is `/health`,
+not `/v1/health`) and `pnpm e2e:live` passes 18/18.
+
+`ui.md` at the repo root is the full UI inventory — every screen, its route,
+layout, loader data, every interaction, its permission and approval gates, its
+AI surfaces and its i18n/a11y obligations, plus the Constellation design system
+and the Horizon/Instrument layout language. Read it before adding or changing a
+screen; keep it current when you do, the same way `/docs` is kept current.
+
 One thing that wave taught, worth keeping: `apps/web/app/components/whitespace-commentary.tsx`
 was written against an *assumed* contract while the API was built in parallel,
 and shipped a `WhitespaceCommentary` sharing exactly one field with what
@@ -176,12 +190,36 @@ assumption rather than the server. A web type that mirrors an API type belongs
 next to a comment naming the file it mirrors, and its fixture belongs in the
 shape the server sends.
 
+The same shape of bug, second sighting (`91d1085`): a seam whose parameter
+nobody passes is a dead seam, and it tests green because the unit test calls
+the function directly. `labelsFrom(LABELS)` has taken a domain pack all along;
+three routes called `labelsIn(locale)` and dropped it, so no pack could rename
+a noun on the quote desk, settlement or orbit-dev whatever the table said. When
+you add a parameter to a seam, grep its call sites in the same commit — and
+when a seam is keyed one way (`policyNo`) while its callers spell it another
+(`issue.policyNo`), that is the seam being unreachable, not the callers being
+wrong.
+
 Deployment: merging #26 fired `deploy.yml` on push, which runs full CI then the
 staging deploy. The production job is `workflow_dispatch`-only and additionally
 gated on the `production` GitHub Environment (review from Reshigan). Both runs
 share concurrency group `deploy-deploy-refs/heads/main` with
 `cancel-in-progress: false`, so a dispatched production run queues *behind*
 staging rather than racing it.
+
+The trap in that chain, learned the expensive way on run 32289549099: **CI has
+a job that only runs on push, so a green PR proves less than it looks.**
+`eval-live` is `if: github.event_name != 'pull_request'` — it reported
+"skipping" on #29 and then 401'd on `main`, which skipped the staging deploy
+that push exists to fire. The cause was a fallback that treated
+`CLOUDFLARE_API_TOKEN` as a copy of `CF_AI_TOKEN`; the account id really is one
+value, the token is not, and a deploy-scoped token cannot call `ai/run`. The
+fallback is gone (`99c64ab`) and an unconfigured live gate now emits a warning
+annotation rather than a 401. **The live eval gate is currently not running**:
+add `CF_AI_TOKEN` (a Cloudflare token with Workers AI Read) or
+`ANTHROPIC_API_KEY` as a repo secret to restore it. Until then, after any push
+to `main`, check `gh run view <id> --json jobs` and do not assume staging
+deployed.
 
 After a deploy, verify with `pnpm e2e:live` — `playwright.live.config.ts` points
 at https://lyra.vantax.co.za, or set `LIVE_BASE_URL` for staging. Those specs
