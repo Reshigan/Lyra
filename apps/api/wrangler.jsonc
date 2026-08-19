@@ -19,7 +19,13 @@
     // password sign-in is unaffected either way.
     "ENVIRONMENT": "demo",
     "APP_ORIGIN": "https://lyra.vantax.co.za",
-    "SESSION_COOKIE": "lyra_session"
+    "SESSION_COOKIE": "lyra_session",
+    // The shared parent of the app and api hosts, so the session cookie the
+    // API sets reaches api.* too — without it the SSO callback lands on a host
+    // with no cookie and every direct-to-API download 401s. Not derivable from
+    // APP_ORIGIN: staging.lyra.vantax.co.za is not a parent of
+    // api-staging.lyra.vantax.co.za.
+    "SESSION_COOKIE_DOMAIN": "lyra.vantax.co.za"
   },
   "ai": { "binding": "AI" },
   "d1_databases": [
@@ -79,7 +85,20 @@
       "vars": {
         "ENVIRONMENT": "staging",
         "APP_ORIGIN": "https://staging.lyra.vantax.co.za",
-        "SESSION_COOKIE": "lyra_session"
+        // Distinct from production's cookie name. SESSION_COOKIE_DOMAIN below is
+        // the parent of both environments' hosts, so a cookie named lyra_session
+        // here and in production would be one cookie to the browser: same name,
+        // same domain. Signing into staging would silently sign you out of
+        // production and vice versa. Host-only cookies used to make that
+        // impossible; the domain scope removes that protection, so the name has
+        // to carry the separation instead.
+        "SESSION_COOKIE": "lyra_session_staging",
+        // The shared parent of the app and api hosts, so the session cookie the
+        // API sets reaches api.* too — without it the SSO callback lands on a host
+        // with no cookie and every direct-to-API download 401s. Not derivable from
+        // APP_ORIGIN: staging.lyra.vantax.co.za is not a parent of
+        // api-staging.lyra.vantax.co.za.
+        "SESSION_COOKIE_DOMAIN": "lyra.vantax.co.za"
       },
       "ai": { "binding": "AI" },
       "d1_databases": [

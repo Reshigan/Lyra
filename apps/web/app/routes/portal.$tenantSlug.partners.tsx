@@ -59,6 +59,13 @@ export const LABELS: Record<string, Record<string, string>> = {
     "partners.kind.platform": "Software platform",
     "partners.contactName": "Your name (optional)",
     "partners.contactEmail": "Work email address",
+    "partners.legal.title": "Legal identity (optional)",
+    "partners.legal.note":
+      "Only needed before we can pay you commission. Leave it blank now and add it when you go live.",
+    "partners.legalName": "Registered legal name",
+    "partners.registrationNo": "Company registration number",
+    "partners.taxId": "Tax number",
+    "partners.country": "Country of registration (2-letter code)",
     "partners.submit": "Create sandbox account",
     "partners.working": "Creating…",
     "partners.key.title": "Your sandbox key",
@@ -75,6 +82,18 @@ export const LABELS: Record<string, Record<string, string>> = {
     "partners.console.run": "Check my account",
     "partners.console.running": "Checking…",
     "partners.console.ok": "The key works. Here is what the API answered.",
+    "partners.quote.title": "Your first quote",
+    "partners.quote.body":
+      "Price a test case with your sandbox key. The number that comes back is made up — a working call, not a real price.",
+    "partners.quote.line": "Which product line?",
+    "partners.quote.amount": "Amount, in the smallest unit of the currency",
+    "partners.quote.currency": "Currency (three letters)",
+    "partners.quote.run": "Get a test quote",
+    "partners.quote.running": "Pricing…",
+    "partners.quote.result": "Quoted",
+    "partners.quote.synthetic": "Made-up number, sandbox only",
+    "partners.quote.ref": "Quote reference",
+    "partners.quote.suspended": "This account cannot quote right now. Please contact us.",
     "partners.status.title": "Account",
     "partners.status.name": "Name",
     "partners.status.sandbox": "Sandbox only",
@@ -122,6 +141,13 @@ export const LABELS: Record<string, Record<string, string>> = {
     "partners.kind.platform": "منصة برمجية",
     "partners.contactName": "اسمك (اختياري)",
     "partners.contactEmail": "بريد العمل الإلكتروني",
+    "partners.legal.title": "الهوية القانونية (اختياري)",
+    "partners.legal.note":
+      "مطلوبة فقط قبل أن نتمكن من دفع العمولة. اتركها فارغة الآن وأضفها عند الانتقال إلى الإنتاج.",
+    "partners.legalName": "الاسم القانوني المسجل",
+    "partners.registrationNo": "رقم السجل التجاري",
+    "partners.taxId": "الرقم الضريبي",
+    "partners.country": "بلد التسجيل (رمز من حرفين)",
     "partners.submit": "إنشاء الحساب التجريبي",
     "partners.working": "جارٍ الإنشاء…",
     "partners.key.title": "مفتاحك التجريبي",
@@ -138,6 +164,17 @@ export const LABELS: Record<string, Record<string, string>> = {
     "partners.console.run": "افحص حسابي",
     "partners.console.running": "جارٍ الفحص…",
     "partners.console.ok": "المفتاح يعمل. هذا ما ردّت به الواجهة.",
+    "partners.quote.title": "أول تسعير لك",
+    "partners.quote.body": "سعّر حالة تجريبية بمفتاحك. الرقم العائد غير حقيقي — طلب ناجح، لا سعر فعلي.",
+    "partners.quote.line": "أي خط منتجات؟",
+    "partners.quote.amount": "المبلغ، بأصغر وحدة للعملة",
+    "partners.quote.currency": "العملة (ثلاثة أحرف)",
+    "partners.quote.run": "احصل على تسعير تجريبي",
+    "partners.quote.running": "جارٍ التسعير…",
+    "partners.quote.result": "السعر",
+    "partners.quote.synthetic": "رقم غير حقيقي، للتجربة فقط",
+    "partners.quote.ref": "مرجع التسعير",
+    "partners.quote.suspended": "لا يمكن لهذا الحساب التسعير حاليًا. تواصل معنا.",
     "partners.status.title": "الحساب",
     "partners.status.name": "الاسم",
     "partners.status.sandbox": "تجريبي فقط",
@@ -257,20 +294,71 @@ interface SignupResponse extends Partner {
   sandboxKey: string;
 }
 
+/** Mirrors `dist_offerings` (packages/db/src/schema/dist.ts) as GET /v1/dist
+ *  /offerings returns it. There is no flat `name` column and never was — the
+ *  catalogue name is per-locale, and `apps/api/src/crud.ts` hydrate()s any
+ *  `*Json` column into an object before it reaches the wire. */
 interface Offering {
   id: string;
-  name: string;
+  nameJson: Record<string, string>;
+}
+
+/** Tenant locale, then the default, then whatever the pack actually has: a
+ *  catalogue seeded en-only still names itself on the Arabic portal. */
+function offeringName(offering: Offering, locale: string): string {
+  const names = offering.nameJson ?? {};
+  return names[locale] ?? names[DEFAULT_LOCALE] ?? Object.values(names)[0] ?? "";
+}
+
+/** What POST /v1/orbit/partners/:id/quotes answers with — see
+ *  apps/api/src/engines/orbit-partner-quotes.ts. `synthetic` is the engine's own
+ *  word for "this price is invented", and it is shown rather than hidden. */
+export interface SandboxQuote {
+  id: string;
+  mode: string;
+  synthetic: boolean;
+  quotedPremiumMinor: number;
+  currency: string;
 }
 
 type ActionData =
   | { ok: "signup"; partner: Partner; sandboxKey: string }
   | { ok: "status"; partner: Partner; txns: PartnerTxn[]; offerings: Offering[] }
+  | { ok: "quote"; quote: SandboxQuote }
   | { ok: false; errorKey: string };
+
+/**
+ * The amount the quote API will accept, or null if the box does not hold one.
+ * `<input type="number">` is a text box a determined visitor can put anything
+ * in, and the API wants a positive integer of minor units — so the string is
+ * rejected here rather than sent as a NaN the API answers with a 400.
+ */
+export function amountMinorFrom(raw: string): number | null {
+  if (!/^\d{1,15}$/.test(raw.trim())) return null;
+  const value = Number(raw.trim());
+  return value > 0 ? value : null;
+}
 
 function signupError(status: number): string {
   if (status === 429) return "partners.error.throttled";
   if (status === 404) return "partners.error.tenant";
   if (status === 400) return "partners.error.validation";
+  return "partners.error.generic";
+}
+
+/**
+ * Which label an API failure earns. The bearer-key hops share one rule: 401,
+ * 403 and 404 are all "that key or id was not accepted" — the API refuses a
+ * missing row and another tenant's row identically, and so must this page, or
+ * the copy would tell a stranger which ids exist.
+ */
+export function actionError(intent: string, status: number): string {
+  // Anything that is not one of the two key-bearing intents took the signup
+  // path, including a missing intent — same fallback as the action itself.
+  if (intent !== "status" && intent !== "quote") return signupError(status);
+  if (status === 401 || status === 403 || status === 404) return "partners.error.key";
+  if (intent === "quote" && status === 409) return "partners.quote.suspended";
+  if (intent === "quote" && status === 400) return "partners.error.validation";
   return "partners.error.generic";
 }
 
@@ -296,6 +384,37 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
       return { ok: "status", partner, txns: txns.data, offerings: offerings.data } satisfies ActionData;
     }
 
+    if (intent === "quote") {
+      const key = String(form.get("key") ?? "").trim();
+      const id = String(form.get("id") ?? "").trim();
+      const productLine = String(form.get("productLine") ?? "").trim();
+      const amountMinor = amountMinorFrom(String(form.get("amountMinor") ?? ""));
+      const currency = String(form.get("currency") ?? "")
+        .trim()
+        .toUpperCase();
+      if (!key || !id || !productLine || amountMinor === null || currency.length !== 3) {
+        return { ok: false, errorKey: "partners.error.validation" } satisfies ActionData;
+      }
+      // ponytail: no idempotency key. The call logs a sandbox quote and moves no
+      // money, so a double-tap costing one extra log row is cheaper than minting
+      // and threading a key through a public form. Add one if this ever prices
+      // live business.
+      const quote = await api<SandboxQuote>(`/v1/orbit/partners/${id}/quotes`, {
+        env,
+        method: "POST",
+        headers: { authorization: `Bearer ${key}` },
+        body: { productLine, amountMinor, currency }
+      });
+      return { ok: "quote", quote } satisfies ActionData;
+    }
+
+    // An optional field left blank must not travel as "": the API's schema
+    // takes `.min(1)` on every one of these, so an empty box would be a 400
+    // rather than an omission.
+    const optional = (name: string) => {
+      const value = String(form.get(name) ?? "").trim();
+      return value ? { [name]: value } : {};
+    };
     const created = await api<SignupResponse>("/v1/onboarding/partners/signup", {
       env,
       method: "POST",
@@ -303,7 +422,11 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
         tenantSlug,
         companyName: String(form.get("companyName") ?? "").trim(),
         contactEmail: String(form.get("contactEmail") ?? "").trim(),
-        ...(form.get("contactName") ? { contactName: String(form.get("contactName")).trim() } : {}),
+        ...optional("contactName"),
+        ...optional("legalName"),
+        ...optional("registrationNo"),
+        ...optional("taxId"),
+        ...optional("country"),
         kind: String(form.get("kind") ?? "")
       }
     });
@@ -311,13 +434,7 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
     return { ok: "signup", partner, sandboxKey } satisfies ActionData;
   } catch (error) {
     if (!(error instanceof ApiError)) throw error;
-    const errorKey =
-      intent === "status"
-        ? error.status === 401 || error.status === 403 || error.status === 404
-          ? "partners.error.key"
-          : "partners.error.generic"
-        : signupError(error.status);
-    return { ok: false, errorKey } satisfies ActionData;
+    return { ok: false, errorKey: actionError(intent, error.status) } satisfies ActionData;
   }
 }
 
@@ -331,6 +448,7 @@ export default function PortalPartners() {
 
   const signed = result && result.ok === "signup" ? result : null;
   const status = result && result.ok === "status" ? result : null;
+  const quoted = result && result.ok === "quote" ? result : null;
   const totals = status ? usageTotals(status.txns) : null;
   const stage = (value: string) => l(`partners.stage.${value}`);
   const money = (minor: number, currency: string | null) =>
@@ -408,6 +526,38 @@ export default function PortalPartners() {
               <Field label={l("partners.contactEmail")} id="partners-contact-email" required>
                 <Input name="contactEmail" type="email" required autoComplete="email" />
               </Field>
+              {/* A fieldset, so a screen reader announces "Legal identity"
+                  before each of the four and the note is read once rather than
+                  never. Every box here is optional and the API keeps only what
+                  is offered — commission cannot be paid to a trading name, but
+                  it is not owed on the day a sandbox key is issued either. */}
+              <fieldset className="flex flex-col gap-5 border-0 p-0">
+                <legend className="font-ui text-14 font-medium text-text">{l("partners.legal.title")}</legend>
+                <p className="font-ui text-13 text-muted">{l("partners.legal.note")}</p>
+                <Field label={l("partners.legalName")} id="partners-legal-name">
+                  <Input name="legalName" maxLength={200} autoComplete="organization" />
+                </Field>
+                <Field label={l("partners.registrationNo")} id="partners-registration-no">
+                  <Input name="registrationNo" maxLength={80} autoComplete="off" spellCheck={false} />
+                </Field>
+                <Field label={l("partners.taxId")} id="partners-tax-id">
+                  <Input name="taxId" maxLength={80} autoComplete="off" spellCheck={false} />
+                </Field>
+                <Field label={l("partners.country")} id="partners-country">
+                  {/* ISO 3166-1 alpha-2, upper-cased server-side. The pattern
+                      keeps "United Arab Emirates" out of a two-character column
+                      before the round trip rather than after it. */}
+                  <Input
+                    name="country"
+                    maxLength={2}
+                    pattern="[A-Za-z]{2}"
+                    autoComplete="country"
+                    autoCapitalize="characters"
+                    spellCheck={false}
+                    className="w-24"
+                  />
+                </Field>
+              </fieldset>
               <Button type="submit" variant="primary" loading={busy && submitting === "signup"}>
                 {busy && submitting === "signup" ? l("partners.working") : l("partners.submit")}
               </Button>
@@ -434,6 +584,70 @@ export default function PortalPartners() {
               {busy && submitting === "status" ? l("partners.console.running") : l("partners.console.run")}
             </Button>
           </Form>
+        </Card>
+
+        <Card title={l("partners.quote.title")} description={l("partners.quote.body")} className="mb-8">
+          <Form method="post" className="flex flex-col gap-5">
+            <input type="hidden" name="intent" value="quote" />
+            <Field label={l("partners.console.key")} id="partners-quote-key" required>
+              <Input name="key" type="password" required autoComplete="off" spellCheck={false} />
+            </Field>
+            <Field label={l("partners.console.id")} id="partners-quote-id" required>
+              <Input
+                name="id"
+                required
+                autoComplete="off"
+                spellCheck={false}
+                defaultValue={signed?.partner.id ?? status?.partner.id ?? ""}
+              />
+            </Field>
+            <Field label={l("partners.quote.line")} id="partners-quote-line" required>
+              <Input
+                name="productLine"
+                required
+                maxLength={120}
+                autoComplete="off"
+                defaultValue={status?.offerings[0] ? offeringName(status.offerings[0], locale) : ""}
+              />
+            </Field>
+            <Field label={l("partners.quote.amount")} id="partners-quote-amount" required>
+              <Input name="amountMinor" type="number" required min={1} step={1} inputMode="numeric" />
+            </Field>
+            <Field label={l("partners.quote.currency")} id="partners-quote-currency" required>
+              <Input
+                name="currency"
+                required
+                minLength={3}
+                maxLength={3}
+                autoComplete="off"
+                spellCheck={false}
+                className="uppercase"
+              />
+            </Field>
+            <Button type="submit" loading={busy && submitting === "quote"}>
+              {busy && submitting === "quote" ? l("partners.quote.running") : l("partners.quote.run")}
+            </Button>
+          </Form>
+
+          {quoted ? (
+            <dl className="mt-6 grid grid-cols-2 gap-3 border-t border-border pt-4 text-13">
+              <div>
+                <dt className="text-muted">{l("partners.quote.result")}</dt>
+                <dd role="status" className="flex flex-wrap items-center gap-2">
+                  <Money
+                    amountMinor={quoted.quote.quotedPremiumMinor}
+                    currency={quoted.quote.currency}
+                    locale={locale}
+                  />
+                  {quoted.quote.synthetic ? <Badge tone="warning">{l("partners.quote.synthetic")}</Badge> : null}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-muted">{l("partners.quote.ref")}</dt>
+                <dd className="font-mono">{quoted.quote.id}</dd>
+              </div>
+            </dl>
+          ) : null}
         </Card>
 
         {status && totals ? (
@@ -465,7 +679,7 @@ export default function PortalPartners() {
                 <ul className="mt-2 flex flex-wrap gap-2">
                   {status.offerings.map((offering) => (
                     <li key={offering.id}>
-                      <Badge tone="neutral">{offering.name}</Badge>
+                      <Badge tone="neutral">{offeringName(offering, locale)}</Badge>
                     </li>
                   ))}
                 </ul>

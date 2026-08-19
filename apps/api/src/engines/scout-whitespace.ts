@@ -1,9 +1,17 @@
-import { and, eq, gte, inArray } from "drizzle-orm";
+import { and, desc, eq, gte, inArray } from "drizzle-orm";
 import { id as newId, schema } from "@lyra/db";
 import type { Ctx } from "@lyra/core";
-import { clusterSignals, computeWhitespaceCandidates, type CoverageInput } from "@lyra/core";
+import {
+  checkKAnonymity,
+  clusterSignals,
+  computeWhitespaceCandidates,
+  DEFAULT_K_FLOOR,
+  notFound,
+  verifyGroundedness,
+  type CoverageInput
+} from "@lyra/core";
 import type { RawSignal } from "@lyra/core";
-import type { Gateway } from "@lyra/model-gateway";
+import { promptNouns, whitespaceEvidenceLines, type Gateway, type WhitespaceEvidence } from "@lyra/model-gateway";
 
 // docs/modules/scout.md §8 clause 1: "from tenant's 12-month quote export
 // alone, produce a first Radar with >= 5 evidenced whitespace candidates."
@@ -39,16 +47,26 @@ export async function coveragePerLine(ctx: Ctx): Promise<Map<string, number>> {
  *  sweep: `sweepWhitespace` still persists on a gateway failure would abort
  *  the whole batch, so the caller catches per-candidate and falls back to the
  *  plain figures (ponytail: no retry/backoff — a bad draft this run gets a
- *  fresh candidate row next sweep, same idempotency guard as the rest). */
-function buildDescriptionPrompt(c: { category: string; momentum: number; coverage: number }): {
-  system: string;
-  user: string;
-} {
+ *  fresh candidate row next sweep, same idempotency guard as the rest).
+ *
+ *  The user turn is `whitespaceEvidenceLines`, not a second hand-rolled list:
+ *  the same lines the brief prompt sends and the same lines `verifyGroundedness`
+ *  scores the sentence against, so the prompt, the hover's "why" and the
+ *  groundedness pool cannot drift apart. CLAUDE.md rule 14 — every industry noun
+ *  in here comes from the tenant's domain pack. */
+export function buildDescriptionPrompt(
+  ev: WhitespaceEvidence,
+  pack: string | undefined
+): { system: string; user: string; lines: string[] } {
+  const nouns = promptNouns(pack);
+  const lines = whitespaceEvidenceLines(ev, nouns);
   return {
     system:
-      "You write one short, factual sentence for an insurance whitespace dossier. State the demand " +
-      "signal and current coverage plainly. Never invent a number not given to you. No preamble, no quotes.",
-    user: `Category: ${c.category}\nDemand momentum score: ${c.momentum}\nActive policies on the book: ${c.coverage}`
+      `You write one short, factual sentence about an unserved market for a ${nouns.domain} business. ` +
+      "State the demand signal and current coverage plainly. Never state a number the evidence below " +
+      "did not give you. No preamble, no quotes.",
+    user: lines.join("\n"),
+    lines
   };
 }
 
@@ -130,8 +148,14 @@ export async function sweepWhitespace(ctx: Ctx, gateway: Gateway): Promise<numbe
 
   const rows = await Promise.all(
     fresh.map(async (c) => {
-      const fallback = `${c.category}: demand momentum ${c.momentum} vs. ${c.coverage} policies on the book`;
-      const description = await draftDescription(ctx, gateway, c).catch(() => fallback);
+      const ev: WhitespaceEvidence = {
+        category: c.category,
+        momentum: c.momentum,
+        coverage: c.coverage,
+        competitionScore: competition.get(c.category) ?? null,
+        signalCount: c.cellCount
+      };
+      const description = await draftDescription(ctx, gateway, ev).catch(() => fallbackDescription(ctx, ev));
       return {
         id: newId("wsp", ctx.now),
         tenantId: ctx.tenantId,
@@ -250,17 +274,279 @@ function competitionByCategory(
   return out;
 }
 
-async function draftDescription(
+/* ------------------------------------------------------- hover commentary */
+
+export interface WhitespaceCommentary {
+  whitespaceId: string;
+  category: string | null;
+  status: string;
+  /** The sentence itself, or null when the row is suppressed. */
+  commentary: string | null;
+  /** Non-null only when `commentary` is. */
+  evidence: WhitespaceEvidence | null;
+  /** The inspectable "why" (docs/15 §4): the exact lines the sentence was
+   *  grounded against, ready to render as the hover's evidence list. */
+  why: string[];
+  /** Null when the sentence is the deterministic fallback — no ✦ in that case. */
+  ai: { marker: "✦"; auditId: string; model: string; provider: string; tier: string; at: number } | null;
+  /** True when k-anonymity hides the detail. Then commentary/evidence are null. */
+  suppressed: boolean;
+}
+
+/**
+ * The commentary a Radar hover shows. A read, not a generation: the sentence was
+ * drafted once at sweep time and persisted to `scout_whitespaces.description`
+ * (the repo's existing cache for AI prose — there is no separate artifact table),
+ * so a hover costs one indexed row read and never a model call. Prefetch is
+ * therefore the sweep itself, plus whatever the client warms on hover intent.
+ *
+ * Provenance is read back off `ai_audit_log` (module scout / purpose
+ * whitespace.describe / subjectRef = category). No audit row means the sentence
+ * came from `fallbackDescription`, so `ai` is null and the caller must not draw a
+ * ✦ — a deterministic sentence is not an AI artifact and must not be dressed as one.
+ *
+ * k-anonymity (docs/modules/scout.md §2.5): `sweepWhitespace` never persists a
+ * suppressed candidate, so this is the second gate rather than the first — a row
+ * whose evidence has since thinned below the floor stops describing itself
+ * instead of naming the handful of quotes behind it.
+ */
+export async function whitespaceCommentary(ctx: Ctx, whitespaceId: string): Promise<WhitespaceCommentary> {
+  const rows = await ctx.db
+    .select(COMMENTARY_COLUMNS)
+    .from(schema.scoutWhitespaces)
+    .where(and(eq(schema.scoutWhitespaces.tenantId, ctx.tenantId), eq(schema.scoutWhitespaces.id, whitespaceId)))
+    .limit(1);
+
+  const row = rows[0];
+  if (!row) throw notFound("whitespace");
+  return (await commentaryFor(ctx, [row]))[0]!;
+}
+
+/** How many rows one prefetch may read. The Radar plots tens of dots, not
+ *  thousands, and a bigger page would only buy a slower hover. */
+const COMMENTARY_MAX = 200;
+const COMMENTARY_DEFAULT = 50;
+
+/**
+ * Every live candidate's commentary in one read — this is the prefetch. The
+ * Radar loads it beside the dots it plots, so hovering a dot renders from state
+ * the page already holds and costs neither a request nor a model call. Ordered
+ * by demand so a clamped page keeps the dots a reader actually looks at.
+ *
+ * A suppressed row is listed, not omitted: the dot exists on the Radar either
+ * way, and a UI that must say "no reading on this one" needs the row to say it
+ * about. Its detail is still null — see `commentaryFor`.
+ */
+export async function whitespaceCommentaries(ctx: Ctx, limit?: number): Promise<WhitespaceCommentary[]> {
+  const rows = await ctx.db
+    .select(COMMENTARY_COLUMNS)
+    .from(schema.scoutWhitespaces)
+    .where(
+      and(
+        eq(schema.scoutWhitespaces.tenantId, ctx.tenantId),
+        inArray(schema.scoutWhitespaces.status, ["candidate", "validating", "validated"])
+      )
+    )
+    .orderBy(desc(schema.scoutWhitespaces.demandEstimate))
+    .limit(Math.min(Math.max(limit ?? COMMENTARY_DEFAULT, 1), COMMENTARY_MAX));
+  return commentaryFor(ctx, rows);
+}
+
+const COMMENTARY_COLUMNS = {
+  id: schema.scoutWhitespaces.id,
+  description: schema.scoutWhitespaces.description,
+  category: schema.scoutWhitespaces.category,
+  status: schema.scoutWhitespaces.status,
+  demandEstimate: schema.scoutWhitespaces.demandEstimate,
+  competitionScore: schema.scoutWhitespaces.competitionScore,
+  clusterId: schema.scoutWhitespaces.clusterId,
+  evidenceRefsJson: schema.scoutWhitespaces.evidenceRefsJson
+} as const;
+
+type CommentaryRow = {
+  id: string;
+  description: string;
+  category: string | null;
+  status: string;
+  demandEstimate: number | null;
+  competitionScore: number | null;
+  clusterId: string | null;
+  evidenceRefsJson: string | null;
+};
+
+/** Shared by the single read and the prefetch, so one row cannot describe itself
+ *  differently depending on which route asked. Coverage and provenance are each
+ *  one query for the whole page rather than one per row. */
+async function commentaryFor(ctx: Ctx, rows: readonly CommentaryRow[]): Promise<WhitespaceCommentary[]> {
+  const coverageByLine = await coveragePerLine(ctx);
+  const nouns = promptNouns(ctx.policy.domainPack);
+  const sizes = await clusterSizes(ctx, rows.map((r) => r.clusterId));
+
+  const evidenceOf = (row: CommentaryRow): WhitespaceEvidence => ({
+    category: row.category ?? "",
+    momentum: row.demandEstimate ?? 0,
+    coverage: row.category ? coverageByLine.get(row.category) ?? 0 : 0,
+    competitionScore: row.competitionScore,
+    signalCount: cellSize(row, sizes)
+  });
+
+  // Only the rows that will actually show a ✦ are looked up: a suppressed or
+  // fallback row must not carry provenance, so asking for it would be a query
+  // whose answer we are obliged to throw away.
+  const wantProvenance = rows.filter((row) => {
+    const ev = evidenceOf(row);
+    return (
+      checkKAnonymity(ev.signalCount, DEFAULT_K_FLOOR).allowed &&
+      row.category !== null &&
+      !isFallbackDescription(row.description, ev)
+    );
+  });
+  const provenance = await describeProvenance(ctx, [...new Set(wantProvenance.map((r) => r.category!))]);
+
+  return rows.map((row) => {
+    const ev = evidenceOf(row);
+    const base = { whitespaceId: row.id, category: row.category, status: row.status };
+    // k-anonymity (docs/modules/scout.md §2.5): below the floor nothing about the
+    // cell leaves — not the sentence, not the counts, not the evidence lines the
+    // sentence was grounded against.
+    if (!checkKAnonymity(ev.signalCount, DEFAULT_K_FLOOR).allowed) {
+      return { ...base, commentary: null, evidence: null, why: [], ai: null, suppressed: true };
+    }
+    return {
+      ...base,
+      commentary: row.description,
+      evidence: ev,
+      why: whitespaceEvidenceLines(ev, nouns),
+      ai: row.category ? provenance.get(row.category) ?? null : null,
+      suppressed: false
+    };
+  });
+}
+
+/** The sizes of the named clusters, in one read. Rows without a cluster ask
+ *  nothing. Shared with the promote engine so both gates measure the same cell. */
+export async function clusterSizes(ctx: Ctx, ids: readonly (string | null)[]): Promise<Map<string, number>> {
+  const wanted = [...new Set(ids.filter((i): i is string => i !== null))];
+  if (!wanted.length) return new Map();
+  const rows = await ctx.db
+    .select({ id: schema.scoutClusters.id, size: schema.scoutClusters.size })
+    .from(schema.scoutClusters)
+    .where(and(eq(schema.scoutClusters.tenantId, ctx.tenantId), inArray(schema.scoutClusters.id, wanted)));
+  return new Map(rows.map((r) => [r.id, r.size]));
+}
+
+/**
+ * How many people the k-anonymity floor is counting.
+ *
+ * The cell is the cluster's signal count — `sweepWhitespace` derives a candidate
+ * from a cluster and writes `size: signalIds.length`, and that is the number the
+ * dossier prints. `evidence_refs_json` is the *sources* cited for the estimate
+ * (a funnel, an app-store page, the cluster itself): three of them can stand
+ * behind three hundred signals, so counting refs suppressed every seeded row
+ * while its own dossier said "Cluster size 305" beside it.
+ *
+ * The refs are the fallback for a row with no cluster, and for a row whose
+ * cluster has been deleted — a dangling link is "we do not know how many", and
+ * the safe reading of that is to publish nothing we cannot count.
+ */
+export function cellSize(
+  row: { clusterId: string | null; evidenceRefsJson: string | null },
+  sizes: Map<string, number>
+): number {
+  const clustered = row.clusterId === null ? undefined : sizes.get(row.clusterId);
+  return clustered ?? evidenceRefCount(row.evidenceRefsJson);
+}
+
+/** How many demand signals a persisted candidate cites. The sweep writes a bare
+ *  array; the seed writes `{refs, demandEstimate}`. A malformed, absent or
+ *  unknown blob counts as zero, which suppresses rather than exposes the row. */
+export function evidenceRefCount(json: string | null): number {
+  if (!json) return 0;
+  try {
+    const parsed: unknown = JSON.parse(json);
+    if (Array.isArray(parsed)) return parsed.length;
+    const refs = (parsed as { refs?: unknown } | null)?.refs;
+    return Array.isArray(refs) ? refs.length : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Was this sentence the deterministic fallback rather than a draft?
+ *
+ * The audit row alone cannot answer it: the gateway audits the call, and a draft
+ * this engine then rejected as ungrounded still left a row behind, so "an audit
+ * row exists for this category" would put a ✦ on a sentence no model wrote.
+ * The fallback's own prefix is the discriminator.
+ *
+ * ponytail: prefix match, because scout_whitespaces has no generated_by column.
+ * Upgrade path is that column (signal_creatives already has one) — then this
+ * function and its caller both collapse into reading it.
+ */
+function isFallbackDescription(description: string, ev: WhitespaceEvidence): boolean {
+  return description.startsWith(`${ev.category}: demand momentum `);
+}
+
+/** The newest successful describe call per category, one query for the page.
+ *  Descending `ts` plus first-writer-wins gives the latest row per category
+ *  without a window function libSQL and D1 would have to agree on. */
+async function describeProvenance(
   ctx: Ctx,
-  gateway: Gateway,
-  c: { category: string; momentum: number; coverage: number }
-): Promise<string> {
-  const { system, user } = buildDescriptionPrompt(c);
+  categories: readonly string[]
+): Promise<Map<string, WhitespaceCommentary["ai"]>> {
+  const out = new Map<string, WhitespaceCommentary["ai"]>();
+  if (!categories.length) return out;
+
+  const rows = await ctx.db
+    .select({
+      id: schema.aiAuditLog.id,
+      subjectRef: schema.aiAuditLog.subjectRef,
+      model: schema.aiAuditLog.model,
+      provider: schema.aiAuditLog.provider,
+      tier: schema.aiAuditLog.tier,
+      ts: schema.aiAuditLog.ts
+    })
+    .from(schema.aiAuditLog)
+    .where(
+      and(
+        eq(schema.aiAuditLog.tenantId, ctx.tenantId),
+        eq(schema.aiAuditLog.module, "scout"),
+        eq(schema.aiAuditLog.purpose, "whitespace.describe"),
+        inArray(schema.aiAuditLog.subjectRef, [...categories]),
+        eq(schema.aiAuditLog.outcome, "ok")
+      )
+    )
+    .orderBy(desc(schema.aiAuditLog.ts));
+
+  for (const row of rows) {
+    if (!row.subjectRef || out.has(row.subjectRef)) continue;
+    out.set(row.subjectRef, {
+      marker: "✦",
+      auditId: row.id,
+      model: row.model,
+      provider: row.provider,
+      tier: row.tier,
+      at: row.ts
+    });
+  }
+  return out;
+}
+
+/** The plain-figures sentence a candidate falls back to: the two numbers it was
+ *  flagged on and nothing else, in the tenant's own vocabulary. */
+export function fallbackDescription(ctx: Ctx, ev: WhitespaceEvidence): string {
+  const nouns = promptNouns(ctx.policy.domainPack);
+  return `${ev.category}: demand momentum ${ev.momentum} vs. ${ev.coverage} ${nouns.contracts} on the book`;
+}
+
+async function draftDescription(ctx: Ctx, gateway: Gateway, ev: WhitespaceEvidence): Promise<string> {
+  const { system, user, lines } = buildDescriptionPrompt(ev, ctx.policy.domainPack);
   const res = await gateway.complete(ctx, {
     module: "scout",
     purpose: "whitespace.describe",
     tier: "reasoning",
-    subjectRef: c.category,
+    subjectRef: ev.category,
     messages: [
       { role: "system", content: system },
       { role: "user", content: user }
@@ -268,5 +554,9 @@ async function draftDescription(
   });
   const text = res.text.trim();
   if (!text) throw new Error("empty draft");
+  // A sentence citing a figure the evidence never gave would be persisted, shown
+  // on hover with a ✦, and read as measured. Reject it here and take the
+  // deterministic sentence instead — same gate axis-copilot and orbit-draft use.
+  if (!verifyGroundedness(text, lines).ok) throw new Error("ungrounded draft");
   return text;
 }

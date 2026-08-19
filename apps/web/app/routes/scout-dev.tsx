@@ -10,6 +10,7 @@ import {
 import { Button, DateTime, EmptyState, Field, GuardrailNotice, Input, Panel, Table, Textarea, type Column } from "@lyra/ui";
 import { ApiError, api } from "../api.server";
 import { cloudflare } from "../context";
+import { jsonOf } from "../json.js";
 import { Gate } from "./staff";
 import { useScoutSessionData } from "./scout-shell";
 import { emptyPage, explain, labelsIn, refuse, safe, type Page, type Problemish } from "./scout.shared";
@@ -49,10 +50,13 @@ export interface Span {
   text: string;
 }
 
+/** `scout_signals` as generic CRUD returns it — see `r("signals", …)` in
+ *  apps/api/src/resources.ts. */
 interface SignalRow {
   id: string;
   source: string;
-  payloadJson: string;
+  /** Already parsed on the wire — see `jsonOf`. */
+  payloadJson: unknown;
   observedAt: number;
 }
 
@@ -88,14 +92,13 @@ export function curlFor(origin: string, path: string, body: unknown): string {
 /** A seeded signal's own text, so the playground starts on something real. */
 export function sampleText(rows: readonly SignalRow[]): string {
   const payload = rows[0]?.payloadJson;
-  if (!payload) return "";
-  try {
-    const parsed: unknown = JSON.parse(payload);
-    const text = parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>).text : null;
-    return typeof text === "string" ? text : payload;
-  } catch {
-    return payload;
-  }
+  if (payload === undefined || payload === null || payload === "") return "";
+  const parsed = jsonOf(payload);
+  const text = parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>).text : null;
+  if (typeof text === "string") return text;
+  // No `text` key: the envelope itself, so the playground still opens on
+  // something the tenant actually ingested.
+  return typeof payload === "string" ? payload : JSON.stringify(payload);
 }
 
 /* ------------------------------------------------------------------ loader */

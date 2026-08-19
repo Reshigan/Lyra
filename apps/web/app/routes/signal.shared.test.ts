@@ -14,11 +14,14 @@ import {
   labelsIn,
   mainCurrency,
   moveEndpoint,
+  planOf,
+  poolOf,
+  probabilityTone,
   splitCopy,
   studioHeadline,
   totalSpendMinor
 } from "./signal.shared";
-import type { AeoRow, AudienceValue, CampaignRow, SpendRow } from "./signal.shared";
+import type { AeoRow, AudienceRow, AudienceValue, CampaignRow, SpendRow } from "./signal.shared";
 
 // The budget screen's "Moves made" table printed
 // `signal_campaign:cmp_0KE95STOARG4GC1CVMRRB6Q4R#meta →
@@ -309,5 +312,172 @@ describe("devHeadline", () => {
 
   it("reads as denied when the role can read nothing", () => {
     expect(devHeadline(l, { readable: 0, hooks: 0 })).toBe(l("dev.denied"));
+  });
+});
+
+// The campaign plan the studio shows is written by
+// apps/api/src/engines/scout-promote.ts, which JSON.stringify()s the gateway's
+// `CampaignPlan` into `plan_json`; crud.ts hydrate() parses it back before the
+// loader ever sees it. So the fixture below is the object the server sends,
+// not the string the column holds — the whitespace-commentary bug (CLAUDE.md)
+// came from testing an assumed contract instead of the real one.
+describe("planOf", () => {
+  const stored = {
+    notes:
+      "Marine demand is moving against a book that carries almost none of it. The pool is thin, so " +
+      "the three options below trade reach against precision.",
+    options: [
+      {
+        name: "Direct to the quoting few",
+        angle: "Speak only to the customers already asking for marine cover.",
+        offer: "A marine quote in under a minute.",
+        channels: ["email", "meta"],
+        probability: 62,
+        why: ["The demand is measured and the book behind it is thin."],
+        risk: "A pool this narrow burns out fast."
+      },
+      {
+        name: "Broad build",
+        angle: "Introduce marine to the rest of the book.",
+        offer: "An introduction for customers who hold none.",
+        channels: ["display"],
+        probability: 27,
+        why: ["Nobody on this book carries the cover yet."],
+        risk: null
+      }
+    ],
+    recommended: "Direct to the quoting few",
+    confidence: 100
+  };
+
+  const withPlan = (planJson: unknown): CampaignRow => ({
+    id: "cmp_1",
+    name: "Marine",
+    objective: "acquire",
+    audienceId: null,
+    channelsJson: [],
+    budgetJson: {},
+    planJson,
+    state: "draft",
+    autonomyLevel: "act_with_approval",
+    startAt: null,
+    endAt: null,
+    ownerRef: null
+  });
+
+  it("reads the plan the promoter stored", () => {
+    const plan = planOf(withPlan(stored));
+    expect(plan?.recommended).toBe("Direct to the quoting few");
+    expect(plan?.confidence).toBe(100);
+    expect(plan?.options.map((option) => option.probability)).toEqual([62, 27]);
+    expect(plan?.options[0]?.channels).toEqual(["email", "meta"]);
+    expect(plan?.options[1]?.risk).toBeNull();
+  });
+
+  it("still reads it when the stored text never made it through hydrate()", () => {
+    expect(planOf(withPlan(JSON.stringify(stored)))?.options).toHaveLength(2);
+  });
+
+  it("has nothing to show for a campaign nobody planned", () => {
+    expect(planOf(withPlan(undefined))).toBeNull();
+    expect(planOf(withPlan(null))).toBeNull();
+    expect(planOf(withPlan("{not json"))).toBeNull();
+    expect(planOf(withPlan([stored]))).toBeNull();
+    expect(planOf(withPlan({ ...stored, options: [] }))).toBeNull();
+  });
+
+  it("drops an option that cannot be run rather than the screen", () => {
+    // No channel is no plan: nobody can spend against it. The option beside it
+    // is still worth reading, so one bad row costs itself and nothing else.
+    const plan = planOf(
+      withPlan({
+        ...stored,
+        options: [{ ...stored.options[0], channels: [] }, stored.options[1], { name: "" }]
+      })
+    );
+    expect(plan?.options.map((option) => option.name)).toEqual(["Broad build"]);
+  });
+
+  it("recommends an option that survived, whatever the stored name says", () => {
+    // The recommendation names the option the copy was written for. If that
+    // option was the malformed one, pointing at a name the list does not
+    // contain would mark nothing — so it falls to the best that remains.
+    const plan = planOf(
+      withPlan({ ...stored, options: [{ ...stored.options[0], channels: [] }, stored.options[1]] })
+    );
+    expect(plan?.recommended).toBe("Broad build");
+  });
+
+  it("says a figure it was not given is no figure at all", () => {
+    const plan = planOf(withPlan({ ...stored, confidence: "high", options: [{ ...stored.options[0], probability: null, why: "lots" }] }));
+    expect(plan?.confidence).toBe(0);
+    expect(plan?.options[0]?.probability).toBe(0);
+    expect(plan?.options[0]?.why).toEqual([]);
+  });
+});
+
+// The pool is written by apps/api/src/engines/signal-audience.ts, which parks
+// the whole proposal under `definitionJson.targeting`; crud.ts hydrate() parses
+// the column before the loader sees it. So the fixture is the object the server
+// sends, and `poolOf` is asserted against the same shape its API mirror reads.
+describe("poolOf", () => {
+  const targeting = {
+    summary: "Upper-middle households in Gauteng who are already on the book.",
+    estimatedReach: 55,
+    lsm: [7],
+    reasons: [
+      { axis: "lsm", value: "7", reason: "30 customers sit in this band.", count: 30 },
+      { axis: "region", value: "gauteng", reason: "55 customers are in this region.", count: 55 }
+    ]
+  };
+
+  const withDefinition = (definitionJson: unknown): AudienceRow => ({
+    id: "aud_1",
+    name: "Gauteng upper-middle",
+    definitionJson,
+    sizeCached: 41,
+    refreshPolicy: "daily",
+    consentPurposes: null,
+    lastRefreshedAt: null
+  });
+
+  it("names every band and the reason it was chosen", () => {
+    const pool = poolOf(withDefinition({ rule: { all: [] }, targeting }));
+    expect(pool?.estimatedReach).toBe(55);
+    expect(pool?.reasons.map((band) => `${band.axis}=${band.value}`)).toEqual(["lsm=7", "region=gauteng"]);
+    expect(pool?.reasons[1]?.count).toBe(55);
+    expect(pool?.summary).toContain("Gauteng");
+  });
+
+  it("says nothing for an audience a human wrote by hand", () => {
+    // A rule with nobody's argument behind it. Naming a reason here would put
+    // words in that human's mouth.
+    expect(poolOf(withDefinition({ rule: { all: [] } }))).toBeNull();
+    expect(poolOf(withDefinition("{not json"))).toBeNull();
+    expect(poolOf(withDefinition({ targeting: { ...targeting, reasons: [] } }))).toBeNull();
+    expect(poolOf(withDefinition({ targeting: [targeting] }))).toBeNull();
+  });
+
+  it("falls back to the cached size when the proposal carried no reach", () => {
+    const pool = poolOf(withDefinition({ targeting: { ...targeting, estimatedReach: "many" } }));
+    expect(pool?.estimatedReach).toBe(41);
+  });
+
+  it("drops a band that says nothing, and counts nothing it was not given", () => {
+    const pool = poolOf(
+      withDefinition({ targeting: { ...targeting, reasons: [{ axis: "lsm" }, { ...targeting.reasons[1], count: null }] } })
+    );
+    expect(pool?.reasons).toHaveLength(1);
+    expect(pool?.reasons[0]?.count).toBe(0);
+  });
+});
+
+describe("probabilityTone", () => {
+  it("colours the model's own odds", () => {
+    expect(probabilityTone(62)).toBe("success");
+    expect(probabilityTone(60)).toBe("success");
+    expect(probabilityTone(59)).toBe("warning");
+    expect(probabilityTone(35)).toBe("warning");
+    expect(probabilityTone(27)).toBe("neutral");
   });
 });

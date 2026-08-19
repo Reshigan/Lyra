@@ -510,9 +510,10 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
     accounts,
     // The file is the answer to the same question the screen is showing, so the
     // link carries the query the loader normalised — not the raw address bar.
-    // ponytail: straight to the API origin, so a cookie scoped to the web host
-    // will not ride along — add a web-origin proxy route when the session stops
-    // being same-site. Same trade as the analytics download.
+    // Straight to the API origin. That only works because the session cookie is
+    // scoped to the parent domain both hosts share (SESSION_COOKIE_DOMAIN, see
+    // apps/api/src/auth.ts sessionCookie) — a host-only cookie would 401 here.
+    // Same trade as the analytics download.
     // Ends on a separator so the view only has to name the format.
     exportUrl: `${env.API_ORIGIN}/v1/ledger/reports/${key}/export?${query.toString()}${query.size ? "&" : ""}`
   };

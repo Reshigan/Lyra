@@ -63,26 +63,45 @@ export default defineConfig({
         PORT: String(API_PORT),
         APP_ORIGIN: WEB_ORIGIN,
         SESSION_COOKIE: "lyra_session",
-        ENVIRONMENT: "local"
+        ENVIRONMENT: "local",
+        // Field encryption and the portal-link HMAC (routes/portal.ts) fail
+        // closed without it, so the hosted renewal/feedback pages have no
+        // credential to mint. A fixed test value: real ones are secrets.
+        FIELD_KEY: "e2e-field-key"
       },
       reuseExistingServer: !process.env.CI,
       timeout: 30_000,
       stdout: "pipe"
     },
     // Locally this is the dev server, for HMR and a fast edit loop. On CI it is
-    // the built worker under `wrangler dev` — the same artefact `pnpm
-    // deploy:staging` ships, with `.dev.vars` (gitignored, absent on a runner)
-    // replaced by an explicit `--var`. `vite dev` compiles a route's module
-    // graph on first reach, and on a two-core runner already carrying the API
-    // and two Playwright workers that cost showed up as navigations that began
-    // — nav progress bar up, `navigation.state` stuck off idle — and then
-    // issued no network at all for the whole test budget (J-O1, J-O2, neither
-    // reproducible locally). The built server has no compile step in the
-    // request path: the same two journeys run in 4.0s/5.4s against it, against
-    // 11.0s/15.3s under `vite dev`.
+    // the built worker — the same artefact `pnpm deploy:staging` ships. `vite
+    // dev` compiles a route's module graph on first reach, and on a two-core
+    // runner already carrying the API and two Playwright workers that cost
+    // showed up as navigations that began — nav progress bar up,
+    // `navigation.state` stuck off idle — and then issued no network at all
+    // for the whole test budget (J-O1, J-O2, neither reproducible locally).
+    // The built server has no compile step in the request path: the same two
+    // journeys run in 4.0s/5.4s against it, against 11.0s/15.3s under `vite
+    // dev`.
+    //
+    // The built worker is served by `vite preview`, not `wrangler dev`.
+    // wrangler 4.x fronts the user worker with a ProxyWorker on a second
+    // workerd socket, and its ProxyController promotes *any* rejected
+    // proxy→worker fetch to a session-fatal error that tears the whole dev
+    // session down. One `Network connection lost` — an aborted navigation, a
+    // relay to an API that blipped — killed the server mid-suite and every
+    // spec after it failed `ERR_CONNECTION_REFUSED`, including on retry, with
+    // an `✘ [ERROR]` carrying no message (the fatal event's `cause` is empty).
+    // The worker itself was healthy: it kept answering 200s for 300ms after
+    // the "fatal". `vite preview` runs the identical build under miniflare
+    // with no proxy layer — one workerd process, so a request-level failure
+    // stays a 500 on that request. `--strictPort` so a busy 5173 fails here
+    // instead of drifting to 5174 and timing out on `url`. API_ORIGIN reaches
+    // it through the `.dev.vars` that e2e/global-setup.ts writes on every run
+    // and the build copies to build/server/, so no `--var` is needed.
     {
       command: process.env.CI
-        ? `pnpm --filter @lyra/web build && pnpm --filter @lyra/web exec wrangler dev -c build/server/wrangler.json --port ${WEB_PORT} --ip 127.0.0.1 --var API_ORIGIN:${API_ORIGIN}`
+        ? `pnpm --filter @lyra/web build && pnpm --filter @lyra/web exec vite preview --port ${WEB_PORT} --host 127.0.0.1 --strictPort`
         : "pnpm --filter @lyra/web dev",
       url: WEB_ORIGIN,
       reuseExistingServer: !process.env.CI,

@@ -221,10 +221,15 @@ export function Ref({ value, fallback = "—", className, title, ...props }: Ref
   );
 }
 
+/** What a date field can actually hold: an instant, or nothing — a nullable
+ *  column (`axis_claims.incident_at`, `scout_whitespaces.promoted_at`) sends
+ *  `null` on the wire, and every reader of one degrades to the same dash. */
+export type Instant = Date | string | number | null | undefined;
+
 export type DateTimePrecision = "day" | "time" | "minute" | "second";
 
 export interface DateTimeProps extends Omit<React.ComponentPropsWithRef<"time">, "dateTime"> {
-  value: Date | string | number;
+  value: Instant;
   locale?: string;
   timeZone?: string;
   precision?: DateTimePrecision;
@@ -292,7 +297,13 @@ const DASH = "—";
  * Invalid Date such a row makes. A throw inside a render takes the whole route
  * to the error boundary, so one unreadable field costs the page.
  */
-export function instantOf(value: Date | string | number): Date | null {
+export function instantOf(value: Instant): Date | null {
+  // `null` explicitly, before `new Date`: `new Date(null)` is the epoch, so a
+  // nullable column with nothing in it would render "01 Jan 1970" — a date the
+  // reader has no way to tell from a real one. Nullable is the common case
+  // (`incident_at`, `promoted_at`, `deleted_at`), so the guard belongs here
+  // rather than in a `?? Number.NaN` at every call site.
+  if (value === null || value === undefined) return null;
   const date = value instanceof Date ? value : new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
 }
@@ -310,7 +321,7 @@ export function instantOf(value: Date | string | number): Date | null {
  * function has no locale to pick the words in. Upgrade path is a
  * caller-supplied fallback argument the day a screen needs to say why.
  */
-export function formatInstant(value: Date | string | number, render: (date: Date) => string): string {
+export function formatInstant(value: Instant, render: (date: Date) => string): string {
   const date = instantOf(value);
   return date === null ? DASH : render(date);
 }

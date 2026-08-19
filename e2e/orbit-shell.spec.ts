@@ -1,7 +1,8 @@
 import { expect, test } from "@playwright/test";
 import { goto, loginAsOrbitAgent, loginAsNorthExec } from "./fixtures.js";
 
-// @journey:J-ORBIT-SHELL (docs/superpowers/specs/2026-08-16-orbit-shell-fork-design.md):
+// @journey:J-X1 — the "human console opens" step of J-X1 handover catch
+// (docs/06-roles-and-journeys.md:57, docs/superpowers/specs/2026-08-16-orbit-shell-fork-design.md):
 // OrbitShell is its own scoped shell — an actor with an orbit.*-resolving role
 // lands in it and sees only ORBIT's own rail (never another module's,
 // ModuleSwitcher only appears once an actor's roles resolve to more than one

@@ -118,15 +118,37 @@
     animation-delay: 160ms;
   }
 
-  /* Route-transition cue: a slim accent bar sweeps across the viewport top
+  /* ------------------------------------------------------------------ layers
+     The whole stacking order, in one place, because these numbers are only
+     meaningful relative to each other:
+
+        -1  decorative background (below)
+        10  sticky table header, in-panel tooltips
+        20  status footer, sticky first column
+        30  chrome header and module rail
+        40  overlay scrim            (packages/ui/src/overlays.tsx)
+        50  overlay content: dialog, sheet, tooltip, popover, menu, toast,
+            command palette, select                          (same file)
+        55  route-transition bar — above an open overlay on purpose, see below
+        60  cold open veil (ADR-0055), the one thing that covers everything
+
+     The Instrument comp draws the scrim/content pair as 88/90; the ordering is
+     what carries, not the absolute values, so the smaller numbers stay rather
+     than churn nine files to match a mock. Anything new goes on this list.
+
+     Route-transition cue: a slim accent bar sweeps across the viewport top
      while a navigation is in flight (root.tsx, useNavigation), so a slow
      loader never reads as a frozen page. Indeterminate — no real progress
-     signal exists — so it loops rather than settles. */
+     signal exists — so it loops rather than settles. It sits above overlay
+     content because a navigation started from inside a dialog (a command
+     palette jump, a link in a sheet) is exactly when the cue matters most, and
+     overlays portal to the end of <body>: at an equal z-index the dialog would
+     win on DOM order and hide the only sign the app is still working. */
   .lyra-nav-progress {
     position: fixed;
     inset-inline: 0;
     top: 0;
-    z-index: 50;
+    z-index: 55;
     height: 2px;
     overflow: hidden;
   }

@@ -106,11 +106,14 @@ test("J-E3 exec saves a what-if scenario and revisits it with updated assumption
 // meeting.
 //
 // Only "assemble" is wired up anywhere in apps/web: boardpacks.ts declares
-// create ("north:boardpacks:generate") and no update, no actions array, and
-// no module in the codebase declares a real ActionSpec (grep confirms the
-// mechanism the type comment shows has zero real users). There is no approve
-// button, no distribute button and no read-receipt UI to test — this spec
-// covers what exists, and the report notes the rest as a gap, not a fake pass.
+// create ("north:boardpacks:generate") and no update and no actions array.
+// (The ActionSpec mechanism itself does have real users now — modules
+// /analytics.ts:422, modules/axis.ts:707 and :804 — boardpacks is simply not
+// one of them.) So there is still no approve button and no distribute button;
+// north-board.tsx does render the distribution log ("Who it went to"), but
+// only recipient, medium and send time — `Delivery.openedAt` is declared and
+// never drawn, so there is no read receipt to test either. This spec covers
+// what exists, and the report notes the rest as a gap, not a fake pass.
 test("J-E2 exec assembles a board pack for Thursday @journey:J-E2 @accept:M6", async ({ page }) => {
   await loginAsNorthExec(page);
 
@@ -126,4 +129,37 @@ test("J-E2 exec assembles a board pack for Thursday @journey:J-E2 @accept:M6", a
 
   const row = page.getByRole("row", { name: new RegExp(title) });
   await expect(row).toBeVisible();
+});
+
+// The other half of J-E3, on the screen the journey actually describes: the
+// what-if ask bar at /north/whatif (apps/web/app/routes/north-whatif.tsx),
+// where assumptions are written as prose lines rather than as the raw JSON
+// the generic /north/scenarios form takes. "Ranges" are still a gap — nothing
+// computes an answer, and the screen says so instead of drawing a band.
+test("J-E3 exec asks a what-if in prose and the assumptions come back on the saved scenario @journey:J-E3 @accept:M6", async ({
+  page
+}) => {
+  await loginAsNorthExec(page);
+  await goto(page, "/north/whatif");
+
+  // A line with no name is refused, not silently dropped — the assumptions are
+  // the half of the scenario that can be argued with later.
+  await page.getByLabel("The question", { exact: true }).fill("J-E3 what if the panel took a fifth of motor?");
+  await page.getByLabel("Assumptions", { exact: true }).fill("no name on this line");
+  await page.getByLabel("Asked by", { exact: true }).fill("Hala Zayed");
+  await page.getByRole("button", { name: "Save the question", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("One of these lines carried no name.");
+
+  const horizon = `Q3-${Date.now()}`;
+  await page.getByLabel("Assumptions", { exact: true }).fill(`horizon: ${horizon}\nretentionDeltaPts: -5`);
+  await page.getByRole("button", { name: "Save the question", exact: true }).click();
+  await expect(page.getByRole("status")).toHaveText("Scenario saved.");
+
+  // The newest scenario is the open one, so the assumptions read back named and
+  // humanised ("retentionDeltaPts" -> "Retention delta pts").
+  await expect(page.getByRole("heading", { name: "What it assumes" })).toBeVisible();
+  await expect(page.getByText(horizon, { exact: true })).toBeVisible();
+  await expect(page.getByText("Retention delta pts", { exact: true })).toBeVisible();
+  // No engine has run, so the answer says so rather than showing a zero.
+  await expect(page.getByText("Nothing has answered this yet.")).toBeVisible();
 });

@@ -1,6 +1,6 @@
 import { id as newId, schema } from "@lyra/db";
 import { checkCompliance, sha256Hex, type Ctx, type ComplianceFinding, type ComplianceResult } from "@lyra/core";
-import type { Gateway } from "@lyra/model-gateway";
+import { promptNouns, type Gateway, type PromptNouns } from "@lyra/model-gateway";
 
 // docs/modules/signal.md §2.1 + §8 acceptance: "Brief -> 20 compliant ar/en
 // variants -> publish to Meta+Google in < 1 hour with human review only at the
@@ -27,6 +27,10 @@ export interface CreativeBrief {
   kind: CreativeKind;
   /** What the ad is about and the angle to take — the human-authored input. */
   brief: string;
+  /** The campaign plan, flattened to sentences: the chosen option's angle and
+   *  offer, and the bands the audience is made of. Absent for a creative
+   *  briefed by hand, which is why it is optional rather than empty. */
+  context?: string[];
   /** Groups variants that are A/B siblings of the same slot; defaults to none. */
   variantGroup?: string | null;
   /** Defaults to both — CLAUDE.md rule 7, ar/en from day one, native prompts not translation. */
@@ -37,20 +41,36 @@ export interface CreativeBrief {
 
 export { checkCompliance, type ComplianceFinding, type ComplianceResult };
 
-const SYSTEM_PROMPT =
-  "You write short marketing creative copy for an insurance brand. One variant per line, no " +
-  "numbering, no surrounding quotes. Never claim a guarantee of cover or acceptance, and never " +
-  "claim to be the cheapest or best against the whole market without a named source. Write " +
-  "natively in the requested language — never a translation of a draft in another language.";
+/** CLAUDE.md rule 14: the industry noun comes from the tenant's domain pack, so
+ *  the same generator writes for a lender or a retailer without an edit. The
+ *  prohibitions do not — they are compliance copy (docs/12) and hold whatever
+ *  is being sold. */
+function systemPrompt(nouns: PromptNouns): string {
+  return (
+    `You write short marketing creative copy for a ${nouns.domain} brand. One variant per line, no ` +
+    "numbering, no surrounding quotes. Never claim a guarantee of cover or acceptance, and never " +
+    "claim to be the cheapest or best against the whole market without a named source. Write " +
+    "natively in the requested language — never a translation of a draft in another language."
+  );
+}
 
-export function buildPrompt(opts: { brief: string; locale: CreativeLocale; count: number }): {
+export function buildPrompt(opts: {
+  brief: string;
+  locale: CreativeLocale;
+  count: number;
+  nouns: PromptNouns;
+  context?: string[];
+}): {
   system: string;
   user: string;
 } {
   const language = opts.locale === "ar" ? "Arabic" : "English";
+  // The plan goes above the brief: it says who is being written for and on what
+  // angle, and a model reading top-down should have that before the subject.
+  const context = opts.context?.length ? `${opts.context.join("\n")}\n\n` : "";
   return {
-    system: SYSTEM_PROMPT,
-    user: `Brief: ${opts.brief}\n\nWrite ${opts.count} distinct variants in ${language}, one per line.`
+    system: systemPrompt(opts.nouns),
+    user: `${context}Brief: ${opts.brief}\n\nWrite ${opts.count} distinct variants in ${language}, one per line.`
   };
 }
 
@@ -80,6 +100,27 @@ export interface GenerateCreativesResult {
 }
 
 /**
+ * Thrown when generation fails after earlier locales already wrote rows.
+ *
+ * There is no transaction around the locale loop and there cannot be one: each
+ * locale is its own model call, and the rows from the first are committed before
+ * the second is made. A bare throw would tell the caller "nothing happened"
+ * while `signal_creatives` holds drafts and `ai_audit_log` holds the call that
+ * made them, so every count downstream — the response, the tray, the audit
+ * after-state — would disagree with the database. This carries the committed
+ * work out with the failure; `cause` still holds what actually broke.
+ */
+export class PartialCreativesError extends Error {
+  readonly partial: GenerateCreativesResult;
+
+  constructor(partial: GenerateCreativesResult, cause: unknown) {
+    super("creative generation failed after some variants were written", { cause });
+    this.name = "PartialCreativesError";
+    this.partial = partial;
+  }
+}
+
+/**
  * Brief -> generate per locale (packages/model-gateway, standard tier, module
  * "signal" — docs §3 "Creative Generator: standard, no (drafts)") -> compliance
  * pre-flight per variant -> persist to `signal_creatives`. A flagged variant is
@@ -106,7 +147,38 @@ export async function generateCreatives(
     const n = base + (i < remainder ? 1 : 0);
     if (n === 0) continue;
 
-    const { system, user } = buildPrompt({ brief: brief.brief, locale, count: n });
+    try {
+      await generateLocale(ctx, gateway, brief, locale, n, variants, auditIds);
+    } catch (cause) {
+      // Nothing written yet: the caller wants the real error, not an empty
+      // partial it has to unwrap. Something written: see PartialCreativesError.
+      if (variants.length === 0 && auditIds.length === 0) throw cause;
+      throw new PartialCreativesError({ variants, auditIds }, cause);
+    }
+  }
+
+  return { variants, auditIds };
+}
+
+/** One locale: one gateway call, then a row per line it wrote. Split out so the
+ *  caller can tell "this locale failed" from "the whole batch failed". */
+async function generateLocale(
+  ctx: Ctx,
+  gateway: Gateway,
+  brief: CreativeBrief,
+  locale: CreativeLocale,
+  n: number,
+  variants: GeneratedVariant[],
+  auditIds: string[]
+): Promise<void> {
+  {
+    const { system, user } = buildPrompt({
+      brief: brief.brief,
+      locale,
+      count: n,
+      nouns: promptNouns(ctx.policy.domainPack),
+      ...(brief.context?.length ? { context: brief.context } : {})
+    });
     const res = await gateway.complete(ctx, {
       module: "signal",
       purpose: "creative.generate",
@@ -156,8 +228,6 @@ export async function generateCreatives(
       });
     }
   }
-
-  return { variants, auditIds };
 }
 
 export interface ImageBrief {

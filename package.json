@@ -16,7 +16,7 @@
     "e2e:sim": "playwright test --config playwright.staging.config.ts",
     "smoke:staging": "tsx scripts/lyra.ts staging smoke",
     "eval": "pnpm --filter @lyra/model-gateway eval",
-    "mutation": "pnpm --filter @lyra/core mutation && pnpm --filter @lyra/model-gateway mutation",
+    "mutation": "sh -c 'pnpm --filter @lyra/model-gateway mutation; gw=$?; pnpm --filter @lyra/core mutation; exit $((gw || $?))'",
     "lint": "eslint .",
     "typecheck": "turbo run typecheck",
     "db:generate": "pnpm --filter @lyra/db generate",

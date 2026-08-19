@@ -261,10 +261,17 @@ export async function seedScout(ctx: SeedContext): Promise<void> {
     note: string
   ): string => JSON.stringify({ refs, demandEstimate: { unit: "policies_per_year", method, confidence, note } });
 
+  // `category` is the product line the gap sits in — the same key the sweep
+  // writes (apps/api/src/engines/scout-whitespace.ts) and the same key
+  // `coveragePerLine` joins "on the book" against. It is not decoration: a row
+  // without one reads "On the book 0" on the Radar whatever the book says, and
+  // `promoteWhitespace` refuses it outright ("no category to brief against"),
+  // so the handover to the campaign studio is unreachable.
   await db.insert(schema.scoutWhitespaces).values([
     {
       id: whitespaceIds.agencyRenewal,
       tenantId,
+      category: "motor",
       description: "A motor renewal that keeps agency repair instead of quietly dropping it at year three",
       clusterId: clusterIds.agencyRepair,
       evidenceRefsJson: evidence(
@@ -284,6 +291,7 @@ export async function seedScout(ctx: SeedContext): Promise<void> {
     {
       id: whitespaceIds.visaTrip,
       tenantId,
+      category: "travel",
       description: "Single-trip travel cover sold at the moment the visa application is filled in",
       clusterId: clusterIds.visaTravel,
       evidenceRefsJson: evidence(
@@ -303,6 +311,7 @@ export async function seedScout(ctx: SeedContext): Promise<void> {
     {
       id: whitespaceIds.evBattery,
       tenantId,
+      category: "motor",
       description: "Motor cover that prices battery, home charger and range-related towing for electric vehicles",
       clusterId: clusterIds.evMotor,
       evidenceRefsJson: evidence(
@@ -322,6 +331,7 @@ export async function seedScout(ctx: SeedContext): Promise<void> {
     {
       id: whitespaceIds.domesticHelper,
       tenantId,
+      category: "home",
       description: "Domestic helper package offered beside the motor and home renewal",
       clusterId: clusterIds.domesticHelper,
       evidenceRefsJson: evidence(
@@ -341,6 +351,7 @@ export async function seedScout(ctx: SeedContext): Promise<void> {
     {
       id: whitespaceIds.mortgageHome,
       tenantId,
+      category: "home",
       // The gap is a hole in the product × channel matrix rather than a product
       // nobody sells: Cedar Home Contents exists, and the Meridian embed only
       // ever offers motor.
@@ -363,6 +374,7 @@ export async function seedScout(ctx: SeedContext): Promise<void> {
     {
       id: whitespaceIds.riderShift,
       tenantId,
+      category: "motor",
       description: "Motor cover for delivery riders priced by the shift rather than by the year",
       clusterId: clusterIds.deliveryRiders,
       evidenceRefsJson: evidence(
@@ -382,6 +394,7 @@ export async function seedScout(ctx: SeedContext): Promise<void> {
     {
       id: whitespaceIds.maternityUpfront,
       tenantId,
+      category: "health",
       description: "A health row that states its maternity waiting period before the price is shown",
       clusterId: clusterIds.maternityWait,
       evidenceRefsJson: evidence(

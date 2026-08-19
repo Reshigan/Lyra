@@ -35,6 +35,14 @@ const en = {
   // Timeline
   waiting: "Waiting",
   done: "Done",
+  // StateFlow / PostingFlow (docs/19 process flows)
+  flowNow: "Now",
+  outOfMachine: "Not a documented state: {states}",
+  valueFlow: "Value moving",
+  debits: "Debits",
+  credits: "Credits",
+  balanced: "Both sides agree",
+  unbalanced: "The two sides do not agree",
   // Ambient AI (docs/15)
   aiGenerated: "AI-generated",
   draftedBy: "Drafted by {agent}",
@@ -53,7 +61,16 @@ const en = {
   pendingApproval: "Pending approval",
   requestedBy: "Requested by {who}",
   approve: "Approve",
-  reject: "Reject"
+  reject: "Reject",
+  // Overlay + navigation chrome (Dialog, Drawer, Toast, CommandBar, nav landmarks)
+  close: "Close",
+  dismiss: "Dismiss",
+  modules: "Modules",
+  breadcrumb: "Breadcrumb",
+  search: "Search",
+  commandSearch: "Search entities, actions, docs…",
+  commandPalette: "Command palette",
+  commandEmpty: "No matches."
 } as const;
 
 export type KitKey = keyof typeof en;
@@ -73,6 +90,13 @@ const ar: Record<KitKey, string> = {
   dateUnavailable: "التاريخ غير متاح",
   waiting: "قيد الانتظار",
   done: "تم",
+  flowNow: "الآن",
+  outOfMachine: "حالة غير موثّقة: {states}",
+  valueFlow: "حركة القيمة",
+  debits: "مدين",
+  credits: "دائن",
+  balanced: "الطرفان متساويان",
+  unbalanced: "الطرفان غير متساويين",
   aiGenerated: "من إنشاء الذكاء الاصطناعي",
   draftedBy: "صاغها {agent}",
   whyDrafted: "سبب هذه المسودة",
@@ -89,7 +113,15 @@ const ar: Record<KitKey, string> = {
   pendingApproval: "بانتظار الموافقة",
   requestedBy: "بطلب من {who}",
   approve: "موافقة",
-  reject: "رفض"
+  reject: "رفض",
+  close: "إغلاق",
+  dismiss: "إغلاق الإشعار",
+  modules: "الوحدات",
+  breadcrumb: "مسار التنقّل",
+  search: "بحث",
+  commandSearch: "ابحث في السجلات والإجراءات والمستندات…",
+  commandPalette: "لوحة الأوامر",
+  commandEmpty: "لا نتائج مطابقة."
 };
 
 export const KIT_TEXT: Record<string, Record<KitKey, string>> = { en, ar };

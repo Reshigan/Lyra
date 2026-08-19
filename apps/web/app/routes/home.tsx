@@ -25,6 +25,7 @@ import {
 } from "@lyra/ui";
 import { ApiError, api, fetchMe, names, type Problem } from "../api.server";
 import { who } from "../names";
+import { HeroStat } from "../components/hero";
 import { routedLeaves } from "../components/shell";
 import { cloudflare } from "../context";
 import { DEFAULT_LOCALE, moduleName, pseudoText, translator } from "../i18n";
@@ -561,7 +562,14 @@ export default function Home() {
       {loaded.counts || econ ? (
         <KPIWall>
           {loaded.counts ? (
-            <Stat label={label("kpi.approvals")} value={number.format(loaded.counts.approvals)} />
+            // `/approvals` in its default pending state renders the same
+            // `/v1/me/inbox` array this count is the length of, so the rows
+            // behind the figure are exactly the rows that page lists.
+            <HeroStat
+              label={label("kpi.approvals")}
+              value={number.format(loaded.counts.approvals)}
+              to="/approvals"
+            />
           ) : null}
           {loaded.counts ? (
             <Stat

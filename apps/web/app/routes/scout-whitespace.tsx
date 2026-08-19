@@ -23,6 +23,7 @@ import {
 } from "@lyra/ui";
 import { ApiError, api } from "../api.server";
 import { cloudflare } from "../context";
+import { jsonOf } from "../json.js";
 import { Gate } from "./staff";
 import { useScoutSessionData } from "./scout-shell";
 import {
@@ -84,12 +85,14 @@ export function nextWhitespaceStates(from: string): string[] {
   }
 }
 
-/** scout_signals, the columns this screen reads. */
+/** scout_signals, the columns this screen reads, as generic CRUD returns them
+ *  — see `r("signals", …)` in apps/api/src/resources.ts. */
 export interface SignalRow {
   id: string;
   source: string;
   sourceRef: string | null;
-  payloadJson: string | null;
+  /** Already parsed on the wire — see `jsonOf`. */
+  payloadJson: unknown;
   weight: number;
   observedAt: number;
 }
@@ -118,13 +121,9 @@ export interface Flag {
  * than being dropped — a flag nobody can render is still a flag.
  */
 export function flagOf(row: SignalRow): Flag {
-  let payload: Record<string, unknown> = {};
-  try {
-    const parsed: unknown = typeof row.payloadJson === "string" ? JSON.parse(row.payloadJson) : row.payloadJson;
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) payload = parsed as Record<string, unknown>;
-  } catch {
-    payload = {};
-  }
+  const parsed = jsonOf(row.payloadJson);
+  const payload: Record<string, unknown> =
+    parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
   const text = (key: string): string | null => (typeof payload[key] === "string" ? (payload[key] as string) : null);
   return {
     id: row.id,

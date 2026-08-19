@@ -484,6 +484,30 @@ describe("studio action", () => {
     expect(calls).toHaveLength(0);
   });
 
+  it("plans a hand-typed campaign, and refuses a subject too thin to argue from", async () => {
+    const calls = stubFetch(json({ campaignId: "cmp_1", plan: { options: [] }, source: "ai" }));
+
+    // The API argues the plan; the screen only carries the subject and the key.
+    const thrown = await studioAction(
+      args(form({ intent: "plan", key: "k_plan", campaignId: "cmp_1", subject: "marine cover" }))
+    ).catch((error: unknown) => error);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.url).toBe("https://api.test/v1/signal/campaigns/cmp_1/plan");
+    expect(calls[0]?.key).toBe("k_plan");
+    expect(JSON.parse(calls[0]?.body ?? "null")).toEqual({ subject: "marine cover" });
+    // A redirect, so a refresh re-reads the plan rather than arguing a second one.
+    expect((thrown as Response).headers.get("location")).toBe("/signal/studio?campaignId=cmp_1&planned=1");
+
+    expect((await studioAction(args(form({ intent: "plan", subject: "marine cover" })))).problem?.code).toBe(
+      "campaign_required"
+    );
+    expect((await studioAction(args(form({ intent: "plan", campaignId: "cmp_1", subject: "x" })))).problem?.code).toBe(
+      "subject_required"
+    );
+    expect(calls).toHaveLength(1);
+  });
+
   it("clears a draft as a compliance verdict, and discarding is the same write inverted", async () => {
     const calls = stubFetch(new Response(null, { status: 204 }), new Response(null, { status: 204 }));
 

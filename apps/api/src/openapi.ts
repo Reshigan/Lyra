@@ -327,9 +327,14 @@ const HAND_WRITTEN: Op[] = [
   { method: "post", path: "/v1/orbit/routing/sweep", summary: "Force the routing sweep now — SLA breach escalation and absence reassignment (also runs on the scheduled tick)", permission: "orbit:conversations:assign", tag: "orbit" },
   { method: "post", path: "/v1/orbit/drafts/sweep", summary: "Force the AI reply-draft sweep now — drafts a pending agent_ai reply for every conversation waiting on us (also runs on the scheduled tick)", permission: "orbit:ai:invoke", tag: "orbit" },
   { method: "post", path: "/v1/orbit/partners/{id}/quotes", summary: "Request a partner pricing quote (sandbox partners get clearly-marked synthetic pricing)", permission: "orbit:partners:read", tag: "orbit", requestBody: true },
+  // Staff read the hosted-page link so they can send it; gated on the same read
+  // permission as the row it points at, because a link is as sensitive as the row.
+  { method: "get", path: "/v1/orbit/portal-links/{kind}/{id}", summary: "The tenant-branded public link for a renewal (one-tap accept) or a closed conversation (CSAT)", permission: "orbit:renewals:read", tag: "orbit" },
 
   // Signal. Brief in, N compliance-checked ar/en variants out — the
   // Meta/Google publish half is credential-blocked and out of scope.
+  { method: "post", path: "/v1/signal/campaigns/{id}/plan", summary: "Plan a campaign in three ranked options, each with a probability of success and the reasons behind it, suggesting and linking a targeting pool when the campaign has none", permission: "signal:campaigns:update", tag: "signal", requestBody: true },
+  { method: "post", path: "/v1/signal/audiences/suggest", summary: "Propose a targetable audience for a subject from k-anonymous attribute counts, with the reason each band was chosen (docs/17 \u00a7SIG-025; protected attributes excluded per \u00a7SIG-034)", permission: "signal:audiences:estimate", tag: "signal", requestBody: true },
   { method: "post", path: "/v1/signal/creatives/generate", summary: "Generate ad-copy variants from a brief, compliance-checked and audited per locale", permission: "signal:creatives:generate", tag: "signal", requestBody: true },
   { method: "post", path: "/v1/signal/creatives/image", summary: "Generate a hero/post image from a prompt (ADR-0060); stores bytes to R2 and returns a data URL for immediate preview", permission: "signal:creatives:generate", tag: "signal", requestBody: true },
   { method: "get", path: "/v1/signal/creatives/{id}/image", summary: "Re-stream a previously generated creative image's bytes", permission: "signal:creatives:read", tag: "signal" },
@@ -340,6 +345,9 @@ const HAND_WRITTEN: Op[] = [
   // coverage (docs/8 clause 1); wording diffs and the negotiation pack both
   // feed the panel-bench negotiation workflow (docs §2.3, §2.5).
   { method: "post", path: "/v1/scout/whitespaces/compute", summary: "Run the whitespace sweep now against real quote demand vs. policy coverage", permission: "scout:whitespaces:promote", tag: "scout" },
+  { method: "get", path: "/v1/scout/whitespaces/commentary", summary: "Why each live whitespace is whitespace: the cached one-line commentary plus the evidence it was grounded against, for every candidate at once (the Radar's hover prefetch)", permission: "scout:whitespaces:read", tag: "scout" },
+  { method: "get", path: "/v1/scout/whitespaces/{id}/commentary", summary: "One candidate's commentary, evidence and AI provenance", permission: "scout:whitespaces:read", tag: "scout" },
+  { method: "post", path: "/v1/scout/whitespaces/{id}/promote-to-signal", summary: "Promote a whitespace into a draft SIGNAL campaign with AI-drafted brief and creative variants (approval-gated, idempotent, nothing sent)", permission: "scout:whitespaces:promote", tag: "scout" },
   { method: "post", path: "/v1/scout/signals/similar", summary: "Nearest signals to a phrase, from the market embedding index", permission: "scout:signals:read", tag: "scout", requestBody: true },
   { method: "post", path: "/v1/scout/wording-diff", summary: "Word-level diff of two coverage-wording texts (PDF extraction deferred, see ADR-0016)", permission: "scout:panel_bench:read", tag: "scout", requestBody: true },
   { method: "get", path: "/v1/scout/panel-bench/negotiation-pack", summary: "Bench + whitespace negotiation pack as a downloadable PDF", permission: "scout:whitespaces:promote", tag: "scout" },
@@ -437,7 +445,18 @@ const HAND_WRITTEN: Op[] = [
   { method: "get", path: "/v1/portal/{tenantSlug}/quote-requests/{id}", summary: "Re-open a self-serve comparison with the one-time token", tag: "portal", public: true },
   { method: "post", path: "/v1/portal/{tenantSlug}/quote-requests/{id}/accept", summary: "Customer accepts a quoted offer; converts the request, does not bind cover", tag: "portal", requestBody: true, public: true },
   { method: "post", path: "/v1/portal/{tenantSlug}/quote-requests/{id}/documents", summary: "Upload a supporting document against a self-serve quote (multipart)", tag: "portal", requestBody: true, public: true },
+  { method: "post", path: "/v1/portal/{tenantSlug}/quote-requests/{id}/reprice", summary: "Indicative re-price of the same panel with moved rating criteria; persists nothing and binds nothing", tag: "portal", requestBody: true, public: true },
+  // Self-registration. Writes a customer record at kyc_status=pending and
+  // nothing else — no user, no session, no key — so the reply carries no handle.
+  { method: "post", path: "/v1/portal/{tenantSlug}/registrations", summary: "Self-registration from the public storefront (person or business); records a pending customer, grants no access", tag: "portal", requestBody: true, public: true },
   { method: "post", path: "/v1/portal/{tenantSlug}/privacy-requests", summary: "Data subject lodges an access/erasure/rectification request (J-C4); recorded unverified, staff verify before fulfilment", tag: "portal", requestBody: true, public: true },
+  // J-C3 one-tap renewal and J-C2's CSAT tap: hosted, tenant-branded pages
+  // opened from a messaged link. The credential is the link's derived token
+  // (routes/portal.ts §portalLinkToken) — no session, so public by shape.
+  { method: "get", path: "/v1/portal/{tenantSlug}/renewals/{id}", summary: "Open a renewal offer with its link token (reference, expiry and state only)", tag: "portal", public: true },
+  { method: "post", path: "/v1/portal/{tenantSlug}/renewals/{id}/accept", summary: "Customer accepts a renewal in one tap; records the decision, does not bind or charge", tag: "portal", requestBody: true, public: true },
+  { method: "get", path: "/v1/portal/{tenantSlug}/feedback/{id}", summary: "Whether a closed conversation can still be rated, and its rating if already given", tag: "portal", public: true },
+  { method: "post", path: "/v1/portal/{tenantSlug}/feedback/{id}", summary: "Submit the CSAT rating (1-5) for a closed conversation; one rating per conversation", tag: "portal", requestBody: true, public: true },
 
   // Cross-resource search (routes/search.ts, docs/24 Phase 2 item 10). Fans out
   // over every registered resource's searchable columns, filtered again by the
@@ -456,7 +475,20 @@ const HAND_WRITTEN: Op[] = [
   { method: "get", path: "/v1/directory", summary: "List assignable staff and team refs (`?kind=user|team`) for the current tenant", tag: "search" }
 ];
 
-export function openapi(): Record<string, unknown> {
+/**
+ * `sessionCookie` is the name a client actually has to send. It is a parameter
+ * rather than a read of `env` because packages/sdk generates the client from
+ * this document at build time with no environment at all: the generated SDK must
+ * describe the default, while the document a deployment serves must describe
+ * that deployment. Staging renames the cookie (`SESSION_COOKIE`) so its browsers
+ * do not share one with production, and a spec that still said `lyra_session`
+ * there was one line of documentation that did not match the server.
+ *
+ * The default duplicates `COOKIE` in auth.ts rather than importing it — pulling
+ * auth.ts in would drag Hono, zod and @lyra/db into the SDK's build for one
+ * string. api.test.ts asserts the two agree, so the duplicate cannot drift.
+ */
+export function openapi(sessionCookie = "lyra_session"): Record<string, unknown> {
   const paths: Record<string, Record<string, unknown>> = {};
   const schemas: Record<string, unknown> = {};
 
@@ -573,7 +605,7 @@ export function openapi(): Record<string, unknown> {
     paths,
     components: {
       securitySchemes: {
-        session: { type: "apiKey", in: "cookie", name: "lyra_session" },
+        session: { type: "apiKey", in: "cookie", name: sessionCookie },
         apiKey: { type: "http", scheme: "bearer", description: "Partner API key" }
       },
       schemas: {

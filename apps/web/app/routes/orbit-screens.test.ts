@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { lensOf } from "../components/hero";
 import type { Env } from "../env";
 import {
   LABELS as consoleLabels,
   SLOW_MS,
   action as takeOver,
+  lensesAt as consoleLenses,
   consoleHeadline,
   labelsIn as consoleLabelsIn,
   loader as consoleLoader,
@@ -17,6 +19,7 @@ import {
 import {
   HIGH_RISK_FLOOR,
   LABELS as saveLabels,
+  LENSES as saveLenses,
   action as saveAction,
   atRisk,
   canOffer,
@@ -30,6 +33,7 @@ import {
 import {
   LABELS as pipelineLabels,
   STAGES,
+  lensesAt as pipelineLenses,
   action as sweepAction,
   labelsIn as pipelineLabelsIn,
   loader as pipelineLoader,
@@ -51,6 +55,7 @@ import {
 } from "./orbit-journey";
 import {
   LABELS as qualityLabels,
+  LENSES as qualityLenses,
   action as scoreAction,
   breakdownOf,
   checkScore,
@@ -973,5 +978,79 @@ describe("running and exporting a report", () => {
 
     expect(out.problem?.status).toBe(403);
     expect(out.table).toBeNull();
+  });
+});
+
+/* ------------------------------------------------------------- hero figures */
+
+// A hero figure with a drill-down promises that clicking it shows the rows it
+// counted — so the figure and the list have to come out of one predicate over
+// one array (components/hero.tsx). These pin each screen's lens against the
+// rule its label states, and against the split lists the screen actually
+// renders: a lens that drifts from the label is a hero that lies.
+
+describe("the console's waiting door", () => {
+  it("counts across both queues exactly what the two tables then list", () => {
+    const now = live.lastMessageAt! + SLOW_MS;
+    const bot = [live, { ...live, id: "cnv_02", lastMessageAt: now }];
+    const human = [{ ...live, id: "cnv_03", state: "human" as const, lastMessageAt: null }];
+    const lenses = consoleLenses(now);
+
+    const figure = lensOf([...bot, ...human], lenses, "waiting").length;
+    expect(figure).toBe([...bot, ...human].filter((row) => waitingMs(row, now) >= SLOW_MS).length);
+    expect(lensOf(bot, lenses, "waiting").length + lensOf(human, lenses, "waiting").length).toBe(figure);
+  });
+});
+
+describe("the pipeline's expiry doors", () => {
+  const now = 1_700_000_000_000;
+  const day = 86_400_000;
+  const scheduled = [
+    { ...renewal, id: "ren_soon", expiryAt: now + 3 * day },
+    { ...renewal, id: "ren_far", expiryAt: now + 60 * day }
+  ];
+  const offered = [{ ...renewal, id: "ren_gone", state: "offered" as const, expiryAt: now - day }];
+  const lenses = pipelineLenses(now);
+
+  it("counts each urgency exactly as the two open columns then list it", () => {
+    for (const [lens, band] of [
+      ["soon", "now"],
+      ["overdue", "gone"]
+    ] as const) {
+      const open = [...scheduled, ...offered];
+      const figure = lensOf(open, lenses, lens).length;
+      expect(figure).toBe(open.filter((row) => urgency(daysUntil(row.expiryAt, now)) === band).length);
+      expect(figure).toBe(1);
+      expect(lensOf(scheduled, lenses, lens).length + lensOf(offered, lenses, lens).length).toBe(figure);
+    }
+  });
+});
+
+describe("the quality desk's doors", () => {
+  const rows = [score, { ...score, id: "qa_02", score: 41 }, { ...score, id: "qa_03", scoredBy: "user:usr_01" }];
+
+  it("counts flagged scores exactly as the table then lists them", () => {
+    const shown = lensOf(rows, qualityLenses, "flagged");
+    expect(shown.map((row) => row.id)).toEqual(["qa_02"]);
+    expect(shown.length).toBe(rows.filter((row) => row.score < 60).length);
+  });
+
+  it("counts reviewer corrections exactly as the table then lists them", () => {
+    const shown = lensOf(rows, qualityLenses, "corrections");
+    expect(shown.map((row) => row.id)).toEqual(["qa_03"]);
+    expect(shown.length).toBe(rows.filter((row) => !isAgentScored(row)).length);
+  });
+});
+
+describe("the save desk's risk door", () => {
+  it("counts the high-risk head exactly as the queue then lists it", () => {
+    const rows = [
+      renewal,
+      { ...renewal, id: "ren_02", churnScore: HIGH_RISK_FLOOR - 1 },
+      { ...renewal, id: "ren_03", churnScore: null }
+    ];
+
+    expect(lensOf(rows, saveLenses, "risk")).toEqual(atRisk(rows));
+    expect(lensOf(rows, saveLenses, "risk").map((row) => row.id)).toEqual(["ren_01"]);
   });
 });

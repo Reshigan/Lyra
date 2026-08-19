@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { offerSummary } from "./dist-offers";
+import { labelsIn, offerSummary } from "./dist-offers";
 
 describe("offerSummary", () => {
   it("counts every offer as surfaceable when permitted and still proposed", () => {
@@ -19,5 +19,18 @@ describe("offerSummary", () => {
 
   it("is zero-zero on an empty list", () => {
     expect(offerSummary([], true)).toEqual({ total: 0, surfaceable: 0 });
+  });
+});
+
+describe("labelsIn", () => {
+  it("lets the tenant's pack rename the offer kind", () => {
+    // `optionLabel(l, "kind", "renewal")` reads "kind.renewal", which the pack
+    // owns; without the pack the card called a reorder a renewal.
+    expect(labelsIn("en", "retail-ecom")("kind.renewal")).toBe("Reorder");
+    expect(labelsIn("ar", "retail-ecom")("kind.renewal")).toBe("إعادة طلب");
+  });
+
+  it("keeps the insurance wording when no pack renames it", () => {
+    expect(labelsIn("en")("kind.renewal")).toBe("Renewal");
   });
 });

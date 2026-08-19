@@ -1,3 +1,4 @@
+import * as React from "react";
 import {
   Form,
   Link,
@@ -19,11 +20,15 @@ import {
   Ref,
   Select,
   Stat,
+  StateFlow,
   Table,
   formatMoney,
-  type Column
+  type Column,
+  type FlowMachine,
+  type FlowVisit
 } from "@lyra/ui";
 import { ApiError, api, fetchMe, names, type Problem } from "../api.server";
+import { ConfirmButton } from "../components/confirm";
 import { RefPicker, type RefOption } from "../components/ref-picker";
 import { cloudflare } from "../context";
 import { translator } from "../i18n";
@@ -181,12 +186,64 @@ export const CLAIM_TRANSITIONS: Record<string, readonly string[]> = {
 };
 
 /**
+ * The flow the diagram draws. The spine is the path a claim takes when it is
+ * paid and closed; `rejected` and `withdrawn` are how it ends instead, so they
+ * are exits rather than steps a live claim is told it is pending. `flowPlan`
+ * refuses a spine whose consecutive pair is not a documented edge of
+ * `CLAIM_TRANSITIONS`, so this literal cannot drift away from the machine
+ * above without the test failing.
+ */
+export const CLAIM_FLOW: FlowMachine = {
+  transitions: CLAIM_TRANSITIONS,
+  spine: ["reported", "triage", "assessing", "approved", "settling", "settled", "closed"],
+  exits: ["rejected", "withdrawn"]
+};
+
+/**
+ * A state change as the audit trail records it: engines/axis-claim-lifecycle.ts
+ * writes `axis.claim.${to}`, and engines/axis-fnol.ts writes
+ * `axis.claim.registered` for the `reported` state a claim is born in. Every
+ * other action on the trail (a reserve, a payment, a recovery) is not a
+ * transition, so it is not a step — it returns null and is dropped.
+ */
+export function stateOfAudit(action: string): string | null {
+  if (action === "axis.claim.registered") return "reported";
+  const state = action.startsWith("axis.claim.") ? action.slice("axis.claim.".length) : action;
+  return state in CLAIM_TRANSITIONS ? state : null;
+}
+
+/**
  * The hops this screen may offer. `settling` and `settled` are reached by
  * requesting a payment — the API refuses them as transitions, so offering them
  * would be a dead end the desk discovers only after submitting.
  */
 export function hopsFor(status: string): readonly string[] {
   return (CLAIM_TRANSITIONS[status] ?? []).filter((to) => to !== "settling" && to !== "settled");
+}
+
+/**
+ * Outcomes that end the claim against the claimant. They are offered like any
+ * other hop but marked as destructive and asked about before they are sent
+ * (CLAUDE.md §4).
+ *
+ * ponytail: restated in claims-desk.tsx beside its own copy of
+ * `CLAIM_TRANSITIONS`, which is duplicated there for the same reason — the web
+ * app cannot import @lyra/core, and a route module importing another route
+ * module drags that route's server code into the client bundle. One shared home
+ * when a third screen wants it.
+ */
+export const ADVERSE_HOPS = ["rejected", "withdrawn", "closed"] as const;
+
+export const isAdverseHop = (to: string): boolean => (ADVERSE_HOPS as readonly string[]).includes(to);
+
+/**
+ * What is being held for this claim, or null when nobody has priced it.
+ * `amountMinor` is the claimant's notified figure and stands in until the desk
+ * posts its first reserve movement; with neither, the claim is unpriced and the
+ * summary has to say so rather than print a zero.
+ */
+export function reserveOf(claim: Pick<Claim, "reserveMinor" | "amountMinor">): number | null {
+  return claim.reserveMinor ?? claim.amountMinor ?? null;
 }
 
 /** Where a reserve sits. Mirrors RESERVE_HEADS in the claims engine. */
@@ -224,6 +281,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     fnolCaption: "The report as it was taken, unedited.",
     summaryTitle: "The claim",
     reserved: "Reserved",
+    unpriced: "Not yet priced",
     settled: "Settled",
     reportedAt: "Reported",
     incidentAt: "Incident",
@@ -246,6 +304,8 @@ export const LABELS: Record<string, Record<string, string>> = {
     outcome: "Move to",
     hopReason: "Note",
     hopSubmit: "Move the claim",
+    hopConfirm:
+      "{outcome} ends {ref} against the claimant. It is recorded against your name and the claimant is told. Continue?",
     transitionDone: "The claim was moved.",
     outcomeRequired: "Choose a move the claim can make from where it stands.",
     noHops: "This claim has nowhere left to go.",
@@ -341,6 +401,8 @@ export const LABELS: Record<string, Record<string, string>> = {
     approvalsCaption: "Every approval raised against this claim.",
     historyTitle: "Trail",
     historyCaption: "Every change recorded against this claim, newest first.",
+    flowTitle: "Where it is",
+    flowLabel: "Claim lifecycle",
     colConfidence: "Confidence",
     colVerified: "Verified",
     colPolicyKey: "Rule",
@@ -357,6 +419,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     fnolCaption: "البلاغ كما استُلم، دون تعديل.",
     summaryTitle: "المطالبة",
     reserved: "المحتجز",
+    unpriced: "لم تُسعَّر بعد",
     settled: "المسدد",
     reportedAt: "تاريخ الإبلاغ",
     incidentAt: "تاريخ الحادث",
@@ -379,6 +442,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     outcome: "الانتقال إلى",
     hopReason: "ملاحظة",
     hopSubmit: "تحريك المطالبة",
+    hopConfirm: "{outcome} يُنهي {ref} ضد المطالِب. يُسجَّل باسمك ويُبلَّغ المطالِب. هل تريد المتابعة؟",
     transitionDone: "تم تحريك المطالبة.",
     outcomeRequired: "اختر حركة متاحة من الوضع الحالي للمطالبة.",
     noHops: "لا توجد حركة متاحة لهذه المطالبة.",
@@ -474,6 +538,8 @@ export const LABELS: Record<string, Record<string, string>> = {
     approvalsCaption: "كل موافقة طُلبت على هذه المطالبة.",
     historyTitle: "السجل",
     historyCaption: "كل تغيير مسجّل على هذه المطالبة، الأحدث أولًا.",
+    flowTitle: "موضعها الآن",
+    flowLabel: "دورة حياة المطالبة",
     colConfidence: "درجة الثقة",
     colVerified: "تاريخ التوثيق",
     colPolicyKey: "القاعدة",
@@ -666,6 +732,63 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 
 /* --------------------------------------------------------------- component */
 
+/**
+ * The hop form. The outcome is state rather than an uncontrolled `defaultValue`
+ * because the button beside it has to know whether the hop being sent ends the
+ * claim against the claimant, and swap itself for one that asks first.
+ */
+function HopForm({
+  claim,
+  hops,
+  idempotencyKey,
+  l,
+  busy
+}: {
+  claim: Pick<Claim, "status" | "claimNo">;
+  hops: readonly string[];
+  idempotencyKey: string;
+  l: Label;
+  busy: boolean;
+}) {
+  const [to, setTo] = React.useState(hops[0] ?? "");
+  const outcome = tag(l, "status", to);
+
+  return (
+    <Form method="post" className="flex flex-wrap items-end gap-4">
+      <input type="hidden" name="intent" value="transition" />
+      <input type="hidden" name="from" value={claim.status} />
+      <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
+      <label className="flex flex-col gap-1 font-ui text-12 text-muted">
+        {l("outcome")}
+        <Select
+          name="to"
+          value={to}
+          onValueChange={setTo}
+          options={hops.map((value) => ({ value, label: tag(l, "status", value) }))}
+        />
+      </label>
+      <label className="flex flex-col gap-1 font-ui text-12 text-muted">
+        {l("hopReason")}
+        <Input name="reason" className="w-56" />
+      </label>
+      {isAdverseHop(to) ? (
+        <ConfirmButton
+          type="submit"
+          variant="danger"
+          loading={busy}
+          message={l("hopConfirm", { outcome, ref: claim.claimNo })}
+        >
+          {l("hopSubmit")}
+        </ConfirmButton>
+      ) : (
+        <Button type="submit" loading={busy}>
+          {l("hopSubmit")}
+        </Button>
+      )}
+    </Form>
+  );
+}
+
 export default function ClaimDetail() {
   const loaded = useLoaderData<typeof loader>();
   const result = useActionData<typeof action>();
@@ -728,12 +851,12 @@ export default function ClaimDetail() {
   );
 
   // What the claim has cost so far: what is still held for it, plus what has
-  // left, less what has come back. `amountMinor` is the notified figure and
-  // only stands in until the desk sets its first reserve.
-  const reserveMinor = claim.reserveMinor ?? claim.amountMinor ?? 0;
+  // left, less what has come back. An unpriced claim has incurred whatever has
+  // actually moved — but its reserve is not a zero, it is unknown (`reserveOf`).
+  const reserveMinor = reserveOf(claim);
   const paidMinor = claim.paidMinor ?? 0;
   const recoveredMinor = claim.recoveredMinor ?? 0;
-  const incurredMinor = reserveMinor + paidMinor - recoveredMinor;
+  const incurredMinor = (reserveMinor ?? 0) + paidMinor - recoveredMinor;
 
   const hops = hopsFor(claim.status);
 
@@ -786,6 +909,16 @@ export default function ClaimDetail() {
     { key: "state", header: l("colStatus"), render: (row) => <Badge size="sm" dot>{tag(l, "state", row.state)}</Badge> }
   ];
 
+  // Ascending, because the trail arrives newest-first and a flow reads forwards.
+  // The trail is capped at 25 rows and is withheld without `core:audit:read`, so
+  // these are the transitions this actor can see — never a claim that there were
+  // no others. `flowPlan` draws the current state and what is still owed either
+  // way, so a claim with no visible history is still honestly placed.
+  const visits: FlowVisit[] = [...loaded.trail].reverse().flatMap((row) => {
+    const state = stateOfAudit(row.action);
+    return state ? [{ state, at: row.ts, actor: row.actorRef }] : [];
+  });
+
   const trailColumns: Array<Column<AuditRow>> = [
     { key: "action", header: l("colAction"), render: (row) => humanise(row.action) },
     { key: "actorRef", header: l("colWho"), render: (row) => <Ref value={row.actorRef} className="text-12" /> },
@@ -814,7 +947,7 @@ export default function ClaimDetail() {
       >
         <div className="mb-4 grid grid-cols-2 gap-6 md:grid-cols-4">
           <Stat label={l("incurred")} value={money(incurredMinor)} />
-          <Stat label={l("reserved")} value={money(reserveMinor)} />
+          <Stat label={l("reserved")} value={reserveMinor === null ? l("unpriced") : money(reserveMinor)} />
           <Stat label={l("paid")} value={money(paidMinor)} />
           <Stat label={l("recovered")} value={money(recoveredMinor)} />
           <Stat label={l("reportedAt")} value={<DateTime value={claim.reportedAt} locale={locale} precision="day" />} />
@@ -927,26 +1060,7 @@ export default function ClaimDetail() {
             {hops.length === 0 ? (
               <EmptyState title={l("noHops")} />
             ) : (
-              <Form method="post" className="flex flex-wrap items-end gap-4">
-                <input type="hidden" name="intent" value="transition" />
-                <input type="hidden" name="from" value={claim.status} />
-                <input type="hidden" name="idempotencyKey" value={loaded.idempotencyKey} />
-                <label className="flex flex-col gap-1 font-ui text-12 text-muted">
-                  {l("outcome")}
-                  <Select
-                    name="to"
-                    defaultValue={hops[0] ?? ""}
-                    options={hops.map((value) => ({ value, label: tag(l, "status", value) }))}
-                  />
-                </label>
-                <label className="flex flex-col gap-1 font-ui text-12 text-muted">
-                  {l("hopReason")}
-                  <Input name="reason" className="w-56" />
-                </label>
-                <Button type="submit" loading={busy}>
-                  {l("hopSubmit")}
-                </Button>
-              </Form>
+              <HopForm claim={claim} hops={hops} idempotencyKey={loaded.idempotencyKey} l={l} busy={busy} />
             )}
           </Card>
         ) : null}
@@ -1007,7 +1121,13 @@ export default function ClaimDetail() {
           {l(result.error)}
         </p>
       ) : null}
-      {result?.done ? <p className="font-ui text-13 text-success">{l(result.done)}</p> : null}
+      {/* The failure was announced and the success was not: a reserve that saved
+          said so only in colour, which a screen reader never reaches. */}
+      {result?.done ? (
+        <p role="status" className="font-ui text-13 text-success">
+          {l(result.done)}
+        </p>
+      ) : null}
       {result?.problem ? <Gate problem={result.problem} l={l} /> : null}
 
       <Card title={l("reservesTitle")} padded={false}>
@@ -1057,6 +1177,17 @@ export default function ClaimDetail() {
           rows={loaded.approvals}
           rowKey={(row) => row.id}
           empty={<EmptyState title={l("none")} />}
+        />
+      </Card>
+
+      <Card title={l("flowTitle")}>
+        <StateFlow
+          machine={CLAIM_FLOW}
+          visits={visits}
+          current={claim.status}
+          label={l("flowLabel")}
+          labelFor={(state) => tag(l, "status", state)}
+          locale={locale}
         />
       </Card>
 

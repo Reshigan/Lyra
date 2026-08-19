@@ -1,3 +1,4 @@
+import * as React from "react";
 import {
   Form,
   Link,
@@ -20,6 +21,7 @@ import {
   type BadgeTone
 } from "@lyra/ui";
 import { ApiError, api, directory, names } from "../api.server";
+import { ConfirmButton } from "../components/confirm";
 import { who } from "../names";
 import { cloudflare } from "../context";
 import { optionLabel } from "../modules/spec";
@@ -74,6 +76,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "col.fraud": "Fraud score",
     "col.siu": "SIU",
     "col.handler": "Handler",
+    "reserve.unpriced": "Not yet priced",
     "count.reported": "Reported",
     "count.triage": "Triage",
     "count.assessing": "Assessing",
@@ -102,11 +105,14 @@ const LABELS: Record<string, Record<string, string>> = {
     "assign.pick": "Choose a colleague or team",
     "assign.submit": "Assign",
     "done.assign": "Handler updated.",
+    "done.transition": "Claim advanced.",
     "hop.title": "Advance",
     "hop.outcome": "Outcome",
     "hop.reasonCode": "Reason code",
     "hop.reason": "Note",
     "hop.submit": "Advance",
+    "hop.confirm":
+      "{outcome} closes {ref} against the claimant. It is recorded against your name and the claimant is told. Continue?",
     "hop.none": "No hop from here — settling and settled follow a payment.",
     "problem.missing_claim": "Pick a claim first.",
     "problem.missing_handler": "Name a handler before assigning.",
@@ -130,6 +136,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "col.fraud": "درجة الاحتيال",
     "col.siu": "وحدة التحقيق",
     "col.handler": "المعالج",
+    "reserve.unpriced": "لم تُسعَّر بعد",
     "count.reported": "مُبلَّغة",
     "count.triage": "فرز",
     "count.assessing": "تقييم",
@@ -157,11 +164,13 @@ const LABELS: Record<string, Record<string, string>> = {
     "assign.pick": "اختر زميلاً أو فريقاً",
     "assign.submit": "تعيين",
     "done.assign": "تم تحديث المعالج.",
+    "done.transition": "تم تقديم المطالبة.",
     "hop.title": "تقديم",
     "hop.outcome": "النتيجة",
     "hop.reasonCode": "رمز السبب",
     "hop.reason": "ملاحظة",
     "hop.submit": "تقديم",
+    "hop.confirm": "{outcome} يُنهي {ref} ضد المُطالِب. يُسجَّل باسمك ويُبلَّغ المُطالِب. هل تريد المتابعة؟",
     "hop.none": "لا انتقال متاح من هنا — التسوية الجارية والنهائية تأتيان بعد طلب دفع.",
     "problem.missing_claim": "اختر مطالبة أولًا.",
     "problem.missing_handler": "حدّد معالجًا قبل التعيين.",
@@ -188,7 +197,13 @@ export interface ClaimRow {
   customerId: string;
   status: string;
   perilCode: string | null;
-  amountMinor: number;
+  /**
+   * `axis_claims.amount_minor` is nullable: a claim can be notified before
+   * anyone has put a number on it. Typing it `number` made an unpriced claim
+   * render as a zero reserve, which is a different — and much less alarming —
+   * fact than "nobody has priced this yet". See `reserveOf`.
+   */
+  amountMinor: number | null;
   /** `axis_claims.currency` is NOT NULL — every claim carries its own. */
   currency: string;
   reserveMinor: number | null;
@@ -229,13 +244,37 @@ export function hopsFor(status: string): readonly string[] {
 }
 
 /**
+ * Outcomes that end the claim against the claimant. They are still offered like
+ * any other hop, but marked as destructive and asked about before they are sent
+ * (CLAUDE.md §4) — on a 200-row worklist the Advance button sits inches from
+ * the next row's.
+ *
+ * ponytail: restated in claim-detail.tsx beside its own copy of
+ * `CLAIM_TRANSITIONS`, which is duplicated there for the same reason (the web
+ * app cannot import @lyra/core). One shared home when a third screen wants it.
+ */
+export const ADVERSE_HOPS = ["rejected", "withdrawn", "closed"] as const;
+
+export const isAdverseHop = (to: string): boolean =>
+  (ADVERSE_HOPS as readonly string[]).includes(to);
+
+/**
+ * What is being held for this claim, or `null` when nobody has priced it.
+ * `amountMinor` is the claimant's notified figure and stands in until the desk
+ * posts its first reserve movement; with neither, the claim is unpriced and the
+ * column has to say so rather than print a zero.
+ */
+export function reserveOf(row: ClaimRow): number | null {
+  return row.reserveMinor ?? row.amountMinor;
+}
+
+/**
  * Mirrors claim-detail.tsx's inline formula (packages/core/src/claims.ts is
- * also out of reach here). Falls back to the FNOL estimate before a reserve
- * movement has ever been posted.
+ * also out of reach here). An unpriced claim has incurred whatever has actually
+ * moved — nothing is being held for it yet.
  */
 export function incurredOf(row: ClaimRow): number {
-  const reserveMinor = row.reserveMinor ?? row.amountMinor ?? 0;
-  return reserveMinor + row.paidMinor - row.recoveredMinor;
+  return (reserveOf(row) ?? 0) + row.paidMinor - row.recoveredMinor;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -449,9 +488,72 @@ const COLUMNS = [
 function Cell({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex min-w-0 items-center gap-2">
-      <span className="font-ui text-12 uppercase tracking-wide text-subtle sm:hidden">{label}</span>
+      {/* The heading row above is `aria-hidden` (it is a decorative grid, not a
+          table header a cell can point at), so hiding the per-cell label on a
+          wide screen left a screen reader nine unlabelled values in a row.
+          `sr-only` keeps the visual alignment and gives the label back. */}
+      <span className="font-ui text-12 uppercase tracking-wide text-subtle sm:sr-only">{label}</span>
       <span className="min-w-0 truncate">{children}</span>
     </div>
+  );
+}
+
+/**
+ * One row's Advance form. The outcome is state rather than an uncontrolled
+ * `defaultValue` because the button beside it has to know whether the hop being
+ * sent ends the claim against the claimant, and swap itself for one that asks.
+ */
+function HopForm({ row, hops, l, busy }: { row: ClaimRow; hops: readonly string[]; l: Label; busy: boolean }) {
+  const [to, setTo] = React.useState(hops[0] ?? "");
+  const outcome = optionLabel(l, "count", to);
+  // Every button on a 200-row worklist reads "Advance"; the row it belongs to
+  // is only obvious to someone who can see it.
+  const label = `${l("hop.submit")}: ${row.claimNo}`;
+
+  return (
+    <Form method="post" className="mt-2 flex flex-wrap items-end gap-2">
+      <input type="hidden" name="intent" value="transition" />
+      <input type="hidden" name="claimId" value={row.id} />
+      <input type="hidden" name="from" value={row.status} />
+      <Field label={l("hop.outcome")}>
+        <Select
+          name="to"
+          value={to}
+          onValueChange={setTo}
+          options={hops.map((hop) => ({
+            value: hop,
+            // The desk already names every state under `count.*`; reusing those
+            // keeps one wording for a state whether it is a column heading or
+            // an outcome to pick.
+            label: optionLabel(l, "count", hop)
+          }))}
+        />
+      </Field>
+      <Field label={l("hop.reasonCode")}>
+        <Input name="reasonCode" />
+      </Field>
+      {/* The action reads `reason` and always has; the form never offered it,
+          so every hop went to the ledger with an empty note. */}
+      <Field label={l("hop.reason")}>
+        <Input name="reason" />
+      </Field>
+      {isAdverseHop(to) ? (
+        <ConfirmButton
+          type="submit"
+          size="sm"
+          variant="danger"
+          loading={busy}
+          aria-label={label}
+          message={l("hop.confirm", { outcome, ref: row.claimNo })}
+        >
+          {l("hop.submit")}
+        </ConfirmButton>
+      ) : (
+        <Button type="submit" size="sm" loading={busy} aria-label={label}>
+          {l("hop.submit")}
+        </Button>
+      )}
+    </Form>
   );
 }
 
@@ -484,7 +586,13 @@ export default function ClaimsDesk() {
       </header>
 
       {result?.problem ? <Gate problem={phrase(result.problem, l)} l={l} /> : null}
-      {result?.done === "assign" ? <p role="status">{l("done.assign")}</p> : null}
+      {/* A hop that succeeded said nothing at all: the row re-rendered with a new
+          status somewhere down a 200-row list, which is not feedback. */}
+      {result?.done ? (
+        <p role="status" className="font-ui text-13 text-success">
+          {l(`done.${result.done}`)}
+        </p>
+      ) : null}
 
       <div className="flex flex-wrap gap-2">
         {OPEN_CLAIM_STATES.map((state) => (
@@ -517,6 +625,7 @@ export default function ClaimsDesk() {
         <ul className="space-y-2">
           {rows.map((row) => {
             const hops = hopsFor(row.status);
+            const reserve = reserveOf(row);
             const flag = urgencyFlag(row, now, l);
             const daysOpen = Math.floor((now - row.reportedAt) / DAY_MS);
             return (
@@ -542,11 +651,11 @@ export default function ClaimsDesk() {
                     <Money amountMinor={incurredOf(row)} currency={row.currency} locale={locale} />
                   </Cell>
                   <Cell label={l("col.reserve")}>
-                    <Money
-                      amountMinor={row.reserveMinor ?? row.amountMinor}
-                      currency={row.currency}
-                      locale={locale}
-                    />
+                    {reserve === null ? (
+                      <span className="text-subtle">{l("reserve.unpriced")}</span>
+                    ) : (
+                      <Money amountMinor={reserve} currency={row.currency} locale={locale} />
+                    )}
                   </Cell>
                   <Cell label={l("col.daysOpen")}>{daysOpen}</Cell>
                   <Cell label={l("col.fraud")}>
@@ -573,26 +682,7 @@ export default function ClaimsDesk() {
                 </div>
 
                 {held.has(PERM.update) && hops.length > 0 ? (
-                  <Form method="post" className="mt-2 flex flex-wrap items-end gap-2">
-                    <input type="hidden" name="intent" value="transition" />
-                    <input type="hidden" name="claimId" value={row.id} />
-                    <input type="hidden" name="from" value={row.status} />
-                    <Field label={l("hop.outcome")}>
-                      <Select name="to" defaultValue={hops[0] ?? ""} options={hops.map((to) => ({
-                          value: to,
-                          // The desk already names every state under `count.*`;
-                          // reusing those keeps one wording for a state whether
-                          // it is a column heading or an outcome to pick.
-                          label: optionLabel(l, "count", to)
-                        }))} />
-                    </Field>
-                    <Field label={l("hop.reasonCode")}>
-                      <Input name="reasonCode" />
-                    </Field>
-                    <Button type="submit" size="sm" loading={busy}>
-                      {l("hop.submit")}
-                    </Button>
-                  </Form>
+                  <HopForm row={row} hops={hops} l={l} busy={busy} />
                 ) : null}
               </li>
             );

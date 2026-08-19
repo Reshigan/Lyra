@@ -1,7 +1,8 @@
 import { expect, test } from "@playwright/test";
 import { goto, loginAsAxisAgent, loginAsNorthExec } from "./fixtures.js";
 
-// @journey:J-AXIS-SHELL (docs/superpowers/specs/2026-08-16-axis-shell-fork-design.md):
+// @journey:J-O1 — the "login" step of J-O1 exception clearing
+// (docs/06-roles-and-journeys.md:47, docs/superpowers/specs/2026-08-16-axis-shell-fork-design.md):
 // AxisShell is its own scoped shell — an actor with an axis.*-resolving role
 // lands in it and sees only AXIS's own rail (never another module's,
 // ModuleSwitcher only appears once an actor's roles resolve to more than one

@@ -547,3 +547,273 @@ describe("POST /v1/portal/:tenantSlug/privacy-requests", () => {
     expect(noTenant.status).toBe(404);
   });
 });
+
+// Self-registration. The third public door (partner signup is the first, the
+// lead form the second). What matters here is not that a row appears but that
+// the row is inert: a stranger may describe themselves, never entitle
+// themselves (CLAUDE.md §4 — anything that would grant access is consequential
+// and waits for a human).
+describe("POST /v1/portal/:tenantSlug/registrations", () => {
+  async function customerByEmail(email: string) {
+    const rows = await database.select().from(schema.customers);
+    return rows.find((r) => (r.emailsJson ? (JSON.parse(r.emailsJson) as string[]).includes(email) : false));
+  }
+
+  it("registers an individual as a pending, unverified customer and nothing more", async () => {
+    kv.store.clear();
+    const res = await call("POST", "/v1/portal/gonxt/registrations", {
+      kind: "person",
+      name: "Nadia Individual",
+      email: "nadia.individual@example.com",
+      phone: "+971500000123",
+      locale: "ar",
+      consent: true
+    });
+    expect(res.status).toBe(202);
+    expect(res.body.status).toBe("pending");
+    // No id, no token, no key: there is nothing a registration entitles anyone
+    // to hold, so it hands back nothing that could be replayed.
+    expect(Object.keys(res.body)).toEqual(["status"]);
+
+    const customer = await customerByEmail("nadia.individual@example.com");
+    expect(customer).toBeTruthy();
+    expect(customer!.type).toBe("person");
+    expect(customer!.kycStatus).toBe("pending");
+    expect(customer!.locale).toBe("ar");
+    expect(JSON.parse(customer!.tagsJson!)).toContain("portal-registration");
+    expect(customer!.consentId).toBeTruthy();
+
+    // Registering must not create anything that can sign in.
+    const users = await database.select().from(schema.users).where(eq(schema.users.tenantId, customer!.tenantId));
+    expect(users.some((u) => (u.email ?? "").toLowerCase() === "nadia.individual@example.com")).toBe(false);
+
+    const auditRows = await database.select().from(schema.auditLog);
+    expect(auditRows.some((a) => a.action === "core.customers.register" && a.subjectRef === `customers:${customer!.id}`)).toBe(
+      true
+    );
+  });
+
+  it("registers a business with its legal identity and a named contact", async () => {
+    kv.store.clear();
+    const res = await call("POST", "/v1/portal/gonxt/registrations", {
+      kind: "business",
+      companyName: "Dune Logistics FZ-LLC",
+      registrationNo: "CN-1029384",
+      taxId: "100123456700003",
+      country: "ae",
+      contactName: "Omar Fleet",
+      email: "omar.fleet@dune.example",
+      phone: "+971500000456",
+      consent: true
+    });
+    expect(res.status).toBe(202);
+
+    const customer = await customerByEmail("omar.fleet@dune.example");
+    expect(customer).toBeTruthy();
+    expect(customer!.type).toBe("business");
+    expect(JSON.parse(customer!.nameJson).en).toBe("Dune Logistics FZ-LLC");
+    expect(customer!.registrationNo).toBe("CN-1029384");
+    expect(customer!.taxId).toBe("100123456700003");
+    expect(customer!.country).toBe("AE");
+    expect(customer!.kycStatus).toBe("pending");
+    // The human behind the company is kept, not flattened into the company name.
+    expect(JSON.parse(customer!.nameJson).contact).toBe("Omar Fleet");
+  });
+
+  it("refuses to let a public caller choose its tenant, role or verification state", async () => {
+    kv.store.clear();
+    for (const extra of [{ tenantId: "ten_other" }, { role: "admin" }, { kycStatus: "verified" }, { type: "business" }]) {
+      const res = await call("POST", "/v1/portal/gonxt/registrations", {
+        kind: "person",
+        name: "Injector",
+        email: `injector-${Object.keys(extra)[0]}@example.com`,
+        consent: true,
+        ...extra
+      });
+      expect(res.status).toBe(400);
+    }
+  });
+
+  it("requires consent, a real email and a two-letter country, and 404s an unknown tenant", async () => {
+    kv.store.clear();
+    expect(
+      (await call("POST", "/v1/portal/gonxt/registrations", { kind: "person", name: "No Consent", email: "nc@example.com" }))
+        .status
+    ).toBe(400);
+    expect(
+      (
+        await call("POST", "/v1/portal/gonxt/registrations", {
+          kind: "person",
+          name: "Bad Mail",
+          email: "not-an-email",
+          consent: true
+        })
+      ).status
+    ).toBe(400);
+    expect(
+      (
+        await call("POST", "/v1/portal/gonxt/registrations", {
+          kind: "business",
+          companyName: "Long Country Co",
+          country: "United Arab Emirates",
+          contactName: "X",
+          email: "lc@example.com",
+          consent: true
+        })
+      ).status
+    ).toBe(400);
+    expect(
+      (
+        await call("POST", "/v1/portal/does-not-exist/registrations", {
+          kind: "person",
+          name: "Nobody",
+          email: "nobody@example.com",
+          consent: true
+        })
+      ).status
+    ).toBe(404);
+  });
+
+  it("throttles by email and by IP", async () => {
+    kv.store.clear();
+    const payload = { kind: "person" as const, name: "Spam", email: "reg-spam@example.com", consent: true as const };
+    for (let i = 0; i < 3; i++) await call("POST", "/v1/portal/gonxt/registrations", payload);
+    expect((await call("POST", "/v1/portal/gonxt/registrations", payload)).status).toBe(429);
+
+    kv.store.clear();
+    const ip = "203.0.113.77";
+    for (let i = 0; i < 10; i++) {
+      await call(
+        "POST",
+        "/v1/portal/gonxt/registrations",
+        { kind: "person", name: "Rotator", email: `reg-rotating-${i}@example.com`, consent: true },
+        { "cf-connecting-ip": ip }
+      );
+    }
+    const rotated = await call(
+      "POST",
+      "/v1/portal/gonxt/registrations",
+      { kind: "person", name: "Rotator", email: "reg-rotating-final@example.com", consent: true },
+      { "cf-connecting-ip": ip }
+    );
+    expect(rotated.status).toBe(429);
+  });
+});
+
+// The sliders. A comparison that only shows one priced risk is a price list;
+// the ask is "move a criterion, watch the premium move" — and the moved figure
+// has to be the rating engine's, not the browser's. So the criteria are
+// derived from the panel's own rate tables and the re-price runs the same
+// panelFor/quoteOne/rankOutcomes path a real shop runs, minus the persistence
+// (docs/19: an indicative comparison must not write money state).
+describe("POST /v1/portal/:tenantSlug/quote-requests/:id/reprice", () => {
+  const RISK = { age: 34, sumInsuredMinor: 2_800_000, priorClaims: false, vehicleUse: "private" };
+  let requestId: string;
+  let token: string;
+  let baseline: any;
+
+  beforeAll(async () => {
+    kv.store.clear();
+    const [motor] = await database.select().from(schema.products).where(eq(schema.products.line, "motor"));
+    const res = await call("POST", "/v1/portal/gonxt/leads", {
+      productId: motor!.id,
+      name: "Slider Visitor",
+      email: "slider.visitor@example.com",
+      consent: true,
+      inputs: RISK
+    });
+    expect(res.status).toBe(201);
+    requestId = res.body.quoteRequestId;
+    token = res.body.token;
+    baseline = res.body;
+  });
+
+  it("declares the criteria the panel actually rates on, with the visitor's own values", () => {
+    const byField = Object.fromEntries((baseline.criteria as any[]).map((c) => [c.field, c]));
+    // Straight out of the seeded motor rate table: bands on age, a rate on the
+    // sum insured, a loading on prior claims. Nothing else is a knob, because
+    // nothing else changes the price.
+    expect(Object.keys(byField).sort()).toEqual(["age", "priorClaims", "sumInsuredMinor"]);
+    expect(byField.age).toMatchObject({ kind: "number", min: 18, max: 120, step: 1 });
+    expect(byField.sumInsuredMinor.kind).toBe("money");
+    expect(byField.sumInsuredMinor.max).toBeGreaterThan(RISK.sumInsuredMinor);
+    expect(byField.priorClaims.kind).toBe("boolean");
+    expect(baseline.inputs).toEqual({ age: 34, sumInsuredMinor: 2_800_000, priorClaims: false });
+    // The contact details on the same row are not criteria and must not leak.
+    expect(JSON.stringify(baseline.inputs)).not.toMatch(/slider.visitor@example.com|Slider Visitor/);
+  });
+
+  it("re-prices the whole panel from moved criteria without writing a single row", async () => {
+    const before = await database.select().from(schema.distQuoteResponses);
+    const beforeRequests = await database.select().from(schema.distQuoteRequests);
+
+    const res = await call("POST", `/v1/portal/gonxt/quote-requests/${requestId}/reprice`, {
+      token,
+      inputs: { ...baseline.inputs, age: 22, priorClaims: true }
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.indicative).toBe(true);
+    expect(res.body.rankedBy).toBe("total_price");
+    expect(res.body.offers.length).toBe(baseline.offers.length);
+
+    // A 22-year-old with a claim is the dearest band plus a loading: every
+    // offer must move up, and the engine — not the browser — says by how much.
+    for (const offer of res.body.offers) {
+      const was = baseline.offers.find((o: any) => o.offeringId === offer.offeringId);
+      expect(was).toBeTruthy();
+      expect(offer.totalMinor).toBeGreaterThan(was.totalMinor);
+    }
+    const totals = res.body.offers.map((o: any) => o.totalMinor);
+    expect(totals).toEqual([...totals].sort((a: number, b: number) => a - b));
+
+    // Still the public shape: no margin, no scoring, no decline reasons.
+    expect(JSON.stringify(res.body)).not.toMatch(/commission|valueScore|declineReason/i);
+
+    const after = await database.select().from(schema.distQuoteResponses);
+    const afterRequests = await database.select().from(schema.distQuoteRequests);
+    expect(after.length).toBe(before.length);
+    expect(afterRequests.length).toBe(beforeRequests.length);
+    expect(afterRequests.find((r) => r.id === requestId)!.updatedAt).toBe(
+      beforeRequests.find((r) => r.id === requestId)!.updatedAt
+    );
+  });
+
+  it("brings an offering the visitor could not reach into range when the criterion crosses its floor", async () => {
+    // Cedar Motor Plus is eligible only above a 5,000,000 minor sum insured;
+    // the visitor started below it, so the slider is the thing that reveals it.
+    expect(baseline.offers.some((o: any) => o.name.includes("Plus"))).toBe(false);
+    const res = await call("POST", `/v1/portal/gonxt/quote-requests/${requestId}/reprice`, {
+      token,
+      inputs: { ...baseline.inputs, sumInsuredMinor: 9_000_000 }
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.offers.some((o: any) => o.name.includes("Plus"))).toBe(true);
+  });
+
+  it("clamps a criterion to the range the panel declared and ignores fields it does not rate on", async () => {
+    const res = await call("POST", `/v1/portal/gonxt/quote-requests/${requestId}/reprice`, {
+      token,
+      inputs: { age: 1e12, vehicleUse: 42 as never, premiumMinor: 1 }
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.inputs.age).toBe(120);
+    expect(res.body.inputs.vehicleUse).toBeUndefined();
+    expect(res.body.inputs.premiumMinor).toBeUndefined();
+
+    const none = await call("POST", `/v1/portal/gonxt/quote-requests/${requestId}/reprice`, {
+      token,
+      inputs: { premiumMinor: 1 }
+    });
+    expect(none.status).toBe(400);
+  });
+
+  it("needs the same one-time token the comparison itself needs", async () => {
+    expect(
+      (await call("POST", `/v1/portal/gonxt/quote-requests/${requestId}/reprice`, { token: "0".repeat(48), inputs: { age: 40 } }))
+        .status
+    ).toBe(404);
+    expect(
+      (await call("POST", `/v1/portal/gonxt/quote-requests/${requestId}/reprice`, { inputs: { age: 40 } })).status
+    ).toBe(400);
+  });
+});

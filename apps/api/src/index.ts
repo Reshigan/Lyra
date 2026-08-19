@@ -14,7 +14,7 @@ import { anchorAudit } from "./engines/anchor.js";
 import { nudgeApiKeyRotation } from "./engines/api-key-rotation.js";
 import { runBudgetAutopilot } from "./engines/signal-autopilot.js";
 import { expireDelegations } from "./engines/staff.js";
-import { allTenants, authRoutes, ctxFor, db, pruneSessions } from "./auth.js";
+import { COOKIE, allTenants, authRoutes, ctxFor, db, pruneSessions } from "./auth.js";
 import { mountAll } from "./crud.js";
 import { BY_MODULE } from "./resources.js";
 import { gatewayFor, onError, withContext, withCors, withHeaders } from "./mw.js";
@@ -60,7 +60,9 @@ app.use("*", withContext);
 app.get("/health", (c) =>
   c.json({ ok: true, environment: c.env.ENVIRONMENT ?? "production", ts: Date.now() })
 );
-app.get("/openapi.json", (c) => c.json(openapi()));
+// The spec describes this deployment, so it names the cookie this
+// deployment reads (auth.ts does the same `?? COOKIE`).
+app.get("/openapi.json", (c) => c.json(openapi(c.env.SESSION_COOKIE ?? COOKIE)));
 
 app.route("/v1/auth/sso", ssoRoutes);
 app.route("/v1/auth", authRoutes);

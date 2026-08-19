@@ -60,6 +60,9 @@ const PACKS: Record<string, Record<string, Record<string, string>>> = {
   }
 };
 
+/** Every noun a pack may rename. The guard in shell.test.ts scans for these. */
+export const PACK_KEYS: readonly string[] = Object.keys(PACKS["retail-ecom"]!.en!);
+
 /**
  * The pack's word for a label key, or undefined when the pack has no opinion —
  * in which case the workspace's own catalogue answers as it always did. An

@@ -1,0 +1,1 @@
+ALTER TABLE `signal_campaigns` ADD `plan_json` text;

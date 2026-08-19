@@ -1,16 +1,32 @@
 import { expect, test } from "@playwright/test";
+import { and, desc, eq } from "drizzle-orm";
+import { EntitlementsJson, PolicyJson, schema } from "@lyra/db";
+import { makeLibsqlDb } from "@lyra/db/libsql";
+import type { Ctx } from "@lyra/core";
 import { monthKey } from "@lyra/core";
-import { content, goto, loginAsAxisLead, loginAsFinanceController } from "./fixtures.js";
+import { sweepRenewals } from "../apps/api/src/engines/renewals.js";
+import { LIBSQL_URL, TENANT_SLUG } from "./env.js";
+import {
+  content,
+  goto,
+  loginAsAxisLead,
+  loginAsFinanceController,
+  loginAsOrbitRetention,
+  shortRef
+} from "./fixtures.js";
 
 // J-X2 "the save desk" (docs/06-roles-and-journeys.md): the acceptance test
 // this journey actually has (apps/api/src/journeys.test.ts:644-758) is a pair
 // of dual-control refusals — axis.bind above threshold, dist.settlement_run
 // always-gated — each resolved by delegating decide-rights to a third party.
-// The docs' "churn-risk list + objection cards + bounded discount" prose has
-// no UI behind it (no discount/objection-card affordance anywhere in
-// apps/web/app/modules/axis.ts); per CLAUDE.md's TDD rule the test matches the
-// established acceptance test's real scope, not the docs' aspirational one.
-// This spec covers what is real end to end through the UI: both refusals.
+// The docs' "churn-risk list ... outcome logged" half now has a real screen
+// behind it — apps/web/app/routes/orbit-save.tsx, the save desk at
+// /orbit/save: a churn-scored queue, a confirmation-gated offer, and an
+// accepted/lost outcome with a reason. The third test below covers it. Only
+// the docs' "objection cards" and "bounded price-match" remain unbuilt (no
+// re-quote exists — the desk says so itself in its "No offer figures yet"
+// notice), so the first two tests stay on the established acceptance test's
+// scope: both refusals, end to end through the UI.
 // The delegation-then-retry finale is a gap, noted below, not attempted —
 // staff.tsx's delegation form has no e2e coverage yet.
 
@@ -77,4 +93,92 @@ test("J-X2 approving a settlement run is always refused for dual control (dist.s
   // delegate decides dist:commissions:settle -> retry succeeds) is the real
   // finale in journeys.test.ts:688-757, but has no e2e coverage yet — not
   // attempted here.
+});
+
+// orbit_renewals is not seeded — the nightly sweep raises those rows from the
+// policy book (seed/orbit.ts's header, apps/api/src/engines/renewals.ts), so a
+// fresh e2e database has an empty save desk. The other renewal specs
+// (renewal-portal, axis-lifecycle, orbit-journeys) all sweep off the
+// soonest-expiring policy and then work that one row; this one sweeps off the
+// latest-expiring policy instead, so the row it offers on and closes is nobody
+// else's, and — the sweep window being the 45 days *after* the instant swept —
+// no policy but that one is raised. It sorts last by expiry, where the other
+// specs' `.first()` reads cannot reach it.
+async function raiseLatestRenewal(): Promise<string> {
+  const db = makeLibsqlDb(LIBSQL_URL);
+  const [tenant] = await db
+    .select({ id: schema.tenants.id })
+    .from(schema.tenants)
+    .where(eq(schema.tenants.slug, TENANT_SLUG));
+  if (!tenant) throw new Error(`no tenant with slug ${TENANT_SLUG}`);
+
+  const [latest] = await db
+    .select({ id: schema.axisPolicies.id, endAt: schema.axisPolicies.endAt })
+    .from(schema.axisPolicies)
+    .where(and(eq(schema.axisPolicies.tenantId, tenant.id), eq(schema.axisPolicies.status, "active")))
+    .orderBy(desc(schema.axisPolicies.endAt))
+    .limit(1);
+  if (!latest) throw new Error("no active policy to raise a renewal from");
+
+  // The e2e database is not wiped between local runs (global-setup.ts) and this
+  // test closes the row it raises, so without the delete the sweep's per-policy
+  // dedupe sees the settled row on a repeat run and raises nothing.
+  await db.delete(schema.orbitRenewals).where(eq(schema.orbitRenewals.policyRef, latest.id));
+
+  await sweepRenewals({
+    db: db as unknown as Ctx["db"],
+    tenantId: tenant.id,
+    actor: { kind: "system", id: "e2e-save-desk", tenantId: tenant.id, grants: [] },
+    requestId: "e2e-save-desk",
+    now: latest.endAt,
+    locale: "en",
+    policy: PolicyJson.parse({}),
+    entitlements: EntitlementsJson.parse({})
+  });
+  return latest.id;
+}
+
+// The docs' J-X2 spine that does exist: churn-risk list -> offer -> outcome
+// logged. Every renewal the sweep raises is `auto_requote` or `human` (only a
+// consent record makes one do_not_contact), so the raised row is offerable.
+test("J-X2 the save desk offers on a churn-risk renewal and logs the outcome @journey:J-X2", async ({ page }) => {
+  const policyId = await raiseLatestRenewal();
+  await loginAsOrbitRetention(page);
+  await goto(page, "/orbit/save");
+
+  // The desk's action buttons carry the policy ref in their accessible name
+  // (orbit-save.tsx `${l("offer")}: ${who}`), which is what pins this test to
+  // the row it raised while other specs work their own rows in parallel.
+  const rowFor = (table: string, action: string) =>
+    page
+      .getByRole("table", { name: table, exact: true })
+      .getByRole("row")
+      .filter({ has: page.getByRole("button", { name: `${action}: ${policyId}`, exact: true }) });
+
+  const queued = rowFor("Save queue", "Make the offer");
+  await expect(queued).toBeVisible();
+
+  // An outbound price promise, so the offer is confirmation-gated.
+  await queued.getByRole("button", { name: /^Make the offer:/ }).click();
+  await expect(page.getByRole("alert")).toContainText("Tick the confirmation before the offer goes out.");
+
+  await queued.getByRole("checkbox", { name: "I have checked the price and want this to go out" }).check();
+  await queued.getByRole("button", { name: /^Make the offer:/ }).click();
+  await expect(page.getByRole("status").getByText("Recorded.")).toBeVisible();
+
+  // Offered, so the row has left the queue for the outstanding desk.
+  const offered = rowFor("Offers outstanding", "Record the outcome");
+  await expect(offered).toBeVisible();
+  // The selects default to accepted / saved_discount — the outcome this books.
+  await offered.getByRole("button", { name: /^Record the outcome:/ }).click();
+  await expect(page.getByRole("status").getByText("Recorded.")).toBeVisible();
+
+  // The settled table has no buttons to pin on, but every desk row prints the
+  // policy ref under the customer name (orbit-save.tsx's customer column).
+  const settled = page
+    .getByRole("table", { name: "Recently settled", exact: true })
+    .getByRole("row")
+    .filter({ hasText: shortRef(policyId) });
+  await expect(settled).toContainText("Renewed");
+  await expect(settled).toContainText("Saved with a discount");
 });

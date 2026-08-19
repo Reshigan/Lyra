@@ -24,6 +24,7 @@ import {
 import { ApiError, api, fetchMe, names } from "../api.server";
 import { toneFor } from "../components/fields";
 import { cloudflare } from "../context";
+import { asJson } from "../json.js";
 import { moduleName, translator, type Translate } from "../i18n";
 import { ConfirmButton } from "../components/confirm";
 import { WORKSPACES } from "../modules";
@@ -71,16 +72,9 @@ interface AiRun {
   approvalId: string | null;
 }
 
+/** A malformed context is a data bug. Losing it must not lose the approval. */
 function contextOf(row: ApprovalRow): Record<string, unknown> {
-  const raw = row.contextJson;
-  if (!raw) return {};
-  if (typeof raw === "object") return raw;
-  try {
-    return JSON.parse(raw) as Record<string, unknown>;
-  } catch {
-    // A malformed context is a data bug. Losing it must not lose the approval.
-    return {};
-  }
+  return asJson<Record<string, unknown>>(row.contextJson, {});
 }
 
 function display(value: unknown): string {

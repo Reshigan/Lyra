@@ -24,17 +24,18 @@ import {
   KPIWall,
   Ref,
   Select,
-  Stat,
   Textarea,
   cn,
   focusRing,
   type BadgeTone
 } from "@lyra/ui";
 import { ApiError, api } from "../api.server";
+import { FOCUS, HeroStat, lensOf, useFocus, type Lens } from "../components/hero";
 import { cloudflare } from "../context";
 import { labelsFrom, tag } from "./detail-kit";
 import { Gate } from "./staff";
 import { useAxisSessionData } from "./axis-shell";
+import { jsonOf } from "../json.js";
 
 // The documents tab can list rows and stamp a verification. What it cannot do is
 // the actual work: read what the model pulled out of a file, see how sure it was
@@ -221,7 +222,8 @@ export interface DocRow {
   fileId: string;
   docType: string;
   status: string;
-  extractionJson: string | null;
+  /** Already parsed on the wire — see `jsonOf`. */
+  extractionJson: unknown;
   /** 0–100 in the database; `ConfidenceMeter` wants 0–1. */
   extractionConfidence: number | null;
   extractionModel: string | null;
@@ -229,6 +231,21 @@ export interface DocRow {
   verifiedAt: number | null;
   createdAt: number;
 }
+
+/**
+ * The three figures on the wall that stand for a set of rows, as predicates over
+ * the one page of documents the loader fetched. The wall's own counts are read
+ * through these too, so a figure and the list its link opens are the same
+ * `filter()` — see the accuracy test in axis-doc-intel.test.ts.
+ *
+ * `extracting` is fetched but carries no figure, and so deliberately has no lens:
+ * a filter nobody can read off a hero should not be reachable by typing it.
+ */
+export const DOC_LENSES: Record<string, Lens<DocRow>> = {
+  extracted: (doc) => doc.status === "extracted",
+  received: (doc) => doc.status === "received",
+  rejected: (doc) => doc.status === "rejected"
+};
 
 /* ---------------------------------------------------------------- helpers */
 
@@ -238,21 +255,27 @@ export interface DocRow {
  * information, and hiding the row would make it look unasked.
  */
 export function fieldsOf(doc: Pick<DocRow, "extractionJson">): Record<string, string | null> {
-  if (!doc.extractionJson) return {};
-  try {
-    const parsed: unknown = JSON.parse(doc.extractionJson);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-    const out: Record<string, string | null> = {};
-    for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
-      if (key.startsWith("_")) continue;
-      out[key] = typeof value === "string" && value.trim() ? value : null;
-    }
-    return out;
-  } catch {
-    // ponytail: a row whose JSON does not parse reads as "nothing extracted"
-    // rather than throwing — one bad document must not blank the whole desk.
-    return {};
+  // ponytail: a row whose JSON does not parse reads as "nothing extracted"
+  // rather than throwing — one bad document must not blank the whole desk.
+  const parsed = jsonOf(doc.extractionJson);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+  const out: Record<string, string | null> = {};
+  for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+    if (key.startsWith("_")) continue;
+    out[key] = typeof value === "string" && value.trim() ? value : null;
   }
+  return out;
+}
+
+/**
+ * The model's own values as a string a form input can carry. `extractionJson`
+ * arrives already parsed (apps/api/src/crud.ts `hydrate`), and an object handed
+ * to an input `value` is stringified by the DOM as "[object Object]", which
+ * parses back to nothing: every correction then merged against an empty model
+ * and was refused as `no_change`. Nobody could save a correction at all.
+ */
+export function carriedJson(doc: Pick<DocRow, "extractionJson">): string {
+  return JSON.stringify(jsonOf(doc.extractionJson) ?? {});
 }
 
 /**
@@ -274,22 +297,17 @@ export const isSealedValue = (value: string | null | undefined): boolean =>
  * with none just draws no boxes.
  */
 export function bboxOf(doc: Pick<DocRow, "extractionJson">): Record<string, [number, number, number, number]> {
-  if (!doc.extractionJson) return {};
-  try {
-    const parsed: unknown = JSON.parse(doc.extractionJson);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-    const raw = (parsed as Record<string, unknown>)["_bbox"];
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
-    const out: Record<string, [number, number, number, number]> = {};
-    for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
-      if (Array.isArray(value) && value.length === 4 && value.every((n) => typeof n === "number")) {
-        out[key] = value as [number, number, number, number];
-      }
+  const parsed = jsonOf(doc.extractionJson);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+  const raw = (parsed as Record<string, unknown>)["_bbox"];
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: Record<string, [number, number, number, number]> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (Array.isArray(value) && value.length === 4 && value.every((n) => typeof n === "number")) {
+      out[key] = value as [number, number, number, number];
     }
-    return out;
-  } catch {
-    return {};
   }
+  return out;
 }
 
 /** 0–100 stored, 0–1 rendered. Missing confidence is not zero confidence. */
@@ -506,7 +524,12 @@ export default function AxisDocIntel() {
   const held = new Set(shell?.permissions ?? []);
   const busy = navigation.state !== "idle";
 
-  const counted = (status: string) => loaded.docs.filter((doc) => doc.status === status).length;
+  // The wall always counts the whole page; the reading list beside it narrows to
+  // whichever figure was clicked. Both go through DOC_LENSES, so the number on a
+  // tile and the rows its link shows are one `filter()` and cannot drift apart.
+  const { focus, href } = useFocus(DOC_LENSES);
+  const docs = lensOf(loaded.docs, DOC_LENSES, focus);
+  const counted = (lens: string) => lensOf(loaded.docs, DOC_LENSES, lens).length;
   const worst = worstDoc(loaded.docs);
   const headline = headlineFor(
     {
@@ -525,7 +548,7 @@ export default function AxisDocIntel() {
     setIndex(next);
     setBroken(false);
   };
-  const selected = loaded.docs[Math.min(index, Math.max(loaded.docs.length - 1, 0))];
+  const selected = docs[Math.min(index, Math.max(docs.length - 1, 0))];
   const model = selected ? fieldsOf(selected) : {};
   const names = Object.keys(model);
   const confidence = selected ? confidenceOf(selected) : null;
@@ -540,14 +563,14 @@ export default function AxisDocIntel() {
     function onKey(event: KeyboardEvent) {
       const focused = (event.target as HTMLElement | null)?.tagName;
       if (focused === "INPUT" || focused === "TEXTAREA" || focused === "SELECT") return;
-      if (event.key === "j") setIndex((i) => Math.min(i + 1, loaded.docs.length - 1));
+      if (event.key === "j") setIndex((i) => Math.min(i + 1, docs.length - 1));
       else if (event.key === "k") setIndex((i) => Math.max(i - 1, 0));
       else return;
       setBroken(false);
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [loaded.docs.length]);
+  }, [docs.length]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -568,14 +591,37 @@ export default function AxisDocIntel() {
         </p>
       ) : null}
 
+      {/* The desk total is its own way back to everything, so no separate escape link. */}
       <KPIWall>
-        <Stat label={l("stat.open")} value={loaded.docs.length} />
-        <Stat label={l("stat.extracted")} value={counted("extracted")} />
-        <Stat label={l("stat.received")} value={counted("received")} />
-        <Stat label={l("stat.rejected")} value={counted("rejected")} />
+        <HeroStat
+          label={l("stat.open")}
+          value={loaded.docs.length}
+          to={href(null)}
+          active={focus === null}
+        />
+        <HeroStat
+          label={l("stat.extracted")}
+          value={counted("extracted")}
+          to={href("extracted")}
+          active={focus === "extracted"}
+        />
+        <HeroStat
+          label={l("stat.received")}
+          value={counted("received")}
+          to={href("received")}
+          active={focus === "received"}
+        />
+        <HeroStat
+          label={l("stat.rejected")}
+          value={counted("rejected")}
+          to={href("rejected")}
+          active={focus === "rejected"}
+        />
       </KPIWall>
 
       <Form method="get" className="flex flex-wrap items-end gap-3">
+        {/* Applying a `show` change must not silently widen the clicked figure. */}
+        {focus ? <input type="hidden" name={FOCUS} value={focus} /> : null}
         <Field label={l("filter.label")} className="w-56">
           <Select
             name="show"
@@ -591,12 +637,12 @@ export default function AxisDocIntel() {
         </Button>
       </Form>
 
-      {loaded.docs.length === 0 ? <EmptyState title={l("empty.title")} body={l("empty.body")} /> : null}
+      {docs.length === 0 ? <EmptyState title={l("empty.title")} body={l("empty.body")} /> : null}
 
       {selected ? (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[220px_1fr_1fr]">
           <ul className="flex flex-col gap-1 lg:max-h-[70vh] lg:overflow-y-auto" aria-label={l("nav.label")}>
-            {loaded.docs.map((doc, i) => (
+            {docs.map((doc, i) => (
               <li key={doc.id}>
                 <button
                   type="button"
@@ -733,7 +779,7 @@ export default function AxisDocIntel() {
                 <Form method="post" className="flex flex-col gap-3">
                   <input type="hidden" name="intent" value="correct" />
                   <input type="hidden" name="docId" value={selected.id} />
-                  <input type="hidden" name="extractionJson" value={selected.extractionJson ?? ""} />
+                  <input type="hidden" name="extractionJson" value={carriedJson(selected)} />
                   <p className="font-ui text-12 text-subtle">{l("correct.intro")}</p>
                   <ul className="flex flex-col gap-3">
                     {names.map((name) => (

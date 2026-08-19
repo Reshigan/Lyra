@@ -222,7 +222,9 @@ describe("seedHistory", () => {
     expect(wider.daysSkipped).toBe(30);
     const txns = await db.select().from(schema.ledgerTxns).where(eq(schema.ledgerTxns.tenantId, TENANT));
     expect(txns).toHaveLength(DAYS * 2 * 3);
-  });
+    // Two backfills, 150 days between them: ~4s warm, so the 5s default made
+    // this the one flaky spec in the file.
+  }, 30_000);
 
   it("measures every day it writes, so the metric screens open on the same book", async () => {
     await seedPeriods();

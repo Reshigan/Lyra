@@ -423,3 +423,125 @@ export function assertInputs(offerings: PanelEntry[], inputs: Record<string, unk
     throw badRequest(`rating inputs missing: ${missing.join(", ")}`);
   }
 }
+
+/* ----------------------------------------------------------- what to slide */
+
+/**
+ * A rating input a customer may move, with the range the panel will actually
+ * answer over. Derived from the rate tables rather than declared anywhere,
+ * because a knob that does not appear in a band, a rate or a loading changes
+ * no price — and a comparison offering it would be lying about what it rates on.
+ */
+export interface Criterion {
+  field: string;
+  /** number: a plain count (age, trip days). money: minor units. boolean: a flag. */
+  kind: "number" | "money" | "boolean";
+  min: number;
+  max: number;
+  step: number;
+}
+
+/** `sumInsuredMinor` -> `minSumInsuredMinor`; `age` -> `maxAge`. */
+function boundKey(prefix: "min" | "max", field: string): string {
+  return prefix + field.slice(0, 1).toUpperCase() + field.slice(1);
+}
+
+// ponytail: an unbounded money factor has no ceiling anywhere in the seeded
+// data, so the slider spans four times the risk the visitor entered and at
+// least twice the highest floor an offering demands — enough that a tier gated
+// on a minimum stays reachable. Declare maxSumInsuredMinor on the offering's
+// eligibility and this derives from data instead of from the visitor.
+const MONEY_HEADROOM = 4;
+const MONEY_FLOOR_HEADROOM = 2;
+const MONEY_MIN_CEILING = 1_000_000;
+const SLIDER_STEPS = 100;
+
+/**
+ * The criteria this panel rates on, ordered the way a form reads: counts, then
+ * amounts, then flags. `inputs` is the risk already quoted — it only anchors an
+ * otherwise unbounded money range, never the price.
+ */
+export function criteriaFor(panel: PanelEntry[], inputs: Record<string, unknown>): Criterion[] {
+  const numeric = new Map<string, { min: number; max: number }>();
+  const money = new Set<string>();
+  const flags = new Set<string>();
+  const declaredMin = new Map<string, number>();
+  const declaredMax = new Map<string, number>();
+  const eligibilities: Record<string, unknown>[] = [];
+
+  for (const { offering } of panel) {
+    const table = parseJson<RateTable>(offering.ratingTableJson);
+    if (!table) continue;
+    for (const band of table.bands ?? []) {
+      // An `equals` band gates on a category, not a range — it is a choice, and
+      // a slider is the wrong control for it.
+      if (typeof band.min !== "number" && typeof band.max !== "number") continue;
+      const seen = numeric.get(band.field);
+      const lo = band.min ?? seen?.min ?? 0;
+      const hi = band.max ?? seen?.max ?? lo;
+      numeric.set(band.field, {
+        min: Math.min(seen?.min ?? lo, lo),
+        max: Math.max(seen?.max ?? hi, hi)
+      });
+    }
+    for (const rate of table.rates ?? []) money.add(rate.field);
+    for (const loading of table.loadings ?? []) flags.add(loading.field);
+
+    const rules = parseJson<Record<string, unknown>>(offering.eligibilityJson);
+    if (rules) eligibilities.push(rules);
+  }
+
+  // Second pass: an offering may gate on a field only a later offering rates on,
+  // so the bounds are read once every field is known.
+  for (const rules of eligibilities) {
+    for (const field of [...numeric.keys(), ...money]) {
+      const lo = rules[boundKey("min", field)];
+      const hi = rules[boundKey("max", field)];
+      if (typeof lo === "number") declaredMin.set(field, Math.max(declaredMin.get(field) ?? lo, lo));
+      if (typeof hi === "number") declaredMax.set(field, Math.max(declaredMax.get(field) ?? hi, hi));
+    }
+  }
+
+  const out: Criterion[] = [];
+  for (const [field, range] of numeric) {
+    if (money.has(field)) continue; // a field that is both is an amount, not a count
+    out.push({ field, kind: "number", min: range.min, max: range.max, step: 1 });
+  }
+  for (const field of money) {
+    const current = typeof inputs[field] === "number" ? (inputs[field] as number) : 0;
+    const max = Math.max(
+      MONEY_MIN_CEILING,
+      current * MONEY_HEADROOM,
+      (declaredMin.get(field) ?? 0) * MONEY_FLOOR_HEADROOM,
+      declaredMax.get(field) ?? 0
+    );
+    const step = Math.max(1, Math.round(max / SLIDER_STEPS));
+    out.push({ field, kind: "money", min: 0, max: step * SLIDER_STEPS, step });
+  }
+  for (const field of flags) out.push({ field, kind: "boolean", min: 0, max: 1, step: 1 });
+  return out;
+}
+
+/**
+ * The subset of a caller's values this panel rates on, each clamped into the
+ * range the panel declared. Untrusted input at a public boundary: a field
+ * nobody rates on is dropped rather than passed to the engine, and a number
+ * outside the range is pulled back rather than priced.
+ */
+export function clampToCriteria(
+  criteria: Criterion[],
+  values: Record<string, number | boolean>
+): Record<string, number | boolean> {
+  const out: Record<string, number | boolean> = {};
+  for (const c of criteria) {
+    const raw = values[c.field];
+    if (raw === undefined) continue;
+    if (c.kind === "boolean") {
+      out[c.field] = typeof raw === "boolean" ? raw : raw !== 0;
+      continue;
+    }
+    if (typeof raw !== "number" || !Number.isFinite(raw)) continue;
+    out[c.field] = Math.min(c.max, Math.max(c.min, Math.round(raw)));
+  }
+  return out;
+}

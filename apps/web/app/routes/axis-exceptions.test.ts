@@ -6,6 +6,8 @@ import {
   action,
   ageIn,
   bySeverity,
+  countIn,
+  exceptionFocus,
   headlineFor,
   labelsIn,
   phrase,
@@ -313,6 +315,52 @@ describe("phrase", () => {
   it("leaves an unknown code with the API's own title, never a raw key", () => {
     const out = phrase({ title: "rate limited", status: 429, code: "too_many" }, labelsIn("en"));
     expect(out.title).toBe("rate limited");
+  });
+});
+
+describe("the hero figures and what clicking one shows", () => {
+  const all = {
+    cases: [
+      kase({ id: "late", slaDueAt: NOW - DAY }),
+      kase({ id: "rush", priority: "urgent" }),
+      kase({ id: "calm" })
+    ],
+    documents: [{ id: "d1", caseId: "late", docType: "id_card", status: "rejected", createdAt: NOW - DAY }],
+    tasks: [{ id: "t1", caseId: null, titleKey: "chase", state: "blocked", assigneeRef: null, dueAt: null }],
+    escrow: [
+      {
+        id: "e1",
+        period: "2026-07",
+        providerId: "prv_1",
+        status: "variance",
+        expectedMinor: 100,
+        receivedMinor: 90,
+        currency: "AED"
+      }
+    ],
+    complaints: [{ id: "cp1", ref: "CO-1", caseId: "calm", ownerRef: null, dueAt: NOW - DAY }]
+  };
+
+  it("shows exactly the rows the breached figure counted, across both queues", () => {
+    const shown = exceptionFocus(all, "breached", NOW);
+    expect(countIn(shown)).toBe(2);
+    expect(shown.cases.map((row) => row.id)).toEqual(["late"]);
+    expect(shown.complaints).toEqual(all.complaints);
+    // The three queues the figure never counted are not left on screen under it.
+    expect(shown.documents.length + shown.tasks.length + shown.escrow.length).toBe(0);
+  });
+
+  it("shows exactly the cases the urgent figure counted", () => {
+    const shown = exceptionFocus(all, "urgent", NOW);
+    expect(countIn(shown)).toBe(1);
+    expect(shown.cases.map((row) => row.id)).toEqual(["rush"]);
+  });
+
+  it("keeps the total meaning every queue, so its own link clears the lens", () => {
+    expect(countIn(all)).toBe(7);
+    expect(exceptionFocus(all, null, NOW)).toEqual(all);
+    // A stale or hand-typed lens degrades to the whole queue, never an empty one.
+    expect(countIn(exceptionFocus(all, "nonsense", NOW))).toBe(countIn(all));
   });
 });
 

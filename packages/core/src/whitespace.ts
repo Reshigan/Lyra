@@ -10,6 +10,7 @@
 
 import { clusterSignals, type RawSignal } from "./momentum.js";
 import { checkKAnonymity, DEFAULT_K_FLOOR } from "./k-anonymity.js";
+import { conflict } from "./errors.js";
 
 /** How many of this tenant's own policies already sit in a category - the
  *  "coverage" a whitespace candidate has to be thin against. Source: a count
@@ -77,4 +78,45 @@ export function computeWhitespaceCandidates(
   }
 
   return out.sort((a, b) => b.momentum - a.momentum);
+}
+
+// docs/19 §2: promotion changes contractual-ish state (a whitespace candidate
+// becomes a committed campaign), so it is a transaction with a state machine and
+// not an UPDATE. Same idiom as lifecycle.ts POLICY_TRANSITIONS — in core because
+// both the CRUD resource (apps/api/src/resources.ts) and the promote engine
+// enforce it, and the vocabulary is the one scout_whitespaces.status already
+// documents (packages/db/src/schema/scout.ts).
+
+export const WHITESPACE_STATES = [
+  "candidate", // the sweep flagged it; nothing decided
+  "validating", // an analyst is checking the evidence
+  "validated", // promoted: a SIGNAL campaign exists for it
+  "parked" // rejected or deferred; the next sweep may re-flag the category
+] as const;
+export type WhitespaceState = (typeof WHITESPACE_STATES)[number];
+
+/** Anything not listed is refused. Note `validated` has no self-hop: that is
+ *  what makes a second promotion of the same candidate a 409 rather than a
+ *  second campaign, independently of the idempotency key. */
+export const WHITESPACE_TRANSITIONS: Record<WhitespaceState, readonly WhitespaceState[]> = {
+  candidate: ["validating", "validated", "parked"],
+  validating: ["validated", "parked", "candidate"],
+  validated: ["parked"],
+  parked: ["candidate"]
+};
+
+export function canWhitespaceTransition(from: WhitespaceState, to: WhitespaceState): boolean {
+  return WHITESPACE_TRANSITIONS[from].includes(to);
+}
+
+export function isWhitespaceState(s: string): s is WhitespaceState {
+  return (WHITESPACE_STATES as readonly string[]).includes(s);
+}
+
+/** Throws 409 rather than returning false, for the route call sites. An unknown
+ *  persisted status is refused too — a row nobody can classify is not promotable. */
+export function assertWhitespaceTransition(from: string, to: WhitespaceState): void {
+  if (!isWhitespaceState(from) || !canWhitespaceTransition(from, to)) {
+    throw conflict(`whitespace cannot move from ${from} to ${to}`);
+  }
 }

@@ -170,11 +170,10 @@ describe("experiment verdicts", () => {
     expect(verdictKey(experiment({ state: "running" })).key).toBe("xp.running");
     expect(verdictKey(experiment({ state: "abandoned" })).key).toBe("xp.parked");
     expect(
-      verdictKey(experiment({ state: "concluded", resultsJson: JSON.stringify({ verdict: "supported" }) })).tone
+      verdictKey(experiment({ state: "concluded", resultsJson: { verdict: "supported" } })).tone
     ).toBe("success");
     expect(
-      verdictKey(experiment({ state: "concluded", resultsJson: JSON.stringify({ verdict: "did_not_replicate" }) }))
-        .key
+      verdictKey(experiment({ state: "concluded", resultsJson: { verdict: "did_not_replicate" } })).key
     ).toBe("xp.notReplicated");
   });
 });

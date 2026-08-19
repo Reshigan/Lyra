@@ -2,10 +2,19 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { and, eq, inArray } from "drizzle-orm";
 import { schema } from "@lyra/db";
-import { actorRef, audit, require_, diffWords, type Ctx } from "@lyra/core";
+import { actorRef, audit, require_, diffWords, withIdempotency, type Ctx } from "@lyra/core";
 import type { WhitespaceCandidate } from "@lyra/core";
 import { body } from "../http.js";
-import { sweepWhitespace, coveragePerLine } from "../engines/scout-whitespace.js";
+import {
+  sweepWhitespace,
+  coveragePerLine,
+  whitespaceCommentaries,
+  whitespaceCommentary
+} from "../engines/scout-whitespace.js";
+import { promoteWhitespace } from "../engines/scout-promote.js";
+import { suggestTargeting } from "../engines/signal-audience.js";
+import { planCampaign } from "../engines/signal-campaign-plan.js";
+import { generateCreatives } from "../engines/signal-creative.js";
 import { embedQuery } from "../engines/vectorize.js";
 import { buildNegotiationPackTables } from "../engines/export/negotiation-pack.js";
 import { toPdf } from "../engines/export/pdf.js";
@@ -23,6 +32,54 @@ scoutRoutes.post("/whitespaces/compute", async (c) => {
   const ctx = ctxOf(c);
   require_(ctx.actor, "scout:whitespaces:promote", { tenantId: ctx.tenantId, module: "scout" });
   return c.json({ candidates: await sweepWhitespace(ctx, c.get("gateway")) }, 201);
+});
+
+/**
+ * The commentary a Radar hover shows: why each category is whitespace, in one
+ * sentence, plus the evidence it was grounded against. A plain read — every
+ * sentence was drafted at sweep time and cached on its row, so this is the
+ * prefetch the Radar issues beside the dots and a hover then costs neither a
+ * request nor a model call. The payload carries the ✦ + provenance that makes it
+ * inspectable (docs/15 §4). `scout:whitespaces:read`, not the promote grant: an
+ * analyst who may look at the Radar may read why a row is on it.
+ *
+ * Registered before the generated CRUD (index.ts), so `commentary` is a path and
+ * not read as a whitespace id.
+ */
+scoutRoutes.get("/whitespaces/commentary", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "scout:whitespaces:read", { tenantId: ctx.tenantId, module: "scout" });
+  const limit = Number(c.req.query("limit"));
+  return c.json({ data: await whitespaceCommentaries(ctx, Number.isFinite(limit) ? limit : undefined) });
+});
+
+/** One row's commentary, same payload as an element of the prefetch above. */
+scoutRoutes.get("/whitespaces/:id/commentary", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "scout:whitespaces:read", { tenantId: ctx.tenantId, module: "scout" });
+  return c.json(await whitespaceCommentary(ctx, c.req.param("id")));
+});
+
+/**
+ * Whitespace -> SIGNAL campaign. Approval-gated, idempotent, audited, and
+ * announced on the bus (docs/04 §7 `scout.whitespace.promoted`) rather than by
+ * reaching into SIGNAL's tables. The creative generator is handed in so the
+ * cross-module call happens here, at the composition root, and not between two
+ * module engines (CLAUDE.md rule 6).
+ */
+scoutRoutes.post("/whitespaces/:id/promote-to-signal", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "scout:whitespaces:promote", { tenantId: ctx.tenantId, module: "scout" });
+  const whitespaceId = c.req.param("id");
+  const result = await withIdempotency(
+    ctx,
+    c.req.header("idempotency-key"),
+    "scout.whitespace.promote",
+    { whitespaceId },
+    () =>
+      promoteWhitespace(ctx, c.get("gateway"), generateCreatives, suggestTargeting, planCampaign, whitespaceId)
+  );
+  return c.json(result, 201);
 });
 
 const WordingDiffBody = z.object({ textA: z.string().max(50_000), textB: z.string().max(50_000) });

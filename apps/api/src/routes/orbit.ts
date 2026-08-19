@@ -1,7 +1,9 @@
 import { Hono } from "hono";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { schema } from "@lyra/db";
 import { badRequest, require_, withIdempotency, type Ctx } from "@lyra/core";
+import { portalLinkToken } from "./portal.js";
 import { body } from "../http.js";
 import { must } from "../rows.js";
 import { dispatchOutbound } from "../engines/orbit-channel-outbound.js";
@@ -131,4 +133,41 @@ orbitRoutes.post("/partners/:id/quotes", async (c) => {
     () => requestPartnerQuote(ctx, partnerId, input)
   );
   return c.json(result, 201);
+});
+
+/**
+ * The public link for a renewal or a closed conversation, for whoever is about
+ * to send it. Nothing in the repo sends outbound renewal or CSAT messages yet
+ * (renewal-campaign.ts only emits `orbit.renewal.offered`), so without this the
+ * hosted pages at `/portal/:tenantSlug/renewals/:id` and `/feedback/:id` would
+ * be unreachable by anyone. Read-only, and gated on the same permission that
+ * lets the caller read the row it describes — a link is as sensitive as the row.
+ */
+orbitRoutes.get("/portal-links/:kind/:id", async (c) => {
+  const ctx = ctxOf(c);
+  const kind = c.req.param("kind");
+  if (kind !== "renewal" && kind !== "feedback") throw badRequest("kind must be renewal or feedback");
+  const rowId = c.req.param("id");
+
+  if (kind === "renewal") {
+    require_(ctx.actor, "orbit:renewals:read", { tenantId: ctx.tenantId, module: "orbit" });
+    await must(ctx, schema.orbitRenewals, rowId, "renewal");
+  } else {
+    require_(ctx.actor, "orbit:conversations:read", { tenantId: ctx.tenantId, module: "orbit" });
+    await must(ctx, schema.orbitConversations, rowId, "conversation");
+  }
+
+  // The slug, not the id, is what the portal routes key on. `ctx.db` is already
+  // tenant-scoped, but `tenants` is the scoping table itself, so this reads it
+  // by primary key rather than through withTenant's filter.
+  const [tenant] = await ctx.db
+    .select({ slug: schema.tenants.slug })
+    .from(schema.tenants)
+    .where(eq(schema.tenants.id, ctx.tenantId))
+    .limit(1);
+  if (!tenant) throw badRequest("tenant");
+
+  const token = await portalLinkToken(c.env, kind, ctx.tenantId, rowId);
+  const path = kind === "renewal" ? `renewals/${rowId}` : `feedback/${rowId}`;
+  return c.json({ url: `${c.env.APP_ORIGIN}/portal/${tenant.slug}/${path}?token=${token}` });
 });

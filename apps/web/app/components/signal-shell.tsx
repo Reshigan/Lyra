@@ -117,7 +117,7 @@ export function SignalShell({
     // The toast host lives above every workspace so any screen can say what
     // happened after the control that caused it has scrolled away (ADR-0051).
     <ToastProvider dismissLabel={t("common.dismiss")}>
-      <div className="lyra-field min-h-screen bg-bg text-text" style={brandStyle(session.brand)}>
+      <div className="lyra-field flex h-dvh flex-col overflow-hidden bg-bg text-text" style={brandStyle(session.brand)}>
         <ColdOpen name={productName} />
         <a
           href="#workspace"
@@ -126,7 +126,7 @@ export function SignalShell({
           {t("app.skipToContent")}
         </a>
 
-        <header className="lyra-vt-chrome sticky top-0 z-30 flex h-[50px] items-center gap-2 border-b border-border bg-surface-1 px-3 sm:gap-3 sm:px-4">
+        <header className="lyra-vt-chrome z-30 flex h-[var(--chrome-top)] shrink-0 items-center gap-2 border-b border-border bg-surface-1 px-[var(--gutter)] sm:gap-3">
           <div className="flex shrink-0 items-center gap-2">
             <NavLink
               to="/signal/cockpit"
@@ -207,7 +207,7 @@ export function SignalShell({
           </div>
         </header>
 
-        <div className="flex min-h-[calc(100vh-50px)] flex-col md:flex-row">
+        <div className="flex min-h-0 flex-1 flex-col md:flex-row">
           {/* ModuleSwitcher renders its own <nav aria-label="Modules">, so it is
               a sibling of the rail rather than a child of it — a <nav> inside a
               <nav> reads as two competing landmarks. Rendered twice for the
@@ -230,7 +230,7 @@ export function SignalShell({
             ))}
           </nav>
 
-          <div className="lyra-vt-rail hidden md:sticky md:top-[50px] md:flex md:h-[calc(100vh-50px)] md:w-60 md:shrink-0 md:flex-col md:gap-2 md:overflow-y-auto md:border-e md:border-border md:p-3">
+          <div className="lyra-vt-rail hidden md:flex md:w-[var(--rail-width)] md:shrink-0 md:flex-col md:gap-2 md:overflow-y-auto md:border-e md:border-border md:p-[var(--gutter-rail)]">
             {moduleLinks.length ? (
               <ModuleSwitcher modules={moduleLinks} current="signal" label={t("nav.group.modules")} />
             ) : null}
@@ -250,7 +250,7 @@ export function SignalShell({
             key={pathname}
             id="workspace"
             tabIndex={-1}
-            className="lyra-vt-workspace lyra-stagger mx-auto flex min-w-0 w-full max-w-[100rem] flex-1 flex-col gap-4 p-4 sm:p-6"
+            className="lyra-vt-workspace lyra-stagger mx-auto flex min-h-0 min-w-0 w-full max-w-[var(--measure-canvas)] flex-1 flex-col gap-[var(--stack-gap)] overflow-y-auto overflow-x-hidden p-[var(--gutter-canvas)]"
           >
             <span aria-hidden="true" className="h-0.5 w-full shrink-0 rounded-full" style={{ background: SIGNAL_ACCENT }} />
             {crumbs.length ? <Breadcrumbs items={crumbs} label={t("nav.breadcrumb")} /> : null}
@@ -260,7 +260,7 @@ export function SignalShell({
           {mayCompanion && companion ? <Companion t={t} /> : null}
         </div>
 
-        <footer className="lyra-vt-status sticky bottom-0 z-20 hidden h-7 items-center gap-2 border-t border-border bg-surface-1 px-4 font-mono text-12 text-subtle sm:flex">
+        <footer className="lyra-vt-status z-20 hidden h-[var(--chrome-status)] shrink-0 items-center gap-2 border-t border-border bg-surface-1 px-[var(--gutter)] font-mono text-12 text-subtle sm:flex">
           <span aria-hidden="true" className="truncate">
             {productName}
           </span>

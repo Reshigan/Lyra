@@ -18,13 +18,12 @@ import {
   EvidenceLink,
   Field,
   Input,
-  KPIWall,
-  Stat,
   Table,
   shortRef,
   type BadgeTone,
   type Column
 } from "@lyra/ui";
+import { HeroStat, HeroWall, lensOf, useFocus, type Lens } from "../components/hero";
 import { api, asRouteError, fetchMe, names, type Problem as ProblemShape } from "../api.server";
 import { cloudflare } from "../context";
 import { humanise } from "../modules/spec";
@@ -77,6 +76,18 @@ export function scoreTone(score: number): BadgeTone {
   if (score >= 60) return "warning";
   return "danger";
 }
+
+/**
+ * The wall's two drillable figures, one rule each over the score rows the table
+ * below renders — the figure is a count through the lens and the table is a
+ * filter through it, so "flagged: 7" opens onto those seven rows. `flagged`
+ * uses scoreTone's failing band; `corrections` is the complement of the ✦ mark
+ * every agent-written row carries.
+ */
+export const LENSES: Record<string, Lens<QaScore>> = {
+  flagged: (row) => row.score < 60,
+  corrections: (row) => !isAgentScored(row)
+};
 
 /** Whatever the model listed, as label-and-number pairs a table can render. */
 export function breakdownOf(value: unknown): Array<[string, string]> {
@@ -139,6 +150,7 @@ export const LABELS: Labels = {
     headlineClean: "Average score {n}, nothing below 60",
     reviewFlagged: "Review the lowest score",
     reviewed: "Scored conversations",
+    heroAll: "Show everything",
     average: "Average score",
     flagged: "Below 60",
     corrections: "Reviewer corrections",
@@ -198,6 +210,7 @@ export const LABELS: Labels = {
     headlineClean: "متوسط الدرجات {n}، لا شيء تحت ٦٠",
     reviewFlagged: "راجع أدنى درجة",
     reviewed: "المحادثات المقيَّمة",
+    heroAll: "إظهار الكل",
     average: "المعدل",
     flagged: "أقل من ٦٠",
     corrections: "تصحيحات المراجعين",
@@ -368,10 +381,13 @@ export default function ConversationQuality() {
   const navigation = useNavigation();
   const l = labelsIn(loaded.locale);
   const busy = navigation.state === "submitting";
+  const { focus, href } = useFocus(LENSES);
   const rows = loaded.scores.data;
-  const reviewerRows = rows.filter((row) => !isAgentScored(row));
+  // Figures counted through the same lenses the table is filtered by below.
+  const reviewerRows = lensOf(rows, LENSES, "corrections");
   const scored = new Set(rows.map((row) => row.conversationId).filter(Boolean) as string[]);
-  const flagged = rows.filter((row) => row.score < 60);
+  const flagged = lensOf(rows, LENSES, "flagged");
+  const shown = lensOf(rows, LENSES, focus);
   const worst = [...flagged]
     .filter((row) => row.conversationId)
     .sort((a, b) => a.score - b.score)[0];
@@ -405,20 +421,35 @@ export default function ConversationQuality() {
         </div>
       ) : null}
 
-      <KPIWall>
-        <Stat label={l("reviewed")} value={String(loaded.scores.total ?? rows.length)} />
-        <Stat label={l("average")} value={String(mean(rows))} />
-        <Stat label={l("flagged")} value={String(flagged.length)} />
-        <Stat label={l("corrections")} value={String(reviewerRows.length)} />
-      </KPIWall>
+      <HeroWall focus={focus} allLabel={l("heroAll")}>
+        {/* The list route reads the same endpoint with no filter, so it counts
+            the same rows — but only while this screen is unfiltered too. A
+            rubric in the URL narrows the figure and `qa-scores` declares no
+            rubric filter (modules/orbit.ts), so the door closes rather than
+            open onto a bigger set than it promised. */}
+        <HeroStat
+          label={l("reviewed")}
+          value={String(loaded.scores.total ?? rows.length)}
+          {...(loaded.rubric === "" ? { to: "/orbit/qa-scores" } : {})}
+        />
+        {/* No door: a mean has no rows. */}
+        <HeroStat label={l("average")} value={String(mean(rows))} />
+        <HeroStat label={l("flagged")} value={String(flagged.length)} to={href("flagged")} active={focus === "flagged"} />
+        <HeroStat
+          label={l("corrections")}
+          value={String(reviewerRows.length)}
+          to={href("corrections")}
+          active={focus === "corrections"}
+        />
+      </HeroWall>
 
       <Card title={l("scores")} description={l("scoresBody")}>
-        {rows.length === 0 ? (
+        {shown.length === 0 ? (
           <EmptyState title={l("noScores")} body={l("noScoresBody")} />
         ) : (
           <Table
             caption={l("scores")}
-            rows={rows}
+            rows={shown}
             rowKey={(row) => row.id}
             columns={[
               {
@@ -559,89 +590,94 @@ export default function ConversationQuality() {
         <p className="font-ui text-12 text-subtle">{l("disputeGapBody")}</p>
       </Card>
 
-      <Card title={l("sample")} description={l("sampleBody")}>
-        {loaded.sample.length === 0 ? (
-          <EmptyState title={l("noSample")} body={l("noSampleBody")} />
-        ) : (
-          <Table
-            caption={l("sample")}
-            rows={loaded.sample}
-            rowKey={(row) => row.id}
-            density="compact"
-            columns={[
-              {
-                key: "customerId",
-                header: l("customer"),
-                render: (row) => (
-                  <Link
-                    to={`/orbit/conversations/${row.id}/thread`}
-                    className="font-ui text-13 text-accent underline underline-offset-2"
-                  >
-                    {row.customerId ? who(row.customerId, loaded.resolved) : shortRef(row.id)}
-                  </Link>
-                )
-              },
-              { key: "channel", header: l("channel"), render: (row) => <Badge tone="neutral">{l(row.channel)}</Badge> },
-              { key: "csat", header: l("csat"), numeric: true, render: (row) => row.csat ?? "—" },
-              {
-                key: "closedAt",
-                header: l("closed"),
-                render: (row) =>
-                  row.closedAt ? <DateTime value={row.closedAt} locale={loaded.locale} relative /> : "—"
-              },
-              {
-                key: "state",
-                header: l("score"),
-                render: (row) => (
-                  <Badge tone={scored.has(row.id) ? "success" : "neutral"} size="sm">
-                    {scored.has(row.id) ? l("hasScore") : l("notScored")}
-                  </Badge>
-                )
-              },
-              ...(loaded.may.score
-                ? [
-                    {
-                      key: "score-it",
-                      header: l("correct"),
-                      width: "22rem",
-                      render: (row: SampledConversation) => (
-                        <Form method="post" replace className="flex flex-wrap items-end gap-2">
-                          <input type="hidden" name="intent" value="score" />
-                          <input type="hidden" name="conversationId" value={row.id} />
-                          <input type="hidden" name="nonce" value={`new:${loaded.nonce}:${row.id}`} />
-                          <Field label={l("rubricField")} labelHidden>
-                            <Input
-                              name="rubricKey"
-                              required
-                              aria-label={l("rubricField")}
-                              className="w-32"
-                              defaultValue={loaded.rubric}
-                            />
-                          </Field>
-                          <Field label={l("scoreField")} labelHidden>
-                            <Input
-                              name="score"
-                              type="number"
-                              min={0}
-                              max={SCORE_MAX}
-                              step={1}
-                              required
-                              aria-label={l("scoreField")}
-                              className="w-20"
-                            />
-                          </Field>
-                          <Button type="submit" variant="ghost" size="sm" disabled={busy}>
-                            {l("correct")}
-                          </Button>
-                        </Form>
-                      )
-                    }
-                  ]
-                : [])
-            ] satisfies Column<SampledConversation>[]}
-          />
-        )}
-      </Card>
+      {/* The sample is closed conversations, not score rows: the focused
+          figure never counted them, so it would be a list on screen the wall
+          above disowns. Back when the reader shows everything. */}
+      {focus ? null : (
+        <Card title={l("sample")} description={l("sampleBody")}>
+          {loaded.sample.length === 0 ? (
+            <EmptyState title={l("noSample")} body={l("noSampleBody")} />
+          ) : (
+            <Table
+              caption={l("sample")}
+              rows={loaded.sample}
+              rowKey={(row) => row.id}
+              density="compact"
+              columns={[
+                {
+                  key: "customerId",
+                  header: l("customer"),
+                  render: (row) => (
+                    <Link
+                      to={`/orbit/conversations/${row.id}/thread`}
+                      className="font-ui text-13 text-accent underline underline-offset-2"
+                    >
+                      {row.customerId ? who(row.customerId, loaded.resolved) : shortRef(row.id)}
+                    </Link>
+                  )
+                },
+                { key: "channel", header: l("channel"), render: (row) => <Badge tone="neutral">{l(row.channel)}</Badge> },
+                { key: "csat", header: l("csat"), numeric: true, render: (row) => row.csat ?? "—" },
+                {
+                  key: "closedAt",
+                  header: l("closed"),
+                  render: (row) =>
+                    row.closedAt ? <DateTime value={row.closedAt} locale={loaded.locale} relative /> : "—"
+                },
+                {
+                  key: "state",
+                  header: l("score"),
+                  render: (row) => (
+                    <Badge tone={scored.has(row.id) ? "success" : "neutral"} size="sm">
+                      {scored.has(row.id) ? l("hasScore") : l("notScored")}
+                    </Badge>
+                  )
+                },
+                ...(loaded.may.score
+                  ? [
+                      {
+                        key: "score-it",
+                        header: l("correct"),
+                        width: "22rem",
+                        render: (row: SampledConversation) => (
+                          <Form method="post" replace className="flex flex-wrap items-end gap-2">
+                            <input type="hidden" name="intent" value="score" />
+                            <input type="hidden" name="conversationId" value={row.id} />
+                            <input type="hidden" name="nonce" value={`new:${loaded.nonce}:${row.id}`} />
+                            <Field label={l("rubricField")} labelHidden>
+                              <Input
+                                name="rubricKey"
+                                required
+                                aria-label={l("rubricField")}
+                                className="w-32"
+                                defaultValue={loaded.rubric}
+                              />
+                            </Field>
+                            <Field label={l("scoreField")} labelHidden>
+                              <Input
+                                name="score"
+                                type="number"
+                                min={0}
+                                max={SCORE_MAX}
+                                step={1}
+                                required
+                                aria-label={l("scoreField")}
+                                className="w-20"
+                              />
+                            </Field>
+                            <Button type="submit" variant="ghost" size="sm" disabled={busy}>
+                              {l("correct")}
+                            </Button>
+                          </Form>
+                        )
+                      }
+                    ]
+                  : [])
+              ] satisfies Column<SampledConversation>[]}
+            />
+          )}
+        </Card>
+      )}
     </div>
   );
 }

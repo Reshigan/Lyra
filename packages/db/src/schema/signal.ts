@@ -32,6 +32,11 @@ export const campaigns = sqliteTable(
     budgetJson: text("budget_json").notNull(),
     state: text("state").notNull().default("draft"), // draft|review|scheduled|live|paused|ended
     guardrailChecksJson: text("guardrail_checks_json"),
+    // The AI campaign plan behind this campaign: the planner's notes, three
+    // ranked options with a probability of success and the reasons for it, and
+    // which one the copy was written against. Nullable — a campaign a human
+    // typed straight in never had a plan, and that is not a defect.
+    planJson: text("plan_json"),
     autonomyLevel: text("autonomy_level").notNull().default("act_with_approval"),
     startAt: integer("start_at"),
     endAt: integer("end_at"),

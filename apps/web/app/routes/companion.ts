@@ -16,7 +16,8 @@ export interface CompanionRun {
   purpose: string;
   state: string;
   autonomyLevel: string;
-  startedAt: string;
+  /** Epoch ms — `ai_agent_runs.started_at` is an integer column. */
+  startedAt: number;
 }
 
 export interface CompanionAgent {

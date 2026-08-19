@@ -16,6 +16,7 @@ import {
 } from "radix-ui";
 import { cn, focusRing } from "./cn.js";
 import { Input } from "./primitives.js";
+import { useUiText } from "./text.js";
 
 const overlayScrim = "fixed inset-0 z-40 bg-ink-900/70 data-[state=open]:animate-fade";
 
@@ -35,7 +36,7 @@ export interface DialogProps {
   footer?: React.ReactNode;
   size?: "sm" | "md" | "lg";
   children?: React.ReactNode;
-  /** Close button's accessible name — pass the caller's i18n string; defaults to English (CLAUDE.md §7). */
+  /** Close button's accessible name. Defaults to the kit catalogue in the ambient locale. */
   closeLabel?: string;
 }
 
@@ -51,8 +52,9 @@ export function Dialog({
   footer,
   size = "md",
   children,
-  closeLabel = "Close"
+  closeLabel
 }: DialogProps) {
+  const t = useUiText();
   return (
     <RDialog.Root
       {...(open !== undefined ? { open } : {})}
@@ -84,7 +86,7 @@ export function Dialog({
           <div className="mt-4">{children}</div>
           {footer ? <div className="mt-6 flex justify-end gap-2">{footer}</div> : null}
           <RDialog.Close
-            aria-label={closeLabel}
+            aria-label={closeLabel ?? t("close")}
             className={cn(
               "absolute top-4 end-4 rounded-sm p-1 text-subtle hover:text-text",
               focusRing
@@ -124,8 +126,9 @@ export function Drawer({
   side = "inline-end",
   width = "26rem",
   children,
-  closeLabel = "Close"
+  closeLabel
 }: DrawerProps) {
+  const t = useUiText();
   return (
     <RDialog.Root
       {...(open !== undefined ? { open } : {})}
@@ -158,7 +161,7 @@ export function Drawer({
               )}
             </div>
             <RDialog.Close
-              aria-label={closeLabel}
+              aria-label={closeLabel ?? t("close")}
               className={cn("rounded-sm p-1 text-subtle hover:text-text", focusRing)}
             >
               <span aria-hidden="true">✕</span>
@@ -336,12 +339,13 @@ const toastTones = {
 
 export function ToastProvider({
   children,
-  dismissLabel = "Dismiss"
+  dismissLabel
 }: {
   children: React.ReactNode;
-  /** Dismiss button's accessible name — pass the caller's i18n string; defaults to English (CLAUDE.md §7). */
+  /** Dismiss button's accessible name. Defaults to the kit catalogue in the ambient locale. */
   dismissLabel?: string;
 }) {
+  const t = useUiText();
   const [messages, setMessages] = React.useState<ToastMessage[]>([]);
   const api = React.useMemo<ToastApi>(
     () => ({
@@ -380,7 +384,7 @@ export function ToastProvider({
               </p>
             ) : null}
             <RToast.Close
-              aria-label={dismissLabel}
+              aria-label={dismissLabel ?? t("dismiss")}
               className={cn("absolute top-2 end-2 rounded-sm p-1 text-subtle hover:text-text", focusRing)}
             >
               <span aria-hidden="true">✕</span>
@@ -446,13 +450,17 @@ export function groupCommandItems(
  */
 export function CommandBar({
   items,
-  placeholder = "Search entities, actions, docs…",
-  label = "Command palette",
-  emptyLabel = "No matches.",
+  placeholder,
+  label,
+  emptyLabel,
   open,
   onOpenChange,
   onQueryChange
 }: CommandBarProps) {
+  const t = useUiText();
+  const search = placeholder ?? t("commandSearch");
+  const palette = label ?? t("commandPalette");
+  const empty = emptyLabel ?? t("commandEmpty");
   const [internalOpen, setInternalOpen] = React.useState(false);
   const isOpen = open ?? internalOpen;
   const setOpen = React.useCallback(
@@ -484,12 +492,12 @@ export function CommandBar({
       <RDialog.Portal>
         <RDialog.Overlay className={overlayScrim} />
         <RDialog.Content
-          aria-label={label}
+          aria-label={palette}
           className="fixed top-24 start-1/2 z-50 w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2 rounded-lg border border-border bg-surface-2 text-start shadow-raised rtl:translate-x-1/2"
         >
           <RVisuallyHidden.Root>
-            <RDialog.Title>{label}</RDialog.Title>
-            <RDialog.Description>{placeholder}</RDialog.Description>
+            <RDialog.Title>{palette}</RDialog.Title>
+            <RDialog.Description>{search}</RDialog.Description>
           </RVisuallyHidden.Root>
           <div className="border-b border-border p-3">
             <Input
@@ -499,11 +507,11 @@ export function CommandBar({
                 setQuery(e.currentTarget.value);
                 onQueryChange?.(e.currentTarget.value);
               }}
-              placeholder={placeholder}
-              aria-label={placeholder}
+              placeholder={search}
+              aria-label={search}
             />
           </div>
-          <ul className="max-h-96 overflow-y-auto p-2" role="listbox" aria-label={label}>
+          <ul className="max-h-96 overflow-y-auto p-2" role="listbox" aria-label={palette}>
             {blocks.map((block, index) => (
               <li
                 key={`${block.name ?? ""}-${index}`}
@@ -544,7 +552,7 @@ export function CommandBar({
               </li>
             ))}
             {results.length === 0 ? (
-              <li className="px-3 py-6 text-center font-ui text-13 text-subtle">{emptyLabel}</li>
+              <li className="px-3 py-6 text-center font-ui text-13 text-subtle">{empty}</li>
             ) : null}
           </ul>
         </RDialog.Content>

@@ -330,6 +330,39 @@ export function readCookie(header: string | null, name: string): string | undefi
   return undefined;
 }
 
+/**
+ * The one place the session cookie's shape is written — issuing and clearing
+ * both come through here. A clear whose attributes do not match the set's
+ * (`Domain` above all) does not clear anything: the browser keeps the old
+ * cookie and gains a second, empty one. Sharing the builder is what makes that
+ * drift impossible rather than merely unlikely.
+ *
+ * `SESSION_COOKIE_DOMAIN` is optional and stays unset locally, where web and
+ * api share 127.0.0.1 and a host-only cookie is right. On a deployment they are
+ * separate hosts — `lyra.vantax.co.za` and `api.lyra.vantax.co.za` — so without
+ * the shared parent domain the browser never sends the session to the API, and
+ * the SSO callback and every direct-to-API download 401. It is configured, not
+ * derived from APP_ORIGIN: staging's app host `staging.lyra.vantax.co.za` is
+ * not a parent of `api-staging.lyra.vantax.co.za`, so no string surgery on the
+ * app origin can produce the domain both hosts sit under.
+ *
+ * `token === null` clears.
+ */
+export function sessionCookie(
+  env: Pick<Env, "ENVIRONMENT" | "SESSION_COOKIE" | "SESSION_COOKIE_DOMAIN">,
+  token: string | null
+): string {
+  return [
+    `${env.SESSION_COOKIE ?? COOKIE}=${token ?? ""}`,
+    "Path=/",
+    ...(env.SESSION_COOKIE_DOMAIN ? [`Domain=${env.SESSION_COOKIE_DOMAIN}`] : []),
+    "HttpOnly",
+    "SameSite=Lax",
+    `Max-Age=${token === null ? 0 : SESSION_TTL_MS / 1000}`,
+    ...((env.ENVIRONMENT ?? "production") !== "development" ? ["Secure"] : [])
+  ].join("; ");
+}
+
 /* ----------------------------------------------------------------- routes */
 
 /**
@@ -618,11 +651,7 @@ export async function issueSession(
     data: { sessionId, via: options.via ?? "password" }
   });
 
-  const secure = (c.env.ENVIRONMENT ?? "production") !== "development";
-  c.header(
-    "set-cookie",
-    `${c.env.SESSION_COOKIE ?? COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_TTL_MS / 1000}${secure ? "; Secure" : ""}`
-  );
+  c.header("set-cookie", sessionCookie(c.env, token));
 
   return {
     token,
@@ -829,7 +858,7 @@ authRoutes.post("/logout", async (c) => {
       .set({ revokedAt: now })
       .where(eq(schema.sessions.tokenHash, await sha256Hex(token)));
   }
-  c.header("set-cookie", `${c.env.SESSION_COOKIE ?? COOKIE}=; Path=/; HttpOnly; Max-Age=0`);
+  c.header("set-cookie", sessionCookie(c.env, null));
   return c.body(null, 204);
 });
 

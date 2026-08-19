@@ -26,6 +26,7 @@ import {
   type Page,
   type Problemish
 } from "./scout.shared";
+import { jsonOf } from "../json.js";
 
 // Selling insight back to the panel (docs/modules/scout.md §4 screen 5). Four
 // things have to be on one screen or the product is indefensible: what the cut
@@ -52,10 +53,12 @@ export const subjectRefOf = (id: string): string => `scout_data_product:${id}`;
 export interface DataProductRow {
   id: string;
   name: string;
-  definitionJson: string | null;
+  /** Already parsed on the wire — see `jsonOf`. */
+  definitionJson: unknown;
   consentBasis: string;
   aggregationMin: number;
-  subscribersJson: string | null;
+  /** Already parsed on the wire — see `jsonOf`. */
+  subscribersJson: unknown;
   delivery: string;
   status: string;
   createdAt: number;
@@ -92,13 +95,9 @@ export interface Subscriber {
   suspendedAt: number | null;
 }
 
-const bag = (raw: string | null): Record<string, unknown> => {
-  try {
-    const parsed: unknown = JSON.parse(raw ?? "{}");
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
-  } catch {
-    return {};
-  }
+const bag = (raw: unknown): Record<string, unknown> => {
+  const parsed = jsonOf(raw);
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
 };
 
 const text = (from: Record<string, unknown>, key: string): string | null =>
@@ -124,12 +123,7 @@ export function definitionOf(row: DataProductRow): Definition {
 }
 
 export function subscribersOf(row: DataProductRow): Subscriber[] {
-  let parsed: unknown = [];
-  try {
-    parsed = JSON.parse(row.subscribersJson ?? "[]");
-  } catch {
-    parsed = [];
-  }
+  const parsed = jsonOf(row.subscribersJson);
   if (!Array.isArray(parsed)) return [];
   return parsed.flatMap((entry) => {
     if (!entry || typeof entry !== "object") return [];

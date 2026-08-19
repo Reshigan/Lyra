@@ -1048,3 +1048,319 @@ describe("runSnapshotter: open_claim_count / outstanding_reserve", () => {
     expect(rows.find((r) => r.metricKey === "outstanding_reserve")!.value).toBe(8_000);
   });
 });
+
+// NORTH saw AXIS and the ledger but neither end of the demand loop: SCOUT
+// found the gaps and SIGNAL spent against them, and the board pack could see
+// neither the pipeline nor what came back. These two close it.
+describe("runSnapshotter: whitespace_promotion_rate", () => {
+  const ws = (id: string, over: Record<string, unknown>) => ({
+    id,
+    tenantId: ctx.tenantId,
+    description: id,
+    createdAt: MONTH_START,
+    updatedAt: MONTH_START,
+    ...over
+  });
+
+  it("divides whitespaces promoted in period by whitespaces raised in period", async () => {
+    await seedMetric("whitespace_promotion_rate", "month");
+    await ctx.db.insert(schema.scoutWhitespaces).values([
+      ws("ws_1", { promotedAt: MONTH_START + 1 }),
+      ws("ws_2", {}),
+      ws("ws_3", {}),
+      ws("ws_4", {}),
+      // Raised before this month: neither side of the ratio counts it.
+      ws("ws_old", { createdAt: MONTH_START - DAY, updatedAt: MONTH_START - DAY, promotedAt: MONTH_START - DAY })
+    ]);
+
+    const result = await runSnapshotter(ctx);
+    expect(result.written).toBe(1);
+
+    const [row] = await ctx.db
+      .select()
+      .from(schema.northSnapshots)
+      .where(and(eq(schema.northSnapshots.tenantId, ctx.tenantId), eq(schema.northSnapshots.metricKey, "whitespace_promotion_rate")));
+    // 1 promoted / 4 raised this month = 2,500 bp.
+    expect(row!.value).toBe(2_500);
+  });
+
+  it("writes nothing for a month that raised no candidate at all", async () => {
+    await seedMetric("whitespace_promotion_rate", "month");
+    const result = await runSnapshotter(ctx);
+    expect(result.written).toBe(0);
+  });
+
+  it("is a month metric — the day period computes nothing", async () => {
+    await seedMetric("whitespace_promotion_rate", "day");
+    await ctx.db.insert(schema.scoutWhitespaces).values([ws("ws_1", { createdAt: YESTERDAY_MID, updatedAt: YESTERDAY_MID, promotedAt: YESTERDAY_MID })]);
+    const result = await runSnapshotter(ctx);
+    expect(result.written).toBe(0);
+  });
+});
+
+describe("runSnapshotter: campaign_return_on_spend", () => {
+  const spendRow = (id: string, amountMinor: number, ts: number) => ({
+    id,
+    tenantId: ctx.tenantId,
+    campaignId: "cmp_1",
+    channel: "email",
+    day: new Date(ts).toISOString().slice(0, 10),
+    amountMinor,
+    currency: "AED",
+    ts
+  });
+  const touch = (id: string, over: Record<string, unknown>) => ({
+    id,
+    tenantId: ctx.tenantId,
+    touchType: "bind",
+    channel: "email",
+    campaignId: "cmp_1",
+    currency: "AED",
+    ts: MONTH_START + 1,
+    ...over
+  });
+
+  it("divides the value attributed to binds by the spend that bought them", async () => {
+    await seedMetric("campaign_return_on_spend", "month");
+    await ctx.db.insert(schema.signalSpend).values([
+      spendRow("sp_1", 40_000, MONTH_START + 1),
+      // Spent last month: outside the window, so it cannot dilute this month.
+      spendRow("sp_old", 999_000, MONTH_START - DAY)
+    ]);
+    await ctx.db.insert(schema.signalAttributionEvents).values([
+      touch("at_1", { valueMinor: 90_000 }),
+      touch("at_2", { valueMinor: 30_000 }),
+      // A click carries no bind value, and a bind without one cannot be counted.
+      touch("at_click", { touchType: "click", valueMinor: 500_000 }),
+      touch("at_novalue", { valueMinor: null }),
+      touch("at_old", { valueMinor: 500_000, ts: MONTH_START - DAY })
+    ]);
+
+    const result = await runSnapshotter(ctx);
+    expect(result.written).toBe(1);
+
+    const [row] = await ctx.db
+      .select()
+      .from(schema.northSnapshots)
+      .where(and(eq(schema.northSnapshots.tenantId, ctx.tenantId), eq(schema.northSnapshots.metricKey, "campaign_return_on_spend")));
+    // 120,000 attributed / 40,000 spent = 3x, as 30,000 bp.
+    expect(row!.value).toBe(30_000);
+  });
+
+  it("writes nothing for a month with attribution but no spend to divide by", async () => {
+    await seedMetric("campaign_return_on_spend", "month");
+    await ctx.db.insert(schema.signalAttributionEvents).values([touch("at_1", { valueMinor: 90_000 })]);
+    const result = await runSnapshotter(ctx);
+    expect(result.written).toBe(0);
+  });
+
+  it("writes a zero for spend that bought no bind — that is a result, not a gap", async () => {
+    await seedMetric("campaign_return_on_spend", "month");
+    await ctx.db.insert(schema.signalSpend).values([spendRow("sp_1", 40_000, MONTH_START + 1)]);
+    const result = await runSnapshotter(ctx);
+    expect(result.written).toBe(1);
+    const [row] = await ctx.db
+      .select()
+      .from(schema.northSnapshots)
+      .where(and(eq(schema.northSnapshots.tenantId, ctx.tenantId), eq(schema.northSnapshots.metricKey, "campaign_return_on_spend")));
+    expect(row!.value).toBe(0);
+  });
+});
+
+// The unit economics of acquisition: what a lead costs, what a bound contract
+// costs, and what the book pays back per contract and per customer. The spend
+// numerator is the one campaign_return_on_spend divides by, so a window that
+// drifted here would disagree with a metric on the same board.
+describe("runSnapshotter: acquisition unit economics", () => {
+  const spendRow = (id: string, amountMinor: number, ts: number) => ({
+    id,
+    tenantId: ctx.tenantId,
+    campaignId: "cmp_1",
+    channel: "google_search",
+    day: new Date(ts).toISOString().slice(0, 10),
+    amountMinor,
+    currency: "AED",
+    ts
+  });
+  const touch = (id: string, touchType: string, ts: number, over: Record<string, unknown> = {}) => ({
+    id,
+    tenantId: ctx.tenantId,
+    touchType,
+    channel: "google_search",
+    campaignId: "cmp_1",
+    ts,
+    ...over
+  });
+  const policy = (id: string, customerId: string, createdAt: number) => ({
+    id,
+    tenantId: ctx.tenantId,
+    customerId,
+    providerId: "prov_1",
+    policyNo: id,
+    startAt: createdAt,
+    endAt: createdAt + 365 * DAY,
+    premiumMinor: 400_000,
+    currency: "AED",
+    status: "active",
+    createdAt,
+    updatedAt: createdAt
+  });
+  const entry = (id: string, policyId: string, netMinor: number, earnedAt: number | null, kind = "new_business") => ({
+    id,
+    tenantId: ctx.tenantId,
+    policyId,
+    providerId: "prov_1",
+    channelId: "chn_1",
+    kind,
+    premiumMinor: 400_000,
+    grossCommissionMinor: netMinor,
+    netCommissionMinor: netMinor,
+    currency: "AED",
+    earnedOn: earnedAt === null ? "collection" : "issue",
+    earnedAt,
+    state: "accrued",
+    createdAt: earnedAt ?? MONTH_START,
+    updatedAt: earnedAt ?? MONTH_START
+  });
+
+  const valueOf = async (metricKey: string): Promise<number | undefined> => {
+    const [row] = await ctx.db
+      .select()
+      .from(schema.northSnapshots)
+      .where(and(eq(schema.northSnapshots.tenantId, ctx.tenantId), eq(schema.northSnapshots.metricKey, metricKey)));
+    return row?.value;
+  };
+
+  it("cost_per_lead divides the month's spend by the leads attributed in it", async () => {
+    await seedMetric("cost_per_lead", "month");
+    await ctx.db.insert(schema.signalSpend).values([
+      spendRow("sp_1", 30_000, MONTH_START),
+      spendRow("sp_2", 10_000, MONTH_START + DAY),
+      // The day before the month opened: outside the window.
+      spendRow("sp_old", 999_000, MONTH_START - DAY)
+    ]);
+    await ctx.db.insert(schema.signalAttributionEvents).values([
+      // Exactly on the opening instant — the window is [monthStart, now).
+      touch("at_1", "lead", MONTH_START),
+      touch("at_2", "lead", MONTH_START + 1),
+      touch("at_3", "lead", MONTH_START + 2),
+      touch("at_4", "lead", MONTH_START + 3),
+      // One millisecond before it: last month's lead, and not this month's cost.
+      touch("at_old", "lead", MONTH_START - 1),
+      // A click is interest, not a lead.
+      touch("at_click", "click", MONTH_START + 4)
+    ]);
+
+    const result = await runSnapshotter(ctx);
+    expect(result.written).toBe(1);
+    // 40,000 spent / 4 leads = AED 100 a lead, in minor units.
+    expect(await valueOf("cost_per_lead")).toBe(10_000);
+  });
+
+  it("cost_per_lead writes nothing for a month whose spend produced no lead", async () => {
+    await seedMetric("cost_per_lead", "month");
+    await ctx.db.insert(schema.signalSpend).values([spendRow("sp_1", 40_000, MONTH_START)]);
+    await ctx.db.insert(schema.signalAttributionEvents).values([touch("at_click", "click", MONTH_START + 1)]);
+    const result = await runSnapshotter(ctx);
+    expect(result.written).toBe(0);
+  });
+
+  it("cost_per_acquisition divides the same spend by the binds attributed in it", async () => {
+    await seedMetric("cost_per_acquisition", "month");
+    await ctx.db.insert(schema.signalSpend).values([
+      spendRow("sp_1", 40_000, MONTH_START),
+      spendRow("sp_old", 999_000, MONTH_START - DAY)
+    ]);
+    await ctx.db.insert(schema.signalAttributionEvents).values([
+      touch("at_1", "bind", MONTH_START, { valueMinor: 448_000, currency: "AED" }),
+      // A bind whose value nobody filled in is still an acquisition the spend bought.
+      touch("at_2", "bind", MONTH_START + 1),
+      touch("at_lead", "lead", MONTH_START + 2),
+      touch("at_old", "bind", MONTH_START - 1, { valueMinor: 448_000, currency: "AED" })
+    ]);
+
+    const result = await runSnapshotter(ctx);
+    expect(result.written).toBe(1);
+    // 40,000 spent / 2 binds = AED 200 an acquisition.
+    expect(await valueOf("cost_per_acquisition")).toBe(20_000);
+  });
+
+  it("cost_per_acquisition writes nothing for a month whose spend bound nothing", async () => {
+    await seedMetric("cost_per_acquisition", "month");
+    await ctx.db.insert(schema.signalSpend).values([spendRow("sp_1", 40_000, MONTH_START)]);
+    await ctx.db.insert(schema.signalAttributionEvents).values([touch("at_lead", "lead", MONTH_START + 1)]);
+    const result = await runSnapshotter(ctx);
+    expect(result.written).toBe(0);
+  });
+
+  it("commission_per_policy nets the clawback against the month the entry was earned in", async () => {
+    await seedMetric("commission_per_policy", "month");
+    await seedProviderAndCustomer();
+    await ctx.db.insert(schema.axisPolicies).values([
+      policy("pol_a", "cu_1", MONTH_START),
+      policy("pol_b", "cu_1", MONTH_START + DAY),
+      // Bound one millisecond before the month: neither its contract nor its commission is this month's.
+      policy("pol_old", "cu_1", MONTH_START - 1)
+    ]);
+    await ctx.db.insert(schema.distCommissionEntries).values([
+      entry("ce_a", "pol_a", 90_000, MONTH_START),
+      entry("ce_b", "pol_b", 50_000, MONTH_START + DAY),
+      // A clawback carries the original's earnedAt, so it reduces the month it was booked in.
+      entry("ce_claw", "pol_a", -20_000, MONTH_START + 2 * DAY, "clawback"),
+      // Earned on collection and not yet collected: nothing has accrued.
+      entry("ce_pending", "pol_b", 70_000, null, "endorsement"),
+      entry("ce_old", "pol_old", 400_000, MONTH_START - 1)
+    ]);
+
+    const result = await runSnapshotter(ctx);
+    expect(result.written).toBe(1);
+    // (90,000 + 50,000 - 20,000) accrued / 2 contracts bound = 60,000.
+    expect(await valueOf("commission_per_policy")).toBe(60_000);
+  });
+
+  it("commission_per_policy writes nothing for a month that bound no contract", async () => {
+    await seedMetric("commission_per_policy", "month");
+    await seedProviderAndCustomer();
+    await ctx.db.insert(schema.axisPolicies).values([policy("pol_old", "cu_1", MONTH_START - 1)]);
+    // Commission still trickles in off last month's book; there is no contract to divide it by.
+    await ctx.db.insert(schema.distCommissionEntries).values([entry("ce_a", "pol_old", 90_000, MONTH_START + 1)]);
+    const result = await runSnapshotter(ctx);
+    expect(result.written).toBe(0);
+  });
+
+  it("revenue_per_customer divides the same commission by distinct customers, not by contracts", async () => {
+    await seedMetric("revenue_per_customer", "month");
+    await seedProviderAndCustomer();
+    await ctx.db.insert(schema.customers).values([
+      { id: "cu_2", tenantId: ctx.tenantId, nameJson: JSON.stringify({ first: "Rania" }), createdAt: ctx.now, updatedAt: ctx.now },
+      { id: "cu_3", tenantId: ctx.tenantId, nameJson: JSON.stringify({ first: "Omar" }), createdAt: ctx.now, updatedAt: ctx.now }
+    ]);
+    await ctx.db.insert(schema.axisPolicies).values([
+      // Two contracts, one customer — the denominator counts her once.
+      policy("pol_a", "cu_1", MONTH_START),
+      policy("pol_b", "cu_1", MONTH_START + DAY),
+      policy("pol_c", "cu_2", MONTH_START + 2 * DAY),
+      // A customer whose only contract predates the month is not this month's.
+      policy("pol_old", "cu_3", MONTH_START - 1)
+    ]);
+    await ctx.db.insert(schema.distCommissionEntries).values([
+      entry("ce_a", "pol_a", 90_000, MONTH_START),
+      entry("ce_b", "pol_b", 50_000, MONTH_START + DAY),
+      entry("ce_c", "pol_c", 40_000, MONTH_START + 2 * DAY)
+    ]);
+
+    const result = await runSnapshotter(ctx);
+    expect(result.written).toBe(1);
+    // 180,000 accrued / 2 distinct customers = 90,000.
+    expect(await valueOf("revenue_per_customer")).toBe(90_000);
+  });
+
+  it("revenue_per_customer writes nothing for a month no customer took a contract in", async () => {
+    await seedMetric("revenue_per_customer", "month");
+    await seedProviderAndCustomer();
+    await ctx.db.insert(schema.axisPolicies).values([policy("pol_old", "cu_1", MONTH_START - 1)]);
+    await ctx.db.insert(schema.distCommissionEntries).values([entry("ce_a", "pol_old", 90_000, MONTH_START + 1)]);
+    const result = await runSnapshotter(ctx);
+    expect(result.written).toBe(0);
+  });
+});

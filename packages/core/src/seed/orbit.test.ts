@@ -179,8 +179,8 @@ describe("seedOrbit — orbit_conversations", () => {
     return rows[0]!;
   }
 
-  it("writes exactly eight conversations", async () => {
-    expect(await db.select().from(schema.orbitConversations)).toHaveLength(8);
+  it("writes exactly nine conversations", async () => {
+    expect(await db.select().from(schema.orbitConversations)).toHaveLength(9);
   });
 
   it("renewal thread: human state, assigned to retention, no csat, no closedAt", async () => {
@@ -277,6 +277,22 @@ describe("seedOrbit — orbit_conversations", () => {
     expect(row.closedAt).toBe(ISSUED_AT + 5 * HOUR + 10 * MINUTE);
     expect(row.createdAt).toBe(ISSUED_AT + 5 * HOUR);
     expect(row.firstResponseMs).toBe(35_000);
+  });
+
+  // The one closed thread the seed leaves unrated, so the CSAT half of
+  // orbit.md §5 has something to collect and J-C2's hosted feedback page has a
+  // conversation to offer. Its `csat` staying null is the point of the row.
+  it("awaiting-rating thread: closed this morning with no csat", async () => {
+    const row = await byExternalRef("wa:971501234567:driver");
+    expect(row.state).toBe("closed");
+    expect(row.csat).toBeNull();
+    expect(row.customerId).toBe(CUSTOMER_ID);
+    expect(row.assigneeRef).toBe(SARA);
+    expect(row.teamId).toBe(TEAMS.motor);
+    expect(row.lastMessageAt).toBe(NOW - 3 * HOUR);
+    expect(row.closedAt).toBe(NOW - 2 * HOUR);
+    expect(row.createdAt).toBe(NOW - 3 * HOUR - 20 * MINUTE);
+    expect(row.firstResponseMs).toBe(3 * MINUTE);
   });
 });
 

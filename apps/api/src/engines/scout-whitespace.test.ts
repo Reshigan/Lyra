@@ -8,7 +8,7 @@ import { id as newId, schema } from "@lyra/db";
 import { EntitlementsJson, PolicyJson } from "@lyra/db";
 import { permissionsForRole, seed, type Ctx } from "@lyra/core";
 import { Gateway, makeStub } from "@lyra/model-gateway";
-import { sweepWhitespace } from "./scout-whitespace.js";
+import { cellSize, clusterSizes, evidenceRefCount, sweepWhitespace } from "./scout-whitespace.js";
 
 const MIGRATIONS = join(import.meta.dirname, "..", "..", "..", "..", "packages", "db", "migrations");
 
@@ -122,8 +122,11 @@ async function seedQuoteCluster(category: string, count: number, at: number): Pr
 
 describe("sweepWhitespace", () => {
   it("drafts a candidate's description through the gateway and persists the reply", async () => {
-    await seedQuoteCluster("home", 20, ctx.now);
-    const { stub, gw } = stubbedGateway({ replies: ["Home demand is climbing fast against a thin book."] });
+    // Not "home" or "motor": the sweep skips any category that already has a
+    // live whitespace, and seedScout seeds those. "cyber" has neither a
+    // product nor a seeded row, so it is genuinely fresh.
+    await seedQuoteCluster("cyber", 20, ctx.now);
+    const { stub, gw } = stubbedGateway({ replies: ["Cyber demand is climbing fast against a thin book."] });
 
     const count = await sweepWhitespace(ctx, gw);
     expect(count).toBe(1);
@@ -134,9 +137,9 @@ describe("sweepWhitespace", () => {
     const [row] = await ctx.db
       .select()
       .from(schema.scoutWhitespaces)
-      .where(and(eq(schema.scoutWhitespaces.tenantId, tenantId), eq(schema.scoutWhitespaces.category, "home")));
+      .where(and(eq(schema.scoutWhitespaces.tenantId, tenantId), eq(schema.scoutWhitespaces.category, "cyber")));
     expect(row).toBeDefined();
-    expect(row!.description).toBe("Home demand is climbing fast against a thin book.");
+    expect(row!.description).toBe("Cyber demand is climbing fast against a thin book.");
   });
 
   it("falls back to the deterministic template when the gateway call fails", async () => {
@@ -192,5 +195,81 @@ describe("sweepWhitespace", () => {
       .from(schema.scoutClusters)
       .where(and(eq(schema.scoutClusters.tenantId, tenantId), eq(schema.scoutClusters.theme, "marine")));
     expect(clusters).toHaveLength(1);
+  });
+});
+
+// The cell a whitespace is suppressed against. This exists because the shipped
+// seed suppressed all seven of its rows: `evidence_refs_json` on those rows is
+// {refs:[...]} naming three *sources*, not the array of signal ids the sweep
+// writes, so the count came back 0 against a floor of 20 and the Radar said
+// "too few signals" about a theme whose own dossier printed "Cluster size 305".
+describe("cellSize", () => {
+  it("counts the cluster's signals, not the sources cited for them", () => {
+    const sizes = new Map([["clu_1", 305]]);
+    expect(cellSize({ clusterId: "clu_1", evidenceRefsJson: JSON.stringify(["a", "b", "c"]) }, sizes)).toBe(305);
+  });
+
+  it("falls back to the refs when the row has no cluster, which is then all there is", () => {
+    expect(cellSize({ clusterId: null, evidenceRefsJson: JSON.stringify(["a", "b"]) }, new Map())).toBe(2);
+  });
+
+  it("falls back when the cluster link dangles rather than reading it as a full cell", () => {
+    // A deleted cluster must suppress, not publish: a miss in the map is "we do
+    // not know how many", and the safe reading of that is the refs alone.
+    expect(cellSize({ clusterId: "clu_gone", evidenceRefsJson: JSON.stringify(["a"]) }, new Map())).toBe(1);
+  });
+
+  it("reads a zero-size cluster as zero rather than reaching past it", () => {
+    const sizes = new Map([["clu_1", 0]]);
+    expect(cellSize({ clusterId: "clu_1", evidenceRefsJson: JSON.stringify(["a", "b"]) }, sizes)).toBe(0);
+  });
+});
+
+describe("evidenceRefCount", () => {
+  it("counts a bare array - the shape the sweep writes", () => {
+    expect(evidenceRefCount(JSON.stringify(["a", "b", "c"]))).toBe(3);
+  });
+
+  it("counts the refs inside the seed's {refs, demandEstimate} blob", () => {
+    expect(evidenceRefCount(JSON.stringify({ refs: ["a", "b"], demandEstimate: { unit: "policies_per_year" } }))).toBe(2);
+  });
+
+  it("reads nothing, malformed JSON and an unknown shape as no evidence", () => {
+    expect(evidenceRefCount(null)).toBe(0);
+    expect(evidenceRefCount("{oops")).toBe(0);
+    expect(evidenceRefCount(JSON.stringify({ demandEstimate: 5 }))).toBe(0);
+  });
+});
+
+describe("clusterSizes", () => {
+  it("reads each named cluster's size, and skips the nulls", async () => {
+    const [cluster] = await ctx.db
+      .select({ id: schema.scoutClusters.id, size: schema.scoutClusters.size })
+      .from(schema.scoutClusters)
+      .where(eq(schema.scoutClusters.tenantId, tenantId))
+      .limit(1);
+    expect(cluster).toBeDefined();
+
+    const sizes = await clusterSizes(ctx, [cluster!.id, null, cluster!.id]);
+    expect(sizes.get(cluster!.id)).toBe(cluster!.size);
+  });
+
+  it("asks nothing when every row is unclustered", async () => {
+    expect(await clusterSizes(ctx, [null, null])).toEqual(new Map());
+  });
+
+  it("does not read another tenant's cluster size", async () => {
+    const foreign = newId("clu", ctx.now);
+    await ctx.db.insert(schema.scoutClusters).values({
+      id: foreign,
+      tenantId: "ten_other",
+      theme: "elsewhere",
+      momentumScore: 90,
+      size: 999,
+      firstSeen: ctx.now,
+      lastSeen: ctx.now,
+      updatedAt: ctx.now
+    });
+    expect(await clusterSizes(ctx, [foreign])).toEqual(new Map());
   });
 });

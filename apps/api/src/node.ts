@@ -97,6 +97,10 @@ export function makeEnv(): Env {
     ENVIRONMENT: process.env.ENVIRONMENT ?? "onprem",
     ...(process.env.APP_ORIGIN ? { APP_ORIGIN: process.env.APP_ORIGIN } : {}),
     ...(process.env.SESSION_COOKIE ? { SESSION_COOKIE: process.env.SESSION_COOKIE } : {}),
+    // A wrangler secret on Workers, a container env var here (docs/25 §FIELD_KEY).
+    // Without it field encryption and the portal-link HMAC (routes/portal.ts)
+    // both fail closed, so the on-prem process has to be able to carry it too.
+    ...(process.env.FIELD_KEY ? { FIELD_KEY: process.env.FIELD_KEY } : {}),
     ...(process.env.OPENAI_COMPAT_URL ? { OPENAI_COMPAT_URL: process.env.OPENAI_COMPAT_URL } : {}),
     ...(process.env.OPENAI_COMPAT_API_KEY ? { OPENAI_COMPAT_API_KEY: process.env.OPENAI_COMPAT_API_KEY } : {}),
     ...(process.env.ANTHROPIC_API_KEY ? { ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY } : {}),

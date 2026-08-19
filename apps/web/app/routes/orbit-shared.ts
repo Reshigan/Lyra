@@ -47,8 +47,8 @@ export type Label = (key: string, vars?: Record<string, string>) => string;
  * The one resolver, taken uncurried for the ORBIT screens that were written
  * before there was a shared one (docs/ui.md §7 P3-14).
  */
-export function labelsFrom(table: Labels, locale: string): Label {
-  return kitLabelsFrom(table)(locale);
+export function labelsFrom(table: Labels, locale: string, pack?: string): Label {
+  return kitLabelsFrom(table)(locale, pack);
 }
 
 /** A withheld read is an empty panel, not a blank screen. */

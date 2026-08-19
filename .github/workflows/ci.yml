@@ -101,27 +101,85 @@ jobs:
   # docs/13 §6 / CLAUDE.md §7: mutation score gate, break threshold 70.
   # packages/core cleared it 2026-07-31 (97.57%, was 28.56%). model-gateway
   # cleared it 2026-08-01 (84.92%, was 40.98%). Both packages now block.
+  #
+  # One job per package, `fail-fast: false`. This used to be a single step
+  # running `pnpm mutation`, which is `core && model-gateway` — so when core
+  # stalled, model-gateway's gate never ran at all and its result was neither
+  # pass nor fail, it was absent. Separate jobs cannot silence each other.
   mutation:
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [core, model-gateway]
     runs-on: ubuntu-latest
+    # A gate that never finishes reports nothing, and that is worse than a red
+    # one: both deploy jobs are `needs: checks`, so an unbounded mutation job
+    # parks the deploy instead of failing it — the #26 merge push sat here for
+    # over an hour. This is a ceiling, not a budget: model-gateway is ~1m, and
+    # #26's whole-PR core scope measured ~36m locally once the fixture tree came
+    # out of the mutate set (see the step comment). Tripping it is a hard
+    # failure with a named reason, which a human can act on. Do not raise it to
+    # make a run fit — shrink the scope or make the tests cheaper.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0 # `since` diffs against a ref, so it needs history
+          fetch-depth: 0 # STRYKER_SINCE diffs against a ref, so it needs history
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # Diff-scoped, not whole-tree: packages/core alone is 14,277 mutants and
-      # ran at 8% after 55 minutes (ETA ~10h) on 2026-08-06 — past the runner's
-      # ceiling, so every run was killed and the gate reported nothing. Scoped
-      # to what a change touched it finishes, and the break threshold is
-      # untouched: a commit that drops below 70% on the code it edits fails.
-      # The whole-tree sweep is `pnpm mutation` with STRYKER_SINCE unset.
-      - run: pnpm mutation
+      # Diff-scoped, not whole-tree. Whole-tree packages/core is 15,392 mutants,
+      # 13,471 of them (88%) static, ETA 45-53h — past any runner ceiling, so
+      # the run was always killed and the gate reported nothing at all. The
+      # break threshold is untouched at 70: a commit that drops below it on the
+      # code it edits still fails.
+      #
+      # Scoping alone was NOT the fix, and assuming it was is what parked the
+      # #26 merge push for an hour. `HEAD^` on a merge commit is `HEAD^1`, the
+      # pre-merge main tip, so the diff is the whole PR — correct in the git
+      # sense, but #26's core diff included packages/core/src/seed/ledger.ts,
+      # 1,914 lines of fixture data. Measured on seed.ts, a sibling: 1,852
+      # mutants of which 1,821 (98%) are static, ETA 2h42m-4h24m. Static mutants
+      # cost a full suite re-run each instead of just their covering tests, so
+      # ONE touched fixture file reproduces the whole-tree stall by itself.
+      #
+      # So the fixture tree (src/seed.ts, src/seed/**) is out of the mutate set.
+      # That is the only thing excluded here, and exactly what it leaves ungated
+      # is spelled out at the bottom of packages/core/stryker.config.mjs. It is
+      # data, not logic; its own tests still run under `pnpm test`. Nothing is
+      # skipped per-event and no job is made non-blocking.
+      #
+      # Measured with it out, on #26's own merge-push scope: 947 mutants, only 2
+      # timing out — core stops being static-dominated, a ~16x reduction. Local
+      # wall time ~36m on a contended 10-core box.
+      #
+      # ponytail: the remaining ceiling is that core's suite is 97s/559 tests
+      # (DB-backed seed tests sit in the covering set of most core modules), so
+      # cost is roughly linear in changed non-fixture files and a very large
+      # core diff can still hit `timeout-minutes` above. That is a loud red
+      # build, not a silent pass. Upgrade path when it starts tripping: Stryker
+      # `incremental` with an actions/cache of .stryker-tmp/incremental.json, so
+      # a run only re-tests mutants whose covering tests changed.
+      #
+      # Scope per trigger (this workflow runs on `pull_request` directly, and
+      # via workflow_call from deploy.yml on push-to-main / workflow_dispatch,
+      # where `github.event*` is the CALLER's event):
+      #   pull_request      origin/<base>... — three dots, i.e. the MERGE BASE,
+      #                     so a branch that is behind main does not report
+      #                     main's own commits as "changed".
+      #   push to main      github.event.before, the previous main tip. On a
+      #                     merge commit that is HEAD^1, covering the whole PR.
+      #   workflow_dispatch no `before` in the payload, so `HEAD^` — the last
+      #                     thing that landed on main. NOT empty: an empty value
+      #                     makes scripts/stryker-changed.mjs sweep the whole
+      #                     tree, which is the 45h run, i.e. the production
+      #                     dispatch could never go green.
+      - run: pnpm --filter @lyra/${{ matrix.package }} mutation
         env:
-          STRYKER_SINCE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || 'HEAD^' }}
+          STRYKER_SINCE: ${{ github.event_name == 'pull_request' && format('origin/{0}...', github.base_ref) || github.event.before || 'HEAD^' }}
 
 # a11y gate (CLAUDE.md WCAG 2.2 AA): e2e/a11y.ts's expectNoA11yViolations
 # (axe-core, tags wcag2a/wcag2aa/wcag22aa) runs inside the existing journey

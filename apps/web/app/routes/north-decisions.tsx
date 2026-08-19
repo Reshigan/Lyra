@@ -460,7 +460,7 @@ export default function NorthDecisions() {
       <header className="flex flex-col gap-2">
         <span className="font-mono text-12 uppercase tracking-[0.14em] text-subtle">{l("kicker")}</span>
         <h1 className="font-serif text-22 leading-[1.2] text-text">{headline}</h1>
-        <p className="max-w-[68ch] font-ui text-13 text-subtle">{l("intro")}</p>
+        <p className="max-w-[var(--measure-prose)] font-ui text-13 text-subtle">{l("intro")}</p>
         {open.length > 0 ? (
           <Link to="/approvals" className="w-fit font-ui text-13 text-accent underline">
             {l("approvalLink")}

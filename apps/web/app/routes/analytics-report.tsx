@@ -11,6 +11,7 @@ import { ApiError, api, fetchMe } from "../api.server";
 import { Cell, FieldInput, toneFor } from "../components/fields";
 import { cloudflare } from "../context";
 import { translator } from "../i18n";
+import { asJson } from "../json.js";
 import { bodyFrom, type FieldSpec, type Row } from "../modules/spec";
 import { labelsFrom } from "./detail-kit";
 import { Problem } from "./module";
@@ -84,12 +85,19 @@ const PARAMS: readonly FieldSpec[] = [
 /** POST /exports takes no grain — it re-runs the definition's own bucketing. */
 const EXPORT_PARAMS = PARAMS.filter((field) => field.name !== "grain");
 
-interface ReportRow {
+/**
+ * `GET /v1/analytics/reports/:id` as `reportView()` sends it — see
+ * apps/api/src/routes/analytics.ts. The route is hand-written, so crud.ts
+ * `hydrate()` never touches its `*Json` columns and `definitionJson` arrives as
+ * text; `reportView()` parses the two localised ones itself and sends
+ * `name`/`description` beside them, `description` only when it has one.
+ */
+export interface ReportRow {
   id: string;
   key: string;
   module: string;
-  nameJson: string;
-  descriptionJson: string | null;
+  name: Record<string, string>;
+  description?: Record<string, string>;
   definitionJson: string;
   piiLevel: string;
   scope: string;
@@ -285,13 +293,18 @@ const LABELS: Record<string, Record<string, string>> = {
 // these screens build keys from enum values (docs/ui.md §7 P3-14).
 const labelsIn = labelsFrom(LABELS);
 
-function parseJson<T>(raw: string | null | undefined, fallback: T): T {
-  if (!raw) return fallback;
-  try {
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
-  }
+/** The wire row as the screen reads it: the server's own parse of the localised
+ *  columns, and this side's parse of the one it left as text. */
+export function reportOf(row: ReportRow) {
+  return {
+    id: row.id,
+    key: row.key,
+    name: row.name ?? {},
+    description: row.description ?? {},
+    definition: asJson<Definition>(row.definitionJson, {}),
+    piiLevel: row.piiLevel,
+    updatedAt: row.updatedAt
+  };
 }
 
 /** A per-locale JSON column (`nameJson`), read the way the actor reads. */
@@ -341,15 +354,7 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
     reportId,
     may,
     apiOrigin: env.API_ORIGIN,
-    report: {
-      id: row.id,
-      key: row.key,
-      name: parseJson<Record<string, string>>(row.nameJson, {}),
-      description: parseJson<Record<string, string>>(row.descriptionJson, {}),
-      definition: parseJson<Definition>(row.definitionJson, {}),
-      piiLevel: row.piiLevel,
-      updatedAt: row.updatedAt
-    },
+    report: reportOf(row),
     runs: runs.data
   };
 }

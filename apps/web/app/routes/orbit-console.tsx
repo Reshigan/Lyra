@@ -14,12 +14,11 @@ import {
   Card,
   DateTime,
   EmptyState,
-  KPIWall,
-  Stat,
   Table,
   type BadgeTone,
   type Column
 } from "@lyra/ui";
+import { FOCUS, HeroStat, HeroWall, lensOf, useFocus, type Lens } from "../components/hero";
 import { api, asRouteError, fetchMe, names, type Names, type Problem as ProblemShape } from "../api.server";
 import { who } from "../names";
 import { cloudflare } from "../context";
@@ -69,6 +68,16 @@ export const SLOW_MS = 15 * 60_000;
 /** How long since anybody said anything on this conversation. */
 export function waitingMs(row: LiveConversation, now: number): number {
   return Math.max(0, now - (row.lastMessageAt ?? row.createdAt));
+}
+
+/**
+ * What the wall's one drillable figure counts. Both queues are filtered through
+ * this same predicate while it is focused, so "waiting over 15 minutes: 4" can
+ * only ever open onto those four rows. `now` is the loader's snapshot, so the
+ * figure and the list read one clock rather than two.
+ */
+export function lensesAt(now: number): Record<string, Lens<LiveConversation>> {
+  return { waiting: (row) => waitingMs(row, now) >= SLOW_MS };
 }
 
 export function waitLabel(ms: number, l: Label): string {
@@ -130,6 +139,7 @@ export const LABELS: Labels = {
     handledByAgent: "Held by the agent",
     handledByHuman: "Held by a person",
     waitingLong: "Waiting over 15 minutes",
+    heroAll: "Show everything",
     agentQueue: "Agent is answering",
     agentQueueBody: "The AI agent holds these. Take one over and it moves to your name.",
     humanQueue: "People are answering",
@@ -187,6 +197,7 @@ export const LABELS: Labels = {
     handledByAgent: "بيد الوكيل الذكي",
     handledByHuman: "بيد موظف",
     waitingLong: "انتظار أكثر من ١٥ دقيقة",
+    heroAll: "إظهار الكل",
     agentQueue: "الوكيل الذكي يجيب",
     agentQueueBody: "الوكيل الذكي يحمل هذه المحادثات. تولَّ واحدة فتنتقل إلى اسمك.",
     humanQueue: "الموظفون يجيبون",
@@ -332,8 +343,12 @@ export default function OrbitConsole() {
   const navigation = useNavigation();
   const l = labelsIn(loaded.locale);
   const busy = navigation.state === "submitting";
+  const LENSES = lensesAt(loaded.now);
+  const { focus, href } = useFocus(LENSES);
   const live = [...loaded.bot.data, ...loaded.human.data];
-  const waitingLong = live.filter((row) => waitingMs(row, loaded.now) >= SLOW_MS).length;
+  // Counted through the same lens the queues below are filtered by, never a
+  // second `.filter` that could drift from it.
+  const waitingLong = lensOf(live, LENSES, "waiting").length;
   const urgent = mostUrgent(live, loaded.now);
 
   const problemMessage: Record<string, string> = {
@@ -365,6 +380,9 @@ export default function OrbitConsole() {
           ) : null}
         </div>
         <Form method="get" replace className="flex items-center gap-3">
+          {/* A GET form submits its fields as the whole query, so without this a
+              refresh would silently drop the lens the reader drilled into. */}
+          {focus ? <input type="hidden" name={FOCUS} value={focus} /> : null}
           <span className="font-ui text-12 text-subtle">
             {l("asOf")} <DateTime value={loaded.now} locale={loaded.locale} precision="minute" />
           </span>
@@ -386,19 +404,37 @@ export default function OrbitConsole() {
         </div>
       ) : null}
 
-      <KPIWall>
-        <Stat
+      <HeroWall focus={focus} allLabel={l("heroAll")}>
+        {/* No door: this is two server counts added together, and neither page
+            below holds all the rows it stands for. */}
+        <HeroStat
           label={l("active")}
           value={String((loaded.bot.total ?? loaded.bot.data.length) + (loaded.human.total ?? loaded.human.data.length))}
         />
-        <Stat label={l("handledByAgent")} value={String(loaded.bot.total ?? loaded.bot.data.length)} />
-        <Stat label={l("handledByHuman")} value={String(loaded.human.total ?? loaded.human.data.length)} />
-        <Stat label={l("waitingLong")} value={String(waitingLong)} live={waitingLong > 0} />
-      </KPIWall>
+        {/* One state, one endpoint, one declared filter (modules/orbit.ts): the
+            list route counts the same rows this figure came from. */}
+        <HeroStat
+          label={l("handledByAgent")}
+          value={String(loaded.bot.total ?? loaded.bot.data.length)}
+          to="/orbit/conversations?state=bot"
+        />
+        <HeroStat
+          label={l("handledByHuman")}
+          value={String(loaded.human.total ?? loaded.human.data.length)}
+          to="/orbit/conversations?state=human"
+        />
+        <HeroStat
+          label={l("waitingLong")}
+          value={String(waitingLong)}
+          live={waitingLong > 0}
+          to={href("waiting")}
+          active={focus === "waiting"}
+        />
+      </HeroWall>
 
       <Card title={l("agentQueue")} description={l("agentQueueBody")}>
         <Queue
-          rows={loaded.bot.data}
+          rows={lensOf(loaded.bot.data, LENSES, focus)}
           resolved={loaded.names}
           l={l}
           locale={loaded.locale}
@@ -412,7 +448,7 @@ export default function OrbitConsole() {
 
       <Card title={l("humanQueue")} description={l("humanQueueBody")}>
         <Queue
-          rows={loaded.human.data}
+          rows={lensOf(loaded.human.data, LENSES, focus)}
           resolved={loaded.names}
           l={l}
           locale={loaded.locale}
@@ -424,54 +460,59 @@ export default function OrbitConsole() {
         />
       </Card>
 
-      <Card title={l("recentHandovers")} description={l("recentHandoversBody")}>
-        {loaded.handovers.length === 0 ? (
-          <EmptyState title={l("noneHandovers")} body={l("noneBody")} />
-        ) : (
-          <Table
-            caption={l("recentHandovers")}
-            rows={loaded.handovers}
-            rowKey={(row) => row.id}
-            density="compact"
-            columns={[
-              {
-                key: "conversationId",
-                header: l("customer"),
-                render: (row) =>
-                  row.conversationId ? (
-                    <Link
-                      to={`/orbit/conversations/${row.conversationId}/thread`}
-                      className="font-ui text-12 text-accent underline underline-offset-2"
-                    >
-                      {who(loaded.customerOf[row.conversationId], loaded.names) ?? l("unnamedCustomer")}
-                    </Link>
-                  ) : (
-                    <span className="text-subtle">{l("unassigned")}</span>
-                  )
-              },
-              { key: "fromRef", header: l("from"), render: (row) => who(row.fromRef, loaded.names) ?? "—" },
-              { key: "toRef", header: l("to"), render: (row) => who(row.toRef, loaded.names) ?? "—" },
-              {
-                key: "generatedBy",
-                header: l("written"),
-                // ponytail: AgentBadge ships its own English chrome (packages/ui);
-                // translating the primitive is a @lyra/ui change, not a screen change.
-                render: (row) =>
-                  row.generatedBy?.startsWith("agent:") ? (
-                    <AgentBadge agent={row.generatedBy.slice("agent:".length)} />
-                  ) : (
-                    <span className="font-ui text-12 text-muted">{row.generatedBy ?? "—"}</span>
-                  )
-              },
-              {
-                key: "ts",
-                header: l("when"),
-                render: (row) => <DateTime value={row.ts} locale={loaded.locale} relative />
-              }
-            ] satisfies Column<HandoverNote>[]}
-          />
-        )}
-      </Card>
+      {/* Handovers are not conversations and the focused figure did not count
+          them, so while a lens is on they would be rows on screen that the
+          figure above disowns. Gone until the reader shows everything again. */}
+      {focus ? null : (
+        <Card title={l("recentHandovers")} description={l("recentHandoversBody")}>
+          {loaded.handovers.length === 0 ? (
+            <EmptyState title={l("noneHandovers")} body={l("noneBody")} />
+          ) : (
+            <Table
+              caption={l("recentHandovers")}
+              rows={loaded.handovers}
+              rowKey={(row) => row.id}
+              density="compact"
+              columns={[
+                {
+                  key: "conversationId",
+                  header: l("customer"),
+                  render: (row) =>
+                    row.conversationId ? (
+                      <Link
+                        to={`/orbit/conversations/${row.conversationId}/thread`}
+                        className="font-ui text-12 text-accent underline underline-offset-2"
+                      >
+                        {who(loaded.customerOf[row.conversationId], loaded.names) ?? l("unnamedCustomer")}
+                      </Link>
+                    ) : (
+                      <span className="text-subtle">{l("unassigned")}</span>
+                    )
+                },
+                { key: "fromRef", header: l("from"), render: (row) => who(row.fromRef, loaded.names) ?? "—" },
+                { key: "toRef", header: l("to"), render: (row) => who(row.toRef, loaded.names) ?? "—" },
+                {
+                  key: "generatedBy",
+                  header: l("written"),
+                  // ponytail: AgentBadge ships its own English chrome (packages/ui);
+                  // translating the primitive is a @lyra/ui change, not a screen change.
+                  render: (row) =>
+                    row.generatedBy?.startsWith("agent:") ? (
+                      <AgentBadge agent={row.generatedBy.slice("agent:".length)} />
+                    ) : (
+                      <span className="font-ui text-12 text-muted">{row.generatedBy ?? "—"}</span>
+                    )
+                },
+                {
+                  key: "ts",
+                  header: l("when"),
+                  render: (row) => <DateTime value={row.ts} locale={loaded.locale} relative />
+                }
+              ] satisfies Column<HandoverNote>[]}
+            />
+          )}
+        </Card>
+      )}
     </div>
   );
 }

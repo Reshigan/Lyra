@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
-import { hasApprovalsLink, isOwnWork } from "./home";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { LoaderFunctionArgs } from "react-router";
+import type { Env } from "../env";
+import { loader as approvalsLoader } from "./approvals";
+import { hasApprovalsLink, isOwnWork, loader } from "./home";
 
 // The activity panel is headed "Your recent activity", which is a promise: it
 // lists what this person changed. Signing in is not a change, and the audit log
@@ -39,5 +42,57 @@ describe("hasApprovalsLink", () => {
   it("hides it when the inbox never loaded", () => {
     expect(hasApprovalsLink(null)).toBe(false);
     expect(hasApprovalsLink(undefined)).toBe(false);
+  });
+});
+
+describe("the hero figure and what clicking it shows", () => {
+  const env = { ENVIRONMENT: "test", API_ORIGIN: "https://api.test", SESSION_COOKIE: "s" } as Env;
+  const context = { get: () => ({ env, ctx: null }) };
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("counts exactly the rows /approvals lists, because both read one inbox", () => {
+    // The tile links to /approvals, so the promise is that the queue holds the
+    // number the tile printed. Both screens go through /v1/me/inbox — the only
+    // endpoint scoped to THIS actor — and this pins that they still do: the CRUD
+    // list would hand /approvals every pending row in the tenant instead.
+    const approvals = ["cas_1", "cas_2", "cas_3"].map((subjectRef, i) => ({
+      id: `apr_${i}`,
+      subjectRef,
+      policyKey: "axis.claims.pay",
+      module: "axis",
+      requestedBy: "user:usr_2",
+      requestedAt: i,
+      decidedBy: null,
+      decision: "pending",
+      reason: null,
+      contextJson: null,
+      decidedAt: null
+    }));
+    vi.stubGlobal("fetch", (input: URL | string) => {
+      const url = String(input);
+      const body = url.endsWith("/v1/me")
+        ? { permissions: [], policy: { currency: "AED" }, actor: { kind: "user", id: "usr_1" } }
+        : url.endsWith("/v1/me/inbox")
+          ? { approvals, notifications: [], counts: { approvals: approvals.length, notifications: 0 } }
+          : { data: [] };
+      return Promise.resolve(
+        new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } })
+      );
+    });
+
+    return Promise.all([
+      loader({ request: new Request("https://web.test/"), context, params: {} } as unknown as LoaderFunctionArgs),
+      approvalsLoader({
+        request: new Request("https://web.test/approvals"),
+        context,
+        params: {}
+      } as unknown as LoaderFunctionArgs)
+    ]).then(([home, queue]) => {
+      expect(home.counts?.approvals).toBe(approvals.length);
+      expect(queue.items).toHaveLength(home.counts!.approvals);
+    });
   });
 });

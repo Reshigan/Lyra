@@ -29,6 +29,8 @@ import { ApiError, api, fetchMe, type Problem as ApiProblem } from "../api.serve
 import { toneFor } from "../components/fields";
 import { cloudflare } from "../context";
 import { pseudoText, translator } from "../i18n";
+import { jsonOf } from "../json.js";
+import { vocabulary } from "../modules/vocabulary";
 import { Problem } from "./module";
 import { useShellData } from "./workspace";
 
@@ -122,7 +124,8 @@ interface Offer {
   expectedValueMinor: number | null;
   currency: string | null;
   reasonKey: string | null;
-  reasonJson: string | null;
+  /** Already parsed on the wire — see `jsonOf`. */
+  reasonJson: unknown;
   model: string | null;
   state: string;
   suppressReason: string | null;
@@ -306,12 +309,17 @@ export function requestExpired(expiresAt: number | null, now: number): boolean {
   return expiresAt !== null && expiresAt <= now;
 }
 
-/** Local catalogue, English fallback, then the raw key — same contract as i18n.ts. */
-function labeller(locale: string) {
+/**
+ * Pack, local catalogue, English fallback, then the raw key — same contract as
+ * detail-kit's labelsFrom. The pack goes first (CLAUDE.md §14): a bespoke route
+ * with its own table is still the tenant's vocabulary, not insurance's.
+ */
+export function labeller(locale: string, pack?: string) {
+  const packed = vocabulary(pack, locale);
   const table = LABELS[locale] ?? LABELS.en ?? {};
   const fallback = LABELS.en ?? {};
   return (key: string, vars?: Record<string, string>): string => {
-    const raw = pseudoText(locale, table[key] ?? fallback[key] ?? key);
+    const raw = pseudoText(locale, packed(key) ?? table[key] ?? fallback[key] ?? key);
     return vars ? raw.replace(/\{(\w+)\}/g, (match, name: string) => vars[name] ?? match) : raw;
   };
 }
@@ -464,7 +472,7 @@ export default function QuoteCompare() {
 
   const locale = shell?.locale ?? "en";
   const t = translator(locale);
-  const L = labeller(locale);
+  const L = labeller(locale, shell?.domainPack);
   const busy = navigation.state !== "idle";
 
   const request = loaded.request;
@@ -1072,16 +1080,14 @@ function offeringName(quote: Quote, locale: string): string {
   return typeof localised === "string" ? localised : offering.code;
 }
 
-function jsonObject(raw: string | null): Record<string, unknown> {
-  if (!raw) return {};
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : {};
-  } catch {
-    return {};
-  }
+// Two wire shapes meet here: the comparison route hands back raw rows, so
+// `nameJson`/`coverageJson` are still text, while `next-best-offers` is generic
+// CRUD and its `reasonJson` arrives parsed. `jsonOf` settles both.
+function jsonObject(raw: unknown): Record<string, unknown> {
+  const parsed = jsonOf(raw);
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+    ? (parsed as Record<string, unknown>)
+    : {};
 }
 
 /** `excessMinor` → "Excess"; the data supplies the noun, we only space it out. */

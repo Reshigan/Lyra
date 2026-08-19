@@ -624,6 +624,54 @@ describe("seed", () => {
         owner: "yusuf.karim",
         sensitivity: "restricted",
         target: { value: 12_000_000, scale: "minor", currency: "AED" }
+      },
+      whitespace_promotion_rate: {
+        unit: "percent",
+        grain: "month",
+        direction: "up",
+        owner: "layla.hassan",
+        sensitivity: "internal",
+        target: { value: 3_000, scale: "bps" }
+      },
+      campaign_return_on_spend: {
+        unit: "ratio",
+        grain: "month",
+        direction: "up",
+        owner: "layla.hassan",
+        sensitivity: "internal",
+        target: { value: 30_000, scale: "bps" }
+      },
+      cost_per_lead: {
+        unit: "money",
+        grain: "month",
+        direction: "down",
+        owner: "noor.jamal",
+        sensitivity: "internal",
+        target: { value: 3_500, scale: "minor", currency: "AED" }
+      },
+      cost_per_acquisition: {
+        unit: "money",
+        grain: "month",
+        direction: "down",
+        owner: "noor.jamal",
+        sensitivity: "internal",
+        target: { value: 25_000, scale: "minor", currency: "AED" }
+      },
+      commission_per_policy: {
+        unit: "money",
+        grain: "month",
+        direction: "up",
+        owner: "faisal.omar",
+        sensitivity: "internal",
+        target: { value: 48_000, scale: "minor", currency: "AED" }
+      },
+      revenue_per_customer: {
+        unit: "money",
+        grain: "month",
+        direction: "up",
+        owner: "noor.jamal",
+        sensitivity: "internal",
+        target: { value: 58_000, scale: "minor", currency: "AED" }
       }
     };
 

@@ -256,6 +256,21 @@ describe("seedScout: whitespaces", () => {
     const clusterIdByTheme = (theme: string) => clusters.find((c) => c.theme === theme)!.id;
     const byDescription = (d: string) => whitespaces.find((w) => w.description === d)!;
 
+    // `category` is the product line the gap sits in, and it is load-bearing in
+    // two places: `coveragePerLine` keys "on the book" by it, and
+    // `promoteWhitespace` 409s outright on a row without one. Seeded null, the
+    // radar read "On the book 0" for every theme and the handover to the
+    // campaign studio was unreachable from the demo.
+    expect(Object.fromEntries(whitespaces.map((w) => [w.description, w.category]))).toEqual({
+      "A motor renewal that keeps agency repair instead of quietly dropping it at year three": "motor",
+      "Single-trip travel cover sold at the moment the visa application is filled in": "travel",
+      "Motor cover that prices battery, home charger and range-related towing for electric vehicles": "motor",
+      "Domestic helper package offered beside the motor and home renewal": "home",
+      "Cedar Home Contents offered at the Meridian mortgage step, where the embed sells motor only": "home",
+      "Motor cover for delivery riders priced by the shift rather than by the year": "motor",
+      "A health row that states its maternity waiting period before the price is shown": "health"
+    });
+
     const agencyRenewal = byDescription("A motor renewal that keeps agency repair instead of quietly dropping it at year three");
     expect(agencyRenewal.clusterId).toBe(clusterIdByTheme("Agency repair lost at renewal"));
     expect(agencyRenewal.demandEstimate).toBe(6_200);

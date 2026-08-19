@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import type { Env } from "../env";
 import {
+  ADVERSE_HOPS,
   OPEN_CLAIM_STATES,
   PERM,
   WEIGHTS,
@@ -10,10 +11,12 @@ import {
   headlineFor,
   hopsFor,
   incurredOf,
+  isAdverseHop,
   labelsIn,
   loader,
   phrase,
   priorityScore,
+  reserveOf,
   type ClaimRow
 } from "./claims-desk";
 
@@ -103,6 +106,7 @@ describe("labelsIn", () => {
       "col.fraud",
       "col.siu",
       "col.handler",
+      "reserve.unpriced",
       "count.reported",
       "count.triage",
       "count.assessing",
@@ -126,6 +130,8 @@ describe("labelsIn", () => {
       "assign.handler",
       "assign.submit",
       "done.assign",
+      "done.transition",
+      "hop.confirm",
       "hop.title",
       "hop.outcome",
       "hop.reasonCode",
@@ -178,7 +184,47 @@ describe("incurredOf", () => {
   });
 
   it("falls back to the FNOL estimate before a reserve has been set", () => {
-    expect(incurredOf(claim({ reserveMinor: null as unknown as number, amountMinor: 75_000 }))).toBe(75_000);
+    expect(incurredOf(claim({ reserveMinor: null, amountMinor: 75_000 }))).toBe(75_000);
+  });
+
+  it("is what has moved when nobody has priced the claim at all", () => {
+    // `axis_claims.amount_minor` is nullable: a claim can be notified before
+    // anyone puts a number on it. Counting that as zero incurred is honest —
+    // claiming a zero *reserve* is not, which is what `reserveOf` guards.
+    expect(incurredOf(claim({ reserveMinor: null, amountMinor: null, paidMinor: 40_000, recoveredMinor: 10_000 }))).toBe(
+      30_000
+    );
+  });
+});
+
+describe("reserveOf", () => {
+  it("prefers the posted reserve over the notified figure", () => {
+    expect(reserveOf(claim({ reserveMinor: 200_000, amountMinor: 100_000 }))).toBe(200_000);
+  });
+
+  it("stands the notified figure in until a reserve is posted", () => {
+    expect(reserveOf(claim({ reserveMinor: null, amountMinor: 100_000 }))).toBe(100_000);
+  });
+
+  it("is null — not zero — for a claim nobody has priced", () => {
+    expect(reserveOf(claim({ reserveMinor: null, amountMinor: null }))).toBeNull();
+  });
+});
+
+describe("isAdverseHop", () => {
+  it("marks the outcomes that end a claim against the claimant", () => {
+    for (const to of ADVERSE_HOPS) expect(isAdverseHop(to)).toBe(true);
+  });
+
+  it("leaves ordinary progress unmarked", () => {
+    expect(isAdverseHop("assessing")).toBe(false);
+    expect(isAdverseHop("triage")).toBe(false);
+    expect(isAdverseHop("reopened")).toBe(false);
+  });
+
+  it("only ever marks outcomes this desk actually offers", () => {
+    const offered = new Set(OPEN_CLAIM_STATES.flatMap((state) => [...hopsFor(state)]));
+    for (const to of ADVERSE_HOPS) expect(offered.has(to), to).toBe(true);
   });
 });
 

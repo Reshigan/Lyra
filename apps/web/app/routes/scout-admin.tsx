@@ -2,6 +2,7 @@ import { Link, useLoaderData, type LoaderFunctionArgs } from "react-router";
 import { Badge, Card, DateTime, EmptyState, GuardrailNotice } from "@lyra/ui";
 import { api } from "../api.server";
 import { cloudflare } from "../context";
+import { jsonOf } from "../json.js";
 import { useScoutSessionData } from "./scout-shell";
 import {
   K_FLOOR,
@@ -48,11 +49,14 @@ export interface ProductRow {
   status: string;
 }
 
+/** `compliance_policy_thresholds` as generic CRUD returns it — see
+ *  `r("policy-thresholds", …)` in apps/api/src/resources.ts. */
 export interface ThresholdRow {
   id: string;
   key: string;
   version: number;
-  valueJson: string;
+  /** Already parsed on the wire — see `jsonOf`. */
+  valueJson: unknown;
   dualControl: boolean;
   effectiveFrom: number;
   effectiveTo: number | null;
@@ -99,6 +103,18 @@ export function currentThresholds(rows: ThresholdRow[]): ThresholdRow[] {
     if (!held || row.version > held.version) byKey.set(row.key, row);
   }
   return [...byKey.values()].sort((a, b) => a.key.localeCompare(b.key));
+}
+
+/**
+ * A threshold's value, as an admin can read it. The screen used to render the
+ * column straight into a span, which throws once `hydrate()` sends the object:
+ * governance numbers are the point of the card, so they are serialised back
+ * rather than dropped.
+ */
+export function thresholdValue(row: Pick<ThresholdRow, "valueJson">): string {
+  const value = jsonOf(row.valueJson);
+  if (value === null) return "—";
+  return typeof value === "string" ? value : JSON.stringify(value);
 }
 
 /** Products whose own floor differs from the module default — the rest inherit. */
@@ -240,7 +256,7 @@ export default function ScoutAdmin() {
                       </Badge>
                     ) : null}
                   </span>
-                  <span className="font-ui text-12 text-subtle">{row.valueJson}</span>
+                  <span className="font-ui text-12 text-subtle">{thresholdValue(row)}</span>
                   <span className="font-ui text-12 text-subtle">
                     {l("adm.setBy", { who: row.setBy })} <DateTime value={row.effectiveFrom} locale={locale} />
                   </span>

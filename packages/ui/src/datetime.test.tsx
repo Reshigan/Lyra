@@ -96,6 +96,37 @@ describe("DateTime — values no Date can hold", () => {
  * so `Intl.format(new Date(9e15))` threw `RangeError` mid-render on five
  * screens the `<DateTime>` guard never touches.
  */
+/**
+ * A nullable date column sends `null`, and `new Date(null)` is the epoch — so
+ * before this was guarded a claim with no incident date rendered "01 Jan 1970",
+ * a date the reader cannot tell from a real one. The dash is the honest answer
+ * and it is the one every other unusable value already gets.
+ */
+describe("dates a row does not have", () => {
+  it("renders the dash for null, not the epoch", () => {
+    const markup = renderToStaticMarkup(<DateTime value={null} locale="en" precision="day" />);
+    expect(markup).toContain("—");
+    expect(markup).not.toContain("1970");
+  });
+
+  it("renders the dash for undefined too", () => {
+    const markup = renderToStaticMarkup(<DateTime value={undefined} locale="en" precision="day" />);
+    expect(markup).toContain("—");
+    expect(markup).not.toContain("1970");
+  });
+
+  it("gives the same reason on hover as any other unreadable date", () => {
+    const markup = renderToStaticMarkup(<DateTime value={null} locale="en" />);
+    expect(markup).toContain('title="');
+    expect(markup).toContain('aria-hidden="true"');
+  });
+
+  it("degrades in formatInstant as well", () => {
+    expect(formatInstant(null, (d) => d.toISOString())).toBe("—");
+    expect(formatInstant(undefined, (d) => d.toISOString())).toBe("—");
+  });
+});
+
 describe("formatInstant", () => {
   it("degrades to the same dash rather than throwing", () => {
     const fmt = new Intl.DateTimeFormat("en", { dateStyle: "long" });

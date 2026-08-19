@@ -63,17 +63,25 @@ describe("curl", () => {
 });
 
 describe("sample phrase", () => {
+  // `/v1/scout/signals` is generic CRUD, so crud.ts `hydrate()` sends
+  // `payloadJson` already parsed. The fixture is that shape.
   it("prefills the signal's own text rather than its JSON envelope", () => {
     expect(
       sampleText([
         {
           id: "sig_1",
           source: "news",
-          payloadJson: JSON.stringify({ text: "Carrier withdraws EV cover", url: "https://x.test" }),
+          payloadJson: { text: "Carrier withdraws EV cover", url: "https://x.test" },
           observedAt: 1
         }
       ])
     ).toBe("Carrier withdraws EV cover");
+  });
+
+  it("serialises a hydrated payload that carries no text field", () => {
+    expect(sampleText([{ id: "sig_4", source: "quotes", payloadJson: { count: 4 }, observedAt: 1 }])).toBe(
+      '{"count":4}'
+    );
   });
 
   it("falls back to the raw payload when it carries no text field", () => {

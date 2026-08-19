@@ -16,17 +16,19 @@ import {
   Field,
   Input,
   Money,
+  PostingFlow,
   Ref,
   Select,
+  StateFlow,
   Table,
   Textarea,
-  Timeline,
   type Column,
-  type TimelineEvent
+  type FlowMachine,
+  type FlowVisit
 } from "@lyra/ui";
 import { ApiError, api, fetchMe } from "../api.server";
 import { cloudflare } from "../context";
-import { arrowFor, translator } from "../i18n";
+import { translator } from "../i18n";
 import { ConfirmButton } from "../components/confirm";
 import { humanise } from "../modules/spec";
 import { policyTitle } from "./approvals";
@@ -34,13 +36,28 @@ import { Problem } from "./module";
 import { useShellData } from "./workspace";
 import {
   PERM,
+  TRANSITIONS,
   balanceCheck,
   labelIn,
   mintKey,
   txnActions,
   txnHeadline,
+  txnTone,
   type Label
 } from "./ledger.shared";
+
+/**
+ * The flow the diagram draws: docs/19 §3, by reference rather than by copy.
+ * `TRANSITIONS` mirrors @lyra/ledger's own machine (pinned by
+ * ledger.shared.test.ts), the spine is its happy path, and `flowPlan` refuses a
+ * spine whose steps are not documented edges of it — so no screen can invent a
+ * state, or a step the ledger would not take.
+ */
+export const TXN_FLOW: FlowMachine = {
+  transitions: TRANSITIONS,
+  spine: ["initiated", "validated", "authorized", "executing", "settled"],
+  exits: ["failed", "rejected", "expired"]
+};
 
 // One transaction, end to end: what it is, what it posted, what was decided
 // about it, and the two things a person may still do to it.
@@ -338,13 +355,13 @@ export default function LedgerTransaction() {
     { key: "memo", header: l("txn.memo"), render: (row) => row.memo ?? l("none") }
   ];
 
-  const timeline: TimelineEvent[] = loaded.transitions.map((row) => ({
-    id: row.id,
-    title: row.fromState
-      ? `${l(`state.${row.fromState}`)} ${arrowFor(locale)} ${l(`state.${row.toState}`)}`
-      : l(`state.${row.toState}`),
+  // What the machine did, in the order it did it. A step's `fromState` is the
+  // step before it, so only `toState` is a visit.
+  const visits: FlowVisit[] = loaded.transitions.map((row) => ({
+    state: row.toState,
     at: row.ts,
     actor: row.actorRef,
+    tone: txnTone(row.toState),
     ...(row.reason ? { detail: row.reason } : {})
   }));
 
@@ -440,6 +457,30 @@ export default function LedgerTransaction() {
         ) : (
           <section className="flex flex-col gap-3">
             <h2 className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">{l("txn.lines")}</h2>
+            {/* The value moving: what each side gave up, what it received, and
+                the amount on the wire. Every figure is a posted line or a sum of
+                them — `PostingFlow` re-adds the legs it draws and refuses to
+                call the batch balanced if they disagree with `balance`.
+                ponytail: one currency, because a batch posts in one; per-leg
+                currency the day a cross-currency txn exists. */}
+            <PostingFlow
+              legs={lines.map((row) => ({
+                id: row.id,
+                account: row.accountCode,
+                side: row.side,
+                amountMinor: row.amountMinor,
+                memo: row.memo,
+                sealed: true
+              }))}
+              currency={txn.currency}
+              balance={balance}
+              fromLabel={l("txn.totalDebit")}
+              toLabel={l("txn.totalCredit")}
+              label={l("txn.linesCaption")}
+              note={l("txn.imbalanceBody")}
+              locale={locale}
+            />
+            {/* The record behind the flow: sequence, side and memo per line. */}
             <Table<JournalLine>
               caption={l("txn.linesCaption")}
               captionHidden
@@ -449,44 +490,6 @@ export default function LedgerTransaction() {
               rowState={() => "sealed"}
               density="compact"
             />
-            {balance.balanced ? (
-              <p className="flex flex-wrap items-baseline gap-4 font-ui text-13 text-subtle">
-                <span>
-                  {l("txn.totalDebit")}{" "}
-                  <Money
-                    amountMinor={balance.debitMinor}
-                    currency={txn.currency}
-                    locale={locale}
-                    className="text-text"
-                  />
-                </span>
-                <span>
-                  {l("txn.totalCredit")}{" "}
-                  <Money
-                    amountMinor={balance.creditMinor}
-                    currency={txn.currency}
-                    locale={locale}
-                    className="text-text"
-                  />
-                </span>
-                <span className="text-success">{l("txn.balanced")}</span>
-              </p>
-            ) : (
-              <div
-                role="alert"
-                className="flex flex-col gap-2 rounded-lg border border-danger/40 bg-danger/10 p-5"
-              >
-                <p className="font-serif text-18 leading-[1.3] text-text">{l("txn.imbalance")}</p>
-                <Money
-                  amountMinor={balance.deltaMinor}
-                  currency={txn.currency}
-                  locale={locale}
-                  signed
-                  className="font-mono text-28 font-medium tabular-nums text-danger"
-                />
-                <p className="max-w-prose font-ui text-13 text-muted">{l("txn.imbalanceBody")}</p>
-              </div>
-            )}
           </section>
         )
       ) : null}
@@ -544,12 +547,19 @@ export default function LedgerTransaction() {
         </Card>
       ) : null}
 
-      {timeline.length > 0 ? (
-        <section className="flex flex-col gap-3">
-          <h2 className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">{l("txn.history")}</h2>
-          <Timeline events={timeline} label={l("txn.historyLabel")} />
-        </section>
-      ) : null}
+      {/* Where this transaction is in its machine: what happened with its
+          timestamps, what it is doing now, and what the machine still owes. */}
+      <section className="flex flex-col gap-3">
+        <h2 className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">{l("txn.history")}</h2>
+        <StateFlow
+          machine={TXN_FLOW}
+          visits={visits}
+          current={txn.state}
+          label={l("txn.historyLabel")}
+          labelFor={(state) => l(`state.${state}`)}
+          locale={locale}
+        />
+      </section>
 
       <section className="flex flex-col gap-3">
         <div className="flex flex-wrap items-baseline justify-between gap-3">

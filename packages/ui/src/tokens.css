@@ -273,6 +273,30 @@
   --ease-observatory: cubic-bezier(0.2, 0.8, 0.2, 1);
   --ease-settle: cubic-bezier(0.3, 0.7, 0, 1);
 
+  /* ---- Frame: the chrome bands, the rail and the gutters ----------------
+     horizon-1-shell.md §5 fixes the app frame: a top bar, an optional module
+     band, Meridian, then the body split taking the rest. This is that frame as
+     one scale — every shell derives its bands, rail and gutters from these and
+     no shell or route may write a frame pixel of its own (apps/web/app
+     /components/frame.test.ts gates it).
+
+     The three band heights are the spec's exact values and are deliberately
+     off the 4px grid; everything else is a multiple of --space-base. The
+     responsive steps live below, on the tokens, so a shell never carries a
+     breakpoint for a gutter. */
+  --chrome-top: 50px; /* top bar */
+  --chrome-module: 38px; /* module band — the mobile module/nav strip's floor */
+  --chrome-meridian: 74px; /* today's strip (NORTH, ADR-0061) */
+  --chrome-status: 28px; /* status strip: a band, never an overlay */
+  --rail-width: 196px; /* → 252px from 1240px up (horizon-5-behaviour.md §5) */
+  --gutter: 12px; /* chrome inline padding → 16px from 640px up */
+  --gutter-canvas: 16px; /* canvas padding → 24px from 640px up */
+  --gutter-rail: 12px;
+  --stack-gap: 16px; /* vertical rhythm between canvas blocks */
+  --companion-width: 288px; /* the right dock, when a tenant has agents */
+  --measure-canvas: 100rem; /* the canvas stops widening here */
+  --measure-prose: 68ch; /* reading column (docs/07 §4) */
+
   /* Density (docs/07 §1): comfortable default, compact for ops screens */
   --control-height: 40px; /* hit target ≥ 40px (docs/07 §5) */
   --control-padding-block: 8px;
@@ -388,6 +412,22 @@
   --control-height: 32px;
   --control-padding-block: 4px;
   --row-height: 34px;
+}
+
+/* The frame's two responsive steps. Declared here, once, so the shells stay
+   breakpoint-free: a gutter that widens is a property of the scale, not of
+   whichever component happens to sit in it. */
+@media (min-width: 640px) {
+  :root {
+    --gutter: 16px;
+    --gutter-canvas: 24px;
+  }
+}
+
+@media (min-width: 1240px) {
+  :root {
+    --rail-width: 252px;
+  }
 }
 
 /* ---- Light theme: the SAME tokens re-mapped (docs/01 §3, docs/07 §1) ----- */

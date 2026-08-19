@@ -301,7 +301,7 @@ describe("isLate / flagOf", () => {
 describe("loader", () => {
   it("reads the tenant's per-lane WIP override from the axis.board ops policy", async () => {
     stubFetchByUrl([
-      ["/v1/axis/ops-policies", json({ data: [{ valueJson: JSON.stringify({ wipWarn: { quoting: 3 } }) }] })]
+      ["/v1/axis/ops-policies", json({ data: [{ valueJson: { wipWarn: { quoting: 3 } } }] })]
     ]);
 
     const result = await loader(loaderArgs());
@@ -324,7 +324,7 @@ describe("loader", () => {
     stubFetchByUrl([
       [
         "/v1/axis/ops-policies",
-        json({ data: [{ valueJson: JSON.stringify({ wipWarn: { quoting: "twelve", not_a_lane: 5, review: 8 } }) }] })
+        json({ data: [{ valueJson: { wipWarn: { quoting: "twelve", not_a_lane: 5, review: 8 } } }] })
       ]
     ]);
 

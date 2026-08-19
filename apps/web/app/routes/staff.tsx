@@ -90,6 +90,9 @@ export interface StaffOption {
   name: string;
 }
 
+/** A row of `GET /v1/staff/delegations` — see apps/api/src/routes/staff.ts.
+ *  That route is hand-written and returns the selected rows as they sit, so
+ *  crud.ts `hydrate()` never runs and `scopeJson` arrives as text. */
 export interface Delegation {
   id: string;
   fromUserId: string;
@@ -105,7 +108,9 @@ export interface Delegation {
 }
 
 export interface InviteResult extends StaffUser {
-  steps: { key: string; status: string }[];
+  /** How many onboarding steps the invite opened — a count, not the steps.
+   *  Mirrors `inviteStaff` in apps/api/src/engines/staff.ts. */
+  steps: number;
 }
 
 const USER_TONES: Record<string, BadgeTone> = { invited: "info", active: "success", suspended: "danger" };

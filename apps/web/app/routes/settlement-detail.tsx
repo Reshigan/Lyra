@@ -16,10 +16,14 @@ import {
   Field,
   Money,
   PageHeader,
+  PostingFlow,
+  StateFlow,
   Table,
   Textarea,
   shortRef,
-  type Column
+  type Column,
+  type FlowBalance,
+  type FlowLeg
 } from "@lyra/ui";
 import { ApiError, api, fetchMe, type Problem } from "../api.server";
 import { cloudflare } from "../context";
@@ -29,8 +33,10 @@ import {
   Gate,
   LABELS as QUEUE_LABELS,
   PERM,
+  SETTLEMENT_FLOW,
   reasonError,
   settlementTone,
+  settlementVisits,
   transitionsFor,
   type Settlement,
   type Transition
@@ -98,6 +104,37 @@ export function netHolds(totals: { grossMinor: number; adjustmentsMinor: number;
   return totals.grossMinor + totals.adjustmentsMinor === totals.netMinor;
 }
 
+/**
+ * The settlement as value moving: what the period earned and what was adjusted
+ * on one side, what is payable on the other. Not a posting — nothing has hit the
+ * ledger until `pay` — so the sides are named in the screen's own words, and the
+ * amounts are the API's totals rather than anything computed here.
+ */
+export function netLegs(totals: LinesPayload["totals"], l: (key: string) => string): FlowLeg[] {
+  return [
+    { id: "gross", account: "gross", label: l("summaryGross"), side: "debit", amountMinor: totals.grossMinor },
+    {
+      id: "adjustments",
+      account: "adjustments",
+      label: l("summaryAdjustments"),
+      side: "debit",
+      amountMinor: totals.adjustmentsMinor
+    },
+    { id: "net", account: "net", label: l("summaryNet"), side: "credit", amountMinor: totals.netMinor }
+  ];
+}
+
+/** The same invariant `netHolds` reports, in the shape the flow diagram checks its own legs against. */
+export function netBalance(totals: LinesPayload["totals"]): FlowBalance {
+  const debitMinor = totals.grossMinor + totals.adjustmentsMinor;
+  return {
+    debitMinor,
+    creditMinor: totals.netMinor,
+    deltaMinor: debitMinor - totals.netMinor,
+    balanced: netHolds(totals)
+  };
+}
+
 /** The channel's cut of one line's gross commission, in ppm — null when there is no gross to share. */
 export function sharePpm(grossCommissionMinor: number, channelCommissionMinor: number): number | null {
   return grossCommissionMinor === 0 ? null : Math.round((channelCommissionMinor / grossCommissionMinor) * 1_000_000);
@@ -158,6 +195,10 @@ const OWN: Record<string, Record<string, string>> = {
     "headline.actionable": "{count} decision open. Net",
     "headline.plain": "Net",
     summaryTitle: "Amounts",
+    flowTitle: "Where this settlement is",
+    flowLabel: "Settlement progress",
+    flowFrom: "Earned this period",
+    flowTo: "Payable",
     summaryGross: "Gross",
     summaryAdjustments: "Adjustments",
     summaryNet: "Net",
@@ -195,6 +236,10 @@ const OWN: Record<string, Record<string, string>> = {
     "headline.actionable": "{count} قرار مفتوح. الصافي",
     "headline.plain": "الصافي",
     summaryTitle: "المبالغ",
+    flowTitle: "موضع هذه التسوية",
+    flowLabel: "مسار التسوية",
+    flowFrom: "المحقّق في هذه الفترة",
+    flowTo: "المستحق للدفع",
     summaryGross: "الإجمالي",
     summaryAdjustments: "التسويات",
     summaryNet: "الصافي",
@@ -367,31 +412,31 @@ export default function SettlementDetail() {
           </Badge>
         }
       >
-        <dl className="flex flex-wrap gap-6">
-          <div className="flex flex-col gap-1">
-            <dt className="font-ui text-12 text-subtle">{l("summaryGross")}</dt>
-            <dd>
-              <Money amountMinor={totals.grossMinor} currency={table.currency} locale={locale} />
-            </dd>
-          </div>
-          <div className="flex flex-col gap-1">
-            <dt className="font-ui text-12 text-subtle">{l("summaryAdjustments")}</dt>
-            <dd>
-              <Money amountMinor={totals.adjustmentsMinor} currency={table.currency} locale={locale} signed toned />
-            </dd>
-          </div>
-          <div className="flex flex-col gap-1">
-            <dt className="font-ui text-12 text-subtle">{l("summaryNet")}</dt>
-            <dd>
-              <Money amountMinor={totals.netMinor} currency={table.currency} locale={locale} className="font-ui text-16" />
-            </dd>
-          </div>
-        </dl>
-        {!holds ? (
-          <p role="alert" className="mt-3 font-ui text-12 text-danger">
-            {l("netMismatch")}
-          </p>
-        ) : null}
+        {/* The same three figures the API returned, drawn as the movement they
+            describe: earned less adjusted, arriving as payable. `PostingFlow`
+            re-adds the legs and will not call the sides equal unless they are,
+            so `netMismatch` is raised by the arithmetic, not by copy. */}
+        <PostingFlow
+          legs={netLegs(totals, l)}
+          currency={table.currency}
+          balance={netBalance(totals)}
+          fromLabel={l("flowFrom")}
+          toLabel={l("flowTo")}
+          label={l("summaryTitle")}
+          note={l("netMismatch")}
+          locale={locale}
+        />
+      </Card>
+
+      <Card title={l("flowTitle")}>
+        <StateFlow
+          machine={SETTLEMENT_FLOW}
+          visits={settlementVisits(settlement)}
+          current={settlement.state}
+          label={l("flowLabel")}
+          labelFor={(state) => l(`state.${state}`)}
+          locale={locale}
+        />
       </Card>
 
       <Card title={l("termsTitle")}>

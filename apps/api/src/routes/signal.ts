@@ -7,6 +7,8 @@ import { body } from "../http.js";
 import { must } from "../rows.js";
 import { meterEgress } from "../engines/egress.js";
 import { generateCreativeImage, generateCreatives } from "../engines/signal-creative.js";
+import { attributeCounts, suggestTargeting } from "../engines/signal-audience.js";
+import { creativeContextFor, planAudience, planCampaign } from "../engines/signal-campaign-plan.js";
 import { runBudgetAutopilot } from "../engines/signal-autopilot.js";
 import { demoOnly } from "../auth.js";
 import type { App } from "../env.js";
@@ -35,15 +37,140 @@ signalRoutes.post("/creatives/generate", async (c) => {
   const ctx = ctxOf(c);
   require_(ctx.actor, "signal:creatives:generate", { tenantId: ctx.tenantId, module: "signal" });
   const input = await body(c, GenerateBody);
+
+  // Copy written against the campaign's own plan and pool, not against the
+  // brief alone: the recommended option's angle and offer, and the bands the
+  // audience is made of. Until now only the promote path did this, so
+  // regenerating from the studio quietly lost the argument the campaign was
+  // funded on. Empty for a campaign nobody planned, which is the old behaviour.
+  const campaign = input.campaignId
+    ? await must(ctx, schema.signalCampaigns, input.campaignId, "campaign")
+    : null;
+  const context = campaign ? await creativeContextFor(ctx, campaign) : [];
+
   const result = await generateCreatives(ctx, c.get("gateway"), {
     kind: input.kind,
     brief: input.brief,
     campaignId: input.campaignId ?? null,
+    ...(context.length > 0 ? { context } : {}),
     variantGroup: input.variantGroup ?? null,
     ...(input.locales !== undefined ? { locales: input.locales } : {}),
     ...(input.count !== undefined ? { count: input.count } : {})
   });
   return c.json(result, 201);
+});
+
+const SuggestAudienceBody = z.object({
+  /** A whitespace category the studio arrived with, or a scenario somebody typed. */
+  subject: z.string().min(1).max(200)
+});
+
+// docs/17 §SIG-025 ("audience estimate"). The permission has existed since the
+// RBAC matrix was written and until now nothing enforced it.
+//
+// Demand evidence (momentum, signal count) is deliberately not in the body: a
+// figure a client supplies would land in the prompt evidence and become
+// something the model could legitimately cite back at the human approving the
+// spend. The promote path reads those off the whitespace row and passes them;
+// here they stay null and the pool is argued from attribute counts alone.
+signalRoutes.post("/audiences/suggest", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "signal:audiences:estimate", { tenantId: ctx.tenantId, module: "signal" });
+  const input = await body(c, SuggestAudienceBody);
+  const result = await suggestTargeting(ctx, c.get("gateway"), {
+    subject: input.subject,
+    momentum: null,
+    signalCount: null
+  });
+  return c.json(result, 201);
+});
+
+const PlanBody = z.object({
+  /** What the campaign is about — a whitespace category, or a scenario a
+   *  marketer typed. It is the subject the plan is argued at. */
+  subject: z.string().min(1).max(200)
+});
+
+// The other half of docs/modules/signal.md §2.1: a promoted whitespace arrives
+// planned (scout-promote.ts), and until now a campaign somebody started by hand
+// could never be. Same three ranked options, same probability and reasons, same
+// deterministic fallback at confidence 0 when the model does not answer.
+//
+// Not consequential (CLAUDE.md rule 4): a plan is an argument, not a spend. It
+// changes no money and no contractual state — a human still funds an option and
+// the copy still passes its own approval. The permission is
+// signal:campaigns:update because the plan lands on the campaign row.
+signalRoutes.post("/campaigns/:id/plan", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "signal:campaigns:update", { tenantId: ctx.tenantId, module: "signal" });
+  const input = await body(c, PlanBody);
+  const campaign = await must(ctx, schema.signalCampaigns, c.req.param("id"), "campaign");
+  const gateway = c.get("gateway");
+
+  // A campaign typed by hand starts with no pool, and a plan argued at
+  // "customers" is the thing this whole path exists to stop. So suggest one and
+  // link it — the copy generated afterwards then reads the same bands. Same
+  // doctrine as the promote path: a book with nothing above the k-anonymity
+  // floor, or a model failure, leaves the plan unaudienced rather than 500ing
+  // at the marketer.
+  const audienceId =
+    campaign.audienceId ??
+    (await suggestTargeting(ctx, gateway, { subject: input.subject, momentum: null, signalCount: null })
+      .then((s) => s.audienceId)
+      .catch(() => null));
+
+  const { bookSize } = await attributeCounts(ctx);
+  const planned = await planCampaign(ctx, gateway, {
+    subject: input.subject,
+    objective: campaign.objective,
+    // Nothing measured stands behind a scenario: no whitespace row, so no
+    // momentum, coverage or competition. They stay null rather than zero —
+    // zero is a measurement, and the planner would argue from it.
+    proposition: null,
+    momentum: null,
+    signalCount: null,
+    coverage: null,
+    competitionScore: null,
+    bookSize,
+    audience: await planAudience(ctx, audienceId)
+  });
+
+  await ctx.db
+    .update(schema.signalCampaigns)
+    .set({ planJson: JSON.stringify(planned.plan), audienceId, updatedAt: ctx.now })
+    .where(and(eq(schema.signalCampaigns.tenantId, ctx.tenantId), eq(schema.signalCampaigns.id, campaign.id)));
+
+  await audit(ctx, {
+    action: "signal.campaign.planned",
+    subjectRef: `signal_campaign:${campaign.id}`,
+    before: { audienceId: campaign.audienceId, planned: campaign.planJson !== null },
+    after: {
+      subject: input.subject,
+      audienceId,
+      source: planned.source,
+      recommended: planned.plan.recommended,
+      confidence: planned.plan.confidence,
+      options: planned.plan.options.map((o) => `${o.name}=${o.probability}`)
+    }
+  });
+
+  await emit(ctx, {
+    module: "signal",
+    type: "signal.campaign.planned",
+    subject: campaign.id,
+    data: {
+      subject: input.subject,
+      audienceId,
+      source: planned.source,
+      recommended: planned.plan.recommended,
+      confidence: planned.plan.confidence
+    }
+  });
+
+  return c.json(
+    { campaignId: campaign.id, audienceId, plan: planned.plan, source: planned.source, aiAuditId: planned.auditId },
+    201
+  );
 });
 
 /** Chunk-safe bytes->base64 — a spread into String.fromCharCode blows the call
