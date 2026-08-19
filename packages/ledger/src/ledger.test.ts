@@ -404,6 +404,24 @@ describe("transaction state machine", () => {
 /* ------------------------------------------------------ periods & reports */
 
 describe("periods", () => {
+  // Every caller today hands it `ctx.now` (traced: post/reverse in posting.ts,
+  // routes/ledger.ts, routes/me.ts), so this is the seam, not a live bug —
+  // `periodCode` is exported from @lyra/ledger and `post` takes a caller's
+  // `postedAt`. Unguarded, an instant no `Date` can hold left a `RangeError:
+  // Invalid time value` mid-post, with a half-written batch behind it and
+  // nothing in the message about which value was wrong.
+  it("refuses an instant no Date can hold rather than throwing RangeError", () => {
+    // `badRequest`'s message is "Bad request"; the value is in `detail`.
+    for (const bad of [9e15, Number.NaN]) {
+      try {
+        periodCode(bad);
+        expect.unreachable(`periodCode accepted ${bad}`);
+      } catch (e) {
+        expect((e as { detail?: string }).detail).toMatch(/not an instant a Date can hold/);
+      }
+    }
+  });
+
   it("blocks a posting into a hard-closed period unless it is a contra batch", async () => {
     const code = periodCode(ctx.now);
     await ensurePeriod(ctx, code);

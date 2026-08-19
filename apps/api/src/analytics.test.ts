@@ -314,6 +314,20 @@ describe("nextRun timezone", () => {
       expect((e as { detail?: string }).detail).toMatch(/timezone/);
     }
   });
+
+  // `Intl.DateTimeFormat.formatToParts` throws `RangeError` on an instant no
+  // `Date` can hold, from inside the same `try` that guards the timezone — so a
+  // bad `from` was reported as "unknown timezone: Asia/Dubai" and sent whoever
+  // read it looking at a zone that is perfectly fine.
+  it("blames the instant, not the timezone, when `from` is unusable", () => {
+    try {
+      nextRun("0 9 * * *", 9e15, "Asia/Dubai");
+      expect.unreachable("nextRun accepted an instant no Date can hold");
+    } catch (e) {
+      expect((e as { detail?: string }).detail).not.toMatch(/timezone/);
+      expect((e as { detail?: string }).detail).toMatch(/9000000000000000/);
+    }
+  });
 });
 
 describe("schedule creation", () => {

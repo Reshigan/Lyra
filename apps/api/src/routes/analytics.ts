@@ -1034,6 +1034,12 @@ export function nextRun(cron: string, from: number, timezone = "UTC"): number | 
 /** Offset of `timezone` from UTC at instant `at`, via Intl — no dependency. */
 function zoneOffsetMs(timezone: string, at: number): number {
   if (timezone === "UTC") return 0;
+  // Checked before the `try`, not caught inside it: `formatToParts` throws the
+  // same `RangeError` for an instant no `Date` can hold as for a zone Intl does
+  // not know, and reporting that as "unknown timezone: Asia/Dubai" sends the
+  // reader after a zone that is perfectly fine. `at` is `ctx.now` at every call
+  // site today, but `nextRun` is exported.
+  if (!Number.isFinite(at) || Math.abs(at) > 8.64e15) throw badRequest(`not an instant a Date can hold: ${at}`);
   let parts: Intl.DateTimeFormatPart[];
   try {
     parts = new Intl.DateTimeFormat("en-US", {
