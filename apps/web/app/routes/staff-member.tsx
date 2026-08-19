@@ -43,7 +43,11 @@ const STAFF_PERM = {
 interface OnboardingStep {
   id: string;
   key: string;
-  labelJson: string;
+  /** Already an object on the wire: `onboarding-steps` is a generic-CRUD
+   *  resource (apps/api/src/resources.ts) and apps/api/src/crud.ts hydrate()s
+   *  every `*Json` column before it is serialised. Parsing it again threw, and
+   *  the catch handed the object itself to React as a child. */
+  labelJson: Record<string, string>;
   seq: number;
   required: boolean;
   state: string;
@@ -156,13 +160,9 @@ export function memberLede(
   return l("ledeRolesOnboarding", { count, done: String(done), total: String(required.length) });
 }
 
-function stepLabel(labelJson: string): string {
-  try {
-    const parsed = JSON.parse(labelJson) as Record<string, string>;
-    return parsed.en ?? Object.values(parsed)[0] ?? "";
-  } catch {
-    return labelJson;
-  }
+function stepLabel(labelJson: OnboardingStep["labelJson"]): string {
+  const names = labelJson ?? {};
+  return names.en ?? Object.values(names)[0] ?? "";
 }
 
 export async function loader({ request, context, params }: LoaderFunctionArgs) {

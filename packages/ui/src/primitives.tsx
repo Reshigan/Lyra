@@ -552,6 +552,99 @@ export function Switch({ label, className, id, ...props }: SwitchProps) {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Slider                                                                      */
+/* -------------------------------------------------------------------------- */
+
+export interface SliderProps
+  extends Omit<React.ComponentPropsWithRef<"input">, "type" | "value" | "onChange" | "size" | "min" | "max" | "step"> {
+  value: number;
+  min: number;
+  max: number;
+  step?: number;
+  /**
+   * What assistive tech should say instead of the bare number — "AED 28,000",
+   * "45 days". WCAG 2.2 AA: a value only meaningful next to a currency symbol
+   * on screen is meaningless read out without one.
+   */
+  valueText?: string;
+  /** Label for the typed fallback. It is a second control and needs its own name. */
+  numberLabel: string;
+  onValueChange: (value: number) => void;
+}
+
+/**
+ * A range with a typed fallback beside it.
+ *
+ * ponytail: `<input type="range">`, not a JS slider. The native control is
+ * already keyboard-operable (arrows, Home/End, Page Up/Down), already exposes
+ * role=slider with its value, already drags under a thumb on a phone, and
+ * already reverses itself under `direction: rtl` — four requirements and no
+ * dependency. The parts the platform does not give are the two here: a
+ * value announced in words, and a box to type into when dragging is not on
+ * offer (a switch control, a tremor, a narrow screen).
+ *
+ * The Field's label belongs to the range, so the number input takes a derived
+ * id and its own `aria-label` rather than a second copy of the field's.
+ */
+export function Slider({
+  value,
+  min,
+  max,
+  step = 1,
+  valueText,
+  numberLabel,
+  onValueChange,
+  className,
+  disabled,
+  ...props
+}: SliderProps) {
+  const field = useFieldControl();
+  const auto = React.useId();
+  const numberId = `${field.id ?? auto}-number`;
+  const clamp = (n: number) => Math.min(max, Math.max(min, n));
+  const commit = (raw: string) => {
+    if (raw === "") return; // mid-edit, not a value yet
+    const n = Number(raw);
+    if (Number.isFinite(n)) onValueChange(clamp(n));
+  };
+
+  return (
+    <div className={cn("flex items-center gap-3", widthFrom(className), className)}>
+      <input
+        {...field}
+        {...props}
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        disabled={disabled}
+        {...(valueText ? { "aria-valuetext": valueText } : {})}
+        onChange={(e) => commit(e.target.value)}
+        // h-11 is the 44px target size AA asks for; the visual track is thinner
+        // than the box you can grab. accent-color paints thumb and fill from the
+        // tenant's brand token, so no custom pseudo-elements are needed.
+        style={{ accentColor: "var(--accent)" }}
+        className={cn("h-11 min-w-0 flex-1 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50", focusRing)}
+      />
+      <input
+        id={numberId}
+        aria-label={numberLabel}
+        type="number"
+        inputMode="numeric"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        disabled={disabled}
+        onChange={(e) => commit(e.target.value)}
+        className={cn(controlBase, "h-11 w-28 shrink-0 px-2.5 text-end tabular-nums", focusRing)}
+      />
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
 /* Card / Badge / Avatar / Skeleton / Separator / Tabs                         */
 /* -------------------------------------------------------------------------- */
 

@@ -22,6 +22,7 @@ import {
 } from "@lyra/ui";
 import { ApiError, api, fetchMe, type Problem } from "../api.server";
 import { cloudflare } from "../context";
+import { asJson } from "../json.js";
 import { translator } from "../i18n";
 import { Gate } from "./staff";
 import { useShellData } from "./workspace";
@@ -101,13 +102,8 @@ export interface Surface {
 
 /** `*Json` columns hydrate to arrays; malformed text stays a bad row, not a 500. */
 export function listOf(raw: string[] | string): string[] {
-  if (Array.isArray(raw)) return raw.filter((item): item is string => typeof item === "string");
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
-  } catch {
-    return [];
-  }
+  const list = asJson<unknown>(raw, []);
+  return Array.isArray(list) ? list.filter((item): item is string => typeof item === "string") : [];
 }
 
 /**

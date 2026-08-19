@@ -1,5 +1,6 @@
 import { vocabulary } from "../modules/vocabulary";
 import { pseudoText } from "../i18n";
+import { asJson } from "../json.js";
 
 // The five bespoke SCOUT screens share one labeller and one set of derivations,
 // for the same reason signal.shared.ts exists: the radar, the panel view, the
@@ -51,6 +52,11 @@ export interface Page<T> {
   total?: number;
 }
 
+// The four row shapes below mirror what generic CRUD returns for
+// `clusters`, `whitespaces`, `panel-bench` and `scout-experiments` — see
+// apps/api/src/resources.ts (SCOUT) and `hydrate()` in apps/api/src/crud.ts,
+// which parses every `*Json` column before the response is serialised.
+
 export interface ClusterRow {
   id: string;
   theme: string;
@@ -59,7 +65,8 @@ export interface ClusterRow {
   size: number;
   firstSeen: number;
   lastSeen: number;
-  trailJson: string | null;
+  /** Already parsed on the wire — see `jsonOf`. */
+  trailJson: unknown;
   updatedAt: number;
 }
 
@@ -68,7 +75,8 @@ export interface WhitespaceRow {
   description: string;
   category: string | null;
   clusterId: string | null;
-  evidenceRefsJson: string | null;
+  /** Already parsed on the wire — see `jsonOf`. */
+  evidenceRefsJson: unknown;
   demandEstimate: number | null;
   competitionScore: number | null;
   status: string;
@@ -89,7 +97,8 @@ export interface PanelRow {
   /** Whole percent of the requests this row was quoted into. */
   winRate: number | null;
   volume: number;
-  coverageGapsJson: string | null;
+  /** Already parsed on the wire — see `jsonOf`. */
+  coverageGapsJson: unknown;
   updatedAt: number;
 }
 
@@ -97,8 +106,10 @@ export interface ExperimentRow {
   id: string;
   whitespaceId: string;
   landingRef: string | null;
-  trafficPlanJson: string | null;
-  resultsJson: string | null;
+  /** Already parsed on the wire — see `jsonOf`. */
+  trafficPlanJson: unknown;
+  /** Already parsed on the wire — see `jsonOf`. */
+  resultsJson: unknown;
   state: string;
   startedAt: number | null;
   concludedAt: number | null;
@@ -132,17 +143,7 @@ export function mintKey(prefix: string): string {
   return `${prefix}:${crypto.randomUUID()}`;
 }
 
-/** A JSON text column, or the fallback when it is absent or malformed. */
-export function asJson<T>(raw: unknown, fallback: T): T {
-  if (raw && typeof raw === "object") return raw as T;
-  if (typeof raw !== "string" || raw === "") return fallback;
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    return parsed && typeof parsed === "object" ? (parsed as T) : fallback;
-  } catch {
-    return fallback;
-  }
-}
+export { asJson };
 
 /* ---------------------------------------------------------- panel roll-ups */
 

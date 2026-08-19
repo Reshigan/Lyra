@@ -59,6 +59,13 @@ export const LABELS: Record<string, Record<string, string>> = {
     "partners.kind.platform": "Software platform",
     "partners.contactName": "Your name (optional)",
     "partners.contactEmail": "Work email address",
+    "partners.legal.title": "Legal identity (optional)",
+    "partners.legal.note":
+      "Only needed before we can pay you commission. Leave it blank now and add it when you go live.",
+    "partners.legalName": "Registered legal name",
+    "partners.registrationNo": "Company registration number",
+    "partners.taxId": "Tax number",
+    "partners.country": "Country of registration (2-letter code)",
     "partners.submit": "Create sandbox account",
     "partners.working": "Creating…",
     "partners.key.title": "Your sandbox key",
@@ -134,6 +141,13 @@ export const LABELS: Record<string, Record<string, string>> = {
     "partners.kind.platform": "منصة برمجية",
     "partners.contactName": "اسمك (اختياري)",
     "partners.contactEmail": "بريد العمل الإلكتروني",
+    "partners.legal.title": "الهوية القانونية (اختياري)",
+    "partners.legal.note":
+      "مطلوبة فقط قبل أن نتمكن من دفع العمولة. اتركها فارغة الآن وأضفها عند الانتقال إلى الإنتاج.",
+    "partners.legalName": "الاسم القانوني المسجل",
+    "partners.registrationNo": "رقم السجل التجاري",
+    "partners.taxId": "الرقم الضريبي",
+    "partners.country": "بلد التسجيل (رمز من حرفين)",
     "partners.submit": "إنشاء الحساب التجريبي",
     "partners.working": "جارٍ الإنشاء…",
     "partners.key.title": "مفتاحك التجريبي",
@@ -280,9 +294,20 @@ interface SignupResponse extends Partner {
   sandboxKey: string;
 }
 
+/** Mirrors `dist_offerings` (packages/db/src/schema/dist.ts) as GET /v1/dist
+ *  /offerings returns it. There is no flat `name` column and never was — the
+ *  catalogue name is per-locale, and `apps/api/src/crud.ts` hydrate()s any
+ *  `*Json` column into an object before it reaches the wire. */
 interface Offering {
   id: string;
-  name: string;
+  nameJson: Record<string, string>;
+}
+
+/** Tenant locale, then the default, then whatever the pack actually has: a
+ *  catalogue seeded en-only still names itself on the Arabic portal. */
+function offeringName(offering: Offering, locale: string): string {
+  const names = offering.nameJson ?? {};
+  return names[locale] ?? names[DEFAULT_LOCALE] ?? Object.values(names)[0] ?? "";
 }
 
 /** What POST /v1/orbit/partners/:id/quotes answers with — see
@@ -383,6 +408,13 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
       return { ok: "quote", quote } satisfies ActionData;
     }
 
+    // An optional field left blank must not travel as "": the API's schema
+    // takes `.min(1)` on every one of these, so an empty box would be a 400
+    // rather than an omission.
+    const optional = (name: string) => {
+      const value = String(form.get(name) ?? "").trim();
+      return value ? { [name]: value } : {};
+    };
     const created = await api<SignupResponse>("/v1/onboarding/partners/signup", {
       env,
       method: "POST",
@@ -390,7 +422,11 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
         tenantSlug,
         companyName: String(form.get("companyName") ?? "").trim(),
         contactEmail: String(form.get("contactEmail") ?? "").trim(),
-        ...(form.get("contactName") ? { contactName: String(form.get("contactName")).trim() } : {}),
+        ...optional("contactName"),
+        ...optional("legalName"),
+        ...optional("registrationNo"),
+        ...optional("taxId"),
+        ...optional("country"),
         kind: String(form.get("kind") ?? "")
       }
     });
@@ -490,6 +526,38 @@ export default function PortalPartners() {
               <Field label={l("partners.contactEmail")} id="partners-contact-email" required>
                 <Input name="contactEmail" type="email" required autoComplete="email" />
               </Field>
+              {/* A fieldset, so a screen reader announces "Legal identity"
+                  before each of the four and the note is read once rather than
+                  never. Every box here is optional and the API keeps only what
+                  is offered — commission cannot be paid to a trading name, but
+                  it is not owed on the day a sandbox key is issued either. */}
+              <fieldset className="flex flex-col gap-5 border-0 p-0">
+                <legend className="font-ui text-14 font-medium text-text">{l("partners.legal.title")}</legend>
+                <p className="font-ui text-13 text-muted">{l("partners.legal.note")}</p>
+                <Field label={l("partners.legalName")} id="partners-legal-name">
+                  <Input name="legalName" maxLength={200} autoComplete="organization" />
+                </Field>
+                <Field label={l("partners.registrationNo")} id="partners-registration-no">
+                  <Input name="registrationNo" maxLength={80} autoComplete="off" spellCheck={false} />
+                </Field>
+                <Field label={l("partners.taxId")} id="partners-tax-id">
+                  <Input name="taxId" maxLength={80} autoComplete="off" spellCheck={false} />
+                </Field>
+                <Field label={l("partners.country")} id="partners-country">
+                  {/* ISO 3166-1 alpha-2, upper-cased server-side. The pattern
+                      keeps "United Arab Emirates" out of a two-character column
+                      before the round trip rather than after it. */}
+                  <Input
+                    name="country"
+                    maxLength={2}
+                    pattern="[A-Za-z]{2}"
+                    autoComplete="country"
+                    autoCapitalize="characters"
+                    spellCheck={false}
+                    className="w-24"
+                  />
+                </Field>
+              </fieldset>
               <Button type="submit" variant="primary" loading={busy && submitting === "signup"}>
                 {busy && submitting === "signup" ? l("partners.working") : l("partners.submit")}
               </Button>
@@ -539,7 +607,7 @@ export default function PortalPartners() {
                 required
                 maxLength={120}
                 autoComplete="off"
-                defaultValue={status?.offerings[0]?.name ?? ""}
+                defaultValue={status?.offerings[0] ? offeringName(status.offerings[0], locale) : ""}
               />
             </Field>
             <Field label={l("partners.quote.amount")} id="partners-quote-amount" required>
@@ -611,7 +679,7 @@ export default function PortalPartners() {
                 <ul className="mt-2 flex flex-wrap gap-2">
                   {status.offerings.map((offering) => (
                     <li key={offering.id}>
-                      <Badge tone="neutral">{offering.name}</Badge>
+                      <Badge tone="neutral">{offeringName(offering, locale)}</Badge>
                     </li>
                   ))}
                 </ul>

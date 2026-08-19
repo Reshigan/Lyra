@@ -32,6 +32,8 @@ export const HIDDEN_ROUTES: Record<string, string> = {
   "/portal/:tenantSlug": "public comparison site, no session and no shell — reached from a tenant's own marketing link (ADR-0030)",
   "/portal/:tenantSlug/privacy":
     "public DSAR intake, no session and no shell — linked from the storefront footer (ADR-0042)",
+  "/portal/:tenantSlug/register":
+    "public self-registration, no session and no shell — it creates a pending customer and grants no access, so there is no nav for it to appear in (docs/modules/orbit.md §4)",
   "/portal/:tenantSlug/quotes/:id":
     "public quote comparison, no session and no shell — reached only with the one-time token in the link (ADR-0043)",
   "/portal/:tenantSlug/partners":

@@ -52,7 +52,7 @@ const offer: Offer = {
   expectedValueMinor: 45_000,
   currency: "ZAR",
   reasonKey: "nbo.reason.has_vehicle",
-  reasonJson: '{"signal":"vehicle"}',
+  reasonJson: { signal: "vehicle" },
   runId: "run_01",
   model: "sonnet",
   state: "proposed",

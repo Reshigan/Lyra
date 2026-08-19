@@ -208,4 +208,43 @@ describe("POST /v1/onboarding/partners/signup", () => {
     });
     expect(res.status).toBe(400);
   });
+
+  // A product owner signing up is signing up to be paid. The three columns
+  // orbit_partners already carries for that (legal_name, registration_no,
+  // tax_id, country) were only ever settable by staff, so every self-registered
+  // partner arrived as a trading name with no entity behind it.
+  it("keeps the legal identity a product owner declares, and still refuses a spoofed one-letter country", async () => {
+    const res = await signup({
+      tenantSlug: "gonxt",
+      companyName: "Northwind Cover",
+      legalName: "Northwind Cover Holdings Ltd",
+      registrationNo: "HE-448120",
+      taxId: "CY10448120X",
+      country: "cy",
+      contactEmail: "owner@northwind.example",
+      contactName: "Ada Owner",
+      kind: "retailer"
+    });
+    expect(res.status).toBe(201);
+
+    const [partner] = await database
+      .select()
+      .from(schema.orbitPartners)
+      .where(eq(schema.orbitPartners.id, res.body.id));
+    expect(partner!.legalName).toBe("Northwind Cover Holdings Ltd");
+    expect(partner!.registrationNo).toBe("HE-448120");
+    expect(partner!.taxId).toBe("CY10448120X");
+    expect(partner!.country).toBe("CY");
+    // Identity is declared, not proven: the stage ladder is untouched by it.
+    expect(partner!.stage).toBe("prospect");
+
+    const bad = await signup({
+      tenantSlug: "gonxt",
+      companyName: "Bad Country Co",
+      country: "c",
+      contactEmail: "bad@northwind.example",
+      kind: "retailer"
+    });
+    expect(bad.status).toBe(400);
+  });
 });

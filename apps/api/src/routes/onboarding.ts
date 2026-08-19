@@ -135,6 +135,17 @@ const SignupBody = z
     companyName: z.string().min(2).max(200),
     contactEmail: z.string().email(),
     contactName: z.string().min(1).max(200).optional(),
+    /**
+     * Legal identity, optional because a prospect kicking the tyres of a
+     * sandbox key has nothing to be paid yet — but kept when offered, because
+     * the alternative is a payout ledger addressed to a trading name. Declared,
+     * never proven: diligence is a step on the checklist, not a form field.
+     */
+    legalName: z.string().min(1).max(200).optional(),
+    registrationNo: z.string().min(1).max(80).optional(),
+    taxId: z.string().min(1).max(80).optional(),
+    /** ISO 3166-1 alpha-2. */
+    country: z.string().length(2).optional(),
     // Free text, not an enum: docs/21 domain-pack vocabulary is not fixed at
     // this layer, and the only real constraint (schema comment) is tenant-owned.
     kind: z.string().min(1).max(60)
@@ -202,10 +213,10 @@ onboardingRoutes.post("/partners/signup", async (c) => {
     contactJson: JSON.stringify({ email, name: input.contactName ?? null }),
     stage: "prospect",
     ownerRef: null,
-    legalName: null,
-    registrationNo: null,
-    taxId: null,
-    country: null,
+    legalName: input.legalName ?? null,
+    registrationNo: input.registrationNo ?? null,
+    taxId: input.taxId ?? null,
+    country: input.country?.toUpperCase() ?? null,
     screeningId: null,
     riskRating: null,
     agreementId: null,

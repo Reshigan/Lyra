@@ -25,6 +25,7 @@ import { cloudflare } from "../context";
 import { labelsFrom } from "./detail-kit";
 import { Gate } from "./staff";
 import { useAxisSessionData } from "./axis-shell";
+import { jsonOf } from "../json.js";
 
 // Where the work is, laid out as the pipeline it actually is. The cases tab can
 // sort and filter but it cannot answer "is anything piling up before approval",
@@ -308,25 +309,25 @@ async function safe<T>(call: Promise<T>, fallback: T): Promise<T> {
 async function boardWipWarn(
   opts: Parameters<typeof api>[1]
 ): Promise<Partial<Record<Lane, number>>> {
+  // `valueJson` arrives already parsed — see `jsonOf`. Reading it as text and
+  // parsing again threw on every tenant that had set an override, and the
+  // `catch` turned that into "no override", silently.
   const got = await safe(
-    api<{ data: Array<{ valueJson: string }> }>(`/v1/axis/ops-policies?key=axis.board&limit=1`, opts),
-    { data: [] as Array<{ valueJson: string }> }
+    api<{ data: Array<{ valueJson: unknown }> }>(`/v1/axis/ops-policies?key=axis.board&limit=1`, opts),
+    { data: [] as Array<{ valueJson: unknown }> }
   );
   const row = got.data[0];
   if (!row) return {};
-  try {
-    const parsed = JSON.parse(row.valueJson) as { wipWarn?: unknown };
-    if (typeof parsed.wipWarn !== "object" || parsed.wipWarn === null) return {};
-    const wipWarn = parsed.wipWarn as Record<string, unknown>;
-    const out: Partial<Record<Lane, number>> = {};
-    for (const lane of LANES) {
-      const value = wipWarn[lane];
-      if (typeof value === "number" && Number.isFinite(value)) out[lane] = value;
-    }
-    return out;
-  } catch {
-    return {};
+  const parsed = jsonOf(row.valueJson);
+  if (!parsed || typeof parsed !== "object") return {};
+  const wipWarn = (parsed as { wipWarn?: unknown }).wipWarn;
+  if (!wipWarn || typeof wipWarn !== "object") return {};
+  const out: Partial<Record<Lane, number>> = {};
+  for (const lane of LANES) {
+    const value = (wipWarn as Record<string, unknown>)[lane];
+    if (typeof value === "number" && Number.isFinite(value)) out[lane] = value;
   }
+  return out;
 }
 
 /* ----------------------------------------------------------------- loader */

@@ -87,7 +87,7 @@ const whitespace: WhitespaceRow = {
   description: "A motor renewal that keeps agency repair",
   category: "motor",
   clusterId: "clu_1",
-  evidenceRefsJson: JSON.stringify({ refs: ["clu_1"] }),
+  evidenceRefsJson: { refs: ["clu_1"] },
   demandEstimate: 2400,
   competitionScore: 30,
   status: "validated",

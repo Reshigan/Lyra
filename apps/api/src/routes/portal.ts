@@ -2,13 +2,21 @@ import { Hono, type Context } from "hono";
 import { and, eq, inArray, like } from "drizzle-orm";
 import { z } from "zod";
 import { id as newId, schema, BrandJson, EntitlementsJson, PolicyJson } from "@lyra/db";
-import { audit, conflict, emit, hmacHex, notFound, recordConsent, sha256Hex, timingSafeEqual } from "@lyra/core";
+import { audit, badRequest, conflict, emit, hmacHex, notFound, recordConsent, sha256Hex, timingSafeEqual } from "@lyra/core";
 import { body } from "../http.js";
 import { readUpload } from "../upload.js";
 import { verifyTurnstile } from "../turnstile.js";
 import { ctxFor, db as rawDb, throttle } from "../auth.js";
 import { fieldKey } from "../env.js";
-import { panelFor } from "../engines/rating.js";
+import {
+  clampToCriteria,
+  criteriaFor,
+  panelFor,
+  parseJson,
+  quoteOne,
+  rankOutcomes,
+  type Criterion
+} from "../engines/rating.js";
 import { runShop } from "../engines/shop.js";
 import type { App, Env } from "../env.js";
 
@@ -300,6 +308,149 @@ portalRoutes.post("/:tenantSlug/leads", async (c) => {
 });
 
 // ---------------------------------------------------------------------------
+// Self-registration (J-C1's "create an account" step, and the B2B door beside
+// it). The third public write on this router, and the one with the sharpest
+// edge: creating a *record* is fine, creating *access* is not. This endpoint
+// only ever writes a `core_customers` row at `kyc_status: "pending"` — no
+// user, no session, no role, no key. Verification and any entitlement that
+// follows are `consequential: true` (CLAUDE.md §4) and belong to a human, the
+// same way a partner signup lands at `stage: "prospect"` and cannot walk itself
+// to "live" (routes/onboarding.ts).
+
+const REGISTER_MAX = 3;
+const REGISTER_WINDOW_SEC = 24 * 60 * 60;
+const REGISTER_IP_MAX = 10;
+
+const RegistrationBody = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("person"),
+      name: z.string().min(1).max(200),
+      email: z.string().email(),
+      phone: z.string().max(40).optional(),
+      locale: z.enum(["en", "ar"]).optional(),
+      consent: z.literal(true),
+      turnstileToken: TurnstileToken
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("business"),
+      companyName: z.string().min(2).max(200),
+      registrationNo: z.string().min(1).max(80).optional(),
+      taxId: z.string().min(1).max(80).optional(),
+      /** ISO 3166-1 alpha-2. A free-text country is a KYB field nobody can check. */
+      country: z.string().length(2).optional(),
+      /** The human who signs. A company on its own has no one to email. */
+      contactName: z.string().min(1).max(200),
+      email: z.string().email(),
+      phone: z.string().max(40).optional(),
+      locale: z.enum(["en", "ar"]).optional(),
+      consent: z.literal(true),
+      turnstileToken: TurnstileToken
+    })
+    .strict()
+]);
+
+portalRoutes.post("/:tenantSlug/registrations", async (c) => {
+  const now = Date.now();
+  const input = await body(c, RegistrationBody);
+  const email = input.email.toLowerCase();
+  await throttle(c.env, `portal-register:${email}`, REGISTER_MAX, REGISTER_WINDOW_SEC);
+  const ip = c.req.header("cf-connecting-ip");
+  if (ip) await throttle(c.env, `portal-register-ip:${ip}`, REGISTER_IP_MAX, REGISTER_WINDOW_SEC);
+  await verifyTurnstile(c.env, input.turnstileToken, ip);
+
+  const database = rawDb(c.env);
+  const tenant = await activeTenant(database, c.req.param("tenantSlug"));
+  const ctx = await portalCtx(c, tenant.id, now, "portal-register");
+
+  const emailHash = await sha256Hex(email);
+  const existing = (
+    await ctx.db
+      .select()
+      .from(schema.customers)
+      .where(and(eq(schema.customers.tenantId, tenant.id), eq(schema.customers.nationalIdHash, emailHash)))
+      .limit(1)
+  )[0];
+
+  const business = input.kind === "business" ? input : null;
+  const tags = new Set<string>([
+    ...(existing?.tagsJson ? (JSON.parse(existing.tagsJson) as string[]) : []),
+    "portal-registration",
+    input.kind
+  ]);
+  const fields = {
+    type: input.kind === "business" ? ("business" as const) : ("person" as const),
+    nameJson: JSON.stringify(
+      input.kind === "business" ? { en: input.companyName, contact: input.contactName } : { en: input.name }
+    ),
+    emailsJson: JSON.stringify([email]),
+    phonesJson: input.phone ? JSON.stringify([input.phone]) : (existing?.phonesJson ?? null),
+    registrationNo: business?.registrationNo ?? existing?.registrationNo ?? null,
+    taxId: business?.taxId ?? existing?.taxId ?? null,
+    country: business?.country?.toUpperCase() ?? existing?.country ?? null,
+    // Registering asks to be verified; it never claims to be. An already
+    // verified customer re-registering must not be walked backwards either.
+    kycStatus: existing?.kycStatus === "verified" ? ("verified" as const) : ("pending" as const),
+    tagsJson: JSON.stringify([...tags]),
+    locale: input.locale ?? existing?.locale ?? "en",
+    updatedAt: now
+  };
+
+  const customerId = existing?.id ?? newId("cus", now);
+  if (existing) {
+    await ctx.db
+      .update(schema.customers)
+      .set(fields)
+      .where(and(eq(schema.customers.tenantId, tenant.id), eq(schema.customers.id, existing.id)));
+  } else {
+    await ctx.db.insert(schema.customers).values({
+      id: customerId,
+      tenantId: tenant.id,
+      nationalIdHash: emailHash,
+      consentId: null,
+      ltvCached: null,
+      riskFlagsJson: null,
+      createdAt: now,
+      deletedAt: null,
+      ...fields
+    });
+  }
+
+  const consent = await recordConsent(ctx, {
+    customerId,
+    purposes: { dataSharing: true },
+    channels: { email: true, ...(input.phone ? { sms: true } : {}) },
+    source: "portal",
+    evidenceRef: `registration:${tenant.slug}`
+  });
+  await ctx.db
+    .update(schema.customers)
+    .set({ consentId: consent.id, updatedAt: now })
+    .where(and(eq(schema.customers.tenantId, tenant.id), eq(schema.customers.id, customerId)));
+
+  await audit(ctx, {
+    action: "core.customers.register",
+    subjectRef: `customers:${customerId}`,
+    ...(existing ? { before: existing } : {}),
+    after: { id: customerId, ...fields }
+  });
+  await emit(ctx, {
+    module: "core",
+    type: "core.customers.registered",
+    subject: customerId,
+    data: { id: customerId, kind: input.kind, via: "portal" }
+  });
+
+  // 202, and nothing to hold: no id, no token, no key. A registration that
+  // handed back a handle would be a credential, and the reply is identical
+  // whether or not the email was already known — a public form must not be an
+  // oracle for who is a customer here.
+  return c.json({ status: "pending" as const }, 202);
+});
+
+// ---------------------------------------------------------------------------
 // J-C1 "Get covered" (docs/06 §J-C1): quick quote -> ranked offers -> docs ->
 // pay -> policy. Everything up to `pay` is here. Payment is not: no PSP
 // connector exists in the repo (engines/settlement.ts says the same), and
@@ -336,6 +487,81 @@ async function requestForToken(
   return row;
 }
 
+/** One priced answer, in the fields the public shape is built from. Both the
+ *  stored responses and a live indicative re-price reduce to this. */
+interface OfferLike {
+  offeringId: string;
+  providerId: string;
+  premiumMinor: number;
+  taxMinor: number;
+  feesMinor: number;
+  currency: string;
+  coverage: Record<string, unknown> | null;
+  rank: number | null;
+  validUntil: number | null;
+}
+
+/**
+ * Ranked offers with their names resolved. The one place the public offer shape
+ * is decided, so a re-price cannot drift into showing a field the stored
+ * comparison hides.
+ */
+async function publicOffers(ctx: Awaited<ReturnType<typeof ctxFor>>, quoted: OfferLike[]) {
+  const offeringIds = quoted.map((o) => o.offeringId);
+  const offerings = offeringIds.length
+    ? await ctx.db
+        .select()
+        .from(schema.distOfferings)
+        .where(and(eq(schema.distOfferings.tenantId, ctx.tenantId), inArray(schema.distOfferings.id, offeringIds)))
+    : [];
+  const offeringById = new Map(offerings.map((o) => [o.id, o]));
+  const providers = offerings.length
+    ? await ctx.db.select().from(schema.providers).where(eq(schema.providers.tenantId, ctx.tenantId))
+    : [];
+  const providerNameById = new Map(providers.map((p) => [p.id, p.name]));
+
+  return [...quoted]
+    .sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99))
+    .map((o) => {
+      const offering = offeringById.get(o.offeringId);
+      return {
+        offeringId: o.offeringId,
+        name: offering ? (JSON.parse(offering.nameJson).en as string) : o.offeringId,
+        providerName: providerNameById.get(o.providerId) ?? null,
+        premiumMinor: o.premiumMinor,
+        taxMinor: o.taxMinor,
+        feesMinor: o.feesMinor,
+        totalMinor: o.premiumMinor + o.taxMinor + o.feesMinor,
+        currency: o.currency,
+        coverage: o.coverage,
+        rank: o.rank,
+        validUntil: o.validUntil
+      };
+    });
+}
+
+/**
+ * The criteria this request's panel rates on, plus the visitor's own values for
+ * them. Only criteria fields come back: the same `inputs_json` also holds the
+ * contact details typed into the lead form, which are not the public's to read
+ * off a link.
+ */
+async function criteriaOf(
+  ctx: Awaited<ReturnType<typeof ctxFor>>,
+  request: typeof schema.distQuoteRequests.$inferSelect
+): Promise<{ criteria: Criterion[]; stored: Record<string, unknown>; inputs: Record<string, unknown> }> {
+  const panel = await panelFor(ctx, {
+    productId: request.productId,
+    channelKey: DIRECT_WEB_CHANNEL_KEY,
+    at: ctx.now
+  });
+  const stored = parseJson<Record<string, unknown>>(request.inputsJson) ?? {};
+  const criteria = criteriaFor(panel, stored);
+  const inputs: Record<string, unknown> = {};
+  for (const c of criteria) if (stored[c.field] !== undefined) inputs[c.field] = stored[c.field];
+  return { criteria, stored, inputs };
+}
+
 /**
  * The comparison as a member of the public may see it: quotes only, ranked, with
  * the ranking criterion stated (docs/12 — the customer is told what "best" means
@@ -359,20 +585,7 @@ async function comparison(
       ));
 
   const quoted = rows.filter((r) => r.state === "quoted" && r.premiumMinor !== null);
-  const offeringIds = quoted.map((r) => r.offeringId);
-  const offerings = offeringIds.length
-    ? await ctx.db
-        .select()
-        .from(schema.distOfferings)
-        .where(
-          and(eq(schema.distOfferings.tenantId, ctx.tenantId), inArray(schema.distOfferings.id, offeringIds))
-        )
-    : [];
-  const offeringById = new Map(offerings.map((o) => [o.id, o]));
-  const providers = offerings.length
-    ? await ctx.db.select().from(schema.providers).where(eq(schema.providers.tenantId, ctx.tenantId))
-    : [];
-  const providerNameById = new Map(providers.map((p) => [p.id, p.name]));
+  const { criteria, inputs } = await criteriaOf(ctx, request);
 
   return {
     state: request.state,
@@ -383,24 +596,27 @@ async function comparison(
     rankedBy: "total_price" as const,
     acceptedOfferingId: request.state === "converted" ? request.bestOfferingId : null,
     referredCount: rows.filter((r) => r.state === "referred").length,
-    offers: quoted
-      .sort((a, b) => (a.priceRank ?? 99) - (b.priceRank ?? 99))
-      .map((r) => {
-        const offering = offeringById.get(r.offeringId);
-        return {
-          offeringId: r.offeringId,
-          name: offering ? (JSON.parse(offering.nameJson).en as string) : r.offeringId,
-          providerName: providerNameById.get(r.providerId) ?? null,
-          premiumMinor: r.premiumMinor as number,
-          taxMinor: r.taxMinor,
-          feesMinor: r.feesMinor,
-          totalMinor: (r.premiumMinor as number) + r.taxMinor + r.feesMinor,
-          currency: r.currency,
-          coverage: r.coverageJson ? (JSON.parse(r.coverageJson) as Record<string, unknown>) : null,
-          rank: r.priceRank,
-          validUntil: r.validUntil
-        };
-      })
+    // What the visitor may move, and where they currently stand. The comparison
+    // is the page the sliders live on, so the knobs travel with it rather than
+    // needing a second round trip before the first drag.
+    criteria,
+    inputs,
+    offers: await publicOffers(
+      ctx,
+      quoted.map((r) => ({
+        offeringId: r.offeringId,
+        providerId: r.providerId,
+        premiumMinor: r.premiumMinor as number,
+        taxMinor: r.taxMinor,
+        feesMinor: r.feesMinor,
+        // A response may leave currency null and mean "the one the request was
+        // raised in"; the public shape has no null to offer.
+        currency: r.currency ?? request.currency,
+        coverage: r.coverageJson ? (JSON.parse(r.coverageJson) as Record<string, unknown>) : null,
+        rank: r.priceRank,
+        validUntil: r.validUntil
+      }))
+    )
   };
 }
 
@@ -427,6 +643,83 @@ portalRoutes.get("/:tenantSlug/quote-requests/:id", async (c) => {
   const request = await requestForToken(database, tenant.id, c.req.param("id"), c.req.query("token"));
   const ctx = await portalCtx(c, tenant.id, now, "portal-quote");
   return c.json(await comparison(ctx, request));
+});
+
+// "What if my excess were higher / my cover bigger / I were older" — the whole
+// point of a comparison site. It runs the same panelFor/quoteOne/rankOutcomes
+// path a real shop runs (engines/shop.ts) but persists nothing: an indicative
+// price is not a transaction (docs/19 §2), so it may not touch money state, and
+// a visitor dragging a slider must not leave a hundred quote responses behind.
+const REPRICE_ROW_MAX = 120;
+const REPRICE_IP_MAX = 600;
+const REPRICE_WINDOW_SEC = 10 * 60;
+
+const RepriceBody = z
+  .object({
+    token: z.string().min(1),
+    /** Criteria only. Anything the panel does not rate on is dropped, and every
+     *  number is clamped into the panel's declared range — see clampToCriteria. */
+    inputs: z.record(z.string().max(64), z.union([z.number().finite(), z.boolean()]))
+  })
+  .strict();
+
+portalRoutes.post("/:tenantSlug/quote-requests/:id/reprice", async (c) => {
+  const now = Date.now();
+  const input = await body(c, RepriceBody);
+  const database = rawDb(c.env);
+  const tenant = await activeTenant(database, c.req.param("tenantSlug"));
+  // Token first: an unthrottled stranger must not be able to burn a real
+  // visitor's re-price budget by guessing quote ids.
+  const request = await requestForToken(database, tenant.id, c.req.param("id"), input.token);
+  await throttle(c.env, `portal-reprice:${request.id}`, REPRICE_ROW_MAX, REPRICE_WINDOW_SEC);
+  const ip = c.req.header("cf-connecting-ip");
+  if (ip) await throttle(c.env, `portal-reprice-ip:${ip}`, REPRICE_IP_MAX, REPRICE_WINDOW_SEC);
+
+  const ctx = await portalCtx(c, tenant.id, now, "portal-reprice");
+  const { criteria, stored } = await criteriaOf(ctx, request);
+  const moved = clampToCriteria(criteria, input.inputs);
+  if (!Object.keys(moved).length) throw badRequest("no rating criteria in inputs");
+
+  // The stored risk is the base: fields the sliders do not expose (vehicle use,
+  // market) still have to reach the underwriter, and they stay server-side
+  // rather than being round-tripped through a public browser.
+  const inputs = { ...stored, ...moved };
+  const panel = await panelFor(ctx, {
+    productId: request.productId,
+    channelKey: DIRECT_WEB_CHANNEL_KEY,
+    at: now
+  });
+  const outcomes = await Promise.all(panel.map((entry) => quoteOne(ctx, entry, inputs)));
+  const ranked = await rankOutcomes(ctx, outcomes, { channelId: request.channelId });
+  const quoted = ranked.filter(
+    (o): o is (typeof ranked)[number] & { premiumMinor: number } =>
+      o.state === "quoted" && typeof o.premiumMinor === "number"
+  );
+
+  return c.json({
+    // Said in the payload, not only in the UI copy: nothing here is an offer,
+    // and the stored comparison is still whatever it was before the drag.
+    indicative: true,
+    currency: request.currency,
+    rankedBy: "total_price" as const,
+    referredCount: ranked.filter((o) => o.state === "referred").length,
+    criteria,
+    inputs: moved,
+    offers: await publicOffers(
+      ctx,
+      quoted.map((o) => ({
+        offeringId: o.offeringId,
+        providerId: o.providerId,
+        premiumMinor: o.premiumMinor,
+        taxMinor: o.taxMinor,
+        feesMinor: o.feesMinor,
+        currency: o.currency,
+        coverage: o.coverage ?? null,
+        rank: o.priceRank ?? null,
+        validUntil: o.validUntil ?? null
+      }))
+    )
+  });
 });
 
 const AcceptBody = z.object({ token: z.string().min(1), offeringId: z.string().min(1) }).strict();

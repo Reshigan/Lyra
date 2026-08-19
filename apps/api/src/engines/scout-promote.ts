@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { id as newId, schema } from "@lyra/db";
 import {
   actorRef,
@@ -18,7 +18,11 @@ import {
   promptNouns,
   whitespaceBriefMessages,
   whitespaceBriefSchema,
+  creativeContextLines,
+  type CampaignPlan,
+  type CampaignPlanEvidence,
   type Gateway,
+  type PlanAudience,
   type WhitespaceBrief,
   type WhitespaceEvidence
 } from "@lyra/model-gateway";
@@ -49,8 +53,17 @@ export interface PromoteResult {
   /** The gateway audit row for the brief call; null when the fallback was used. */
   briefAuditId: string | null;
   creatives: { id: string; locale: string; complianceStatus: string }[];
-  /** Every ai_audit_log id this promotion produced — brief plus one per locale. */
+  /** Every ai_audit_log id this promotion produced — brief, pool, one per locale. */
   auditIds: string[];
+  /** The targeting pool the campaign was aimed at. Null when the tenant has no
+   *  attributes above the k-anonymity floor. The bands and the reasons behind
+   *  them hang off the audience row itself, which SIGNAL owns. */
+  audience: SuggestedAudience | null;
+  /** The three ranked options the campaign was planned against, the notes
+   *  behind them, and which one the copy was written for. */
+  plan: CampaignPlan;
+  /** Whether the plan came from the model or the deterministic fallback. */
+  planSource: "ai" | "fallback";
 }
 
 /** Six drafts (three per locale) — enough for a human to pick from, far short of
@@ -61,6 +74,8 @@ export async function promoteWhitespace(
   ctx: Ctx,
   gateway: Gateway,
   generateCreatives: CreativeGenerator,
+  suggestAudience: AudienceSuggester,
+  planCampaign: CampaignPlanner,
   whitespaceId: string
 ): Promise<PromoteResult> {
   const rows = await ctx.db
@@ -113,18 +128,47 @@ export async function promoteWhitespace(
 
   const drafted = await draftBrief(ctx, gateway, ev);
 
+  // Who the campaign is for, argued from the book's own attribute counts. Same
+  // doctrine as the brief: a tenant that has tagged nobody, or a model call
+  // that fails, leaves the campaign with a null audience for a human to fill
+  // in - it does not cost them the promotion. The pool is a draft either way;
+  // nothing is sent off the back of it.
+  const audience = await suggestAudience(ctx, gateway, {
+    subject: ev.category,
+    momentum: ev.momentum,
+    signalCount: ev.signalCount
+  }).catch(() => null);
+
+  // What to argue, in three ranked options with a probability each and the
+  // reasons behind it. Same doctrine again: a model failure leaves the
+  // deterministic plan at confidence 0, and nothing here is a spend — the
+  // options exist so a human funds one on an argument rather than on a vibe.
+  const planEv: CampaignPlanEvidence = {
+    subject: ev.category,
+    objective: drafted.brief.objective,
+    proposition: drafted.brief.proposition,
+    momentum: ev.momentum,
+    signalCount: ev.signalCount,
+    coverage: ev.coverage,
+    competitionScore: ev.competitionScore,
+    bookSize: await bookSize(ctx),
+    audience: audience?.proposal ?? null
+  };
+  const planned = await planCampaign(ctx, gateway, planEv);
+
   const campaignId = newId("cmp", ctx.now);
   await ctx.db.insert(schema.signalCampaigns).values({
     id: campaignId,
     tenantId: ctx.tenantId,
     name: drafted.brief.name,
     objective: drafted.brief.objective,
-    audienceId: null,
+    audienceId: audience?.audienceId ?? null,
     // No channel and no budget: those are spend decisions, and this route only
     // creates the draft a human then funds (signal.budget_commit gates that).
     channelsJson: "[]",
     budgetJson: JSON.stringify({ currency: ctx.policy.currency, dailyMinor: 0, totalMinor: 0 }),
     state: "draft",
+    planJson: JSON.stringify(planned.plan),
     guardrailChecksJson: null,
     autonomyLevel: ctx.policy.autonomyDefault,
     startAt: null,
@@ -148,6 +192,11 @@ export async function promoteWhitespace(
     campaignId,
     kind: "ad",
     brief: `${drafted.brief.proposition}\n\n${drafted.brief.brief}`,
+    // Why the plan is worth writing down: the copy is generated against the
+    // recommended option's angle and offer and the bands the pool is made of,
+    // so it speaks to a specific group about a specific idea rather than to
+    // "customers" about a category noun.
+    context: creativeContextLines(planned.plan, planned.plan.recommended, planEv.audience),
     variantGroup: whitespaceId,
     count: DRAFT_VARIANTS
   }).catch(partialOf);
@@ -166,6 +215,10 @@ export async function promoteWhitespace(
       campaignId,
       briefSource: drafted.source,
       briefAuditId: drafted.auditId,
+      audienceId: audience?.audienceId ?? null,
+      planSource: planned.source,
+      planRecommended: planned.plan.recommended,
+      planConfidence: planned.plan.confidence,
       creatives: generated.variants.length
     }
   });
@@ -183,7 +236,9 @@ export async function promoteWhitespace(
       momentum: ev.momentum,
       coverage: ev.coverage,
       signalCount: ev.signalCount,
-      briefSource: drafted.source
+      briefSource: drafted.source,
+      planSource: planned.source,
+      planRecommended: planned.plan.recommended
     }
   });
 
@@ -200,7 +255,15 @@ export async function promoteWhitespace(
       locale: v.locale,
       complianceStatus: v.complianceStatus
     })),
-    auditIds: [...(drafted.auditId ? [drafted.auditId] : []), ...generated.auditIds]
+    audience,
+    plan: planned.plan,
+    planSource: planned.source,
+    auditIds: [
+      ...(drafted.auditId ? [drafted.auditId] : []),
+      ...(audience?.auditId ? [audience.auditId] : []),
+      ...(planned.auditId ? [planned.auditId] : []),
+      ...generated.auditIds
+    ]
   };
 }
 
@@ -252,10 +315,60 @@ export type CreativeGenerator = (
     campaignId: string;
     kind: "ad";
     brief: string;
+    context: string[];
     variantGroup: string;
     count: number;
   }
 ) => Promise<CreativeResult>;
+
+/**
+ * SIGNAL's audience suggester, passed in for exactly the reason
+ * `CreativeGenerator` is: `suggestTargeting` lives in apps/api/src/engines/
+ * signal-audience.ts and importing it here would be the cross-module import
+ * CLAUDE.md rule 6 forbids. The route composes the two.
+ */
+export type AudienceSuggester = (
+  ctx: Ctx,
+  gateway: Gateway,
+  subject: { subject: string; momentum: number | null; signalCount: number | null }
+) => Promise<SuggestedAudience>;
+
+/**
+ * SIGNAL's campaign planner, injected for the reason the other two seams are:
+ * `planCampaign` lives in apps/api/src/engines/signal-campaign-plan.ts and
+ * importing it here would be the cross-module import CLAUDE.md rule 6 forbids.
+ */
+export type CampaignPlanner = (
+  ctx: Ctx,
+  gateway: Gateway,
+  ev: CampaignPlanEvidence
+) => Promise<{ plan: CampaignPlan; source: "ai" | "fallback"; auditId: string | null }>;
+
+/** Mirrors `SuggestedAudience` in signal-audience.ts, structurally - SCOUT may
+ *  not import the SIGNAL engine, and only reads what it forwards: the two ids,
+ *  and the pool itself, which the plan is argued against. */
+export interface SuggestedAudience {
+  audienceId: string;
+  auditId: string | null;
+  proposal: PlanAudience;
+}
+
+/**
+ * Customers on the book, for the plan's denominator.
+ *
+ * ponytail: a second count rather than a figure threaded out of the audience
+ * suggester, because the suggester refuses a book with nothing above the
+ * k-anonymity floor and the plan still needs a book size when it does. Erased
+ * people are excluded here for the same reason they are excluded there — the
+ * denominator a human reads is a count of people who exist.
+ */
+async function bookSize(ctx: Ctx): Promise<number> {
+  const rows = await ctx.db
+    .select({ n: sql<number>`count(*)` })
+    .from(schema.customers)
+    .where(and(eq(schema.customers.tenantId, ctx.tenantId), isNull(schema.customers.deletedAt)));
+  return rows[0]?.n ?? 0;
+}
 
 interface CreativeResult {
   variants: { id: string; locale: string; complianceStatus: string }[];

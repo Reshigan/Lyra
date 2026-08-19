@@ -5,6 +5,7 @@ import {
   floorOverrides,
   healthOf,
   QUIET_AFTER_DAYS,
+  thresholdValue,
   type SourceHealth,
   type ThresholdRow
 } from "./scout-admin";
@@ -67,11 +68,13 @@ describe("source health", () => {
 
 /* ------------------------------------------------------------ thresholds */
 
+// `policy-thresholds` is generic CRUD (apps/api/src/resources.ts), so crud.ts
+// `hydrate()` sends `valueJson` already parsed. The fixture is that shape.
 const threshold = (over: Partial<ThresholdRow> = {}): ThresholdRow => ({
   id: "pth_1",
   key: "scout.whitespace_promote",
   version: 1,
-  valueJson: '{"amount":25000000,"currency":"AED"}',
+  valueJson: { amount: 25_000_000, currency: "AED" },
   dualControl: false,
   effectiveFrom: NOW - 90 * DAY,
   effectiveTo: null,
@@ -89,16 +92,29 @@ describe("policy thresholds", () => {
     // A superseded row keeps its effective_to; reading by id or by max version
     // alone would show a limit nobody enforces any more.
     const rows = currentThresholds([
-      threshold({ id: "pth_a", version: 2, valueJson: '{"amount":50000000}' }),
+      threshold({ id: "pth_a", version: 2, valueJson: { amount: 50_000_000 } }),
       threshold({ id: "pth_b", version: 1, effectiveTo: NOW - 30 * DAY })
     ]);
     expect(rows).toHaveLength(1);
     expect(rows[0]?.version).toBe(2);
-    expect(rows[0]?.valueJson).toBe('{"amount":50000000}');
+    expect(rows[0]?.valueJson).toEqual({ amount: 50_000_000 });
   });
 
   it("reads a fully superseded key as unset rather than as its last value", () => {
     expect(currentThresholds([threshold({ effectiveTo: NOW - DAY })])).toEqual([]);
+  });
+
+  // The row rendered `{row.valueJson}` straight into a span. Generic CRUD sends
+  // an object, and an object is not a valid React child — the card threw for
+  // every tenant with a `scout.*` threshold on file.
+  it("renders a hydrated value as readable text rather than as a React child", () => {
+    expect(thresholdValue(threshold())).toBe('{"amount":25000000,"currency":"AED"}');
+  });
+
+  it("still reads a value the API left as text, and says nothing for an absent one", () => {
+    expect(thresholdValue(threshold({ valueJson: '{"amount":1}' }))).toBe('{"amount":1}');
+    expect(thresholdValue(threshold({ valueJson: "not json" }))).toBe("—");
+    expect(thresholdValue(threshold({ valueJson: null }))).toBe("—");
   });
 
   it("orders keys so the list does not reshuffle between loads", () => {

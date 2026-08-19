@@ -1,5 +1,41 @@
 import { describe, expect, it } from "vitest";
-import { reportStatus } from "./analytics-report";
+import { reportOf, reportStatus, type ReportRow } from "./analytics-report";
+
+// `GET /v1/analytics/reports/:id` is hand-written, so its `*Json` columns are
+// never hydrated by crud.ts — but `reportView()` in apps/api/src/routes/analytics.ts
+// parses the two localised ones itself and sends `name`/`description` beside
+// them. The fixture is that shape.
+const row = (over: Partial<ReportRow> = {}): ReportRow => ({
+  id: "rep_1",
+  key: "gwp.by_line",
+  module: "core",
+  name: { en: "Written premium by line", ar: "القسط المكتتب حسب الفرع" },
+  description: { en: "Bound quotes, bucketed." },
+  definitionJson: JSON.stringify({ dataset: "quotes", metrics: ["gwp"], limit: 50 }),
+  piiLevel: "none",
+  scope: "tenant",
+  updatedAt: 1_770_000_000_000,
+  ...over
+});
+
+describe("reportOf", () => {
+  it("takes the names the server already parsed and parses only the definition", () => {
+    const report = reportOf(row());
+    expect(report.name.ar).toBe("القسط المكتتب حسب الفرع");
+    expect(report.description.en).toBe("Bound quotes, bucketed.");
+    expect(report.definition.metrics).toEqual(["gwp"]);
+  });
+
+  it("still renders a report the server sent no description for", () => {
+    // `reportView()` omits the key entirely when `descriptionJson` is null.
+    const { description: _absent, ...sent } = row();
+    expect(reportOf(sent).description).toEqual({});
+  });
+
+  it("reads an unusable definition as an empty one rather than throwing", () => {
+    expect(reportOf(row({ definitionJson: "not json" })).definition).toEqual({});
+  });
+});
 
 describe("reportStatus", () => {
   it("prefers a run in flight over everything else", () => {

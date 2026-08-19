@@ -333,6 +333,8 @@ const HAND_WRITTEN: Op[] = [
 
   // Signal. Brief in, N compliance-checked ar/en variants out — the
   // Meta/Google publish half is credential-blocked and out of scope.
+  { method: "post", path: "/v1/signal/campaigns/{id}/plan", summary: "Plan a campaign in three ranked options, each with a probability of success and the reasons behind it, suggesting and linking a targeting pool when the campaign has none", permission: "signal:campaigns:update", tag: "signal", requestBody: true },
+  { method: "post", path: "/v1/signal/audiences/suggest", summary: "Propose a targetable audience for a subject from k-anonymous attribute counts, with the reason each band was chosen (docs/17 \u00a7SIG-025; protected attributes excluded per \u00a7SIG-034)", permission: "signal:audiences:estimate", tag: "signal", requestBody: true },
   { method: "post", path: "/v1/signal/creatives/generate", summary: "Generate ad-copy variants from a brief, compliance-checked and audited per locale", permission: "signal:creatives:generate", tag: "signal", requestBody: true },
   { method: "post", path: "/v1/signal/creatives/image", summary: "Generate a hero/post image from a prompt (ADR-0060); stores bytes to R2 and returns a data URL for immediate preview", permission: "signal:creatives:generate", tag: "signal", requestBody: true },
   { method: "get", path: "/v1/signal/creatives/{id}/image", summary: "Re-stream a previously generated creative image's bytes", permission: "signal:creatives:read", tag: "signal" },
@@ -443,6 +445,10 @@ const HAND_WRITTEN: Op[] = [
   { method: "get", path: "/v1/portal/{tenantSlug}/quote-requests/{id}", summary: "Re-open a self-serve comparison with the one-time token", tag: "portal", public: true },
   { method: "post", path: "/v1/portal/{tenantSlug}/quote-requests/{id}/accept", summary: "Customer accepts a quoted offer; converts the request, does not bind cover", tag: "portal", requestBody: true, public: true },
   { method: "post", path: "/v1/portal/{tenantSlug}/quote-requests/{id}/documents", summary: "Upload a supporting document against a self-serve quote (multipart)", tag: "portal", requestBody: true, public: true },
+  { method: "post", path: "/v1/portal/{tenantSlug}/quote-requests/{id}/reprice", summary: "Indicative re-price of the same panel with moved rating criteria; persists nothing and binds nothing", tag: "portal", requestBody: true, public: true },
+  // Self-registration. Writes a customer record at kyc_status=pending and
+  // nothing else — no user, no session, no key — so the reply carries no handle.
+  { method: "post", path: "/v1/portal/{tenantSlug}/registrations", summary: "Self-registration from the public storefront (person or business); records a pending customer, grants no access", tag: "portal", requestBody: true, public: true },
   { method: "post", path: "/v1/portal/{tenantSlug}/privacy-requests", summary: "Data subject lodges an access/erasure/rectification request (J-C4); recorded unverified, staff verify before fulfilment", tag: "portal", requestBody: true, public: true },
   // J-C3 one-tap renewal and J-C2's CSAT tap: hosted, tenant-branded pages
   // opened from a messaged link. The credential is the link's derived token

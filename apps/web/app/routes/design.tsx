@@ -1,6 +1,9 @@
+import { useState } from "react";
 import {
+  Field,
   POST_RATIOS,
   PostingFlow,
+  Slider,
   StateFlow,
   postCardSvg,
   type FlowBalance,
@@ -271,7 +274,15 @@ const LABELS: Labels = {
     "post.note": "A cleared SIGNAL variant rendered at the three frames the networks take, from the tenant\u2019s own brand. Preview and download are the same bytes.",
     "post.headline": "Cover the gap before renewal.",
     "post.body": "Two minutes, no paperwork, and your no-claim year stays yours.",
-    "post.kicker": "Renewal save"
+    "post.kicker": "Renewal save",
+    "slider.heading": "Price knobs — a range, and a box to type in",
+    "slider.note":
+      "A criterion a customer can move is a native `input[type=range]`: arrows, Home/End and Page Up/Down work, the thumb is grabbable on a phone, and the track reverses itself in Arabic without a line of code. Two things the platform does not give are added — the value announced in words rather than as a bare number, and a typed box beside it, because dragging is the one gesture some people cannot make. Both controls carry the same bounds, so typing past the end is refused the way dragging past it is. The panel decides which knobs exist: a criterion that moves no price is never drawn.",
+    "slider.age": "Driver age",
+    "slider.ageNumber": "Driver age, exact value",
+    "slider.cover": "Value to insure",
+    "slider.coverNumber": "Value to insure, exact value",
+    "slider.indicative": "Moving a knob asks the panel to price again. Nothing shown that way is an offer."
   },
   ar: {
     eyebrow: "Horizon — العقيدة التصميمية",
@@ -371,9 +382,58 @@ const LABELS: Labels = {
     "post.note": "نسخة معتمدة من سيجنال بمقاسات المنصات الثلاثة، بهوية العميل نفسه. المعاينة والتنزيل ملف واحد.",
     "post.headline": "غطِّ الفجوة قبل التجديد.",
     "post.body": "دقيقتان دون أوراق، وخصمك يبقى لك.",
-    "post.kicker": "حملة التجديد"
+    "post.kicker": "حملة التجديد",
+    "slider.heading": "مقابض السعر — شريط وخانة للكتابة",
+    "slider.note":
+      "كل معيار يمكن للعميل تحريكه هو عنصر `input[type=range]` أصلي: الأسهم وHome/End وPage Up/Down تعمل، والمقبض قابل للسحب على الهاتف، والمسار ينعكس في العربية دون سطر واحد. أضفنا ما لا توفره المنصة: نطق القيمة بكلمات لا كرقم مجرد، وخانة كتابة بجواره لأن السحب حركة لا يقدر عليها الجميع. الحدّان متطابقان في الاثنين، فالكتابة خارج المدى تُرفض كما يُرفض السحب خارجه. اللوحة هي من تحدد المقابض: معيار لا يحرّك سعرًا لا يُرسم.",
+    "slider.age": "عمر السائق",
+    "slider.ageNumber": "عمر السائق، القيمة الدقيقة",
+    "slider.cover": "القيمة المراد تأمينها",
+    "slider.coverNumber": "القيمة المراد تأمينها، القيمة الدقيقة",
+    "slider.indicative": "تحريك أي مقبض يطلب تسعيرًا جديدًا من اللوحة. وما يظهر بهذه الطريقة ليس عرضًا ملزمًا."
   }
 };
+
+/**
+ * The comparison knobs (packages/ui primitives.tsx §Slider), live rather than
+ * drawn — a specimen you cannot tab into documents nothing. State is local: the
+ * real one posts to the portal's re-price action, which is per-screen wiring.
+ * Mobile parity: both controls are 44px tall and the pair wraps at 328px.
+ */
+function SliderSpecimen({ l, locale }: { l: (key: string) => string; locale: string }) {
+  const [age, setAge] = useState(34);
+  const [coverMajor, setCoverMajor] = useState(28_000);
+  const money = new Intl.NumberFormat(locale, { style: "currency", currency: "AED", maximumFractionDigits: 0 });
+
+  return (
+    <div className="flex flex-col gap-4 rounded-3 border border-line2 bg-s2 px-[18px] py-[17px]">
+      <Field label={l("slider.age")} id="specimen-age">
+        <Slider
+          min={18}
+          max={99}
+          value={age}
+          onValueChange={setAge}
+          numberLabel={l("slider.ageNumber")}
+          valueText={new Intl.NumberFormat(locale).format(age)}
+        />
+      </Field>
+      <Field label={l("slider.cover")} id="specimen-cover">
+        <Slider
+          min={0}
+          max={200_000}
+          step={1_000}
+          value={coverMajor}
+          onValueChange={setCoverMajor}
+          numberLabel={l("slider.coverNumber")}
+          // A bare "28000" read aloud is not a price. The announced value is the
+          // one on screen, currency and all.
+          valueText={money.format(coverMajor)}
+        />
+      </Field>
+      <p className="text-13 leading-body text-tx5">{l("slider.indicative")}</p>
+    </div>
+  );
+}
 
 export function Doctrine({
   locale,
@@ -567,6 +627,16 @@ export function Doctrine({
               locale={locale}
             />
           </div>
+        </div>
+      </section>
+
+      <section className="flex flex-col gap-4 border-t border-line2 pt-7 lg:flex-row lg:items-start lg:gap-8">
+        <div className="flex flex-1 flex-col gap-3">
+          <h2 className="font-display text-16 font-600 text-tx">{l("slider.heading")}</h2>
+          <p className="max-w-[60ch] text-13 leading-body text-tx4">{l("slider.note")}</p>
+        </div>
+        <div className="w-full lg:max-w-[420px]">
+          <SliderSpecimen l={l} locale={locale} />
         </div>
       </section>
 

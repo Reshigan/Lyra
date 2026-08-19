@@ -50,6 +50,9 @@ import {
   labelsIn,
   mintKey,
   nextStates,
+  planOf,
+  poolOf,
+  probabilityTone,
   rollByChannel,
   safe,
   splitCopy,
@@ -275,6 +278,24 @@ export async function action({ request, context }: ActionFunctionArgs): Promise<
         );
       }
 
+      case "plan": {
+        const campaignId = text(form, "campaignId");
+        if (!campaignId) return refuse("campaign_required");
+        const subject = text(form, "subject");
+        if (subject.length < 3) return refuse("subject_required");
+
+        await api<{ plan: unknown }>(`/v1/signal/campaigns/${encodeURIComponent(campaignId)}/plan`, {
+          env,
+          request,
+          method: "POST",
+          headers,
+          body: { subject }
+        });
+        // A redirect, so a refresh re-reads the plan rather than arguing a
+        // second one at the same campaign.
+        throw redirect(`/signal/studio?campaignId=${encodeURIComponent(campaignId)}&planned=1`);
+      }
+
       case "generate-image": {
         const campaignId = text(form, "campaignId");
         if (!campaignId) return refuse("campaign_required");
@@ -443,6 +464,13 @@ export default function CampaignStudio() {
 
   const campaign = loaded.campaign;
   const budget = campaign ? budgetOf(campaign) : {};
+  const plan = campaign ? planOf(campaign) : null;
+  // The pool the plan was argued at, if the model proposed it. A hand-picked
+  // audience has no reasons and renders nothing.
+  const audience = campaign?.audienceId
+    ? loaded.audiences.find((row) => row.id === campaign.audienceId)
+    : undefined;
+  const pool = audience ? poolOf(audience) : null;
   const currency = budget.currency ?? "ZAR";
   const mine = loaded.creatives;
   const cleared = mine.filter((creative) => creative.complianceStatus === "passed");
@@ -612,6 +640,116 @@ export default function CampaignStudio() {
               <Stat label={l("studio.channels")} value={channelsOf(campaign).map((slug) => channelLabel(slug, locale)).join(" · ") || "—"} />
             </dl>
           </Card>
+
+          {pool ? (
+            <Card
+              title={l("studio.pool")}
+              description={l("studio.poolReach", { n: pool.estimatedReach.toLocaleString(locale) })}
+              actions={<AgentBadge why={pool.summary} />}
+            >
+              <p className="font-ui text-13 leading-relaxed text-muted">{pool.summary}</p>
+              <ul className="mt-4 flex flex-col gap-2">
+                {pool.reasons.map((band) => (
+                  <li
+                    key={`${band.axis}:${band.value}`}
+                    className="flex flex-col gap-1 rounded-lg border border-border p-3 sm:flex-row sm:items-baseline sm:gap-3"
+                  >
+                    {/* ponytail: axis slug rendered raw. A label table here would
+                        re-hard-code the very vocabulary the targeting axes are
+                        meant to read from the tenant's own book. */}
+                    <Badge tone="neutral">
+                      {band.axis} {band.value}
+                    </Badge>
+                    <span className="font-ui text-13 text-muted">{band.reason}</span>
+                    {band.count > 0 ? (
+                      <span className="font-ui text-12 text-subtle sm:ms-auto">
+                        {band.count.toLocaleString(locale)}
+                      </span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-3 font-ui text-12 text-subtle">{l("studio.poolWhy")}</p>
+            </Card>
+          ) : null}
+
+          {plan ? null : (
+            <Card title={l("studio.planNone")} description={l("studio.planNoneHint")}>
+              <Form method="post" className="flex flex-col gap-4">
+                <input type="hidden" name="intent" value="plan" />
+                <input type="hidden" name="key" value={loaded.key} />
+                <input type="hidden" name="campaignId" value={campaign.id} />
+                <Field label={l("studio.planSubject")} hint={l("studio.planSubjectHint")} required>
+                  <Input name="subject" required minLength={3} maxLength={200} defaultValue={campaign.name} />
+                </Field>
+                <div className="flex items-center gap-3">
+                  <Button type="submit" variant="primary" disabled={busy}>
+                    {busy ? l("studio.planning") : `${AGENT_MARK} ${l("studio.planAction")}`}
+                  </Button>
+                  <EvidenceLink source="/docs/15-ai-ux-patterns.md" sourceLabel={l("why")}>
+                    {l("studio.planHint")}
+                  </EvidenceLink>
+                </div>
+              </Form>
+            </Card>
+          )}
+
+          {plan ? (
+            <Card
+              title={l("studio.plan")}
+              description={l("studio.planHint")}
+              actions={<AgentBadge why={plan.notes} />}
+            >
+              <p className="font-ui text-13 leading-relaxed text-muted">{plan.notes}</p>
+              <ul className="mt-4 flex flex-col gap-3">
+                {plan.options.map((option) => (
+                  <li
+                    key={option.name}
+                    className={`flex flex-col gap-2 rounded-lg border p-4 ${
+                      option.name === plan.recommended ? "border-accent bg-accent/5" : "border-border"
+                    }`}
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="font-ui text-14 font-medium text-text">{option.name}</h3>
+                      {option.name === plan.recommended ? (
+                        <Badge tone="accent">{l("studio.planRecommended")}</Badge>
+                      ) : null}
+                      <Badge tone={probabilityTone(option.probability)} dot>
+                        {`${option.probability.toLocaleString(locale)}%`}
+                      </Badge>
+                      <span className="ms-auto font-ui text-12 text-subtle">
+                        {option.channels.map((slug) => channelLabel(slug, locale)).join(" · ")}
+                      </span>
+                    </div>
+                    <p className="font-ui text-13 text-muted">{option.angle}</p>
+                    {option.offer ? (
+                      <p className="font-ui text-13 text-text">
+                        <span className="text-subtle">{l("studio.planOffer")}: </span>
+                        {option.offer}
+                      </p>
+                    ) : null}
+                    {option.why.length ? (
+                      <ul className="flex list-disc flex-col gap-1 ps-5 font-ui text-12 text-muted">
+                        {option.why.map((line) => (
+                          <li key={line}>{line}</li>
+                        ))}
+                      </ul>
+                    ) : null}
+                    {option.risk ? (
+                      <p className="font-ui text-12 text-subtle">
+                        {l("studio.planRisk")}: {option.risk}
+                      </p>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-3 font-ui text-12 text-subtle">
+                {plan.confidence > 0
+                  ? l("studio.planConfidence", { n: String(plan.confidence) })
+                  : l("studio.planFallback")}
+              </p>
+            </Card>
+          ) : null}
 
           {may.has(PERM.creativesGenerate) ? (
             <Card

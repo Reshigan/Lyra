@@ -22,6 +22,7 @@ import {
 } from "@lyra/ui";
 import { ApiError, api, fetchMe, type Problem } from "../api.server";
 import { cloudflare } from "../context";
+import { asJson } from "../json.js";
 import { translator } from "../i18n";
 import { Gate } from "./staff";
 import { useShellData } from "./workspace";
@@ -74,14 +75,8 @@ export function covers(granted: string, wanted: string): boolean {
 
 /** A role's grant list, whether the column hydrated or came back as raw text. */
 export function grantsOf(row: Pick<RoleRow, "permissionsJson">): string[] {
-  const raw = row.permissionsJson;
-  if (Array.isArray(raw)) return raw.filter((p): p is string => typeof p === "string");
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((p): p is string => typeof p === "string") : [];
-  } catch {
-    return [];
-  }
+  const raw = asJson<unknown>(row.permissionsJson, []);
+  return Array.isArray(raw) ? raw.filter((p): p is string => typeof p === "string") : [];
 }
 
 export interface MatrixCell {

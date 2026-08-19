@@ -56,12 +56,14 @@ const signal = (over: Partial<SignalRow> = {}): SignalRow => ({
   id: "sig_1",
   source: "regulatory",
   sourceRef: "rss:insurance-circulars/2025-12-29",
-  payloadJson: JSON.stringify({
+  // `/v1/scout/signals` is generic CRUD, so crud.ts `hydrate()` sends
+  // `payloadJson` already parsed. The fixture is that shape.
+  payloadJson: {
     title: "New item on the circular feed, health line",
     state: "unread",
     routedTo: "khalid.rashed",
     note: "Flagged for counsel."
-  }),
+  },
   weight: 2,
   observedAt: 1_770_000_000_000,
   ...over
@@ -108,19 +110,19 @@ describe("regulatory flags", () => {
   });
 
   it("falls back to the source reference, then the row id, rather than dropping the flag", () => {
-    expect(flagOf(signal({ payloadJson: "{}" })).title).toBe("rss:insurance-circulars/2025-12-29");
+    expect(flagOf(signal({ payloadJson: {} })).title).toBe("rss:insurance-circulars/2025-12-29");
     expect(flagOf(signal({ payloadJson: "not json", sourceRef: null })).title).toBe("sig_1");
     expect(flagOf(signal({ payloadJson: null, sourceRef: null })).title).toBe("sig_1");
   });
 
   it("ignores payload fields that are not text", () => {
-    const flag = flagOf(signal({ payloadJson: JSON.stringify({ title: 7, state: ["unread"] }) }));
+    const flag = flagOf(signal({ payloadJson: { title: 7, state: ["unread"] } }));
     expect(flag.title).toBe("rss:insurance-circulars/2025-12-29");
     expect(flag.state).toBeNull();
   });
 
   it("survives a payload that is a list rather than a bag", () => {
-    expect(flagOf(signal({ payloadJson: "[1,2]" })).title).toBe("rss:insurance-circulars/2025-12-29");
+    expect(flagOf(signal({ payloadJson: [1, 2] })).title).toBe("rss:insurance-circulars/2025-12-29");
   });
 });
 

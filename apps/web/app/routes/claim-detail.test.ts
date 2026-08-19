@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import type { Env } from "../env";
 import {
+  ADVERSE_HOPS,
   CLAIM_FLOW,
   CLAIM_TRANSITIONS,
   LABELS,
@@ -11,6 +12,8 @@ import {
   action,
   claimLede,
   hopsFor,
+  isAdverseHop,
+  reserveOf,
   stateOfAudit,
   labelsIn,
   loader,
@@ -145,6 +148,40 @@ describe("claimLede", () => {
     const lede = claimLede({ status: "assessing" }, 132_000, "AED", labelsIn("en"), "en");
     expect(lede).toContain("Assessing");
     expect(lede).toContain("1,320.00");
+  });
+});
+
+describe("reserveOf", () => {
+  it("prefers the desk's reserve over the notified figure", () => {
+    expect(reserveOf({ reserveMinor: 200_000, amountMinor: 100_000 })).toBe(200_000);
+  });
+
+  it("stands the notified figure in until the desk posts its first movement", () => {
+    expect(reserveOf({ reserveMinor: null, amountMinor: 100_000 })).toBe(100_000);
+  });
+
+  it("is null, not zero, when nobody has priced the claim", () => {
+    // `axis_claims.amount_minor` is nullable: a claim can be notified before
+    // anyone puts a number on it. Printing "AED 0.00" claims the desk holds
+    // nothing for it, which is a different and much calmer fact than "nobody
+    // has priced this yet".
+    expect(reserveOf({ reserveMinor: null, amountMinor: null })).toBeNull();
+    expect(reserveOf({})).toBeNull();
+  });
+});
+
+describe("isAdverseHop", () => {
+  it("marks the outcomes that end the claim against the claimant", () => {
+    for (const hop of ADVERSE_HOPS) expect(isAdverseHop(hop), hop).toBe(true);
+  });
+
+  it("leaves ordinary progress alone", () => {
+    for (const hop of ["assessing", "triage", "approved", "reopened"]) expect(isAdverseHop(hop), hop).toBe(false);
+  });
+
+  it("names only hops this screen actually offers", () => {
+    const offered = new Set(Object.keys(CLAIM_TRANSITIONS).flatMap((state) => hopsFor(state)));
+    for (const hop of ADVERSE_HOPS) expect(offered.has(hop), hop).toBe(true);
   });
 });
 

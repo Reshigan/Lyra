@@ -19,6 +19,7 @@ export * from "./momentum.js";
 export * from "./narrator-verify.js";
 export * from "./password.js";
 export * from "./signal-compliance.js";
+export * from "./targeting.js";
 export * from "./totp.js";
 export * from "./seed.js";
 export * from "./seed/period.js";

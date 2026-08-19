@@ -204,6 +204,20 @@
       "when": 1787081990224,
       "tag": "0028_exotic_nighthawk",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "6",
+      "when": 1787150580118,
+      "tag": "0029_tough_firelord",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "6",
+      "when": 1787151027555,
+      "tag": "0030_clean_smiling_tiger",
+      "breakpoints": true
     }
   ]
 }

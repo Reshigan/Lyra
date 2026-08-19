@@ -9,6 +9,7 @@ import {
   REVIEW_FLOOR,
   action,
   bboxOf,
+  carriedJson,
   confidenceOf,
   fieldsOf,
   headlineFor,
@@ -141,9 +142,45 @@ describe("labelsIn", () => {
   });
 });
 
+describe("carriedJson", () => {
+  // The correction form posts the model's own values back so the merge compares
+  // against what the human was shown. `extractionJson` arrives already parsed
+  // (apps/api/src/crud.ts `hydrate`), and an object handed to an input `value`
+  // is stringified by the DOM as "[object Object]" — which parses back to
+  // nothing, so every correction merged against an empty model and was refused
+  // as `no_change`. Nobody could save a correction at all.
+  it("carries the model's values through a form value, not [object Object]", () => {
+    const doc = { extractionJson: { fullName: "Aisha", idNumber: null } };
+    expect(String(carriedJson(doc))).not.toContain("[object Object]");
+    expect(fieldsOf({ extractionJson: carriedJson(doc) })).toEqual(fieldsOf(doc));
+  });
+
+  it("survives the round trip the action actually does", async () => {
+    const doc = { extractionJson: { fullName: "Aisha", idNumber: null } };
+    const form = new FormData();
+    form.set("intent", "correct");
+    form.set("docId", "doc_1");
+    form.set("extractionJson", carriedJson(doc));
+    form.set(`${FIELD_PREFIX}idNumber`, "784-1990");
+
+    const calls = stubFetch(new Response(JSON.stringify({ id: "doc_1" })));
+    const result = await action(args(form));
+
+    expect(result.problem).toBeNull();
+    expect(result.done).toBe("correct");
+    expect(calls[0]?.body).toBe(
+      JSON.stringify({ extractionJson: JSON.stringify({ fullName: "Aisha", idNumber: "784-1990" }) })
+    );
+  });
+
+  it("still carries an empty model for a document nothing has read", () => {
+    expect(carriedJson({ extractionJson: null })).toBe("{}");
+  });
+});
+
 describe("fieldsOf", () => {
   it("reads the model's answers and keeps an omitted field as null", () => {
-    expect(fieldsOf({ extractionJson: '{"fullName":"Aisha","idNumber":"  ","expiryDate":null}' })).toEqual({
+    expect(fieldsOf({ extractionJson: { fullName: "Aisha", idNumber: "  ", expiryDate: null } })).toEqual({
       fullName: "Aisha",
       idNumber: null,
       expiryDate: null
@@ -153,11 +190,11 @@ describe("fieldsOf", () => {
   it("treats an unread document, bad JSON and a JSON array as nothing extracted", () => {
     expect(fieldsOf({ extractionJson: null })).toEqual({});
     expect(fieldsOf({ extractionJson: "not json" })).toEqual({});
-    expect(fieldsOf({ extractionJson: '["a","b"]' })).toEqual({});
+    expect(fieldsOf({ extractionJson: ["a", "b"] })).toEqual({});
   });
 
   it("keeps the reserved _bbox key out of the correctable fields", () => {
-    expect(fieldsOf({ extractionJson: '{"fullName":"Aisha","_bbox":{"fullName":[1,2,3,4]}}' })).toEqual({
+    expect(fieldsOf({ extractionJson: { fullName: "Aisha", _bbox: { fullName: [1, 2, 3, 4] } } })).toEqual({
       fullName: "Aisha"
     });
   });
@@ -166,15 +203,15 @@ describe("fieldsOf", () => {
 describe("bboxOf", () => {
   it("reads the model's box per field, as a percentage of the page", () => {
     expect(
-      bboxOf({ extractionJson: '{"fullName":"Aisha","_bbox":{"fullName":[12.5,30,40,6]}}' })
+      bboxOf({ extractionJson: { fullName: "Aisha", _bbox: { fullName: [12.5, 30, 40, 6] } } })
     ).toEqual({ fullName: [12.5, 30, 40, 6] });
   });
 
   it("treats a missing, malformed or absent box as nothing to draw", () => {
     expect(bboxOf({ extractionJson: null })).toEqual({});
-    expect(bboxOf({ extractionJson: '{"fullName":"Aisha"}' })).toEqual({});
-    expect(bboxOf({ extractionJson: '{"_bbox":{"fullName":[1,2,3]}}' })).toEqual({});
-    expect(bboxOf({ extractionJson: '{"_bbox":"not an object"}' })).toEqual({});
+    expect(bboxOf({ extractionJson: { fullName: "Aisha" } })).toEqual({});
+    expect(bboxOf({ extractionJson: { _bbox: { fullName: [1, 2, 3] } } })).toEqual({});
+    expect(bboxOf({ extractionJson: { _bbox: "not an object" } })).toEqual({});
   });
 });
 

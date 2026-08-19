@@ -160,13 +160,53 @@ const BRIEF_REPLY = JSON.stringify({
 const variantLines = (n: number, label: string): string =>
   Array.from({ length: n }, (_, i) => `${label} variant ${i + 1}: talk to us about marine.`).join("\n");
 
+/** A plan whose prose states no figure at all — same groundedness gate as the
+ *  brief, and the point here is call *order*, not the parser (campaign-plan's
+ *  own tests cover that). */
+const PLAN_REPLY = JSON.stringify({
+  notes:
+    "Marine demand is moving against a book that carries almost none of it. The pool is thin, so " +
+    "the three options below trade reach against precision.",
+  options: [
+    {
+      name: "Direct to the quoting few",
+      angle: "Speak only to the customers already asking for marine cover.",
+      offer: "A marine quote in under a minute.",
+      channels: ["email", "meta"],
+      probability: 62,
+      why: ["The demand is measured and the book behind it is thin."],
+      risk: "A pool this narrow burns out fast."
+    },
+    {
+      name: "Intent capture",
+      angle: "Buy the searches people already make.",
+      offer: "A quote for anyone already looking for marine cover.",
+      channels: ["google_search"],
+      probability: 48,
+      why: ["The demand exists before the campaign does."],
+      risk: null
+    },
+    {
+      name: "Broad build",
+      angle: "Introduce marine to the rest of the book.",
+      offer: "An introduction for customers who hold none.",
+      channels: ["display", "youtube"],
+      probability: 27,
+      why: ["Nobody on this book carries the cover yet."],
+      risk: null
+    }
+  ]
+});
+
 function gatewayWith(replies: string[]): { stub: ReturnType<typeof makeStub>; gw: Gateway } {
   const stub = makeStub({ replies });
   return { stub, gw: new Gateway({ env: {}, providers: { "workers-ai": stub, anthropic: stub, "openai-compat": stub } }) };
 }
 
-/** Brief, then three drafts per locale — the six DRAFT_VARIANTS the engine asks for. */
-const promoteReplies = (): string[] => [BRIEF_REPLY, variantLines(3, "en"), variantLines(3, "ar")];
+/** Brief, plan, then three drafts per locale — the six DRAFT_VARIANTS the engine
+ *  asks for. The stub is scripted by call order, so the plan sits where the
+ *  engine makes it: after the brief it argues from, before the copy it briefs. */
+const promoteReplies = (): string[] => [BRIEF_REPLY, PLAN_REPLY, variantLines(3, "en"), variantLines(3, "ar")];
 
 function app(over: Partial<Ctx> = {}, gw: Gateway = gatewayWith(promoteReplies()).gw): Hono<App> {
   const a = new Hono<App>();
@@ -359,6 +399,20 @@ describe("POST /whitespaces/:id/promote-to-signal", () => {
     expect(briefAudit).toHaveLength(1);
     expect(res.body.briefAuditId).toBe(briefAudit[0]!.id);
 
+    // The plan is its own gateway call, with its own purpose and its own audit row.
+    expect(stub.calls[1]!.module).toBe("signal");
+    expect(stub.calls[1]!.purpose).toBe("campaign.plan");
+    expect(res.body.planSource).toBe("ai");
+    expect(res.body.plan).toMatchObject({ recommended: "Direct to the quoting few", confidence: 100 });
+    expect((res.body.plan as unknown as { options: unknown[] }).options).toHaveLength(3);
+
+    // And it reached the copy: the creative prompt carries the recommended
+    // option's angle and offer, which is the entire reason for planning first.
+    const copyPrompt = stub.calls[2]!.messages.map((m) => m.content).join("\n");
+    expect(copyPrompt).toContain("Campaign approach: Direct to the quoting few");
+    expect(copyPrompt).toContain("Speak only to the customers already asking for marine cover.");
+    expect(copyPrompt).toContain("A marine quote in under a minute.");
+
     const campaignId = res.body.campaignId as unknown as string;
     const [campaign] = await ctx.db
       .select()
@@ -369,6 +423,7 @@ describe("POST /whitespaces/:id/promote-to-signal", () => {
     expect(campaign!.objective).toBe("acq");
     // Nothing was funded and nothing was sent.
     expect(campaign!.channelsJson).toBe("[]");
+    expect(JSON.parse(campaign!.planJson!)).toMatchObject({ recommended: "Direct to the quoting few" });
     expect(JSON.parse(campaign!.budgetJson!)).toMatchObject({ dailyMinor: 0, totalMinor: 0 });
 
     // Provenance back to the whitespace, since signal_campaigns has no column for it.
@@ -443,6 +498,7 @@ describe("POST /whitespaces/:id/promote-to-signal", () => {
         proposition: "R4.2m of travel premium is going elsewhere.",
         brief: "Say we are cheapest on travel."
       }),
+      PLAN_REPLY,
       variantLines(3, "en"),
       variantLines(3, "ar")
     ]);
@@ -459,14 +515,14 @@ describe("POST /whitespaces/:id/promote-to-signal", () => {
     // drafts" would put a number in the audit row and in the tray that
     // signal_creatives disagrees with — three drafts sitting in the table while
     // the handover says nothing was written. Report what is actually there.
-    const ok = makeStub({ replies: [BRIEF_REPLY, variantLines(3, "en")] });
+    const ok = makeStub({ replies: [BRIEF_REPLY, PLAN_REPLY, variantLines(3, "en")] });
     let n = 0;
     const flaky = {
       ...ok,
-      async complete(req: Parameters<typeof ok.complete>[0]) {
-        // 0 = the brief, 1 = en creatives, 2 = ar creatives.
-        if (n++ >= 2) throw new Error("workers-ai: 503");
-        return ok.complete(req);
+      async complete(...args: Parameters<typeof ok.complete>) {
+        // 0 = the brief, 1 = the plan, 2 = en creatives, 3 = ar creatives.
+        if (n++ >= 3) throw new Error("workers-ai: 503");
+        return ok.complete(...args);
       }
     };
     const gw = new Gateway({ env: {}, providers: { "workers-ai": flaky, anthropic: flaky, "openai-compat": flaky } });

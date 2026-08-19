@@ -9,7 +9,7 @@
  */
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { Input, Select, Textarea } from "./primitives.js";
+import { Field, Input, Select, Slider, Textarea } from "./primitives.js";
 
 const classesOf = (markup: string) => (markup.match(/class="([^"]*)"/)?.[1] ?? "").split(" ");
 
@@ -71,5 +71,55 @@ describe("select placeholder", () => {
   it("submits the decoded value", () => {
     const markup = renderToStaticMarkup(<Select name="state" aria-label="Show" defaultValue="" options={options} />);
     expect(markup).toContain('name="state" value=""');
+  });
+});
+
+/**
+ * The comparison sliders (portal quote page). A price knob that only a mouse
+ * can turn is not a price knob for most of the people who need one, so every
+ * requirement here is an accessibility requirement rather than a nicety:
+ * WCAG 2.2 AA wants it reachable by keyboard, announced as a value a person
+ * recognises, and settable by typing when dragging is not on offer.
+ */
+describe("Slider", () => {
+  const base = { min: 18, max: 99, value: 34, onValueChange: () => {}, numberLabel: "Age, exact value" };
+
+  it("is a native range, so keyboard, touch and RTL come from the platform", () => {
+    const markup = renderToStaticMarkup(<Slider aria-label="Age" {...base} />);
+    expect(markup).toContain('type="range"');
+    expect(markup).toContain('min="18"');
+    expect(markup).toContain('max="99"');
+    expect(markup).toContain('value="34"');
+  });
+
+  it("announces the value a person recognises, not the raw number", () => {
+    const markup = renderToStaticMarkup(<Slider aria-label="Cover" {...base} valueText="AED 28,000" />);
+    expect(markup).toContain('aria-valuetext="AED 28,000"');
+  });
+
+  it("always offers a typed fallback, labelled in its own right", () => {
+    const markup = renderToStaticMarkup(<Slider aria-label="Age" {...base} />);
+    expect(markup).toContain('type="number"');
+    expect(markup).toContain('aria-label="Age, exact value"');
+    // Both controls carry the same bounds: typing past the end is refused the
+    // same way dragging past it is.
+    expect(markup.match(/max="99"/g)!.length).toBe(2);
+  });
+
+  it("gives the Field's label to the range and never duplicates its id", () => {
+    const markup = renderToStaticMarkup(
+      <Field label="Age" id="age-field">
+        <Slider {...base} />
+      </Field>
+    );
+    expect(markup).toContain('for="age-field"');
+    expect(markup.match(/id="age-field"/g)!.length).toBe(1);
+    expect(markup).toContain('id="age-field-number"');
+  });
+
+  it("keeps a 44px target and a visible focus ring on both controls", () => {
+    const markup = renderToStaticMarkup(<Slider aria-label="Age" {...base} />);
+    expect(markup).toContain("h-11");
+    expect(markup.match(/focus-visible:/g)!.length).toBeGreaterThanOrEqual(2);
   });
 });

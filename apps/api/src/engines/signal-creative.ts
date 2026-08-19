@@ -1,6 +1,6 @@
 import { id as newId, schema } from "@lyra/db";
 import { checkCompliance, sha256Hex, type Ctx, type ComplianceFinding, type ComplianceResult } from "@lyra/core";
-import type { Gateway } from "@lyra/model-gateway";
+import { promptNouns, type Gateway, type PromptNouns } from "@lyra/model-gateway";
 
 // docs/modules/signal.md §2.1 + §8 acceptance: "Brief -> 20 compliant ar/en
 // variants -> publish to Meta+Google in < 1 hour with human review only at the
@@ -27,6 +27,10 @@ export interface CreativeBrief {
   kind: CreativeKind;
   /** What the ad is about and the angle to take — the human-authored input. */
   brief: string;
+  /** The campaign plan, flattened to sentences: the chosen option's angle and
+   *  offer, and the bands the audience is made of. Absent for a creative
+   *  briefed by hand, which is why it is optional rather than empty. */
+  context?: string[];
   /** Groups variants that are A/B siblings of the same slot; defaults to none. */
   variantGroup?: string | null;
   /** Defaults to both — CLAUDE.md rule 7, ar/en from day one, native prompts not translation. */
@@ -37,20 +41,36 @@ export interface CreativeBrief {
 
 export { checkCompliance, type ComplianceFinding, type ComplianceResult };
 
-const SYSTEM_PROMPT =
-  "You write short marketing creative copy for an insurance brand. One variant per line, no " +
-  "numbering, no surrounding quotes. Never claim a guarantee of cover or acceptance, and never " +
-  "claim to be the cheapest or best against the whole market without a named source. Write " +
-  "natively in the requested language — never a translation of a draft in another language.";
+/** CLAUDE.md rule 14: the industry noun comes from the tenant's domain pack, so
+ *  the same generator writes for a lender or a retailer without an edit. The
+ *  prohibitions do not — they are compliance copy (docs/12) and hold whatever
+ *  is being sold. */
+function systemPrompt(nouns: PromptNouns): string {
+  return (
+    `You write short marketing creative copy for a ${nouns.domain} brand. One variant per line, no ` +
+    "numbering, no surrounding quotes. Never claim a guarantee of cover or acceptance, and never " +
+    "claim to be the cheapest or best against the whole market without a named source. Write " +
+    "natively in the requested language — never a translation of a draft in another language."
+  );
+}
 
-export function buildPrompt(opts: { brief: string; locale: CreativeLocale; count: number }): {
+export function buildPrompt(opts: {
+  brief: string;
+  locale: CreativeLocale;
+  count: number;
+  nouns: PromptNouns;
+  context?: string[];
+}): {
   system: string;
   user: string;
 } {
   const language = opts.locale === "ar" ? "Arabic" : "English";
+  // The plan goes above the brief: it says who is being written for and on what
+  // angle, and a model reading top-down should have that before the subject.
+  const context = opts.context?.length ? `${opts.context.join("\n")}\n\n` : "";
   return {
-    system: SYSTEM_PROMPT,
-    user: `Brief: ${opts.brief}\n\nWrite ${opts.count} distinct variants in ${language}, one per line.`
+    system: systemPrompt(opts.nouns),
+    user: `${context}Brief: ${opts.brief}\n\nWrite ${opts.count} distinct variants in ${language}, one per line.`
   };
 }
 
@@ -152,7 +172,13 @@ async function generateLocale(
   auditIds: string[]
 ): Promise<void> {
   {
-    const { system, user } = buildPrompt({ brief: brief.brief, locale, count: n });
+    const { system, user } = buildPrompt({
+      brief: brief.brief,
+      locale,
+      count: n,
+      nouns: promptNouns(ctx.policy.domainPack),
+      ...(brief.context?.length ? { context: brief.context } : {})
+    });
     const res = await gateway.complete(ctx, {
       module: "signal",
       purpose: "creative.generate",

@@ -65,7 +65,9 @@ export interface ClaimRow {
   id: string;
   claimNo: string;
   status: string;
-  incidentAt: number;
+  /** `axis_claims.incident_at` is nullable — a claim registered before the loss
+   *  date is established has none. `DateTime` renders the dash for it. */
+  incidentAt: number | null;
   amountMinor?: number | null;
   settledMinor?: number | null;
   currency: string;

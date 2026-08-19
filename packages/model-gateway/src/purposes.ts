@@ -55,6 +55,15 @@ export const PURPOSES: Record<string, PurposeDef> = {
   "creative.variant": { module: "signal", customerFacing: false },
   "creative.image_generate": { module: "signal", customerFacing: false },
   "aeo.draft": { module: "signal", customerFacing: false },
+  // The targeting pool a whitespace or a scenario is aimed at. Internal, and
+  // structurally so: the model is handed suppressed aggregate counts, never a
+  // customer row, and its proposal is validated against those counts before it
+  // becomes a rule (src/audience-brief.ts).
+  "audience.suggest": { module: "signal", customerFacing: false },
+  // The three-option campaign plan a promotion argues: notes, probabilities and
+  // the reasons behind them (src/campaign-plan.ts). Internal — a human funds the
+  // option, and the copy that ships is governed by creative.generate.
+  "campaign.plan": { module: "signal", customerFacing: false },
 
   // scout — market intelligence. Internal analysis.
   "market.scan": { module: "scout", customerFacing: false },

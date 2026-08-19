@@ -14,6 +14,7 @@ import { ApiError, api, fetchMe } from "../api.server";
 import { humanise } from "../modules/spec";
 import { Cell } from "../components/fields";
 import { cloudflare } from "../context";
+import { asJson } from "../json.js";
 import { translator } from "../i18n";
 import type { Row } from "../modules/spec";
 import { useShellData } from "./workspace";
@@ -143,17 +144,8 @@ export function labelsIn(locale: string): Label {
 }
 
 /** `nameJson` arrives parsed from generic CRUD and as text from the module router. */
-function nameIn(value: string | Record<string, string>, locale: string, fallback: string): string {
-  const bag: Record<string, string> =
-    typeof value === "string"
-      ? ((): Record<string, string> => {
-          try {
-            return JSON.parse(value) as Record<string, string>;
-          } catch {
-            return {};
-          }
-        })()
-      : (value ?? {});
+function nameIn(value: unknown, locale: string, fallback: string): string {
+  const bag = asJson<Record<string, string>>(value, {});
   return bag[locale] ?? bag.en ?? fallback;
 }
 

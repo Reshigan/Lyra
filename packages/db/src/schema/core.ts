@@ -131,6 +131,15 @@ export const customers = sqliteTable(
     emailsJson: text("emails_json"),
     phonesJson: text("phones_json"),
     nationalIdHash: text("national_id_hash"),
+    /**
+     * Legal identity for a `business` customer, mirroring orbit_partners' own
+     * three columns for the same reason: a company that registers is a named
+     * entity, and KYB has nothing to check if the trading name is all we kept.
+     * Null for a person.
+     */
+    registrationNo: text("registration_no"),
+    taxId: text("tax_id"),
+    country: text("country"),
     kycStatus: text("kyc_status").notNull().default("none"), // none|pending|verified|failed
     consentId: text("consent_id"),
     tagsJson: text("tags_json"),

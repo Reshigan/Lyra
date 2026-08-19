@@ -65,12 +65,15 @@ export interface Journey {
   createdAt: number;
 }
 
+/** Mirrors `orbit_journey_runs` (packages/db/src/schema/orbit.ts) as the generic
+ *  CRUD resource returns it. The column is `state` — running|waiting|done|halted
+ *  — and there is no `status`, so reading one drew an empty badge on every row. */
 export interface JourneyRun {
   id: string;
   journeyId: string;
   customerId: string | null;
   node: string | null;
-  status: string;
+  state: string;
   nextAt: number | null;
   createdAt: number;
 }
@@ -696,9 +699,9 @@ export default function JourneyBuilder() {
               { key: "customerId", header: l("customer"), render: (row) => row.customerId ?? "—" },
               { key: "node", header: l("node"), render: (row) => row.node ?? "—" },
               {
-                key: "status",
+                key: "state",
                 header: l("status"),
-                render: (row) => <Badge tone={row.status === "halted" ? "danger" : "neutral"}>{l(row.status)}</Badge>
+                render: (row) => <Badge tone={row.state === "halted" ? "danger" : "neutral"}>{l(row.state)}</Badge>
               },
               {
                 key: "nextAt",

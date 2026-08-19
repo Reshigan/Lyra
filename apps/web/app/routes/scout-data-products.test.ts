@@ -65,19 +65,19 @@ const form = (fields: Record<string, string>): FormData => {
 const product = (over: Partial<DataProductRow> = {}): DataProductRow => ({
   id: "dtp_1",
   name: "Motor demand curve by emirate and age band",
-  definitionJson: JSON.stringify({
+  definitionJson: {
     source: "dist_quote_requests",
     dimensions: ["emirate", "ageBand"],
     measures: ["requests", "medianPremium"],
     window: "rolling 90 days",
     refresh: { cadence: "weekly", lastRunAt: 1_770_000_000_000, state: "fresh" }
-  }),
+  },
   consentBasis: "consent:dataSharing",
   aggregationMin: 20,
-  subscribersJson: JSON.stringify([
+  subscribersJson: [
     { providerId: "prv_falcon", since: 1_760_000_000_000 },
     { providerId: "prv_cedar", since: 1_762_000_000_000 }
-  ]),
+  ],
   delivery: "api",
   status: "published",
   createdAt: 1_750_000_000_000,
@@ -103,10 +103,10 @@ describe("the cut", () => {
   it("carries the failure the builder recorded rather than calling the feed fresh", () => {
     const cut = definitionOf(
       product({
-        definitionJson: JSON.stringify({
+        definitionJson: {
           source: "dist_quote_requests",
           refresh: { cadence: "weekly", state: "stale", failure: "the travel connector run has errored" }
-        })
+        }
       })
     );
     expect(cut.refreshState).toBe("stale");
@@ -125,7 +125,7 @@ describe("the cut", () => {
 
   it("drops definition fields that are not the type they claim to be", () => {
     const cut = definitionOf(
-      product({ definitionJson: JSON.stringify({ source: 7, dimensions: ["emirate", 3, null], window: {} }) })
+      product({ definitionJson: { source: 7, dimensions: ["emirate", 3, null], window: {} } })
     );
     expect(cut.source).toBeNull();
     expect(cut.dimensions).toEqual(["emirate"]);
@@ -138,10 +138,10 @@ describe("the cut", () => {
 describe("subscribers", () => {
   it("keeps a suspended subscriber on the list but out of the active count", () => {
     const row = product({
-      subscribersJson: JSON.stringify([
+      subscribersJson: [
         { providerId: "prv_falcon", since: 1_760_000_000_000, suspendedAt: 1_768_000_000_000 },
         { providerId: "prv_cedar", since: 1_762_000_000_000 }
-      ])
+      ]
     });
     expect(subscribersOf(row).map((one) => one.providerId)).toEqual(["prv_falcon", "prv_cedar"]);
     expect(activeSubscribers(row).map((one) => one.providerId)).toEqual(["prv_cedar"]);
@@ -155,7 +155,7 @@ describe("subscribers", () => {
 
   it("skips entries with no provider and tolerates a missing since", () => {
     const rows = subscribersOf(
-      product({ subscribersJson: JSON.stringify([{ since: 1 }, null, "prv_falcon", { providerId: "prv_cedar" }]) })
+      product({ subscribersJson: [{ since: 1 }, null, "prv_falcon", { providerId: "prv_cedar" }] })
     );
     expect(rows).toEqual([{ providerId: "prv_cedar", since: null, suspendedAt: null }]);
   });
@@ -177,13 +177,13 @@ describe("k-anonymity monitor", () => {
     // fix that, which is why the seeded latency benchmark ships suspended.
     const row = product({
       aggregationMin: 200,
-      definitionJson: JSON.stringify({ source: "scout_panel_bench", dimensions: ["providerId", "line"] })
+      definitionJson: { source: "scout_panel_bench", dimensions: ["providerId", "line"] }
     });
     expect(warningsFor(row)).toEqual(["singleCounterparty"]);
   });
 
   it("flags a published product whose feed has stopped building, but not a draft one", () => {
-    const stale = JSON.stringify({ refresh: { cadence: "weekly", state: "stale" } });
+    const stale = { refresh: { cadence: "weekly", state: "stale" } };
     expect(warningsFor(product({ definitionJson: stale }))).toContain("staleFeed");
     expect(warningsFor(product({ definitionJson: stale, status: "draft" }))).not.toContain("staleFeed");
   });

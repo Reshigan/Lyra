@@ -833,6 +833,9 @@ export interface CoreCustomers {
   emailsJson?: string;
   phonesJson?: string;
   nationalIdHash?: string;
+  registrationNo?: string;
+  taxId?: string;
+  country?: string;
   kycStatus?: string;
   consentId?: string;
   tagsJson?: string;
@@ -2168,6 +2171,7 @@ export interface SignalCampaigns {
   budgetJson: string;
   state?: string;
   guardrailChecksJson?: string;
+  planJson?: string;
   autonomyLevel?: string;
   startAt?: number;
   endAt?: number;
@@ -2848,6 +2852,8 @@ export interface Operations {
   "GET /v1/portal/{tenantSlug}/quote-requests/{id}": Op<{ tenantSlug: string; id: string }, never, never, Record<string, unknown>>;
   "POST /v1/portal/{tenantSlug}/quote-requests/{id}/accept": Op<{ tenantSlug: string; id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "POST /v1/portal/{tenantSlug}/quote-requests/{id}/documents": Op<{ tenantSlug: string; id: string }, never, Record<string, unknown>, Record<string, unknown>>;
+  "POST /v1/portal/{tenantSlug}/quote-requests/{id}/reprice": Op<{ tenantSlug: string; id: string }, never, Record<string, unknown>, Record<string, unknown>>;
+  "POST /v1/portal/{tenantSlug}/registrations": Op<{ tenantSlug: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/portal/{tenantSlug}/renewals/{id}": Op<{ tenantSlug: string; id: string }, never, never, Record<string, unknown>>;
   "POST /v1/portal/{tenantSlug}/renewals/{id}/accept": Op<{ tenantSlug: string; id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/portal/{tenantSlug}/site": Op<{ tenantSlug: string }, never, never, Record<string, unknown>>;
@@ -2895,6 +2901,7 @@ export interface Operations {
   "GET /v1/signal/attribution-events/{id}": Op<{ id: string }, never, never, SignalAttributionEvents>;
   "GET /v1/signal/audiences": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<SignalAudiences>>;
   "POST /v1/signal/audiences": Op<never, never, SignalAudiences, SignalAudiences>;
+  "POST /v1/signal/audiences/suggest": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/signal/audiences/{id}": Op<{ id: string }, never, never, SignalAudiences>;
   "PATCH /v1/signal/audiences/{id}": Op<{ id: string }, never, SignalAudiences, SignalAudiences>;
   "POST /v1/signal/autopilot/pause": Op<never, never, never, Record<string, unknown>>;
@@ -2907,6 +2914,7 @@ export interface Operations {
   "POST /v1/signal/campaigns": Op<never, never, SignalCampaigns, SignalCampaigns>;
   "GET /v1/signal/campaigns/{id}": Op<{ id: string }, never, never, SignalCampaigns>;
   "PATCH /v1/signal/campaigns/{id}": Op<{ id: string }, never, SignalCampaigns, SignalCampaigns>;
+  "POST /v1/signal/campaigns/{id}/plan": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/signal/creatives": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<SignalCreatives>>;
   "POST /v1/signal/creatives": Op<never, never, SignalCreatives, SignalCreatives>;
   "POST /v1/signal/creatives/generate": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
@@ -3557,6 +3565,8 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "GET /v1/portal/{tenantSlug}/quote-requests/{id}": { tag: "portal", summary: "Re-open a self-serve comparison with the one-time token", permission: null, public: true },
   "POST /v1/portal/{tenantSlug}/quote-requests/{id}/accept": { tag: "portal", summary: "Customer accepts a quoted offer; converts the request, does not bind cover", permission: null, public: true },
   "POST /v1/portal/{tenantSlug}/quote-requests/{id}/documents": { tag: "portal", summary: "Upload a supporting document against a self-serve quote (multipart)", permission: null, public: true },
+  "POST /v1/portal/{tenantSlug}/quote-requests/{id}/reprice": { tag: "portal", summary: "Indicative re-price of the same panel with moved rating criteria; persists nothing and binds nothing", permission: null, public: true },
+  "POST /v1/portal/{tenantSlug}/registrations": { tag: "portal", summary: "Self-registration from the public storefront (person or business); records a pending customer, grants no access", permission: null, public: true },
   "GET /v1/portal/{tenantSlug}/renewals/{id}": { tag: "portal", summary: "Open a renewal offer with its link token (reference, expiry and state only)", permission: null, public: true },
   "POST /v1/portal/{tenantSlug}/renewals/{id}/accept": { tag: "portal", summary: "Customer accepts a renewal in one tap; records the decision, does not bind or charge", permission: null, public: true },
   "GET /v1/portal/{tenantSlug}/site": { tag: "portal", summary: "A tenant's public storefront: brand and active products", permission: null, public: true },
@@ -3604,6 +3614,7 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "GET /v1/signal/attribution-events/{id}": { tag: "signal", summary: "Fetch one attribution event", permission: "signal:attribution:read", public: false },
   "GET /v1/signal/audiences": { tag: "signal", summary: "List audiences", permission: "signal:audiences:read", public: false },
   "POST /v1/signal/audiences": { tag: "signal", summary: "Create a audience", permission: "signal:audiences:create", public: false },
+  "POST /v1/signal/audiences/suggest": { tag: "signal", summary: "Propose a targetable audience for a subject from k-anonymous attribute counts, with the reason each band was chosen (docs/17 §SIG-025; protected attributes excluded per §SIG-034)", permission: "signal:audiences:estimate", public: false },
   "GET /v1/signal/audiences/{id}": { tag: "signal", summary: "Fetch one audience", permission: "signal:audiences:read", public: false },
   "PATCH /v1/signal/audiences/{id}": { tag: "signal", summary: "Update a audience", permission: "signal:audiences:create", public: false },
   "POST /v1/signal/autopilot/pause": { tag: "signal", summary: "Pause the budget autopilot kill switch", permission: "signal:autopilot:pause", public: false },
@@ -3616,6 +3627,7 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "POST /v1/signal/campaigns": { tag: "signal", summary: "Create a campaign", permission: "signal:campaigns:create", public: false },
   "GET /v1/signal/campaigns/{id}": { tag: "signal", summary: "Fetch one campaign", permission: "signal:campaigns:read", public: false },
   "PATCH /v1/signal/campaigns/{id}": { tag: "signal", summary: "Update a campaign", permission: "signal:campaigns:update", public: false },
+  "POST /v1/signal/campaigns/{id}/plan": { tag: "signal", summary: "Plan a campaign in three ranked options, each with a probability of success and the reasons behind it, suggesting and linking a targeting pool when the campaign has none", permission: "signal:campaigns:update", public: false },
   "GET /v1/signal/creatives": { tag: "signal", summary: "List creatives", permission: "signal:creatives:read", public: false },
   "POST /v1/signal/creatives": { tag: "signal", summary: "Create a creative", permission: "signal:creatives:generate", public: false },
   "POST /v1/signal/creatives/generate": { tag: "signal", summary: "Generate ad-copy variants from a brief, compliance-checked and audited per locale", permission: "signal:creatives:generate", public: false },

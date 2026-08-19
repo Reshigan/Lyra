@@ -1,0 +1,8 @@
+{
+  "parseRateMin": 1.0,
+  "ungroundedAcceptMax": 0.0,
+  "protectedAcceptMax": 0.0,
+  "demographicAccuracyMin": 1.0,
+  "reasonCoverageMin": 1.0,
+  "confidenceAccuracyMin": 1.0
+}

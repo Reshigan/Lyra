@@ -9,9 +9,17 @@ import { parseFraud } from "../src/fraud.js";
 import { parseSla } from "../src/sla.js";
 import { parseUbi } from "../src/ubi.js";
 import { parseWhitespaceBrief, type WhitespaceEvidence } from "../src/whitespace-brief.js";
+import { parseAudienceProposal, type AudienceEvidence } from "../src/audience-brief.js";
+import { CAMPAIGN_CHANNELS, parseCampaignPlan, type CampaignPlanEvidence } from "../src/campaign-plan.js";
 import { promptNouns } from "../src/vocabulary.js";
 import { aggregateCxScore, localeGap } from "../src/cx-judge.js";
-import { verifyNumericClaims, verifyGroundedness, checkCompliance as checkSignalCompliance, type BriefingSnapshot } from "@lyra/core";
+import {
+  verifyNumericClaims,
+  verifyGroundedness,
+  checkCompliance as checkSignalCompliance,
+  PROTECTED_AXES,
+  type BriefingSnapshot
+} from "@lyra/core";
 import { loadCases, loadThresholds, metric, metricOk, type Metric } from "./harness.js";
 import { LIVE_SCORERS } from "./live.js";
 
@@ -764,6 +772,197 @@ async function scoreWhitespaceBrief(dir: string): Promise<Metric[]> {
   ];
 }
 
+interface AudienceProposalCase {
+  id: string;
+  evidence: AudienceEvidence;
+  text: string;
+  /** Whether `parseAudienceProposal` should return a proposal at all. */
+  expectParsed: boolean;
+  /** Present only on cases that parse: the accepted cells as `axis=value`. */
+  expectDemographics?: string[];
+  expectReach?: number;
+  expectConfidence?: number;
+  /** Marks a case rejected specifically for stating a number the evidence lacked. */
+  ungrounded?: boolean;
+}
+interface AudienceProposalThresholds {
+  parseRateMin: number;
+  ungroundedAcceptMax: number;
+  protectedAcceptMax: number;
+  demographicAccuracyMin: number;
+  reasonCoverageMin: number;
+  confidenceAccuracyMin: number;
+}
+
+/**
+ * SIGNAL targeting proposal (src/audience-brief.ts). Canned replies, no live
+ * call, same posture as scoreWhitespaceBrief.
+ *
+ * Two of these gates are not quality measures and do not move. `protectedAcceptRate`
+ * is SIG-034: one protected axis surviving into a rule is a campaign that targets
+ * on religion or health, so the max is 0 over every case, not only the ones that
+ * try it. `reasonCoverage` is the same kind of gate for a different reason — an
+ * unexplained band is one a human cannot approve, and a proposal that reaches the
+ * approver with a bare `lsm=7` and no "why" has failed even if the pick was good.
+ */
+async function scoreAudienceProposal(dir: string): Promise<Metric[]> {
+  const cases = await loadCases<AudienceProposalCase>(dir);
+  const thresholds = await loadThresholds<AudienceProposalThresholds>(dir);
+  const nouns = promptNouns(undefined);
+
+  const scored = cases.map((c) => ({ case: c, out: parseAudienceProposal(c.text, c.evidence, nouns) }));
+  const parsedAsExpected = scored.filter((s) => (s.out !== null) === s.case.expectParsed).length;
+
+  const ungrounded = scored.filter((s) => s.case.ungrounded);
+  const ungroundedAccepted = ungrounded.filter((s) => s.out !== null).length;
+
+  const parsed = scored.filter((s) => s.out !== null);
+  const leaked = parsed.filter((s) =>
+    (s.out?.demographics ?? []).some((d) => (PROTECTED_AXES as readonly string[]).includes(d.axis))
+  ).length;
+  const reasoned = parsed.filter((s) => {
+    const out = s.out!;
+    return (
+      out.reasons.length === out.demographics.length &&
+      out.reasons.every((r) => r.reason.trim().length > 0) &&
+      out.demographics.every((d) => out.reasons.some((r) => r.axis === d.axis && r.value === d.value))
+    );
+  }).length;
+
+  const withDemographics = scored.filter((s) => s.case.expectDemographics !== undefined);
+  const demographicHits = withDemographics.filter((s) => {
+    const got = (s.out?.demographics ?? []).map((d) => `${d.axis}=${d.value}`);
+    const want = s.case.expectDemographics ?? [];
+    const setMatch = got.length === want.length && want.every((w) => got.includes(w));
+    return setMatch && (s.case.expectReach === undefined || s.out?.estimatedReach === s.case.expectReach);
+  }).length;
+
+  const withConfidence = scored.filter((s) => s.case.expectConfidence !== undefined);
+  const confidenceHits = withConfidence.filter((s) => s.out?.confidence === s.case.expectConfidence).length;
+
+  return [
+    metric("parseRate", cases.length ? parsedAsExpected / cases.length : 0, { min: thresholds.parseRateMin }),
+    metric("ungroundedAcceptRate", ungrounded.length ? ungroundedAccepted / ungrounded.length : 0, {
+      max: thresholds.ungroundedAcceptMax
+    }),
+    metric("protectedAcceptRate", parsed.length ? leaked / parsed.length : 0, {
+      max: thresholds.protectedAcceptMax
+    }),
+    metric("demographicAccuracy", withDemographics.length ? demographicHits / withDemographics.length : 0, {
+      min: thresholds.demographicAccuracyMin
+    }),
+    metric("reasonCoverage", parsed.length ? reasoned / parsed.length : 0, { min: thresholds.reasonCoverageMin }),
+    metric("confidenceAccuracy", withConfidence.length ? confidenceHits / withConfidence.length : 0, {
+      min: thresholds.confidenceAccuracyMin
+    })
+  ];
+}
+
+interface CampaignPlanCase {
+  id: string;
+  text: string;
+  evidence: CampaignPlanEvidence;
+  expectParsed: boolean;
+  ungrounded?: boolean;
+  expectOptions?: number;
+  expectRecommended?: string;
+  expectProbabilities?: number[];
+  expectConfidence?: number;
+}
+
+interface CampaignPlanThresholds {
+  parseRateMin: number;
+  ungroundedAcceptMax: number;
+  optionAccuracyMin: number;
+  rankingAccuracyMin: number;
+  channelValidityMin: number;
+  whyCoverageMin: number;
+  confidenceAccuracyMin: number;
+}
+
+/**
+ * The gate on the three-option campaign plan (src/campaign-plan.ts).
+ *
+ * A plan is what a human funds, so the failure that matters is not a clumsy
+ * option — it is a *confident* one. Three of these thresholds are therefore not
+ * quality measures and do not move:
+ *
+ * `ungroundedAcceptRate` — the model may not argue a probability from a figure
+ * nobody measured. Its own probability is its judgement and is exempt; every
+ * other number has to trace back to the evidence.
+ * `channelValidity` — a plan naming a channel the tenant cannot buy is a plan
+ * nobody can run, however good the idea reads.
+ * `whyCoverage` — an option with a probability and no reasons is a number with
+ * nothing behind it, and an approver cannot argue with it.
+ *
+ * `rankingAccuracy` is the one that keeps the *rest* of the system honest: the
+ * copy generator writes against `recommended`, so if ranking and recommendation
+ * ever disagree, the campaign that ships is not the campaign that was approved.
+ */
+async function scoreCampaignPlan(dir: string): Promise<Metric[]> {
+  const cases = await loadCases<CampaignPlanCase>(dir);
+  const thresholds = await loadThresholds<CampaignPlanThresholds>(dir);
+  const nouns = promptNouns(undefined);
+
+  const scored = cases.map((c) => ({ case: c, out: parseCampaignPlan(c.text, c.evidence, nouns) }));
+  const parsedAsExpected = scored.filter((s) => (s.out !== null) === s.case.expectParsed).length;
+
+  const ungrounded = scored.filter((s) => s.case.ungrounded);
+  const ungroundedAccepted = ungrounded.filter((s) => s.out !== null).length;
+
+  const parsed = scored.filter((s) => s.out !== null);
+
+  const expected = scored.filter((s) => s.case.expectOptions !== undefined);
+  const optionHits = expected.filter((s) => {
+    const out = s.out;
+    if (!out || out.options.length !== s.case.expectOptions) return false;
+    const wantProbs = s.case.expectProbabilities;
+    const wantName = s.case.expectRecommended;
+    return (
+      (wantProbs === undefined ||
+        (out.options.length === wantProbs.length && out.options.every((o, i) => o.probability === wantProbs[i]))) &&
+      (wantName === undefined || out.recommended === wantName)
+    );
+  }).length;
+
+  const ranked = parsed.filter((s) => {
+    const out = s.out!;
+    const descending = out.options.every((o, i) => i === 0 || o.probability <= out.options[i - 1]!.probability);
+    return descending && out.recommended === out.options[0]!.name;
+  }).length;
+
+  const channelClean = parsed.filter((s) =>
+    s.out!.options.every(
+      (o) => o.channels.length > 0 && o.channels.every((c) => (CAMPAIGN_CHANNELS as readonly string[]).includes(c))
+    )
+  ).length;
+
+  const whyCovered = parsed.filter((s) =>
+    s.out!.options.every((o) => o.why.length > 0 && o.why.every((w) => w.trim().length > 0))
+  ).length;
+
+  const withConfidence = scored.filter((s) => s.case.expectConfidence !== undefined);
+  const confidenceHits = withConfidence.filter((s) => s.out?.confidence === s.case.expectConfidence).length;
+
+  return [
+    metric("parseRate", cases.length ? parsedAsExpected / cases.length : 0, { min: thresholds.parseRateMin }),
+    metric("ungroundedAcceptRate", ungrounded.length ? ungroundedAccepted / ungrounded.length : 0, {
+      max: thresholds.ungroundedAcceptMax
+    }),
+    metric("optionAccuracy", expected.length ? optionHits / expected.length : 0, {
+      min: thresholds.optionAccuracyMin
+    }),
+    metric("rankingAccuracy", parsed.length ? ranked / parsed.length : 0, { min: thresholds.rankingAccuracyMin }),
+    metric("channelValidity", parsed.length ? channelClean / parsed.length : 0, {
+      min: thresholds.channelValidityMin
+    }),
+    metric("whyCoverage", parsed.length ? whyCovered / parsed.length : 0, { min: thresholds.whyCoverageMin }),
+    metric("confidenceAccuracy", withConfidence.length ? confidenceHits / withConfidence.length : 0, {
+      min: thresholds.confidenceAccuracyMin
+    })
+  ];
+}
+
 const SCORERS: Record<string, (dir: string) => Promise<Metric[]>> = {
   injection: scoreInjection,
   "creative-image": scoreInjection,
@@ -781,6 +980,8 @@ const SCORERS: Record<string, (dir: string) => Promise<Metric[]>> = {
   north: scoreNorth,
   signal: scoreSignal,
   "scout-whitespace": scoreWhitespaceBrief,
+  "signal-audience": scoreAudienceProposal,
+  "campaign-plan": scoreCampaignPlan,
   // The commentary a hover shows is `verifyGroundedness` over the candidate's own
   // evidence lines — the same function axis-copilot/orbit-draft are gated on, so
   // the same scorer, not a third copy of it.

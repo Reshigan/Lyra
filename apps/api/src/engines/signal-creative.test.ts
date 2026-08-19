@@ -204,9 +204,9 @@ describe("generateCreatives", () => {
     let n = 0;
     const flaky = {
       ...ok,
-      async complete(req: Parameters<typeof ok.complete>[0]) {
+      async complete(...args: Parameters<typeof ok.complete>) {
         if (n++ >= 1) throw new Error("workers-ai: 503");
-        return ok.complete(req);
+        return ok.complete(...args);
       }
     };
     const gw = new Gateway({ env: {}, providers: { "workers-ai": flaky, anthropic: flaky, "openai-compat": flaky } });

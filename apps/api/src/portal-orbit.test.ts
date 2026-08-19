@@ -246,7 +246,10 @@ describe("GET /v1/portal/:tenantSlug/renewals/:id", () => {
       decidedAt: null
     });
     // Internal scoring and internal wording never cross to the public page.
-    expect(JSON.stringify(res.body)).not.toMatch(/churnScore|87|strategy|auto_requote|ownerRef|us_owner|cus_open/);
+    // Names and ids only, no bare figures: `expiryAt` is a millisecond stamp and
+    // a two-digit score is a substring of one often enough to make this flaky.
+    // The shape is pinned exactly above, so a leaked value has nowhere to sit.
+    expect(JSON.stringify(res.body)).not.toMatch(/churnScore|strategy|auto_requote|ownerRef|us_owner|cus_open/);
   });
 
   it("is 404 without a token", async () => {

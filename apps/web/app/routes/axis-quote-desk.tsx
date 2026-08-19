@@ -22,6 +22,7 @@ import {
   type BadgeTone
 } from "@lyra/ui";
 import { ApiError, api, names } from "../api.server";
+import { ConfirmButton } from "../components/confirm";
 import { HeroStat, lensOf, useFocus, type Lens } from "../components/hero";
 import { cloudflare } from "../context";
 import { RefPicker, type RefOption } from "../components/ref-picker";
@@ -97,6 +98,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "pick.hint": "Marks this quote as the one the case will be issued from.",
     "decline.submit": "Decline",
     "decline.reason": "Reason",
+    "decline.confirm": "Declining {provider}'s quote takes it off this case for good. Continue?",
     "issue.title": "Issue from the picked quote",
     "issue.intro":
       "Issuing creates a contract and money follows it, so it goes through the platform's binding approval before it exists.",
@@ -149,6 +151,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "pick.hint": "يعلّم هذا العرض بأنه العرض الذي ستُصدر منه الحالة.",
     "decline.submit": "رفض",
     "decline.reason": "السبب",
+    "decline.confirm": "رفض عرض {provider} يزيله عن هذه الحالة نهائيًا. هل تريد المتابعة؟",
     "issue.title": "الإصدار من العرض المختار",
     "issue.intro": "الإصدار ينشئ عقدًا ويتبعه مال، لذا يمر بموافقة الارتباط في المنصة قبل أن يوجد.",
     "issue.quote": "العرض المختار",
@@ -744,15 +747,19 @@ export default function AxisQuoteDesk() {
                           <Field label={l("decline.reason")} labelHidden className="w-48">
                             <Input name="reason" size="sm" />
                           </Field>
-                          <Button
+                          {/* One-way from this desk: a declined bid is filtered
+                              out of the list, so there is no button to undo it
+                              with (CLAUDE.md §4). */}
+                          <ConfirmButton
                             type="submit"
                             size="sm"
                             variant="ghost"
                             loading={busy}
                             aria-label={`${l("decline.submit")}: ${providerName(bid.providerId)}`}
+                            message={l("decline.confirm", { provider: providerName(bid.providerId) })}
                           >
                             {l("decline.submit")}
-                          </Button>
+                          </ConfirmButton>
                         </Form>
                       ) : null}
                     </span>

@@ -1,0 +1,9 @@
+{
+  "parseRateMin": 1.0,
+  "ungroundedAcceptMax": 0.0,
+  "optionAccuracyMin": 1.0,
+  "rankingAccuracyMin": 1.0,
+  "channelValidityMin": 1.0,
+  "whyCoverageMin": 1.0,
+  "confidenceAccuracyMin": 1.0
+}

@@ -29,6 +29,7 @@ import { bodyFrom, humanise, optionLabel, type FieldSpec, type Row } from "../mo
 import { Problem } from "./module";
 import { useShellData } from "./workspace";
 import { labelsFrom } from "./detail-kit";
+import { jsonOf } from "../json.js";
 
 // Next best offers for one customer: ask the model for them, read what it
 // proposed and why, then decide which of them a person is allowed to see.
@@ -68,7 +69,8 @@ export interface Offer {
   expectedValueMinor: number | null;
   currency: string | null;
   reasonKey: string;
-  reasonJson: string | null;
+  /** Already parsed on the wire — see `jsonOf`. */
+  reasonJson: unknown;
   runId: string | null;
   model: string | null;
   state: string;
@@ -213,16 +215,11 @@ export function canSurface(offer: Pick<Offer, "state">, maySurface: boolean): bo
 }
 
 /** The evidence blob, parsed defensively — it is model output, not a contract. */
-export function evidenceOf(reasonJson: string | null): Record<string, unknown> {
-  if (!reasonJson) return {};
-  try {
-    const parsed: unknown = JSON.parse(reasonJson);
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : {};
-  } catch {
-    return {};
-  }
+export function evidenceOf(reasonJson: unknown): Record<string, unknown> {
+  const parsed = jsonOf(reasonJson);
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+    ? (parsed as Record<string, unknown>)
+    : {};
 }
 
 /**

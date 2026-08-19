@@ -76,6 +76,9 @@ export interface CampaignRow {
    *  objects — except when the stored text was unparseable, hence `unknown`. */
   channelsJson: unknown;
   budgetJson: unknown;
+  /** The three ranked options the campaign was planned against. Absent on every
+   *  campaign started by hand — only a promoted whitespace plans first. */
+  planJson?: unknown;
   /** Absent until the compliance pass has run over the campaign at least once. */
   guardrailChecksJson?: unknown;
   state: string;
@@ -831,6 +834,139 @@ export function guardrailsOf(campaign: CampaignRow): Guardrails | null {
   return bag && typeof bag === "object" && !Array.isArray(bag) ? bag : null;
 }
 
+/* ------------------------------------------------------------- campaign plan */
+
+/**
+ * Mirrors `CampaignOption`/`CampaignPlan` in
+ * packages/model-gateway/src/campaign-plan.ts. The web may not import the
+ * gateway, so this is a structural copy and the fixtures below it are written
+ * in the shape the server actually sends — `apps/api/src/engines/scout-promote.ts`
+ * stringifies the gateway type straight into `plan_json`, and crud.ts hydrate()
+ * parses it back out again.
+ */
+export interface PlanOption {
+  name: string;
+  angle: string;
+  offer: string;
+  /** Slugs from CAMPAIGN_CHANNELS — rendered through channelLabel(). */
+  channels: string[];
+  /** The model's own 0-100 estimate that this option meets the objective. */
+  probability: number;
+  why: string[];
+  risk: string | null;
+}
+
+export interface CampaignPlan {
+  notes: string;
+  /** Highest probability first, as the parser sorted them. */
+  options: PlanOption[];
+  recommended: string;
+  /** Share of the model's options that survived validation. 0 = the
+   *  deterministic fallback, i.e. nobody argued this. */
+  confidence: number;
+}
+
+/** An option is only worth showing if it says what to do and where. */
+function planOption(raw: unknown): PlanOption | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const o = raw as Record<string, unknown>;
+  const channels = Array.isArray(o.channels) ? o.channels.filter((c): c is string => typeof c === "string") : [];
+  if (typeof o.name !== "string" || !o.name || typeof o.angle !== "string" || !channels.length) return null;
+  return {
+    name: o.name,
+    angle: o.angle,
+    offer: typeof o.offer === "string" ? o.offer : "",
+    channels,
+    probability: typeof o.probability === "number" && Number.isFinite(o.probability) ? o.probability : 0,
+    why: Array.isArray(o.why) ? o.why.filter((w): w is string => typeof w === "string") : [],
+    risk: typeof o.risk === "string" ? o.risk : null
+  };
+}
+
+/**
+ * The plan behind a campaign, or null when there is nothing to show.
+ *
+ * Tolerant on purpose: a stored plan is a year-old row written by a model, and
+ * one malformed option must cost that option rather than the screen. Null when
+ * no option survives — an empty option list is not a plan, and the card that
+ * would render it says nothing.
+ */
+export function planOf(campaign: CampaignRow): CampaignPlan | null {
+  const bag = asJson<Record<string, unknown> | null>(campaign.planJson, null);
+  if (!bag || typeof bag !== "object" || Array.isArray(bag)) return null;
+  const options = (Array.isArray(bag.options) ? bag.options : []).map(planOption).filter((o): o is PlanOption => o !== null);
+  if (!options.length) return null;
+  const recommended = typeof bag.recommended === "string" && options.some((o) => o.name === bag.recommended)
+    ? bag.recommended
+    : options[0]!.name;
+  return {
+    notes: typeof bag.notes === "string" ? bag.notes : "",
+    options,
+    recommended,
+    confidence: typeof bag.confidence === "number" && Number.isFinite(bag.confidence) ? bag.confidence : 0
+  };
+}
+
+/** One band the pool was cut on, and why the model cut it there. */
+export interface PoolReason {
+  axis: string;
+  value: string;
+  reason: string;
+  /** Customers on the book in that band. 0 when the row predates counting. */
+  count: number;
+}
+
+export interface AudiencePool {
+  summary: string;
+  estimatedReach: number;
+  reasons: PoolReason[];
+}
+
+/**
+ * The pool behind an audience the model proposed, off `definitionJson.targeting`.
+ *
+ * Mirror of `planAudience` in apps/api/src/engines/signal-campaign-plan.ts —
+ * same column, same tolerance, so the bands the copy was written for are the
+ * bands the screen names. Null for an audience somebody wrote by hand: it has a
+ * rule but nobody argued it, and inventing a reason would put words in a human's
+ * mouth.
+ */
+export function poolOf(audience: AudienceRow): AudiencePool | null {
+  const def = asJson<Record<string, unknown>>(audience.definitionJson, {});
+  const t = def.targeting;
+  if (!t || typeof t !== "object" || Array.isArray(t)) return null;
+  const bag = t as Record<string, unknown>;
+  const reasons = (Array.isArray(bag.reasons) ? bag.reasons : []).flatMap((raw): PoolReason[] => {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
+    const r = raw as Record<string, unknown>;
+    if (typeof r.axis !== "string" || typeof r.value !== "string" || typeof r.reason !== "string") return [];
+    return [
+      {
+        axis: r.axis,
+        value: r.value,
+        reason: r.reason,
+        count: typeof r.count === "number" && Number.isFinite(r.count) ? r.count : 0
+      }
+    ];
+  });
+  if (!reasons.length) return null;
+  return {
+    summary: typeof bag.summary === "string" ? bag.summary : audience.name,
+    estimatedReach:
+      typeof bag.estimatedReach === "number" && Number.isFinite(bag.estimatedReach)
+        ? bag.estimatedReach
+        : (audience.sizeCached ?? 0),
+    reasons
+  };
+}
+
+/** Colour by the model's own odds — the reader should see 62% and 27% differently. */
+export function probabilityTone(probability: number): "success" | "warning" | "neutral" {
+  if (probability >= 60) return "success";
+  if (probability >= 35) return "warning";
+  return "neutral";
+}
+
 /** States in which a campaign is already reaching people, so its checks bind now. */
 export const REACHING_STATES: readonly string[] = ["scheduled", "live"];
 
@@ -1036,6 +1172,22 @@ const LABELS: Record<string, Record<string, string>> = {
     "studio.ownerPick": "Choose a colleague or team",
     "studio.create": "Start the campaign",
     "studio.created": "Draft created. Now give the model a brief.",
+    "studio.pool": "Who it goes to, and why",
+    "studio.poolReach": "About {n} people on the book",
+    "studio.poolWhy": "Each band below was chosen from the book itself. The count is how many customers sit in it.",
+    "studio.plan": "How the model would run this",
+    "studio.planHint": "Three ways to spend, ranked by its own chance of success. The drafts below are written for the recommended one.",
+    "studio.planRecommended": "Recommended",
+    "studio.planOffer": "The offer",
+    "studio.planRisk": "What would sink it",
+    "studio.planNone": "Nothing has been argued for this campaign yet",
+    "studio.planNoneHint": "Say what it is selling and the model will draft three ways to spend, each with its own chance of working. The drafts you generate afterwards are written for the one it recommends.",
+    "studio.planSubject": "What is this campaign selling?",
+    "studio.planSubjectHint": "A line of cover, or the scenario you have in mind.",
+    "studio.planAction": "Plan it",
+    "studio.planning": "Planning...",
+    "studio.planConfidence": "{n}% of the options it drafted survived checking.",
+    "studio.planFallback": "The model did not answer. These options were derived from the demand figures alone.",
     "studio.brief": "Tell the model what to say",
     "studio.briefHint": "The offer, the tone, anything that must appear. The draft is yours to edit.",
     "studio.kind": "What kind of content",
@@ -1553,6 +1705,22 @@ const LABELS: Record<string, Record<string, string>> = {
     "studio.ownerPick": "اختر زميلاً أو فريقاً",
     "studio.create": "ابدأ الحملة",
     "studio.created": "أُنشئت المسودة. أعطِ النموذج الآن موجزًا.",
+    "studio.pool": "إلى مَن تصل، ولماذا",
+    "studio.poolReach": "نحو {n} شخص في القاعدة",
+    "studio.poolWhy": "اختير كل نطاق أدناه من القاعدة نفسها. والعدد هو كم عميلاً يقع فيه.",
+    "studio.plan": "كيف يقترح النموذج تنفيذها",
+    "studio.planHint": "ثلاث طرق للإنفاق، مرتّبة بحسب احتمال نجاحها في تقدير النموذج. المسودات أدناه مكتوبة للخيار المُوصى به.",
+    "studio.planRecommended": "الخيار المُوصى به",
+    "studio.planOffer": "العرض",
+    "studio.planRisk": "ما قد يُفشلها",
+    "studio.planNone": "لم يُقترح بعد أي أسلوب لهذه الحملة",
+    "studio.planNoneHint": "حدّد ما تبيعه الحملة وسيصوغ النموذج ثلاث طرق للإنفاق، لكل منها احتمال نجاحها. وستُكتب المسودات بعد ذلك للخيار المُوصى به.",
+    "studio.planSubject": "ماذا تبيع هذه الحملة؟",
+    "studio.planSubjectHint": "خط تغطية، أو السيناريو الذي تفكر فيه.",
+    "studio.planAction": "اقترح الخطة",
+    "studio.planning": "جارٍ الاقتراح...",
+    "studio.planConfidence": "نجت {n}% من الخيارات التي صاغها النموذج من التحقق.",
+    "studio.planFallback": "لم يستجب النموذج. اشتُقّت هذه الخيارات من أرقام الطلب وحدها.",
     "studio.brief": "أخبر النموذج بما يقوله",
     "studio.briefHint": "العرض والنبرة وكل ما يجب أن يظهر. المسودة لك لتحرّرها.",
     "studio.kind": "نوع المحتوى",

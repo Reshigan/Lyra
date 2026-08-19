@@ -25,6 +25,7 @@ import {
 } from "@lyra/ui";
 import { ApiError, api, clearedSessionCookie, fetchMe, type Problem as ProblemBody } from "../api.server";
 import { cloudflare } from "../context";
+import { asJson } from "../json.js";
 import { CATALOGUES, LOCALES, moduleName, pseudoText, translator, type Translate } from "../i18n";
 import { ConfirmButton } from "../components/confirm";
 import { humanise, permissionTitle } from "@lyra/core/words";
@@ -64,6 +65,9 @@ interface SessionRow {
   revokedAt: number | null;
 }
 
+/** A row of `GET /v1/me/inbox` — see apps/api/src/routes/me.ts. That route is
+ *  hand-written and returns the selected rows as they sit, so crud.ts
+ *  `hydrate()` never runs and `paramsJson` arrives as text. */
 interface NotificationRow {
   id: string;
   /** i18n key plus its variables — the API never sends display text. */
@@ -2110,17 +2114,10 @@ function fontName(key: string): string {
     .join(" ");
 }
 
-function varsOf(raw: string | null): Record<string, string> {
-  if (!raw) return {};
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return {};
-    return Object.fromEntries(
-      Object.entries(parsed as Record<string, unknown>).map(([k, v]) => [k, String(v)])
-    );
-  } catch {
-    return {};
-  }
+function varsOf(raw: unknown): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(asJson<Record<string, unknown>>(raw, {})).map(([k, v]) => [k, String(v)])
+  );
 }
 
 /** Drops the empty strings; an object with nothing left is omitted entirely, so

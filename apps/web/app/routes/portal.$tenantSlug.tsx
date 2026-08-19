@@ -43,6 +43,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     "portal.form.error.generic": "Something went wrong. Please try again.",
     "portal.privacy": "Your privacy rights",
     "portal.partners": "Partner with us",
+    "portal.register": "Create an account",
     "portal.quick": "Quick quote — three details, real prices.",
     "portal.slow": "Leave your details and a specialist prices this one for you.",
     "portal.form.age": "Your age",
@@ -79,6 +80,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     "portal.form.error.generic": "حدث خطأ ما. حاول مرة أخرى.",
     "portal.privacy": "حقوقك في الخصوصية",
     "portal.partners": "كن شريكًا معنا",
+    "portal.register": "إنشاء حساب",
     "portal.quick": "عرض سعر سريع — ثلاث معلومات وأسعار حقيقية.",
     "portal.slow": "اترك بياناتك وسيقوم مختص بتسعير هذا المنتج لك.",
     "portal.form.age": "عمرك",
@@ -149,8 +151,9 @@ interface Product {
   providerName: string | null;
 }
 
+/** Mirrors `GET /v1/portal/{tenantSlug}/site` — apps/api/src/routes/portal.ts §site. */
 interface SiteResponse {
-  tenant: { name: string; brand: Brand };
+  tenant: { name: string; brand: Brand; domainPack?: string };
   products: Product[];
 }
 
@@ -370,6 +373,12 @@ export default function Portal() {
               is a partner who emails someone instead. */}
           <a className="text-accent underline" href={`/portal/${tenantSlug}/partners`}>
             {l("portal.partners")}
+          </a>
+          {/* And the customer's own door. It creates a pending record and grants
+              nothing, so it belongs beside the other two rather than dressed up
+              as a sign-in. */}
+          <a className="text-accent underline" href={`/portal/${tenantSlug}/register`}>
+            {l("portal.register")}
           </a>
         </footer>
       </div>

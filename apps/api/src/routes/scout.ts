@@ -12,6 +12,8 @@ import {
   whitespaceCommentary
 } from "../engines/scout-whitespace.js";
 import { promoteWhitespace } from "../engines/scout-promote.js";
+import { suggestTargeting } from "../engines/signal-audience.js";
+import { planCampaign } from "../engines/signal-campaign-plan.js";
 import { generateCreatives } from "../engines/signal-creative.js";
 import { embedQuery } from "../engines/vectorize.js";
 import { buildNegotiationPackTables } from "../engines/export/negotiation-pack.js";
@@ -74,7 +76,8 @@ scoutRoutes.post("/whitespaces/:id/promote-to-signal", async (c) => {
     c.req.header("idempotency-key"),
     "scout.whitespace.promote",
     { whitespaceId },
-    () => promoteWhitespace(ctx, c.get("gateway"), generateCreatives, whitespaceId)
+    () =>
+      promoteWhitespace(ctx, c.get("gateway"), generateCreatives, suggestTargeting, planCampaign, whitespaceId)
   );
   return c.json(result, 201);
 });

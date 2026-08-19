@@ -35,6 +35,7 @@ import { cloudflare } from "../context";
 import { labelsFrom, tag } from "./detail-kit";
 import { Gate } from "./staff";
 import { useAxisSessionData } from "./axis-shell";
+import { jsonOf } from "../json.js";
 
 // The documents tab can list rows and stamp a verification. What it cannot do is
 // the actual work: read what the model pulled out of a file, see how sure it was
@@ -221,7 +222,8 @@ export interface DocRow {
   fileId: string;
   docType: string;
   status: string;
-  extractionJson: string | null;
+  /** Already parsed on the wire — see `jsonOf`. */
+  extractionJson: unknown;
   /** 0–100 in the database; `ConfidenceMeter` wants 0–1. */
   extractionConfidence: number | null;
   extractionModel: string | null;
@@ -253,21 +255,27 @@ export const DOC_LENSES: Record<string, Lens<DocRow>> = {
  * information, and hiding the row would make it look unasked.
  */
 export function fieldsOf(doc: Pick<DocRow, "extractionJson">): Record<string, string | null> {
-  if (!doc.extractionJson) return {};
-  try {
-    const parsed: unknown = JSON.parse(doc.extractionJson);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-    const out: Record<string, string | null> = {};
-    for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
-      if (key.startsWith("_")) continue;
-      out[key] = typeof value === "string" && value.trim() ? value : null;
-    }
-    return out;
-  } catch {
-    // ponytail: a row whose JSON does not parse reads as "nothing extracted"
-    // rather than throwing — one bad document must not blank the whole desk.
-    return {};
+  // ponytail: a row whose JSON does not parse reads as "nothing extracted"
+  // rather than throwing — one bad document must not blank the whole desk.
+  const parsed = jsonOf(doc.extractionJson);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+  const out: Record<string, string | null> = {};
+  for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+    if (key.startsWith("_")) continue;
+    out[key] = typeof value === "string" && value.trim() ? value : null;
   }
+  return out;
+}
+
+/**
+ * The model's own values as a string a form input can carry. `extractionJson`
+ * arrives already parsed (apps/api/src/crud.ts `hydrate`), and an object handed
+ * to an input `value` is stringified by the DOM as "[object Object]", which
+ * parses back to nothing: every correction then merged against an empty model
+ * and was refused as `no_change`. Nobody could save a correction at all.
+ */
+export function carriedJson(doc: Pick<DocRow, "extractionJson">): string {
+  return JSON.stringify(jsonOf(doc.extractionJson) ?? {});
 }
 
 /**
@@ -289,22 +297,17 @@ export const isSealedValue = (value: string | null | undefined): boolean =>
  * with none just draws no boxes.
  */
 export function bboxOf(doc: Pick<DocRow, "extractionJson">): Record<string, [number, number, number, number]> {
-  if (!doc.extractionJson) return {};
-  try {
-    const parsed: unknown = JSON.parse(doc.extractionJson);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-    const raw = (parsed as Record<string, unknown>)["_bbox"];
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
-    const out: Record<string, [number, number, number, number]> = {};
-    for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
-      if (Array.isArray(value) && value.length === 4 && value.every((n) => typeof n === "number")) {
-        out[key] = value as [number, number, number, number];
-      }
+  const parsed = jsonOf(doc.extractionJson);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+  const raw = (parsed as Record<string, unknown>)["_bbox"];
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: Record<string, [number, number, number, number]> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (Array.isArray(value) && value.length === 4 && value.every((n) => typeof n === "number")) {
+      out[key] = value as [number, number, number, number];
     }
-    return out;
-  } catch {
-    return {};
   }
+  return out;
 }
 
 /** 0–100 stored, 0–1 rendered. Missing confidence is not zero confidence. */
@@ -776,7 +779,7 @@ export default function AxisDocIntel() {
                 <Form method="post" className="flex flex-col gap-3">
                   <input type="hidden" name="intent" value="correct" />
                   <input type="hidden" name="docId" value={selected.id} />
-                  <input type="hidden" name="extractionJson" value={selected.extractionJson ?? ""} />
+                  <input type="hidden" name="extractionJson" value={carriedJson(selected)} />
                   <p className="font-ui text-12 text-subtle">{l("correct.intro")}</p>
                   <ul className="flex flex-col gap-3">
                     {names.map((name) => (
