@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fraudMessages, parseFraud } from "./fraud.js";
+import { fraudMessages, fraudSchema, parseFraud } from "./fraud.js";
 
 const FRAUD_CTX = {
   perilCode: "fire",
@@ -31,8 +31,67 @@ describe("parseFraud", () => {
   });
 });
 
+describe("fraudSchema", () => {
+  it("requires the score and its indicators, each indicator carrying its evidenceRef", () => {
+    expect(fraudSchema()).toEqual({
+      name: "axis_claim_fraud_score",
+      schema: {
+        type: "object",
+        properties: {
+          score: { type: "integer" },
+          indicators: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                code: { type: "string" },
+                weight: { type: "number" },
+                evidenceRef: { type: "string" }
+              },
+              required: ["code", "weight", "evidenceRef"]
+            }
+          }
+        },
+        required: ["score", "indicators"]
+      }
+    });
+  });
+});
+
 describe("fraudMessages", () => {
   const system = (): string => fraudMessages(FRAUD_CTX)[0]!.content;
+
+  it("sends the rules as system and the claim as JSON, and nothing else", () => {
+    const messages = fraudMessages(FRAUD_CTX);
+    expect(messages.map((m) => m.role)).toEqual(["system", "user"]);
+    expect(messages[1]!.content).toBe(JSON.stringify(FRAUD_CTX));
+  });
+
+  it("names every signal the score may read", () => {
+    for (const signal of [
+      /perilCode and causeCode/,
+      /the gap between incidentAt and reportedAt/,
+      /amountMinor against the limits given/,
+      /prior claim history/,
+      /document extraction results/
+    ]) {
+      expect(system()).toMatch(signal);
+    }
+  });
+
+  it("fixes the score scale and the shape of an indicator", () => {
+    expect(system()).toMatch(/score \(0-100, how strongly the claim looks referable/);
+    expect(system()).toMatch(/short slug naming the signal/);
+    expect(system()).toMatch(/evidenceRef, the specific/);
+    expect(system()).toMatch(/a prior claim id, document id, or field name/);
+  });
+
+  // parseFraud drops an indicator with no evidenceRef, so the prompt has to ask
+  // for what the parser will keep — otherwise every reply is silently thinned.
+  it("refuses an unevidenced indicator and an unexplained score", () => {
+    expect(system()).toMatch(/never invent one you cannot point to evidence for/);
+    expect(system()).toMatch(/an unexplained score is not a score/);
+  });
 
   // CLAUDE.md #14: no industry nouns in a prompt — this one has to sell outside insurance.
   it("hard-codes no domain-pack noun", () => {

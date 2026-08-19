@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseReserve, reserveMessages } from "./reserve.js";
+import { parseReserve, reserveMessages, reserveSchema } from "./reserve.js";
 
 const RESERVE_CTX = {
   perilCode: "fire",
@@ -33,8 +33,53 @@ describe("parseReserve", () => {
   });
 });
 
+describe("reserveSchema", () => {
+  it("requires the point estimate, both band ends and the comparables weighed", () => {
+    expect(reserveSchema()).toEqual({
+      name: "axis_claim_reserve_recommend",
+      schema: {
+        type: "object",
+        properties: {
+          recommendedMinor: { type: "integer" },
+          bandLowMinor: { type: "integer" },
+          bandHighMinor: { type: "integer" },
+          comparables: { type: "array", items: { type: "string" } }
+        },
+        required: ["recommendedMinor", "bandLowMinor", "bandHighMinor", "comparables"]
+      }
+    });
+  });
+});
+
 describe("reserveMessages", () => {
   const system = (): string => reserveMessages(RESERVE_CTX)[0]!.content;
+
+  it("sends the rules as system and the claim as JSON, and nothing else", () => {
+    const messages = reserveMessages(RESERVE_CTX);
+    expect(messages.map((m) => m.role)).toEqual(["system", "user"]);
+    expect(messages[1]!.content).toBe(JSON.stringify(RESERVE_CTX));
+  });
+
+  it("names every input the estimate may read, and how the comparables were picked", () => {
+    for (const input of [
+      /perilCode, causeCode/,
+      /complexity, excessMinor, the limits given/,
+      /same perilCode, closed within the last 24 months/
+    ]) {
+      expect(system()).toMatch(input);
+    }
+  });
+
+  it("asks for a point estimate in minor units inside an ordered band", () => {
+    expect(system()).toMatch(/recommendedMinor \(the point estimate, in minor currency units\)/);
+    expect(system()).toMatch(/bandLowMinor <= recommendedMinor <= bandHighMinor/);
+    expect(system()).toMatch(/comparables \(the ids, from the list given, of the comparable claims you actually weighed\)/);
+  });
+
+  it("bounds the recommendation by the limit and the excess, and forbids invented comparables", () => {
+    expect(system()).toMatch(/Never recommend above the limit that matches the claim, and never below excessMinor/);
+    expect(system()).toMatch(/returning an empty comparables array rather than inventing one/);
+  });
 
   // CLAUDE.md #14: no industry nouns in a prompt — this one has to sell outside insurance.
   it("hard-codes no domain-pack noun", () => {
