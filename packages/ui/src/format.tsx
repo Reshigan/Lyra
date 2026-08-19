@@ -311,6 +311,25 @@ export function DateTime({
   // UiTimeZoneProvider — that mismatch error-boundaries the entire route.
   const zone = timeZone ?? inheritedZone;
   const date = value instanceof Date ? value : new Date(value);
+
+  // An instant no `Date` can hold. The API bounds every write surface now, but
+  // rows written before those bounds landed are still in the tables, and both
+  // `Intl.DateTimeFormat.format` and `toISOString` throw `RangeError` on an
+  // Invalid Date — a throw here takes the entire route to the error boundary,
+  // so one unreadable cell costs the whole page. Degrade to the same dash an
+  // empty cell uses.
+  //
+  // ponytail: no explanatory copy, because this package carries none (see
+  // text.tsx) — the dash is language-neutral. Upgrade path is an optional
+  // `invalidLabel` prop the day a screen needs to say why.
+  if (Number.isNaN(date.getTime())) {
+    return (
+      <span {...props} className={cn("text-subtle tabular-nums", className)}>
+        —
+      </span>
+    );
+  }
+
   const format = (calendar?: "islamic-umalqura") =>
     formatDate(date, { locale, precision, calendar, timeZone: zone });
 
