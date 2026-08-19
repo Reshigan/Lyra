@@ -5,7 +5,7 @@
 import * as React from "react";
 import { cn } from "./cn.js";
 import { Input } from "./primitives.js";
-import { useUiCalendar, useUiLocale, useUiTimeZone, type CalendarPreference } from "./text.js";
+import { uiText, useUiCalendar, useUiLocale, useUiTimeZone, type CalendarPreference } from "./text.js";
 
 /** Minor-unit exponent for a currency (AED/USD → 2, JPY → 0, KWD → 3). */
 function minorUnits(currency: string, locale: string): number {
@@ -305,9 +305,9 @@ export function instantOf(value: Date | string | number): Date | null {
  * through here and it inherits the guard; hand-roll `new Date(x)` beside an
  * `Intl` formatter and it does not.
  *
- * ponytail: no explanatory copy, because this package carries none (see
- * text.tsx) — the dash is language-neutral, and unlike `DateTime` a string
- * cannot carry `aria-hidden` into its caller's sentence. Upgrade path is a
+ * ponytail: the bare dash, not the `sr-only` explanation `DateTime` renders —
+ * a string cannot carry an element into its caller's sentence, and this
+ * function has no locale to pick the words in. Upgrade path is a
  * caller-supplied fallback argument the day a screen needs to say why.
  */
 export function formatInstant(value: Date | string | number, render: (date: Date) => string): string {
@@ -350,14 +350,18 @@ export function DateTime({
   //
   // The dash is `aria-hidden` for `NoData`'s reason: punctuation standing in
   // for content is read as "dash" or as silence, and neither says a date was
-  // expected. This package carries no copy of its own to say it with (text.tsx),
-  // so the caller's `aria-label`/`title` — which survives in `props` — is what
-  // is left to announce.
+  // expected. So the reason goes in an `sr-only` span beside it, exactly as
+  // `NoData` does — an `aria-label` on this bare `<span>` would not do it, that
+  // is a name-prohibited role in ARIA 1.2. The words are kit chrome, from the
+  // kit's own catalogue in this date's locale (text.tsx), not the caller's job.
   const date = instantOf(value);
   if (date === null) {
     return (
       <span {...props} className={cn("text-subtle tabular-nums", className)}>
         <span aria-hidden="true">{DASH}</span>
+        <span className="sr-only absolute h-px w-px overflow-hidden">
+          {uiText(locale)("dateUnavailable")}
+        </span>
       </span>
     );
   }

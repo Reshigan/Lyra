@@ -53,19 +53,31 @@ describe("DateTime — values no Date can hold", () => {
 
   // NoData's precedent (format.tsx): a dash is punctuation, not content. Read
   // aloud as content it is "dash" or silence, with nothing saying a date was
-  // expected — and this package carries no copy of its own to say it with, so
-  // the dash is hidden and whatever the caller labelled the element with is
-  // what remains (CLAUDE.md §8).
+  // expected — so the dash is hidden and the reason goes in an `sr-only` span
+  // beside it (CLAUDE.md §8).
   it("hides the dash from assistive tech the way an empty cell does", () => {
     const markup = renderToStaticMarkup(<DateTime value={9e15} locale="en" />);
     expect(markup).toContain('aria-hidden="true"');
   });
 
-  it("keeps a caller's own label on the degraded element", () => {
-    const markup = renderToStaticMarkup(
-      <DateTime value={9e15} locale="en" aria-label="cover ends" />
-    );
-    expect(markup).toContain('aria-label="cover ends"');
+  // The element used to carry only `aria-hidden` punctuation and whatever
+  // `aria-label` the caller happened to pass — and `aria-label` on a bare
+  // `<span>` is name-prohibited in ARIA 1.2, so the degraded cell announced
+  // nothing at all. The previous test here asserted that passthrough, which the
+  // un-fixed component satisfied by doing nothing.
+  it("says a date was expected rather than announcing nothing", () => {
+    const markup = renderToStaticMarkup(<DateTime value={9e15} locale="en" />);
+    expect(markup).toContain("sr-only");
+    expect(markup).toContain("Date unavailable");
+  });
+
+  // Kit chrome, so it comes from the kit's own catalogue (text.tsx) in the
+  // locale the date is being rendered in — CLAUDE.md §7, no English leaking
+  // into an Arabic screen.
+  it("says it in the locale the date renders in", () => {
+    const markup = renderToStaticMarkup(<DateTime value={9e15} locale="ar" />);
+    expect(markup).toContain("التاريخ غير متاح");
+    expect(markup).not.toContain("Date unavailable");
   });
 });
 
