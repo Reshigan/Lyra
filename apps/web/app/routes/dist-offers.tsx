@@ -199,8 +199,8 @@ const LABELS: Record<string, Record<string, string>> = {
   }
 };
 
-/** The shared resolver: the route's own table, then the shared catalogue, then
- *  the platform's `common.*` words (docs/ui.md §7 P3-14). */
+/** The shared resolver: the tenant's pack, then the route's own table, then the
+ *  shared catalogue, then the platform's `common.*` words (docs/ui.md §7 P3-14). */
 export const labelsIn = labelsFrom(LABELS);
 
 /* ------------------------------------------------------------------- rules */
@@ -302,7 +302,7 @@ export default function NextBestOffers() {
 
   const locale = shell?.locale ?? "en";
   const t = translator(locale);
-  const l = labelsIn(locale);
+  const l = labelsIn(locale, shell?.domainPack);
   const busy = navigation.state !== "idle";
   const offers = loaded.offers;
   const summary = offers && offers.length > 0 ? offerSummary(offers, loaded.may.surface) : null;

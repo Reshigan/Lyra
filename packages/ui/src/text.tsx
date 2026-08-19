@@ -61,7 +61,16 @@ const en = {
   pendingApproval: "Pending approval",
   requestedBy: "Requested by {who}",
   approve: "Approve",
-  reject: "Reject"
+  reject: "Reject",
+  // Overlay + navigation chrome (Dialog, Drawer, Toast, CommandBar, nav landmarks)
+  close: "Close",
+  dismiss: "Dismiss",
+  modules: "Modules",
+  breadcrumb: "Breadcrumb",
+  search: "Search",
+  commandSearch: "Search entities, actions, docs…",
+  commandPalette: "Command palette",
+  commandEmpty: "No matches."
 } as const;
 
 export type KitKey = keyof typeof en;
@@ -104,7 +113,15 @@ const ar: Record<KitKey, string> = {
   pendingApproval: "بانتظار الموافقة",
   requestedBy: "بطلب من {who}",
   approve: "موافقة",
-  reject: "رفض"
+  reject: "رفض",
+  close: "إغلاق",
+  dismiss: "إغلاق الإشعار",
+  modules: "الوحدات",
+  breadcrumb: "مسار التنقّل",
+  search: "بحث",
+  commandSearch: "ابحث في السجلات والإجراءات والمستندات…",
+  commandPalette: "لوحة الأوامر",
+  commandEmpty: "لا نتائج مطابقة."
 };
 
 export const KIT_TEXT: Record<string, Record<KitKey, string>> = { en, ar };

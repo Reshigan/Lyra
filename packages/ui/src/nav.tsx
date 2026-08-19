@@ -16,6 +16,7 @@
 import * as React from "react";
 import { cn, focusRing } from "./cn.js";
 import { Avatar, Badge } from "./primitives.js";
+import { useUiText } from "./text.js";
 
 export type LyraModule = "axis" | "orbit" | "signal" | "scout" | "north";
 
@@ -154,11 +155,12 @@ export interface ModuleSwitcherProps {
 export function ModuleSwitcher({
   modules,
   current,
-  label = "Modules",
+  label,
   className
 }: ModuleSwitcherProps) {
+  const t = useUiText();
   return (
-    <nav aria-label={label} className={cn("flex flex-col gap-1", className)}>
+    <nav aria-label={label ?? t("modules")} className={cn("flex flex-col gap-1", className)}>
       {modules.map((m) => (
         <NavItem
           key={m.id}
@@ -194,15 +196,16 @@ export interface Crumb {
 
 export function Breadcrumbs({
   items,
-  label = "Breadcrumb",
+  label,
   className
 }: {
   items: Crumb[];
   label?: string;
   className?: string;
 }) {
+  const t = useUiText();
   return (
-    <nav aria-label={label} className={className}>
+    <nav aria-label={label ?? t("breadcrumb")} className={className}>
       <ol className="flex flex-wrap items-center gap-2 font-ui text-12 text-subtle">
         {items.map((c, i) => {
           const last = i === items.length - 1;
@@ -252,12 +255,13 @@ export function TopBar({
   brandName,
   brandMark,
   onSearch,
-  searchLabel = "Search",
+  searchLabel,
   searchShortcut = "⌘K",
   actions,
   user,
   className
 }: TopBarProps) {
+  const t = useUiText();
   return (
     <header
       className={cn(
@@ -279,7 +283,7 @@ export function TopBar({
             focusRing
           )}
         >
-          <span className="flex-1 text-start">{searchLabel}</span>
+          <span className="flex-1 text-start">{searchLabel ?? t("search")}</span>
           <kbd className="font-mono text-12 text-subtle">{searchShortcut}</kbd>
         </button>
       ) : (

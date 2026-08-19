@@ -39,6 +39,7 @@ import {
   type Labels,
   type Page
 } from "./orbit-shared";
+import { useShellData } from "./workspace";
 
 // The retention queue: who is about to leave, what we offered them, and how it
 // ended. A renewal is raised by the expiry sweep and its state machine lives in
@@ -265,8 +266,8 @@ export const LABELS: Labels = {
   }
 };
 
-export function labelsIn(locale: string): Label {
-  return labelsFrom(LABELS, locale);
+export function labelsIn(locale: string, pack?: string): Label {
+  return labelsFrom(LABELS, locale, pack);
 }
 
 /* ------------------------------------------------------------------ loader */
@@ -374,7 +375,7 @@ export default function SaveDesk() {
   const loaded = useLoaderData<typeof loader>();
   const result = useActionData<typeof action>();
   const navigation = useNavigation();
-  const l = labelsIn(loaded.locale);
+  const l = labelsIn(loaded.locale, useShellData()?.domainPack);
   const busy = navigation.state === "submitting";
   const { focus, href } = useFocus(LENSES);
   // Counted through the lens the queue below is filtered by, so the figure and
@@ -455,6 +456,7 @@ export default function SaveDesk() {
           nonce={loaded.nonce}
           writable={loaded.may.write}
           busy={busy}
+          caption={l("queue")}
           emptyTitle={l("noneQueue")}
         />
       </Card>
@@ -474,6 +476,7 @@ export default function SaveDesk() {
               nonce={loaded.nonce}
               writable={loaded.may.write}
               busy={busy}
+              caption={l("outstanding")}
               emptyTitle={l("noneOutstanding")}
             />
           </Card>
@@ -542,6 +545,7 @@ function Desk({
   nonce,
   writable,
   busy,
+  caption,
   emptyTitle
 }: {
   rows: Renewal[];
@@ -552,6 +556,7 @@ function Desk({
   nonce: string;
   writable: boolean;
   busy: boolean;
+  caption: string;
   emptyTitle: string;
 }) {
   if (rows.length === 0) return <EmptyState title={emptyTitle} body={l("noneBody")} />;
@@ -701,5 +706,5 @@ function Desk({
     });
   }
 
-  return <Table caption={l("queue")} rows={rows} rowKey={(row) => row.id} columns={columns} />;
+  return <Table caption={caption} rows={rows} rowKey={(row) => row.id} columns={columns} />;
 }

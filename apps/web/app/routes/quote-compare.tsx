@@ -30,6 +30,7 @@ import { toneFor } from "../components/fields";
 import { cloudflare } from "../context";
 import { pseudoText, translator } from "../i18n";
 import { jsonOf } from "../json.js";
+import { vocabulary } from "../modules/vocabulary";
 import { Problem } from "./module";
 import { useShellData } from "./workspace";
 
@@ -308,12 +309,17 @@ export function requestExpired(expiresAt: number | null, now: number): boolean {
   return expiresAt !== null && expiresAt <= now;
 }
 
-/** Local catalogue, English fallback, then the raw key — same contract as i18n.ts. */
-function labeller(locale: string) {
+/**
+ * Pack, local catalogue, English fallback, then the raw key — same contract as
+ * detail-kit's labelsFrom. The pack goes first (CLAUDE.md §14): a bespoke route
+ * with its own table is still the tenant's vocabulary, not insurance's.
+ */
+export function labeller(locale: string, pack?: string) {
+  const packed = vocabulary(pack, locale);
   const table = LABELS[locale] ?? LABELS.en ?? {};
   const fallback = LABELS.en ?? {};
   return (key: string, vars?: Record<string, string>): string => {
-    const raw = pseudoText(locale, table[key] ?? fallback[key] ?? key);
+    const raw = pseudoText(locale, packed(key) ?? table[key] ?? fallback[key] ?? key);
     return vars ? raw.replace(/\{(\w+)\}/g, (match, name: string) => vars[name] ?? match) : raw;
   };
 }
@@ -466,7 +472,7 @@ export default function QuoteCompare() {
 
   const locale = shell?.locale ?? "en";
   const t = translator(locale);
-  const L = labeller(locale);
+  const L = labeller(locale, shell?.domainPack);
   const busy = navigation.state !== "idle";
 
   const request = loaded.request;

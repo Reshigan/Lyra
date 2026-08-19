@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { ar } from "./i18n/ar";
 import { en } from "./i18n/en";
+import { PACK_KEYS } from "./modules/vocabulary";
 import { HIDDEN_ROUTES, WORKSPACE_PATHS, availableShellsForRoles, isRouted, labelKeyFor, landingFor } from "./routing";
 
 // The three invariants of the shell that can be checked without a DOM: every
@@ -146,6 +147,35 @@ function declaredRoutes(): string[] {
     ...(spreadsWorkspaces ? [...WORKSPACE_PATHS] : [])
   ];
 }
+
+describe("domain-pack nouns are resolved with the tenant's pack", () => {
+  // CLAUDE.md §14: a label resolver called with only a locale never consults
+  // the pack, so every noun it answers is the insurance one — "Policy number"
+  // on a retail tenant. Only a screen that actually resolves a renameable noun
+  // can leak, so that is what this scans for.
+  const LOCALE_ONLY = /\b(?:labelsIn|labelIn|labeller|commentaryLabels|labelsFor)\(\s*(?:loaded\.)?locale\s*\)/g;
+
+  // Files that quote a pack key for a reason other than resolving a label.
+  const notLabels: Record<string, string> = {
+    "routes/axis-quote-desk.tsx": 'form field names ("policyNo", "premiumMinor"), not label keys',
+    "routes/orbit-dev.tsx": 'PERSONAS[].key === "renewal" — a simulator scenario id, not a noun'
+  };
+
+  it("passes the pack wherever a pack noun is rendered", () => {
+    const offenders: string[] = [];
+    for (const file of sources(APP_DIR)) {
+      const name = file.replace(`${APP_DIR}/`, "");
+      if (name in notLabels) continue;
+      const source = stripComments(readFileSync(file, "utf8"));
+      if (!PACK_KEYS.some((key) => source.includes(`"${key}"`))) continue;
+      // A screen that reaches for `vocabulary()` itself has already answered
+      // the question — the portals resolve their two pack nouns that way.
+      if (source.includes("vocabulary(")) continue;
+      for (const call of source.match(LOCALE_ONLY) ?? []) offenders.push(`${name}: ${call}`);
+    }
+    expect(offenders, "pass the tenant's domainPack as the second argument").toEqual([]);
+  });
+});
 
 function sources(dir: string): string[] {
   const out: string[] = [];

@@ -181,16 +181,22 @@ describe("navigation always renders a visible label", () => {
   it("never renders the label conditionally", () => {
     // A branch on `label` would be the seed of an icon-only mode.
     // `label?:` is a type annotation, not a branch — hence the (?!:).
-    expect(navCode).not.toMatch(/\blabel\s*(?:&&|\?(?!:))/);
+    // `label ?? t("modules")` is a catalogue fallback, not a branch: the label
+    // still always renders, only its words come from KIT_TEXT when the caller
+    // passed none. Strip those, then any surviving branch is the icon-only seed.
+    const branching = navCode.replace(/\b(\w*[Ll]abel)\s*\?\?\s*t\("\w+"\)/g, '$1');
+    expect(branching).not.toMatch(/\blabel\s*(?:&&|\?(?!:))/);
     // Icons, by contrast, are the optional part.
     expect(navCode).toMatch(/icon\s*\?/);
     expect(navCode).toContain("<span className=\"flex-1 truncate text-start\">{label}</span>");
   });
 
-  it("every optional nav label has a non-empty default", () => {
+  it("every optional nav label falls back to the kit catalogue", () => {
     const optional = [...nav.matchAll(/\blabel\?:\s*string/g)].length;
-    const defaulted = [...nav.matchAll(/\blabel = "[^"]+"/g)].length;
-    expect(defaulted).toBeGreaterThanOrEqual(optional);
+    const fallbacks = [...nav.matchAll(/\b\w*[Ll]abel \?\? t\("(\w+)"\)/g)];
+    expect(fallbacks.length).toBeGreaterThanOrEqual(optional);
+    // An English default was the old answer; it stayed English under `ar`.
+    expect(nav).not.toMatch(/\blabel = "/);
   });
 
   it("marks decorative icons aria-hidden", () => {
@@ -299,6 +305,31 @@ describe("kit chrome is translated, not hardcoded", () => {
     "Accept <kbd",
     "Discard <kbd"
   ];
+
+  // Same rot, one layer further in: a prop whose *default* is English. The
+  // caller who forgets the prop gets English under `ar` and no test notices,
+  // because the literal never appears in JSX — it sits in the signature.
+  it("gives no prop an English default", () => {
+    // An enum default ("md", "inline-end", "26rem") is lowercase and unspaced.
+    // Prose starts with a capital or contains a space.
+    const englishDefault = /^\s*([A-Za-z]\w*) = "([A-Z][^"]*|[^"]*\s[^"]*)"/gm;
+    const offenders: string[] = [];
+    for (const [name, code] of componentFiles) {
+      for (const [, prop, value] of code.matchAll(englishDefault)) {
+        offenders.push(`${name}: ${prop} = "${value}"`);
+      }
+    }
+    expect(offenders, "route these through KIT_TEXT via useUiText()").toEqual([]);
+  });
+
+  it("only asks the catalogue for keys it has", () => {
+    for (const [name, code] of componentFiles) {
+      for (const match of code.matchAll(/\bt\("(\w+)"/g)) {
+        const key = match[1] ?? "";
+        expect(KIT_TEXT.en, `${name} reads t("${key}")`).toHaveProperty(key);
+      }
+    }
+  });
 
   it.each(["data.tsx", "ai.tsx"])("%s renders no English of its own", (name) => {
     const code = read(join(SRC, name))
