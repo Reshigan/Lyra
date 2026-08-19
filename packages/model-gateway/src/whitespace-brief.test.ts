@@ -122,6 +122,15 @@ describe("parseWhitespaceBrief", () => {
   it("trims surrounding whitespace", () => {
     expect(parseWhitespaceBrief(JSON.stringify({ ...GOOD, name: "  Cyber  " }), EV, NOUNS)?.name).toBe("Cyber");
   });
+
+  // The three fields are joined with a newline before groundedness scoring. Run
+  // them together and a trailing digit of one field fuses with the leading digit
+  // of the next into a number the evidence *does* contain — here 7 and 8, two
+  // invented figures, would read as the momentum score 78 and pass.
+  it("scores each field as its own line, so adjacent digits never fuse into an evidenced number", () => {
+    const reply = JSON.stringify({ ...GOOD, name: "Cyber 7", proposition: "8 signals a gap.", brief: "Nothing else." });
+    expect(parseWhitespaceBrief(reply, EV, NOUNS)).toBeNull();
+  });
 });
 
 describe("whitespaceEvidenceLines", () => {
@@ -169,28 +178,49 @@ describe("whitespaceBriefSchema", () => {
 });
 
 describe("whitespaceBriefMessages", () => {
-  const messages = whitespaceBriefMessages(EV, NOUNS);
+  // Called inside each test, never in the describe body: a builder that throws
+  // during collection produces "no tests" rather than a failing test, which
+  // reads as green to anything counting failures (it let a mutant emptying
+  // whitespaceEvidenceLines survive).
+  const system = (nouns = NOUNS): string => whitespaceBriefMessages(EV, nouns)[0]?.content ?? "";
 
   it("sends one system prompt then the evidence as the user turn", () => {
+    const messages = whitespaceBriefMessages(EV, NOUNS);
     expect(messages.map((m) => m.role)).toEqual(["system", "user"]);
     expect(messages[1]?.content).toBe(whitespaceEvidenceLines(EV, NOUNS).join("\n"));
+    expect(messages[1]?.content).toContain("Category: cyber");
   });
 
   it("forbids unevidenced numbers and any promise a human must make", () => {
-    const system = messages[0]?.content ?? "";
-    expect(system).toContain("State no number the evidence below did not give you");
-    expect(system).toContain("never promise cover");
-    expect(system).toContain("a human reviews");
+    expect(system()).toContain("State no number the evidence below did not give you");
+    expect(system()).toContain("never promise cover");
+    expect(system()).toContain("a human reviews");
   });
 
-  it("names the pack's domain, not a hard-coded industry", () => {
-    expect(whitespaceBriefMessages(EV, RETAIL)[0]?.content).toContain("retail commerce");
-    expect(whitespaceBriefMessages(EV, RETAIL)[0]?.content).not.toContain("insurance");
+  // Sentence by sentence: a shape assertion cannot tell a prompt that lost one
+  // of its instructions from one that kept them all.
+  it("states the finding, the reply format and the shape of every field", () => {
+    for (const sentence of [
+      "You turn one unserved-market finding into a marketing brief for a insurance business.",
+      "The finding is a category with measured demand and few or no active policies of the tenant's own.",
+      "Reply with JSON only, matching the schema: name (a short internal campaign name),",
+      "objective (acq for a category the tenant barely sells, renewal for keeping existing customers,",
+      "xsell for selling into the existing book), proposition (one line a buyer would understand),",
+      "and brief (what the creative should say and the angle to take, 2-4 sentences)."
+    ]) {
+      expect(system()).toContain(sentence);
+    }
+  });
+
+  it("names the pack's domain and its plural noun, not a hard-coded industry", () => {
+    expect(system(RETAIL)).toContain("marketing brief for a retail commerce business");
+    expect(system(RETAIL)).toContain("few or no active orders of the tenant's own");
+    expect(system(RETAIL)).not.toContain("insurance");
+    expect(system(RETAIL)).not.toContain("policies");
   });
 
   it("explains each objective so the enum is not guessed", () => {
-    const system = messages[0]?.content ?? "";
-    for (const objective of CAMPAIGN_OBJECTIVES) expect(system).toContain(objective);
+    for (const objective of CAMPAIGN_OBJECTIVES) expect(system()).toContain(objective);
   });
 });
 
@@ -207,6 +237,20 @@ describe("fallbackWhitespaceBrief", () => {
   it("states the two figures the candidate was flagged on", () => {
     expect(fallbackWhitespaceBrief(EV, NOUNS).brief).toContain("78");
     expect(fallbackWhitespaceBrief(EV, NOUNS).brief).toContain("3");
+  });
+
+  // Whole object: every sentence of the deterministic brief is persisted and
+  // shown, so each one is behaviour, not decoration.
+  it("is exactly the evidence plus the hand-off, with nothing invented", () => {
+    expect(fallbackWhitespaceBrief(EV, NOUNS)).toEqual({
+      name: "cyber — unserved demand",
+      objective: "acq",
+      proposition: "cyber: demand we see, cover we do not yet sell.",
+      brief:
+        "Demand momentum 78 on cyber against 3 active policies on the book. " +
+        "Draft copy that introduces the category; a human sets the offer and the channel.",
+      confidence: 0
+    });
   });
 
   it("acquires, since a category with demand and no book is acquisition", () => {
