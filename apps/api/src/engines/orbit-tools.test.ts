@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { PolicyJson, EntitlementsJson, schema } from "@lyra/db";
 import { permissionsForRole, type Actor, type Ctx } from "@lyra/core";
+import { Gateway, makeStub } from "@lyra/model-gateway";
 import { changeSetHashOf } from "./axis-endorse.js";
 import { executeOrbitToolCalls, ORBIT_TOOL_DEFS, orbitToolsFor, runOrbitTool } from "./orbit-tools.js";
 
@@ -365,6 +366,54 @@ describe("executeOrbitToolCalls", () => {
       .from(schema.aiToolCalls)
       .where(and(eq(schema.aiToolCalls.tenantId, ctx.tenantId), eq(schema.aiToolCalls.runId, "air_3")));
     expect(rows[0]!.outcome).toBe("error");
+  });
+});
+
+describe("tool results as prompt text", () => {
+  // 1781571600000 = 2026-06-16T01:00:00.000Z, and it passes Luhn — so as a bare
+  // 13-digit run it is a card number to the scrubber, which is what a raw
+  // `JSON.stringify(policyRow)` handed the model: `"endAt":[[CARD_1]]`. The
+  // agent then answers "I can't see when this policy expires" about a policy it
+  // just successfully read.
+  const LUHN_MS = 1_781_571_600_000;
+
+  it("renders instants in a tool result so the scrubber has no digit run to eat", async () => {
+    ctx = await makeCtx(LUHN_MS);
+    await seedPolicy("pol_8");
+    await ctx.db.insert(schema.aiRuns).values({
+      id: "air_4",
+      tenantId: ctx.tenantId,
+      agentKey: "quoting",
+      module: "orbit",
+      purpose: "orbit.copilot",
+      actorRef: "agent:quoting",
+      autonomyLevel: "act_with_approval",
+      trigger: "user",
+      state: "running",
+      inputHash: "",
+      startedAt: ctx.now
+    });
+
+    const toolMessages = await executeOrbitToolCalls(
+      ctx,
+      "air_4",
+      [{ id: "call_11", name: "fetch_policy", args: { policyId: "pol_8" } }],
+      new Set(["fetch_policy"])
+    );
+
+    const stub = makeStub({ replies: ["ok"] });
+    const gateway = new Gateway({ env: {}, providers: { "workers-ai": stub, anthropic: stub, "openai-compat": stub } });
+    await gateway.complete(ctx, {
+      module: "orbit",
+      purpose: "orbit.copilot",
+      tier: "fast",
+      messages: [{ role: "user", content: "when does pol_8 expire?" }, { role: "assistant", content: "" }, ...toolMessages]
+    });
+
+    // stub.calls records what the provider was handed — after the gateway scrubbed it.
+    const sent = stub.calls[0]!.messages.find((m) => m.role === "tool")!.content;
+    expect(sent, "an epoch instant reached the scrubber and was redacted as a card number").not.toContain("[[CARD_");
+    expect(sent).toContain("2026-06-16T01:00:00.000Z");
   });
 });
 
