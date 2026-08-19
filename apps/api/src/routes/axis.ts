@@ -34,6 +34,7 @@ import {
   extractionSchema,
   parseExtraction,
   parseVisionExtraction,
+  promptInstant,
   visionExtractionMessages,
   visionExtractionSchema
 } from "@lyra/model-gateway";
@@ -399,12 +400,12 @@ axisRoutes.post("/cases/:id/copilot", async (c) => {
     ]);
 
     const contextLines: string[] = [
-      `Case ${kase.ref}: kind ${kase.kind}, status ${kase.status}, priority ${kase.priority}, opened ${new Date(kase.createdAt).toISOString()}` +
-        (kase.slaDueAt ? `, SLA due ${new Date(kase.slaDueAt).toISOString()}` : "") +
+      `Case ${kase.ref}: kind ${kase.kind}, status ${kase.status}, priority ${kase.priority}, opened ${promptInstant(kase.createdAt)}` +
+        (kase.slaDueAt ? `, SLA due ${promptInstant(kase.slaDueAt)}` : "") +
         (kase.valueMinor !== null ? `, value ${kase.valueMinor / 100} ${kase.currency ?? ""}`.trimEnd() : "") +
         ".",
       ...documents.map((d) => `Document ${d.docType}: status ${d.status}.`),
-      ...events.map((e) => `Event ${e.step}: ${e.outcome ?? "in progress"} at ${new Date(e.ts).toISOString()}.`),
+      ...events.map((e) => `Event ${e.step}: ${e.outcome ?? "in progress"} at ${promptInstant(e.ts)}.`),
       ...tasks.map((t) => `Task ${t.titleKey}: state ${t.state}.`)
     ];
 

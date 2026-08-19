@@ -1,7 +1,7 @@
 import { desc, eq, ne } from "drizzle-orm";
 import { id as newId, schema } from "@lyra/db";
 import { scoped, type Ctx } from "@lyra/core";
-import { fraudMessages, parseFraud, type FraudScoreResult, type Gateway } from "@lyra/model-gateway";
+import { fraudMessages, parseFraud, promptInstant, type FraudScoreResult, type Gateway } from "@lyra/model-gateway";
 
 // docs/specs/gap-axis-design.md §G.2. Fraud/SIU scoring: score a claim from
 // its own facts, the holder's claim history, and any document extraction
@@ -40,9 +40,6 @@ export async function claimDocuments(ctx: Ctx, claim: ClaimRow): Promise<(typeof
 }
 
 /** Generation only — never writes anything. Ambient, not consequential (CLAUDE.md §4): a failed call scores nothing. */
-/** Prompt payloads carry ISO-8601, never epoch ms — see `FraudContext`. */
-const iso = (ms: number | null): string | null => (ms === null ? null : new Date(ms).toISOString());
-
 export async function scoreFraud(
   ctx: Ctx,
   claim: ClaimRow,
@@ -59,8 +56,8 @@ export async function scoreFraud(
       messages: fraudMessages({
         perilCode: claim.perilCode,
         causeCode: claim.causeCode,
-        incidentAt: iso(claim.incidentAt),
-        reportedAt: new Date(claim.reportedAt).toISOString(),
+        incidentAt: claim.incidentAt === null ? null : promptInstant(claim.incidentAt),
+        reportedAt: promptInstant(claim.reportedAt),
         amountMinor: claim.amountMinor,
         limits: coverage?.limits ?? null,
         history: history.map((h) => ({
@@ -69,7 +66,7 @@ export async function scoreFraud(
           status: h.status,
           amountMinor: h.amountMinor,
           settledMinor: h.settledMinor,
-          closedAt: iso(h.closedAt)
+          closedAt: h.closedAt === null ? null : promptInstant(h.closedAt)
         })),
         documents: documents.map((d) => ({ id: d.id, docType: d.docType, extractionConfidence: d.extractionConfidence }))
       })

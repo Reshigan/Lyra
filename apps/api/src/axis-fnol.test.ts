@@ -242,4 +242,36 @@ describe("AXIS FNOL and coverage check (docs/27 F24)", () => {
     const listed = ok(await call("GET", "/v1/axis/claims?limit=100"));
     expect((listed.data as any[]).some((c) => c.id === row.id)).toBe(true);
   });
+
+  // An instant past ±8.64e15 is not a date any renderer can hold, and it was
+  // reaching the fraud scorer, where `new Date(ms).toISOString()` threw inside a
+  // blanket catch: no score, no SIU referral, no error. A claimant could switch
+  // fraud scoring off on their own claim by typing a big number. Rejected at the
+  // door instead — the renderer being total now (`promptInstant`) is the second
+  // layer, not a licence to store garbage.
+  //
+  // 9e15, not 1e17: zod's `.int()` is a *safe*-integer check, so it already
+  // stops anything past 9.007e15. The band it leaves open is exactly
+  // (8.64e15, 9.007e15] — a safe integer that no Date can hold — and that is
+  // the band this bound closes.
+  it("rejects an incident or report instant outside the range a Date can hold", async () => {
+    const startAt = Date.now() - 200 * DAY;
+    const policyId = await boundPolicy("POL-FNOL-4", startAt);
+    const base = { policyId, customerId, perilCode: "collision", currency: "AED" };
+
+    for (const body of [
+      { ...base, incidentAt: 9e15 },
+      { ...base, incidentAt: -9e15 },
+      { ...base, incidentAt: startAt, reportedAt: 9e15 }
+    ]) {
+      expect((await call("POST", "/v1/axis/claims", body)).status, JSON.stringify(body)).toBe(400);
+    }
+
+    // Same bound on the read-only coverage check, which takes the same instant.
+    expect((await call("POST", "/v1/axis/claims/coverage-check", { policyId, incidentAt: 9e15 })).status).toBe(400);
+
+    // Nothing was written on the way to those 400s.
+    const claims = await database.select().from(schema.axisClaims).where(eq(schema.axisClaims.policyId, policyId));
+    expect(claims).toHaveLength(0);
+  });
 });

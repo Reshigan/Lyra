@@ -33,9 +33,19 @@ export interface Coverage {
   warnings: string[];
 }
 
+/**
+ * An instant a `Date` can actually hold (ECMA-262: ±8.64e15 ms from the epoch).
+ * `z.number().int()` alone is a *safe*-integer check, so it lets through the band
+ * (8.64e15, 9.007e15] — and every renderer downstream (`new Date(ms).toISOString()`,
+ * the fraud prompt, the claim UI) throws on those. It threw inside a blanket
+ * `catch`, so a claimant filing with a big number silently turned their own fraud
+ * scoring off. Rejected at the trust boundary; `promptInstant` is the second layer.
+ */
+const InstantMs = z.number().int().min(-8.64e15).max(8.64e15);
+
 export const CoverageCheckBody = z.object({
   policyId: z.string().min(1),
-  incidentAt: z.number().int()
+  incidentAt: InstantMs
 });
 
 /**
@@ -132,8 +142,8 @@ export const FnolBody = z.object({
   customerId: z.string().min(1).optional(),
   claimNo: z.string().min(1).max(64).optional(),
   /** Absent on a notification where nobody can yet say when it happened. */
-  incidentAt: z.number().int().nullish(),
-  reportedAt: z.number().int().optional(),
+  incidentAt: InstantMs.nullish(),
+  reportedAt: InstantMs.optional(),
   perilCode: z.string().max(64).nullish(),
   causeCode: z.string().max(64).nullish(),
   catCode: z.string().max(64).nullish(),

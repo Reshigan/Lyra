@@ -2,7 +2,7 @@ import { count, desc, eq, gte, lt, lte, max } from "drizzle-orm";
 import { id as newId, schema } from "@lyra/db";
 import { badRequest, conflict, emit, hashObject, scoped, type Ctx, type TimeseriesIngest } from "@lyra/core";
 import { runTxn } from "@lyra/ledger";
-import { parseUbi, ubiMessages, type Gateway, type UbiContext } from "@lyra/model-gateway";
+import { parseUbi, promptInstant, ubiMessages, type Gateway, type UbiContext } from "@lyra/model-gateway";
 import {
   declaredPricingInputs,
   effectiveVersion,
@@ -433,8 +433,8 @@ export async function repriceFromTelemetry(ctx: Ctx, policy: PolicyRow, gateway:
       // map when a book actually carries one.
       baseline: null
     })),
-    windowStart: new Date(windowStart).toISOString(),
-    windowEnd: new Date(windowEnd).toISOString()
+    windowStart: promptInstant(windowStart),
+    windowEnd: promptInstant(windowEnd)
   };
 
   // CLAUDE.md §3: the model is reached only through the gateway, so the call is
