@@ -51,15 +51,27 @@ export const InstantMs = z.number().int().min(-8.64e15).max(8.64e15);
  * Whether a field name means "epoch milliseconds", by convention — the schema
  * has no marker for it, so the name is all there is to go on.
  *
- * ponytail: three name rules cover every instant column in packages/db today.
- * Ceiling: a numeric instant named outside them (`at`, `validUntil`, `lastDay`,
- * `windowStart`) is not recognised, so a caller of this gets a plain number
- * back. Upgrade path is a marker on the column itself, which Drizzle has no
- * room for — so a declared set on Resource, a parallel list this exists to
- * avoid maintaining.
+ * ponytail: four name rules, re-derived by censusing every integer/real column
+ * in packages/db/src/schema — 625 numeric columns, of which the rules match
+ * 366 and every match is an instant (no false positives).
+ * Ceiling: seven instant columns are named outside the rules and are NOT
+ * recognised — `axis.telemetryPoints.at`, `axis.quotes.validUntil`,
+ * `dist.quoteResponses.validUntil`, `signal.budgetMoves.reversibleUntil`,
+ * `scout.clusters.firstSeen`, `scout.clusters.lastSeen`,
+ * `signal.aeoPages.freshness`. None of those seven tables is registered in
+ * resources.ts, so none has a generic-CRUD write surface; the two that take
+ * caller input at all (`at`, `validUntil`) are bounded by hand at their own
+ * endpoints (routes/axis.ts). Register any of those tables and this list is
+ * the checklist. Upgrade path is a marker on the column itself, which Drizzle
+ * has no room for — so a declared set on Resource, a parallel list this exists
+ * to avoid maintaining.
+ *
+ * `expiry` is a rule of its own rather than a suffix match: it is a whole key,
+ * and it sits on three registered read-write resources (core/consents,
+ * core/mandates, core/memories) whose values render through `<DateTime>`.
  */
 export const isInstantKey = (key: string): boolean =>
-  key.endsWith("At") || key.startsWith("effective") || key === "ts";
+  key.endsWith("At") || key.startsWith("effective") || key === "ts" || key === "expiry";
 
 /* ------------------------------------------------------------- pagination */
 

@@ -417,6 +417,57 @@ describe("effective-dating columns in the generated shape", () => {
   });
 });
 
+describe("expiry columns in the generated shape", () => {
+  // The third name the schema uses for an instant, and the one two review
+  // rounds waved through on the claim that no registered read-write resource
+  // carried it. `core/mandates` and `core/memories` are `ru("core:settings")`
+  // (read + create/update/remove) and `core/consents` is creatable, so
+  // `PATCH /v1/core/mandates/:id {"expiry": 9e15}` fell through `shapeOf` to a
+  // plain `z.number().int()`, persisted, and reached
+  // `packages/ui/src/format.tsx` `<DateTime>` — `toISOString()` on an Invalid
+  // Date, RangeError, page down.
+  const mandates = (): Resource => {
+    const r = BY_MODULE.core?.find((x) => x.path === "mandates");
+    if (!r) throw new Error("no core/mandates resource");
+    return r;
+  };
+
+  beforeAll(async () => {
+    await ctx.db.insert(schema.mandates).values({
+      id: "mnd_instant",
+      tenantId: ctx.tenantId,
+      principalRef: "customer:cus_instant",
+      agentIdentity: "agent:test",
+      scopeJson: JSON.stringify({ purchase: true }),
+      expiry: NOW,
+      createdAt: NOW
+    } as never);
+  });
+
+  const expiryOf = async (): Promise<number | null | undefined> => {
+    const [row] = await ctx.db.select().from(schema.mandates).where(eq(schema.mandates.id, "mnd_instant"));
+    return row?.expiry;
+  };
+
+  it("refuses an expiry past the end of the Date range", async () => {
+    const res = await send(router(mandates()), "PATCH", "/mnd_instant", { expiry: 9e15 });
+    expect(res.status).toBe(400);
+    expect(await expiryOf()).toBe(NOW);
+  });
+
+  it("refuses an expiry past the start of the Date range", async () => {
+    const res = await send(router(mandates()), "PATCH", "/mnd_instant", { expiry: -9e15 });
+    expect(res.status).toBe(400);
+    expect(await expiryOf()).toBe(NOW);
+  });
+
+  it("still accepts an expiry a Date can hold", async () => {
+    const res = await send(router(mandates()), "PATCH", "/mnd_instant", { expiry: NOW + 86_400_000 });
+    expect(res.status).toBe(200);
+    expect(await expiryOf()).toBe(NOW + 86_400_000);
+  });
+});
+
 describe("invoice state machine through generic CRUD", () => {
   const invoices = () => router(ledgerResource("invoices"));
   const create = async (n: number, over: Record<string, unknown> = {}) => {
