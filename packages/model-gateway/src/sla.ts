@@ -16,7 +16,10 @@ export interface SlaProcessEvent {
   step: string;
   outcome: string | null;
   durationMs: number | null;
-  ts: number;
+  /** ISO-8601, not epoch ms — a bare 13-digit instant is redacted as a card
+   * number on the way out (scrub.ts), and elapsed time between these events is
+   * the whole signal this prompt asks for. Render with `promptInstant`. */
+  ts: string;
 }
 
 export interface SlaContext {

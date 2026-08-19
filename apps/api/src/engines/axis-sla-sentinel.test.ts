@@ -48,10 +48,14 @@ beforeAll(async () => {
   };
 }, 120_000);
 
-function stubbedGateway(opts?: { replies?: string[]; fail?: Error }): { gw: Gateway } {
+function stubbedGateway(opts?: { replies?: string[]; fail?: Error }): { gw: Gateway; stub: ReturnType<typeof makeStub> } {
   const stub = makeStub(opts?.fail ? { fail: opts.fail } : opts?.replies ? { replies: opts.replies } : {});
-  return { gw: new Gateway({ env: {}, providers: { "workers-ai": stub, anthropic: stub, "openai-compat": stub } }) };
+  return { gw: new Gateway({ env: {}, providers: { "workers-ai": stub, anthropic: stub, "openai-compat": stub } }), stub };
 }
+
+// 2026-06-16T01:00:00.000Z, an epoch instant that happens to pass Luhn — so as
+// raw milliseconds the scrubber's CARD rule eats it before the model sees it.
+const LUHN_MS = 1_781_571_600_000;
 
 type CaseRow = typeof schema.axisCases.$inferSelect;
 
@@ -182,6 +186,22 @@ describe("predictSlaBreach §G.4", () => {
 
     const out = await predictSlaBreach(ctx, kase, gw);
     expect(out!.hoursToBreach).toBeNull();
+  });
+
+  it("sends event timestamps as dates the model can read, not epoch runs the scrubber eats", async () => {
+    // The sentinel's whole job is reasoning about elapsed time, so a history
+    // whose timestamps arrive as `[[CARD_1]]` is worse than no history at all.
+    const kase = await seedCase({});
+    await seedEvent(kase.id, { step: "docs_requested", ts: LUHN_MS });
+    const { gw, stub } = stubbedGateway({
+      replies: ['{"breachProbability":40,"driver":{"feature":"queue_depth","detail":"backed up","evidenceRef":"queueDepth"}}']
+    });
+
+    await predictSlaBreach(ctx, kase, gw);
+
+    const sent = stub.calls[0]!.messages.at(-1)!.content;
+    expect(sent).toContain("2026-06-16T01:00:00.000Z");
+    expect(sent, "an epoch timestamp reached the scrubber and was redacted as a card number").not.toContain("[[CARD_");
   });
 
   it("drops a driver with no evidenceRef and forces the probability to zero", async () => {

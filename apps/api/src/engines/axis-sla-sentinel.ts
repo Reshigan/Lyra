@@ -1,7 +1,7 @@
 import { desc, eq, isNull, sql } from "drizzle-orm";
 import { schema } from "@lyra/db";
 import { scoped, type Ctx } from "@lyra/core";
-import { parseSla, slaMessages, type Gateway, type SlaBreachDriver } from "@lyra/model-gateway";
+import { parseSla, promptInstant, slaMessages, type Gateway, type SlaBreachDriver } from "@lyra/model-gateway";
 
 // docs/specs/gap-axis-design.md §G.4. SLA Sentinel: estimate breach risk from
 // a case's age, status, process-event history, queue depth and owner load.
@@ -70,7 +70,7 @@ export async function predictSlaBreach(ctx: Ctx, case_: CaseRow, gateway: Gatewa
         priority: case_.priority,
         ageMs: ctx.now - case_.createdAt,
         hoursUntilDue,
-        history: history.map((h) => ({ step: h.step, outcome: h.outcome, durationMs: h.durationMs, ts: h.ts })),
+        history: history.map((h) => ({ step: h.step, outcome: h.outcome, durationMs: h.durationMs, ts: promptInstant(h.ts) })),
         queueDepth: depth,
         ownerLoad: load
       })
