@@ -323,6 +323,29 @@ describe("POST /v1/compliance/evidence-bundles/export", () => {
     })).status).toBe(400);
   });
 
+  // The manifest renders the window with `new Date(x).toISOString()`, which
+  // throws RangeError for |ms| > 8.64e15. `z.number().int()` is a *safe*-integer
+  // check, so it let the band (8.64e15, 9.007e15] through and the throw landed
+  // inside `withIdempotency` — a 500 on the one export path a regulator uses.
+  it("refuses a window bound no Date can hold, and still exports a real one", async () => {
+    expect((await call(OFFICER, "POST", "/v1/compliance/evidence-bundles/export", {
+      purpose: "audit",
+      to: 9e15
+    })).status).toBe(400);
+    expect((await call(OFFICER, "POST", "/v1/compliance/evidence-bundles/export", {
+      purpose: "audit",
+      from: 9e15
+    })).status).toBe(400);
+    // Positive control: the same route with a window a Date can hold still exports.
+    const ok = await call(OFFICER, "POST", "/v1/compliance/evidence-bundles/export", {
+      purpose: "audit",
+      from: Date.now() - 86_400_000,
+      to: Date.now()
+    });
+    expect(ok.status).toBe(201);
+    expect(ok.body.manifest.scope.to).toBeLessThanOrEqual(8.64e15);
+  });
+
   it("refuses a caller-supplied hash or manifest, by either door", async () => {
     expect((await call(OFFICER, "POST", "/v1/compliance/evidence-bundles/export", {
       purpose: "audit",
