@@ -502,7 +502,7 @@ export default function SettlementPeriod() {
 
   const locale = shell?.locale ?? "en";
   const t = translator(locale);
-  const l = labelsIn(locale);
+  const l = labelsIn(locale, shell?.domainPack);
   const busy = navigation.state !== "idle";
 
   if (!loaded.may.read) {
