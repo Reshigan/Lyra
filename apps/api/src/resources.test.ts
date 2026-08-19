@@ -365,6 +365,58 @@ describe("timestamp columns in the generated shape", () => {
   });
 });
 
+describe("effective-dating columns in the generated shape", () => {
+  // `dist/offerings` gates its updates on `dist.offering_publish`; the gate is
+  // cleared the way a tenant clears it, by putting the key on its own
+  // `autoApprove` allowlist, so the 400 below is the instant bound and nothing
+  // else.
+  const autoApproved: Partial<Ctx> = { policy: PolicyJson.parse({ autoApprove: ["dist.offering_publish"] }) };
+
+  // The `*At` bound above missed the other name the schema uses for an instant.
+  // `dist/offerings` is registered read-write, so
+  // `PATCH /v1/dist/offerings/:id {"effectiveFrom": 9e15}` returned 200 and
+  // persisted — and apps/web's product detail renders it through
+  // `<DateTime>`, which calls `toISOString()` on the resulting Invalid Date and
+  // takes the page down for that tenant with a RangeError.
+  const offerings = (): Resource => {
+    const r = BY_MODULE.dist?.find((x) => x.path === "offerings");
+    if (!r) throw new Error("no dist/offerings resource");
+    return r;
+  };
+
+  beforeAll(async () => {
+    await ctx.db.insert(schema.distOfferings).values({
+      id: "off_instant",
+      tenantId: ctx.tenantId,
+      productId: "prd_instant",
+      providerId: "prv_instant",
+      code: "OFF-INSTANT",
+      nameJson: JSON.stringify({ en: "Instant" }),
+      currency: "AED",
+      effectiveFrom: NOW,
+      createdAt: NOW,
+      updatedAt: NOW
+    } as never);
+  });
+
+  const effectiveFromOf = async (): Promise<number | undefined> => {
+    const [row] = await ctx.db.select().from(schema.distOfferings).where(eq(schema.distOfferings.id, "off_instant"));
+    return row?.effectiveFrom;
+  };
+
+  it("refuses an effectiveFrom past the end of the Date range", async () => {
+    const res = await send(router(offerings(), autoApproved), "PATCH", "/off_instant", { effectiveFrom: 9e15 });
+    expect(res.status).toBe(400);
+    expect(await effectiveFromOf()).toBe(NOW);
+  });
+
+  it("still accepts an effectiveFrom a Date can hold", async () => {
+    const res = await send(router(offerings(), autoApproved), "PATCH", "/off_instant", { effectiveFrom: NOW + 86_400_000 });
+    expect(res.status).toBe(200);
+    expect(await effectiveFromOf()).toBe(NOW + 86_400_000);
+  });
+});
+
 describe("invoice state machine through generic CRUD", () => {
   const invoices = () => router(ledgerResource("invoices"));
   const create = async (n: number, over: Record<string, unknown> = {}) => {

@@ -47,6 +47,20 @@ export function parse<T extends z.ZodTypeAny>(schema: T, raw: unknown): z.infer<
  */
 export const InstantMs = z.number().int().min(-8.64e15).max(8.64e15);
 
+/**
+ * Whether a field name means "epoch milliseconds", by convention — the schema
+ * has no marker for it, so the name is all there is to go on.
+ *
+ * ponytail: three name rules cover every instant column in packages/db today.
+ * Ceiling: a numeric instant named outside them (`at`, `validUntil`, `lastDay`,
+ * `windowStart`) is not recognised, so a caller of this gets a plain number
+ * back. Upgrade path is a marker on the column itself, which Drizzle has no
+ * room for — so a declared set on Resource, a parallel list this exists to
+ * avoid maintaining.
+ */
+export const isInstantKey = (key: string): boolean =>
+  key.endsWith("At") || key.startsWith("effective") || key === "ts";
+
 /* ------------------------------------------------------------- pagination */
 
 export const MAX_PAGE = 200;

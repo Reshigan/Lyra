@@ -23,7 +23,7 @@ import {
   type MODULES,
   type PiiMap
 } from "@lyra/core";
-import { created, decodeCursor, encodeCursor, InstantMs, listParams, parse, type Page } from "./http.js";
+import { created, decodeCursor, encodeCursor, InstantMs, isInstantKey, listParams, parse, type Page } from "./http.js";
 import type { App, Env } from "./env.js";
 
 // One CRUD implementation for 120-odd tables. Writing 120 routers by hand would
@@ -167,17 +167,14 @@ function shapeOf(
       // under approval amount thresholds. Money columns (`*Minor`) refuse
       // negatives unless the resource declares them signed.
       const int = col.columnType === "SQLiteReal" ? z.number() : z.number().int();
-      // ...and `*At` columns are instants: `z.number().int()` is a safe-integer
+      // ...and instant columns are bounded: `z.number().int()` is a safe-integer
       // check, so it accepted values no `Date` can hold, and the FNOL bound at
-      // the AXIS endpoints did not cover `PATCH /v1/axis/policies/:id`.
-      // ponytail: the guard is the `*At` naming convention, which every
-      // timestamp column in packages/db currently follows. Ceiling: a timestamp
-      // column named otherwise (`ts`, `effectiveFrom`, `windowStart`) is
-      // unguarded here. Upgrade path is a marker on the column itself — Drizzle
-      // has no custom metadata on SQLiteColumn, so that means a declared set on
-      // Resource, which is a maintained parallel list this file exists to avoid.
+      // the AXIS endpoints did not cover `PATCH /v1/axis/policies/:id`. The
+      // first version of this asked `key.endsWith("At")`, which missed
+      // `effectiveFrom`/`effectiveTo` on three read-write resources
+      // (dist/offerings, ledger/tax-rules, compliance/policy-thresholds).
       if (key.endsWith("Minor") && !signed.has(key)) leaf = int.min(0);
-      else if (key.endsWith("At") && col.columnType !== "SQLiteReal") leaf = InstantMs;
+      else if (isInstantKey(key) && col.columnType !== "SQLiteReal") leaf = InstantMs;
       else leaf = int;
     } else if (col.dataType === "boolean") {
       leaf = z.boolean();
