@@ -162,4 +162,37 @@ describe("sweepConversationDrafts", () => {
       .set({ status: "active" })
       .where(and(eq(schema.aiAgents.tenantId, tenantId), eq(schema.aiAgents.key, "service")));
   });
+
+  // Regression: `isoDay` was `new Date(ms).toISOString()`, which throws
+  // RangeError outside ±8.64e15. It runs inside `buildContext`, i.e. *before*
+  // the aiRuns insert and outside draftReply's try — so the throw landed in the
+  // sweep's own catch and that customer was skipped on every tick, forever,
+  // with no run row and no error code to see it by.
+  it("still drafts when a policy carries an instant no Date can hold", async () => {
+    const convId = await seedWaitingConversation();
+    const [conv] = await ctx.db
+      .select()
+      .from(schema.orbitConversations)
+      .where(eq(schema.orbitConversations.id, convId));
+
+    await ctx.db.insert(schema.axisPolicies).values({
+      id: newId("pol", ctx.now),
+      tenantId,
+      customerId: conv!.customerId!,
+      providerId: "prv_range",
+      policyNo: "POL-RANGE-1",
+      startAt: ctx.now,
+      endAt: 9e15,
+      premiumMinor: 100_000,
+      currency: "AED",
+      status: "active",
+      createdAt: ctx.now,
+      updatedAt: ctx.now
+    } as never);
+
+    expect(await sweepConversationDrafts(ctx, gatewayWith("I will confirm shortly."))).toBe(1);
+
+    const [run] = await ctx.db.select().from(schema.aiRuns).where(eq(schema.aiRuns.subjectRef, convId));
+    expect(run?.state).toBe("succeeded");
+  });
 });

@@ -1,7 +1,7 @@
 import { and, desc, eq, gte, ne } from "drizzle-orm";
 import { id as newId, schema } from "@lyra/db";
 import { verifyGroundedness, type Ctx } from "@lyra/core";
-import type { Gateway } from "@lyra/model-gateway";
+import { promptInstant, type Gateway } from "@lyra/model-gateway";
 import { activePrompt, findAgent } from "./ai-agent.js";
 
 // docs/27 F7. The draft loop had two ends and no middle: apps/web's
@@ -58,7 +58,11 @@ export async function sweepConversationDrafts(ctx: Ctx, gateway: Gateway): Promi
     try {
       if (await draftReply(ctx, gateway, agent, conv)) drafted += 1;
     } catch {
-      /* run row already marked failed by draftReply */
+      // Anything thrown after draftReply opened its run row has already been
+      // recorded there as `failed`. Anything thrown before it — building the
+      // context — leaves no row at all, so it is invisible here by design:
+      // every formatter on that path is total (see `isoDay`) precisely because
+      // this catch cannot tell the two cases apart.
     }
   }
   return drafted;
@@ -257,4 +261,15 @@ function nameOf(json: string | null | undefined, locale: string): string {
   }
 }
 
-const isoDay = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
+/**
+ * The day part of an instant, for a line that goes into a prompt. Via
+ * `promptInstant` because `new Date(ms).toISOString()` throws outside the Date
+ * range, and this runs in `buildContext` — before the aiRuns insert and outside
+ * draftReply's try, so a throw here was swallowed by the sweep's catch and the
+ * conversation was skipped on every tick with nothing written down.
+ *
+ * `promptInstant`'s degraded return is the literal `"unknown"`, which is shorter
+ * than 10 characters and so survives the slice whole — the model is told the day
+ * is unknown rather than shown a truncated fragment of one.
+ */
+const isoDay = (ms: number): string => promptInstant(ms).slice(0, 10);
