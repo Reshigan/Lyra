@@ -1,6 +1,6 @@
 import { createClient, type Client } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -191,6 +191,26 @@ describe("seedModuleHistory", () => {
         .from(table)
         .where(eq(table.tenantId, TENANT));
       expect(row!.n, `${name} has no rows`).toBeGreaterThan(0);
+    }
+  });
+
+  it("sizes each cluster by the signals that actually point at it", async () => {
+    // `size` is the cell the k-anonymity floor measures (scout-whitespace.ts
+    // `cellSize`). Seeded at 0 it suppressed every whitespace hanging off the
+    // cluster, so the radar said "too few signals" about a year of them.
+    const clusters = await db
+      .select({ id: schema.scoutClusters.id, size: schema.scoutClusters.size })
+      .from(schema.scoutClusters)
+      .where(eq(schema.scoutClusters.tenantId, TENANT));
+    expect(clusters.length).toBeGreaterThan(0);
+
+    for (const cluster of clusters) {
+      const [row] = await db
+        .select({ n: sql<number>`count(*)` })
+        .from(schema.scoutSignals)
+        .where(and(eq(schema.scoutSignals.tenantId, TENANT), eq(schema.scoutSignals.clusterId, cluster.id)));
+      expect(cluster.size, `cluster ${cluster.id}`).toBe(row!.n);
+      expect(cluster.size, `cluster ${cluster.id} is below the k-anonymity floor`).toBeGreaterThanOrEqual(20);
     }
   });
 

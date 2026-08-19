@@ -1385,32 +1385,11 @@ export async function seedModuleHistory(
     counts
   );
 
-  /* -------------------------------------------------------- SCOUT: the radar */
-  await insertNew(
-    db,
-    tenantId,
-    schema.scoutClusters,
-    "scout_clusters",
-    CLUSTER_THEMES.map((theme, i) => ({
-      id: pid("scl", theme),
-      tenantId,
-      theme,
-      summary: `${theme}: demand visible in ${SIGNAL_SOURCES[i % SIGNAL_SOURCES.length]} signals across the year.`,
-      momentumScore: 30 + (hashOf(`mom:${theme}`) % 65),
-      size: 0,
-      firstSeen: now - days * DAY,
-      lastSeen: now,
-      trailJson: JSON.stringify(
-        plan.months.map((m) => ({ period: m.code, score: 20 + (hashOf(`trail:${theme}:${m.code}`) % 75) }))
-      ),
-      updatedAt: now
-    })),
-    sql<string>`theme`,
-    (r) => r.theme,
-    remap,
-    counts
-  );
-
+  // Built before the clusters so each cluster can be written with the number of
+  // signals that will actually point at it. `size` is the cell the k-anonymity
+  // floor measures (apps/api/src/engines/scout-whitespace.ts `cellSize`), so a
+  // cluster seeded at 0 suppresses every whitespace hanging off it.
+  const signalsPerTheme = new Map<string, number>();
   const signalRows: {
     id: string;
     tenantId: string;
@@ -1430,6 +1409,7 @@ export async function seedModuleHistory(
     for (let i = 0; i < 2; i++) {
       const sourceRef = `hist:signal:${dayKey}:${i}`;
       const theme = pick(CLUSTER_THEMES, sourceRef);
+      signalsPerTheme.set(theme, (signalsPerTheme.get(theme) ?? 0) + 1);
       signalRows.push({
         id: pid("sig", sourceRef),
         tenantId,
@@ -1444,6 +1424,32 @@ export async function seedModuleHistory(
       });
     }
   }
+  /* -------------------------------------------------------- SCOUT: the radar */
+  await insertNew(
+    db,
+    tenantId,
+    schema.scoutClusters,
+    "scout_clusters",
+    CLUSTER_THEMES.map((theme, i) => ({
+      id: pid("scl", theme),
+      tenantId,
+      theme,
+      summary: `${theme}: demand visible in ${SIGNAL_SOURCES[i % SIGNAL_SOURCES.length]} signals across the year.`,
+      momentumScore: 30 + (hashOf(`mom:${theme}`) % 65),
+      size: signalsPerTheme.get(theme) ?? 0,
+      firstSeen: now - days * DAY,
+      lastSeen: now,
+      trailJson: JSON.stringify(
+        plan.months.map((m) => ({ period: m.code, score: 20 + (hashOf(`trail:${theme}:${m.code}`) % 75) }))
+      ),
+      updatedAt: now
+    })),
+    sql<string>`theme`,
+    (r) => r.theme,
+    remap,
+    counts
+  );
+
   await insertNew(
     db,
     tenantId,

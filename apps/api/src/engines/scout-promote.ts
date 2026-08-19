@@ -22,7 +22,7 @@ import {
   type WhitespaceBrief,
   type WhitespaceEvidence
 } from "@lyra/model-gateway";
-import { coveragePerLine, evidenceRefCount } from "./scout-whitespace.js";
+import { cellSize, clusterSizes, coveragePerLine } from "./scout-whitespace.js";
 
 // docs/modules/scout.md §4 ("whitespace approvals (promote/park)") ->
 // docs/specs/gap-signal-design.md §1523, which already catalogues
@@ -70,6 +70,7 @@ export async function promoteWhitespace(
       status: schema.scoutWhitespaces.status,
       demandEstimate: schema.scoutWhitespaces.demandEstimate,
       competitionScore: schema.scoutWhitespaces.competitionScore,
+      clusterId: schema.scoutWhitespaces.clusterId,
       evidenceRefsJson: schema.scoutWhitespaces.evidenceRefsJson
     })
     .from(schema.scoutWhitespaces)
@@ -84,7 +85,7 @@ export async function promoteWhitespace(
   // candidate is a 409, not a pending approval someone then has to decline.
   assertWhitespaceTransition(row.status, "validated");
 
-  const signalCount = evidenceRefCount(row.evidenceRefsJson);
+  const signalCount = cellSize(row, await clusterSizes(ctx, [row.clusterId]));
   // A brief built from a thin cell would restate a handful of quotes as market
   // demand, and every creative variant would carry it outward (docs/scout §2.5).
   if (!checkKAnonymity(signalCount, DEFAULT_K_FLOOR).allowed) {

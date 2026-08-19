@@ -359,6 +359,7 @@ const COMMENTARY_COLUMNS = {
   status: schema.scoutWhitespaces.status,
   demandEstimate: schema.scoutWhitespaces.demandEstimate,
   competitionScore: schema.scoutWhitespaces.competitionScore,
+  clusterId: schema.scoutWhitespaces.clusterId,
   evidenceRefsJson: schema.scoutWhitespaces.evidenceRefsJson
 } as const;
 
@@ -369,6 +370,7 @@ type CommentaryRow = {
   status: string;
   demandEstimate: number | null;
   competitionScore: number | null;
+  clusterId: string | null;
   evidenceRefsJson: string | null;
 };
 
@@ -378,13 +380,14 @@ type CommentaryRow = {
 async function commentaryFor(ctx: Ctx, rows: readonly CommentaryRow[]): Promise<WhitespaceCommentary[]> {
   const coverageByLine = await coveragePerLine(ctx);
   const nouns = promptNouns(ctx.policy.domainPack);
+  const sizes = await clusterSizes(ctx, rows.map((r) => r.clusterId));
 
   const evidenceOf = (row: CommentaryRow): WhitespaceEvidence => ({
     category: row.category ?? "",
     momentum: row.demandEstimate ?? 0,
     coverage: row.category ? coverageByLine.get(row.category) ?? 0 : 0,
     competitionScore: row.competitionScore,
-    signalCount: evidenceRefCount(row.evidenceRefsJson)
+    signalCount: cellSize(row, sizes)
   });
 
   // Only the rows that will actually show a ✦ are looked up: a suppressed or
@@ -420,14 +423,50 @@ async function commentaryFor(ctx: Ctx, rows: readonly CommentaryRow[]): Promise<
   });
 }
 
-/** How many demand signals a persisted candidate cites. A malformed or absent
- *  blob counts as zero, which suppresses rather than exposes the row. Shared with
- *  the promote engine so both gates count the same cell. */
+/** The sizes of the named clusters, in one read. Rows without a cluster ask
+ *  nothing. Shared with the promote engine so both gates measure the same cell. */
+export async function clusterSizes(ctx: Ctx, ids: readonly (string | null)[]): Promise<Map<string, number>> {
+  const wanted = [...new Set(ids.filter((i): i is string => i !== null))];
+  if (!wanted.length) return new Map();
+  const rows = await ctx.db
+    .select({ id: schema.scoutClusters.id, size: schema.scoutClusters.size })
+    .from(schema.scoutClusters)
+    .where(and(eq(schema.scoutClusters.tenantId, ctx.tenantId), inArray(schema.scoutClusters.id, wanted)));
+  return new Map(rows.map((r) => [r.id, r.size]));
+}
+
+/**
+ * How many people the k-anonymity floor is counting.
+ *
+ * The cell is the cluster's signal count — `sweepWhitespace` derives a candidate
+ * from a cluster and writes `size: signalIds.length`, and that is the number the
+ * dossier prints. `evidence_refs_json` is the *sources* cited for the estimate
+ * (a funnel, an app-store page, the cluster itself): three of them can stand
+ * behind three hundred signals, so counting refs suppressed every seeded row
+ * while its own dossier said "Cluster size 305" beside it.
+ *
+ * The refs are the fallback for a row with no cluster, and for a row whose
+ * cluster has been deleted — a dangling link is "we do not know how many", and
+ * the safe reading of that is to publish nothing we cannot count.
+ */
+export function cellSize(
+  row: { clusterId: string | null; evidenceRefsJson: string | null },
+  sizes: Map<string, number>
+): number {
+  const clustered = row.clusterId === null ? undefined : sizes.get(row.clusterId);
+  return clustered ?? evidenceRefCount(row.evidenceRefsJson);
+}
+
+/** How many demand signals a persisted candidate cites. The sweep writes a bare
+ *  array; the seed writes `{refs, demandEstimate}`. A malformed, absent or
+ *  unknown blob counts as zero, which suppresses rather than exposes the row. */
 export function evidenceRefCount(json: string | null): number {
   if (!json) return 0;
   try {
     const parsed: unknown = JSON.parse(json);
-    return Array.isArray(parsed) ? parsed.length : 0;
+    if (Array.isArray(parsed)) return parsed.length;
+    const refs = (parsed as { refs?: unknown } | null)?.refs;
+    return Array.isArray(refs) ? refs.length : 0;
   } catch {
     return 0;
   }
