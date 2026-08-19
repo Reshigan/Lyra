@@ -30,6 +30,17 @@ const EV: AudienceEvidence = {
 const NOUNS = promptNouns(undefined);
 const RETAIL = promptNouns("retail-ecom");
 
+// A Gulf tenant's book: no LSM anywhere, an affluence axis of its own, and the
+// same evidence shape otherwise (packages/core/src/targeting.ts, ADR-0069).
+const GULF_EV: AudienceEvidence = {
+  ...EV,
+  pack: "insurance-gulf",
+  counts: [
+    { axis: "region", value: "dubai", count: 200 },
+    { axis: "incomequintile", value: "5", count: 120 }
+  ]
+};
+
 const GOOD = {
   name: "Gauteng upper-middle",
   summary: "Upper-middle households in Gauteng who already hold cover with us.",
@@ -221,6 +232,39 @@ describe("parseAudienceProposal", () => {
     // Alternatives on one axis add rather than intersect.
     expect(parsed?.estimatedReach).toBe(160);
   });
+
+  it("accepts an axis the active pack targets on and refuses the default pack's", () => {
+    // The seam's commercial point: a Gulf tenant's affluence axis is a real
+    // selection, and a stray `lsm` pick there is as untargetable as `race`.
+    const parsed = parseAudienceProposal(
+      JSON.stringify({
+        name: "Dubai top quintile",
+        summary: "The wealthiest fifth of the book, in Dubai.",
+        selections: [
+          { axis: "incomequintile", value: "5", reason: "120 customers sit in this quintile." },
+          { axis: "lsm", value: "7", reason: "120 customers carry this band." }
+        ]
+      }),
+      GULF_EV,
+      NOUNS
+    );
+    expect(parsed?.demographics).toEqual([{ axis: "incomequintile", value: "5" }]);
+    // Half the picks were thrown away, and the confidence says so.
+    expect(parsed?.confidence).toBe(50);
+  });
+
+  it("reports the pack's own affluence bands in the band list", () => {
+    const parsed = parseAudienceProposal(
+      JSON.stringify({
+        name: "Dubai top quintile",
+        summary: "The wealthiest fifth of the book, in Dubai.",
+        selections: [{ axis: "incomequintile", value: "5", reason: "120 customers sit in this quintile." }]
+      }),
+      GULF_EV,
+      NOUNS
+    );
+    expect(parsed?.lsm).toEqual([5]);
+  });
 });
 
 describe("audienceEvidenceLines", () => {
@@ -255,6 +299,14 @@ describe("audienceEvidenceLines", () => {
 
   it("leaves a non-LSM cell unlabelled", () => {
     expect(audienceEvidenceLines(EV, NOUNS)[6]).toBe("Attribute region=gauteng: 200 customers");
+  });
+
+  it("labels a cell off the active pack's own scale, not off LSM", () => {
+    const lines = audienceEvidenceLines(GULF_EV, NOUNS);
+    expect(lines[7]).toBe(
+      "Attribute incomequintile=5: 120 customers. Q5 — highest fifth of declared household income"
+    );
+    expect(lines.join("\n")).not.toContain("LSM");
   });
 
   it("reads the contract noun off the domain pack", () => {
@@ -395,5 +447,12 @@ describe("fallbackTargetingProposal", () => {
 
   it("reads the contract noun off the domain pack", () => {
     expect(fallbackTargetingProposal(EV, RETAIL).summary).toContain("order spend");
+  });
+
+  it("picks on the active pack's axes, so a Gulf book still gets a pool", () => {
+    expect(fallbackTargetingProposal(GULF_EV, NOUNS).demographics).toEqual([
+      { axis: "region", value: "dubai" },
+      { axis: "incomequintile", value: "5" }
+    ]);
   });
 });

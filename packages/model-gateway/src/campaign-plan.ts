@@ -1,4 +1,4 @@
-import { verifyGroundedness } from "@lyra/core";
+import { targetingPack, verifyGroundedness } from "@lyra/core";
 import { parseJsonObject } from "./parse.js";
 import type { DemographicReason } from "./audience-brief.js";
 import type { PromptNouns } from "./vocabulary.js";
@@ -84,8 +84,23 @@ export interface PlanAudience {
   name: string;
   summary: string;
   estimatedReach: number;
+  /** Bands on the pack's affluence scale. Field name frozen — see the
+   *  `ponytail:` note on TargetingProposal.lsm in audience-brief.ts. */
   lsm: number[];
   reasons: readonly DemographicReason[];
+  /** The tenant's domain pack, which names the scale those bands are on.
+   *  Omitted reads as the default pack, so a ZA pool still says "LSM". */
+  pack?: string;
+}
+
+/**
+ * The pool's affluence bands, named after the scale the *pack* uses — "LSM
+ * bands: 7, 8" on a ZA book, "Income quintile bands: 4, 5" on a Gulf one. No
+ * bands, no line: a "none" line invites the model to reason about an absence.
+ */
+function affluenceBandLine(audience: PlanAudience, tail: string): string[] {
+  const label = targetingPack(audience.pack).affluence?.label;
+  return label && audience.lsm.length ? [`${label} ${tail}: ${audience.lsm.join(", ")}`] : [];
 }
 
 export interface CampaignPlanEvidence {
@@ -164,7 +179,7 @@ export function campaignPlanEvidenceLines(ev: CampaignPlanEvidence, nouns: Promp
           `Audience: ${a.name}`,
           `Audience summary: ${a.summary}`,
           `Reachable customers in this audience: ${a.estimatedReach}`,
-          ...(a.lsm.length ? [`LSM bands in the pool: ${a.lsm.join(", ")}`] : []),
+          ...affluenceBandLine(a, "bands in the pool"),
           ...a.reasons.map((r) => `Audience band ${r.axis}=${r.value}: ${r.count} customers. ${r.reason}`)
         ]
       : ["No audience pool has been proposed yet; plan for the whole book."])
@@ -371,7 +386,7 @@ export function creativeContextLines(plan: CampaignPlan, optionName: string, aud
     ...(audience
       ? [
           `Written for: ${audience.summary}`,
-          ...(audience.lsm.length ? [`LSM bands: ${audience.lsm.join(", ")}`] : []),
+          ...affluenceBandLine(audience, "bands"),
           ...audience.reasons.map((r) => `Audience band ${r.axis}=${r.value}: ${r.reason}`)
         ]
       : [])

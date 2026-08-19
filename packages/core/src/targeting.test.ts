@@ -1,15 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
-  LSM_BANDS,
   PROTECTED_AXES,
-  TARGETABLE_AXES,
+  affluenceBandOf,
   countAttributes,
+  defineTargetingPack,
   estimateReach,
   isTargetable,
-  lsmBandOf,
   parseAttributeTag,
-  targetablePool
+  targetablePool,
+  targetingPack
 } from "./targeting.js";
+
+/** The pack a UAE tenant would run on; the ZA default is `targetingPack()`. */
+const GULF = "insurance-gulf";
 
 describe("parseAttributeTag", () => {
   it("reads an axis:value tag", () => {
@@ -36,12 +39,21 @@ describe("parseAttributeTag", () => {
 });
 
 describe("isTargetable", () => {
-  it("accepts every documented targetable axis", () => {
-    for (const axis of TARGETABLE_AXES) expect(isTargetable(axis)).toBe(true);
+  it("accepts every axis the default pack declares", () => {
+    for (const axis of targetingPack().axes) expect(isTargetable(axis)).toBe(true);
   });
 
-  it("refuses every protected axis (SIG-034)", () => {
-    for (const axis of PROTECTED_AXES) expect(isTargetable(axis)).toBe(false);
+  it("reads the axis list off the active pack, not off a constant", () => {
+    // The commercial case for the seam: a Gulf tenant has no LSM, and an
+    // affluence axis it does have must not be refused because ZA never named it.
+    expect(isTargetable("incomequintile")).toBe(false);
+    expect(isTargetable("incomequintile", GULF)).toBe(true);
+    expect(isTargetable("lsm", GULF)).toBe(false);
+  });
+
+  it("refuses every protected axis (SIG-034), whichever pack is asking", () => {
+    for (const pack of [undefined, GULF, "no-such-pack"])
+      for (const axis of PROTECTED_AXES) expect(isTargetable(axis, pack)).toBe(false);
   });
 
   it("refuses an axis nobody declared, rather than defaulting open", () => {
@@ -81,6 +93,20 @@ describe("countAttributes", () => {
   it("ignores tags that are not attributes", () => {
     expect(countAttributes([["vip"], ["portal-lead"]])).toEqual([]);
   });
+
+  it("counts the active pack's axes, not the default pack's", () => {
+    // A Gulf tenant that still carries a legacy `lsm` tag must not have it
+    // counted: the axis is not one this pack sells a media plan on.
+    expect(countAttributes([["incomequintile:4", "lsm:7"]], GULF)).toEqual([
+      { axis: "incomequintile", value: "4", count: 1 }
+    ]);
+  });
+
+  it("drops a protected axis before counting whichever pack is active", () => {
+    expect(countAttributes([["race:x", "incomequintile:4"]], GULF)).toEqual([
+      { axis: "incomequintile", value: "4", count: 1 }
+    ]);
+  });
 });
 
 describe("targetablePool", () => {
@@ -105,6 +131,10 @@ describe("targetablePool", () => {
 
   it("returns nothing rather than a thin pool when every cell is suppressed", () => {
     expect(targetablePool(counts, 100)).toEqual([]);
+  });
+
+  it("suppresses an axis the active pack does not target on", () => {
+    expect(targetablePool(counts, 20, GULF).map((c) => c.axis)).toEqual(["region"]);
   });
 });
 
@@ -136,17 +166,118 @@ describe("estimateReach", () => {
   });
 });
 
-describe("lsmBandOf", () => {
-  it("reads a band and its descriptor", () => {
-    expect(lsmBandOf("7")?.band).toBe(7);
-    expect(lsmBandOf("7")?.label).toBeTruthy();
+describe("affluenceBandOf", () => {
+  it("reads a band and its descriptor on the default pack", () => {
+    expect(affluenceBandOf("lsm", "7")?.band).toBe(7);
+    expect(affluenceBandOf("lsm", "7")?.label).toBe("LSM 7 — upper middle, multiple durables");
   });
 
   it("refuses a band off the 1-10 scale", () => {
-    for (const v of ["0", "11", "-3", "7.5", "seven", ""]) expect(lsmBandOf(v)).toBeNull();
+    for (const v of ["0", "11", "-3", "7.5", "seven", ""]) expect(affluenceBandOf("lsm", v)).toBeNull();
   });
 
-  it("describes all ten bands exactly once", () => {
-    expect(LSM_BANDS.map((b) => b.band)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  it("refuses a value on an axis that is not the pack's affluence axis", () => {
+    // `region:7` is a targetable cell, but it is not a band and must never be
+    // labelled as one in a prompt.
+    expect(affluenceBandOf("region", "7")).toBeNull();
+  });
+
+  it("reads the axis case-insensitively, like every other axis check", () => {
+    expect(affluenceBandOf("LSM", "7")?.band).toBe(7);
+  });
+
+  it("reads a two-digit band, so the top of the scale is not unreachable", () => {
+    expect(affluenceBandOf("lsm", "10")?.band).toBe(10);
+  });
+
+  it("takes a padded tag value, which is how a hand-edited tag arrives", () => {
+    expect(affluenceBandOf("lsm", " 7 ")?.band).toBe(7);
+  });
+
+  it("refuses anything that is not the whole value, however Number() reads it", () => {
+    // `7.0` and `+7` both coerce to 7. A band is a tag, not an arithmetic
+    // expression: a cell nobody tagged must not be labelled as one.
+    for (const v of ["7.0", "+7", "07x", "x7"]) expect(affluenceBandOf("lsm", v)).toBeNull();
+  });
+
+  it("reads the Gulf pack's own scale and refuses the ZA one there", () => {
+    expect(affluenceBandOf("incomequintile", "5", GULF)?.label).toContain("Q5");
+    expect(affluenceBandOf("incomequintile", "6", GULF)).toBeNull();
+    expect(affluenceBandOf("lsm", "7", GULF)).toBeNull();
+  });
+
+  it("is null for a pack with no affluence axis at all", () => {
+    expect(defineTargetingPack(["region"], null).affluence).toBeNull();
+  });
+});
+
+describe("targetingPack", () => {
+  it("keeps the ZA default exactly as it shipped", () => {
+    const pack = targetingPack();
+    expect(pack.axes).toEqual(["lsm", "ageband", "region", "language", "lifestage"]);
+    expect(pack.affluence?.axis).toBe("lsm");
+    expect(pack.affluence?.label).toBe("LSM");
+    expect(pack.affluence?.bands.map((b) => b.band)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  });
+
+  it("gives the Gulf pack a different affluence scale on a different axis", () => {
+    const pack = targetingPack(GULF);
+    expect(pack.axes).not.toContain("lsm");
+    expect(pack.axes).toContain("incomequintile");
+    expect(pack.affluence?.axis).toBe("incomequintile");
+    expect(pack.affluence?.label).toBe("Income quintile");
+    expect(pack.affluence?.bands.map((b) => b.band)).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  it("degrades an unknown or missing pack to the default rather than to no axes", () => {
+    // No affluence axis at all is worse than the wrong one: it is the axis a
+    // media plan is bought on, and an empty pack silently un-targets a tenant.
+    expect(targetingPack("no-such-pack")).toEqual(targetingPack());
+    expect(targetingPack(undefined)).toEqual(targetingPack());
+  });
+
+  it("does not read a pack off Object.prototype", () => {
+    expect(targetingPack("constructor")).toEqual(targetingPack());
+    expect(targetingPack("toString")).toEqual(targetingPack());
+  });
+});
+
+describe("defineTargetingPack", () => {
+  const BANDS = [
+    { band: 1, label: "one" },
+    { band: 2, label: "two" }
+  ];
+
+  it("refuses a protected axis a pack declares targetable", () => {
+    // SIG-034 is not a pack's to relax. A pack may name its own axes; it may
+    // never name `race` as one of them.
+    expect(defineTargetingPack(["race", "region"], null).axes).toEqual(["region"]);
+  });
+
+  it("refuses a protected axis dressed up as the affluence scale", () => {
+    const pack = defineTargetingPack(["ethnicity", "region"], {
+      axis: "ethnicity",
+      label: "Group",
+      bands: BANDS
+    });
+    expect(pack.axes).toEqual(["region"]);
+    expect(pack.affluence).toBeNull();
+  });
+
+  it("refuses an affluence axis the pack never declared targetable", () => {
+    const pack = defineTargetingPack(["region"], { axis: "wealth", label: "Wealth", bands: BANDS });
+    expect(pack.affluence).toBeNull();
+  });
+
+  it("normalises axis case, so a pack cannot smuggle Race past the filter", () => {
+    expect(defineTargetingPack(["Race", " Region "], null).axes).toEqual(["region"]);
+  });
+
+  it("drops an empty axis, so a stray comma in config cannot become a cell", () => {
+    expect(defineTargetingPack(["", "   ", "region"], null).axes).toEqual(["region"]);
+  });
+
+  it("keeps the declared axis order, which is the order a UI offers them in", () => {
+    expect(defineTargetingPack(["region", "language"], null).axes).toEqual(["region", "language"]);
   });
 });

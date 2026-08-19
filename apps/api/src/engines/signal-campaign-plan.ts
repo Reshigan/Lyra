@@ -157,6 +157,10 @@ export async function planAudience(ctx: Ctx, audienceId: string | null): Promise
     name: row.name,
     summary: typeof t.summary === "string" ? t.summary : row.name,
     estimatedReach: typeof t.estimatedReach === "number" ? t.estimatedReach : (row.sizeCached ?? 0),
+    // The pack names the scale the stored bands are on (ADR-0069). Read live
+    // rather than off the row: a tenant that switches pack should not have last
+    // month's audience still calling its bands LSM.
+    pack: ctx.policy.domainPack,
     lsm: Array.isArray(t.lsm) ? t.lsm.filter((n): n is number => typeof n === "number") : [],
     reasons: (Array.isArray(t.reasons) ? t.reasons : []).flatMap((raw): DemographicReason[] => {
       const r = asRecord(raw);

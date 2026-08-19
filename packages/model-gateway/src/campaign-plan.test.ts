@@ -292,6 +292,13 @@ describe("campaignPlanEvidenceLines", () => {
     expect(lines.join("\n")).not.toContain("LSM bands");
   });
 
+  it("names the band list after the active pack's affluence scale", () => {
+    const audience: PlanAudience = { ...AUDIENCE, pack: "insurance-gulf", lsm: [4, 5] };
+    const lines = campaignPlanEvidenceLines({ ...EV, audience }, NOUNS);
+    expect(lines).toContain("Income quintile bands in the pool: 4, 5");
+    expect(lines.join("\n")).not.toContain("LSM");
+  });
+
   it("reads the contract noun off the domain pack", () => {
     expect(campaignPlanEvidenceLines(EV, RETAIL)).toContain(
       "Spend buys orders; every figure below counts customers, not orders."
@@ -477,6 +484,11 @@ describe("creativeContextLines", () => {
     const lines = creativeContextLines(plan, "Direct to the pool", null);
     expect(lines).toHaveLength(5);
     expect(lines.join("\n")).not.toContain("Written for");
+  });
+
+  it("gives the copy generator the pack's own scale name", () => {
+    const audience: PlanAudience = { ...AUDIENCE, pack: "insurance-gulf", lsm: [4, 5] };
+    expect(creativeContextLines(plan, "Intent capture", audience)).toContain("Income quintile bands: 4, 5");
   });
 
   it("omits the LSM line for a pool with no bands", () => {
