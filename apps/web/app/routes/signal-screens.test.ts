@@ -259,6 +259,31 @@ describe("cohorts", () => {
 
     expect(rolls).toEqual([{ month: "2026-06", size: 2, retained: 1 }]);
   });
+
+  // `monthOf` degrades an instant no `Date` can hold to an em dash so the growth
+  // screen renders at all. An em dash sorts above every `YYYY-MM`, so comparing
+  // it against a cohort start silently marked the customer retained — a wrong
+  // number that looks right, which is worse than the crash it replaced. The
+  // dash is for display; an unreadable touch is not evidence of anything.
+  it("does not count a touch it cannot date as a return", () => {
+    const june = Date.UTC(2026, 5, 10);
+    const rolls = cohorts([
+      touchRow({ id: "t1", customerId: "cus_1", ts: june }),
+      touchRow({ id: "t2", customerId: "cus_1", touchType: "visit", ts: 9e15 })
+    ]);
+
+    expect(rolls).toEqual([{ month: "2026-06", size: 1, retained: 0 }]);
+  });
+
+  it("does not date a cohort from a bind it cannot read", () => {
+    const june = Date.UTC(2026, 5, 10);
+    const rolls = cohorts([
+      touchRow({ id: "t1", customerId: "cus_1", ts: 9e15 }),
+      touchRow({ id: "t2", customerId: "cus_1", ts: june })
+    ]);
+
+    expect(rolls).toEqual([{ month: "2026-06", size: 1, retained: 0 }]);
+  });
 });
 
 describe("aeoCoverage", () => {

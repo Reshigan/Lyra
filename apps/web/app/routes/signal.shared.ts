@@ -1,4 +1,4 @@
-import { formatInstant } from "@lyra/ui";
+import { formatInstant, instantOf } from "@lyra/ui";
 import { vocabulary } from "../modules/vocabulary";
 import { pseudoText } from "../i18n";
 
@@ -552,15 +552,20 @@ export interface Cohort {
  * when AXIS exposes contract renewals per customer.
  */
 export function cohorts(touches: readonly TouchRow[]): Cohort[] {
+  // `monthOf`'s dash is for display. It sorts above every `YYYY-MM`, so
+  // comparing it here marked a customer retained off a touch nobody could date
+  // — a wrong number that looks right, which is worse than the crash the dash
+  // replaced. An undateable touch is not evidence, so it is not counted.
+  const dateable = touches.filter((touch) => instantOf(touch.ts) !== null);
   const first = new Map<string, string>();
-  for (const touch of touches) {
+  for (const touch of dateable) {
     if (!touch.customerId || touch.touchType !== BIND) continue;
     const month = monthOf(touch.ts);
     const known = first.get(touch.customerId);
     if (!known || month < known) first.set(touch.customerId, month);
   }
   const later = new Set<string>();
-  for (const touch of touches) {
+  for (const touch of dateable) {
     if (!touch.customerId) continue;
     const start = first.get(touch.customerId);
     if (start && monthOf(touch.ts) > start) later.add(touch.customerId);
