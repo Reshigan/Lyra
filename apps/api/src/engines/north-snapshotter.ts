@@ -489,6 +489,54 @@ const outstandingReserve: Compute = async (ctx, p) => {
 };
 
 /**
+ * SCOUT -> NORTH: of the gaps raised this month, the share the business
+ * decided to act on. Same mixed-cohort window `quote_to_bind_rate` uses —
+ * promoted-in-period over raised-in-period, not a cohort followed forward.
+ */
+const whitespacePromotionRate: Compute = async (ctx, p) => {
+  if (p.grain !== "month") return null;
+  const [row] = await ctx.db
+    .select({
+      raised: sql<number>`count(*)`,
+      promoted: sql<number>`sum(case when ${schema.scoutWhitespaces.promotedAt} is not null then 1 else 0 end)`
+    })
+    .from(schema.scoutWhitespaces)
+    .where(
+      and(eq(schema.scoutWhitespaces.tenantId, ctx.tenantId), gte(schema.scoutWhitespaces.createdAt, p.since), lt(schema.scoutWhitespaces.createdAt, p.until))
+    );
+  const raised = row?.raised ?? 0;
+  return raised > 0 ? Math.round(((row?.promoted ?? 0) / raised) * 10_000) : null;
+};
+
+/**
+ * SIGNAL -> NORTH: what the spend brought back, as bp of itself (30,000 = 3x).
+ * Only a `bind` touch carries realised value; spend with no bind against it is
+ * a real zero, spend of nothing is not a ratio at all.
+ */
+const campaignReturnOnSpend: Compute = async (ctx, p) => {
+  const [spent, returned] = await Promise.all([
+    ctx.db
+      .select({ v: sql<number>`coalesce(sum(${schema.signalSpend.amountMinor}), 0)` })
+      .from(schema.signalSpend)
+      .where(and(eq(schema.signalSpend.tenantId, ctx.tenantId), gte(schema.signalSpend.ts, p.since), lt(schema.signalSpend.ts, p.until)))
+      .then((r) => r[0]?.v ?? 0),
+    ctx.db
+      .select({ v: sql<number>`coalesce(sum(${schema.signalAttributionEvents.valueMinor}), 0)` })
+      .from(schema.signalAttributionEvents)
+      .where(
+        and(
+          eq(schema.signalAttributionEvents.tenantId, ctx.tenantId),
+          eq(schema.signalAttributionEvents.touchType, "bind"),
+          gte(schema.signalAttributionEvents.ts, p.since),
+          lt(schema.signalAttributionEvents.ts, p.until)
+        )
+      )
+      .then((r) => r[0]?.v ?? 0)
+  ]);
+  return spent > 0 ? Math.round((returned / spent) * 10_000) : null;
+};
+
+/**
  * ADR-0024: registered metric keys only. `claims_leakage` is deliberately
  * absent — its "assessed should have paid" side has no matching schema
  * field anywhere, so there's nothing to compute without guessing.
@@ -516,7 +564,9 @@ const REGISTRY: Record<string, Compute> = {
   reserve_adequacy: reserveAdequacy,
   sla_breach_rate: slaBreachRate,
   open_claim_count: openClaimCount,
-  outstanding_reserve: outstandingReserve
+  outstanding_reserve: outstandingReserve,
+  whitespace_promotion_rate: whitespacePromotionRate,
+  campaign_return_on_spend: campaignReturnOnSpend
 };
 
 /** Same move/threshold basis every unit family uses for a naive, seasonal-unaware anomaly flag (ADR-0024). */

@@ -1048,3 +1048,121 @@ describe("runSnapshotter: open_claim_count / outstanding_reserve", () => {
     expect(rows.find((r) => r.metricKey === "outstanding_reserve")!.value).toBe(8_000);
   });
 });
+
+// NORTH saw AXIS and the ledger but neither end of the demand loop: SCOUT
+// found the gaps and SIGNAL spent against them, and the board pack could see
+// neither the pipeline nor what came back. These two close it.
+describe("runSnapshotter: whitespace_promotion_rate", () => {
+  const ws = (id: string, over: Record<string, unknown>) => ({
+    id,
+    tenantId: ctx.tenantId,
+    description: id,
+    createdAt: MONTH_START,
+    updatedAt: MONTH_START,
+    ...over
+  });
+
+  it("divides whitespaces promoted in period by whitespaces raised in period", async () => {
+    await seedMetric("whitespace_promotion_rate", "month");
+    await ctx.db.insert(schema.scoutWhitespaces).values([
+      ws("ws_1", { promotedAt: MONTH_START + 1 }),
+      ws("ws_2", {}),
+      ws("ws_3", {}),
+      ws("ws_4", {}),
+      // Raised before this month: neither side of the ratio counts it.
+      ws("ws_old", { createdAt: MONTH_START - DAY, updatedAt: MONTH_START - DAY, promotedAt: MONTH_START - DAY })
+    ]);
+
+    const result = await runSnapshotter(ctx);
+    expect(result.written).toBe(1);
+
+    const [row] = await ctx.db
+      .select()
+      .from(schema.northSnapshots)
+      .where(and(eq(schema.northSnapshots.tenantId, ctx.tenantId), eq(schema.northSnapshots.metricKey, "whitespace_promotion_rate")));
+    // 1 promoted / 4 raised this month = 2,500 bp.
+    expect(row!.value).toBe(2_500);
+  });
+
+  it("writes nothing for a month that raised no candidate at all", async () => {
+    await seedMetric("whitespace_promotion_rate", "month");
+    const result = await runSnapshotter(ctx);
+    expect(result.written).toBe(0);
+  });
+
+  it("is a month metric — the day period computes nothing", async () => {
+    await seedMetric("whitespace_promotion_rate", "day");
+    await ctx.db.insert(schema.scoutWhitespaces).values([ws("ws_1", { createdAt: YESTERDAY_MID, updatedAt: YESTERDAY_MID, promotedAt: YESTERDAY_MID })]);
+    const result = await runSnapshotter(ctx);
+    expect(result.written).toBe(0);
+  });
+});
+
+describe("runSnapshotter: campaign_return_on_spend", () => {
+  const spendRow = (id: string, amountMinor: number, ts: number) => ({
+    id,
+    tenantId: ctx.tenantId,
+    campaignId: "cmp_1",
+    channel: "email",
+    day: new Date(ts).toISOString().slice(0, 10),
+    amountMinor,
+    currency: "AED",
+    ts
+  });
+  const touch = (id: string, over: Record<string, unknown>) => ({
+    id,
+    tenantId: ctx.tenantId,
+    touchType: "bind",
+    channel: "email",
+    campaignId: "cmp_1",
+    currency: "AED",
+    ts: MONTH_START + 1,
+    ...over
+  });
+
+  it("divides the value attributed to binds by the spend that bought them", async () => {
+    await seedMetric("campaign_return_on_spend", "month");
+    await ctx.db.insert(schema.signalSpend).values([
+      spendRow("sp_1", 40_000, MONTH_START + 1),
+      // Spent last month: outside the window, so it cannot dilute this month.
+      spendRow("sp_old", 999_000, MONTH_START - DAY)
+    ]);
+    await ctx.db.insert(schema.signalAttributionEvents).values([
+      touch("at_1", { valueMinor: 90_000 }),
+      touch("at_2", { valueMinor: 30_000 }),
+      // A click carries no bind value, and a bind without one cannot be counted.
+      touch("at_click", { touchType: "click", valueMinor: 500_000 }),
+      touch("at_novalue", { valueMinor: null }),
+      touch("at_old", { valueMinor: 500_000, ts: MONTH_START - DAY })
+    ]);
+
+    const result = await runSnapshotter(ctx);
+    expect(result.written).toBe(1);
+
+    const [row] = await ctx.db
+      .select()
+      .from(schema.northSnapshots)
+      .where(and(eq(schema.northSnapshots.tenantId, ctx.tenantId), eq(schema.northSnapshots.metricKey, "campaign_return_on_spend")));
+    // 120,000 attributed / 40,000 spent = 3x, as 30,000 bp.
+    expect(row!.value).toBe(30_000);
+  });
+
+  it("writes nothing for a month with attribution but no spend to divide by", async () => {
+    await seedMetric("campaign_return_on_spend", "month");
+    await ctx.db.insert(schema.signalAttributionEvents).values([touch("at_1", { valueMinor: 90_000 })]);
+    const result = await runSnapshotter(ctx);
+    expect(result.written).toBe(0);
+  });
+
+  it("writes a zero for spend that bought no bind — that is a result, not a gap", async () => {
+    await seedMetric("campaign_return_on_spend", "month");
+    await ctx.db.insert(schema.signalSpend).values([spendRow("sp_1", 40_000, MONTH_START + 1)]);
+    const result = await runSnapshotter(ctx);
+    expect(result.written).toBe(1);
+    const [row] = await ctx.db
+      .select()
+      .from(schema.northSnapshots)
+      .where(and(eq(schema.northSnapshots.tenantId, ctx.tenantId), eq(schema.northSnapshots.metricKey, "campaign_return_on_spend")));
+    expect(row!.value).toBe(0);
+  });
+});

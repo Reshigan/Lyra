@@ -1427,6 +1427,28 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
       target: { value: 120, scale: "count" }
     },
     {
+      key: "whitespace_promotion_rate",
+      en: "Whitespace promotion rate",
+      ar: "معدل ترقية الفجوات السوقية",
+      def: "COUNT(scout_whitespaces WHERE promoted_at IS NOT NULL) / COUNT(scout_whitespaces) over the month raised",
+      unit: "percent",
+      grain: "month",
+      direction: "up",
+      owner: "layla.hassan",
+      target: { value: 3_000, scale: BPS }
+    },
+    {
+      key: "campaign_return_on_spend",
+      en: "Campaign return on spend",
+      ar: "عائد الإنفاق على الحملات",
+      def: "SUM(signal_attribution_events.value_minor WHERE touch_type='bind') / SUM(signal_spend.amount_minor)",
+      unit: "ratio",
+      grain: "month",
+      direction: "up",
+      owner: "layla.hassan",
+      target: { value: 30_000, scale: BPS }
+    },
+    {
       key: "outstanding_reserve",
       en: "Outstanding reserve",
       ar: "المخصصات المستحقة",
@@ -1479,7 +1501,11 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
     cac_per_policy: [21_400, 20_150, 18_900, 24_600],
     broker_channel_share: [3_120, 3_380, 3_611, 3_740],
     loss_ratio: [6_140, 5_980, 6_420, 6_050],
-    ai_cost_per_case: [118, 104, 96, 91]
+    ai_cost_per_case: [118, 104, 96, 91],
+    // The demand loop the board reads across: what SCOUT raised and the desk
+    // acted on, and what SIGNAL's spend brought back against it.
+    whitespace_promotion_rate: [2_000, 2_500, 3_300, 2_800],
+    campaign_return_on_spend: [24_000, 27_500, 31_200, 29_000]
   };
   const DAILY: Record<string, readonly [number, number, number, number, number]> = {
     policies_issued: [41, 38, 52, 61, 57],

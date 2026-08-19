@@ -624,6 +624,22 @@ describe("seed", () => {
         owner: "yusuf.karim",
         sensitivity: "restricted",
         target: { value: 12_000_000, scale: "minor", currency: "AED" }
+      },
+      whitespace_promotion_rate: {
+        unit: "percent",
+        grain: "month",
+        direction: "up",
+        owner: "layla.hassan",
+        sensitivity: "internal",
+        target: { value: 3_000, scale: "bps" }
+      },
+      campaign_return_on_spend: {
+        unit: "ratio",
+        grain: "month",
+        direction: "up",
+        owner: "layla.hassan",
+        sensitivity: "internal",
+        target: { value: 30_000, scale: "bps" }
       }
     };
 
