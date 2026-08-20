@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { schema } from "@lyra/db";
 import { seedHistory } from "./seed/history.js";
 import { seedModuleHistory } from "./seed/history-modules.js";
+import { seedOpsConfig } from "./seed/ops-config.js";
 import { d1Endpoint, d1Proxy, parseArgs, pickTenant } from "./seed-history-d1.js";
 import type { CoreDb } from "./context.js";
 
@@ -14,16 +15,18 @@ import type { CoreDb } from "./context.js";
 //   CF_ACCOUNT_ID=… CF_API_TOKEN=… pnpm --filter @lyra/core seed:history \
 //     --database <d1-database-id> [--days 365] [--tenant <id>]
 //
-// Two passes: the ledger (seed/history.ts) and the operating history the ledger
+// Three passes: the ledger (seed/history.ts), the operating history the ledger
 // implies — contracts, claims, quotes, campaigns, statements
-// (seed/history-modules.ts). Both are idempotent, so a re-run costs read traffic
-// and writes nothing.
+// (seed/history-modules.ts) — and the ORBIT desk configuration
+// (seed/ops-config.ts), which a tenant seeded before those tables existed has no
+// other way to get, since seed() refuses to run twice. All three are idempotent,
+// so a re-run costs read traffic and writes nothing.
 //
 // The token needs D1 Write. Never pass it on the command line — it would land in
 // the shell history of whoever runs this.
 //
 // Everything decidable without a network sits in seed-history-d1.ts, where it is
-// unit-tested and mutation-gated; this file is the env reads and the two calls.
+// unit-tested and mutation-gated; this file is the env reads and the three calls.
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
@@ -47,12 +50,14 @@ async function main(): Promise<void> {
     .where(and(eq(schema.users.tenantId, tenantId), eq(schema.users.email, "faisal.omar@gonxt.ae")))
     .limit(1);
 
-  const options = { days: args.days, now: Date.now(), postedBy: controller?.id };
+  const now = Date.now();
+  const options = { days: args.days, now, postedBy: controller?.id };
   const ledger = await seedHistory(db, tenantId, options);
   const modules = await seedModuleHistory(db, tenantId, options);
+  const opsConfig = await seedOpsConfig(db, tenantId, now);
   console.log(
     `seed:history ${args.database} tenant=${tenantId}`,
-    JSON.stringify({ ledger, modules })
+    JSON.stringify({ ledger, modules, opsConfig })
   );
 }
 
