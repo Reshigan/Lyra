@@ -19,19 +19,29 @@ import type { HeroChip, HeroData, ScreenModule, SparkItem } from "./types.js";
 const VISIBLE_CHIPS = 3;
 
 /**
- * Splits a headline value into prefix / numeral / suffix — "AED 4.2m" into
- * "AED ", "4.2", "m".
+ * Finds the leading numeral in a headline value: "AED 4.2m" matches "AED 4.2",
+ * with "AED " as group 1 and "4.2" as group 2. Whatever follows is the caller's
+ * to slice off — see `splitHeadline`.
  *
- * The prefix class excludes ',' as well as digits. The obvious `\D*` overlaps
- * the group after it on every comma, so a value of nothing but commas makes the
- * two groups fight over the same characters — polynomial backtracking, which is
- * a hero `value` a tenant can supply (CodeQL js/polynomial-redos). No currency
- * or unit prefix contains a comma, so the narrower class costs nothing.
+ * Two deliberate shapes here, both of them the fix for CodeQL js/polynomial-redos
+ * on a hero `value`, which is tenant data:
  *
- * Exported for the test: the hook that uses it only runs in an effect, which
- * server rendering never reaches.
+ *   * the prefix excludes ',' as well as digits. The obvious `\D*` overlaps the
+ *     group after it on every comma, so the two would fight over the same
+ *     characters. No currency or unit prefix contains a comma.
+ *   * there is no trailing `(.*)$`. `.` does not match a newline, so that group
+ *     FAILS on a value containing one — and every failure sends the engine back
+ *     to try a shorter `[\d,]+`, which is the quadratic. Ending the pattern at
+ *     the numeral leaves nothing that can fail and nothing to backtrack into.
  */
-export const HEADLINE_NUMERAL = /^([^\d,]*)([\d,]+(?:\.\d+)?)(.*)$/;
+export const HEADLINE_NUMERAL = /^([^\d,]*)([\d,]+(?:\.\d+)?)/;
+
+/** The three parts of a headline value, or `undefined` if it holds no numeral. */
+export function splitHeadline(target: string): { prefix: string; numStr: string; suffix: string } | undefined {
+  const match = HEADLINE_NUMERAL.exec(target);
+  if (!match?.[2]) return undefined;
+  return { prefix: match[1] ?? "", numStr: match[2], suffix: target.slice(match[0].length) };
+}
 
 /**
  * Animates a display string from 0 up to the numeral inside `target`, once,
@@ -42,19 +52,12 @@ export const HEADLINE_NUMERAL = /^([^\d,]*)([\d,]+(?:\.\d+)?)(.*)$/;
 function useCountUp(target: string, durationMs = 700): string {
   const [display, setDisplay] = React.useState(target);
   React.useEffect(() => {
-    const match = HEADLINE_NUMERAL.exec(target);
-    if (!match) {
+    const parts = splitHeadline(target);
+    if (!parts) {
       setDisplay(target);
       return;
     }
-    const [, prefix, numStr, suffix] = match;
-    // `noUncheckedIndexedAccess` types every destructured group as possibly
-    // `undefined` even though the pattern's second group is mandatory
-    // whenever `match` succeeds at all — so this narrows rather than asserts.
-    if (!numStr) {
-      setDisplay(target);
-      return;
-    }
+    const { prefix, numStr, suffix } = parts;
     const value = Number(numStr.replace(/,/g, ""));
     if (!Number.isFinite(value)) {
       setDisplay(target);
