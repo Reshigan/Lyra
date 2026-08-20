@@ -280,6 +280,65 @@ F48 changed shape rather than closing: the naive, seasonal-unaware threshold is
 now a recorded decision (ADR-0024, `north-snapshotter.ts:522-523`), so the
 finding is a known limitation rather than a defect.
 
+### New findings — UI inventory audit, 2026-08-20
+
+*Settings.* The MFA-disable link points at `/settings?mfa=off`
+(`settings.tsx:1563`), but that URL carries no `:tab` segment; the loader
+defaults an unmatched tab to `"account"` (`settings.tsx:983`), so the link
+never reaches the security tab where the `mfa=off` query param is read. The
+disable flow is unreachable from its own entry point (**F53**).
+
+*AXIS.* `axis-dev.tsx` prints the model name and confidence score as plain
+text (`:171`, `l("confidence")`/`l("model")`) with no ✦ marker and no
+inspectable "why", contradicting the ambient-AI grammar (CLAUDE.md §11)
+(**F54**). `policy-endorse.tsx`'s loader hard-codes `may.endorse: true`
+whenever the policy read succeeds or 404s (`:206,209`) and only flips it false
+on a *read* 403 (`:212`) — an actor who can read a policy but lacks
+`axis:policies:endorse` still sees the endorse action enabled, and only
+discovers the real gate when the endorse POST itself 403s; `policy-cancel.tsx`
+follows the identical pattern (**F55**).
+
+*Distribution.* `quote-compare.tsx`'s `select` and `offer/decide` actions
+(`:411-427`) — accepting a quote response, accepting or dismissing a
+next-best-offer — POST with no idempotency key at all, unlike every other
+consequential write in the module (**F56**). `customer-360.tsx` generates one
+`idempotencyKey` per page load (`:364`) and threads that same value into the
+hidden field of every offer row's accept/dismiss form (`:812,997,1007`); two
+different offer decisions made in the same page load carry the identical key
+(**F57**).
+
+*SCOUT.* The Settings link on the SCOUT workspace is gated on
+`scout:whitespaces:write` (`apps/web/app/modules/scout.ts:163`), a permission
+that does not exist in the RBAC vocabulary — only `:read` and `:promote` are
+defined (`packages/core/src/rbac.ts:190`) — so the link is dead for every role
+(**F58**).
+
+*Compliance.* `core:audit:export` is a defined permission
+(`packages/core/src/rbac.ts:70,330`) with no UI surface anywhere in
+`apps/web/app` — nothing renders an export control gated on it (**F59**).
+`pendingApprovals` defaults to the newest 100 pending rows ordered by
+`requestedAt desc` (`packages/core/src/approvals.ts:526-540`), and the inbox
+route calls it with no limit override (`apps/api/src/routes/me.ts:208`); once
+a tenant holds more than 100 pending approvals, the longest-waiting ones fall
+off the inbox with no pagination to reach them (**F60**). The portal DSAR
+endpoint emits `compliance.dsar-requests.created` (`portal.ts:935-940`) and
+nothing in the tree subscribes to it — a data subject who files a request
+through the public portal gets no acknowledgement (**F61**).
+
+*NORTH.* `north-snapshotter.ts` queries `schema.scoutWhitespaces`,
+`schema.signalSpend` and `schema.signalAttributionEvents` directly
+(`:138-140,503-507,522-549`) instead of consuming SCOUT's and SIGNAL's
+domain events off `lyra-events`, violating CLAUDE.md rule 6 ("Events over
+calls... Direct cross-module imports are forbidden except from
+packages/core") — NORTH's snapshot silently drifts if either module's schema
+changes shape (**F62**). Two `NorthShell` screens link to routes that are not
+registered: `north-admin.tsx:584` links to `/north/alerts`, and
+`north-brief.tsx:520` links to `/north/metrics?q=...`; `apps/web/app/routes.ts:154-162`
+registers only `north/brief`, `north/explorer`, `north/anomalies`,
+`north/whatif`, `north/board`, `north/board/:id/file`, `north/decisions`,
+`north/admin` and `north/dev` — neither `alerts` nor `metrics` is a route, so
+both links 404 (**F63**).
+
 ---
 
 ## P2 — depth, not absence
@@ -302,7 +361,10 @@ hardcoded (`scout.shared.ts:40`). Only 2 of 6 SCOUT tables export
 (`engines/report.ts:237,251`). No multimodal path (`extract.ts:7-9`). No AE-only
 rulepack review, no Egypt/FRA pack. `packages/agents/` and `apps/agents/` do
 not exist despite the CLAUDE.md target layout and `docs/02:59` — the runtime is
-`api/src/engines/`.
+`api/src/engines/`. `docs/01-brand.md:83` names the light-mode AXIS hue
+`#A2660B`; `tokens.css` ships `#b45309` at both definition sites
+(`:523,618`) — only the dark-mode values are guarded by a test, so the light
+row can drift from its own doc unnoticed.
 
 **Thin screens.** `ledger-open-txn.tsx:79-120` asks a finance user to type
 recipe arguments as raw JSON (the file's own header names the fix: publish the

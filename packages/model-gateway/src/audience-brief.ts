@@ -182,9 +182,10 @@ export function audienceProposalMessages(
         "and add together; different axes narrow each other, so the smallest axis caps the reach. " +
         "Give every selection a reason: one sentence saying why that band belongs in this campaign, " +
         "citing only numbers from the counts below. A selection without a reason is discarded. " +
-        "Never select on race, ethnicity, religion, belief, health, disability, gender, sex, sexual " +
-        "orientation, politics, union membership, biometrics or criminal record — those are not " +
-        "targeting dimensions and naming one discards the selection. " +
+        "Never select on race, ethnicity, nationality, national origin, residency status, religion, " +
+        "belief, health, disability, gender, sex, sexual orientation, politics, union membership, " +
+        "biometrics or criminal record — those are not targeting dimensions and naming one discards " +
+        "the selection. " +
         "State no number the evidence below did not give you. A human reviews and funds this; you " +
         "only propose it."
     },

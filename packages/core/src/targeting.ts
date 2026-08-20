@@ -36,6 +36,17 @@ import { DEFAULT_K_FLOOR } from "./k-anonymity.js";
  * protected ground under the Equality Act, and neither can be inferred from a
  * tag without the tenant having collected it for a different purpose.
  *
+ * Nationality, national origin and residency status are here for the Gulf, and
+ * they are the entry a reviewer should argue with: nationality band is in
+ * practice the single biggest UAE motor-pricing and media axis, so leaving it
+ * out costs the pack real selling power. It stays out because a nationality tag
+ * is a working proxy for `race` and `ethnicity` — the two axes directly above —
+ * and a floor that any pack can route around with a synonym is not a floor.
+ * Residency (citizen/resident/visitor) is the same proxy one step removed. An
+ * underwriter may still *rate* on residency where the regulator allows it; that
+ * is a rating factor in the quote engine, not a targeting dimension here.
+ * ADR-0071 records the argument in full.
+ *
  * Not pack-configurable, by construction: `defineTargetingPack` strips these
  * from whatever a pack declares, and `isTargetable` refuses them again on the
  * way out. A pack may rename and restrict (docs/21 §3); it may never weaken a
@@ -44,6 +55,9 @@ import { DEFAULT_K_FLOOR } from "./k-anonymity.js";
 export const PROTECTED_AXES = [
   "race",
   "ethnicity",
+  "nationality",
+  "nationalorigin",
+  "residency",
   "religion",
   "belief",
   "health",
@@ -144,7 +158,7 @@ const PACKS = new Map<string, TargetingPack>([
   ],
   [
     // The Gulf pack (the yallacompare shape): no LSM, because there is no LSM
-    // outside southern Africa.
+    // outside southern Africa. Axes and their reasoning: ADR-0071.
     //
     // The scale is deliberately *not* a branded market index. There is no
     // SAARF/BRC equivalent we hold a licence to for the GCC, and naming one we
@@ -153,6 +167,18 @@ const PACKS = new Map<string, TargetingPack>([
     // tenant's own book a customer's declared household income falls in, tagged
     // `incomequintile:1`..`:5` by whoever loads the book. The tenant owns the
     // cut; Lyra only owns the vocabulary.
+    //
+    // `region` for this pack means the seven emirates (`region:dubai`,
+    // `region:abu-dhabi`, …) and `language` means en/ar, which is the split the
+    // platform already renders in both directions. Neither needs pack-declared
+    // values: only the affluence axis carries bands, every other axis is counted
+    // straight off whatever the tenant tagged. A second GCC tenant (KSA regions,
+    // SAR) reuses this pack unchanged — see ADR-0071 §5 for what it would have
+    // to change and what it would not.
+    //
+    // Not here: nationality or residency band, the axis a UAE media buyer asks
+    // for first. It is a proxy for race and ethnic origin, so it lives in
+    // PROTECTED_AXES above rather than being quietly omitted here.
     "insurance-gulf",
     defineTargetingPack(["incomequintile", "ageband", "region", "language", "lifestage"], {
       axis: "incomequintile",

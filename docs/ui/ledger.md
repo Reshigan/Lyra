@@ -91,7 +91,8 @@ did not intend.
 | Role key | LEDGER permissions |
 |---|---|
 | `finance.controller` | `ledger:*:*` — everything, plus `core:approvals:read`/`decide`, `dist:commissions:*`, `analytics:exports:unmasked` |
-| `finance.analyst` | every `ledger:*:read` (txns, journals, accounts, periods, recon, invoices, payments, client_money) + `ledger:ai:invoke`, `ledger:recon:run`, `ledger:invoices:create`. **No** create, authorize, reverse, post, close, confirm, transfer |
+| `finance.analyst` | every `ledger:*:read` (txns, journals, accounts, periods, recon, invoices, payments, client_money) + `ledger:ai:invoke`, `ledger:recon:run`, `ledger:recon:export`, `ledger:invoices:create`, `ledger:journals:draft`. Drafts a manual journal but cannot post it — `ledger:journals:draft`, not `ledger:journals:post`, is the whole point of the split. **No** create, authorize, reverse, post, close, confirm, transfer |
+| `finance.director` | every `ledger:*:read` + `core:approvals:read`/`decide`, `ledger:journals:post`, `ledger:periods:close`, `ledger:periods:force_close`, `ledger:periods:reopen`, `ledger:periods:year_end`, `ledger:payouts:approve`, `ledger:invoices:approve`, `ledger:client_money:transfer`, `ledger:txns:reverse`. A second seat that is only a second seat: it approves and posts what the analyst drafted, and cannot originate any of it — no `ledger:txns:create`, no `ledger:journals:draft`, no bank import, and (notably) no `ledger:txns:authorize`, `ledger:recon:confirm` or `ledger:accounts:write` either. A tenant with a single finance seat cannot post a manual journal, force a close or reopen a period: separation of duties as a property of the role graph, not a runtime check |
 | `tenant.admin` | `ledger:*:read` only |
 | `tenant.compliance` | `ledger:client_money:read`, `ledger:journals:read` only |
 | `north.admin` | `ledger:journals:read`, `ledger:txns:read` |
@@ -104,14 +105,25 @@ did not intend.
 
 The permission constants, verbatim: `ledger:txns:read`, `ledger:txns:create`,
 `ledger:txns:authorize`, `ledger:txns:reverse`, `ledger:journals:read`,
-`ledger:journals:post`, `ledger:accounts:read`, `ledger:accounts:write`,
-`ledger:periods:read`, `ledger:periods:close`, `ledger:recon:read`,
-`ledger:recon:run`, `ledger:recon:confirm`, `ledger:invoices:read`,
+`ledger:journals:draft`, `ledger:journals:post`, `ledger:journals:void`,
+`ledger:accounts:read`, `ledger:accounts:write`,
+`ledger:periods:read`, `ledger:periods:close`, `ledger:periods:force_close`,
+`ledger:periods:reopen`, `ledger:periods:year_end`, `ledger:recon:read`,
+`ledger:recon:run`, `ledger:recon:confirm`, `ledger:recon:export`,
+`ledger:invoices:read`,
 `ledger:invoices:create`, `ledger:invoices:approve`, `ledger:payments:read`,
 `ledger:payments:create`, `ledger:payments:refund`, `ledger:payouts:approve`,
 `ledger:client_money:read`, `ledger:client_money:transfer`, `ledger:ai:invoke`.
 Plus `core:approvals:read` and `core:audit:read`, which reveal two panels on the
 transaction screen.
+
+The screen-facing `PERM` object (`apps/web/app/routes/ledger.shared.ts`) does
+not carry a 1:1 constant for every server permission above: it has
+`txnsRead`, `txnsCreate`, `txnsAuthorize`, `txnsReverse`, `periodsRead`,
+`periodsClose`, `periodsYearEnd`, `journalsDraft`, `journalsRead`,
+`journalsPost`, `reconRead`, `reconRun`, `reconConfirm`, `approvalsRead`,
+`auditRead` — no `journalsVoid`, `periodsForceClose` or `periodsReopen`. See
+§4's weak note on the Reopen button for the consequence.
 
 ### RTL — the rule for a financial table in Arabic
 
@@ -253,7 +265,14 @@ money).
 footer total row.
 
 *Balance sheet.* KPIs: Assets, Liabilities, Equity. `Discrepancy` when
-A ≠ L + E. Body is `grid lg:grid-cols-2`.
+A ≠ L + E. Body is `grid lg:grid-cols-2`. Equity is split: a posted-only
+`equity` section (rows + `Section.totalMinor`), a `currentYearUnpostedMinor`
+figure (the current fiscal year's income/expense movement, not yet swept into
+Retained Earnings by a year-end close), and `equityMinor` — the true,
+combined equity figure the balance check uses. The view renders an extra Stat
+for the unposted piece only when it is non-zero, and the posted-equity rows
+only when there are any (a tenant that has never run a year-end close has
+nothing there yet). This is docs/27 F2/F3's split, from `7a56b31`.
 
 *Aged.* Columns: Counterparty, Currency, 0–30, 31–60, 61–90, 91–120, Over 120,
 Total. All six money columns numeric. No links.
@@ -313,6 +332,16 @@ redesign must not add client-side arithmetic, not even a subtotal.**
 3. The Discrepancy card tells you the totals disagree and gives you nowhere to go.
 4. Six parameters across six reports, each with a different set — the form
    changes shape per tab with no indication of why.
+5. **The balance-sheet headline uses the wrong equity figure.** The page's h1
+   is built by `reportsHeadline()`; its `"balance-sheet"` case computes the
+   "out by {amount}" discrepancy as `assets.totalMinor - (liabilities.totalMinor
+   + equity.totalMinor)` — the **posted-only** `equity.totalMinor`, not
+   `equityMinor`. `BalanceSheetView` itself balances correctly against
+   `bs.equityMinor`. Whenever `currentYearUnpostedMinor` is non-zero (any
+   tenant mid-fiscal-year, before its next year-end close) and the sheet is
+   genuinely out of balance, the headline's figure disagrees with the report
+   body's own figure by exactly `currentYearUnpostedMinor`. Confirmed in code
+   (`apps/web/app/routes/ledger-reports.tsx`), not yet fixed.
 
 ---
 
@@ -336,18 +365,16 @@ the catalogue of every type this tenant can run.
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│ Open a transaction                                     (h1)  │
+│ {openHeadline}                                          (h1) │
 │ Money moves by running a transaction type. …          (intro)│
 ├──────────────────────────────────────────────────────────────┤
 │ ┌ POST form ───────────────────────────────────────────────┐ │
 │ │ Transaction type [BIND            ▾ 16rem]              │ │
 │ │ Currency [ZAR 7rem]   Gross amount, in minor units [11r] │ │
 │ │ Transaction key [────────────────────────────── req'd]  │ │
-│ │ Arguments                                                │ │
-│ │ ┌──────────────────────────────────────────────────────┐ │ │
-│ │ │ {}                                    mono, 6 rows   │ │ │
-│ │ └──────────────────────────────────────────────────────┘ │ │
-│ │ JSON the recipe expects. …                        (hint) │ │
+│ │ ARGUMENTS                                                │ │
+│ │ [Gross ▾][Channel ▾][Tax ▾] …  — one Field per arg,     │ │
+│ │  money args as MoneyField, *Account args as Input+hint  │ │
 │ │ Reason [──────────────────────────────────────────]     │ │
 │ │ [Open transaction]   This form carries a one-time key…  │ │
 │ └──────────────────────────────────────────────────────────┘ │
@@ -361,6 +388,12 @@ the catalogue of every type this tenant can run.
 └──────────────────────────────────────────────────────────────┘
 ```
 
+The h1 is `openHeadline(types, l)` (`apps/web/app/routes/ledger.shared.ts`), not a
+static string: "{count} transaction type(s) ready to run." — or, if any of them
+carry an approval policy, "{count} transaction type(s) ready to run; {gated}
+need approval first." — or "No transaction types are published yet." when the
+catalogue is empty.
+
 **The form, field by field.**
 
 | Field | Label (key) | Type | Required | Default | Notes |
@@ -369,7 +402,8 @@ the catalogue of every type this tenant can run.
 | `currency` | Currency | Input, `w-28`, `maxLength=3` | yes | `me.policy.currency` | Free text; no validation against a currency list on the client |
 | `grossMinor` | Gross amount, in minor units (`open.gross`) | Input `type=number step=1 inputMode=numeric`, `w-44` | yes | empty | Minor units. 416 000 means R4 160,00 |
 | `naturalKey` | Transaction key (`open.key`) | Input, `maxLength=200` | **yes** | a server-minted `web:<uuid>` | Hint: "The natural key for this transaction. Reusing it returns the same transaction." |
-| `args` | Arguments (`open.args`) | Textarea, `rows=6`, `font-mono text-12` | yes | `"{}"` | Hint: "JSON the recipe expects. The ledger validates it and names the fields it wanted if any are missing." |
+| `arg.<name>` | one per recipe argument (`arg.*`, e.g. "Gross commission", "Income account") | `MoneyField` for an integer field whose name ends `Minor`; plain `Input` (numeric for other integers) otherwise | per-field, from the recipe | field's own default shown as `placeholder` | Rendered from the selected type's `args: ArgField[]` (see below); an `Account`-suffixed text field also gets the hint "Account code" |
+| `argFields` | — | hidden | — | `JSON.stringify(argFields)` | Posted back so the action reads exactly the field list it rendered, not whatever the current selection would be |
 | `reason` | Reason | Input, `maxLength=500` | no | empty | |
 | `headerKey` | — | hidden | — | `web.open:<uuid>` | Sent as the `idempotency-key` HTTP header |
 
@@ -382,12 +416,38 @@ a key the browser generates at submit time is a new key on every press, which is
 exactly the double-post the header exists to stop. A redesign must not move key
 generation into the client.
 
-**The `args` problem, and the form this actually needs.** `GET /v1/ledger/txn-types`
-publishes the catalogue — code, `financial`, approval policy key, `payout`,
-`clientMoney` — but **not each recipe's argument schema**, which is private to
-`packages/ledger`. So the screen falls back to a raw JSON textarea and renders
-the API's field-error map beside it. The real schemas exist and are small. The
-recipes and what they take:
+**Per-field arguments, and the gap that remains.** The recipe's own schema
+stays private to `packages/ledger`, but `GET /v1/ledger/txn-types` now
+publishes each recipe's arguments as a flat field list — `args: ArgField[]`,
+`{name, kind: "integer"|"text", required, default?}` — computed by
+`argFields(code)` (`packages/ledger/src/recipes.ts`), which probes the
+recipe's zod schema with `safeParse(1)`/`safeParse("sample text")` to infer
+each field's kind. Selecting a type swaps in a `Field` per argument: an
+integer field named `…Minor` becomes a `MoneyField`, a text field named
+`…Account` becomes an `Input` with an "Account code" hint, everything else is
+a plain `Input`. This is the shipped replacement for what earlier revisions of
+this screen did with a raw JSON textarea (docs/ui.md §7 P3-16 in the code's own
+words).
+
+`argFields()` cannot express an **array** field — it only probes `1` and
+`"sample text"`, so a field like `lines` or `closingLines` fails both probes
+and is silently omitted rather than raising an error. Three types have an
+array argument: `MANUAL-JRNL` and `OPEN-BAL` need a `lines` array (their
+schema is `{lines, reason}`, so this screen shows only `reason` for them), and
+`YEAR-END-CLOSE` needs `closingLines` (its schema is `{closingLines,
+retainedEarningsAccount, fiscalYear, memo}`, so this screen shows only the
+latter three). None of the three types are filtered out of the type picker or
+the catalogue table below — `TXN_TYPES` carries all three as `financial: true`
+with no exclusion — so a controller can select one, fill in the visible
+fields, and submit; the ledger will always refuse with a field error naming
+the missing array. `MANUAL-JRNL` has a bespoke composer at `/ledger/journal`
+(§ below) and `YEAR-END-CLOSE` has one at `/ledger/year-end` (§ below), so a
+controller who knows to look elsewhere is unaffected — but **no bespoke
+screen exists for `OPEN-BAL`**; this generic form is the only UI that can
+reach it, and it cannot actually complete the submission.
+
+The recipes and what they take (the field list this screen now renders,
+grouped by shape):
 
 - **Commission accrual** (`BIND`, `BIND-GROUP`, `RENEW`, `ENDORSE`, `REINSTATE`,
   `PARTNER-BIND`, `AGENT-BIND`, `CMSN-ACCR`, `FEE-BROK`, `FEE-SERVICE`,
@@ -411,11 +471,13 @@ recipes and what they take:
   `MEDIA-SPEND`, `BOOST`): `amountMinor`, `expenseAccount`, `payableAccount`.
 - **Authored entries** (`MANUAL-JRNL`, `OPEN-BAL`): a `lines` array of
   `{accountCode, side, amountMinor}` plus a `reason` of at least ten
-  characters. `argFields` cannot describe an array, so these two are the only
-  types with a bespoke composer instead of the generic form.
+  characters. The array is invisible to this screen (see above) — only
+  `reason` renders. `MANUAL-JRNL` has a bespoke composer at `/ledger/journal`;
+  `OPEN-BAL` has none.
 - **Year-end close** (`YEAR-END-CLOSE`): `closingLines`, `fiscalYear`,
-  `retainedEarningsAccount` (default `3100`). The retained-earnings leg is
-  computed, never entered.
+  `retainedEarningsAccount` (default `3100`), `memo`. The retained-earnings leg
+  is computed, never entered. `closingLines` is likewise invisible here; use
+  `/ledger/year-end`.
 - **Payout** (`PAYOUT-INSTRUCT`, `RSHARE-SETL`, `CREATOR-PAYOUT`,
   `SUPPLIER-PAY`): `amountMinor`, `payableAccount`, `cashAccount`,
   `withholdingMinor`.
@@ -429,15 +491,21 @@ recipes and what they take:
   `CHARGEBACK`, `CHARGEBACK-WIN`): `amountMinor`, plus `feeMinor` for
   chargebacks.
 
-**Design the form this needs:** selecting a type should swap the JSON textarea
-for the named inputs of that recipe — amounts as minor-unit number fields,
-account codes as pickers pre-filled with the recipe's defaults and clearly marked
-"defaulted, change only if you know why", `memo` as text, `dims` as the only
-remaining JSON. Keep a "raw JSON" escape hatch for a type the UI does not yet
-know. Note the mutually-exclusive branch in the commission recipe: an explicit
-split **or** premium + rates, never a mix — that is a radio, not two sets of
-optional fields. This requires an additive `args` field list on the `/txn-types`
-endpoint; the design should assume it and say so.
+**A field this form still never asks for: `dims`.** `argFields()` explicitly
+skips any field named `dims` (a free-form dimension/tag object several
+recipes accept), on every recipe, not only the three above. There is no
+escape hatch for it on this screen — a controller who needs to set `dims` on
+a hand-opened transaction cannot, from this form. Not determined from code
+whether any recipe treats `dims` as required (the schemas read as optional
+everywhere it appears).
+
+**A related gap the form does not resolve:** the commission recipe's two
+input shapes — an explicit split (`grossMinor`/`channelMinor`/`taxMinor`) or
+premium + rates (`premiumMinor`/`baseCommissionPpm`/`channelSharePpm`/
+`taxPpm`) — are mutually exclusive server-side, but `argFields()` has no way
+to say so: both sets of fields render together as a flat list, with nothing
+on screen indicating that filling in both is redundant (the recipe presumably
+prefers one; not determined from code which).
 
 **The catalogue table** (`open.catalogue` "Type catalogue", caption "Transaction
 types this tenant can run"):
@@ -474,20 +542,30 @@ Around 70 codes. There is no search and no grouping — see the weak list.
 
 **Mobile.** Web only. Do not design a mobile version of this.
 
-**RTL.** The Arabic labels exist for every field. The `args` textarea content is
-JSON and stays LTR (`dir="ltr"` is the correct treatment; today it inherits, which
-is a small bug). Currency and code inputs likewise.
+**RTL.** The Arabic labels (`arg.*`) exist for every argument this screen
+currently renders. Currency and code inputs stay LTR by convention (as
+Foundations).
 
 **What is weak today.**
-1. The JSON textarea. A controller must know each recipe's private schema by
-   heart, and finds out what was wrong only after submitting.
-2. The type select shows bare codes with no descriptions, no grouping and no
+1. **`MANUAL-JRNL`, `OPEN-BAL` and `YEAR-END-CLOSE` remain selectable here
+   with an incomplete field set** (their array argument is invisible — see
+   above), so a submission through this screen for any of the three always
+   fails server-side. `OPEN-BAL` in particular has no bespoke screen anywhere
+   in the app; an operator needing to post an opening balance cannot complete
+   it through the UI at all today.
+2. `dims` is never asked for, on any recipe, for the reason above.
+3. The type select shows bare codes with no descriptions, no grouping and no
    search across ~70 options — and the badges explaining what each code does are
    in a *different table further down the page*, not in the select.
-3. `grossMinor` on the form and the amount inside `args` are two separate figures
-   with no cross-check on screen.
-4. Minor units are unforgiving: nothing on screen shows "416 000 = R4 160,00".
-5. The catalogue table is long and unfiltered.
+4. `grossMinor` on the form and the same-shaped amount inside the recipe's own
+   arguments (e.g. `arg.grossMinor`) are two separate fields with no
+   cross-check on screen.
+5. Minor units are unforgiving: nothing on screen shows "416 000 = R4 160,00"
+   for the plain numeric args (`baseCommissionPpm` and friends); the `Minor`
+   fields at least get a `MoneyField`.
+6. The catalogue table is long and unfiltered.
+7. No radio or grouping distinguishes the commission recipe's two
+   mutually-exclusive input shapes (see above) — both render as one flat list.
 
 ---
 
@@ -674,10 +752,13 @@ account codes and idempotency key must be forced LTR — today they inherit.
 it stops ordinary posting and still allows an adjustment with a reason."
 
 **Who sees it.** `ledger:periods:read` — finance.controller, finance.analyst,
-tenant.admin. The close buttons need `ledger:periods:close`
-(**finance.controller only**); the balance-rebuild card needs
-`ledger:journals:post` (**finance.controller only**). Denied: the standard
-EmptyState naming `ledger:periods:read`. `finance.analyst` sees the whole screen
+finance.director, tenant.admin. The close buttons (all three — Soft close,
+Hard close, and Reopen) are gated as one group on `ledger:periods:close`,
+held by **finance.controller and finance.director**; the balance-rebuild card
+needs `ledger:journals:post`, held only by **finance.controller** (director
+does not hold it — the director approves and posts what the analyst drafted,
+and this maintenance action is neither). Denied: the standard EmptyState
+naming `ledger:periods:read`. `finance.analyst` sees the whole screen
 read-only, with no close buttons and no rebuild card.
 
 **Purpose.** See whether a month may close, close it, and check the balance cache
@@ -746,9 +827,15 @@ the current state:
 
 Success: "Period {code} is now {state}." / "Period {code} is open again."
 
-**`force` is deliberately not exposed.** The API supports it; the UI does not
-offer it, because the checks are the gate and a screen that hands out an override
-turns them into a formality. **Do not add an override in a redesign.**
+**`force` is deliberately not exposed in this screen** — the UI never sends
+`force: true` and offers no control for it, because the checks are the gate
+and a screen that hands out an override turns them into a formality. The
+capability is fully wired server-side, though, not merely stubbed: `closePeriod()`
+(`packages/ledger/src/periods.ts`) accepts an internal `force` option gated on
+`ledger:periods:force_close` plus the `ledger.period_close_force` policy
+(always dual-control, never auto-approved — see Foundations), and only
+`finance.director`/`finance.controller` hold that permission. **Do not add an
+override in a redesign** without going through that same gate.
 
 **Recent periods table.** Twelve rows, newest first: code (accent, mono, a link
 back to `?period=`), state Badge, Closed by, Closed at.
@@ -773,9 +860,9 @@ when to close.
 
 | Action | Posts? | Idempotency | Approval | Reversible |
 |---|---|---|---|---|
-| Soft close | No journal lines; stops ordinary posting | No key on the form | Routed through the `ledger.period_close` policy in `resources.ts` | Yes — Reopen |
-| Hard close | No lines; only contra entries post afterwards | No key | Same policy | Yes — Reopen, and reopening is audited |
-| Reopen | No lines | No key | Same policy | Closing again |
+| Soft close | No journal lines; stops ordinary posting | No key on the form | `ledger.period_close` policy, gated on `ledger:periods:close` | Yes — Reopen |
+| Hard close | No lines; only contra entries post afterwards | No key | Same policy and permission (a UI-side `force: true` is never sent — see above; if it were, the server would gate it on `ledger:periods:force_close` and the `ledger.period_close_force` policy instead) | Yes — Reopen, and reopening is audited |
+| Reopen | No lines | No key | **A different policy**: `reopenPeriod()` (`packages/ledger/src/periods.ts`) requires `ledger:periods:reopen` and gates on `ledger.period_reopen`, not `ledger.period_close` — see the weak note below | Closing again |
 | Run the check | **Writes nothing.** Read-only comparison, reported and discarded | n/a | n/a | n/a — nothing to reverse |
 
 The rebuild's read-only nature is the most important thing to communicate. It
@@ -797,6 +884,18 @@ correct; do not un-pair them.
    the screen; only the confirm dialogue says what each does.
 3. The rebuild card sits beside the close buttons and looks equally consequential.
 4. Twelve periods, no pagination, no year view.
+5. **The Reopen button is gated on the wrong client-side permission.** The
+   screen shows Soft close, Hard close and Reopen as one group behind
+   `loaded.canClose`, which is `held.has(PERM.periodsClose)`. The server-side
+   route for Reopen actually requires `ledger:periods:reopen` (a distinct
+   permission, distinct policy `ledger.period_reopen`) — but `ledger.shared.ts`'s
+   `PERM` object has no `periodsReopen` constant at all, so there is no correct
+   value to gate against even if someone wanted to. Not currently exploitable:
+   every stock role that holds `ledger:periods:close` also holds
+   `ledger:periods:reopen` (`finance.controller`, `finance.director`). It
+   breaks the first time a custom role holds one permission without the other
+   — a role with `close` but not `reopen` would see (and be able to press) a
+   Reopen button the server will 403.
 
 ---
 
@@ -938,9 +1037,11 @@ that did not.
 │ │ Counterparty [ ]  Tolerance, in minor units [ ]          │ │
 │ │ Statement lines                                          │ │
 │ │ ┌────────────────────────────────── 8 rows, mono ──────┐ │ │
-│ │ │ []                                                    │ │ │
+│ │ │ INS-8891, 1500.55, TXN-01, 2026-08-01, August premium │ │ │
 │ │ └───────────────────────────────────────────────────────┘ │ │
-│ │ One JSON array: ref, amountMinor, currency, and …  (hint)│ │
+│ │ Paste the statement as it was exported — ref, amount, …  │ │
+│ │ Commas or tabs; a header row is fine.              (hint)│ │
+│ │ 41 lines read, 0 not.        [preview table, read-only]  │ │
 │ │ ☐ Let the assistant propose matches for the leftovers    │ │
 │ │   Proposals are never posted. Each one still needs a …   │ │
 │ │ [Start run]                                              │ │
@@ -982,12 +1083,27 @@ with its own confirm: "Confirm this match? Your name and reason go on the record
 | `currency` | Currency | Input, 3 | `me.policy.currency` |
 | `counterpartyRef` | Counterparty | Input | empty |
 | `toleranceMinor` | Tolerance, in minor units | Input `type=number min=0` | empty |
-| `lines` | Statement lines | Textarea, **required**, 8 rows | `"[]"` — hint: "One JSON array: ref, amountMinor, currency, and optionally ourRef, postedAt, description." |
+| `lines` | Statement lines | Textarea, **required**, 8 rows, mono | empty — placeholder `"INS-8891, 1500.55, TXN-01, 2026-08-01, August premium"`, hint: "Paste the statement as it was exported — one line per row, columns in this order: reference, amount, our reference, date, description. Only the first two are needed. Commas or tabs; a header row is fine." |
 | `propose` | "Let the assistant propose matches for the leftovers" | **Checkbox, unchecked** | off |
 
+**Parsing the paste.** `statementFromCsv()` (`ledger.shared.ts`) is imported by both the
+route (loader/action, server-side) and by a `StatementPreview` component rendered
+live under the textarea (client-side) — the same function runs in both places, so
+the preview cannot itself drift from what the server will do, though it is still
+only a preview: nothing is read from it, the raw pasted text travels in the `lines`
+form field and is re-parsed server-side on submit. The separator is auto-detected —
+tab if any non-blank row contains one, else comma. A first row whose amount column
+does not parse is treated as a header and dropped silently, but only while no data
+row has been read yet; the same failure on any later row is a rejection. Any row
+whose ref is empty or whose amount does not parse as money in the chosen currency is
+rejected outright (not skipped) and is listed by row number with its raw text in a
+danger-toned alert both live in the preview and, if the user submits anyway, again
+after the round trip — and **a run with even one rejected row does not start at
+all**: the action returns the rejected list instead of calling `/v1/ledger/recon/runs`.
 Submit "Start run", confirm "Start this reconciliation run?" Result:
 "Run {id} started: {matched} matched, {variances} with a variance."
-Invalid JSON: "Statement lines must be a JSON array."
+Empty paste (blocked by `required`, but also handled server-side): "Paste the
+statement before starting a run."
 
 **Three passes.** Pass 1 exact, pass 2 within tolerance, pass 3 the assistant —
 and pass 3 only runs when `propose` is ticked. Everything pass 3 produces lands
@@ -1022,17 +1138,28 @@ because it is the screen users most often assume does.
 
 **Mobile.** Web only.
 
-**RTL.** The `lines` textarea holds JSON and must be forced LTR. The Delta column
-is the only toned column in the module — red/green must survive both directions
-and must not be the only signal (the sign carries it too).
+**RTL.** `Textarea` (`packages/ui/src/primitives.tsx:277`) is a plain passthrough
+with no `dir` prop of its own, so in an `ar` session the `lines` field inherits the
+page's `dir="rtl"` while its content — comma- or tab-delimited references, amounts
+and ISO dates — is inherently left-to-right token order; nothing in the route
+overrides this. The Delta column is the only toned column in the module —
+red/green must survive both directions and must not be the only signal (the sign
+carries it too).
 
 **What is weak today.**
-1. Statement lines are pasted as raw JSON. Every real counterparty sends a CSV or
-   an XLSX. There is no upload, no column mapping, no preview — although
-   `recon_runs` already carries a `statementFileId` column that nothing populates.
-2. There is no unmatched view on this screen even though the API returns
-   `unmatchedRefs` and `unmatchedTxns` and the labels exist ("Statement lines with
-   no transaction", "Transactions with no statement line").
+1. There is a live preview now (`StatementPreview`, reusing the exact parser the
+   server will run) but still no upload and no column mapping — every real
+   counterparty statement is pasted by hand, column order is fixed
+   (ref, amount, our ref, date, description) and unlabelled beyond the hint text,
+   and `recon_runs` still carries a `statementFileId` column that nothing in this
+   screen populates. The `lines` textarea has no `dir="ltr"` override, so a pasted
+   statement is subject to RTL reflow in an Arabic session (see RTL note above).
+2. There is no unmatched view on this screen even though `reconcile()`
+   (`packages/ledger/src/recon.ts`) returns `unmatchedStatementRefs` and
+   `unmatchedTxnIds` and the labels exist ("Statement lines with no transaction",
+   "Transactions with no statement line") — `recon.unmatchedRefs` /
+   `recon.unmatchedTxns` in `ledger.shared.ts`, unreferenced by
+   `ledger-recon.tsx`.
 3. `reasonCode` is free text up to 64 characters, per row, with no vocabulary —
    so the audit trail fills with whatever people type.
 4. A run with 500 matches is one flat table with no filter by state or method.
@@ -1053,11 +1180,29 @@ Created/Updated, an actions section, an edit form, and a delete form guarded by
 "Delete this record? It is retained for audit and can be restored by an
 administrator."
 
-**The link strip** (withheld links are absent): Trial balance, Profit and loss,
-Balance sheet, Aged, Commission (all `ledger:journals:read`), Client money
-(`ledger:client_money:read`), Chart of accounts (`ledger:accounts:read`), Open a
-transaction (`ledger:txns:create`), Period close (`ledger:periods:read`), Account
-statement (`ledger:journals:read`), Reconciliation (`ledger:recon:read`).
+**The link strip** (`apps/web/app/modules/ledger.ts`; withheld links are absent),
+in order: Trial balance, Profit and loss, Balance sheet, Aged, Commission (all
+`ledger:journals:read`), Client money (`ledger:client_money:read`), **Money map**
+(`ledger:journals:read`, §8 below), Chart of accounts (`ledger:accounts:read`),
+Open a transaction (`ledger:txns:create`), Period close (`ledger:periods:read`),
+**Year-end close** (`ledger:journals:read`, §9), **Manual journal**
+(`ledger:journals:draft`, §10), Account statement (`ledger:journals:read`),
+Reconciliation (`ledger:recon:read`), Commission settlements
+(`dist:commissions:read`, `routes/settlement.tsx` — a DIST-owned screen reached
+from LEDGER's own link strip; out of scope for this doc, see docs/ui/dist.md).
+The permission gate on Year-end close and Manual journal is looser than the
+screen itself: both links show for anyone who can read journals, and the form
+inside each still enforces its own real requirement — `ledger:periods:year_end`
+server-side for year-end (`apps/api/src/routes/ledger.ts:241`); for the manual
+journal, the client loader gates rendering on `journalsDraft` **or** `txnsCreate`,
+and the API's `POST /v1/ledger/txn/:type` (the one write path every recipe goes
+through) applies the same either/or at the type level: "`if (!(def.approval &&
+can(ctx.actor, "ledger:journals:draft", subject))) require_(ctx.actor,
+"ledger:txns:create", subject)`" (`apps/api/src/routes/ledger.ts:87-91`, docs/27
+F2) — MANUAL-JRNL is an approval-gated type, so `ledger:journals:draft` alone is
+enough to originate it; a type that settles without a second seat still needs
+the full `ledger:txns:create`. A read-only visitor can still reach either screen
+and see its own denial there rather than at the link.
 
 **The twenty tabs, in order:**
 

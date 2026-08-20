@@ -21,7 +21,15 @@ product holds a target — the subject-request service target, the retention per
    deletions frozen, evidence handed over, incidents, rulepack outcomes, and the
    thresholds all of that runs against.
 2. It is one workspace at `/compliance` with **ten resource tabs** and **one
-   bespoke screen** with three variants at `/compliance/run/:kind`.
+   bespoke screen** with three variants at `/compliance/run/:kind`. Two screens
+   outside the workspace do compliance work and are described here because
+   nothing else describes them: the **approvals queue** at `/approvals`, where
+   the erasure and legal-hold-release decisions are actually taken (§8), and the
+   **public subject-request form** at `/portal/:tenantSlug/privacy`, which is how
+   a data subject starts their own request without an account (§9). Two further
+   screens the compliance officer holds permissions for — the AI audit log on the
+   AI console and the platform audit trail in ADMIN — are summarised in §10 and
+   described in full in `docs/ui/admin.md`.
 3. Nine of the ten tabs are lists of things that already happened. Half are
    read-only in the API, because an audit trail you can edit is not an audit
    trail.
@@ -46,9 +54,13 @@ product holds a target — the subject-request service target, the retention per
 9. **The uncomfortable truths this design must carry, not hide:** the screening
    provider is a stub, evidence bundle downloads 404 for every seeded row, and
    the permanent-delete button has no approval behind it.
-10. There is **no AI anywhere in this workspace.** Not a suggestion, not a ghost
-    text, not a ✦. That is deliberate and section 8 explains where it is right
-    and where it is now a gap.
+10. **No screen under `/compliance` renders AI.** No ghost text, no suggestion
+    row, no ✦ on any of the ten tabs or the three run screens. But the sentence
+    "there is no AI in compliance" is false at the workspace boundary: the
+    approvals queue where compliance's own dual-control decisions land (§8)
+    carries the ✦ marker on every agent-raised request, a "why this needs
+    approval" panel and a link into the AI run behind it. §10 says where the
+    absence is right and where it is now a gap.
 
 ---
 
@@ -62,6 +74,18 @@ product holds a target — the subject-request service target, the retention per
 | 4 | `/compliance` | `routes/module.tsx` | generic list, redirects to the first tab the actor can read |
 | 5 | `/compliance/<tab>` ×10 | `routes/module.tsx` | generic list |
 | 6 | `/compliance/<tab>/<id>` ×10 | `routes/record.tsx` | generic record |
+
+Two adjacent routes, outside `/compliance` but part of the same job:
+
+| # | URL | File that renders it | Kind |
+|---|-----|----------------------|------|
+| 7 | `/approvals` | `routes/approvals.tsx` | bespoke, workspace-wide (§8) |
+| 8 | `/portal/:tenantSlug/privacy` | `routes/portal.$tenantSlug.privacy.tsx` | public, no session (§9) |
+
+`/approvals` sits inside the signed-in shell but belongs to no workspace: it is
+the queue of every pending approval in the product, compliance's two among them.
+`/portal/:tenantSlug/privacy` is outside the shell entirely — no sidebar, no
+account, a Turnstile challenge instead of a login.
 
 The ten tabs, in the order the tab strip renders them:
 
@@ -103,8 +127,21 @@ migrated consent is a new row, never an edit). Do not design a consents tab into
 | `compliance:incidents:read` / `:write` | `incidents` list / create-edit-delete |
 | `compliance:rulepacks:read` | `rulepack-applications` |
 | `compliance:thresholds:read` / `:write` | `policy-thresholds` list / create-edit-delete |
-| `compliance:erasure:execute` | decides the `compliance.erasure` approval; **no screen in this workspace** |
+| `compliance:erasure:execute` | decides the `compliance.erasure` approval — on `/approvals` (§8), not in this workspace |
 | `compliance:rulepacks:apply` | held by the rule engine, not by a screen |
+
+Two more permissions govern `/approvals`, and neither is a `compliance:*`:
+
+| Permission | Grants |
+|---|---|
+| *(none)* | the **pending** half of `/approvals`. It reads `GET /v1/me/inbox`, the only endpoint that answers "what is waiting on *this* actor", so anyone with a session sees their own queue |
+| `core:approvals:read` | the **decided** half — the Approved and Rejected views. Without it those two views render as if empty |
+| `ai:runs:read` | the ✦ enrichment on a queue card: the agent badge and the "Open the run" link. Without it the card still renders, minus the AI provenance |
+
+The permission that *decides* a given request is the one on its approval policy —
+`compliance:erasure:execute` for an erasure, `compliance:legal_holds:write` for a
+hold release. A request never appears in an actor's pending queue unless they
+hold it.
 
 ### 2.2 The fourteen named roles against this workspace
 
@@ -159,45 +196,99 @@ to it consistently:
 
 ### 3.1 Shell
 
+The shell is banded: a top bar, a day strip, then a split of rail and canvas.
+Nothing in the chrome scrolls — the root does not scroll, only the canvas does,
+so the bands hold still without being sticky.
+
 ```
-┌──────────────────────────────────────────────────────────────────────────┐
-│ [tenant logo or name]                Signed in as Khalid  Settings  Sign out│  h-14, sticky
-├──────────┬───────────────────────────────────────────────────────────────┤
-│ • Home   │                                                               │
-│ • Ops    │                                                               │
-│ • Conv.  │                  <main id="workspace">                        │
-│ • Mktg   │                  max-w-[100rem], p-4 / sm:p-6                 │
-│ • …      │                                                               │
-│ ● Compli.│                                                               │
-│ • Admin  │                                                               │
-│  w-60    │                                                               │
-└──────────┴───────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ ✧ Brand · Tenant   [⌘K search]        [posture] [theme] [✦] [KH tenant.comp ▾]│ --chrome-top 50px
+├──────────────────────────────────────────────────────────────────────────────┤
+│ Meridian — today's strip, scrubbable                                          │ day strip
+├───────────────┬──────────────────────────────────────────────────────────────┤
+│ ◔ SHIFT       │ ▁ 2px module hue                                             │
+│   3 of 7      │ Compliance › Subject requests            (crumbs, below       │
+│   4 left      │                                           module level only)  │
+│   • Erasure   │                                                              │
+│   • Hold rel. │                <main id="workspace">                          │
+│ ── nav ────── │        max-w-[100rem], p-[--gutter-canvas]                    │
+│ • Home        │                                                              │
+│ • Ops         │                                                              │
+│ ● Compliance  │                                                              │
+│ • Admin       │                                                              │
+│ --rail-width  │                                                              │
+└───────────────┴──────────────────────────────────────────────────────────────┘
 ```
 
-- Sidebar is **always text-labelled**, never icon-only. `w-60` from `md`; below
-  `md` it becomes a horizontally scrollable strip under the header, labels
-  intact. Do not redesign it into an off-canvas drawer.
-- The dot before each nav label is decoration carrying the module accent. AXIS,
-  ORBIT, SIGNAL, SCOUT and NORTH own accents (`--module-axis` `#ffb020`,
-  `--module-orbit` `#37d3b2`, `--module-signal` `#ff7a45`, `--module-scout`
-  `#6e9bff`, `--module-north` `#c08bff`). **COMPLIANCE has no module accent** and
-  falls back to the tenant `--accent`. If the design wants compliance to feel
-  distinct, that is a new token and a product decision, not a CSS choice.
-- Skip link: `app.skipToContent` = "Skip to content".
-- The product name in the header is `brand.name`, falling back to the tenant
-  name. **Never hard-code "LYRA".**
+- **The frame is tokenised, not hand-numbered.** `--chrome-top` (50px),
+  `--chrome-module` (38px, the floor of the small-screen nav strip),
+  `--rail-width` (196px, widening to 252px from 1240px up), `--gutter` /
+  `--gutter-canvas` / `--gutter-rail`, `--stack-gap` (16px between canvas
+  blocks) and `--measure-canvas` (100rem, where the canvas stops widening).
+  Design in those terms; a screen never sets its own frame numbers.
+- **Top bar.** Tenant logo or mark plus the product name (`brand.name`, falling
+  back to the tenant name — **never hard-code "LYRA"**); the tenant being served
+  beside it when that is a different word; a ⌘K search palette whose destinations
+  are the nav's own; then, pushed to the end: posture chips, a theme toggle, the
+  companion-rail toggle (a ✦, shown only to actors who may have one), and an
+  account pill carrying initials in the tenant accent and the **role key** — not
+  the name — beside them. The name is in the tooltip and the menu label.
+- **Meridian** is the day strip under the bar: today, before the work. It can be
+  scrubbed back, which re-reads the shift and the counts as of that moment. It
+  is chrome, not canvas.
+- **The shift rail sits above the destinations, not instead of them.** A ring
+  says how much of today is behind this actor ("3 of 7 cleared", "4 left"), and
+  under it the pending approvals waiting on them, titled by their approval policy
+  — the same words `/approvals` uses for the same request (§8). It renders
+  nothing at all when the inbox could not be read: a rail saying "0 of 0" because
+  a fetch failed is a lie, an absent block is not.
+- **Primary navigation is always text-labelled**, never icon-only, grouped with
+  uppercase group headings. Below `md` it becomes one horizontally scrollable
+  strip under the header, labels intact, headings dropped. Do not redesign it
+  into an off-canvas drawer.
+- Before each nav label sits a **2px vertical bar in the module hue**, at full
+  opacity on the active item, half on hover, invisible otherwise. It is
+  decoration: the label is the item, never a bar or an icon on its own. AXIS,
+  ORBIT, SIGNAL, SCOUT and NORTH own accents (`--module-axis`, `--module-orbit`,
+  `--module-signal`, `--module-scout`, `--module-north`). **COMPLIANCE has no
+  module accent** and falls back to the tenant `--accent`. If the design wants
+  compliance to feel distinct, that is a new token and a product decision, not a
+  CSS choice.
+- Navigation runs through a view transition: the frame holds still and only the
+  canvas changes. Browsers without the API navigate normally.
+- **The canvas** opens with a 2px rule in the current workspace's hue, then
+  breadcrumbs — but only below module level, where the path says more than the
+  rail can. At `/compliance/dsar-requests` there are no crumbs; at
+  `/compliance/dsar-requests/:id` there are.
+- Skip link: `app.skipToContent` = "Skip to content", targeting `#workspace`.
+- A toast host sits above every workspace so a screen can say what happened after
+  the control that caused it scrolled away. **In-place `role="status"` notices
+  stay the default**, and nothing AI-generated ever toasts for itself.
+- **Opaque, not glass.** Blur is banned outright. Depth comes from the surface
+  being one step lighter than the field behind it, plus a hairline border.
 
 ### 3.2 Tokens
 
-Dark-first. Surfaces `--bg` / `--surface-1` / `--surface-2`, borders `--border`
-/ `--border-strong`, text `--text` / `--text-muted` / `--text-subtle`. Status
-colours `--success`, `--danger`, `--warning`, `--info`, each with a
-`-contrast` pair. Type scale is a fixed ladder: `text-11 12 13 14 16 18 22 24 28
-36 48`. Fonts: `--font-display` (Space Grotesk) for headings, `--font-ui` (Inter)
-for everything else, `--font-mono` (IBM Plex Mono) for hashes and identifiers.
-Both display and UI stacks carry `"IBM Plex Sans Arabic"` as the second family —
-do not drop it. Only five custom properties are tenant-overridable: `--accent`,
-`--accent-hover`, `--accent-contrast`, `--font-display`, `--font-ui`.
+Dark-first. Surfaces `--bg` / `--surface-1` / `--surface-2` / `--surface-3`,
+borders `--border` / `--border-strong`, text `--text` / `--text-muted` /
+`--text-subtle`. Status colours `--success`, `--danger`, `--warning`, `--info`,
+each with a `-contrast` pair. Type scale is a fixed ladder: `text-11 12 13 14 16
+18 22 24 28 36 48`.
+
+Four font roles, and headings do **not** use the display face:
+
+| Token | Family | Where it is used in this brief |
+|---|---|---|
+| `--font-serif` | Instrument Serif | **every h1 and every card/panel heading** |
+| `--font-display` | Archivo | the brand wordmark in the top bar |
+| `--font-ui` | Instrument Sans | body, labels, tables, buttons |
+| `--font-mono` | IBM Plex Mono | hashes, identifiers, the account pill, counts |
+
+`--font-arabic` (IBM Plex Sans Arabic) is the second family in the serif, display
+and UI stacks and carries both headings and body in `ar` — **do not drop it**.
+Tenant-overridable custom properties are the accent trio (`--accent`,
+`--accent-hover`, `--accent-contrast`) and the display and UI faces, from an
+approved set only.
 
 ### 3.3 The generic list screen (`routes/module.tsx`)
 
@@ -205,7 +296,7 @@ Every one of the ten tabs is this screen with different data.
 
 ```
 ┌───────────────────────────────────────────────────────────────────────────┐
-│ Compliance                                              (h1, display 24)   │
+│ Compliance                                            (h1, serif 22)      │
 │ ┌──────────────────────────────────────────────────────────────────────┐  │
 │ │ Subject requests │ Erasure log │ Disclosures │ Screenings │ …        │  │ tab strip
 │ └──────────────────────────────────────────────────────────────────────┘  │
@@ -227,7 +318,8 @@ Every one of the ten tabs is this screen with different data.
 
 Fixed behaviours to design around:
 
-- **h1** is the workspace label (`nav.compliance` → "Compliance") on every tab.
+- **h1** is the workspace label (`nav.compliance` → "Compliance") on every tab,
+  set in `--font-serif` at `text-22`, not in the display face.
   The tab name is *not* in the heading — it is only in the tab strip and in the
   table's visually-hidden caption (`Compliance — Subject requests`).
 - **Tab strip** renders only when more than one tab is visible.
@@ -267,15 +359,15 @@ Fixed behaviours to design around:
 in COMPLIANCE. The tone table maps a fixed vocabulary: `in_progress`→info,
 `running`→info, `open`/`draft`/`closed`→neutral, `done`→success, `failed`/
 `rejected`/`cancelled`→danger, `pending`/`blocked`/`high`→warning. **Any value
-not in that table renders neutral grey.** Section 9 lists exactly which
-compliance badges are grey today; several of them should not be.
+not in that table renders neutral grey.** §11 lists exactly which compliance
+badges are grey today; several of them should not be.
 
 ### 3.4 The generic record screen (`routes/record.tsx`)
 
 ```
 ┌───────────────────────────────────────────────────────────────────────────┐
 │ Back to list                                                    (12px link)│
-│ rania.haddad@example.ae                                    (h1, display 24)│
+│ rania.haddad@example.ae                                  (h1, serif 22)    │
 │ Subject requests · 01J8XR…MB4                        (12px, id monospace)  │
 ├───────────────────────────────────────────────────────────────────────────┤
 │ ┌── <dl>, 1 / 2 / 3 columns responsive, surface-1, rounded-lg ───────────┐ │
@@ -312,8 +404,10 @@ compliance badges are grey today; several of them should not be.
 ## 4. Screen 1 — `/compliance/run/screening`
 
 **Route + title.** Path `/compliance/run/screening`. Page h1: **"Compliance
-runs"** (label key `title`, ar: عمليات الامتثال). This screen owns its own label
-table — it does not read the workspace catalogue.
+runs"** (label key `title`, ar: عمليات الامتثال), `--font-serif` at `text-22`.
+Card and panel headings on all three variants are the same serif face at
+`text-18`. This screen owns its own label table — it does not read the workspace
+catalogue.
 
 **Who sees it.** `compliance:screenings:run`. Of the fourteen roles: **only
 `tenant.compliance`.** `tenant.admin` has read on screenings but not run, so the
@@ -327,10 +421,11 @@ asked.
 
 ```
 ┌───────────────────────────────────────────────────────────────────────────┐
-│ Compliance runs                                            (h1, display 24)│
+│ Compliance runs                                            (h1, serif 22)  │
 │ [ Screening ] [ Evidence bundle ] [ Retention ]        (kind strip, h-8)    │
 │ Puts a name or a customer on file to the configured screening provider     │
 │ and records the answer with the hash of the question that was asked.       │  ~55%
+│  ↑ after a run this paragraph is REPLACED by the run's own headline         │
 ├───────────────────────────────────────────────────────────────────────────┤
 │ ┌ Name ──────────┐ ┌ Customer ─────┐ ┌ Screening type ┐                   │
 │ │ w-64           │ │ w-56          │ │ w-52  Sanctions▾│  [Run screening]  │
@@ -344,7 +439,7 @@ asked.
 │ └───────────────────────────────────────────────────────────────────────┘  │
 │ ┌── Card: "Screening result" ───────────────────────────────────────────┐  │
 │ │ Screening result   ● Clear                                            │  │
-│ │ Subject            name:amina saleh            (mono 12)              │  │
+│ │ Subject            name:amina saleh     (shared Ref component, 12)    │  │
 │ │ Provider           stub                                               │  │
 │ │ Query hash         a3f1…9c2b                   (mono 12, break-all)   │  │
 │ │                    The hash of the question that was asked. …         │  │
@@ -357,21 +452,52 @@ asked.
 ```
 
 **Kind strip.** Renders only if the actor may start **more than one** of the
-three runs. `aria-current="page"` on the active one; active is `bg-surface-2
-text-text`, the others `text-subtle`. Labels: "Screening" / "Evidence bundle" /
-"Retention".
+three runs. It is a labelled `<nav>`; `aria-current="page"` on the active one;
+active is `bg-surface-2 text-text`, the others `text-subtle`. Labels:
+"Screening" / "Evidence bundle" / "Retention".
+
+**The intro paragraph is a result line, not a static blurb.** Before any run it
+carries the screen's own description (`intro.<kind>`). **After a successful run
+it is replaced** by a one-sentence headline for what just happened, in the same
+place, same type, no animation. A run that came back with a problem leaves the
+description standing. The seven headlines, verbatim, across all three variants:
+
+| Run | Outcome | Headline |
+|---|---|---|
+| Screening | clear | "No matches. Clear to proceed." |
+| Screening | hit | "A match was found. The subject is blocked." |
+| Screening | inconclusive | "The result was inconclusive." |
+| Evidence | ready | "Bundle built, {count} files." |
+| Evidence | failed | "The archive could not be stored." |
+| Retention | preview | "{count} rows would be deleted." |
+| Retention | purge | "{count} rows deleted." |
+
+Design consequence: the paragraph slot must hold both a two-line description and
+a short sentence without the form below it jumping. And a screen reader gets the
+result twice — once here, once in the card — so do not also make this an
+`aria-live` region.
 
 **Every element.**
 
 | Element | Label (key) | Control | Behaviour |
 |---|---|---|---|
 | Name | "Name" (`field.subject`) | `<Input>` `name="subject"`, `maxLength=200`, width `w-64` | Free text. Hint: "The name to screen, as it is written on the document" |
-| Customer | "Customer" (`field.customerId`) | `<Input>` `name="customerId"`, `maxLength=64`, `w-56` | Hint: "A customer record id, if the subject is one. **Overrides the name.**" |
+| Customer | "Customer" (`field.customerId`) | **`<RefPicker>`** `name="customerId"`, `w-56`, `maxLength=200`, placeholder "Search by name" | Type-over-name box backed by a native `<datalist>` of the tenant's customers. What is typed is matched to a name and **the id is what the form posts**; anything the list has never heard of is posted as typed, so a pasted `cus_…` still works. Hint: "The customer on file, if the subject is one. **Overrides the name.**" |
 | Screening type | "Screening type" (`field.kind`) | `<Select>` `name="kind"`, default `sanctions`, `w-52` | Options: Sanctions, Politically exposed person, Adverse media, Fraud |
 | Submit | "Run screening" (`action.screening`) | primary `<Button>` | POSTs to `/v1/compliance/screenings/run`; shows "Working…" while in flight |
 
 Fields are a single wrapping flex row, `items-end`, `gap-3` — the button sits on
 the same baseline as the inputs.
+
+**Where the customer list comes from, and how it degrades.** Only the screening
+variant loads it: the loader fetches customers newest-first, capped at 100, and a
+failure to read them is swallowed. When the list is empty — the fetch failed, or
+the actor's role cannot read customers — the `<datalist>` is not attached at all
+and the control silently becomes the plain text box it used to be. It still
+accepts a pasted id. **Two consequences for design:** a customer outside the
+most recent hundred cannot be found by typing their name, and there is no visible
+difference between "the list loaded and this name is not in it" and "the list did
+not load". Neither state is signalled today.
 
 **Validation.** None client-side beyond `maxLength`. Nothing is `required`. The
 API requires **at least one of** `name` or `customerId` and refuses a body
@@ -392,7 +518,10 @@ casing produces an identical hash — that identity is what makes the row eviden
   them).
 - *Result* — the stub note **always renders above the result card**, never below.
   This is deliberate: the one thing this screen must never imply is a "clear"
-  nobody qualified.
+  nobody qualified. The intro paragraph has by now been replaced by the run's
+  headline.
+- *Subject* — rendered through the product's shared `Ref` component at 12px, the
+  same treatment every prefixed reference gets elsewhere, not ad-hoc monospace.
 - *Hit* — the result badge is `danger`, and a second `role="alert"` panel appears
   between the card and the matches table: **"Blocked"** / "A hit blocks the
   subject until a compliance officer records a disposition against the
@@ -466,10 +595,11 @@ hash every file in it, and record the hash of the archive that was handed over.
 
 ```
 ┌───────────────────────────────────────────────────────────────────────────┐
-│ Compliance runs                                                            │
+│ Compliance runs                                            (h1, serif 22)  │
 │ [ Screening ] [ Evidence bundle ] [ Retention ]                            │
 │ Gathers the audit and AI audit entries in scope into one archive, hashes   │
 │ every file in it, and records the hash of the archive that was handed over.│
+│  ↑ replaced after a run by "Bundle built, 4 files."                        │
 ├───────────────────────────────────────────────────────────────────────────┤
 │ ┌Purpose─┐ ┌Subject──────┐ ┌From──┐ ┌To────┐ ┌Prepared for─┐              │
 │ │w-48 ▾  │ │w-64         │ │w-44  │ │w-44  │ │w-56         │ [Build bundle]│
@@ -517,11 +647,15 @@ any redesign.
 
 **States.**
 
-- *Ready* — badge `success`, "Ready". Download button renders.
-- *Failed* — badge `danger`, "Failed". Instead of the download button, a
-  `role="alert"` line in `--danger`: **"The archive could not be stored, so there
-  is nothing to hand over. Try again; if it repeats, the file store is
-  unavailable."**
+- *Ready* — badge `success`, "Ready". Download button renders, and the intro
+  paragraph is replaced by "Bundle built, {count} files."
+- *No files* — the file table carries its own empty state: **"No files were
+  captured in this run."**
+- *Failed* — badge `danger`, "Failed", headline "The archive could not be
+  stored." Instead of the download button, a `role="alert"` line in `--danger`:
+  **"The archive could not be stored, so there is nothing to hand over. Try
+  again; if it repeats, the file store is unavailable."** The row is still
+  written — a failed bundle is a record that an export was attempted.
 - *Truncated* — a `role="status"` warning panel above the file table: **"This
   bundle hit the row ceiling and does not cover the whole window. Narrow the
   window and export again."** The ceiling is 5,000 rows.
@@ -591,11 +725,13 @@ period, after previewing what would go and what a legal hold is keeping.
 
 ```
 ┌───────────────────────────────────────────────────────────────────────────┐
-│ Compliance runs                                                            │
+│ Compliance runs                                            (h1, serif 22)  │
 │ [ Screening ] [ Evidence bundle ] [ Retention ]                            │
 │ Deletes conversation messages older than this tenant's retention period.   │
 │ Preview first: the preview counts what would go and what a legal hold is   │
 │ keeping.                                                                   │
+│  ↑ replaced after a preview by "418 rows would be deleted.", and after a   │
+│    purge by "418 rows deleted."                                            │
 ├───────────────────────────────────────────────────────────────────────────┤
 │ ┌ Record class ──────────┐                                                 │
 │ │ w-56  Conversation ▾   │   [Preview]                                     │
@@ -661,7 +797,13 @@ that shape. A greyed-out date field would invite someone to try to enable it.
 - The purge returns HTTP 201, deletes up to 500 rows in a batch, writes a
   `retentionRuns` row and a `compliance.retention.run` audit entry.
 - After a purge the card retitles to **"Purge"** and the count relabels from
-  "Rows to delete" to **"Rows deleted"**.
+  "Rows to delete" to **"Rows deleted"**. The headline above says the same thing
+  a third time.
+- **The screen tells preview from purge by the presence of `dryRun`, not by its
+  value.** A preview response says `dryRun: true`; a purge response omits the key
+  entirely. There is no `dryRun: false` anywhere. Anything designed around a
+  three-state control here would be designing against a state the server cannot
+  produce.
 
 **Legal holds win.** A hold whose `subjectRef` is `conversation:<id>` or
 `customer:<id>` keeps its rows out of the delete, and the kept count is reported
@@ -782,7 +924,7 @@ specific to it.
   record existed and was erased, and rows the tenant must retain are counted
   separately with a stated reason. Nothing on this screen is irreversible.
 - **Mobile.** This is the **one** compliance resource with mobile parity —
-  `/compliance` maps to `compliance/dsar-requests` in the Expo nav table. See §10.
+  `/compliance` maps to `compliance/dsar-requests` in the Expo nav table. See §12.
 - **RTL.** Row order and the whole layout mirror. Email addresses and phone
   numbers in the Subject column must not — force `dir="ltr"` on the cell content
   while the cell itself stays start-aligned, or `+971501234567` renders with the
@@ -983,7 +1125,7 @@ specific to it.
   decides, and no tenant allowlist can automate it. The UI today gives the
   standard delete affordance — a small danger "Delete" button with the browser
   `confirm()` "Delete this record? It is retained for audit and can be restored by
-  an administrator." — and the approval happens behind it, in `/approvals`. **The
+  an administrator." — and the approval happens behind it, in `/approvals` (§8). **The
   button's copy does not mention the approval at all**, which understates what
   pressing it does: it does not release the hold, it *asks* to.
 - **AI surfaces.** None.
@@ -1176,12 +1318,499 @@ specific to it.
 
 ---
 
-## 8. AI surfaces across COMPLIANCE
+## 8. The approvals queue — `/approvals`
 
-**There is no AI in this workspace at all.** No ✦ marker appears on any
-compliance screen, no ghost text, no quiet chip, no background draft, no
-suggestion row. Nothing here is model-generated, so nothing needs a "why" panel,
-an inspect affordance or a kill switch on-screen.
+This screen is not part of the COMPLIANCE workspace and carries no
+`compliance:*` permission of its own. It is in this brief because **it is where
+compliance's two gated actions are actually decided**. A designer who redraws the
+erasure or legal-hold surfaces without knowing what this screen looks like will
+design half a flow.
+
+**Route + title.** Path `/approvals`, inside the signed-in shell (§3.1), so it
+gets the chrome band, the Meridian scrubber and the module rail like any
+workspace screen. It gets **no breadcrumb**: the trail is built from nav entries
+and this screen has none, so the canvas opens straight on the h1 under the
+module-hue rule. Page h1: **"Approvals"** (`--font-serif`,
+`text-22`, `leading-[1.2]`), with a one-line lede under it in `--font-ui`
+`text-13` muted. Like the run screens, this screen owns its own bilingual label
+table rather than reading the workspace catalogue — but it resolves through the
+shared vocabulary first, so words the whole platform already says (Apply, Clear,
+Next, Approved) come out identical to everywhere else, and a tenant's domain pack
+can rename them.
+
+**How you get here.** There is **no nav-rail entry for `/approvals`**. The only
+in-product link is the **shift rail** at the top of the module rail (§3.1): each
+queued item there is a link to this screen. Everything else arrives by URL, by
+the account menu, or from a screen that just raised a request.
+
+### 8.1 The rule this screen exists to enforce
+
+Any action tagged `consequential: true` needs a person before it takes effect.
+A tenant may automate one **only** if two things are true at once: tenant policy
+automates that policy key **and** the key is on the tenant's `auto_approve`
+allowlist. A policy declared `neverAutoApprove` ignores the allowlist entirely —
+no tenant setting can make it self-approve.
+
+Both compliance policies are of that last kind:
+
+| Policy key | Deciding permission | Approvers | Auto-approvable? |
+|---|---|---|---|
+| `compliance.erasure` | `compliance:erasure:execute` | dual control, always | **never** |
+| `compliance.legal_hold_release` | `compliance:legal_holds:write` | dual control, always | **never** |
+
+Both are registered under module `core`, not `compliance` — which is why the
+**Area** field on a compliance card reads **"Shared services"**, not
+"Compliance". That is the only place in this brief where a compliance action
+names a different area, and it is worth knowing before you read it as a bug.
+
+There is **no `compliance.retention_purge` key**. The permanent purge (§6) never
+appears on this screen at all.
+
+### 8.2 Who sees what
+
+| Actor | Pending view | Approved / Rejected views |
+|---|---|---|
+| anyone with a session | their own queue | not offered |
+| holder of `core:approvals:read` | their own queue | the whole tenant's decided rows |
+
+The two halves come from two different endpoints and that difference is visible:
+
+- **Pending** reads `GET /v1/me/inbox`, the only endpoint that answers "what is
+  waiting on *this* actor". It keeps a request when the actor holds the policy's
+  deciding permission **or** holds a delegation for it — so a delegate with no
+  permission of their own still sees the row. No permission is needed to open the
+  screen; an actor who can decide nothing simply has an empty queue.
+- **Approved / Rejected** read the tenant-wide list and are gated on
+  `core:approvals:read`. Without it those two options are **not rendered in the
+  state dropdown at all** — an option that could only 403 is not offered.
+
+For compliance specifically: of the fourteen roles in §2.2, the erasure and
+legal-hold-release cards appear only for **`tenant.compliance`**, because those
+are the two permissions the policies name.
+
+### 8.3 Layout
+
+```
+┌───────────────────────────────────────────────────────────────────────────┐
+│ Approvals                                                  (h1, serif 22)  │
+│ 3 waiting on a decision.                            (lede, ui 13, muted)   │
+│                                                                            │
+│ ┌ State ─────────────┐                                                     │
+│ │ Awaiting decision ▾│  [ Apply ]   Clear            (GET form, wraps)     │
+│ └────────────────────┘                                                     │
+│                                                     (status line, success) │
+├───────────────────────────────────────────────────────────────────────────┤
+│ ┌── Card (flat) ────────────────────────────────────────────────────────┐  │
+│ │ Compliance erasure          ✦ Raised by an agent  ● Awaiting decision │  │
+│ │ dsar-requests:dsr_01J8…                              (card description)│ │
+│ │                                                                        │ │
+│ │ Area              Shared services   Subject      dsar-requests:dsr_01J…│ │
+│ │ Requested by      Amina Saleh       Amount       —                     │ │
+│ │ Requested         14 Aug 2026 09:12 Authority expires  Set when decided│ │
+│ │ Approvers         Two people: whoever raised this may not decide it.   │ │
+│ │ ┌── "Why this needs approval" (surface-2, bordered) ────────────────┐  │ │
+│ │ │ rows            412          scope          orbit_messages        │  │ │
+│ │ │ requestedReason "subject asked for deletion"                      │  │ │
+│ │ └───────────────────────────────────────────────────────────────────┘  │ │
+│ │ Open the run — compliance.erasure-drafter                              │ │
+│ │ ─────────────────────────────────────────────────────────────────────  │ │
+│ │ Reason                                                                 │ │
+│ │ ┌──────────────────────────────────────────────────────────────────┐   │ │
+│ │ │ (textarea, 2 rows, max 2000)                                     │   │ │
+│ │ └──────────────────────────────────────────────────────────────────┘   │ │
+│ │ Required to reject, kept with the decision in the audit log.           │ │
+│ │ [ Approve ]  [ Reject ]                                                │ │
+│ └───────────────────────────────────────────────────────────────────────┘  │
+│ … one card per request, `gap-4`, in a labelled list ("Requests")           │
+├───────────────────────────────────────────────────────────────────────────┤
+│ 3 rows                                                        [ Next ]     │
+└───────────────────────────────────────────────────────────────────────────┘
+```
+
+### 8.4 The lede is a count, not a blurb
+
+Same discipline as the run screens (§4). One sentence under the h1, and it is
+always the truest thing the screen can say:
+
+| Condition | Lede |
+|---|---|
+| the list could not be read | "This queue could not be read just now." |
+| readable and empty | "Actions that need a person before they take effect. A decision is final and is written to the audit log." |
+| pending, non-empty | "{count} waiting on a decision." |
+| decided, non-empty | "{count} decisions marked {state}." |
+
+Nothing is invented: the "could not read" case covers both "not my permission"
+and "the API refused", because the queue has one honest thing to say either way.
+
+### 8.5 The state filter
+
+A `GET` form: one `<Select>` labelled **"State"**, an **Apply** button, and a
+ghost **Clear** link that appears only once `state` or `cursor` is in the URL.
+Options are "Awaiting decision" / "Approved" / "Rejected"; the last two are
+filtered out entirely for an actor without `core:approvals:read`. The filter is a
+navigation, not a fetch — the URL is the state, so a decided view is linkable and
+back works.
+
+### 8.6 The card
+
+Flat elevation. Everything below is per request.
+
+- **Title** — the policy key humanised, with its own module prefix stripped:
+  `compliance.erasure` under module `core` keeps its prefix and reads
+  **"Compliance erasure"**; `compliance.legal_hold_release` reads **"Compliance
+  legal hold release"**. The shift rail titles the same request with the same
+  words, deliberately.
+- **Description** — the subject reference as text.
+- **Badges, top-right** —
+  - the single **✦** marker with the label "Raised by an agent", present when the
+    request was raised by an agent identity **or** when an AI run is linked to it;
+  - the decision state, dotted: Awaiting decision (**warning**), Approved
+    (**success**), Rejected (**danger**). Unlike almost every compliance badge
+    (§11), all three of these carry a real tone.
+- **The `<dl>`** — two columns from `sm` up, `gap-x-8 gap-y-3`; term in
+  `text-12` subtle, value `text-13`:
+
+  | Term | Value |
+  |---|---|
+  | Area | the module as a person reads it ("Shared services" for both compliance policies) |
+  | Subject | see below |
+  | Requested by | the actor's **name**, resolved from a batch lookup, not the stored `kind:id` ref |
+  | Amount | formatted money when the request carries one; a bare tabular number when an amount arrived with no currency anywhere (never dressed up as money); `—` when there is none. Compliance requests carry none. |
+  | Requested | date + time, locale calendar, minute precision |
+  | Authority expires | see §8.8 |
+  | Approvers | "Two people: whoever raised this may not decide it." or "One approver." |
+  | Decided by / Decided / Reason | present only once decided |
+
+- **Subject, three ways.** A change to an existing row links to that row's record
+  screen, in mono `text-12`, `break-all`. A request that would *create* the row
+  has nothing to link to and says so: **"No record yet — approving this is what
+  creates it."** A subject a hand-written engine named its own way is rendered as
+  words rather than as a stored key, unlinked — a link that 404s is worse than no
+  link.
+
+### 8.7 "Why this needs approval" — the inspectable panel
+
+A bordered `surface-2` block headed **"Why this needs approval"**, present
+whenever the gate recorded any context beyond the four fields the card already
+shows itself (amount, currency, dual-control flag, expiry). Inside: a two-column
+`<dl>` of every remaining key the gate wrote — thresholds, row counts, the quoted
+reason, what changed. Any key ending in `Minor` renders as money in the request's
+currency; everything else renders as text, with objects serialised.
+
+**This is the "why" the ambient AI grammar requires** and it is the only one on
+this screen. Two things about it a designer should know:
+
+- **The terms are raw keys.** `requestedReason`, `rowCount`, `scopeTable` appear
+  as written by the gate, untranslated, in both locales. There is no label table
+  behind this panel and there cannot be a complete one — the keys are whatever
+  the policy chose to record.
+- **It is not AI-specific.** A human-raised request with recorded context shows
+  the same panel. The ✦ says who asked; this panel says why the rule fired.
+
+**The run link.** When the request has an AI run behind it *and* the actor holds
+`ai:runs:read`, one line follows the panel: **"Open the run — `<agentKey>`"**,
+linking to `/admin/ai/console?run=<id>` — the AI console, which is where the
+`ai_audit_log` is read (§10). Without that permission the ✦ still shows and the
+link does not: the marker comes from who asked, the link from a lookup that may
+be refused. A failure of that lookup costs the link and nothing else — never the
+queue.
+
+### 8.8 "Authority expires" — what the field actually means
+
+`core_approvals` has **no expiry column**. What lapses is not the request but the
+authority a decision grants: the gate re-asks once a decision is older than
+**24 hours**.
+
+- A **pending** request therefore shows **"Set when decided"** — no countdown,
+  because a countdown here would be invented.
+- A **decided** one shows *decided-at plus 24 hours*, unless the gate recorded an
+  explicit expiry in its context, which wins.
+
+For compliance this matters: an approved erasure that sits unexecuted for a day
+must be asked for again.
+
+### 8.9 Deciding
+
+- **Dual control blocks the initiator.** When a request is pending, dual-control,
+  and raised by the actor reading it, the whole decide form is **absent** and one
+  `role="note"` line stands in its place: *"You raised this request, and this rule
+  needs a second person to decide it."* The evidence above stays — they still need
+  to read it to know who to chase. Withholding is absence, not a disabled button.
+  Because both compliance policies are dual-control always, **every compliance
+  officer who raises an erasure sees exactly this**, and a second
+  `tenant.compliance` holder is required. A single-officer tenant cannot complete
+  an erasure. That is the design, not a bug — but it must be said at onboarding,
+  and nothing in the product says it today.
+- **The form.** A "Reason" textarea (2 rows, 2000 characters) with the hint
+  *"Required to reject, kept with the decision in the audit log."*, then
+  **Approve** (primary) and **Reject** (danger).
+- **Reason is optional to approve, required to reject.** The field is not marked
+  `required`, because the rule is asymmetric. Pressing Reject with an empty reason
+  shows the field error *"Say why you are rejecting this."* and posts nothing.
+  The rule itself lives in the API; the client check is a courtesy, not a second
+  copy that could drift.
+- **Reject also confirms.** A confirm step carries *"Reject this request? A
+  decision cannot be undone."* Approve has no confirm.
+- **One at a time.** Only the pressed card's buttons show the loading state; every
+  button on the screen disables while a decision is in flight. There is no bulk
+  decide, because the API offers none — and a bulk decision the screen faked
+  would be a decision nobody made.
+
+**Announcement.** A single `role="status" aria-live="polite"` line under the
+filter, in success colour, says either *"Approved. The action may now proceed."*
+or *"Rejected. The action will not proceed."* — and only after the API has
+confirmed. Nothing on this screen claims an outcome it has not been told.
+
+### 8.10 Empty, degraded and error states
+
+| Situation | What renders |
+|---|---|
+| pending, readable, zero rows | **the ShiftClear screen** (§8.11) — not an empty state |
+| pending, unreadable | `EmptyState`, body *"The queue could not be read just now."* |
+| decided view without `core:approvals:read` | `EmptyState`, body *"Decisions across the tenant are not yours to read, so this list stays empty."* |
+| decided view, readable, zero rows | `EmptyState`, body *"No decisions in this state yet."* |
+| a decision that was refused | the API's own problem message renders **inside the card it refused**, above the buttons |
+| a decision on a row no longer in the list | the same problem, rendered once at the top of the screen |
+| the session expired | not this screen's business — a 401 is rethrown and the layout sends the actor to sign in |
+
+Below the list, always: a row count in `text-12` tabular, and a **Next** button
+when the API returned a cursor. The decided views page at **25 rows**; the
+pending view has no Next at all — the inbox answers with the newest **100**
+pending requests in the tenant, filtered to the ones this actor can decide, and
+that is the whole list. A tenant that ever exceeds it loses the oldest rows
+silently.
+
+### 8.11 "Shift clear" — the one empty list that is an achievement
+
+A readable, empty **pending** queue does not get the ordinary empty state. It
+gets a full-width composition, left-aligned, that reads as the end of a shift:
+
+- a pulsing 6px accent dot beside the eyebrow **"SHIFT CLEAR"** (9.5px, uppercase,
+  `tracking-[0.18em]`);
+- a serif headline at **40px/1.22**, max 20 characters wide: **"Nothing is waiting
+  on you."**;
+- a 15.5px body at `leading-[1.7]`, max 62 characters: *"Every request that needed
+  your decision has one. Anything raised from here — by a person or by an agent —
+  lands on this screen the moment it is raised, and the rail keeps the count while
+  you work elsewhere."*;
+- a three-cell figure strip (hairline grid, mono 21px figures over 9.5px uppercase
+  labels): **Decided today**, **Still waiting**, **Notices**. The strip renders
+  only when those counts could be read — a rail that says "0 of 0" because a fetch
+  failed is a lie, and an absent strip is not;
+- a closing 13px muted line: *"A decision is final and is kept in the audit log, so
+  an empty queue is a closed day, not a cleared one."*;
+- and, for an actor with `core:approvals:read`, a secondary button **"See what you
+  decided"** to the Approved view.
+
+Figures are locale-formatted, so an Arabic page shows Eastern Arabic digits.
+
+### 8.12 The same rows, read a second way
+
+ADMIN's generic list carries an `approvals` tab on `/v1/core/approvals` — the raw
+table, columns `policyKey / subjectRef / module / decision / reason / contextJson
+/ requestedBy / requestedAt / decidedBy / decidedAt`, gated on
+`core:approvals:read`, filterable by decision. It is a **read-only ledger of the
+queue**: no decide affordance, references unresolved, context a truncated JSON
+blob. Deciding happens here, on `/approvals`, where the context is rendered.
+
+### 8.13 RTL, i18n and accessibility
+
+- Both locales are fully populated for this screen. The only untranslated text is
+  the **key column of the "why" panel** (§8.7) and the agent key on the run link —
+  both machine identifiers.
+- Mirrors: the filter bar, the card grids, the badge row, the button row, the
+  ShiftClear composition, the footer row.
+- Must **not** mirror: the subject reference, record ids and ULIDs, the agent key,
+  and every value in the "why" panel that is an identifier or a table name. Each
+  needs `dir="ltr"` on the content with the cell keeping `text-align: start`.
+- The list is a labelled list ("Requests"); the card carries the record id in an
+  `sr-only` line; the announcement is `role="status"`, the refusal `role="alert"`
+  via the shared problem block, and the dual-control notice `role="note"`.
+
+### 8.14 Weak today
+
+1. **A single-officer tenant cannot complete an erasure or release a legal hold**,
+   and nothing on any screen warns them before they try.
+2. **The "why" panel's terms are raw keys** in both locales.
+3. **The pending queue is ordered newest first**, so the request that has waited
+   longest is the last one on the screen — and past 100 pending rows in the
+   tenant, it is not on the screen at all. Nothing marks age beyond the raw
+   "Requested" timestamp: a request raised an hour ago and one raised last week
+   look identical.
+4. **No way to reach this screen from the nav** unless the shift rail happens to
+   have an item in it.
+
+---
+
+## 9. Public subject-request intake — `/portal/:tenantSlug/privacy`
+
+The one compliance surface a **member of the public** can use. It has no session,
+no shell, no rail, no Meridian — nothing but the tenant slug in the URL. It is the
+front door of the queue described in §7.1, and a designer reading that section
+without this one will think requests arrive only from staff.
+
+**Route + title.** Path `/portal/:tenantSlug/privacy`. Document title
+`"<Tenant> — privacy"`. Every colour on the page comes from the tenant's brand
+tokens read from the public site endpoint; no LYRA string appears anywhere
+(CLAUDE.md §5).
+
+**Who sees it.** Anyone with the link. No permission, no account, no token.
+
+**Layout.** A single centred column, `max-w-2xl`, `p-6`, on the tenant's own
+background:
+
+```
+┌──────────────────────────────────────────────────────────┐
+│ [tenant logo]  Your privacy rights          (h1 serif 22)│
+│                Ask to see, correct, or delete the        │
+│                personal data held about you. We will     │
+│                confirm your identity before we act on    │
+│                the request.                  (ui 13)     │
+│                Back to products              (link 13)   │
+├──────────────────────────────────────────────────────────┤
+│ What would you like to do?                               │
+│  ( ) See the data held about me            ← default     │
+│  ( ) Delete my data                                      │
+│  ( ) Correct something that is wrong                     │
+│  ( ) Get a copy I can take elsewhere                     │
+│  ( ) Object to how my data is used                       │
+│  ( ) Restrict how my data is used                        │
+│                                                          │
+│ Email address you deal with us on          (required)    │
+│ [                                        ]               │
+│ Full name (optional)                                     │
+│ [                                        ]               │
+│ Anything that helps us find your records, or what needs  │
+│ correcting (optional)                                    │
+│ [                                        ] (4 rows)      │
+│                                                          │
+│ [ Turnstile widget — only if a site key is bound ]       │
+│                                                          │
+│ [ Send request ]                                         │
+├──────────────────────────────────────────────────────────┤
+│ Back to products                                         │
+└──────────────────────────────────────────────────────────┘
+```
+
+**The six rights.** The radio group maps one-to-one onto the `type` column of the
+subject-request queue (§7.1): `access`, `erasure`, `rectification`, `portability`,
+`objection`, `restriction`. **`access` is preselected.** Every option is written
+as an action in the first person, not as a legal term — the queue shows the legal
+term, the portal shows the plain one, and the mapping is fixed.
+
+**Fields.** Email is `type="email"`, `autocomplete="email"`, required. Name and
+details are optional; details is capped at 2000 characters and name at 200. Both
+optional fields are folded into a single note on the stored row (name prefixed
+"Name given:"), so a designer should read them as *one* free-text hint, not two
+structured columns.
+
+### 9.1 The Turnstile challenge
+
+- **It renders only when a site key is bound.** In local development, on-prem, CI,
+  or any zone where the Cloudflare configuration has not been applied, the widget
+  is simply **absent** — no placeholder, no explanatory text, no gap.
+- The widget writes a hidden token into the form; the route forwards it with the
+  submission. It follows the page locale and the viewer's colour scheme.
+- **The server half is separate and fails closed.** With no secret bound, nothing
+  is challenged. With a secret bound, a submission carrying no token is refused,
+  and an unreachable or unhappy verification service refuses the submission rather
+  than waving it through.
+- **Order matters when switching it on**, and it is a visible-to-users detail: the
+  secret is the half that refuses and the site key is the half that renders the
+  widget. Secret first, and every one of these forms starts refusing.
+- Rate limits sit in front of the challenge, not behind it: **3 requests per email
+  address** and **10 per IP address**, both over a rolling **24 hours**.
+
+### 9.2 Success
+
+The form is **replaced** by a card headed **"Request received"** containing:
+
+- a `role="status"` paragraph: *"Keep this reference. We will contact you on this
+  email address to confirm your identity, then respond by {due}."*, with the due
+  date formatted long in the page locale;
+- and the reference itself, mono, under the label **"Reference"** — the request's
+  own id, which is what staff will search on.
+
+**About that date.** It is **30 days** out, and it is the **tenant's own service
+target**, matching the stored threshold `compliance.dsar_service_target` (§7.10).
+It is not a statutory deadline: `docs/12` states no statutory period, and this
+product does not invent one. Any copy a designer adds here must not imply
+otherwise.
+
+The response is deliberately an *acceptance*, not a completion: what was accepted
+is the request, not the outcome. Nothing is packaged or erased until a person
+verifies the subject.
+
+### 9.3 Errors
+
+One `role="alert"` line above the form, in danger colour, from a fixed set:
+
+| Cause | Message |
+|---|---|
+| rate limit hit | "Too many requests from this address — try again later." |
+| challenge failed or missing | "The security check did not pass. Reload the page and try again." |
+| a field the server rejected | "Check the highlighted fields and try again." |
+| anything else | "Something went wrong. Please try again." |
+
+The form keeps standing with its values; only the alert is added. There is no
+per-field server error on this screen — the validation message names no field,
+which is a real gap for the email format case.
+
+### 9.4 What deliberately does not happen here
+
+- **No identity verification.** The page collects no document, no ID number, no
+  proof. `docs/12` names no verification method and the platform's identity-verifier
+  seam has **no implementation**, so a request that verified nothing but claimed it
+  had would be worse than one honest about the gap. The row lands with **no
+  verification reference** in state **`received`**, and staff verify before anything
+  is packaged or erased.
+- **No account lookup is disclosed.** The intake tries to match the email to an
+  existing customer, and a miss is neither an error nor mentioned. The response is
+  **byte-identical** whether or not the address is known. Any design that
+  distinguishes the two — a "we found your account" confirmation, a different
+  success message, a slower path — turns this page into a customer-enumeration
+  oracle. This is a hard constraint, not a preference.
+- **No status lookup.** A subject holding a reference has nowhere to check
+  progress; the reference is for quoting in email. A status page is **not yet
+  built**.
+- **No file upload, no attachments, no login.**
+
+### 9.5 RTL, i18n and accessibility
+
+- Both locales are fully populated, including every one of the six rights, every
+  error and the success copy. This route carries its own table; there is no third
+  locale.
+- Direction comes from the document. The layout is a single column with logical
+  spacing throughout, so it mirrors whole.
+- Must **not** mirror: the reference code (mono) and the email address as typed.
+- The radio group is a labelled group with a visible question above it; every field
+  has a real `<label>`; the alert is `role="alert"` and the success paragraph
+  `role="status"`; the submit button carries a loading label ("Sending…").
+- **The Turnstile widget is third-party UI.** Its contrast, focus ring and language
+  are not this design system's to control beyond the locale and theme hints passed
+  to it. Do not draw it in a comp as though it were a Constellation component.
+
+### 9.6 Weak today
+
+1. **A rejected submission names no field.** "Check the highlighted fields" is
+   shown while nothing is highlighted.
+2. **A subject cannot check the status of their own request.**
+3. **The success card is the only record the subject ever gets on-screen** — if
+   they navigate away before copying the reference, it is gone. There is no
+   "email me this reference" step. The intake publishes a
+   `compliance.dsar-requests.created` event, but **nothing in the product
+   subscribes to it today**, so no acknowledgement is sent by any channel.
+
+---
+
+## 10. AI surfaces, and the two audit trails compliance reads
+
+### 10.1 Inside the workspace: no AI
+
+**No screen under `/compliance` renders AI.** No ✦ marker on any of the ten tabs
+or the three run screens, no ghost text, no quiet chip, no background draft, no
+suggestion row. Nothing there is model-generated, so nothing there needs a "why"
+panel, an inspect affordance or a kill switch on-screen.
 
 Where its absence is **right**, and must stay right:
 
@@ -1204,14 +1833,69 @@ If AI is ever added to a compliance surface, the platform rules apply without
 exception: it maps to an existing ambient pattern or adds one via ADR; every
 artifact carries the single ✦ marker and an inspectable "why"; AI identifies
 itself as AI; there is a kill switch; and no AI output is ever the sole basis for
-a consequential action here. Note that this workspace already holds the *record*
-of AI disclosure (`ai.assistant_identity` in `disclosures`) and the *record* of
-agents being paused (`agentsPaused` on an incident) — it observes AI governance
-without practising it.
+a consequential action here.
+
+### 10.2 Where the ✦ does reach compliance work
+
+The sentence "there is no AI in compliance" stops being true one screen out. On
+**`/approvals`** (§8), a request an agent raised carries the single ✦ with the
+label "Raised by an agent", the "Why this needs approval" panel, and — for an
+actor with `ai:runs:read` — a link into the AI run behind it. Both compliance
+policies are dual-control and never auto-approvable, so **an agent may raise an
+erasure but no agent can complete one**: two named people decide, and that is the
+whole point of the marker being there.
+
+The workspace also holds the *record* of AI disclosure (`ai.assistant_identity`
+in `disclosures`) and the *record* of agents being paused (`agentsPaused` on an
+incident) — it observes AI governance without practising it.
+
+### 10.3 The AI audit log — `/admin/ai/console`
+
+The compliance officer holds `ai:audit:read`, `ai:runs:read`, `ai:agents:pause`
+and `ai:killswitch:use`, so the AI console is a compliance surface even though it
+lives under `/admin`. Its last card is the **AI audit log**, headed with the one
+sentence that makes it safe to hand over whole:
+
+> **"Content is never stored here — every row carries hashes only."**
+
+- A compact table of the most recent **50** model calls: **When** (to the second),
+  **Actor** (resolved to a name), **Module**, **Purpose** (humanised), **Model**,
+  **Outcome** (a toned badge) and **Cost** (money, end-aligned).
+- Every row is drawn in the **"sealed" row state** — the table's own visual
+  vocabulary for a record nothing can edit.
+- The **Model** cell is the evidence affordance: it opens a source panel headed
+  **"Hashes"** carrying the input hash, the output hash, the provider and tier,
+  the latency and the token counts. **Claim → source**: the row proves what
+  happened by hash, never by content.
+- **A reader without the permission gets no error and no empty table** — the card
+  stands with one muted line, *"You do not have access to the AI audit log."* A
+  section the actor may not read is absent, not broken.
+- The console never loads prompt bodies or provider credentials at all. There is
+  nothing on it to redact.
+
+The same rows, unabridged, are also an ADMIN tab (`ai-audit-log`, gated on
+`ai:audit:read`): the raw column set including subject reference, tool calls and
+guardrail flags as JSON, filterable by tier and by outcome. Immutable in the API —
+no create, no edit, no delete affordance is generated for it.
+
+### 10.4 The platform audit trail — ADMIN's `audit-log` tab
+
+Everything in this brief that changes state writes here, including every approval
+decision (§8) and every subject request the public form creates (§9). The
+compliance officer holds `core:audit:read` and `core:audit:export`.
+
+- The surface is a generic list at `admin/audit-log`: columns **Action**,
+  **Actor**, **Subject**, **IP**, **When**, sorted newest first.
+- It is **hash-chained and append-only**, and the API refuses writes, so the list
+  is generated with **no create button, no row menu and no delete** — an edit
+  affordance here would be a defect, not a feature.
+- **`core:audit:export` has no surface.** The permission exists and
+  `tenant.compliance` holds it; nothing in the web app or the mobile app offers an
+  export of the audit trail. Handing a regulator a file is **not yet built**.
 
 ---
 
-## 9. The badge-tone problem (one consolidated finding)
+## 11. The badge-tone problem (one consolidated finding)
 
 Badge tones come from a single shared vocabulary. Compliance uses its own words
 almost everywhere, so almost every compliance badge renders neutral grey:
@@ -1235,7 +1919,7 @@ cheapest large improvement available to this workspace.
 
 ---
 
-## 10. Mobile
+## 12. Mobile
 
 - **The Expo app has no compliance screens of its own.** It maps the
   `/compliance` nav item to exactly one collection: `compliance/dsar-requests`.
@@ -1262,7 +1946,7 @@ cheapest large improvement available to this workspace.
 
 ---
 
-## 11. RTL and i18n
+## 13. RTL and i18n
 
 - Every string on every screen comes from a key. There are two locales today, `en`
   and `ar`, and **both are fully populated** for this workspace: every tab name,
@@ -1299,7 +1983,7 @@ cheapest large improvement available to this workspace.
 
 ---
 
-## 12. What is weak today — ranked
+## 14. What is weak today — ranked
 
 1. **The permanent purge has no approval gate.** The approvals registry has keys
    for erasure and legal-hold release, both dual-control, and **no key for the
@@ -1309,7 +1993,7 @@ cheapest large improvement available to this workspace.
 2. **The subject-request queue has no clock.** The tenant's target, its warn point
    and its escalation target are all stored and none of them are read. Due dates
    render as ordinary text.
-3. **Almost every status badge is grey** (§9), including screening results and
+3. **Almost every status badge is grey** (§11), including screening results and
    incident severity.
 4. **Screening dispositions can be demanded and never recorded.** A hit blocks a
    subject, the UI says a disposition clears it, and no screen in the product can
@@ -1334,3 +2018,15 @@ cheapest large improvement available to this workspace.
     rulepack failure does not link to its subject; a threshold does not link to
     what consumes it. Ten tabs of related evidence, and every one is an island.
 12. **Mobile shows the compliance queue as a list of ULIDs.**
+13. **A tenant with one compliance officer cannot finish an erasure or release a
+    legal hold.** Both policies are dual-control always and never auto-approvable,
+    so the officer who raises the request is refused the decision on `/approvals`
+    (§8.9). Nothing warns them before they raise it, and nothing on the erasure
+    or legal-hold screens mentions the second approver at all.
+14. **The public intake gives a subject a reference and nowhere to use it.** No
+    status page, no acknowledgement on any channel — the created event has no
+    subscriber (§9.6).
+15. **A rejected public submission highlights no field** while telling the person
+    to check the highlighted fields.
+16. **The audit trail cannot be exported** from any screen, though
+    `core:audit:export` exists and this role holds it (§10.4).

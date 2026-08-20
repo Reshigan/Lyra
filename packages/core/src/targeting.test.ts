@@ -56,6 +56,16 @@ describe("isTargetable", () => {
       for (const axis of PROTECTED_AXES) expect(isTargetable(axis, pack)).toBe(false);
   });
 
+  it("refuses nationality and residency by name, in the pack that wants them", () => {
+    // ADR-0071: nationality band is the axis a UAE media buyer asks for first,
+    // and it is a proxy for race and ethnic origin. Named here rather than left
+    // to the loop above so that deleting it from PROTECTED_AXES fails a test
+    // that says why, not just a test that counts.
+    for (const axis of ["nationality", "nationalorigin", "residency"])
+      expect(isTargetable(axis, GULF)).toBe(false);
+    expect(defineTargetingPack(["nationality", "region"], null).axes).toEqual(["region"]);
+  });
+
   it("refuses an axis nobody declared, rather than defaulting open", () => {
     expect(isTargetable("creditscore")).toBe(false);
   });

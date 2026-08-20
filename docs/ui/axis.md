@@ -1,6 +1,6 @@
 # AXIS — UI design brief
 
-*Written from the code as it stands on 2026-07-30. Every label, permission string,
+*Written from the code as it stands on 2026-08-19. Every label, permission string,
 column, filter option and piece of copy below was read out of the repository, not
 imagined. Where a screen does not exist, this file says so instead of describing it.*
 
@@ -20,75 +20,142 @@ imagined. Where a screen does not exist, this file says so instead of describing
    the task. The lead's day is: verify documents, bind policies, approve settlements.
 5. The 3 screens that matter most: **Cases list** (`/axis/cases`), **Documents list**
    (`/axis/documents`), **Claims list + record** (`/axis/claims`, `/axis/claims/:id`).
-6. Everything in `/axis` today is **generated CRUD**: 10 list screens and 10 record
-   screens, all rendered by exactly two React files from one declarative spec.
-7. There is not a single bespoke screen, chart, board, timeline or wizard in AXIS.
-8. There is not a single AI surface in AXIS — no ✦ marker, no ghost text, no
-   confidence meter — even though the model's output sits in the data.
+6. `/axis` holds **two different kinds of screen, in two different chromes**. Thirteen
+   list screens and thirteen record screens are **generated CRUD**, rendered by exactly
+   two React files from one declarative spec. Beside them sit **nineteen hand-written
+   routes**: the exception queue, the production board, the quote desk, document
+   intelligence, the operations dashboard, the process map, the claims desk, the
+   renewal desk, the referral desk, first notice of loss intake, detail pages for a
+   case, a claim and a policy, the endorse and cancel flows, the AXIS administration and
+   developer screens, and two file-download routes that render nothing at all.
+7. The two kinds do not look alike. The generated lists and records sit in the
+   platform's generic left-sidebar shell, whose sidebar lists every workspace. The
+   nineteen sit in **AXIS's own shell**, with an eleven-item rail of `axis/*`
+   destinations, a search palette, posture chips, breadcrumbs, an optional companion
+   rail and a status strip. Same URL prefix, two chromes — that is now the largest
+   design problem in the module (§7.1).
+8. **AI surfaces exist, on three screens.** Document intelligence (§5.4) is the
+   AI-heaviest screen in the module: a ✦ agent badge with a "why" popover, a confidence
+   meter, ghost text on every extracted field, a guardrail notice below the review floor
+   and an evidence link to the file itself. The case detail page (§5.19) carries a
+   grounded case copilot. The renewal desk (§5.12) puts the churn score behind an
+   evidence link. Every other number in the module — risk score, fraud score, priority
+   score, exception counts — is arithmetic or a deterministic rule, and correctly
+   carries no ✦.
 9. Quote requests and the multi-underwriter comparison are **not** in AXIS. They live
    in `/distribution`. Customers and consents live in `/admin`. Both are covered at the
    end of this file, clearly marked as outside AXIS.
-10. The single largest design problem: all ten AXIS screens have the same `<h1>`
-    ("Operations"), the same shape, and no sense of priority, urgency or workflow.
+10. All thirteen generated screens still share one `<h1>` ("Operations"); only a 32px
+    tab pill distinguishes them. Each of the nineteen bespoke screens has a title of its
+    own.
 
 ---
 
 ## 1. How AXIS is built (the constraint every redesign works inside)
 
-### 1.1 Two route files render twenty screens
+### 1.1 Two route files render twenty-six screens; nineteen more are hand-written
 
-`apps/web/app/routes.ts` gives AXIS **no bespoke routes at all**. It is served entirely
-by three catch-all entries:
+`apps/web/app/routes.ts` declares AXIS twice, in two blocks, and the two blocks put
+their screens in two different chromes.
+
+**The generated half.** Three catch-all entries, inside the platform's generic shell:
 
 ```
-route(":module",                       "routes/module.tsx")   // /axis  -> first readable tab
-route(":module/:resource",             "routes/module.tsx")   // /axis/cases
-route(":module/:resource/:id",         "routes/record.tsx")   // /axis/cases/cas_...
+route(":module",               "routes/module.tsx")   // /axis  -> first readable tab
+route(":module/:resource",     "routes/module.tsx")   // /axis/cases
+route(":module/:resource/:id", "routes/record.tsx")   // /axis/cases/cas_...
 ```
 
 The data those two files render comes from one declaration,
 `apps/web/app/modules/axis.ts` (`WorkspaceSpec`). It contains:
 
 - `path: "/axis"`
-- `labels: { en: {...}, ar: {...} }` — the workspace's own vocabulary, ~70 keys per locale
-- `tabs: [...]` — ten `ResourceSpec` entries
-
-and **no `links`, no `actions`, no `recordLink`**. Those three mechanisms exist in the
-spec type and are used by other workspaces (`/admin` declares links to the AI console;
-`/distribution` declares a `recordLink` to the quote comparison). AXIS uses none of
-them. That is why AXIS has no report links, no verb buttons and no deep screens.
+- `labels: { en: {...}, ar: {...} }` — the workspace's own vocabulary, roughly 200 keys
+  per locale, including a full table of enum **value** labels
+- `tabs: [...]` — **thirteen** `ResourceSpec` entries
+- `links: [...]` — **fifteen** entries, rendered as a tool strip under the tab strip
+- `actions` on two tabs — Verify and Read with model on documents; NTU, Lapse and
+  Reinstate on policies
 
 Each `ResourceSpec` carries: `key`, `api`, `read`/`create`/`update`/`remove`
-permissions, `columns`, optional `search`, `filters`, `fields` (create form),
-`editable` (edit form), `sort`, `order`.
+permissions, `columns`, optional `search`, `filters`, `fields` (create form), `editable`
+(edit form), `actions`, `sort`, `order`. AXIS declares no `recordLink`, so clicking a
+generated row always opens the generic record screen rather than a bespoke one.
 
-The API side is the mirror image: `apps/api/src/resources.ts` registers the same ten
-resources against Drizzle tables with the same permission strings, plus an
-`approval` config on three of them. The only hand-written AXIS endpoint in the whole
-API is `POST /v1/axis/documents/:id/verify` — and **the web UI never calls it** (see
-§4.3).
+**The bespoke half.** A second block, present only when the `axis` module is enabled for
+the deployment, declares nineteen static routes inside AXIS's own shell layout:
+
+| Path | Screen | Covered in |
+| --- | --- | --- |
+| `/axis/exceptions` | Exception queue | §5.1 |
+| `/axis/board` | Production board | §5.2 |
+| `/axis/quote-desk` | Quote desk (and, with `?kind=group_medical`, Group bids) | §5.3 |
+| `/axis/doc-intelligence` | Document intelligence | §5.4 |
+| `/axis/documents/:id/file` | Document file stream — no UI | §5.5 |
+| `/axis/analytics` | Operations analytics | §5.6 |
+| `/axis/admin` | AXIS administration | §5.7 |
+| `/axis/dev` | Extraction playground | §5.8 |
+| `/axis/process-map` | Process map | §5.9 |
+| `/axis/claims/new` | First notice of loss | §5.10 |
+| `/axis/claims/desk` | Claims desk | §5.11 |
+| `/axis/renewals` | Renewal desk | §5.12 |
+| `/axis/referrals` | Referral desk | §5.13 |
+| `/axis/policies/:id/detail` | Policy detail | §5.14 |
+| `/axis/policies/:id/endorse` | Endorse a policy | §5.15 |
+| `/axis/policies/:id/cancel` | Cancel a policy | §5.16 |
+| `/axis/claims/:id/detail` | Claim detail | §5.17 |
+| `/axis/cases/:id/evidence-bundles/:bundleId/download` | Evidence bundle stream — no UI | §5.18 |
+| `/axis/cases/:id/detail` | Case detail | §5.19 |
+
+A static path outranks the dynamic `:module` segment, so these always win the match.
+Two consequences a designer has to hold on to:
+
+- `/axis/documents` is the generated Documents list in the generic shell;
+  `/axis/doc-intelligence` is a bespoke screen in the AXIS shell. Two screens over the
+  same table, with different chrome, different columns and different verbs.
+- `/axis/cases/:id` (generated record) and `/axis/cases/:id/detail` (bespoke) are two
+  pages about the same case. Which one a user lands on depends on where they clicked.
+
+The API side mirrors the generated half: `apps/api/src/resources.ts` registers the same
+thirteen resources against database tables with the same permission strings, plus
+`approval` configs on the consequential ones. Around sixty hand-written AXIS endpoints
+sit beside them — verify, extract, case transition, coverage check, claim reserves and
+payments, the case copilot, endorse/cancel quote and confirm, renew, referral decide,
+procedure publish, and the rest. The bespoke screens are what call those.
 
 ### 1.2 The shape every list screen has
 
 ```
 +--------------------------------------------------------------------------+
 |  Operations                                             (h1, 24px display)|
-|  [Cases][Quotes][Documents][Tasks][Policies][Claims][Escrow][Procedures]  |
-|  [Process events][Case approvals]                       (tab strip, 32px) |
+|  [Cases][Quotes][Documents][Tasks][Policies][Claims][Complaints]          |
+|  [Fraud investigations][Escrow][Procedures][Case approvals]               |
+|  [Process events][Operating policies]                   (tab strip, 32px) |
 +--------------------------------------------------------------------------+
-|  [ Search        ] [Status v] [Priority v] [Apply]  Clear                 |
+|  Exception queue  Production board  Quote desk  Group bids                |
+|  Doc intelligence  Claims desk  Renewals desk  Referrals desk             |
+|  Operations analytics  Process map  Reconciliation  Automation rules      |
+|  Rule applications  AXIS administration      (tool strip, "Reports and    |
+|                                               tools", 12–13px links)      |
++--------------------------------------------------------------------------+
+|  [ Search        ] [Status v] [Priority v] [Kind v] [Live v] [Apply] Clear |
 +--------------------------------------------------------------------------+
 |  ! problem banner (only after a rejected write)                           |
 +--------------------------------------------------------------------------+
-|  > + New — Cases                          (collapsed <details>, if create)|
+|  > New                                    (collapsed <details>, if create)|
 +--------------------------------------------------------------------------+
 |  Reference | Kind | Status | Priority | Owner | ... | SLA due | Created    |
-|  GNX-...   | Bind | ●Issued| ●Normal  | user:.| ... | 12 Jan  | 10 Jan     |
+|  GNX-...   | Bind | ●Issued| ●Normal  | Layla | ... | 12 Jan  | 10 Jan     |
 |  ...                                                     (compact, sticky)|
 |  ---------------------------------------------------------------------- |
-|  1 shown                                            [Previous] [Next]     |
+|  6 shown   Rows per page [50 v]                     [Previous] [Next]     |
 +--------------------------------------------------------------------------+
 ```
+
+The tool strip is a `<nav>` labelled **"Reports and tools"**, rendered under the tabs
+because its destinations are about the whole workspace rather than one page of rows.
+Each link is filtered by its own permission, so an actor sees only the tools they can
+open; an actor holding none of the fifteen permissions sees no strip at all.
 
 ### 1.3 The shape every record screen has
 
@@ -130,7 +197,16 @@ editable therefore appears twice on the page.
 
 ---
 
-## 2. The chrome every AXIS screen sits inside
+## 2. The two chromes AXIS screens sit inside
+
+There are two, and which one a screen gets is decided by its route, not by its subject.
+
+- **2.a — the generic workspace shell.** Every generated list and record (`/axis`,
+  `/axis/cases`, `/axis/cases/:id`, …). Sidebar lists every workspace in the platform.
+- **2.b — the AXIS shell.** All nineteen bespoke routes. A rail of `axis/*` destinations
+  only; no way to see another workspace except through the module switcher.
+
+### 2.a The generic workspace shell
 
 Source: `apps/web/app/components/shell.tsx`, `apps/web/app/routes/workspace.tsx`.
 
@@ -173,6 +249,71 @@ Source: `apps/web/app/components/shell.tsx`, `apps/web/app/routes/workspace.tsx`
 - **Shell failure**: a 401 from `/v1/me` redirects to `/login?next=<path>`. Any other
   API error is thrown to the route error boundary carrying the request id.
 
+### 2.b The AXIS shell (all nineteen bespoke screens)
+
+Source: `apps/web/app/components/axis-shell.tsx`.
+
+```
++==========================================================================+
+| [logo]  Tenant | [ Search ⌘K              ] | posture chips  ☀  ✦  [LH v] |  --chrome-top
++==========================================================================+
+| Modules ▾         |  ────────────────────────────  (amber hairline)      |
+| ── shift rail ──  |  You are here: Operations / Board                    |
+| ● Exceptions      |                                                      |
+| ● Board           |    <main id="workspace" tabindex=-1>                 |
+| ○ Quote desk      |      max-w-[var(--measure-canvas)], centred          |
+| ○ Doc intelligence|                                                      |
+| ○ Analytics       |                                                      |
+| ○ Process map     |                                                      |
+| ○ Renewals        |                                                      |
+| ○ Referrals       |                                                      |
+| ○ Claims desk     |                                                      |
+| ○ Admin           |                                                      |
+| ○ Dev             |                                                      |
++-------------------+------------------------------------------------------+
+| Product name                                            Design doctrine  |  --chrome-status
++==========================================================================+
+```
+
+- **Rail.** Exactly eleven destinations, compile-time known, all under `/axis`:
+  Exceptions, Board, Quote desk, Doc intelligence, Analytics, Process map, Renewals,
+  Referrals, Claims desk, Admin, Dev. Each is a text label preceded by a 2px amber
+  marker bar (`var(--module-axis)`) that is invisible when idle, half-opacity on hover
+  and full when the route is current. The eight remaining bespoke routes (the two file
+  streams, the three policy screens, claim detail, case detail, first notice of loss)
+  are **not** rail destinations — they are opened from a list or another rail page.
+  The rail is *not* filtered by permission: every one of the eleven is shown to every
+  actor in this shell, and a destination the actor cannot read refuses on arrival.
+- **The rail is not the tab strip.** The thirteen generated tabs (Cases, Policies,
+  Claims, …) are not reachable from this shell at all. Leaving it means the module
+  switcher, the breadcrumbs, or a link inside a screen.
+- **Search palette.** The widest thing in the header, and a button rather than an
+  input: it reads **"Search"**, carries an **"All surfaces"** scope chip and a `⌘K`
+  keycap, and opens a command bar. The bar groups **"Go to"** (the eleven rail
+  destinations) above **"Results"** (records fetched from the server as you type).
+  Placeholder "Search people, records and requests"; under two letters it says
+  "Type at least two letters.", and a miss says "Nothing found.".
+- **Posture chips**, **theme toggle** and the **account menu** (initials avatar, active
+  role name, then the account items) sit in the header's logical-end group.
+- **Companion rail.** A ✦ glyph button, labelled **"Show agent activity"** /
+  **"Hide agent activity"**, shown only to an actor holding `ai:runs:read`, only at `lg`
+  and above. Toggling it opens a right-hand column of agent activity. It is chrome, not
+  a screen: nothing in a page depends on it.
+- **Breadcrumbs** ("You are here") render above the content whenever the path has more
+  than one level.
+- **Amber hairline.** A 2px full-width rule in `var(--module-axis)` at the top of the
+  canvas — the module's identity, on every one of the nineteen.
+- **Loading.** Navigation inside this shell that takes longer than **400 ms** replaces
+  the canvas with a skeleton labelled "Loading". Under 400 ms nothing flashes. This is
+  the *only* loading affordance in AXIS: the generated screens have none.
+- **Module switcher.** Rendered only when the actor's roles reach more than one shell,
+  and never lists AXIS itself. Below `md` it appears again above a horizontally
+  scrolling copy of the rail, which is the only way a phone user leaves the shell.
+- **Status strip.** Footer, hidden below `sm`: product name at the logical start, a
+  **"Design doctrine"** link to `/design` at the end.
+- **Skip link.** First focusable element, "Skip to content", targets `#workspace`.
+- No Meridian panel here — that is NORTH-only by decision record.
+
 ### Design tokens available (`packages/ui/src/tokens.css`)
 
 | Role | Dark (default) | Light |
@@ -212,15 +353,22 @@ info; optional leading dot; pill radius), `Avatar`, `Skeleton`, `Separator`, `Ta
 (underline, active border `--accent`), `ProgressBar`, `Table`, `EmptyState`, `Money`,
 `DateTime`, `AgentBadge`, `ConfidenceMeter`, `GuardrailNotice`.
 
-`AgentBadge`, `ConfidenceMeter` and `GuardrailNotice` exist and are used on the
-distribution comparison screen. **No AXIS screen imports any of them.**
+The AI grammar lives in `packages/ui/src/ai.tsx`: `AgentBadge` (renders `✦ Drafted by
+{agent}` as the trigger of a popover labelled **"Why this was drafted"**),
+`ConfidenceMeter`, `GuardrailNotice`, `GhostText` and `EvidenceLink`. The ✦ in
+`AgentBadge` is the only sparkle in the product. In AXIS these are imported by document
+intelligence (§5.4), the case detail copilot (§5.19) and the renewal desk's churn score
+(§5.12); `GuardrailNotice` is also used, without any ✦, to state a limitation on the
+board (§5.2), analytics (§5.6) and first notice of loss (§5.10). No generated AXIS
+screen imports any of them.
 
 ---
 
-## 3. Mechanics shared by all twenty AXIS screens
+## 3. Mechanics shared by all twenty-six generated AXIS screens
 
-Rather than repeat these per screen, they are stated once. Per-screen sections below
-only note deltas.
+Rather than repeat these per screen, they are stated once. The per-screen sections in §4
+only note deltas. **None of §3 describes the nineteen bespoke screens** — those are
+hand-written and each states its own behaviour in §5.
 
 ### 3.1 Cell rendering (`apps/web/app/components/fields.tsx`)
 
@@ -232,8 +380,13 @@ only note deltas.
 | `date` | `<DateTime precision="day">` |
 | `datetime` | `<DateTime precision="minute">` |
 | `boolean` | the words `Yes` / `No` |
-| `json` | `JSON.stringify` truncated to 60 chars, `font-mono text-11 text-subtle` |
+| `json` | read out as prose, truncated at 60 chars: a `{en,ar}` name renders in the reader's own language, a list as a comma-separated list, a flag map as the flags that are set, anything else as `Label: value` pairs. Empty renders the same em dash a null does |
 | null / undefined / `""` | an em dash `—` in `text-subtle` |
+| any `text` cell holding an enum | if the label table has words for the value, the words; otherwise the raw value |
+| any `text` cell holding a `scope:id` reference | the person's or record's **name** when the page resolved it, and a shortened reference when it did not |
+
+Value labels are consulted by badge cells *and* by plain text cells, so a `kind` column
+reads "Group scheme", not `group_medical`, whether or not it is a badge.
 
 Badge tone map (the only status colouring in the product):
 
@@ -250,26 +403,35 @@ wrong.
 
 ### 3.2 Label resolution
 
-Three steps, in order: the workspace's own `labels[locale]` table → the shared
-`common.*` catalogue → the raw key. Enum *values* resolve `<column>.<value>` →
-`<value>` → `humanise(value)` (`awaiting_docs` → `Awaiting docs`).
+Four steps, in order: **the tenant's domain pack** → the workspace's own `labels[locale]`
+table → the shared `common.*` catalogue → the raw key. The pack coming first is what
+lets a tenant outside insurance rename every noun on the screen ("policy" → "contract",
+"premium" → "fee") without a code change; nothing in AXIS may hard-code an industry
+noun. Enum *values* resolve `<column>.<value>` → the bare `<value>` →
+`humanise(value)` (`awaiting_docs` → `Awaiting docs`).
 
-**AXIS declares no value labels at all.** Its label table has `status: "Status"` but no
-`status.issued`, no `intake`, no `bind`. So every status chip, every filter option and
-every select option in AXIS is machine-humanised English: `Awaiting docs`, `In
-progress`, `Renewal ops`, `Group medical`, `Tradelicense`, `Mulkiya`, `Eid`. In Arabic
-they render as **the same humanised English**, because the fallback never reaches an
-Arabic string. This is a real, visible, shipped defect on every AXIS screen.
+**AXIS now declares its value labels in both locales.** `status.awaiting_docs` is
+"Awaiting documents", `kind.renewal_ops` is "Renewal", `kind.group_medical` is "Group
+scheme", `docType.mulkiya` is "Vehicle registration", `docType.eid` is "Identity card",
+`docType.tradelicense` is "Trade licence" — each with an Arabic twin. Filter options,
+select options, badges and plain enum cells all read them.
+
+Gaps remain, and they show as humanised English in both locales. The ones a designer
+will meet: a case's `kind` on the production board card, every step name on the process
+map, and `status.bound` / `status.expired` / `status.ntu` on policy detail — which
+render as "Bound", "Expired" and, embarrassingly, **"Ntu"**.
 
 ### 3.3 States, with today's exact copy
 
 | State | What renders |
 | --- | --- |
-| Loading | Nothing screen-local. React Router loads server-side; the browser shows its own navigation state. There is no skeleton and no spinner on any AXIS screen. Buttons show `aria-busy` while a form posts. |
+| Loading | Nothing screen-local. Navigation is server-side; the browser shows its own progress. There is no skeleton and no spinner on any **generated** AXIS screen — the 400 ms skeleton described in §2.b belongs to the AXIS shell and never appears here. Buttons show `aria-busy` while a form posts. |
 | Empty (no filters) | `EmptyState` inside the table body — title `"Nothing here yet"`, body `"No records match this view. Clear the filters, or create the first one."` |
 | Empty (filtered) | title `"Nothing here yet"`, body `"No records match these filters."` |
 | Empty (deleted view) | title `"Deleted records"`, body `"Nothing has been deleted here."` |
-| API rejected a write | `Problem`: `role="alert"`, `rounded-md border border-danger/40 bg-danger/10 p-3`, one line of `problem.detail ?? problem.title` |
+| API rejected a write | `Problem`: `role="alert"`, `rounded-md border border-danger/40 bg-danger/10 p-3`, one line of `problem.detail ?? problem.title`, plus `"Reference {id}"` in mono when the API returned a request id |
+| A write needs approval — **record screen** | Not a failure and not red. A warning-toned `role="status"` box: title **"Waiting on an approval"**, body **"This needs sign-off under {policy} before it can go through."**, then a link **"Open the approval queue"** to `/approvals`. |
+| A write needs approval — **list screen (create panel)** | The same 403 renders through `Problem` instead, so it appears as a red band containing the bare policy key (`axis.bind`). The create panel re-opens with the input intact. This inconsistency is live today (§7.3). |
 | Permission denied — tab | The tab is **absent** from the strip. Not disabled, not greyed. Same rule for create panels, edit forms and delete buttons. |
 | Permission denied — whole workspace | Route error boundary: `"This did not load"` / `"Your roles do not include access to this area."` plus `"Reference {id}"` and `"Try again"` |
 | Session expired | Redirect to `/login?next=…`; the login page says `"Your session has ended. Sign in to continue."` |
@@ -278,11 +440,13 @@ Arabic string. This is a real, visible, shipped defect on every AXIS screen.
 
 ### 3.4 Pagination
 
-Keyset, forward-only. Footer left: `"{count} shown"` (e.g. `6 shown`). Footer right:
-`Previous` appears only when a cursor is in the URL and returns to the **first** page of
-the current view (it does not step back one page); `Next` appears only when the API
-returned a cursor. Both are `secondary sm` buttons. A source comment records that a
-cursor stack would give true back-paging and has deliberately not been built.
+Keyset, forward-only. Footer left: `"{count} shown"` (e.g. `6 shown`), then a **"Rows per
+page"** `Select` offering **25 / 50 / 100 / 200**, defaulting to 50. Changing it reloads
+the list from the first page. Footer right: `Previous` appears only when a cursor is in
+the URL and returns to the **first** page of the current view (it does not step back one
+page); `Next` appears only when the API returned a cursor. Both are `secondary sm`
+buttons. A source comment records that a cursor stack would give true back-paging and
+has deliberately not been built.
 
 ### 3.5 Sorting and filtering
 
@@ -291,14 +455,21 @@ Changing sort writes `?sort=&order=` and **drops the cursor**. Filters submit as
 form; every filter is a `Select` whose first option is `"All"` (value `""`). The
 `Apply` button is `secondary`; `Clear` appears as a `ghost` link only when a filter or
 search term is active. Search is a single `type="search"` input, `w-64`, placeholder
-and `aria-label` both `"Search"` — **only the Cases tab has it**, because `cases` is the
-only AXIS resource registered `searchable` in the API (on `ref`).
+and `aria-label` both `"Search"`. Only tabs whose spec sets `search: true` render it; in
+AXIS that is **Cases** alone, matched on `ref`. (The API also registers policies as
+searchable on `policyNo`, but the Policies tab does not declare the box, so nobody can
+type into it.)
+
+There is a second `Select` beside the filters — **live records** versus **deleted
+records** — shown only on tabs where the actor holds the remove permission.
 
 ### 3.6 Create and delete
 
 Create is a `<details>` panel above the table, closed by default, re-opened
-automatically when the last create failed. Summary reads `+ New — Cases` (a `+` glyph
-that rotates 45° when open, then `common.new` + em dash + the tab label). The form is a
+automatically when the last create failed. Summary reads **"New"** after a `+` glyph
+that rotates 45° when open — the tab name is not repeated, so on a screen whose `<h1>`
+is already "Operations" the only clue to what is about to be created is the tab pill.
+The form is a
 `sm:grid-cols-2` grid of `Field`s; submit is a **primary** button reading
 `"Create"`. There is no cancel — closing the `<details>` is the cancel.
 
@@ -328,36 +499,75 @@ Server-side rules that a designer must know:
 - A **malformed JSON textarea throws**, producing the generic error boundary rather
   than a field-level message.
 - A `date` field is parsed as `${value}T00:00:00Z` — UTC midnight, not local.
-- `Field` supports a `hint`, and `FieldSpec` supports `hintKey`. **No AXIS field
-  declares one.** Every input in AXIS is a bare label over a bare box.
+- `Field` supports a `hint`, and `FieldSpec` supports `hintKey`. AXIS now declares six:
+  the complaint summary (*"Sealed at rest: only staff with the complaint permission can
+  read it back."*), complaint redress (*"Anything above zero needs a second approver
+  before it saves."*), the fraud investigation's leakage figure (*"What the investigation
+  stopped going out the door."*), and one on each of the three policy actions — NTU
+  (*"Premium already banked, if any. It comes straight back."*), lapse (*"Which
+  instalment went unpaid — the first one is 0."*) and reinstate (*"Amount collected to
+  clear the arrears."*). Every other input in AXIS is still a bare label over a bare box, including
+  every money field.
 
 ### 3.8 Mobile (`apps/mobile/app/`)
 
-Expo app, three real screens: `index.tsx` (nav list), `m/[nav]/index.tsx` (a generic
-collection list), `m/[nav]/[id].tsx` (a generic record). The nav mapping is a ten-entry
-table; `"/axis"` maps to exactly one resource: **`axis/cases`**.
+Expo app. It is no longer one generic list: mobile now opens on a **persona**, a
+bottom bar of three purpose-built screens plus **More**. Which persona you get comes
+from your first role segment (`src/workspace.ts`), so a user whose role starts `axis.`
+lands on the AXIS persona: **Queue · SLA · Capture · More**.
 
-So on mobile:
+- **Queue** (`/j/queue`). The open cases, worst first. It asks for
+  `axis/cases` filtered to `intake, quoting, awaiting_docs, review, approval`, sorted by
+  SLA due date ascending, capped at 50 rows, then re-ranks them on the device by
+  severity — **Breached** (past its SLA) beats **Urgent** (priority) beats **Due soon**
+  (within 24 hours) beats **On track** — then by earliest deadline, then oldest. That
+  ranking is the same function the web exceptions screen uses, so the two surfaces never
+  disagree about which case is worst. A card is: the case ref in semibold (the raw id if
+  a case has no ref), `"{kind} · {status}"` humanised beneath it, then
+  `"Breached · 6h overdue"` / `"Due soon · Due in 9h"` / `"On track · No deadline set"`.
+  A 3 px stripe on the **inline-start** edge carries the severity as colour — danger red
+  only for a breach, accent for urgent, muted for due soon, plain border for on track.
+  Tapping a card opens `/m/axis/{id}`, the generic record screen. Title "Queue"; empty
+  state "Nothing is waiting on you."
+- **SLA** is the same screen with `?filter=sla`, which keeps only breached and due-soon
+  cases. Title "Against the clock"; empty state "No case is near its deadline."
+- **Capture** (`/j/capture`). **Mobile writes now.** Title "Add a document". A "Case
+  reference" text field under the hint "The case this document belongs to."; a radio row
+  of six document types (Emirates ID, Vehicle registration, Census letter, Medical
+  report, Trade licence, Other); "Take a photo" and "Choose a file", both through the
+  system picker with its own permission prompt; a 220 px contain-fit preview of what was
+  captured, with the camera button relabelled "Replace"; then "Upload", which posts the
+  bytes plus case reference and type to the documents upload endpoint and shows
+  "Uploaded. Extraction runs on the server and the case updates itself." Refusals are
+  inline notices: "Enter a case reference first.", "Take or choose a document first.",
+  and, if the OS denies the camera, "The camera is not available. Grant access in the
+  device settings, or choose a file instead." Nothing is read on the device — extraction
+  is a separate audited server call, so this screen only carries bytes. **The tab
+  declares no permission**, so a user without document-create rights sees the form, fills
+  it in, and only learns on Upload, as a request-id notice.
+- **More** is the nav from `/v1/me` — permission-filtered server-side, brand logo or
+  name at the top, "Signed in as {name}" under it. `"/axis"` still resolves to exactly
+  one collection, **`axis/cases`**, opening the generic list at `/m/axis`.
+- **The generic pair still exists.** List `/m/axis`: `nav.back`, the title "Operations",
+  `"{n} shown"`, then pressable cards. A card's title is the first present of
+  `name, title, reference, subject, code, email, key, id` — a case's human name is `ref`,
+  which is *not* in that list, so **the generic list still renders raw ids**
+  (`cas_01JW3K…`) subtitled with the humanised status. The Queue screen does not have
+  this problem; it reads `ref` by name. Record `/m/axis/{id}`: every field of the record
+  in API order, raw camelCase key over value, hairline-separated, selectable, objects as
+  pretty JSON.
+- **The other eleven AXIS resources have no mobile screen.** Quotes, tasks, policies,
+  claims, complaints, fraud investigations, escrow batches, procedures, case approvals,
+  process events and operating policies cannot be reached from the phone. Documents can
+  be *created* from Capture but never listed.
+- Apart from Capture, mobile is **read-only**: no edit, no delete, no filters, no search,
+  no pagination past the queue's 50, no approvals, no money formatting, no badges.
+- Mobile states: "Loading" as muted text; a notice carrying the request id plus a "Try
+  again" button on error; "There is nothing here yet." when empty; "Not on mobile yet"
+  for a nav href with no mobile screen; "Untitled" for a row with no nameable field.
 
-- **Cases have a screen.** List: a title from `t("nav.axis")` = "Operations", a
-  `nav.back` button, `"{n} records"` (`list.count`), then a `FlatList` of pressable
-  cards. Each card shows `titleOf(row)` — the first of `name, title, reference,
-  subject, code, email, key, id` that the row has. `axis_cases` has **none** of those
-  (its human name is `ref`, not `reference`), so **every case renders its raw id**, e.g.
-  `cas_01JW3K...`, with the subtitle taken from `status`. Detail: every field of the
-  record, in API order, as `key` (the raw camelCase name, untranslated) over value,
-  hairline-separated, selectable text; objects rendered as pretty JSON.
-- **The other nine AXIS resources have no mobile screen at all.** There is no way to
-  reach quotes, documents, tasks, policies, claims, escrow, procedures, process events
-  or case approvals from the phone.
-- Mobile is **read-only**. No create, no edit, no delete, no filters, no search, no
-  pagination, no badges, no money formatting.
-- Mobile states: `t("app.loading")` as muted text, a `Notice` with the request id plus a
-  `"Try again"` button on error, `t("list.empty")` when empty, `t("nav.unavailable")`
-  when the workspace has no mobile screen.
-
-Every per-screen "Mobile" note below is therefore either *"Cases only"* or
-*"web only"*.
+Every per-screen "Mobile" note below is therefore one of *"the Queue tab"*, *"the
+Capture tab"*, *"the generic list only"* or *"web only"*.
 
 ### 3.9 RTL
 
@@ -376,9 +586,9 @@ Arabic locale's own arrangement in `ar`), the ISO-ish identifiers (`cas_01JW…`
 `dir="ltr"` isolation to avoid the leading `GNX` jumping to the wrong end of the
 string, JSON blobs in the mono cells, `durationMs` values, and any future chart axis.
 
-Arabic support today is partial and visibly so: the AXIS label table is fully
-translated for column and tab names, but **no value labels are translated**, so an
-Arabic user reads Arabic headers over English humanised statuses.
+Arabic coverage today: column names, tab names, the shared shell copy and most enum
+values are translated, on web and on the phone alike. The gaps listed in §3.2 are what an
+Arabic reader still meets in English — humanised, not raw, but English.
 
 ---
 

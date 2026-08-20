@@ -13,12 +13,14 @@ improved.
 
 1. ADMIN is where a tenant configures itself: who exists, what they may do, what
    the platform is allowed to talk to, and what it did about it.
-2. It is one nav entry, **"Administration"** (`nav.admin`), sitting near the
-   bottom of the sidebar. The API only offers it to an actor holding
-   `core:users:read`.
-3. Behind that one entry are **33 resource tabs**, four bespoke screens, and the
-   `/settings` screen, which is where a person's own account lives and where a
-   tenant administrator finds three tenant-wide panels.
+2. It is one nav entry, **"Administration"** (`nav.admin`), sitting under the
+   **Platform** group heading at the foot of the module rail. The API only
+   offers that entry to an actor holding `core:users:read`. A second entry in
+   the same group, **"Platform"** (`nav.platform`), is gated on
+   `admin:diagnostics:read` — a permission no tenant role carries.
+3. Behind that one entry are **35 resource tabs**, a strip of **ten links** out
+   to purpose-built screens, and `/settings`, which is where a person's own
+   account lives and where a tenant administrator finds the tenant-wide panels.
 4. Two people live here. A **tenant administrator** (`tenant.admin`) during
    setup week: creating people, assigning roles, setting the brand, capping AI
    spend. A **developer administrator** (`dev.admin`) later: API keys, webhooks,
@@ -26,49 +28,72 @@ improved.
 5. A third visits often and changes nothing: **`tenant.compliance`**, who reads
    the audit log, reads AI runs, and can pause an agent but never author one.
 6. The three screens that matter most, in order:
-   **`/settings`** (the API key is revealed exactly once, there and nowhere
-   else), **`/admin/ai/console`** (pause an agent, see what it cost, see what it
-   was allowed to do), and **`/admin/roles` + `/admin/user-roles`** (the
-   permission model, which is today two JSON textareas and two raw id fields).
-7. All 33 tabs are rendered by **one generic list screen and one generic
+   **`/admin/developer`** (a signing secret or a minted key is shown exactly
+   once, there and nowhere else), **`/admin/ai/console`** (pause an agent, see
+   what it cost, see what it was allowed to do), and **`/admin/permissions`**
+   (the permission model as a real matrix, not a JSON textarea).
+7. All 35 tabs are rendered by **one generic list screen and one generic
    record screen**. They are not bespoke pages. Redesigning the chassis
-   redesigns 66 screens at once.
+   redesigns 70 screens at once.
 8. Nothing in ADMIN is a modal. Creation is a native `<details>` disclosure,
    confirmation is `window.confirm()` or a required checkbox, and AI never
    interrupts (docs/15).
 9. Mobile shows **one** ADMIN screen: the list of people. Everything else is web
    only.
 10. The brand is data. Product name, logo and accent colours come from tenant
-    config. A hard-coded "LYRA" in any user-facing surface is a bug; `/settings`
-    → *Tenant appearance* is where a tenant overrides them.
+    config. A hard-coded "LYRA" in any user-facing surface is a bug;
+    `/settings/brand` is where a tenant overrides them, inside the narrow
+    contract in §3.
+11. The design system explains itself at **`/design`** — the playground the
+    definition of done asks for. Every signed-in role may read it.
 
 ---
 
 ## 2. How this brief is organised
 
 The ADMIN workspace is declared as data (a `WorkspaceSpec`): a path, a label
-catalogue in English and Arabic, a list of resource tabs, and two links out to
-bespoke screens. Two route files render all of it.
+catalogue in English and Arabic, a list of resource tabs, and a strip of links
+out to purpose-built screens. Two route files render the tabs; the rest of the
+table below is one file per screen.
 
 | Route | File | What it is |
 |---|---|---|
 | `/login` | `routes/login.tsx` | Bespoke. Four steps in one card. |
 | `/logout` | `routes/logout.tsx` | Action only, no UI. |
-| `/admin` and `/admin/:resource` | `routes/module.tsx` | **The list chassis.** Renders all 33 tabs. |
-| `/admin/:resource/:id` | `routes/record.tsx` | **The record chassis.** Renders all 33 record screens. |
+| `/admin` and `/admin/:resource` | `routes/module.tsx` | **The list chassis.** Renders all 35 tabs. |
+| `/admin/:resource/:id` | `routes/record.tsx` | **The record chassis.** Renders all 35 record screens. |
 | `/admin/ai/console` | `routes/ai-console.tsx` | Bespoke. The AI control plane. |
 | `/admin/ai/budget` | `routes/ai-budget.tsx` | Bespoke. Spending ceilings. |
 | `/admin/ai/runs/:id` | `routes/ai-run.tsx` | Bespoke. One agent run, opened. |
-| `/settings` | `routes/settings.tsx` | Bespoke. Eight panels. |
+| `/admin/cost-explorer` | `routes/cost-explorer.tsx` | Bespoke. What the platform costs to run. |
+| `/admin/permissions` | `routes/admin-roles.tsx` | Bespoke. The permission matrix. |
+| `/admin/staff` | `routes/staff.tsx` | Bespoke. People, as people rather than rows. |
+| `/admin/staff/:id` | `routes/staff-member.tsx` | Bespoke. One colleague. |
+| `/admin/developer` | `routes/admin-developer.tsx` | Bespoke. Keys, webhooks, deliveries. |
+| `/admin/security` | `routes/admin-security.tsx` | Bespoke. Sign-in and session policy. |
+| `/admin/customers/:id/360` | `routes/customer-360.tsx` | Bespoke drill-down off the `customers` tab. |
+| `/admin/products/:id/detail` | `routes/product-detail.tsx` | Bespoke drill-down off the `products` tab. |
+| `/settings` and `/settings/:tab` | `routes/settings.tsx` | Bespoke. Five addressable tabs, one file. |
+| `/platform` | `routes/platform.tsx` | Bespoke. Cross-tenant operations, platform staff only. |
+| `/design` | `routes/design.tsx` | Bespoke. The design-system playground. |
+| `/search` | `routes/search.ts` | No UI. Feeds the command palette. |
+| `/search/results` | `routes/search-results.tsx` | Bespoke. The full-page search result. |
+| `/companion` | `routes/companion.ts` | No UI. Feeds the shell's companion rail. |
+| `/onboarding/:kind/:ref` | `routes/onboarding.tsx` | Bespoke. The checklist that admits a partner, channel or staff member. |
+| `/analytics/report/:id` | `routes/analytics-report.tsx` | Bespoke. The report builder. |
+| `/analytics/dashboard/:id` | `routes/analytics-dashboard.tsx` | Bespoke. One dashboard, painted server-side. |
 
-So: sections 4–9 give the full 13-part entry for each *route*. Section 10 is the
-tab-by-tab reference — for each of the 33 tabs, the parts that actually differ
-(permissions, columns, forms, filters, weaknesses). Section 11 is the RBAC
-deep-dive and the permission-matrix design. Section 12 lists what is not built.
+So: sections 4–9 give the full 13-part entry for each of the core *routes*.
+Section 10 is the tab-by-tab reference — for each of the 35 tabs, the parts that
+actually differ (permissions, columns, forms, filters, weaknesses). Section 11
+is the RBAC deep-dive and the permission-matrix design. Sections 12–15 cover the
+purpose-built admin screens, the shell surfaces, onboarding and analytics.
+Section 16 lists what is not built.
 
 Static routes rank above the dynamic `:module` segment in the route table, so
 `/admin/ai/console` wins the match over `/admin/:resource` without extra work.
-This also means **`ai` can never be a tab key** under `/admin`.
+This also means **`ai`, `cost-explorer`, `permissions`, `staff`, `developer` and
+`security` can never be tab keys** under `/admin`.
 
 ---
 
@@ -76,34 +101,59 @@ This also means **`ai` can never be a tab key** under `/admin`.
 
 ### Tokens (`packages/ui/src/tokens.css`)
 
-Dark is the **default** theme; `:root[data-theme="light"]` remaps.
+Dark is the **default** theme; `:root[data-theme="light"]` remaps. The palette
+is called Horizon, and it works in ramps — six foregrounds, four lines, four
+surfaces — rather than three named steps.
 
-**Palette.** Deep Field `--ink-900 #070b14` (page background), `--ink-800
-#0c1322`, `--ink-700 #131c31`, `--ink-600 #1c2842`; `--star-100 #f4f7fc` (body
-text), `--star-300 #aeb9cf` (subtle), `--star-500 #5e6b87` (muted); accent
-`--vega-500 #ffb020` (light theme uses `--vega-600 #d98e0b` at 7.33:1 against
-ink, because `#ffffff` on `#ffb020` was 2.68:1); `--ion-500 #37d3b2` success,
-`--flare-500 #ff5d5d` danger, `--photon-500 #6e9bff` info, `--comet-500 #ff7a45`,
-`--nebula-500 #c08bff`.
+**Palette.** Deep field `--ink-900 #0b0e13` (page background), `--ink-800
+#10141d` (surface 1), `--ink-700 #161c28` (surface 2 / cards), `--ink-600
+#1c2432` (elevated / hover); `--star-100 #edf1f7` (body text), `--star-300
+#aeb6c6` (muted), `--star-500 #8a94a6` (subtle — 6.32:1 on ink-900); accent
+`--vega-500 #c8f163` with `--vega-600 #dbff85` as hover. The light theme cannot
+use either as text, so it substitutes `--vega-700 #4a6a0f` and `--vega-800
+#3b560c`. Status: `--ion-500 #55d68c` success, `--flare-500 #f08a80` danger,
+`--solar-500 #e8c266` warning, `--photon-500 #6c9ef0` info.
 
-**Module identity.** axis `#ffb020`, orbit `#37d3b2`, signal `#ff7a45`, scout
-`#6e9bff`, north `#c08bff`; `--chart-1..5` alias these. **ADMIN has no module
-colour** — it falls back to `var(--accent)`. That is deliberate and it is also
-why the admin sidebar dot looks like every other non-module entry.
+**Module identity.** axis `#e8a33d`, orbit `#3fc9b4`, signal `#f0764f`, scout
+`#6c9ef0`, north `#a98be8`; `--chart-1..5` alias these, and `--comet-500` /
+`--nebula-500` are the SIGNAL and NORTH identities under their palette names.
+**ADMIN has no module colour** — it falls back to `var(--accent)`. That is
+deliberate and it is also why the 2px rule above an admin canvas is the accent
+lime rather than a module hue.
 
-**Type.** `--font-display` Space Grotesk, `--font-ui` Inter, `--font-mono` IBM
-Plex Mono, `--font-arabic` IBM Plex Sans Arabic. **Every stack keeps the Arabic
-fallback** — dropping it regresses RTL rendering to a font with no Arabic
-coverage. Scale `--text-12` (0.75rem) … `--text-48` (3rem). `--leading-body 1.5`,
-`--leading-display 1.15`, `--tracking-wordmark 0.03em`.
+**Type.** `--font-display` Archivo, `--font-ui` Instrument Sans, `--font-mono`
+IBM Plex Mono, `--font-arabic` IBM Plex Sans Arabic, `--font-serif` Instrument
+Serif. **Every stack keeps the Arabic fallback** — dropping it regresses RTL
+rendering to a face with no Arabic coverage, which is why the Plex Arabic face
+sits ahead of the generic `serif` in the serif stack too. The serif is reached
+only through `--font-serif`; it is deliberately **not** part of the tenant font
+contract. Scale `--text-12` (0.75rem) … `--text-48` (3rem). `--leading-body
+1.5`, `--leading-display 1.15`, `--tracking-wordmark 0.03em`.
 
-**Geometry.** Radii 6 / 10 / 16 / 999px. `--control-height: 40px` (hit target
-≥ 40px), `--row-height: 44px`; the compact density block drops them to 32px /
-34px, which is what every admin table uses. `--duration-fast 150ms`,
-`--duration-slow 250ms`, `--ease-out cubic-bezier(0.2, 0.8, 0.2, 1)`.
+**Geometry.** Radii `--radius-sm 2px`, `--radius-md 3px`, `--radius-lg 6px`,
+`--radius-orbit 999px` for full-round pills. Horizon draws hairlines, not
+rounded slabs; if a redesign reaches for a 12px corner it is fighting the
+system. `--control-height: 40px` (hit target ≥ 40px), `--row-height: 44px`; the
+compact density block drops them to 32px / 34px, which is what every admin table
+uses. `--duration-fast 120ms`, `--duration-medium 180ms`, `--duration-slow
+240ms`, plus `--ease-out`, `--ease-observatory` and `--ease-settle`.
+
+**The frame.** The chrome is tokenised, so no screen may invent a band height:
+`--chrome-top 50px` (top bar), `--chrome-module 38px` (module band, and the
+floor for the mobile nav strip), `--chrome-meridian 74px` (today's strip),
+`--chrome-status 28px` (the status strip is a band, never an overlay).
+`--rail-width 196px`, widening to 252px from 1240px up. Spacing runs on
+`--gutter 12px` (chrome inline padding, 16px from 640px up), `--gutter-canvas
+16px` (24px from 640px up), `--gutter-rail 12px` and `--stack-gap 16px` between
+canvas blocks. `--companion-width 288px` is the right dock.
+`--measure-canvas 100rem` is where the canvas stops widening;
+`--measure-prose 68ch` is the reading column.
 
 **Semantic.** `--success / --danger / --warning / --info` each with a
-`-contrast` pair; `--focus: var(--accent)`.
+`-contrast` pair — every one of them `#06080b`, because Horizon's fills are all
+light. `--accent-contrast #06080b` is 15.2:1 on the accent. `--focus:
+var(--accent)`. The dark theme sets `--elev: none`: elevation is drawn with a
+line and a surface step, not a shadow.
 
 ### Primitives (`packages/ui/src/primitives.tsx` and siblings)
 
@@ -112,20 +162,42 @@ coverage. Scale `--text-12` (0.75rem) … `--text-48` (3rem). `--leading-body 1.
 `DatePicker`, `Select`, `Checkbox`, `RadioGroup`, `Switch`, `Card`, `Badge`
 (tones `neutral | accent | success | danger | warning | info`), `Avatar`,
 `Skeleton`, `Separator`, `Tabs`, `ProgressBar`, `Table` (+ `Column`),
-`EmptyState`, `DateTime`, `Money`, and the AI set: `AGENT_MARK` (the ✦
-character), `EvidenceLink`, `GuardrailNotice`, `ApprovalStrip`,
-`ConfidenceMeter`, `BudgetMeter`.
+`EmptyState`, `DateTime`, `Money`, the flow set `StateFlow` / `PostingFlow`
+(`packages/ui/src/flow.tsx`), and the AI set: `AGENT_MARK` (the ✦ character),
+`EvidenceLink`, `GuardrailNotice`, `ApprovalStrip`, `ConfidenceMeter`,
+`BudgetMeter`.
 
-### Brand overrides
+### Brand overrides — the whole contract
 
-Exactly five custom properties are overridable per tenant: `--accent`,
-`--accent-hover`, `--accent-contrast`, `--font-display`, `--font-ui`. One
-typeface covers both roles. The font is looked up in a `Map` with three entries
-(`space-grotesk`, `inter`, `ibm-plex-sans-arabic`) — never interpolated into
-CSS, so a hostile value cannot escape.
+This is the only place tenant data reaches CSS, so the contract is narrow and
+worth stating exactly.
+
+A tenant's brand record may carry three colours and **one** typeface name. From
+those, the shell emits **at most four custom properties** on the frame:
+`--accent`, `--accent-hover`, `--accent-contrast`, and `--font-display` +
+`--font-ui`, which are always set together from the single font choice. One
+typeface covers both roles, and the settings screen says so in as many words:
+*"Applies to headings and body text alike."*
+
+Rules a designer must not design around:
+
+- **A tenant never supplies a font stack, only a key.** The key is looked up in
+  an allow-list of five (`archivo`, `instrument-sans`, `space-grotesk`, `inter`,
+  `ibm-plex-sans-arabic`); an unrecognised key yields no property at all and the
+  default stack stands. **Tenant text is never interpolated into a custom
+  property value**, so a hostile brand record cannot escape into CSS.
+- The brand form on `/settings/brand` offers **three** of the five faces, not
+  all five. The other two remain reachable only by an already-stored value.
+- Every allow-listed stack ends in the Arabic face and a system fallback, so an
+  override can never strip RTL coverage.
+- Anything not in that list of four properties — surfaces, status colours,
+  radii, the frame scale — is **not** tenant-overridable. A tenant cannot make
+  the danger colour green or the chrome taller.
+- `--accent-contrast` is validated for AA against the chosen accent **on save**,
+  so a brand that would make button text unreadable is refused at the form, not
+  rendered.
 
 ---
-
 ## 4. `/login` — Sign in
 
 ### Route + title
@@ -146,9 +218,11 @@ deployment only) by picking a seeded persona — and clear the second factor.
 
 ```
 ┌──────────────────────── viewport, min-h-screen, centred ────────────────────┐
-│                                                                             │
+│                       ╭───────╮                                             │
+│                       │  ( o )│  aria-hidden mark, 80px, drawn stroke        │
+│                       ╰───────╯                                             │
 │              ┌──────────── Card, max-w-md (28rem) ────────────┐             │
-│              │ h1  Sign in                          (22px)    │             │
+│              │ h1  Sign in                  (22px, serif)     │             │
 │              │ p   Enter your work email and password…(13px)  │             │
 │              │                                                │             │
 │              │ ┌── role="alert" danger box (only on error) ─┐ │             │
@@ -179,6 +253,15 @@ deployment only) by picking a seeded persona — and clear the second factor.
 ```
 
 ### Every element
+
+**Above the card**, an 80px inline mark: a `var(--accent)` ring inside a tilted
+elliptical orbit, both drawn on load by animating a stroke dash. It is
+`aria-hidden` and it is deliberately **not** the ✦ — that glyph means "AI
+artifact" (docs/15 §4) and must not mean two things. The page has not yet
+learned which tenant it is, so this is the one surface in the product that shows
+a mark rather than the tenant logo. The whole main carries the starfield and the
+staggered entrance (`lyra-field lyra-stagger`); the `<h1>` is 22px **serif**,
+the intro 13px UI.
 
 The card renders one of **four steps**. The step survives a failed submit — a
 bad TOTP code must not drop the user back to a password form the session has
@@ -325,7 +408,7 @@ destructive-looking control in the header and it is one click.
 
 ## 6. The list chassis — `/admin` and `/admin/:resource`
 
-**This one screen is 33 screens.** Read it once; section 10 then only has to
+**This one screen is 35 screens.** Read it once; section 10 then only has to
 say what each tab puts in it.
 
 ### Route + title
@@ -358,58 +441,109 @@ actor holds the create permission — add one.
 ### Layout skeleton
 
 ```
-┌─ shell header (h-14, sticky) ───────────────────────────────────────────────┐
-│ [logo/name]                          Signed in as Ayesha  Settings  Sign out│
-├──────────────┬──────────────────────────────────────────────────────────────┤
-│ sidebar      │ main  (max-w-[100rem], p-4 / sm:p-6, gap-6)                  │
-│ md:w-60      │                                                              │
-│ · Home       │ h1  Administration                              (24px)       │
-│ · Operations │                                                              │
-│ · …          │ nav "Sections"  (wraps; 33 pills at 32px tall)              │
-│ · Admin  ◄   │ [Organisations][People][Roles][Role assignments][Teams]…     │
-│ · Settings   │                                                              │
-│              │ nav "Reports and tools"   AI console   Spending ceilings     │
-│              │                                                              │
-│              │ ┌ filter bar (flex-wrap, items-end, gap-3) ────────────────┐ │
-│              │ │ [search 16rem] [Status ▾] [Sign-in method ▾] [Live ▾]    │ │
-│              │ │ [Apply] [Clear]                                          │ │
-│              │ └──────────────────────────────────────────────────────────┘ │
-│              │                                                              │
-│              │ (danger alert — API objection, if any)                       │
-│              │ (accent reveal box — minted secret, if any)                  │
-│              │                                                              │
-│              │ ▸ +  New — People              ← <details>, closed by default│
-│              │                                                              │
-│              │ ┌ Table, density=compact, sticky header ───────────────────┐ │
-│              │ │ Name    Email ▲   Status  Sign-in  Two-factor  Last seen │ │
-│              │ │ Ayesha  a@…       Active  Password  Yes        2 Jul…    │ │
-│              │ │ …                                                        │ │
-│              │ ├──────────────────────────────────────────────────────────┤ │
-│              │ │ 24 shown                          [Previous]  [Next]     │ │
-│              │ └──────────────────────────────────────────────────────────┘ │
-└──────────────┴──────────────────────────────────────────────────────────────┘
+┌─ top bar  h=--chrome-top (50px) ────────────────────────────────────────────┐
+│ [logo/name] │ Tenant Co    [⌘K search…]      ◐ posture  ☾ theme  ✦  (AK) TA │
+├─ Meridian  h=--chrome-meridian (74px) ──────────────────────────────────────┤
+│ today's strip, scrubbable                                                   │
+├──────────────┬───────────────────────────────────────────┬─────────────────-┤
+│ rail         │ main #workspace (the only scroller)       │ companion       ││
+│ 196→252px    │ max-w-[--measure-canvas], gap --stack-gap │ 288px, when     ││
+│ · Home       │ ══ 2px accent rule ══                     │ opened          ││
+│ · Operations │ (breadcrumbs, below module level only)    │                 ││
+│ · …          │ h1  Administration                (24px)  │                 ││
+│ ▸ Platform   │                                           │                 ││
+│   · Admin ◄  │ nav "Sections" (wraps; 35 pills, 32px)    │                 ││
+│              │ [Organisations][People][Roles][Teams]…    │                 ││
+│              │                                           │                 ││
+│              │ nav "Reports and tools" — 10 links        │                 ││
+│              │  AI console · Spending ceilings · Cost …  │                 ││
+│              │                                           │                 ││
+│              │ ┌ filter bar (flex-wrap, items-end) ────┐ │                 ││
+│              │ │ [search 16rem] [Status ▾] [Live ▾]    │ │                 ││
+│              │ │ [Apply] [Clear]                       │ │                 ││
+│              │ └───────────────────────────────────────┘ │                 ││
+│              │ (danger alert — API objection, if any)    │                 ││
+│              │ (accent reveal box — minted secret, once) │                 ││
+│              │ ▸ +  New — People   ← <details>, closed   │                 ││
+│              │ ┌ Table, density=compact, sticky header ┐ │                 ││
+│              │ │ Name  Email ▲  Status  Two-factor …   │ │                 ││
+│              │ ├───────────────────────────────────────┤ │                 ││
+│              │ │ 24 shown              [Prev]  [Next]  │ │                 ││
+│              │ └───────────────────────────────────────┘ │                 ││
+├──────────────┴───────────────────────────────────────────┴─────────────────-┤
+│ status strip  h=--chrome-status (28px)   Product / Administration    Doctrine│
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Every element
 
-**Shell header.** `sticky top-0 z-30`, 56px tall. First child is a skip link
-(`sr-only focus:not-sr-only`) reading **"Skip to content"**. Then the brand: a
-`NavLink` to `/` rendering the tenant's logo as `<img alt={productName}>` if one
-is configured, otherwise the product name as text. `productName` is
-`brand.name ?? tenantName`; the logo is `brand.logo.dark ?? brand.logo.light ??
-brand.logo.mark`. **Never a literal.** Then, pushed to the far end with `ms-auto`
-(a logical property, so it flips in RTL): **"Signed in as {name}"**
-(`header.signedInAs`, hidden below the `sm` breakpoint), a **Settings** NavLink,
-and the sign-out form.
+#### The frame (shared by every signed-in screen)
 
-**Sidebar.** `md:w-60`, sticky under the header, `md:border-e`. **Always
-text-labelled, never an icon rail** — an icon-only rail costs every user a hover
-to read the nav and costs a screen-reader user the label outright. Each item is
-a 6px `aria-hidden` dot in the module accent (opacity 100 when current, 30 when
-idle, 60 on hover) followed by `<span className="truncate">` holding the label.
-Below `md`, the sidebar becomes a **horizontally scrollable strip under the
-header**, not an off-canvas drawer. The shell only renders nav items whose href
-actually has a route.
+This is the **Horizon frame**, and it is worth describing once because every
+screen in this brief sits inside it. Four fixed bands stack around one scroller:
+the top bar (`--chrome-top`), the Meridian (`--chrome-meridian`), the workspace
+row, and the status strip (`--chrome-status`). The outer element is `h-dvh
+overflow-hidden`: **the root never scrolls, only the canvas does**, so the
+chrome cannot drift off-screen on a long table. A frame test gates this — no
+route may write a frame pixel of its own.
+
+**Cold open.** Mounted first but painted over everything, client-only: the
+workspace beneath is complete and interactive whether or not it ever renders.
+
+**Skip link.** `sr-only focus:not-sr-only`, reading **"Skip to content"**,
+targeting `#workspace`.
+
+**Top bar.** Opaque, not glass — blur is banned outright (docs/15 §3); depth is
+a surface step plus a hairline. Left, the lockup: a `NavLink` to `/` rendering
+the tenant's logo as `<img alt={productName}>` if one is configured, otherwise
+the product name as text in the display face. `productName` is `brand.name ??
+tenantName`; the logo is `brand.logo.dark ?? brand.logo.light ??
+brand.logo.mark`. **Never a literal.** When the tenant renamed the product, the
+name of the tenant being served follows after a hairline — a tenant that never
+renamed anything gets one name, not the same word twice with a divider between.
+Then the search palette (⌘K, §13), then at the far end: the **posture chips**,
+the **theme toggle**, a **✦ companion button** (`aria-expanded`, rendered from
+`lg` up and **only** for an actor holding `ai:runs:read`), and the **account
+menu**. The account trigger is a pill showing the actor's initials on
+`bg-accent` / `text-accent-contrast` beside **the role key** in mono —
+`tenant.admin`, not "Ayesha Khan". The human name lives in the trigger's tooltip
+and the menu label. The menu holds *view as* (when a profile is available),
+**Settings**, and **Sign out** in the danger tone.
+
+**Meridian.** A 74px strip below the top bar: today, at a glance, tinted with
+the current module's accent. It is **scrubbable** — dragging its playhead parks
+the whole workspace at an instant other than now.
+
+**Module rail.** `--rail-width` (196px, 252px from 1240px up), `md:border-e`,
+its own scroller. **Always text-labelled, never an icon rail** — an icon-only
+rail costs every user a hover to read the nav and costs a screen-reader user the
+label outright. Items are grouped under headings (ADMIN sits under
+**Platform**); each is a 6px `aria-hidden` dot in the module accent (opacity 100
+when current, 30 when idle, 60 on hover) followed by a truncating label. Below
+`md` the rail becomes a **horizontally scrollable strip** at least
+`--chrome-module` tall under the header, not an off-canvas drawer. The shell
+only renders nav items whose href actually has a route, which is why a
+permission you hold can still show no entry.
+
+**The canvas.** `<main id="workspace">`, keyed on the pathname so a navigation
+remounts it, `tabIndex={-1}` so the skip link can land on it, capped at
+`--measure-canvas` and centred, `--gutter-canvas` padding, `--stack-gap` between
+blocks. It opens with a **2px rule in the module accent** — drawn once, here, so
+no screen has to know which module it is inside; shared surfaces (ledger, admin,
+settings) fall back to `var(--accent)`. Then breadcrumbs, **only** below module
+level and only when the path says more than the rail can; at module level they
+render nothing. Then either the screen or, while a slow navigation is in flight,
+a `PageSkeleton` announced `role="status" aria-busy aria-live="polite"`.
+
+**Companion.** The 288px right dock, §13. Absent — not disabled — without
+`ai:runs:read`.
+
+**Status strip.** 28px, mono, 12px, hidden below `sm`. It names the product and
+the current nav item; both are `aria-hidden` because the lockup and the nav's
+current item already announce them. Its **one interactive element**, parked at
+the far end, is a link to **`/design`** (`nav.doctrine`) — the `aria-hidden`
+sits on the decorative spans rather than the footer precisely so this link stays
+in the accessibility tree.
 
 **Tab strip.** `<nav aria-label="Sections">` (`common.tabs`), a wrapping `<ul>`
 of pills: 32px tall, `rounded-md`, 13px. Current tab: `bg-surface-2`,
@@ -418,10 +552,26 @@ of pills: 32px tall, `rounded-md`, 13px. Current tab: `bg-surface-2`,
 strip renders only when more than one tab is visible.
 
 **Link strip.** `<nav aria-label="Reports and tools">` (`common.reports`),
-12px subtle underline-on-hover links. ADMIN declares two:
-**"AI console"** → `/admin/ai/console` (needs `ai:runs:read`) and
-**"Spending ceilings"** → `/admin/ai/budget` (needs `ai:budgets:read`). A link
-the actor cannot open is not offered.
+12px subtle underline-on-hover links. ADMIN declares **ten**, in this order,
+each with its own permission — a link the actor cannot open is **not offered**,
+so most people see four or five of them:
+
+| Link | Goes to | Needs |
+|---|---|---|
+| **AI console** | `/admin/ai/console` | `ai:runs:read` |
+| **Spending ceilings** | `/admin/ai/budget` | `ai:budgets:read` |
+| **Cost explorer** | `/admin/cost-explorer` | `analytics:reports:read` |
+| **Staff** | `/admin/staff` | `core:users:read` |
+| **Roles and permissions** | `/admin/permissions` | `core:roles:read` |
+| **Developer portal** | `/admin/developer` | `core:api_keys:read` |
+| **Security & access** | `/admin/security` | `core:settings:read` |
+| **Brand and theme** | `/settings` | `core:tenants:update` |
+| **Plan and invoices** | `/ledger/invoices` | `ledger:invoices:read` |
+| **Data subject requests** | `/compliance/dsar-requests` | `compliance:dsar:read` |
+
+Three of those leave ADMIN entirely (brand, billing, data requests). That is
+deliberate: the strip is "where an administrator goes next", not "what lives
+under `/admin`".
 
 **Filter bar.** A `method="get"` form, rendered only if the tab declares
 `search`, `filters`, or the actor can restore. It carries `role="search"` when
@@ -544,11 +694,11 @@ LTR-ordered.
 The `+` disclosure glyph rotating 45° is direction-neutral and is fine.
 
 ### What is weak today
-- **33 tabs in one wrapping pill strip.** On a laptop this is three or four
+- **35 tabs in one wrapping pill strip.** On a laptop this is three or four
   rows of pills above every list. There is no grouping, no search over tabs, no
   overflow menu. The spec already groups them in source (who / record /
   governance / connections / AI) and the UI throws that grouping away.
-- **The `<h1>` says "Administration" on all 33 screens.** The tab name is only
+- **The `<h1>` says "Administration" on all 35 screens.** The tab name is only
   in a pill and a visually-hidden caption, so the browser tab title, the heading
   and any screen-reader landmark announcement are identical for "People" and
   "Dead letters".
@@ -562,7 +712,7 @@ The `+` disclosure glyph rotating 45° is direction-neutral and is fine.
 - Paging is forward-only. "Previous" means "back to the first page", which is
   not what the word means to a user.
 - The reveal box has **no copy button** — the value must be selected by hand.
-- Search is offered on only 7 of the 33 tabs, and the ones that most need it
+- Search is offered on only 9 of the 35 tabs, and the ones that most need it
   (audit log, AI audit log, runs) have none.
 
 ---
@@ -718,9 +868,9 @@ costs, and what they were allowed to do."*
 
 #### Who sees it
 The link is offered to holders of **`ai:runs:read`**. The screen itself does not
-gate as a whole. Instead each of its six loader calls **swallows 403 and 404 to
-`null`** — a section the actor may not read is absent, not an error. So the
-screen composes itself out of whatever the actor can see:
+gate as a whole. Instead each of its **seven** loader calls **swallows 403 and
+404 to `null`** — a section the actor may not read is absent, not an error. So
+the screen composes itself out of whatever the actor can see:
 
 | Section | Needs | Denied copy |
 |---|---|---|
@@ -731,6 +881,8 @@ screen composes itself out of whatever the actor can see:
 | Recent runs | `ai:runs:read` | *"You do not have access to agent runs."* |
 | Guardrail events | `ai:audit:read` | (defaults to an empty list) |
 | AI audit log | `ai:audit:read` | *"You do not have access to the AI audit log."* |
+| Kill switches | `ai:agents:read` (the state) | *"You do not have access to the AI kill switches."* |
+| Kill-switch controls | `ai:killswitch:use` (pause) / `ai:agents:write` (resume) | *"Your roles do not include the AI kill switch."* |
 
 Roles that reach it: `tenant.admin` (everything including autonomy changes),
 `tenant.compliance` (everything **except** authoring — it reads, audits and
@@ -765,6 +917,18 @@ See what the agents are doing and stop them.
 │ │ orbit    draft_reply      812   301 447  [3]      $2.02                 │ │
 │ │ ────────────────────────────────────────────────────────────            │ │
 │ │ Totals                  2 016   784 360  3        $5.13                 │ │
+│ └─────────────────────────────────────────────────────────────────────────┘ │
+│                                                                             │
+│ ┌ Card  Kill switches ────────────────────────────────────────────────────┐ │
+│ │ Stop model calls for this tenant or for one module. Every switch is     │ │
+│ │ recorded against your name.                                             │ │
+│ │ (GuardrailNotice danger, when a wider pause is on)                       │ │
+│ │  Platform-wide   [No platform-wide pause.]                              │ │
+│ │  This tenant     [Running.]                                             │ │
+│ │  Paused modules  [scout]                                                │ │
+│ │ ─────────────────────────────────────────────────────────────────────── │ │
+│ │  Reason [_____________________]   [ Pause all AI ]                      │ │
+│ │  [Resume · scout]      [Module ▾]  [ Pause module ]                     │ │
 │ └─────────────────────────────────────────────────────────────────────────┘ │
 │                                                                             │
 │ ┌ AgentCard ──────────────────────────────────────────────────────────────┐ │
@@ -816,6 +980,39 @@ platform stores micro-units (1 major unit = 1,000,000 micro).
 **Spend table.** Columns: `Module`, `Purpose`, `Calls`, `Tokens`, `Errors`,
 `Cost`. Errors render as a **danger Badge** when non-zero and as plain text
 otherwise. A footer row carries the totals. Window label: **"Last 30 days"**.
+
+**Kill switches card.** Title **"Kill switches"**, intro *"Stop model calls for
+this tenant or for one module. Every switch is recorded against your name."*
+This is the broad stop — wider than pausing one agent, narrower than turning the
+tenant off. It reports **three tiers**, and only two of them are operable here:
+
+- **Platform-wide** — a `success` Badge *"No platform-wide pause."* or a
+  `danger` one reading *"Platform operations has paused AI. Nothing here will
+  release it."* It is **shown but never operable**: it belongs to platform
+  operations, and an operator staring at a dead assistant needs to be told the
+  release is not theirs to make rather than hunting for a control that would
+  403.
+- **This tenant** — *"Running."* or, in danger, *"AI is paused for the whole
+  tenant. Every model call is refused."*
+- **Paused modules** — one warning Badge per paused module, or **"None"**.
+
+When either wider tier is on, a **danger `GuardrailNotice`** repeats it above
+the pairs, so the state is legible before the reader parses badges.
+
+Below a top border, the controls, which follow the same split the API enforces:
+**pausing takes `ai:killswitch:use`, resuming takes `ai:agents:write`** — the
+party that stops AI mid-incident is not automatically the party that decides the
+incident is over.
+
+- Tenant paused → a secondary **"Resume AI"** button (resume permission only).
+- Tenant running → a required `reason` textarea (`minLength={3}`,
+  `maxLength={500}`, 2 rows) and a **danger "Pause all AI"** button.
+- One secondary **"Resume · {module}"** button per currently paused module.
+- A module `<Select>` (labelled **"Module"**, offering only modules **not**
+  already paused) plus a required reason and a **danger "Pause module"** button.
+- Holding neither permission: *"Your roles do not include the AI kill switch."*
+- Unable to read the state at all: *"You do not have access to the AI kill
+  switches."*
 
 **AgentCard** — one per registered agent. Title: `✦ {localised name}` then the
 agent key in mono. Description falls back to `Module: {module} · Tier: {tier}`
@@ -881,8 +1078,10 @@ capped by a fixed row limit set in the file.
 
 | Form | Fields | Validation | Server re-check |
 |---|---|---|---|
-| Pause | `reason` textarea | `required minLength={3} maxLength={500}` **in the browser only** | **None.** The value is passed straight through. |
-| Resume | none | — | — |
+| Pause agent | `reason` textarea | `required minLength={3} maxLength={500}` | **Yes.** The API refuses a reason shorter than 3 or longer than 500 characters. |
+| Resume agent | none | — | — |
+| Pause all AI / Pause module | `reason` textarea, plus `module` select on the module form | `required minLength={3} maxLength={500}` | **Yes**, same bounds; the reason is optional on a resume and capped at 500. |
+| Resume AI / Resume module | `module` hidden field on the module form | — | — |
 | Autonomy | `autonomyLevel` select, `reason` textarea (required), `confirm` checkbox (required **only when raising**) | browser `required` | Level validated against the four known values; the confirm checkbox is re-checked when the change is a raise. |
 
 #### States
@@ -894,6 +1093,10 @@ capped by a fixed row limit set in the file.
 | No run access | *"You do not have access to agent runs."* |
 | No AI audit access | *"You do not have access to the AI audit log."* |
 | Can read agents but not change them | *"Your roles do not include changing agents."* |
+| No kill-switch access | *"You do not have access to the AI kill switches."* |
+| Can see kill switches but not work them | *"Your roles do not include the AI kill switch."* |
+| No agents configured | The headline reads *"No agents are configured for this tenant."* |
+| Every agent paused | The headline reads *"Every configured agent is paused."*; otherwise it counts, *"{n} agent(s) are active."* |
 | Change queued for approval | **"Autonomy change is waiting for approval"** + the explanatory reason line. |
 | API objection | The shared danger `Problem` alert. |
 
@@ -901,7 +1104,7 @@ There is no dedicated loading state; the screen is server-rendered.
 
 #### AI surfaces — in detail
 
-This screen **is** the AI control plane. Four levers exist:
+This screen **is** the AI control plane. Five levers exist:
 
 1. **Pause an agent.** One textarea and one danger button, no dialog, no second
    step. It takes effect immediately at the API. The reason is stored and shown
@@ -914,8 +1117,12 @@ This screen **is** the AI control plane. Four levers exist:
    the API**: a 202 carrying an approval reference does not change the level, it
    queues it. The browser control only stops an accidental raise from ever
    reaching the gate.
-4. **The budget kill switch** lives on the sibling screen (§8.2) — the console
-   shows the meter and the over-budget notice, and links there.
+4. **The kill switches.** Broader than a single agent: stop every model call for
+   the tenant, or every model call in one module. Pausing and resuming are
+   deliberately different permissions. A platform-wide pause is displayed here
+   and released elsewhere.
+5. **The budget ceiling** lives on the sibling screen (§8.2) — the console shows
+   the meter and the over-budget notice, and links there.
 
 Every AI artifact on the screen carries the single **✦** mark and an inspectable
 "why" one interaction away: the agent cell in the runs table, the model cell in
@@ -928,6 +1135,7 @@ no modal, and nothing on this screen sends anything.
 |---|---|---|---|
 | Pause agent | Yes (Resume) | None beyond the required reason | No |
 | Resume agent | Yes (Pause) | None | No |
+| Pause the tenant or a module | Yes (Resume) | None beyond the required reason | No, but pause and resume are **different permissions** |
 | Lower autonomy | Yes | Required reason | No |
 | **Raise autonomy** | Yes, but the window between raise and lower is real | Required reason **and** required acknowledgement | **Yes — approval-gated at the API** |
 
@@ -947,19 +1155,14 @@ The **✦** mark is direction-neutral and must stay adjacent to its artifact on
 both sides.
 
 #### What is weak today
-- **The pause reason is not validated server-side.** `minLength={3}` lives only
-  in the markup. Any client that skips the browser can pause an agent with an
-  empty reason, and the stored reason is what the compliance reader later sees.
 - **Two different confirmation patterns for the same idea.** The console's
   autonomy checkbox is `required` in markup **and** re-checked server-side; the
   budget screen's confirm checkbox is **not** `required` and is refused
   server-side. A user meets both in one session.
-- **The autonomy enum does not match the rest of the product.** This screen (and
-  the run screen) use `suggest | act_with_approval | act_within_limits |
-  autonomous`. The generic `/admin/agents` tab offers `suggest | draft |
-  act_with_approval | act | act_and_report`. Three of five values do not
-  overlap, so a level set from the generic tab renders here as a raw string
-  through the label fallback.
+- **Three ways to stop the same thing, on one screen.** Pause an agent, pause a
+  module, pause the tenant. They live in different cards, use different
+  permissions and read almost identically. Nothing tells a panicking operator
+  which one to reach for.
 - Agent cards are an unbounded vertical stack. With twenty agents the runs table
   is far below the fold, and there is no filter, no search, no collapse.
 - The four tables have fixed row limits with **no "see all" link** — the reader

@@ -230,8 +230,10 @@ export async function seedStaff(ctx: SeedContext): Promise<void> {
       createdAt: now - 2 * DAY
     },
     // Capped: the controller is travelling and the admin may sign off refunds,
-    // but only up to R2 500. Above the cap the delegation resolves to nobody and
-    // the decision waits for the person who actually owns the money.
+    // but only up to AED 2 500 — the tenant's own currency, or the cap never
+    // matches a transaction and the delegation is decorative. Above the cap the
+    // delegation resolves to nobody and the decision waits for the person who
+    // actually owns the money.
     {
       id: id("dlg", now + 62),
       tenantId,
@@ -240,7 +242,7 @@ export async function seedStaff(ctx: SeedContext): Promise<void> {
       reason: "travel",
       scopeJson: JSON.stringify({ modules: ["ledger"] }),
       maxAmountMinor: 250_000,
-      currency: "ZAR",
+      currency: "AED",
       startsAt: now - 2 * DAY,
       endsAt: now + 3 * DAY,
       status: "active",

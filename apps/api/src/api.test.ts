@@ -393,6 +393,11 @@ const UNDOCUMENTED = new Set([
   // Operational, not part of /v1: a load balancer's probe and the spec itself.
   "get /health",
   "get /openapi.json",
+  // The reference underwriter (ADR-0072). It is a carrier we happen to host,
+  // not a LYRA capability: it has no tenant, no session and no data, and the
+  // only client it is built for is engines/dist-quoter.ts over a service
+  // binding. Publishing it would put a foreign wire contract in our SDK.
+  "post /carrier-sandbox/quote",
   // Shadows that exist only to answer 400. These three rows are produced by a
   // run endpoint and may never be written directly (routes/compliance.ts
   // §run-only rows), so documenting them as creatable would be the lie.

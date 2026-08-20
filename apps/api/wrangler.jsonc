@@ -58,6 +58,11 @@
     { "binding": "VEC_CONVO", "index_name": "lyra-vec-convo" }
   ],
   "analytics_engine_datasets": [{ "binding": "TELEMETRY", "dataset": "lyra_telemetry" }],
+  // The reference underwriter (ADR-0072) is a route on this same Worker, and a
+  // Worker that fetches its own zone by hostname is Cloudflare error 1042. So
+  // the quote adapter reaches it over a self service binding instead. Must
+  // point at this env's own `name`.
+  "services": [{ "binding": "CARRIER_SANDBOX", "service": "lyra-api" }],
   "browser": { "binding": "BROWSER" },
   // docs/10 §2: day-0/7/21/30 renewal campaign (engines/renewal-workflow.ts),
   // one instance per orbit_renewals row (sweepRenewals, engines/renewals.ts).
@@ -128,6 +133,7 @@
         { "binding": "VEC_CONVO", "index_name": "lyra-vec-convo-staging" }
       ],
       "analytics_engine_datasets": [{ "binding": "TELEMETRY", "dataset": "lyra_telemetry_staging" }],
+      "services": [{ "binding": "CARRIER_SANDBOX", "service": "lyra-api-staging" }],
       "browser": { "binding": "BROWSER" },
       "workflows": [{ "binding": "WF", "name": "lyra-workflows-staging", "class_name": "RenewalWorkflow" }],
       "durable_objects": {

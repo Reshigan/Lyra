@@ -210,8 +210,9 @@ export function campaignPlanMessages(
         "your own probability in the why lines. An option with no reasons is discarded. " +
         "Write the offer for the audience described below — speak to what that group is actually " +
         "buying, never to a generic customer. " +
-        "Never plan against race, ethnicity, religion, belief, health, disability, gender, sex, " +
-        "sexual orientation, politics, union membership or criminal record. " +
+        "Never plan against race, ethnicity, nationality, national origin, residency status, " +
+        "religion, belief, health, disability, gender, sex, sexual orientation, politics, union " +
+        "membership or criminal record. " +
         "A human funds this. You propose it and say how sure you are."
     },
     { role: "user", content: campaignPlanEvidenceLines(ev, nouns).join("\n") }

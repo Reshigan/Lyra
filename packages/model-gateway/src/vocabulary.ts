@@ -26,6 +26,13 @@ export const DEFAULT_PACK = "insurance-retail";
 const PACKS = new Map<string, PromptNouns>([
   [DEFAULT_PACK, { domain: "insurance", contract: "policy", contracts: "policies" }],
   // docs/21 §5: retail_ecom — contract->order, insurer/underwriter->supplier.
+  // Same nouns as the ZA default — a Gulf motor book still sells policies — but
+  // registered rather than left to fall through, so `promptNouns` answering for
+  // the seeded tenant is a decision on the page instead of a default nobody
+  // checked. What differs between the two packs is the *targeting* vocabulary
+  // (packages/core/src/targeting.ts: no LSM, emirates, ADR-0071), not the nouns.
+  ["insurance-gulf", { domain: "insurance", contract: "policy", contracts: "policies" }],
+  // docs/21 §5: retail_ecom — contract->order, insurer/underwriter->supplier.
   ["retail-ecom", { domain: "retail commerce", contract: "order", contracts: "orders" }],
   ["health-provider", { domain: "healthcare cover", contract: "plan", contracts: "plans" }],
   ["lending-credit", { domain: "lending", contract: "facility", contracts: "facilities" }]
