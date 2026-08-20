@@ -144,7 +144,7 @@ wins.
 Follow docs/14-roadmap.md milestones M0→M6. Do not start a milestone before the
 previous one's acceptance checklist passes (checklists are in that file).
 
-## Current status (2026-08-19)
+## Current status (2026-08-20)
 
 The revenue-lines build (`docs/superpowers/specs/2026-08-16-revenue-lines-full-build-design.md`)
 is **merged**. Groups A-E all landed on `main`: A and B as PRs #23/#24, C as #25,
@@ -200,6 +200,35 @@ when a seam is keyed one way (`policyNo`) while its callers spell it another
 (`issue.policyNo`), that is the seam being unreachable, not the callers being
 wrong.
 
+Third and fourth sightings, same family, both on NORTH (#32 `25f3f4f`, #33
+`aae8be0`): `narrativeRef` is documented as holding the briefing prose, but every
+row seeded before `f506bf7` holds a storage key — `briefings/<tenant>/<id>.md` —
+and no bucket was ever bound to hold that object, so the text does not exist in
+any environment. The journey step printed the key as its narrative; the brief
+additionally *headlined its `<h1>` with it*. #32 guarded one caller, and a
+read-only sweep of all 74 routes found the sibling caller within the hour. The
+guard now lives in `narrative()` in `north-shared.tsx`, where every reader of the
+column routes through it. Fix at the seam the first time — this repo has now paid
+for the caller-by-caller version four times.
+
+Fixing one bug uncovers the next one it was masking (#34 `0536513`): with the key
+no longer standing in for the prose, `/journey/north` rendered its highlights in
+Arabic to an English reader. NORTH narrates per audience *and* per locale, so a
+bilingual tenant holds an `en` and an `ar` briefing for the same day; both screens
+took `rows[0]`, which is "newest in any language". `chosen(rows, id, locale)` in
+`north-shared.tsx` is the shared pick: newest in the reader's language, else
+newest at all, with an explicit `?id=` still winning. Verify a fix on a deployed
+environment, not only in the test — the locale bug was invisible until the first
+one was live.
+
+The route sweep that found these lives in the session scratchpad, not in `e2e/`:
+it signs in as the demo administrator, walks every static route read-only and
+greps the rendered `main` for text that is not prose — `[object Object]`, a bare
+`undefined`/`NaN`, an untranslated i18n key, a storage key, a year comma-grouped
+as a quantity, Arabic prose on an English session. Worth re-running after a
+contract change; expect false positives on permission scopes, curl examples and
+screens that show both languages by design.
+
 Deployment: merging #26 fired `deploy.yml` on push, which runs full CI then the
 staging deploy. The production job is `workflow_dispatch`-only and additionally
 gated on the `production` GitHub Environment (review from Reshigan). Both runs
@@ -215,11 +244,16 @@ that push exists to fire. The cause was a fallback that treated
 `CLOUDFLARE_API_TOKEN` as a copy of `CF_AI_TOKEN`; the account id really is one
 value, the token is not, and a deploy-scoped token cannot call `ai/run`. The
 fallback is gone (`99c64ab`) and an unconfigured live gate now emits a warning
-annotation rather than a 401. **The live eval gate is currently not running**:
-add `CF_AI_TOKEN` (a Cloudflare token with Workers AI Read) or
-`ANTHROPIC_API_KEY` as a repo secret to restore it. Until then, after any push
-to `main`, check `gh run view <id> --json jobs` and do not assume staging
-deployed.
+annotation rather than a 401. `CF_AI_TOKEN` is set, and the gate now **runs and
+passes** against real thresholds (`fieldAccuracy`, `recall`, `calibrationError`
+and the rest) on every push. The habit still stands, though: after any push to
+`main`, read `gh run view <id> --json jobs` — a green PR proves less than it
+looks, because `eval-live` never ran on it.
+
+**lyra.vantax.co.za is production, not staging.** A push to `main` reaches
+`staging.lyra.vantax.co.za` / `api-staging.lyra.vantax.co.za` only; production
+needs a `workflow_dispatch` of `deploy.yml` plus the Environment review. A fix
+merged to `main` is therefore *not* on the demo site until that dispatch runs.
 
 After a deploy, verify with `pnpm e2e:live` — `playwright.live.config.ts` points
 at https://lyra.vantax.co.za, or set `LIVE_BASE_URL` for staging. Those specs
