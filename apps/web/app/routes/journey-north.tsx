@@ -4,6 +4,8 @@ import { api } from "../api.server";
 import { cloudflare } from "../context";
 import { JourneyNav, JourneyContinue } from "../components/journey-nav";
 import { translator, DEFAULT_LOCALE } from "../i18n";
+import { humanise } from "../modules/spec";
+import { parsed } from "./north-shared";
 import { useShellData } from "./workspace";
 
 interface BriefingRow {
@@ -17,10 +19,46 @@ interface BriefingRow {
   createdAt: number;
 }
 
+/**
+ * One entry of `highlightsJson`, mirroring `Highlight` in
+ * apps/web/app/routes/north-brief.tsx — which in turn mirrors what
+ * apps/api/src/engines/narrator.ts writes. `note` is the sentence a reader
+ * wants here; north-brief renders the figure and its delta instead, so it has
+ * no field for it.
+ *
+ * This screen used to declare the column as `string[]` and filter for strings,
+ * which matched nothing the server has ever sent: every briefing read zero
+ * highlights. Third sighting of the assumed-contract bug (see CLAUDE.md on
+ * whitespace-commentary and labelsFrom) — hence the comment naming the file
+ * this type mirrors.
+ */
+interface Highlight {
+  metricKey: string;
+  period: string;
+  value: number;
+  deltaBps: number | null;
+  note?: string;
+}
+
 const BRIEFING_HISTORY_LIMIT = 12;
 
-function highlightsCount(row: BriefingRow): number {
-  return Array.isArray(row.highlightsJson) ? row.highlightsJson.filter((h) => typeof h === "string").length : 0;
+export function highlightsOf(row: BriefingRow | null | undefined): Highlight[] {
+  const list = parsed<unknown>(row?.highlightsJson, []);
+  if (!Array.isArray(list)) return [];
+  return list.filter((h): h is Highlight => typeof h === "object" && h !== null && "metricKey" in h);
+}
+
+/**
+ * `narrativeRef` holds the briefing prose (apps/api/src/engines/narrator.ts).
+ * Rows seeded before f506bf7 hold a storage key like
+ * `briefings/<tenant>/<id>.md` instead, and no bucket was ever bound to hold
+ * that object — so printing it is the raw-key bug (ui.md §7 P3-14) pointing at
+ * text that does not exist. Those rows get no narrative section rather than a
+ * filename presented as a briefing.
+ */
+export function narrative(ref: string | null | undefined): string | null {
+  if (!ref) return null;
+  return /^[\w/-]+\.md$/.test(ref) ? null : ref;
 }
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
@@ -41,11 +79,10 @@ export default function JourneyNorth({ loaderData }: { loaderData: Awaited<Retur
   const shell = useShellData();
   const t = translator(shell?.locale ?? DEFAULT_LOCALE, shell?.overrides);
 
-  const highlights = Array.isArray(briefing?.highlightsJson)
-    ? (briefing.highlightsJson as unknown[]).filter((h): h is string => typeof h === "string")
-    : [];
+  const highlights = highlightsOf(briefing);
+  const prose = narrative(briefing?.narrativeRef);
 
-  const trendCounts = history.map(highlightsCount);
+  const trendCounts = history.map((row) => highlightsOf(row).length);
   const maxTrend = Math.max(1, ...trendCounts);
 
   const trend: Section = {
@@ -77,13 +114,17 @@ export default function JourneyNorth({ loaderData }: { loaderData: Awaited<Retur
   const text: Section = {
     kind: "text",
     title: "Narrative",
-    items: briefing ? [{ body: briefing.narrativeRef }] : []
+    items: prose ? [{ body: prose }] : []
   };
 
   const notes: Section = {
     kind: "notes",
     title: "Highlights",
-    items: highlights.map((h) => ({ hue: hueVar("north"), label: "", body: h }))
+    items: highlights.map((h) => ({
+      hue: hueVar("north"),
+      label: humanise(h.metricKey),
+      body: h.note ?? `${h.period}`
+    }))
   };
 
   return (
@@ -121,7 +162,7 @@ export default function JourneyNorth({ loaderData }: { loaderData: Awaited<Retur
         <div className="flex flex-col gap-5">
           {history.length > 1 ? <div>{renderSection(trend, "north")}</div> : null}
           <div>{renderSection(kv, "north")}</div>
-          <div>{renderSection(text, "north")}</div>
+          {prose ? <div>{renderSection(text, "north")}</div> : null}
           {highlights.length > 0 ? <div>{renderSection(notes, "north")}</div> : null}
         </div>
       </ScreenState>
