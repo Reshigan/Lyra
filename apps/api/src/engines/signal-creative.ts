@@ -235,6 +235,32 @@ export interface ImageBrief {
   /** What to depict — the human-authored input, screened by gateway.generateImage's checkInput. */
   prompt: string;
   locale?: CreativeLocale;
+  /** Same shape as CreativeBrief.context: the plan's angle/offer and the
+   *  audience's bands, flattened to sentences — creativeContextLines. Absent
+   *  for an image briefed by hand, same as the text path. */
+  context?: string[];
+}
+
+/**
+ * Wraps the caller's raw prompt (what to depict) with a professional-agency
+ * quality bar and, when present, the same plan/audience context the copy
+ * generator reads — so the hero image targets the same angle and bands as
+ * the ad text next to it, instead of illustrating the subject in a vacuum.
+ * Never drops or reorders the raw prompt: it is a single unbroken sentence,
+ * so a scan for the literal brief still finds it.
+ */
+export function buildImagePrompt(brief: ImageBrief): string {
+  const context = brief.context?.length ? `${brief.context.join("\n")}\n\n` : "";
+  return (
+    `${context}Depict: ${brief.prompt}\n\n` +
+    "Render this as hero-grade marketing photography from a top creative agency: " +
+    "cinematic, directional lighting; a considered, uncluttered composition with a clear focal " +
+    "subject; a cohesive, on-brand color palette; sharp focus and realistic detail; genuine, " +
+    "unposed-looking emotion on any faces shown. Make it scroll-stopping and premium, not generic " +
+    "stock-photo or AI-slop imagery — no warped hands, extra limbs, garbled text, or watermarks. " +
+    "If the context above names a specific audience, compose and style the scene so that audience " +
+    "sees themselves in it."
+  );
 }
 
 export interface GeneratedImage {
@@ -264,7 +290,7 @@ export async function generateCreativeImage(
     module: "signal",
     purpose: "creative.image_generate",
     ...(brief.campaignId ? { subjectRef: brief.campaignId } : {}),
-    prompt: brief.prompt
+    prompt: buildImagePrompt(brief)
   });
 
   if (!bucket) throw new Error("FILES bucket not bound");

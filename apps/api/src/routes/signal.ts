@@ -195,10 +195,20 @@ signalRoutes.post("/creatives/image", async (c) => {
   const ctx = ctxOf(c);
   require_(ctx.actor, "signal:creatives:generate", { tenantId: ctx.tenantId, module: "signal" });
   const input = await body(c, ImageBody);
+
+  // Same context-loading idiom as /creatives/generate above: a campaign that
+  // has been planned hands the image the plan's angle/offer and the
+  // audience's bands, so the hero image targets the same group the copy does.
+  const campaign = input.campaignId
+    ? await must(ctx, schema.signalCampaigns, input.campaignId, "campaign")
+    : null;
+  const context = campaign ? await creativeContextFor(ctx, campaign) : [];
+
   const result = await generateCreativeImage(ctx, c.get("gateway"), c.env.FILES, {
     campaignId: input.campaignId ?? null,
     prompt: input.prompt,
-    ...(input.locale !== undefined ? { locale: input.locale } : {})
+    ...(input.locale !== undefined ? { locale: input.locale } : {}),
+    ...(context.length > 0 ? { context } : {})
   });
   return c.json(
     {
