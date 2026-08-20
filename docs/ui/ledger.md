@@ -9,13 +9,24 @@ ships. Where a screen is weak, that is said plainly under **What is weak today**
 LEDGER is the money module. It owns transactions (a state machine with an
 idempotency key), the double-entry journal behind them, the chart of accounts,
 accounting periods, reconciliation runs, client money, settlements between us,
-providers and channels, and six finance reports. Two people live here. A
-**controller** (`finance.controller`, holds `ledger:*:*`) arrives at month-end:
-run the trial balance, chase the pending transactions, check client money,
-soft-close, hard-close. An **analyst** (`finance.analyst`, every `ledger:*:read`
-plus `ledger:recon:run`) is here daily: read reports, export them, run a
-reconciliation — but cannot open a transaction, post, close a period or confirm
-a match. The three screens that matter most are **`/ledger/reports/:report`**
+providers and channels, and six finance reports. Two people live here day to
+day. A **controller** (`finance.controller`, holds `ledger:*:*`) arrives at
+month-end: run the trial balance, chase the pending transactions, check client
+money, soft-close, hard-close. An **analyst** (`finance.analyst`, every
+`ledger:*:read` plus `ledger:recon:run`) is here daily: read reports, export
+them, run a reconciliation — but cannot open a transaction, post, close a
+period or confirm a match. A third role exists purely as the other half of
+dual control: a **director** (`finance.director`) holds every `ledger:*:read`
+plus the approve/post/reverse verbs (`ledger:journals:post`,
+`ledger:periods:close`, `:force_close`, `:reopen`, `:year_end`,
+`ledger:payouts:approve`, `ledger:txns:reverse`, …) and deliberately none of
+the origination verbs — no `ledger:txns:create`, no `ledger:journals:draft`.
+The role graph's own comment (`rbac.ts`) is explicit that this is separation
+of duties as a property of the graph, not a switch: a tenant with one finance
+seat cannot post a manual journal, force a close or reopen a period. The
+director shows up on this doc wherever an approval is decided — approvals
+inbox, year-end close (§9), manual journal (§10) — never as an originator. The
+three screens that matter most are **`/ledger/reports/:report`**
 (where the numbers are read), **`/ledger/transactions/:id`** (the only place a
 posting can be inspected line by line) and **`/ledger/period-close`** (the gate).
 Everything else is a list.
@@ -1258,6 +1269,424 @@ filters." Row count: "{count} shown". Denied at workspace level:
 
 ---
 
+## 8. `/ledger/money-map` — Money map
+
+**Route + title.** `apps/web/app/routes/ledger-money-map.tsx`. Title: "Money map"
+(`title`). Intro (`intro`): "Where a period's money went: premium in, what the
+insurer took, what was kept, and how the kept part split. Every node opens the
+journal lines that add up to it." Cites docs/22 §1.2 in its own header comment:
+"Sankey of value flow for a period … Nodes are clickable to filtered journals.
+Client-money segregation shown as a distinct, always-visible bar."
+
+**Who sees it.** `ledger:journals:read` gates the whole screen — denied renders
+an EmptyState ("You cannot open the money map" / "It needs a permission your
+role does not hold. An administrator can grant it."). A second, narrower
+permission, `ledger:client_money:read`, gates only the segregation bar further
+down the page: an actor with journals-read but not client-money-read still gets
+the full diagram, just with the segregation section replaced by one sentence
+saying why it is hidden (`seg.denied`) — not a 403 for the page.
+
+**Purpose.** Show where a period's premium turned into insurer remittance,
+retained commission, partner share, tax and net — as a flow diagram — with a
+click-through to the journal lines behind any node, plus a permanent client-money
+whole/short check.
+
+**Layout skeleton.**
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ [ Client money is short ─ danger, only when any currency breaches ] │
+│   Cash held is below what is owed to clients. …               │
+│   AED −12 400.00   ZAR −900.00                                │
+├──────────────────────────────────────────────────────────────┤
+│ {headline}                                              (h1) │
+│ Where a period's money went: premium in, what the insurer …   │
+├──────────────────────────────────────────────────────────────┤
+│ Period [2026-07 month]  Currency [AED]  [Apply]                │
+├──────────────────────────────────────────────────────────────┤
+│ ┌ Diagram — svg, always dir="ltr" ────────────────────────────┐│
+│ │ Premium in ══╗                                               ││
+│ │              ╠══ Insurer remittance                          ││
+│ │              ╠══ Commission retained ══╦══ Partner share      ││
+│ │              ╚══ Still held for clients╠══ Tax                ││
+│ │                                        ╚══ Net to the business││
+│ └───────────────────────────────────────────────────────────────┘│
+├──────────────────────────────────────────────────────────────┤
+│ Carried out of the period    R 12 000,00                      │
+├──────────────────────────────────────────────────────────────┤
+│ ┌ Client money segregation ────────────────────────────────────┐│
+│ │ AED  Cash held … Owed to clients … Margin … [Whole/Short]     ││
+│ │ ▓▓▓▓▓▓▓▓▓▓▓▓▓░░ asset track                                   ││
+│ │ ▓▓▓▓▓▓▓▓▓▓░░░░░ liability track                               ││
+│ └───────────────────────────────────────────────────────────────┘│
+├──────────────────────────────────────────────────────────────┤
+│ ┌ Journal lines behind this node — only when ?node= is set ─────┐│
+│ │ Posted │Transaction│Txn id│Account│Side│Amount│Memo            ││
+│ └───────────────────────────────────────────────────────────────┘│
+└──────────────────────────────────────────────────────────────┘
+```
+
+**The headline.** `moneyMapHeadline(map, breached, l, locale)`: a client-money
+breach outranks everything — "{count} currency breach(es) in client money." —
+else the `net` node's amount for the period — "{node} for {period}: {amount}."
+— else, when nothing posted, the shared `empty` copy. The code comment is
+explicit that this headline carries **no ✦ marker**: "this is not an agent's
+finding (CLAUDE.md §11) — both numbers are the loader's."
+
+**The breach flag.** `data-flag="CM-BREACH-FLAG"`, `role="alert"`, rendered
+**above the header**, before the h1 — docs/22 §1.2's ordering rule that a
+segregation breach outranks the page's own title. One line per breached
+currency: the code and its (negative) margin.
+
+**Filter form.** A GET `<Form>`: `period` as an HTML `type="month"` input
+(defaulting to the current URL param or the loaded map's own period), `currency`
+as free text (`maxLength=3`, no client-side validation against a currency
+list), **Apply**. Omitting `period` server-side defaults to the current month
+(`periodCode(ctx.now)`, `apps/api/src/routes/ledger.ts:366`).
+
+**The diagram.** An SVG Sankey-style flow, hand-rolled (`layoutMap()`, no chart
+library — code comment: "no chart library for six nodes"), three columns in a
+fixed order: premium-in → {insurer-remittance, commission-retained,
+still-held} → {partner-share, tax, net}. One scale for the whole diagram, set
+by the tallest column, so ribbon thickness is comparable across columns.
+Drillable nodes (those with a `drill` descriptor from the API) render as a
+`<Link>` wrapping the node's rect and its two text lines (name, amount);
+non-drillable nodes render as plain, unlinked shapes. The section carrying the
+`<svg>` is **always `dir="ltr"`**, in both locales, with an explicit code
+comment: "the diagram reads left to right … mirroring them would put the
+insurer's money before the premium that paid it" — a deliberate, justified RTL
+exception, not an oversight.
+
+**Carried.** A `<Stat>`: "Carried out of the period" with the period's
+`carriedMinor`, signed. When negative, an explanatory line renders beneath it
+(`carriedNegative`): "Negative: this period paid out premium it collected
+earlier. Ordinary, and not a client-money breach — the segregation bar below is
+what says whether client money is whole." No such explanation renders when the
+figure is zero or positive.
+
+**Client money segregation.** Always titled ("Client money segregation"), one
+row per currency when the actor holds `ledger:client_money:read`: currency
+code, Cash held, Owed to clients, Margin (all `<Money>`, margin signed), a Badge
+("Whole" / "Short", success/danger tone), then two stacked bars sharing one
+scale — cash held over what is owed — with the liability track turning
+`bg-flare-500` the moment `breach` is true (else `bg-vega-600`). Without the
+permission: same section, same title, one sentence explaining it is hidden
+(`seg.denied`) — the map above is unaffected.
+
+**Drill-through.** Clicking a drillable node navigates to `?node=<key>` (filters
+kept, e.g. `?period=2026-07&node=tax`). This opens a **Journal lines behind this
+node** section: a caption naming the node, a total (`<Money>` of
+`drilled.totalMinor`), a **Close** ghost-button link back to the un-noded URL,
+and a `<Table density="compact">` of every line: Posted (`<DateTime>`,
+minute precision), Transaction (type), Transaction id, Account, Side (mapped
+through `side.debit`/`side.credit`), Amount (`<Money>`), Memo (or "—"). Empty:
+"No lines in this period."
+
+**States.** *Empty* (no nodes at all): "Nothing was posted in this period",
+replacing the diagram section entirely. *Denied*: the whole-screen EmptyState
+above. *Loading*: the Apply button `loading` while navigation is in flight (this
+is a GET form, so every filter change and every node click is a full loader
+round-trip, not a client-side re-render).
+
+**AI surfaces.** None. The headline, breach flag and every figure on the page
+are loader data straight from the ledger's own summary endpoint — the code's
+own comment (quoted above) is explicit about withholding the ✦ marker for
+exactly this reason.
+
+**Actions and consequences.** None of this screen writes anything.
+Every interaction — filtering, clicking a node, closing the drill — is a `GET`
+navigation. There is no form that posts, no confirm dialogue, nothing to
+reverse.
+
+**Mobile.** Web only. Not in the Expo app's generic `ledger/txns` list (see
+Orientation) — no mobile equivalent exists.
+
+**RTL.** The diagram section is always `dir="ltr"` (see above, a documented
+exception). Everything outside it — the headline, the breach list, the
+segregation bar, the drill-through table — follows the page's own direction
+normally. The `type="month"` filter input is a native browser widget and stays
+LTR by platform convention, matching Foundations' rule for currency and code
+inputs.
+
+**What is weak today.**
+1. **The diagram's per-node text is invisible to assistive technology.** The
+   `<svg>` carries `role="img"` with one `aria-label` — the page title
+   ("Money map") — and an ARIA `img` role conventionally removes its children
+   from the accessibility tree in favour of that single label. The six node
+   names and their amounts are plain `<text>` elements inside that subtree, so
+   a screen-reader user hears "Money map" and nothing else: not "Insurer
+   remittance", not any figure. The data the diagram exists to show is not
+   exposed outside the visual rendering.
+2. **Node label placement does not account for text length.** `layoutMap()`
+   positions each node's name and amount at a fixed `x`/`y` offset computed
+   purely from pixel geometry — there is no text measurement, wrapping or
+   reserved width for the label. The Arabic labels (e.g. "التحويل إلى
+   المؤمِّن" for "Insurer remittance") are visibly longer than their English
+   counterparts; nothing in the layout code accounts for that, so a redesign
+   or a future node with a longer name has no guard against overlap or
+   clipping.
+3. Clicking a node to open the drill-through does not move focus into the new
+   "Journal lines" section — a keyboard or screen-reader user who activates the
+   link has to find the newly-appeared content themselves; nothing announces it
+   or receives focus.
+4. The `currency` filter is free text with no validation against a real
+   currency list, the same pattern already noted on the open-transaction screen
+   (§2).
+5. `carriedNegative`'s explanation only appears for a negative figure; a reader
+   seeing "Carried out of the period" with a positive or zero amount has no
+   equivalent one-line gloss for what "carried" means.
+
+---
+
+## 9. `/ledger/year-end` — Year-end close
+
+**Route + title.** `apps/web/app/routes/ledger-year-end.tsx`. Title: "Year-end
+close" (`ye.title`). Intro (`ye.intro`): "One entry zeroes every income and
+expense account into retained earnings. The lines are read out of the journal,
+not typed: what is previewed here is exactly what posts."
+
+**Who sees it.** `ledger:journals:read` to view — denied renders the standard
+EmptyState naming that permission. Posting is a separate, narrower permission:
+`ledger:periods:year_end` (`loaded.canPost`), held by **finance.director** and
+**finance.controller** (see Foundations). Without it, the screen still shows the
+full preview; the Post button is simply absent.
+
+**Purpose.** Preview and, with the right permission, post the single entry that
+zeroes every income and expense account for a fiscal year into retained
+earnings.
+
+**Layout skeleton.**
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ Year-end close                                          (h1) │
+│ One entry zeroes every income and expense account …          │
+├──────────────────────────────────────────────────────────────┤
+│ Fiscal year [2026]  [Apply]                                   │
+├──────────────────────────────────────────────────────────────┤
+│ Fiscal year 2026 nets R 412 000,00.                            │
+│ ┌ KPI wall ──────────────────────────────────────────────────┐│
+│ │ Income          Expense          Result for the year        ││
+│ │ R 900 000,00    R 488 000,00     R 412 000,00                ││
+│ └────────────────────────────────────────────────────────────┘│
+├──────────────────────────────────────────────────────────────┤
+│ ┌ The entry that would post ────────────────────────────────┐│
+│ │ Account │ Side   │ Amount                                  ││
+│ │ 4000    │ Debit  │ R 900 000,00                             ││
+│ │ 5000    │ Credit │ R 488 000,00                             ││
+│ │ 3100    │ Credit │ R 412 000,00                             ││
+│ └────────────────────────────────────────────────────────────┘│
+├──────────────────────────────────────────────────────────────┤
+│ [ Close every month of the year first ─ only when blocked ]   │
+├──────────────────────────────────────────────────────────────┤
+│ [Post the close]              [Go to period close]            │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**Year selector.** A GET `<Form>`: Input `year`, defaulting to
+`String(new Date().getUTCFullYear())`, validated client-side against
+`/^\d{4}$/` before it is trusted (an unmatched value falls back to the current
+year rather than being sent as-is). **Apply**.
+
+**Preview.** Fetched from `GET /v1/ledger/year-end/:year` on every load —
+`{fiscalYear, currency, incomeMinor, expenseMinor, netMinor,
+retainedEarningsAccount, closingLines}`. Rendered as a `<KPIWall>` of three
+figures (Income, Expense, "Result for the year") and, beneath it, a captioned
+table of `closingLines`: Account, Side (Debit/Credit), Amount — **exactly the
+lines that will post**, read out of the journal rather than computed or typed
+on this screen. Nothing to close (`closingLines.length === 0`) renders "Nothing
+to close" / "No income or expense account carries a balance for this year, so
+there is no closing entry to post." instead of the table.
+
+**Post.** Rendered only when `closingLines.length > 0 && loaded.canPost`. One
+button, "Post the close" (`ye.post`), a confirm: "Post the year-end close? It
+needs a second seat's approval, and once it settles the year's result sits in
+retained earnings." A ghost-button link, "Go to period close" (`ye.toPeriods`),
+always sits beside it regardless of `canPost` — the screen's own acknowledgment
+that this entry cannot post into open months.
+
+**The POST itself.** `action()` sends `POST /v1/ledger/year-end/:year` with an
+**empty body** (`{}`) and no client-side idempotency key — unlike the manual
+journal (§10), there is nothing for a double-submit to duplicate: the server
+mints a fixed natural key per fiscal year (`yearend:<year>`) rather than trusting
+one from the browser.
+
+**States.** *Success*: "Fiscal year {year} is closed. The result now sits in
+{account}." (`ye.posted`). *Blocked on open months*: the action's error handler
+does a **substring match** on `String(result.problem.detail ?? "").includes("open
+periods")` — if true, an extra hint renders: "Close every month of the year
+first" / "The year-end entry posts into months that are already frozen. Soft
+close each month on the period-close screen, then come back." (`ye.prereq` /
+`ye.prereqBody`), on top of whatever the API's own Problem already showed.
+*Any other failure, including the routine approval-gated response* (see below):
+a plain `<Problem>` alert. *Denied*: the whole-screen EmptyState.
+
+**AI surfaces.** None.
+
+**Actions and consequences.**
+
+| Action | Posts? | Idempotency | Approval | Reversible |
+|---|---|---|---|---|
+| Post the close | Yes — the previewed lines post as one batch, `retainedEarningsAccount` taking the balancing leg | Server-minted natural key `yearend:<year>`, not client-supplied | `ledger:periods:year_end` (`YEAR-END-CLOSE`'s policy key is `ledger.year_end_close`) — **dual control is always on for this type**, so even a `finance.director`'s or `finance.controller`'s first POST comes back `403 approval_required`, not a settled txn (`apps/api/src/ledger-journals.test.ts:223`, via the same `throughApproval` helper used for the manual journal) | Never by deletion; a reversal is a separate contra transaction, same rules as any other posted batch |
+
+**Mobile.** Web only.
+
+**RTL.** The fiscal year (`2026`) and account codes stay LTR by Foundations'
+convention. Everything else follows the page direction normally.
+
+**What is weak today.**
+1. **The routine approval-gated response renders as a plain danger alert, not
+   as a queued-for-approval notice.** `YEAR-END-CLOSE` always requires
+   approval (see the Actions table above) — a director or controller posting
+   the close will, on the very first submission, get back `{code:
+   "approval_required", status: 403, detail: "ledger.year_end_close"}`. This
+   route imports only `Problem` from `./module`, not the `Gate` component
+   (`apps/web/app/routes/module.tsx`) that exists specifically to tell an
+   approval-gated refusal apart from a real failure — `Gate` renders a
+   warning-toned "queued, nothing has happened yet" card with a link to
+   `/approvals`; `<Problem>` renders a `role="alert"` danger box showing
+   `problem.detail ?? problem.title`, which for this response is the bare
+   string `ledger.year_end_close`. The screen's own copy elsewhere (`ye.posted`
+   with its "needs a second seat's approval" confirm text) shows the design
+   knew approval was coming; the error path does not reflect that.
+2. The `.includes("open periods")` substring match on the Problem's `detail`
+   is a fragile coupling to the API's exact English wording — a copy change on
+   the API side silently drops the "close every month first" hint with no
+   compile-time signal.
+
+---
+
+## 10. `/ledger/journal` — Manual journal
+
+**Route + title.** `apps/web/app/routes/ledger-journal.tsx`. Title: "Manual
+journal" (`mj.title`). Intro (`mj.intro`): "A hand-written entry for what no
+transaction type covers — an accrual, a correction, a reclass. It never posts
+on the drafter's word alone: a second seat approves it." The file's own header
+comment (docs/27 F2): "The one instrument that can express any entry, so the
+screen's whole job is to make the two things it cannot express visible before
+someone types them: client money and equity."
+
+**Who sees it.** `ledger:journals:draft` **or** `ledger:txns:create` —
+`finance.analyst` holds the former (and not the latter, deliberately: rbac.ts's
+own comment reads "Drafts a manual journal but cannot post it — deliberately
+not `ledger:journals:post`, which is the whole point of the split");
+`finance.controller` holds `ledger:txns:create` outright. Denied: EmptyState
+naming `ledger:journals:draft`.
+
+**Purpose.** Compose and submit a balanced multi-line journal entry by hand,
+for whatever no transaction-type recipe covers.
+
+**Layout skeleton.**
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ Manual journal                                          (h1) │
+│ A hand-written entry for what no transaction type covers …   │
+│ Client-money and equity accounts are out of reach here …     │
+├──────────────────────────────────────────────────────────────┤
+│ Why this entry exists [────────────────────────────── req'd] │
+│ ┌ Lines ───────────────────────────────────────────────────┐ │
+│ │ Account[4000] Side[Debit▾] Amount[R 900,00] Memo[──] [×] │ │
+│ │ Account[5000] Side[Credit▾] Amount[R 900,00] Memo[──] [×]│ │
+│ │ [Add a line]                                              │ │
+│ └────────────────────────────────────────────────────────────┘│
+│ Total debits R 900,00    Total credits R 900,00               │
+│ The entry balances. / Debits and credits do not agree yet …   │
+│ [Send for approval]                                            │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**The form.** `reason` (Input, `maxLength=500`, hint "At least ten characters.
+It is what an auditor reads first."). A dynamic grid of line rows
+(`MIN_LINES = 2` at start, **Add a line** / **Remove this line** per row, the
+last two rows never droppable below the minimum): each row is Account
+(`accountCode`, Input, hint "Four digits"), Side (Select, Debit/Credit), Amount
+(`MoneyField`, `amountMinor`), Memo (optional Input). Beneath the grid: Total
+debits, Total credits, "Out by {amount}" or "The entry balances." /
+"Debits and credits do not agree yet, so this cannot be submitted."
+(`mj.difference` / `mj.balanced` / `mj.unbalanced`). Totals are **recomputed
+from the live `FormData`**, not mirrored in component state — the code's own
+comment: "a second copy of that arithmetic here is a second answer." Submit —
+"Send for approval" (`mj.submit`) — via `<ConfirmButton>`, `disabled={!balanced}`,
+confirm copy: "Send this entry for approval? It posts to the ledger the moment
+a second seat approves it."
+
+**What this form refuses to let anyone type.** Client-money and equity accounts
+are named out of bounds in the intro copy itself (`mj.forbidden`): "Client-money
+and equity accounts are out of reach here: client money moves through its own
+transaction types, and equity moves at the year-end close." The form has no
+client-side check for this — the account-code field accepts anything — the
+sentence is the entire enforcement on this screen; the real rule lives
+server-side in the recipe/precondition layer.
+
+**The POST itself.** `POST /v1/ledger/txn/MANUAL-JRNL` with
+`{idempotencyKey: `mj:${crypto.randomUUID()}`, args: {lines, reason}}`. The
+key is minted **inside the server-side `action` function**, once per action
+invocation — not once per form render the way the generic open-transaction
+screen (§2) does it. See the weak note below for what that means for a
+double-submit.
+
+**States.** *Success, settled*: "Posted as {id}." (`mj.settled`) — only reachable
+once a second seat has already approved the same request and it is being
+replayed. *Success, sent*: "Sent for approval. It posts when a second seat
+approves it." (`mj.sent`) — branches on `result.txn.state`. *The routine first
+submission*: see the weak note below — this is not actually a success state on
+first send. *Denied*: EmptyState. *Loading*: submit `loading`.
+
+**AI surfaces.** None. Every figure on the page is what was typed into the form.
+
+**Actions and consequences.**
+
+| Action | Posts? | Idempotency | Approval | Reversible |
+|---|---|---|---|---|
+| Send for approval | Only once approved — the first call always requests approval, never settles on its own | `mj:<uuid>` minted fresh inside the action on every invocation — **not deduplicated against a prior press the way the natural-key screen (§2) is** | `ledger:journals:draft` is enough to *originate* it (`def.approval && can(...draft)` shortcut, `apps/api/src/routes/ledger.ts:87-91`, docs/27 F2); **dual control is always on** for `MANUAL-JRNL` (policy key `ledger.manual_journal`) — the first POST from any actor, drafter or controller, comes back `403 approval_required` (`apps/api/src/ledger-journals.test.ts:133`, via `throughApproval`) | Never by deletion; once settled, reversal follows the same contra-batch rule as any transaction |
+
+**Mobile.** Web only.
+
+**RTL.** The Arabic `mj.*` labels exist for every field on this screen. Account
+codes stay LTR by Foundations' convention.
+
+**What is weak today.**
+1. **The routine approval-gated response renders as a bare policy-key string in
+   a danger alert, not as a queued notice.** Because dual control is always on
+   for `MANUAL-JRNL`, the *expected* outcome of a normal, correct submission —
+   balanced lines, a good reason, a permitted actor — is a `403
+   approval_required` on the first send. This route imports only `Problem`
+   from `./module`, never `Gate`; `<Problem>` shows `problem.detail ??
+   problem.title`, and for this response `detail` is the literal string
+   `ledger.manual_journal` — the policy key, unexplained, in a red
+   `role="alert"` box, with no link to `/approvals` and no reassurance that the
+   entry was in fact captured. The `mj.sent` copy ("Sent for approval. It posts
+   when a second seat approves it.") that the screen is clearly designed to
+   show for exactly this moment never actually renders on a first submission —
+   it is only reachable if `result.txn` comes back non-null, which the
+   approval-gated path does not do; it throws instead. Practically: an analyst
+   filling in their first manual journal sees what reads as a rejection, for
+   a request that in fact went through and is sitting in the approvals queue
+   waiting on a controller.
+2. **The idempotency key is generated fresh on every invocation of the
+   server-side `action`, not once per form render.** The generic open-transaction
+   screen (§2) explicitly mints its key once, server-side, at render time,
+   with a code comment explaining why: a key generated at submit time is a new
+   key on every press, which is exactly the double-post the header exists to
+   prevent. This screen does the opposite — `idempotencyKey:
+   \`mj:${crypto.randomUUID()}\`` is computed inside `action()`, so it is a new
+   value on every action call. `<ConfirmButton>` disables its trigger only
+   after the confirm dialog is accepted and the request is in flight
+   (`apps/web/app/components/confirm.tsx`); a double-click or a fast double-tap
+   before that disable takes effect can fire two action invocations, each with
+   its own key, and the API's `(tenant, type, idempotencyKey)` uniqueness check
+   will not catch it — two distinct journal entries can post for one intended
+   submission.
+3. The account-code field for client-money and equity accounts is not actually
+   blocked or even warned against inline — the whole safeguard is a sentence
+   in the intro (`mj.forbidden`); a user who does not read it finds out only
+   after submitting.
+4. No running preview of what the entry means in plain terms (e.g. "moves R900
+   from 4000 to 5000") — only the raw account codes and the balance check.
+
+---
+
 ## Cross-cutting notes for a redesign
 
 **The one thing to fix first.** Build the drill-through. A trial-balance row →
@@ -1266,9 +1695,15 @@ statement. Every piece already exists as a separate screen; nothing links them.
 Today a controller who wants to know what makes up a number opens a second tab
 and retypes an account code.
 
-**The second.** Replace the two raw-JSON textareas (`args` on the open form,
-`lines` on the recon form) with real inputs. Both are the same failure: an
-internal schema that never reached the client.
+**The second.** The open-transaction form's `args` textarea was since replaced
+with per-field inputs (§2) — the remaining gap there is narrower: an
+array-typed recipe argument still has no field type and falls back to raw
+JSON. The recon form's `lines` was never JSON; it takes pasted CSV/TSV with a
+live preview (§6). What is still worth fixing is the approval-gated screens
+(§9, §10): a normal first submission comes back `403 approval_required` and
+renders as a raw policy-key string in a danger alert instead of the
+`Gate`-style "queued, see /approvals" notice that §2's own hand-rolled
+equivalent already gives that same response.
 
 **Do not build.** The unmasked-export UI does not exist —
 `analytics:exports:unmasked` is held by `finance.controller` and nothing renders
