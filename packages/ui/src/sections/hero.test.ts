@@ -7,7 +7,7 @@
  * slices the suffix.
  */
 import { describe, expect, it } from "vitest";
-import { splitHeadline } from "./hero.js";
+import { countFrame, splitHeadline } from "./hero.js";
 
 describe("splitHeadline", () => {
   it("splits a real headline into prefix, numeral and suffix", () => {
@@ -35,5 +35,30 @@ describe("splitHeadline", () => {
 
   it("keeps a suffix that contains a newline", () => {
     expect(splitHeadline("12\nrows")).toEqual({ prefix: "", numStr: "12", suffix: "\nrows" });
+  });
+});
+
+describe("countFrame", () => {
+  it("lands the animation back on the string the caller wrote", () => {
+    // The last frame runs at eased === 1, so whatever it formats is what the
+    // chip is left showing for the rest of the session.
+    for (const value of ["AED 1,240,500", "4.2", "98.5", "12", "2026-08-12", "2026"]) {
+      const parts = splitHeadline(value);
+      expect(parts, `${value} carries a numeral`).toBeDefined();
+      const { prefix, numStr, suffix } = parts!;
+      expect(`${prefix}${countFrame(numStr, Number(numStr.replace(/,/g, "")))}${suffix}`).toBe(value);
+    }
+  });
+
+  it("groups a grouped numeral and leaves a bare one alone", () => {
+    // A NORTH briefing's date chip reads "2026-08-12". Grouped, it settles on
+    // "2,026-08-12" — the bug this function exists to prevent.
+    expect(countFrame("2026", 2026)).toBe("2026");
+    expect(countFrame("1,240,500", 1_240_500)).toBe("1,240,500");
+  });
+
+  it("keeps the caller's decimals mid-flight", () => {
+    expect(countFrame("4.20", 2.1)).toBe("2.10");
+    expect(countFrame("61", 30.4)).toBe("30");
   });
 });
