@@ -348,7 +348,7 @@ export default function StaffMember() {
         <p className="font-ui text-13 text-muted">{user.email}</p>
         <p className="font-ui text-13 text-muted">{memberLede(loaded.heldRoleKeys, loaded.steps, l)}</p>
         <Badge tone={userTone(user.status)} size="sm" dot className="w-fit">
-          {t(`admin.status.${user.status}`)}
+          {l(`status.${user.status}`)}
         </Badge>
       </header>
 
