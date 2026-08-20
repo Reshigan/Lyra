@@ -3,6 +3,8 @@ import type { LoaderFunctionArgs } from "react-router";
 import { api } from "../api.server";
 import { cloudflare } from "../context";
 import { JourneyNav, JourneyContinue } from "../components/journey-nav";
+import { translator, DEFAULT_LOCALE } from "../i18n";
+import { useShellData } from "./workspace";
 
 interface BriefingRow {
   id: string;
@@ -36,6 +38,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
 export default function JourneyNorth({ loaderData }: { loaderData: Awaited<ReturnType<typeof loader>> }) {
   const { briefing, productLine, history } = loaderData;
+  const shell = useShellData();
+  const t = translator(shell?.locale ?? DEFAULT_LOCALE, shell?.overrides);
 
   const highlights = Array.isArray(briefing?.highlightsJson)
     ? (briefing.highlightsJson as unknown[]).filter((h): h is string => typeof h === "string")
@@ -84,10 +88,10 @@ export default function JourneyNorth({ loaderData }: { loaderData: Awaited<Retur
 
   return (
     <div className="flex flex-col gap-6 pb-12">
-      <JourneyNav current="north" />
+      <JourneyNav current="north" t={t} />
       <Hero
         eyebrow="NORTH"
-        title="Insight, carried from AXIS"
+        title={t("journey.north.title")}
         sub={
           productLine
             ? `Reading AXIS's leading product line: ${productLine}.`
@@ -111,7 +115,7 @@ export default function JourneyNorth({ loaderData }: { loaderData: Awaited<Retur
       />
       <ScreenState
         state={briefing ? "ready" : "empty"}
-        title="No briefing yet"
+        title={t("journey.north.empty")}
         body="NORTH has not generated a briefing yet — generate one from /north/brief first."
       >
         <div className="flex flex-col gap-5">
@@ -124,7 +128,7 @@ export default function JourneyNorth({ loaderData }: { loaderData: Awaited<Retur
       {briefing ? (
         <JourneyContinue
           to={`/journey/scout?productLine=${encodeURIComponent(productLine)}&briefingId=${encodeURIComponent(briefing.id)}`}
-          label="See SCOUT's whitespace"
+          label={t("journey.north.continue")}
         />
       ) : null}
     </div>

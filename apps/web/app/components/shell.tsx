@@ -449,12 +449,11 @@ export function Shell({
           >
             {/* Flagship demo entry point, pinned above everything else in the
                 rail: the AXIS→NORTH→SCOUT→SIGNAL click-through story that
-                /journey/axis opens. Literal text, not a t() key, the same
-                convention screenNavGroups below uses for anything that isn't
-                part of the API-driven `nav` contract. */}
+                /journey/axis opens. Not part of the API-driven `nav` contract,
+                but still t()-routed like everything else this shell renders. */}
             <div className="mb-1">
               <h2 className="mb-1 mt-0 px-3 font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">
-                Demo
+                {t("journey.demo")}
               </h2>
               <ul className="flex flex-col gap-0.5">
                 <li>
@@ -476,7 +475,7 @@ export function Shell({
                       className="h-4 w-0.5 shrink-0 rounded-orbit"
                       style={{ background: MODULE_ACCENT["/axis"] }}
                     />
-                    <span className="truncate">Demo journey</span>
+                    <span className="truncate">{t("journey.demoLabel")}</span>
                   </NavLink>
                 </li>
               </ul>

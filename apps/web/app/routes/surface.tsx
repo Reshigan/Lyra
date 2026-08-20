@@ -1,6 +1,8 @@
 import { data, type LoaderFunctionArgs } from "react-router";
 import { Hero, ListScreenView, MobileScreenView, ScreenState, renderSection } from "@lyra/ui";
 import { surfaceFor } from "../modules/surfaces";
+import { translator, DEFAULT_LOCALE } from "../i18n";
+import { useShellData } from "./workspace";
 
 // One route for every screen the Lyra Constellation design pull drew
 // (packages/ui/src/sections/types.ts) — `/surface/:module/:screen`. The
@@ -37,6 +39,8 @@ function isEmpty(screen: Awaited<ReturnType<typeof loader>>["screen"]): boolean 
 
 export default function Surface({ loaderData }: { loaderData: Awaited<ReturnType<typeof loader>> }) {
   const { screen } = loaderData;
+  const shell = useShellData();
+  const t = translator(shell?.locale ?? DEFAULT_LOCALE, shell?.overrides);
   return (
     <div className="flex flex-col gap-6 pb-12">
       <Hero
@@ -48,7 +52,7 @@ export default function Surface({ loaderData }: { loaderData: Awaited<ReturnType
         {...(screen.hero ? { hero: screen.hero } : {})}
       />
       {screen.source ? <p className="whitespace-pre-line font-mono text-12 text-muted">{screen.source}</p> : null}
-      <ScreenState state={isEmpty(screen) ? "empty" : "ready"} title="Nothing on this screen yet" body={screen.sub}>
+      <ScreenState state={isEmpty(screen) ? "empty" : "ready"} title={t("surface.empty")} body={screen.sub}>
         {screen.kind === "surface" ? (
           <div className="flex flex-col gap-5">
             {screen.sections.map((section, i) => (

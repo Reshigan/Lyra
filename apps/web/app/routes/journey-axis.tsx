@@ -3,6 +3,8 @@ import type { LoaderFunctionArgs } from "react-router";
 import { api } from "../api.server";
 import { cloudflare } from "../context";
 import { JourneyNav, JourneyContinue } from "../components/journey-nav";
+import { translator, DEFAULT_LOCALE } from "../i18n";
+import { useShellData } from "./workspace";
 
 interface CaseRow {
   id: string;
@@ -55,6 +57,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
 export default function JourneyAxis({ loaderData }: { loaderData: Awaited<ReturnType<typeof loader>> }) {
   const { lines, caseCount } = loaderData;
+  const shell = useShellData();
+  const t = translator(shell?.locale ?? DEFAULT_LOCALE, shell?.overrides);
   const top = lines[0] ?? null;
   const maxTotal = top?.total ?? 1;
   const totalValue = lines.reduce((s, l) => s + l.total, 0);
@@ -73,10 +77,10 @@ export default function JourneyAxis({ loaderData }: { loaderData: Awaited<Return
 
   return (
     <div className="flex flex-col gap-6 pb-12">
-      <JourneyNav current="axis" />
+      <JourneyNav current="axis" t={t} />
       <Hero
         eyebrow="AXIS"
-        title="Transactions, grouped by product line"
+        title={t("journey.axis.title")}
         sub={`${caseCount} case${caseCount === 1 ? "" : "s"} across ${lines.length} product line${lines.length === 1 ? "" : "s"}.`}
         mod="axis"
         hero={{
@@ -91,7 +95,7 @@ export default function JourneyAxis({ loaderData }: { loaderData: Awaited<Return
           ]
         }}
       />
-      <ScreenState state={lines.length === 0 ? "empty" : "ready"} title="No cases yet" body="AXIS has no cases to group.">
+      <ScreenState state={lines.length === 0 ? "empty" : "ready"} title={t("journey.axis.empty")} body="AXIS has no cases to group.">
         <div className="flex flex-col gap-5">
           <div>{renderSection(bars, "axis")}</div>
         </div>

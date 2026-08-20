@@ -46,6 +46,7 @@ import {
   blockers,
   journeyLede,
   labelsIn as journeyLabelsIn,
+  loader as journeyLoader,
   mutate,
   nameOf,
   readGraph,
@@ -79,7 +80,7 @@ import {
   ratio,
   windowDays
 } from "./orbit-analytics";
-import { ORBIT, daysUntil } from "./orbit-shared";
+import { ORBIT, daysUntil, orbitPortals } from "./orbit-shared";
 
 // The six bespoke ORBIT screens. Everything below is either a rule an operator
 // leans on (who is waiting, what may be offered, what stops a journey going
@@ -275,6 +276,7 @@ describe("the live console loader", () => {
     expect(loaded.may).toEqual({ read: true, take: true });
     expect(loaded.bot.data).toHaveLength(1);
     expect(loaded.handovers).toHaveLength(1);
+    expect(loaded.tenantSlug).toBe("t");
     expect(calls.filter((call) => call.url.includes("conversations"))).toHaveLength(2);
   });
 
@@ -565,6 +567,31 @@ const journey: Journey = {
   createdBy: "usr_01",
   createdAt: 1
 };
+
+describe("the journey builder loader", () => {
+  it("returns the journey, its graph and the tenant slug for the portal links", async () => {
+    stubApi([
+      ["/v1/me", me(ORBIT.journeysWrite, ORBIT.runs)],
+      ["/v1/orbit/journeys/jny_01", json(journey)],
+      ["journey-runs", json({ data: [] })]
+    ]);
+    const loaded = await journeyLoader(args("https://web.test/orbit/journeys/jny_01", undefined, { id: "jny_01" }));
+
+    expect(loaded.journey).toEqual(journey);
+    expect(loaded.graph.nodes).toHaveLength(2);
+    expect(loaded.tenantSlug).toBe("t");
+  });
+});
+
+describe("orbitPortals", () => {
+  it("builds the three general-purpose portal paths for a tenant slug", () => {
+    expect(orbitPortals("acme")).toEqual([
+      { key: "storefront", path: "/portal/acme" },
+      { key: "register", path: "/portal/acme/register" },
+      { key: "partners", path: "/portal/acme/partners" }
+    ]);
+  });
+});
 
 describe("editing a journey graph", () => {
   it("reads a graph whether the column came back as an object or a string", () => {

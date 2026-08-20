@@ -109,7 +109,8 @@ export default [
           route("axis/policies/:id/cancel", "routes/policy-cancel.tsx"),
           route("axis/claims/:id/detail", "routes/claim-detail.tsx"),
           route("axis/cases/:id/evidence-bundles/:bundleId/download", "routes/case-evidence-download.tsx"),
-          route("axis/cases/:id/detail", "routes/case-detail.tsx")
+          route("axis/cases/:id/detail", "routes/case-detail.tsx"),
+          route("axis/bordereaux", "routes/axis-bordereaux.tsx")
         ])
       ]
     : []),

@@ -5,6 +5,8 @@ import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { ApiError, api, type Problem } from "../api.server";
 import { cloudflare } from "../context";
 import { JourneyNav } from "../components/journey-nav";
+import { translator, DEFAULT_LOCALE } from "../i18n";
+import { useShellData } from "./workspace";
 
 interface Attribute {
   axis: string;
@@ -108,6 +110,8 @@ function groupByComplianceStatus(variants: GeneratedVariant[]): Array<{ status: 
 
 export default function JourneySignal({ loaderData }: { loaderData: Awaited<ReturnType<typeof loader>> }) {
   const { subject, whitespaceId } = loaderData;
+  const shell = useShellData();
+  const t = translator(shell?.locale ?? DEFAULT_LOCALE, shell?.overrides);
   const result = useActionData<typeof action>();
   const navigation = useNavigation();
   const busy = navigation.state !== "idle";
@@ -164,10 +168,10 @@ export default function JourneySignal({ loaderData }: { loaderData: Awaited<Retu
 
   return (
     <div className="flex flex-col gap-6 pb-12">
-      <JourneyNav current="signal" />
+      <JourneyNav current="signal" t={t} />
       <Hero
         eyebrow="SIGNAL"
-        title="Campaign, carried from SCOUT"
+        title={t("journey.signal.title")}
         sub={
           subject
             ? `Drafting for: ${subject}.${creatives ? ` ${creatives.variants.length} creative${creatives.variants.length === 1 ? "" : "s"} generated across ${complianceGroups.length} compliance grouping${complianceGroups.length === 1 ? "" : "s"}.` : ""}`
@@ -184,12 +188,12 @@ export default function JourneySignal({ loaderData }: { loaderData: Awaited<Retu
         </div>
       ) : null}
 
-      <Card title="Suggest an audience">
+      <Card title={t("journey.signal.suggestAudienceCard")}>
         <Form method="post" className="flex flex-col gap-3">
           <input type="hidden" name="intent" value="suggest_audience" />
           <input type="hidden" name="whitespaceId" value={whitespaceId} />
           <label className="flex flex-col gap-1">
-            <span className="font-ui text-12 text-subtle">Subject</span>
+            <span className="font-ui text-12 text-subtle">{t("journey.signal.subject")}</span>
             <input
               name="subject"
               defaultValue={subject}
@@ -198,7 +202,7 @@ export default function JourneySignal({ loaderData }: { loaderData: Awaited<Retu
           </label>
           <div className="flex justify-end">
             <Button type="submit" variant="primary" disabled={busy}>
-              Suggest audience
+              {t("journey.signal.suggestAudience")}
             </Button>
           </div>
         </Form>
@@ -229,14 +233,14 @@ export default function JourneySignal({ loaderData }: { loaderData: Awaited<Retu
       ) : null}
 
       {audience ? (
-        <Card title="Generate creatives">
+        <Card title={t("journey.signal.generateCreativesCard")}>
           <Form method="post" className="flex flex-col gap-3">
             <input type="hidden" name="intent" value="generate_creatives" />
             <input type="hidden" name="brief" value={audience.proposal.summary} />
             <p className="font-ui text-13 text-subtle">Brief: {audience.proposal.summary}</p>
             <div className="flex justify-end">
               <Button type="submit" variant="primary" disabled={busy}>
-                Generate creatives
+                {t("journey.signal.generateCreativesCard")}
               </Button>
             </div>
           </Form>

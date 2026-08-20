@@ -3,6 +3,8 @@ import type { LoaderFunctionArgs } from "react-router";
 import { api } from "../api.server";
 import { cloudflare } from "../context";
 import { JourneyNav, JourneyContinue } from "../components/journey-nav";
+import { translator, DEFAULT_LOCALE } from "../i18n";
+import { useShellData } from "./workspace";
 
 interface WhitespaceCommentary {
   whitespaceId: string;
@@ -56,6 +58,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
 export default function JourneyScout({ loaderData }: { loaderData: Awaited<ReturnType<typeof loader>> }) {
   const { rows, productLine } = loaderData;
+  const shell = useShellData();
+  const t = translator(shell?.locale ?? DEFAULT_LOCALE, shell?.overrides);
   const top = rows[0] ?? null;
   const groups = groupByCategory(rows);
   const maxCount = Math.max(1, ...groups.map((g) => g.count));
@@ -110,10 +114,10 @@ export default function JourneyScout({ loaderData }: { loaderData: Awaited<Retur
 
   return (
     <div className="flex flex-col gap-6 pb-12">
-      <JourneyNav current="scout" />
+      <JourneyNav current="scout" t={t} />
       <Hero
         eyebrow="SCOUT"
-        title="Whitespace, carried from NORTH"
+        title={t("journey.scout.title")}
         sub={
           productLine
             ? `Ranking ${rows.length} whitespace item${rows.length === 1 ? "" : "s"} against AXIS/NORTH's line: ${productLine}.`
@@ -140,7 +144,7 @@ export default function JourneyScout({ loaderData }: { loaderData: Awaited<Retur
       />
       <ScreenState
         state={rows.length === 0 ? "empty" : "ready"}
-        title="No whitespace yet"
+        title={t("journey.scout.empty")}
         body="SCOUT has not surfaced any commentary yet."
       >
         <div className="flex flex-col gap-5">
@@ -152,7 +156,7 @@ export default function JourneyScout({ loaderData }: { loaderData: Awaited<Retur
       {top ? (
         <JourneyContinue
           to={`/journey/signal?subject=${encodeURIComponent(top.category ?? top.whitespaceId)}&whitespaceId=${encodeURIComponent(top.whitespaceId)}`}
-          label="Draft SIGNAL's campaign"
+          label={t("journey.scout.continue")}
         />
       ) : null}
     </div>

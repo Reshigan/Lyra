@@ -18,14 +18,17 @@ import {
   Input,
   Select,
   Table,
+  hueVar,
+  renderSection,
   type BadgeTone,
-  type Column
+  type Column,
+  type Section
 } from "@lyra/ui";
 import { api, asRouteError, fetchMe, type Problem as ProblemShape } from "../api.server";
 import { arrowFor } from "../i18n";
 import { cloudflare } from "../context";
 import { Gate } from "./staff";
-import { ORBIT, labelsFrom, refusal, safe, type Label, type Labels, type Page } from "./orbit-shared";
+import { ORBIT, labelsFrom, orbitPortals, refusal, safe, type Label, type Labels, type Page } from "./orbit-shared";
 
 // The journey editor. Steps, the trigger, and the branches between them — as
 // forms, because the graph the runtime reads is a list of nodes and a list of
@@ -281,7 +284,12 @@ export const LABELS: Labels = {
     bad_status: "Pick a status from the list.",
     cannot_activate: "Clear what is listed under the readiness notice before activating.",
     unknown_intent: "That control is not available.",
-    approvalLink: "Open approvals"
+    approvalLink: "Open approvals",
+    portalsTitle: "Public portals",
+    portalsBody: "Where a \"send\" step can point a customer — the tenant's self-serve pages.",
+    portalStorefront: "Storefront",
+    portalRegister: "Self-registration",
+    portalPartners: "Partner sign-up"
   },
   ar: {
     title: "منشئ الرحلات",
@@ -354,7 +362,12 @@ export const LABELS: Labels = {
     bad_status: "اختر حالة من القائمة.",
     cannot_activate: "عالج ما ورد في تنبيه الجاهزية قبل التنشيط.",
     unknown_intent: "هذا الإجراء غير متاح.",
-    approvalLink: "افتح الموافقات"
+    approvalLink: "افتح الموافقات",
+    portalsTitle: "البوابات العامة",
+    portalsBody: "الوجهة التي يمكن لخطوة \"إرسال\" توجيه العميل إليها: صفحات الخدمة الذاتية الخاصة بالمستأجر.",
+    portalStorefront: "واجهة المتجر",
+    portalRegister: "التسجيل الذاتي",
+    portalPartners: "تسجيل الشركاء"
   }
 };
 
@@ -385,6 +398,7 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
     locale: me.locale,
     nonce: crypto.randomUUID(),
     may: { edit: held.has(ORBIT.journeysWrite) },
+    tenantSlug: me.tenant.slug,
     journey,
     graph: readGraph(journey.graphJson),
     runs: runs.data
@@ -464,6 +478,13 @@ export async function action({ request, params, context }: ActionFunctionArgs): 
   return write({ graphJson: outcome.graph });
 }
 
+/** `orbitPortals`'s three keys, each to the label naming it. */
+const PORTAL_LABEL_KEY: Record<string, string> = {
+  storefront: "portalStorefront",
+  register: "portalRegister",
+  partners: "portalPartners"
+};
+
 /* --------------------------------------------------------------- component */
 
 export default function JourneyBuilder() {
@@ -476,6 +497,12 @@ export default function JourneyBuilder() {
   const start = startsAt(graph);
   const notReady = blockers(graph);
   const stepOptions = graph.nodes.map((node) => ({ value: node.key, label: node.key }));
+  const portals = orbitPortals(loaded.tenantSlug);
+  const portalSection: Section = {
+    kind: "kv",
+    title: l("portalsTitle"),
+    items: portals.map((p) => ({ label: l(PORTAL_LABEL_KEY[p.key]!), value: p.path, hue: hueVar("orbit"), font: "" }))
+  };
 
   return (
     <div className="flex flex-col gap-6">
@@ -519,6 +546,18 @@ export default function JourneyBuilder() {
       <p className="font-ui text-13 text-muted">
         {start ? l("startsAt", { node: start }) : l("startsNowhere")}
       </p>
+
+      <div className="flex flex-col gap-2">
+        <p className="font-ui text-12 text-subtle">{l("portalsBody")}</p>
+        {renderSection(portalSection, "orbit")}
+        <div className="flex flex-wrap gap-4">
+          {portals.map((p) => (
+            <Link key={p.key} to={p.path} className="font-ui text-13 text-accent underline underline-offset-2">
+              {l(PORTAL_LABEL_KEY[p.key]!)}
+            </Link>
+          ))}
+        </div>
+      </div>
 
       <Card title={l("steps")} description={l("stepsBody")}>
         {graph.nodes.length === 0 ? (

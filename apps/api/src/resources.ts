@@ -421,7 +421,13 @@ export const AXIS = register(
   // a caller insert a point with an arbitrary `at`, an arbitrary `value` and a
   // `txnId` pointing at nothing — which then feeds a reprice. This is the point
   // that most matters here: a writable telemetry table is a writable premium.
-  r("telemetry-points", schema.axisTelemetryPoints, "telp", "axis", ro("axis:policies:read"))
+  r("telemetry-points", schema.axisTelemetryPoints, "telp", "axis", ro("axis:policies:read")),
+  // Read-only: the only writers are POST /v1/axis/bordereaux (generate) and
+  // POST /v1/axis/bordereaux/:id/reconcile (engines/axis-bordereaux.ts) —
+  // both enforce the idempotent-per-period / inbound-one-shot rules a
+  // generic create/update would bypass.
+  r("bordereaux", schema.axisBordereaux, "bdx", "axis", ro("axis:bordereaux:read")),
+  r("bordereau-lines", schema.axisBordereauLines, "bdxl", "axis", ro("axis:bordereaux:read"))
 );
 
 /* ------------------------------------------------------------------- orbit */

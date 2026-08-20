@@ -1,12 +1,13 @@
 import { flowPlan } from "@lyra/ui";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { LoaderFunctionArgs } from "react-router";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import type { Env } from "../env";
 import {
   LABELS,
   PERM,
   POLICY_FLOW,
   POLICY_TRANSITIONS,
+  action,
   labelsIn,
   loader,
   policyLede,
@@ -81,6 +82,38 @@ function args(): LoaderFunctionArgs {
     params: { id: "pol_1" }
   } as unknown as LoaderFunctionArgs;
 }
+
+/** Every request an action makes, in order, answered by the same reply. */
+function stubFetch(reply: Response) {
+  const calls: Array<{ url: string; method: string; body: string | null; idempotencyKey: string | null }> = [];
+  vi.stubGlobal("fetch", (input: URL | string, init: RequestInit = {}) => {
+    calls.push({
+      url: String(input),
+      method: init.method ?? "GET",
+      body: typeof init.body === "string" ? init.body : null,
+      idempotencyKey: new Headers(init.headers).get("idempotency-key")
+    });
+    return Promise.resolve(reply.clone());
+  });
+  return calls;
+}
+
+function actionArgs(form: FormData): ActionFunctionArgs {
+  return {
+    request: new Request("https://web.test/axis/policies/pol_1/detail", { method: "POST", body: form }),
+    context: { get: () => ({ env, ctx: null }) },
+    params: { id: "pol_1" }
+  } as unknown as ActionFunctionArgs;
+}
+
+function form(fields: Record<string, string>) {
+  const body = new FormData();
+  body.set("idempotencyKey", "key-1");
+  for (const [name, value] of Object.entries(fields)) body.set(name, value);
+  return body;
+}
+
+const ok = () => new Response(JSON.stringify({ id: "pol_1" }), { status: 200, headers: { "content-type": "application/json" } });
 
 describe("labelsIn", () => {
   it("answers every key in both languages, and never with the key itself", () => {
@@ -172,7 +205,159 @@ describe("loader", () => {
 
     const loaded = await loader(args());
 
-    expect(loaded.may).toMatchObject({ read: true, cancel: true, endorse: false, renew: false });
+    expect(loaded.may).toMatchObject({ read: true, cancel: true, endorse: false, renew: false, financing: false });
+  });
+
+  it("offers the financing plan only to an actor who holds axis:policies:finance", async () => {
+    stubApi(["axis:policies:read", "axis:policies:finance"]);
+
+    const loaded = await loader(args());
+
+    expect(loaded.may.financing).toBe(true);
+  });
+
+  it("hands every write form the same idempotency key for this page load", async () => {
+    stubApi(Object.values(PERM));
+
+    const loaded = await loader(args());
+
+    expect(loaded.idempotencyKey).toMatch(/^[0-9a-f-]{36}$/);
+  });
+});
+
+describe("action: reprice", () => {
+  it("reprices the policy against telemetry with no body", async () => {
+    const calls = stubFetch(
+      new Response(
+        JSON.stringify({ repriced: true, premiumMinor: 132_000, premiumDeltaPpm: 100_000 }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      )
+    );
+
+    const result = await action(actionArgs(form({ intent: "reprice" })));
+
+    expect(calls[0]?.url).toBe("https://api.test/v1/axis/policies/pol_1/reprice");
+    expect(calls[0]?.method).toBe("POST");
+    expect(JSON.parse(calls[0]!.body!)).toEqual({});
+    expect(calls[0]?.idempotencyKey).toBe("key-1:reprice");
+    expect(result.done).toBe("repriceDone");
+    expect(result.problem).toBeNull();
+  });
+
+  it("still reports done when telemetry found nothing worth repricing for", async () => {
+    stubFetch(new Response(JSON.stringify({ repriced: false }), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    }));
+
+    const result = await action(actionArgs(form({ intent: "reprice" })));
+
+    expect(result.done).toBe("repriceDone");
+  });
+
+  it("surfaces the sign-off refusal instead of pretending the premium moved", async () => {
+    stubFetch(
+      new Response(
+        JSON.stringify({
+          title: "approval required",
+          status: 403,
+          code: "approval_required",
+          policy_key: "axis.policy_endorse"
+        }),
+        { status: 403, headers: { "content-type": "application/json" } }
+      )
+    );
+
+    const result = await action(actionArgs(form({ intent: "reprice" })));
+
+    expect(result.problem?.status).toBe(403);
+    expect(result.done).toBeNull();
+  });
+});
+
+describe("action: finance-plan", () => {
+  const validFields = {
+    intent: "finance-plan",
+    financierRef: "fin_1",
+    totalMinor: "600000",
+    currency: "AED",
+    instalments: "12",
+    startAt: "2026-09-01",
+    frequencyDays: "30",
+    commissionMinor: "6000",
+    commissionTaxMinor: "300"
+  };
+
+  it("creates a premium financing plan, sending epoch millis for the start date", async () => {
+    const calls = stubFetch(ok());
+
+    const result = await action(actionArgs(form(validFields)));
+
+    expect(calls[0]?.url).toBe("https://api.test/v1/axis/policies/pol_1/premium-financing-plan");
+    expect(calls[0]?.method).toBe("POST");
+    expect(JSON.parse(calls[0]!.body!)).toEqual({
+      financierRef: "fin_1",
+      totalMinor: 600_000,
+      currency: "AED",
+      instalments: 12,
+      startAt: Date.parse("2026-09-01T00:00:00Z"),
+      frequencyDays: 30,
+      commissionMinor: 6_000,
+      commissionTaxMinor: 300
+    });
+    expect(calls[0]?.idempotencyKey).toBe("key-1:finance-plan:600000");
+    expect(result.done).toBe("financeDone");
+  });
+
+  it("omits the optional financier and tax fields rather than sending them empty", async () => {
+    const calls = stubFetch(ok());
+    const { financierRef: _financierRef, commissionTaxMinor: _commissionTaxMinor, ...rest } = validFields;
+
+    await action(actionArgs(form(rest)));
+
+    const sent = JSON.parse(calls[0]!.body!);
+    expect(sent).not.toHaveProperty("financierRef");
+    expect(sent).not.toHaveProperty("commissionTaxMinor");
+  });
+
+  it("refuses a plan with no currency", async () => {
+    const calls = stubFetch(ok());
+    const { currency: _currency, ...rest } = validFields;
+
+    const result = await action(actionArgs(form(rest)));
+
+    expect(calls).toHaveLength(0);
+    expect(result.error).toBe("financeCurrencyRequired");
+  });
+
+  it("refuses a non-positive total or commission", async () => {
+    const calls = stubFetch(ok());
+
+    const result = await action(actionArgs(form({ ...validFields, totalMinor: "0" })));
+
+    expect(calls).toHaveLength(0);
+    expect(result.error).toBe("financeAmountRequired");
+  });
+
+  it("refuses a negative commission tax", async () => {
+    const calls = stubFetch(ok());
+
+    const result = await action(actionArgs(form({ ...validFields, commissionTaxMinor: "-1" })));
+
+    expect(calls).toHaveLength(0);
+    expect(result.error).toBe("financeAmountRequired");
+  });
+
+  it("refuses a schedule with no instalments, no frequency or an unparsable start date", async () => {
+    const calls = stubFetch(ok());
+
+    const result = await action(actionArgs(form({ ...validFields, instalments: "0" })));
+
+    expect(calls).toHaveLength(0);
+    expect(result.error).toBe("financeScheduleRequired");
+
+    const badStart = await action(actionArgs(form({ ...validFields, startAt: "not-a-date" })));
+    expect(badStart.error).toBe("financeScheduleRequired");
   });
 });
 

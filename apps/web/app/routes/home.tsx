@@ -17,16 +17,19 @@ import {
   hueVar,
   KPIWall,
   Money,
+  renderSection,
   Sparkline,
   Stat,
   Timeline,
   type BadgeTone,
+  type Section,
   type TimelineEvent
 } from "@lyra/ui";
 import { ApiError, api, fetchMe, names, type Problem } from "../api.server";
 import { who } from "../names";
 import { HeroStat } from "../components/hero";
 import { routedLeaves } from "../components/shell";
+import { JourneyContinue } from "../components/journey-nav";
 import { cloudflare } from "../context";
 import { DEFAULT_LOCALE, moduleName, pseudoText, translator } from "../i18n";
 import { humanise, titleText } from "../modules/spec";
@@ -119,6 +122,14 @@ const LABELS: Record<string, Record<string, string>> = {
     "links.title": "Your workspaces",
     "links.label": "Workspaces",
 
+    "journey.title": "The flagship journey",
+    "journey.cta": "Walk the journey",
+    "journey.axis.note": "{count} units delivered",
+    "journey.axis.empty": "No activity yet",
+    "journey.north.empty": "No briefing yet",
+    "journey.scout.note": "Open whitespace",
+    "journey.signal.note": "Live campaigns",
+
     "panel.failed": "This did not load. Nothing is wrong with your work — try again in a moment.",
     "panel.retry": "Reload",
 
@@ -183,6 +194,14 @@ const LABELS: Record<string, Record<string, string>> = {
 
     "links.title": "مساحات عملك",
     "links.label": "مساحات العمل",
+
+    "journey.title": "الرحلة الرئيسية",
+    "journey.cta": "استعرض الرحلة",
+    "journey.axis.note": "{count} وحدة منجزة",
+    "journey.axis.empty": "لا نشاط بعد",
+    "journey.north.empty": "لا إحاطة بعد",
+    "journey.scout.note": "فرص غير مستغلة مفتوحة",
+    "journey.signal.note": "حملات نشطة",
 
     "panel.failed": "تعذّر تحميل هذا الجزء. لم يتأثّر عملك؛ أعد المحاولة بعد قليل.",
     "panel.retry": "إعادة التحميل",
@@ -256,6 +275,36 @@ interface AiRun {
   startedAt: number;
 }
 
+/** Mirrors journey-north.tsx's BriefingRow — only the fields the HUB step needs. */
+interface BriefingSummary {
+  id: string;
+  date: string;
+  audience: string;
+  status: string;
+}
+
+/** Mirrors the shape of GET /v1/scout/whitespaces (packages/db/src/schema/scout.ts). */
+interface WhitespaceRow {
+  id: string;
+  status: string;
+}
+
+/** Mirrors the shape of GET /v1/signal/campaigns (packages/db/src/schema/signal.ts). */
+interface CampaignRow {
+  id: string;
+  state: string;
+}
+
+/** Open = not yet parked; parked is SCOUT's terminal "not pursuing this" state. */
+export function openWhitespaceCount(rows: WhitespaceRow[]): number {
+  return rows.filter((row) => row.status !== "parked").length;
+}
+
+/** Active = actually running; draft/review/scheduled/paused/ended are not. */
+export function activeCampaignCount(rows: CampaignRow[]): number {
+  return rows.filter((row) => row.state === "live").length;
+}
+
 /**
  * Whether an audit row belongs on a panel headed "Your recent activity".
  *
@@ -293,7 +342,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   // Every branch resolves to a Panel, so one lost permission or one failing
   // endpoint costs one panel and never the screen.
-  const [inbox, economics, activity, runs] = await Promise.all([
+  const [inbox, economics, activity, runs, briefings, whitespaces, campaigns] = await Promise.all([
     // The inbox is the actor's own queue; the API scopes it to them, so there is
     // no permission to check before asking for it.
     panel<Inbox>(true, () => api("/v1/me/inbox", { env, request })),
@@ -308,6 +357,19 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     ),
     panel<{ data: AiRun[] }>(held.has("ai:runs:read"), () =>
       api("/v1/ai/runs?sort=startedAt&order=desc&limit=5", { env, request })
+    ),
+    // The three panels below feed the AXIS→NORTH→SCOUT→SIGNAL journey step —
+    // the same endpoints journey-north.tsx/journey-scout.tsx already read
+    // (generic CRUD resources registered in apps/api/src/resources.ts), kept
+    // to one page each since the step only ever shows a headline.
+    panel<{ data: BriefingSummary[] }>(held.has("north:briefings:read"), () =>
+      api("/v1/north/briefings?limit=1&sort=createdAt&order=desc", { env, request })
+    ),
+    panel<{ data: WhitespaceRow[] }>(held.has("scout:whitespaces:read"), () =>
+      api("/v1/scout/whitespaces?limit=200", { env, request })
+    ),
+    panel<{ data: CampaignRow[] }>(held.has("signal:campaigns:read"), () =>
+      api("/v1/signal/campaigns?limit=200", { env, request })
     )
   ]);
 
@@ -338,7 +400,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     // The list endpoint filters on equality only, so `isOwnWork` runs here —
     // over-fetch 24, keep the 6 most recent changes.
     activity: map(activity, (a) => a.data.filter(isOwnWork).slice(0, 6)),
-    runs: map(runs, (r) => r.data)
+    runs: map(runs, (r) => r.data),
+    briefing: map(briefings, (b) => b.data[0] ?? null),
+    scoutOpen: map(whitespaces, (w) => openWhitespaceCount(w.data)),
+    signalActive: map(campaigns, (c) => activeCampaignCount(c.data))
   };
 }
 
@@ -537,6 +602,57 @@ export default function Home() {
     !filled(loaded.runs) &&
     !econ;
 
+  // The flagship demo journey (/journey/axis → north → scout → signal) has no
+  // door of its own from the HUB otherwise — journey-nav.tsx's chrome only
+  // appears once you are already inside it. One `steps` row, one headline per
+  // module, built only from panels the actor actually holds; a denied or
+  // failed panel reads as "—", not as an invented number.
+  const briefing = loaded.briefing.state === "ok" ? loaded.briefing.data : null;
+  const scoutOpen = loaded.scoutOpen.state === "ok" ? loaded.scoutOpen.data : null;
+  const signalActive = loaded.signalActive.state === "ok" ? loaded.signalActive.data : null;
+  const journeySteps: Section = {
+    kind: "steps",
+    title: label("journey.title"),
+    items: [
+      {
+        code: "AXIS",
+        dot: hueVar("axis"),
+        title: moduleName(t, "axis"),
+        money: econ
+          ? new Intl.NumberFormat(locale, { style: "currency", currency: econ.currency }).format(
+              econ.revenueMinor / 100
+            )
+          : "—",
+        note: econ ? label("journey.axis.note", { count: number.format(econ.volume) }) : label("journey.axis.empty"),
+        hue: hueVar("axis")
+      },
+      {
+        code: "NORTH",
+        dot: hueVar("north"),
+        title: moduleName(t, "north"),
+        money: briefing?.audience ?? "—",
+        note: briefing?.date ?? label("journey.north.empty"),
+        hue: hueVar("north")
+      },
+      {
+        code: "SCOUT",
+        dot: hueVar("scout"),
+        title: moduleName(t, "scout"),
+        money: scoutOpen === null ? "—" : number.format(scoutOpen),
+        note: label("journey.scout.note"),
+        hue: hueVar("scout")
+      },
+      {
+        code: "SIGNAL",
+        dot: hueVar("signal"),
+        title: moduleName(t, "signal"),
+        money: signalActive === null ? "—" : number.format(signalActive),
+        note: label("journey.signal.note"),
+        hue: hueVar("signal")
+      }
+    ]
+  };
+
   return (
     <div className="flex flex-col gap-8">
       <header className="flex flex-col gap-2">
@@ -600,6 +716,14 @@ export default function Home() {
           ) : null}
         </KPIWall>
       ) : null}
+
+      <section aria-label={label("journey.title")} className="flex flex-col gap-3">
+        <h2 className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">
+          {label("journey.title")}
+        </h2>
+        <div>{renderSection(journeySteps, "hub")}</div>
+        <JourneyContinue to="/journey/axis" label={label("journey.cta")} />
+      </section>
 
       {problem ? (
         <div role="alert" className="rounded-md border border-danger/40 bg-danger/10 p-3">

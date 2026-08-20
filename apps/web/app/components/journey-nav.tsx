@@ -1,5 +1,6 @@
 import { Link } from "react-router";
 import { Badge, Button, hueVar } from "@lyra/ui";
+import type { Translate } from "../i18n";
 
 // The flagship demo journey (AXIS -> NORTH -> SCOUT -> SIGNAL) is four real,
 // API-backed routes (routes/journey-*.tsx), not fixture screens. This is the
@@ -15,9 +16,15 @@ const STEPS = [
   { id: "signal", label: "SIGNAL", detail: "Campaign" }
 ] as const;
 
-export function JourneyNav({ current }: { current: (typeof STEPS)[number]["id"] }) {
+export function JourneyNav({
+  current,
+  t
+}: {
+  current: (typeof STEPS)[number]["id"];
+  t: Translate;
+}) {
   return (
-    <nav aria-label="Demo journey" className="flex flex-wrap items-center gap-2">
+    <nav aria-label={t("journey.demoLabel")} className="flex flex-wrap items-center gap-2">
       {STEPS.map((step, i) => (
         <span key={step.id} className="flex items-center gap-2">
           {i > 0 ? (

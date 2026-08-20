@@ -67,6 +67,27 @@ export function refusal(error: unknown): Problem {
   throw error;
 }
 
+export interface PortalLink {
+  key: "storefront" | "register" | "partners";
+  path: string;
+}
+
+/**
+ * The tenant's three general-purpose public portals — the ones any ops
+ * screen can point a customer at without a specific record in hand. The
+ * renewal and CSAT feedback portals are per-record and tokened
+ * (`GET /v1/orbit/portal-links/:kind/:id`, apps/api/src/routes/orbit.ts) so
+ * they stay out of this general directory; a console or journey screen has
+ * no single renewal/conversation row to build one for.
+ */
+export function orbitPortals(slug: string): PortalLink[] {
+  return [
+    { key: "storefront", path: `/portal/${slug}` },
+    { key: "register", path: `/portal/${slug}/register` },
+    { key: "partners", path: `/portal/${slug}/partners` }
+  ];
+}
+
 export const DAY_MS = 86_400_000;
 
 /** Whole days from `now` until `at`; negative once `at` has passed. */

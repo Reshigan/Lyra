@@ -15,15 +15,18 @@ import {
   DateTime,
   EmptyState,
   Table,
+  hueVar,
+  renderSection,
   type BadgeTone,
-  type Column
+  type Column,
+  type Section
 } from "@lyra/ui";
 import { FOCUS, HeroStat, HeroWall, lensOf, useFocus, type Lens } from "../components/hero";
 import { api, asRouteError, fetchMe, names, type Names, type Problem as ProblemShape } from "../api.server";
 import { who } from "../names";
 import { cloudflare } from "../context";
 import { Gate } from "./staff";
-import { ORBIT, labelsFrom, refusal, safe, type Label, type Labels, type Page } from "./orbit-shared";
+import { ORBIT, labelsFrom, orbitPortals, refusal, safe, type Label, type Labels, type Page } from "./orbit-shared";
 
 // The operator's view of the room: who the agent is holding, who a human is
 // holding, and how long anybody has been waiting on a reply.
@@ -182,7 +185,12 @@ export const LABELS: Labels = {
     agent: "Agent channel",
     unknownIntent: "That control is not available.",
     missingConversation: "Pick a conversation first.",
-    approvalLink: "Open approvals"
+    approvalLink: "Open approvals",
+    portalsTitle: "Public portals",
+    portalsBody: "Send a customer straight to one of the tenant's self-serve pages.",
+    portalStorefront: "Storefront",
+    portalRegister: "Self-registration",
+    portalPartners: "Partner sign-up"
   },
   ar: {
     title: "لوحة المتابعة الحية",
@@ -240,7 +248,12 @@ export const LABELS: Labels = {
     agent: "قناة الوكيل",
     unknownIntent: "هذا الإجراء غير متاح.",
     missingConversation: "اختر محادثة أولًا.",
-    approvalLink: "افتح الموافقات"
+    approvalLink: "افتح الموافقات",
+    portalsTitle: "البوابات العامة",
+    portalsBody: "وجّه العميل مباشرة إلى إحدى صفحات الخدمة الذاتية الخاصة بالمستأجر.",
+    portalStorefront: "واجهة المتجر",
+    portalRegister: "التسجيل الذاتي",
+    portalPartners: "تسجيل الشركاء"
   }
 };
 
@@ -291,6 +304,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     now: Date.now(),
     nonce: crypto.randomUUID(),
     may: { read: held.has(ORBIT.conversations), take: held.has(ORBIT.assign) },
+    tenantSlug: me.tenant.slug,
     bot,
     human,
     handovers: handovers.data,
@@ -335,6 +349,13 @@ export async function action({ request, context }: ActionFunctionArgs): Promise<
   }
 }
 
+/** `orbitPortals`'s three keys, each to the label naming it. */
+const PORTAL_LABEL_KEY: Record<string, string> = {
+  storefront: "portalStorefront",
+  register: "portalRegister",
+  partners: "portalPartners"
+};
+
 /* --------------------------------------------------------------- component */
 
 export default function OrbitConsole() {
@@ -350,6 +371,12 @@ export default function OrbitConsole() {
   // second `.filter` that could drift from it.
   const waitingLong = lensOf(live, LENSES, "waiting").length;
   const urgent = mostUrgent(live, loaded.now);
+  const portals = orbitPortals(loaded.tenantSlug);
+  const portalSection: Section = {
+    kind: "kv",
+    title: l("portalsTitle"),
+    items: portals.map((p) => ({ label: l(PORTAL_LABEL_KEY[p.key]!), value: p.path, hue: hueVar("orbit"), font: "" }))
+  };
 
   const problemMessage: Record<string, string> = {
     unknown_intent: l("unknownIntent"),
@@ -431,6 +458,18 @@ export default function OrbitConsole() {
           active={focus === "waiting"}
         />
       </HeroWall>
+
+      <div className="flex flex-col gap-2">
+        <p className="font-ui text-12 text-subtle">{l("portalsBody")}</p>
+        {renderSection(portalSection, "orbit")}
+        <div className="flex flex-wrap gap-4">
+          {portals.map((p) => (
+            <Link key={p.key} to={p.path} className="font-ui text-13 text-accent underline underline-offset-2">
+              {l(PORTAL_LABEL_KEY[p.key]!)}
+            </Link>
+          ))}
+        </div>
+      </div>
 
       <Card title={l("agentQueue")} description={l("agentQueueBody")}>
         <Queue
