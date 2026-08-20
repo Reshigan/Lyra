@@ -339,6 +339,23 @@ registers only `north/brief`, `north/explorer`, `north/anomalies`,
 `north/admin` and `north/dev` — neither `alerts` nor `metrics` is a route, so
 both links 404 (**F63**).
 
+*Ledger.* `ledger-journal.tsx` and `ledger-year-end.tsx` import only
+`Problem`, never `Gate` — the component that renders an approval-gated 403 as
+a calm "queued, see /approvals" notice. Both MANUAL-JRNL and YEAR-END-CLOSE
+run with dual control always on (`apps/api/src/ledger-journals.test.ts:133,223`),
+so the normal first submission on either screen is guaranteed to 403 with
+`approval_required`, and the actor sees a raw policy-key string
+(`ledger.manual_journal` / `ledger.year_end_close`) in a danger alert instead
+of the queued-for-approval state every other gated screen shows (**F64**).
+The money-map Sankey's node labels (`ledger-money-map.tsx:452`) are drawn as
+`<text>` at a fixed `node.x + NODE_WIDTH + 8` offset with no width
+measurement or truncation in `layoutMap()` (`:123-153`); a longer label —
+Arabic translations of the same node names routinely run longer than their
+English source — clips into the neighbouring column with nothing to catch
+it. The same `<svg>` carries `role="img"` with one `aria-label` covering the
+whole diagram (`:437`), so the six node names and amounts rendered as `<text>`
+are invisible to a screen reader (**F65**).
+
 ---
 
 ## P2 — depth, not absence
