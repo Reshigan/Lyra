@@ -1,21 +1,35 @@
-import { Link, useLoaderData, type LoaderFunctionArgs } from "react-router";
+import {
+  Form,
+  Link,
+  useActionData,
+  useLoaderData,
+  useNavigation,
+  type ActionFunctionArgs,
+  type LoaderFunctionArgs
+} from "react-router";
 import {
   Badge,
   Button,
   Card,
   DateTime,
   EmptyState,
+  Input,
   Money,
+  MoneyField,
   Ref,
   Stat,
   StateFlow,
   Table,
   formatInstant,
+  formatMoney,
+  hueVar,
+  renderSection,
   type Column,
   type FlowMachine,
-  type FlowVisit
+  type FlowVisit,
+  type Section
 } from "@lyra/ui";
-import { api, fetchMe, names } from "../api.server";
+import { ApiError, api, fetchMe, names, type Problem } from "../api.server";
 import { cloudflare } from "../context";
 import { translator } from "../i18n";
 import {
@@ -24,18 +38,23 @@ import {
   Header,
   Payload,
   labelsFrom,
+  percentOf,
   rowsOf,
   safe,
   tag,
   type Label,
   type Page
 } from "./detail-kit";
+import { Gate } from "./staff";
 import { useAxisSessionData } from "./axis-shell";
 
 // One agreement: what it covers, what it costs, what has been claimed against
-// it, the paper behind it, and its own version history. This screen writes
-// nothing — every change to an agreement (endorse, cancel, renew) prices before
-// it writes and lives on its own screen, so the read stays a read.
+// it, the paper behind it, and its own version history. Endorse, cancel and
+// renew each price on their own screen before they write. Reprice and premium
+// financing live here instead: each is one API call with nothing to preview,
+// so pricing and writing are the same step. A reprice can still come back as
+// an approval refusal rather than a done banner (CLAUDE.md §4) — the API
+// gates it exactly when the telemetry-driven premium actually moves.
 
 /* --------------------------------------------------------------- contract */
 
@@ -114,11 +133,22 @@ export const PERM = {
   endorse: "axis:policies:endorse",
   cancel: "axis:policies:cancel",
   renew: "axis:policies:renew",
+  finance: "axis:policies:finance",
   claims: "axis:claims:read",
   commissions: "dist:commissions:read",
   files: "core:files:read",
   audit: "core:audit:read"
 } as const;
+
+/** One instalment of a premium financing plan, as `plan.scheduleJson` holds it
+ *  — mirrors `ScheduleRow` in apps/api/src/engines/premium-financing.ts. */
+export interface ScheduleRow {
+  seq: number;
+  dueAt: number;
+  amountMinor: number;
+  state: "pending" | "due" | "paid" | "missed";
+  missedPaymentId?: string | undefined;
+}
 
 /** One line of the tenant's audit trail, as /v1/core/audit-log returns it. */
 export interface AuditRow {
@@ -225,6 +255,34 @@ export const LABELS: Record<string, Record<string, string>> = {
     endorseLink: "Endorse",
     cancelLink: "Cancel",
     renewLink: "Renew",
+    repriceTitle: "Reprice from telemetry",
+    repriceIntro: "Recomputes the premium from the driving data on file. Prices before it writes, and may need sign-off.",
+    repriceSubmit: "Reprice now",
+    repriceDone: "Reprice complete.",
+    repriceCompareTitle: "Premium before and after",
+    repricePrevious: "Previous premium",
+    repriceNew: "New premium",
+    repriceNoChangeTitle: "No change",
+    repriceNoChange: "Telemetry found nothing worth repricing for.",
+    financeTitle: "Premium financing plan",
+    financeIntro: "Splits the premium into instalments through a financier. One plan per agreement.",
+    financeFinancier: "Financier",
+    financeTotal: "Total financed",
+    financeInstalments: "Instalments",
+    financeStart: "First instalment",
+    financeFrequency: "Days between instalments",
+    financeCommission: "Financier commission",
+    financeCommissionTax: "Commission tax",
+    financeSubmit: "Create plan",
+    financeDone: "Financing plan created.",
+    financeCurrencyRequired: "Choose the currency being financed.",
+    financeAmountRequired: "Total and commission must be positive amounts, and any tax may not be negative.",
+    financeScheduleRequired: "Instalments and the gap between them must be positive, and the first instalment needs a real date.",
+    financeScheduleTitle: "Instalment schedule",
+    "instalmentState.pending": "Pending",
+    "instalmentState.due": "Due",
+    "instalmentState.paid": "Paid",
+    "instalmentState.missed": "Missed",
     colVersion: "Version",
     colReason: "Reason",
     colEffective: "Effective",
@@ -268,6 +326,34 @@ export const LABELS: Record<string, Record<string, string>> = {
     endorseLink: "تعديل",
     cancelLink: "إلغاء",
     renewLink: "تجديد",
+    repriceTitle: "إعادة التسعير من بيانات القيادة",
+    repriceIntro: "يعيد احتساب القسط من بيانات القيادة المسجّلة. يسعّر قبل أن يكتب، وقد يحتاج موافقة.",
+    repriceSubmit: "إعادة التسعير الآن",
+    repriceDone: "اكتملت إعادة التسعير.",
+    repriceCompareTitle: "القسط قبل وبعد",
+    repricePrevious: "القسط السابق",
+    repriceNew: "القسط الجديد",
+    repriceNoChangeTitle: "لا تغيير",
+    repriceNoChange: "لم تجد بيانات القيادة ما يستحق إعادة التسعير من أجله.",
+    financeTitle: "خطة تمويل القسط",
+    financeIntro: "تقسّم القسط إلى دفعات عبر جهة تمويل. خطة واحدة لكل اتفاقية.",
+    financeFinancier: "جهة التمويل",
+    financeTotal: "المبلغ الممول",
+    financeInstalments: "عدد الدفعات",
+    financeStart: "الدفعة الأولى",
+    financeFrequency: "الأيام بين الدفعات",
+    financeCommission: "عمولة جهة التمويل",
+    financeCommissionTax: "ضريبة العمولة",
+    financeSubmit: "إنشاء الخطة",
+    financeDone: "تم إنشاء خطة التمويل.",
+    financeCurrencyRequired: "اختر عملة التمويل.",
+    financeAmountRequired: "يجب أن يكون المبلغ الإجمالي والعمولة قيمتين موجبتين، وألا تكون الضريبة سالبة.",
+    financeScheduleRequired: "يجب أن يكون عدد الدفعات والفاصل بينها موجبين، وأن يكون تاريخ الدفعة الأولى تاريخًا حقيقيًا.",
+    financeScheduleTitle: "جدول الدفعات",
+    "instalmentState.pending": "قيد الانتظار",
+    "instalmentState.due": "مستحقة",
+    "instalmentState.paid": "مسددة",
+    "instalmentState.missed": "متأخرة",
     colVersion: "الإصدار",
     colReason: "السبب",
     colEffective: "سريان",
@@ -297,6 +383,113 @@ export function policyLede(policy: Pick<Policy, "status" | "startAt" | "endAt">,
   });
 }
 
+/** A date input gives "2026-08-04"; the schema wants epoch millis. Mirrors
+ *  `epochOf` in policy-cancel.tsx. */
+function epochOf(value: string): number | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const ms = Date.parse(`${value}T00:00:00Z`);
+  return Number.isNaN(ms) ? null : ms;
+}
+
+/* ------------------------------------------------------------------ action */
+
+export async function action({ request, params, context }: ActionFunctionArgs) {
+  const env = context.get(cloudflare).env;
+  const form = await request.formData();
+  const intent = String(form.get("intent") ?? "");
+  const id = params.id ?? String(form.get("id") ?? "");
+  const nothing = {
+    done: null as string | null,
+    problem: null as Problem | null,
+    error: null as string | null,
+    data: null as unknown
+  };
+
+  const text = (name: string) => String(form.get(name) ?? "").trim();
+
+  let path: string;
+  let body: Record<string, unknown>;
+  let suffix: string;
+  let done: string;
+
+  if (intent === "reprice") {
+    // Empty body: the engine reads the policy's own unpriced telemetry
+    // exposure, same as apps/api/src/routes/axis.ts's /reprice route.
+    path = `/v1/axis/policies/${id}/reprice`;
+    body = {};
+    suffix = "reprice";
+    done = "repriceDone";
+  } else if (intent === "finance-plan") {
+    const currency = text("currency");
+    if (!currency) return { ...nothing, error: "financeCurrencyRequired" };
+
+    const totalMinor = Number(text("totalMinor"));
+    const commissionMinor = Number(text("commissionMinor"));
+    const rawTax = text("commissionTaxMinor");
+    const commissionTaxMinor = rawTax === "" ? undefined : Number(rawTax);
+    if (
+      !Number.isInteger(totalMinor) ||
+      totalMinor <= 0 ||
+      !Number.isInteger(commissionMinor) ||
+      commissionMinor <= 0 ||
+      (commissionTaxMinor !== undefined && (!Number.isInteger(commissionTaxMinor) || commissionTaxMinor < 0))
+    ) {
+      return { ...nothing, error: "financeAmountRequired" };
+    }
+
+    const instalments = Number(text("instalments"));
+    const frequencyDays = Number(text("frequencyDays"));
+    const startAt = epochOf(text("startAt"));
+    if (
+      !Number.isInteger(instalments) ||
+      instalments <= 0 ||
+      !Number.isInteger(frequencyDays) ||
+      frequencyDays <= 0 ||
+      startAt === null ||
+      startAt <= 0
+    ) {
+      return { ...nothing, error: "financeScheduleRequired" };
+    }
+
+    const financierRef = text("financierRef");
+    path = `/v1/axis/policies/${id}/premium-financing-plan`;
+    body = {
+      totalMinor,
+      currency,
+      instalments,
+      startAt,
+      frequencyDays,
+      commissionMinor,
+      ...(financierRef ? { financierRef } : {}),
+      ...(commissionTaxMinor !== undefined ? { commissionTaxMinor } : {})
+    };
+    // Two plans in one page load would be an error anyway (one plan per
+    // policy), but the total still keys the write like every other action.
+    suffix = `finance-plan:${totalMinor}`;
+    done = "financeDone";
+  } else {
+    return { ...nothing, problem: { title: "unknown intent", status: 400 } };
+  }
+
+  const key = String(form.get("idempotencyKey") ?? "");
+  try {
+    // A reprice is gated by whatever policy_key axis-endorse.ts's gate()
+    // names when the telemetry-driven premium actually moves; a 403 with
+    // approval_required is the normal answer here, not an error to hide.
+    const data = await api<unknown>(path, {
+      env,
+      request,
+      method: "POST",
+      ...(key ? { headers: { "idempotency-key": `${key}:${suffix}` } } : {}),
+      body
+    });
+    return { ...nothing, done, data };
+  } catch (error) {
+    if (error instanceof ApiError) return { ...nothing, problem: error.problem };
+    throw error;
+  }
+}
+
 /* ------------------------------------------------------------------ loader */
 
 export async function loader({ request, params, context }: LoaderFunctionArgs) {
@@ -309,7 +502,8 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
     read: held.has(PERM.read),
     endorse: held.has(PERM.endorse),
     cancel: held.has(PERM.cancel),
-    renew: held.has(PERM.renew)
+    renew: held.has(PERM.renew),
+    financing: held.has(PERM.finance)
   };
 
   const empty = {
@@ -320,7 +514,8 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
     versions: [] as VersionRow[],
     trail: [] as AuditRow[],
     named: {} as Record<string, string>,
-    may
+    may,
+    idempotencyKey: crypto.randomUUID()
   };
 
   if (!may.read) return empty;
@@ -384,12 +579,43 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
 
 /* --------------------------------------------------------------- component */
 
+/** The reprice API returns only the new premium and the ppm delta that
+ *  produced it (apps/api/src/engines/telematics.ts's `repriceFromTelemetry`),
+ *  or `{ repriced: false }` when telemetry found nothing worth repricing for. */
+function asRepriceData(
+  data: unknown
+): { repriced: boolean; premiumMinor?: number | undefined; premiumDeltaPpm?: number | undefined } | null {
+  if (!data || typeof data !== "object" || !("repriced" in data)) return null;
+  const d = data as { repriced: unknown; premiumMinor?: unknown; premiumDeltaPpm?: unknown };
+  if (typeof d.repriced !== "boolean") return null;
+  return {
+    repriced: d.repriced,
+    premiumMinor: typeof d.premiumMinor === "number" ? d.premiumMinor : undefined,
+    premiumDeltaPpm: typeof d.premiumDeltaPpm === "number" ? d.premiumDeltaPpm : undefined
+  };
+}
+
+/** `POST .../premium-financing-plan` returns `{ plan, txn }` (apps/api/src/
+ *  engines/premium-financing.ts's `createPlan`); the schedule is JSON on the
+ *  plan row rather than a separate resource. */
+function asFinanceData(data: unknown): { plan: { scheduleJson: string; currency: string } } | null {
+  if (!data || typeof data !== "object" || !("plan" in data)) return null;
+  const d = data as { plan: unknown };
+  if (!d.plan || typeof d.plan !== "object") return null;
+  const plan = d.plan as { scheduleJson?: unknown; currency?: unknown };
+  if (typeof plan.scheduleJson !== "string" || typeof plan.currency !== "string") return null;
+  return { plan: { scheduleJson: plan.scheduleJson, currency: plan.currency } };
+}
+
 export default function PolicyDetail() {
   const loaded = useLoaderData<typeof loader>();
+  const result = useActionData<typeof action>();
+  const navigation = useNavigation();
   const shell = useAxisSessionData();
   const locale = shell?.locale ?? "en";
   const t = translator(locale, shell?.overrides);
   const l = labelsIn(locale, shell?.domainPack);
+  const busy = navigation.state !== "idle";
 
   if (!loaded.policy) {
     return (
@@ -401,6 +627,73 @@ export default function PolicyDetail() {
   }
 
   const policy = loaded.policy;
+
+  const repriceData = asRepriceData(result?.data);
+  const repriceSection: Section | null =
+    repriceData && repriceData.repriced && repriceData.premiumMinor !== undefined && repriceData.premiumDeltaPpm !== undefined
+      ? (() => {
+          // ponytail: the reprice response carries only the new premium and the
+          // ppm delta that produced it — the previous premium below is derived
+          // for display only, never read off any ledger row.
+          const newMinor = repriceData.premiumMinor as number;
+          const deltaPpm = repriceData.premiumDeltaPpm as number;
+          const previousMinor = Math.round(newMinor / (1 + deltaPpm / 1_000_000));
+          const maxMinor = Math.max(1, previousMinor, newMinor);
+          return {
+            kind: "bars",
+            title: l("repriceCompareTitle"),
+            items: [
+              {
+                label: l("repricePrevious"),
+                value: formatMoney(previousMinor, policy.currency, locale),
+                w: `${Math.max(4, Math.round((previousMinor / maxMinor) * 100))}%`,
+                hue: "var(--text)",
+                note: ""
+              },
+              {
+                label: l("repriceNew"),
+                value: formatMoney(newMinor, policy.currency, locale),
+                w: `${Math.max(4, Math.round((newMinor / maxMinor) * 100))}%`,
+                hue: hueVar("axis"),
+                note: percentOf(deltaPpm, locale)
+              }
+            ]
+          } satisfies Section;
+        })()
+      : repriceData
+        ? {
+            kind: "callout",
+            title: l("repriceNoChangeTitle"),
+            items: [{ code: "—", hue: hueVar("axis"), body: l("repriceNoChange") }]
+          }
+        : null;
+
+  const financeData = asFinanceData(result?.data);
+  const financeSchedule: ScheduleRow[] = (() => {
+    if (!financeData) return [];
+    try {
+      return JSON.parse(financeData.plan.scheduleJson) as ScheduleRow[];
+    } catch {
+      return [];
+    }
+  })();
+  const financeSection: Section | null =
+    financeData && financeSchedule.length > 0
+      ? {
+          kind: "steps",
+          title: l("financeScheduleTitle"),
+          items: financeSchedule.map((row) => ({
+            code: String(row.seq).padStart(2, "0"),
+            dot: hueVar("axis"),
+            title: formatInstant(row.dueAt, (date) =>
+              new Intl.DateTimeFormat(locale, { month: "short", day: "numeric" }).format(date)
+            ),
+            money: formatMoney(row.amountMinor, financeData.plan.currency, locale),
+            note: tag(l, "instalmentState", row.state),
+            hue: hueVar("axis")
+          }))
+        }
+      : null;
 
   // Ascending, because the trail arrives newest-first and a flow reads forwards.
   // The trail is capped at 25 rows and is withheld without `core:audit:read`, so
@@ -626,6 +919,72 @@ export default function PolicyDetail() {
               </Button>
             ) : null}
           </div>
+        </Card>
+      ) : null}
+
+      {result?.error ? (
+        <p role="alert" className="font-ui text-13 text-danger">
+          {l(result.error)}
+        </p>
+      ) : null}
+      {result?.done ? (
+        <p role="status" className="font-ui text-13 text-success">
+          {l(result.done)}
+        </p>
+      ) : null}
+      {result?.problem ? <Gate problem={result.problem} l={l} /> : null}
+
+      {loaded.may.endorse ? (
+        <Card title={l("repriceTitle")} description={l("repriceIntro")}>
+          <Form method="post" className="flex items-center gap-3">
+            <input type="hidden" name="intent" value="reprice" />
+            <input type="hidden" name="idempotencyKey" value={loaded.idempotencyKey} />
+            <Button type="submit" loading={busy}>
+              {l("repriceSubmit")}
+            </Button>
+          </Form>
+          {repriceSection ? <div className="mt-3">{renderSection(repriceSection, "axis")}</div> : null}
+        </Card>
+      ) : null}
+
+      {loaded.may.financing ? (
+        <Card title={l("financeTitle")} description={l("financeIntro")}>
+          <Form method="post" className="flex flex-wrap items-end gap-4">
+            <input type="hidden" name="intent" value="finance-plan" />
+            <input type="hidden" name="idempotencyKey" value={loaded.idempotencyKey} />
+            <label className="flex flex-col gap-1 font-ui text-12 text-muted">
+              {l("financeFinancier")}
+              <Input name="financierRef" className="w-40" />
+            </label>
+            <label className="flex flex-col gap-1 font-ui text-12 text-muted">
+              {l("financeTotal")}
+              <MoneyField name="totalMinor" currency={policy.currency} locale={locale} required className="w-40" />
+            </label>
+            <label className="flex flex-col gap-1 font-ui text-12 text-muted">
+              {l("financeInstalments")}
+              <Input name="instalments" type="number" min={1} step={1} defaultValue={12} className="w-24" required />
+            </label>
+            <label className="flex flex-col gap-1 font-ui text-12 text-muted">
+              {l("financeStart")}
+              <Input name="startAt" type="date" required />
+            </label>
+            <label className="flex flex-col gap-1 font-ui text-12 text-muted">
+              {l("financeFrequency")}
+              <Input name="frequencyDays" type="number" min={1} step={1} defaultValue={30} className="w-24" required />
+            </label>
+            <label className="flex flex-col gap-1 font-ui text-12 text-muted">
+              {l("financeCommission")}
+              <MoneyField name="commissionMinor" currency={policy.currency} locale={locale} required className="w-40" />
+            </label>
+            <label className="flex flex-col gap-1 font-ui text-12 text-muted">
+              {l("financeCommissionTax")}
+              <MoneyField name="commissionTaxMinor" currency={policy.currency} locale={locale} className="w-40" />
+            </label>
+            <Button type="submit" loading={busy}>
+              {l("financeSubmit")}
+            </Button>
+          </Form>
+          {financeSection ? <div className="mt-3">{renderSection(financeSection, "axis")}</div> : null}
         </Card>
       ) : null}
 

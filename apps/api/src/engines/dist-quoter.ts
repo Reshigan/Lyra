@@ -1,5 +1,5 @@
 import type { schema } from "@lyra/db";
-import type { Env } from "../env.js";
+import type { CarrierService, Env } from "../env.js";
 import type { ProviderQuoter, QuoteOutcome } from "./rating.js";
 
 // The live-underwriter side of the rating seam (docs/16 "build to the seams",
@@ -25,7 +25,18 @@ interface QuoteEndpoint {
   url?: string;
   /** The NAME of a wrangler secret, never a value. Must be `CARRIER_*`. */
   authRef?: string;
+  /**
+   * The NAME of a service binding to call instead of the public internet.
+   * Same `CARRIER_*` namespace as `authRef`, for the same reason. `url` is
+   * still required and still guarded: it is the address the carrier answers
+   * on, and a binding that is named but missing is an error row rather than a
+   * quiet fall back to the open internet.
+   */
+  binding?: string;
 }
+
+/** The one namespace on `env` a tenant-editable provider row may reach into. */
+const CARRIER_NAMESPACE = /^CARRIER_[A-Z0-9_]+$/;
 
 const WEEK = 7 * 86_400_000;
 const YEAR = 365 * 86_400_000;
@@ -75,6 +86,8 @@ function internalHost(host: string): boolean {
  */
 type CarrierAdapter = (args: {
   url: string;
+  /** How the request leaves: the global fetch, or a service binding's. */
+  send: CarrierService["fetch"];
   token: string | undefined;
   offering: Offering;
   inputs: Record<string, unknown>;
@@ -117,12 +130,34 @@ export function quoterFor(env: Env): ProviderQuoter {
       if (typeof cfg.authRef !== "string" || !/^CARRIER_[A-Z0-9_]+$/.test(cfg.authRef)) {
         return bad("quote endpoint authRef must name a CARRIER_* secret");
       }
-      token = (env as unknown as Record<string, unknown>)[cfg.authRef] as string | undefined;
-      if (!token) return bad("carrier credential is not configured in this environment");
+      const secret = (env as unknown as Record<string, unknown>)[cfg.authRef];
+      if (typeof secret !== "string" || !secret) return bad("carrier credential is not configured in this environment");
+      token = secret;
+    }
+
+    // A service binding is how the platform reaches its own reference
+    // underwriter (ADR-0072): a Worker that fetches its own zone by hostname
+    // gets Cloudflare error 1042. The namespace guard is the authRef argument
+    // unchanged — unbounded, a provider row could name any Fetcher on env.
+    // ponytail: lazy `fetch` lookup rather than a captured reference, so a
+    // stubbed global still applies.
+    let send: CarrierService["fetch"] = (input, init) => fetch(input, init);
+    if (cfg.binding !== undefined) {
+      if (typeof cfg.binding !== "string" || !CARRIER_NAMESPACE.test(cfg.binding)) {
+        return bad("quote endpoint binding must name a CARRIER_* service binding");
+      }
+      const bound = (env as unknown as Record<string, unknown>)[cfg.binding];
+      // Absent, or present but not a Fetcher: an error row either way. Never a
+      // silent fall back to the url over the open internet.
+      if (typeof (bound as CarrierService | undefined)?.fetch !== "function") {
+        return bad("carrier service binding is not configured in this environment");
+      }
+      const service = bound as CarrierService;
+      send = (input, init) => service.fetch(input, init);
     }
 
     try {
-      return await adapter({ url: url.toString(), token, offering, inputs, timeoutMs, now });
+      return await adapter({ url: url.toString(), send, token, offering, inputs, timeoutMs, now });
     } catch {
       // ponytail: the thrown text is deliberately dropped rather than logged —
       // fetch failures quote the request back at you, and the request carries a
@@ -135,6 +170,7 @@ export function quoterFor(env: Env): ProviderQuoter {
 /** The default wire format: POST the risk as JSON, read a quote back as JSON. */
 async function httpJson({
   url,
+  send,
   token,
   offering,
   inputs,
@@ -147,7 +183,7 @@ async function httpJson({
   const signal = AbortSignal.timeout(timeoutMs);
   let res: Response;
   try {
-    res = await fetch(url, {
+    res = await send(url, {
       method: "POST",
       headers: {
         "content-type": "application/json",

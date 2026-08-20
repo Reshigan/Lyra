@@ -8,6 +8,8 @@ import { schema } from "@lyra/db";
 import type { CoreDb } from "../context.js";
 import { chainFor, verifyChain } from "../audit.js";
 import { CASE_STATES } from "../lifecycle.js";
+import { DEFAULT_K_FLOOR } from "../k-anonymity.js";
+import { PROTECTED_AXES, countAttributes, parseAttributeTag, targetablePool, targetingPack } from "../targeting.js";
 import { seedHistory } from "./history.js";
 import { seedModuleHistory, type ModuleHistoryResult } from "./history-modules.js";
 import { DAY } from "./context.js";
@@ -300,6 +302,57 @@ describe("seedModuleHistory", () => {
     expect(owners.filter((o) => o.customerId === null || !known.has(o.customerId))).toEqual([]);
     expect(owners.length).toBeGreaterThanOrEqual(100);
     expect(Math.max(...owners.map((o) => o.n))).toBeLessThan(40);
+  });
+
+  it("gives SIGNAL and SCOUT a real targeting pool on the Gulf pack's axes", async () => {
+    // The seam was built and left with nothing to work on: every seeded customer
+    // carried `tagsJson: null`, so `countAttributes` returned nothing,
+    // `targetablePool` returned nothing, and `suggestTargeting` threw
+    // "no customer attributes survive a k-anonymity floor of 20".
+    const PACK = "insurance-gulf";
+    const rows = await db
+      .select({ type: schema.customers.type, tags: schema.customers.tagsJson })
+      .from(schema.customers)
+      .where(eq(schema.customers.tenantId, TENANT));
+    const tagSets = rows.map((r) => JSON.parse(r.tags ?? "[]") as string[]);
+    expect(tagSets.filter((t) => t.length === 0)).toEqual([]);
+
+    const axes = new Set(tagSets.flatMap((t) => t.map((tag) => parseAttributeTag(tag)?.axis)));
+    // Only this pack's axes, spelled as the pack spells them. `lsm` here would
+    // mean the ZA scale leaked into a UAE book.
+    expect([...axes].sort()).toEqual([...targetingPack(PACK).axes].sort());
+    for (const axis of PROTECTED_AXES) expect(axes.has(axis), `tagged ${axis}`).toBe(false);
+
+    const counts = countAttributes(tagSets, PACK);
+    const pool = targetablePool(counts, DEFAULT_K_FLOOR, PACK);
+    // Every axis the pack offers survives the floor somewhere, or a UI that
+    // offers it has an empty dropdown.
+    for (const axis of targetingPack(PACK).axes)
+      expect(pool.map((c) => c.axis), `no cell on ${axis}`).toContain(axis);
+    for (const cell of pool) expect(cell.count).toBeGreaterThanOrEqual(DEFAULT_K_FLOOR);
+    expect(pool.filter((c) => c.axis === "incomequintile")).toHaveLength(5);
+
+    // The floor has to bind on something, or it is untested in the demo. The
+    // northern emirates and the youngest band are tagged and suppressed.
+    const shown = new Set(pool.map((c) => `${c.axis}:${c.value}`));
+    const all = new Set(counts.map((c) => `${c.axis}:${c.value}`));
+    for (const thin of ["region:umm-al-quwain", "region:fujairah", "ageband:18-24"]) {
+      expect(all.has(thin), `${thin} not tagged at all`).toBe(true);
+      expect(shown.has(thin), `${thin} leaked past the floor`).toBe(false);
+    }
+
+    // A company has no age band, life stage or household income quintile.
+    const personal = ["ageband", "incomequintile", "lifestage"];
+    for (const [i, row] of rows.entries())
+      if (row.type === "business")
+        expect(tagSets[i]!.filter((t) => personal.includes(parseAttributeTag(t)?.axis ?? ""))).toEqual([]);
+
+    // The gap SCOUT is meant to find: Sharjah is above the floor and has nobody
+    // in the top two income quintiles. Assert the joint, since the pool a model
+    // sees is marginal and cannot show it.
+    const sharjah = tagSets.filter((t) => t.includes("region:sharjah"));
+    expect(sharjah.length).toBeGreaterThanOrEqual(DEFAULT_K_FLOOR);
+    expect(sharjah.filter((t) => t.includes("incomequintile:4") || t.includes("incomequintile:5"))).toEqual([]);
   });
 
   it("leaves real work in the AXIS queues, not a year of closed cases", async () => {

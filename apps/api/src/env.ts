@@ -8,6 +8,11 @@ import type { RateCounter } from "./engines/rate-counter.js";
 import type { UserChannel } from "./engines/user-channel.js";
 import type { RenewalWorkflowParams } from "./engines/renewal-campaign.js";
 
+/** A carrier reachable over a service binding, typed to the one call we make. */
+export interface CarrierService {
+  fetch(input: string, init?: RequestInit): Promise<Response>;
+}
+
 /** A Vectorize index binding, typed to just the calls this codebase makes. */
 export interface VectorizeIndex {
   upsert(vectors: { id: string; values: number[]; metadata?: Record<string, unknown> }[]): Promise<unknown>;
@@ -93,7 +98,15 @@ export interface Env {
    * rows are tenant-editable, so an unnamespaced ref would let a tenant name
    * FIELD_KEY and have us post it to a host of their choosing.
    */
-  [carrierSecret: `CARRIER_${string}`]: string | undefined;
+  [carrierName: `CARRIER_${string}`]: string | CarrierService | undefined;
+  /**
+   * The first-party reference underwriter (ADR-0072) — a self service binding
+   * back into this same Worker, because a Worker that fetches its own zone by
+   * hostname gets Cloudflare error 1042. It sits in the `CARRIER_` namespace so
+   * the same guard that bounds `authRef` bounds the binding a provider row may
+   * name.
+   */
+  CARRIER_SANDBOX?: CarrierService;
 }
 
 /**

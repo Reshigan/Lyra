@@ -23,9 +23,12 @@ import {
   StateFlow,
   Table,
   formatMoney,
+  hueVar,
+  renderSection,
   type Column,
   type FlowMachine,
-  type FlowVisit
+  type FlowVisit,
+  type Section
 } from "@lyra/ui";
 import { ApiError, api, fetchMe, names, type Problem } from "../api.server";
 import { ConfirmButton } from "../components/confirm";
@@ -159,6 +162,8 @@ export const PERM = {
   update: "axis:claims:update",
   reserve: "axis:claims:reserve",
   pay: "axis:claims:pay",
+  siu: "axis:siu:write",
+  recover: "axis:claims:recover",
   policy: "axis:policies:read",
   documents: "axis:documents:read",
   approvals: "core:approvals:read",
@@ -260,6 +265,9 @@ export const PAY_KINDS = ["indemnity", "expense", "interim", "final", "ex_gratia
 export const PAYEE_KINDS = ["claimant", "repairer", "provider", "third_party", "insurer"] as const;
 export const PAY_METHODS = ["eft", "cheque", "card", "insurer_direct"] as const;
 
+/** Mirrors RecoveryOpenBody.kind in engines/axis-claims.ts. */
+export const RECOVERY_KINDS = ["subrogation", "salvage", "excess", "reinsurance", "third_party"] as const;
+
 /**
  * A payee is a namespaced ref (`customer:cu_01KE…`, `vendor:garage-1`), so the
  * box cannot become a plain picker. The one payee a desk reaches for most is
@@ -345,6 +353,39 @@ export const LABELS: Record<string, Record<string, string>> = {
     colExpected: "Expected",
     colRecovered: "Recovered",
     colMethod: "Method",
+    fraudScoreSubmit: "Score for fraud",
+    fraudScoreDone: "The claim was scored.",
+    fraudScoreNone: "Not enough history to score yet.",
+    fraudReasonsTitle: "Why this score",
+    reserveRecSubmit: "Recommend a reserve",
+    reserveRecDone: "A recommended reserve was added.",
+    reserveRecNone: "No recommendation could be made.",
+    reserveRecTitle: "AI-recommended reserve",
+    reserveRecPrevious: "Previous reserve",
+    reserveRecRecommended: "Recommended reserve",
+    reserveRecConfidence: "Confidence",
+    recoveriesMixTitle: "Recoveries by kind",
+    recoveryOpenTitle: "Open a recovery",
+    recoveryOpenIntro: "Start chasing money back on this claim.",
+    recoveryKind: "Kind",
+    recoveryCounterparty: "Counterparty",
+    recoveryCounterpartyHint: "Name, or vendor:garage-1",
+    recoveryExpected: "Expected",
+    recoveryOpenSubmit: "Open the recovery",
+    recoveryOpenDone: "The recovery was opened.",
+    recoveryKindRequired: "Choose what is being recovered.",
+    recoveryExpectedRequired: "Enter the expected amount as zero or more.",
+    recoveryReceiptAmount: "Amount received",
+    recoveryReceiptFee: "Fee",
+    recoveryReceiptNote: "Note",
+    recoveryReceiptSubmit: "Record receipt",
+    recoveryReceiptDone: "The recovery was recorded as received.",
+    recoveryReceiptRequired: "Name the recovery and enter the amount as a whole number above zero.",
+    recoveryWriteOffReason: "Reason code",
+    recoveryWriteOffNote: "Note",
+    recoveryWriteOffSubmit: "Write off",
+    recoveryWriteOffDone: "The recovery was written off.",
+    recoveryWriteOffRequired: "Name the recovery and a reason code.",
     "status.triage": "Triage",
     "status.settling": "Settling",
     "status.recovering": "Recovering",
@@ -482,6 +523,39 @@ export const LABELS: Record<string, Record<string, string>> = {
     colExpected: "المتوقع",
     colRecovered: "المسترد",
     colMethod: "الوسيلة",
+    fraudScoreSubmit: "تقييم الاحتيال",
+    fraudScoreDone: "تم تقييم المطالبة.",
+    fraudScoreNone: "لا يوجد سجل كافٍ للتقييم بعد.",
+    fraudReasonsTitle: "سبب هذا التقييم",
+    reserveRecSubmit: "اقتراح احتياطي",
+    reserveRecDone: "تمت إضافة احتياطي مقترح.",
+    reserveRecNone: "تعذر تقديم اقتراح.",
+    reserveRecTitle: "الاحتياطي المقترح بالذكاء الاصطناعي",
+    reserveRecPrevious: "الاحتياطي السابق",
+    reserveRecRecommended: "الاحتياطي المقترح",
+    reserveRecConfidence: "الثقة",
+    recoveriesMixTitle: "الاستردادات حسب النوع",
+    recoveryOpenTitle: "فتح استرداد",
+    recoveryOpenIntro: "ابدأ مطاردة الأموال على هذه المطالبة.",
+    recoveryKind: "النوع",
+    recoveryCounterparty: "الطرف الآخر",
+    recoveryCounterpartyHint: "اسم، أو vendor:garage-1",
+    recoveryExpected: "المتوقع",
+    recoveryOpenSubmit: "فتح الاسترداد",
+    recoveryOpenDone: "تم فتح الاسترداد.",
+    recoveryKindRequired: "اختر ما الذي يجري استرداده.",
+    recoveryExpectedRequired: "أدخل المبلغ المتوقع صفرًا أو أكثر.",
+    recoveryReceiptAmount: "المبلغ المستلم",
+    recoveryReceiptFee: "الرسوم",
+    recoveryReceiptNote: "ملاحظة",
+    recoveryReceiptSubmit: "تسجيل الاستلام",
+    recoveryReceiptDone: "تم تسجيل استلام الاسترداد.",
+    recoveryReceiptRequired: "حدد الاسترداد وأدخل المبلغ كعدد صحيح أكبر من صفر.",
+    recoveryWriteOffReason: "رمز السبب",
+    recoveryWriteOffNote: "ملاحظة",
+    recoveryWriteOffSubmit: "شطب",
+    recoveryWriteOffDone: "تم شطب الاسترداد.",
+    recoveryWriteOffRequired: "حدد الاسترداد ورمز السبب.",
     "status.triage": "الفرز",
     "status.settling": "قيد التسوية",
     "status.recovering": "قيد الاسترداد",
@@ -578,7 +652,9 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
     read: held.has(PERM.read),
     update: held.has(PERM.update),
     reserve: held.has(PERM.reserve),
-    pay: held.has(PERM.pay)
+    pay: held.has(PERM.pay),
+    siu: held.has(PERM.siu),
+    recover: held.has(PERM.recover)
   };
 
   const empty = {
@@ -658,7 +734,12 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
   const id = params.id ?? String(form.get("id") ?? "");
-  const nothing = { done: null as string | null, problem: null as Problem | null, error: null as string | null };
+  const nothing = {
+    done: null as string | null,
+    problem: null as Problem | null,
+    error: null as string | null,
+    data: null as unknown
+  };
 
   const text = (name: string) => String(form.get(name) ?? "").trim();
 
@@ -707,6 +788,51 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
     body = { kind, payeeKind, payeeRef, amountMinor, method };
     suffix = `payment:${amountMinor}`;
     done = "paymentDone";
+  } else if (intent === "fraud-score") {
+    path = `/v1/axis/claims/${id}/fraud-score`;
+    body = {};
+    suffix = "fraud-score";
+    done = "fraudScoreDone";
+  } else if (intent === "reserve-recommendation") {
+    path = `/v1/axis/claims/${id}/reserve-recommendation`;
+    body = {};
+    suffix = "reserve-recommendation";
+    done = "reserveRecDone";
+  } else if (intent === "recovery-open") {
+    const kind = text("kind");
+    if (!(RECOVERY_KINDS as readonly string[]).includes(kind)) return { ...nothing, error: "recoveryKindRequired" };
+    const counterpartyRef = text("counterpartyRef");
+    const rawExpected = text("expectedMinor");
+    const expectedMinor = rawExpected === "" ? 0 : Number(rawExpected);
+    if (!Number.isInteger(expectedMinor) || expectedMinor < 0) return { ...nothing, error: "recoveryExpectedRequired" };
+    path = `/v1/axis/claims/${id}/recoveries`;
+    body = { kind, ...(counterpartyRef ? { counterpartyRef } : {}), expectedMinor };
+    suffix = `recovery-open:${kind}`;
+    done = "recoveryOpenDone";
+  } else if (intent === "recovery-receipt") {
+    const recoveryId = text("recoveryId");
+    const raw = text("amountMinor");
+    const amountMinor = Number(raw);
+    if (!recoveryId || raw === "" || !Number.isInteger(amountMinor) || amountMinor <= 0) {
+      return { ...nothing, error: "recoveryReceiptRequired" };
+    }
+    const rawFee = text("feeMinor");
+    const feeMinor = rawFee === "" ? 0 : Number(rawFee);
+    if (!Number.isInteger(feeMinor) || feeMinor < 0) return { ...nothing, error: "recoveryReceiptRequired" };
+    const note = text("note");
+    path = `/v1/axis/recoveries/${recoveryId}/receipt`;
+    body = { amountMinor, feeMinor, ...(note ? { note } : {}) };
+    suffix = `recovery-receipt:${recoveryId}:${amountMinor}`;
+    done = "recoveryReceiptDone";
+  } else if (intent === "recovery-writeoff") {
+    const recoveryId = text("recoveryId");
+    const reasonCode = text("reasonCode");
+    if (!recoveryId || !reasonCode) return { ...nothing, error: "recoveryWriteOffRequired" };
+    const note = text("note");
+    path = `/v1/axis/recoveries/${recoveryId}/writeoff`;
+    body = { reasonCode, ...(note ? { note } : {}) };
+    suffix = `recovery-writeoff:${recoveryId}`;
+    done = "recoveryWriteOffDone";
   } else {
     return { ...nothing, problem: { title: "unknown intent", status: 400 } };
   }
@@ -716,14 +842,14 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
     // A hop and a payment are gated by `axis.claim_settlement`, and a large
     // reserve by `axis.claim_reserve`; a 403 with `approval_required` is the
     // normal answer here, not an error to hide.
-    await api<unknown>(path, {
+    const data = await api<unknown>(path, {
       env,
       request,
       method: "POST",
       ...(key ? { headers: { "idempotency-key": `${key}:${suffix}` } } : {}),
       body
     });
-    return { ...nothing, done };
+    return { ...nothing, done, data };
   } catch (error) {
     if (error instanceof ApiError) return { ...nothing, problem: error.problem };
     throw error;
@@ -909,6 +1035,128 @@ export default function ClaimDetail() {
     { key: "state", header: l("colStatus"), render: (row) => <Badge size="sm" dot>{tag(l, "state", row.state)}</Badge> }
   ];
 
+  if (loaded.may.recover) {
+    recoveryColumns.push({
+      key: "actions",
+      header: l("recoveryReceiptSubmit"),
+      render: (row) => (
+        <div className="flex flex-col gap-2">
+          <Form method="post" className="flex items-center gap-1">
+            <input type="hidden" name="intent" value="recovery-receipt" />
+            <input type="hidden" name="idempotencyKey" value={loaded.idempotencyKey} />
+            <input type="hidden" name="recoveryId" value={row.id} />
+            <MoneyField name="amountMinor" currency={row.currency} locale={locale} required className="w-28" />
+            <Button type="submit" size="sm" loading={busy}>
+              {l("recoveryReceiptSubmit")}
+            </Button>
+          </Form>
+          <Form method="post" className="flex items-center gap-1">
+            <input type="hidden" name="intent" value="recovery-writeoff" />
+            <input type="hidden" name="idempotencyKey" value={loaded.idempotencyKey} />
+            <input type="hidden" name="recoveryId" value={row.id} />
+            <Input name="reasonCode" placeholder={l("recoveryWriteOffReason")} className="w-28" />
+            <ConfirmButton
+              type="submit"
+              variant="danger"
+              size="sm"
+              loading={busy}
+              message={l("recoveryWriteOffSubmit")}
+            >
+              {l("recoveryWriteOffSubmit")}
+            </ConfirmButton>
+          </Form>
+        </div>
+      )
+    });
+  }
+
+  function asFraudScoreData(data: unknown): { score: number; referral: { reasonsJson: string; state: string } | null } | null {
+    if (!data || typeof data !== "object" || !("score" in data)) return null;
+    const d = data as { score: unknown; referral: unknown };
+    if (typeof d.score !== "number") return null;
+    const referral =
+      d.referral && typeof d.referral === "object" && "reasonsJson" in d.referral && "state" in d.referral
+        ? (d.referral as { reasonsJson: string; state: string })
+        : null;
+    return { score: d.score, referral };
+  }
+
+  function asReserveRecData(
+    data: unknown
+  ): { amountMinor: number; head: string; basis: string; rationale: string | null } | null {
+    if (!data || typeof data !== "object" || !("amountMinor" in data) || !("head" in data)) return null;
+    const d = data as { amountMinor: unknown; head: unknown; basis: unknown; rationale: unknown };
+    if (typeof d.amountMinor !== "number" || typeof d.head !== "string" || typeof d.basis !== "string") return null;
+    return { amountMinor: d.amountMinor, head: d.head, basis: d.basis, rationale: typeof d.rationale === "string" ? d.rationale : null };
+  }
+
+  const fraudData = asFraudScoreData(result?.data);
+  const reserveRecData = asReserveRecData(result?.data);
+
+  const fraudReasons: string[] = (() => {
+    if (!fraudData?.referral) return [];
+    try {
+      const parsed = JSON.parse(fraudData.referral.reasonsJson) as Array<{ indicator?: string; weight?: number }>;
+      return parsed.map((r) => `${r.indicator ?? "?"} (${r.weight ?? 0})`);
+    } catch {
+      return [];
+    }
+  })();
+
+  const fraudSection: Section | null = fraudData
+    ? {
+        kind: "callout",
+        title: l("fraudReasonsTitle"),
+        items:
+          fraudReasons.length > 0
+            ? fraudReasons.map((reason, i) => ({ code: String(i + 1).padStart(2, "0"), hue: hueVar("axis"), body: reason }))
+            : [{ code: String(fraudData.score), hue: hueVar("axis"), body: l("fraudScoreNone") }]
+      }
+    : null;
+
+  const reserveRecSection: Section | null = reserveRecData
+    ? {
+        kind: "kv",
+        title: l("reserveRecTitle"),
+        items: [
+          { label: l("reserveHead"), value: tag(l, "head", reserveRecData.head), hue: hueVar("axis"), font: "" },
+          {
+            label: l("reserveRecRecommended"),
+            value: formatMoney(reserveRecData.amountMinor, claim.currency, locale),
+            hue: hueVar("axis"),
+            font: ""
+          },
+          { label: l("reserveBasis"), value: tag(l, "basis", reserveRecData.basis), hue: "var(--text)", font: "" },
+          ...(reserveRecData.rationale
+            ? [{ label: l("reserveRationale"), value: reserveRecData.rationale, hue: "var(--text)", font: "" }]
+            : [])
+        ]
+      }
+    : null;
+
+  const recoveriesBarsSection: Section = (() => {
+    const byKind = new Map<string, { count: number; total: number }>();
+    for (const row of loaded.recoveries) {
+      const cur = byKind.get(row.kind) ?? { count: 0, total: 0 };
+      cur.count += 1;
+      cur.total += row.recoveredMinor;
+      byKind.set(row.kind, cur);
+    }
+    const entries = [...byKind.entries()];
+    const maxTotal = Math.max(1, ...entries.map(([, v]) => v.total));
+    return {
+      kind: "bars",
+      title: l("recoveriesMixTitle"),
+      items: entries.map(([kind, v]) => ({
+        label: tag(l, "kind", kind),
+        value: formatMoney(v.total, claim.currency, locale),
+        w: `${Math.max(4, Math.round((v.total / maxTotal) * 100))}%`,
+        hue: hueVar("axis"),
+        note: `${v.count} case${v.count === 1 ? "" : "s"}`
+      }))
+    };
+  })();
+
   // Ascending, because the trail arrives newest-first and a flow reads forwards.
   // The trail is capped at 25 rows and is withheld without `core:audit:read`, so
   // these are the transitions this actor can see — never a claim that there were
@@ -1016,6 +1264,18 @@ export default function ClaimDetail() {
           </Entry>
           <Entry term={l("siu")}>{claim.siuState ? tag(l, "siu", claim.siuState) : "—"}</Entry>
         </Facts>
+        {loaded.may.siu ? (
+          <div className="mt-4 flex flex-col gap-3 border-t border-hairline pt-4">
+            <Form method="post" className="flex items-center gap-3">
+              <input type="hidden" name="intent" value="fraud-score" />
+              <input type="hidden" name="idempotencyKey" value={loaded.idempotencyKey} />
+              <Button type="submit" loading={busy}>
+                {l("fraudScoreSubmit")}
+              </Button>
+            </Form>
+            {fraudSection ? <div>{renderSection(fraudSection, "axis")}</div> : null}
+          </div>
+        ) : null}
       </Card>
 
       <div className="grid gap-6 md:grid-cols-2">
@@ -1052,6 +1312,14 @@ export default function ClaimDetail() {
                 {l("reserveSubmit")}
               </Button>
             </Form>
+            <Form method="post" className="mt-3 flex items-center gap-3 border-t border-hairline pt-3">
+              <input type="hidden" name="intent" value="reserve-recommendation" />
+              <input type="hidden" name="idempotencyKey" value={loaded.idempotencyKey} />
+              <Button type="submit" variant="secondary" loading={busy}>
+                {l("reserveRecSubmit")}
+              </Button>
+            </Form>
+            {reserveRecSection ? <div className="mt-3">{renderSection(reserveRecSection, "axis")}</div> : null}
           </Card>
         ) : null}
 
@@ -1151,6 +1419,9 @@ export default function ClaimDetail() {
       </Card>
 
       <Card title={l("recoveriesTitle")} padded={false}>
+        {loaded.recoveries.length > 0 ? (
+          <div className="px-6 pt-6">{renderSection(recoveriesBarsSection, "axis")}</div>
+        ) : null}
         <Table
           caption={l("recoveriesCaption")}
           columns={recoveryColumns}
@@ -1158,6 +1429,34 @@ export default function ClaimDetail() {
           rowKey={(row) => row.id}
           empty={<EmptyState title={l("none")} />}
         />
+        {loaded.may.recover ? (
+          <div className="border-t border-hairline px-6 py-4">
+            <p className="mb-3 font-ui text-12 uppercase tracking-[0.14em] text-subtle">{l("recoveryOpenTitle")}</p>
+            <Form method="post" className="flex flex-wrap items-end gap-4">
+              <input type="hidden" name="intent" value="recovery-open" />
+              <input type="hidden" name="idempotencyKey" value={loaded.idempotencyKey} />
+              <label className="flex flex-col gap-1 font-ui text-12 text-muted">
+                {l("recoveryKind")}
+                <Select
+                  name="kind"
+                  defaultValue={RECOVERY_KINDS[0]}
+                  options={RECOVERY_KINDS.map((value) => ({ value, label: tag(l, "kind", value) }))}
+                />
+              </label>
+              <label className="flex flex-col gap-1 font-ui text-12 text-muted">
+                {l("recoveryCounterparty")}
+                <Input name="counterpartyRef" placeholder={l("recoveryCounterpartyHint")} className="w-56" />
+              </label>
+              <label className="flex flex-col gap-1 font-ui text-12 text-muted">
+                {l("recoveryExpected")}
+                <MoneyField name="expectedMinor" currency={claim.currency} locale={locale} className="w-40" />
+              </label>
+              <Button type="submit" loading={busy}>
+                {l("recoveryOpenSubmit")}
+              </Button>
+            </Form>
+          </div>
+        ) : null}
       </Card>
 
       <Card title={l("documentsTitle")} padded={false}>

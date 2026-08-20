@@ -8,6 +8,7 @@ import { EntitlementsJson, PolicyJson, schema } from "@lyra/db";
 import { permissionsForRole, seed, type Ctx } from "@lyra/core";
 import { Gateway, makeStub } from "@lyra/model-gateway";
 import {
+  buildImagePrompt,
   checkCompliance,
   generateCreativeImage,
   generateCreatives,
@@ -77,6 +78,36 @@ function fakeBucket(): { bucket: R2Bucket; stored: Map<string, Uint8Array> } {
   return { bucket, stored };
 }
 
+describe("buildImagePrompt", () => {
+  it("preserves the raw subject unbroken", () => {
+    const prompt = buildImagePrompt({ prompt: "A family reviewing a motor policy at home." });
+    expect(prompt).toContain("Depict: A family reviewing a motor policy at home.");
+  });
+
+  it("carries a professional-agency quality bar", () => {
+    const prompt = buildImagePrompt({ prompt: "A family reviewing a motor policy at home." });
+    expect(prompt).toMatch(/hero-grade/i);
+    expect(prompt).toMatch(/cinematic/i);
+    expect(prompt).toMatch(/not generic stock-photo or AI-slop/i);
+  });
+
+  it("folds in plan/audience context lines when given", () => {
+    const prompt = buildImagePrompt({
+      prompt: "A family reviewing a motor policy at home.",
+      context: ["Campaign approach: Intent capture", "Written for: young urban renters"]
+    });
+    expect(prompt).toContain("Campaign approach: Intent capture");
+    expect(prompt).toContain("Written for: young urban renters");
+    expect(prompt.indexOf("Written for: young urban renters")).toBeLessThan(prompt.indexOf("Depict:"));
+  });
+
+  it("omits context lines when none are given", () => {
+    const prompt = buildImagePrompt({ prompt: "A family reviewing a motor policy at home." });
+    expect(prompt).not.toContain("Campaign approach:");
+    expect(prompt).not.toContain("Written for:");
+  });
+});
+
 describe("generateCreativeImage", () => {
   it("generates an image, writes it to R2/files, and persists a signal_creatives row of kind image", async () => {
     const stub = makeStub({ imageBytes: new Uint8Array([1, 2, 3, 4]) });
@@ -88,7 +119,10 @@ describe("generateCreativeImage", () => {
       prompt: "A warm hero image of a family reviewing a motor policy at home."
     });
 
-    expect(stub.imageCalls).toEqual(["A warm hero image of a family reviewing a motor policy at home."]);
+    // generateCreativeImage sends buildImagePrompt's wrapped prompt to the
+    // gateway, not the raw brief — see the buildImagePrompt describe block above.
+    expect(stub.imageCalls).toHaveLength(1);
+    expect(stub.imageCalls[0]).toContain("Depict: A warm hero image of a family reviewing a motor policy at home.");
     expect(result.bytes).toEqual(new Uint8Array([1, 2, 3, 4]));
     expect(stored.get(result.r2Key)).toEqual(new Uint8Array([1, 2, 3, 4]));
 

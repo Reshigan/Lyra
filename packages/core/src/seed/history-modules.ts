@@ -88,6 +88,24 @@ function pick<T>(list: readonly T[], key: string): T {
   return list[hashOf(key) % list.length]!;
 }
 
+/**
+ * A well-mixed number from a key.
+ *
+ * `hashOf` is a 31-multiply over a short string and stays close to linear in a
+ * numeric key — good enough for `% n`, wrong for a sort key and wrong for two
+ * axes that must not correlate. Ordering the book by `hashOf` alone banded it by
+ * row order, which reads as a perfect block partition rather than as a book.
+ * This is the standard 32-bit avalanche finaliser over it: still no random
+ * source, still reproducible, but two keys that differ in one character land
+ * nowhere near each other.
+ */
+function scatter(key: string): number {
+  let x = hashOf(key) >>> 0;
+  x = Math.imul(x ^ (x >>> 16), 0x45d9f3b) >>> 0;
+  x = Math.imul(x ^ (x >>> 16), 0x45d9f3b) >>> 0;
+  return (x ^ (x >>> 16)) >>> 0;
+}
+
 const dayKeyOf = (at: number): string => new Date(at).toISOString().slice(0, 10);
 /** Mon–Fri. Business-day weighting beats brute volume for a believable chart. */
 const isBusinessDay = (at: number): boolean => {
@@ -627,6 +645,110 @@ const BUSINESS = [
   "Trading", "Logistics", "Contracting", "Holdings", "Motors", "Clinic"
 ] as const;
 
+/** Arabic in one home in four. The row's `locale` and its `language:` tag are
+ *  the same draw, so the tag can never contradict the record it sits on. */
+const localeOf = (key: string): string => (hashOf(`loc:${key}`) % 4 === 0 ? "ar" : "en");
+
+/* ---------------------------------------------------- targeting attributes */
+
+// The book's targeting attributes, as `axis:value` tags on the axes the
+// `insurance-gulf` pack declares (packages/core/src/targeting.ts, ADR-0071).
+// `countAttributes` reads exactly this field, so without them SIGNAL's audience
+// proposal has no cells to reason over and SCOUT's whitespace radar no segments
+// to compare — the seam works and has nothing to work on.
+//
+// Deliberate, not random. The marginals are a plausible UAE motor book: Dubai
+// and Abu Dhabi carry it, the northern emirates are thin. The joint is the
+// interesting part — Sharjah is 28 customers with nobody above the middle
+// income quintile, which is a real gap for a whitespace to find rather than
+// noise. Six cells sit below DEFAULT_K_FLOOR on purpose (four emirates, the
+// youngest and oldest age bands) so the floor visibly binds instead of never
+// being reached.
+//
+// No protected axis appears here, by construction: nothing tags nationality,
+// residency, gender or religion. See PROTECTED_AXES.
+
+/** Counts sum to HISTORY_CUSTOMERS: the whole book lives somewhere. */
+const EMIRATES: readonly (readonly [string, number])[] = [
+  ["dubai", 74], ["abu-dhabi", 46], ["sharjah", 28], ["ajman", 12],
+  ["ras-al-khaimah", 11], ["fujairah", 6], ["umm-al-quwain", 3]
+];
+
+/** Counts sum to the 150 persons. A company has no age band. */
+const AGE_BANDS: readonly (readonly [string, number])[] = [
+  ["25-34", 48], ["35-44", 52], ["45-54", 29], ["55+", 12], ["18-24", 9]
+];
+
+/** How far up the income ranking an emirate carries its residents. Relative
+ *  only — `scatter` spans four of these steps, so it is a lean, not a partition. */
+const EMIRATE_INCOME: Record<string, number> = {
+  "abu-dhabi": 4, dubai: 3, "ras-al-khaimah": 2,
+  sharjah: 1, ajman: 1, fujairah: 1, "umm-al-quwain": 1
+};
+const INCOME_LEAN = 0x4000_0000;
+
+/** Life stages an age band plausibly holds; repeats weight the draw. */
+const LIFESTAGE: Record<string, readonly string[]> = {
+  "18-24": ["single"],
+  "25-34": ["single", "couple", "couple"],
+  "35-44": ["couple", "family", "family", "family"],
+  "45-54": ["family", "family", "empty-nest"],
+  "55+": ["empty-nest"]
+};
+
+/** Deal `bands` out over `members` in scattered order, so each value lands on
+ *  exactly its stated count. A member past the last band keeps no value. */
+function spread(
+  axis: string,
+  bands: readonly (readonly [string, number])[],
+  members: readonly number[]
+): Map<number, string> {
+  const order = [...members].sort((a, b) => scatter(`${axis}:${a}`) - scatter(`${axis}:${b}`) || a - b);
+  const out = new Map<number, string>();
+  let at = 0;
+  for (const [value, count] of bands)
+    for (let n = 0; n < count && at < order.length; n++) out.set(order[at++]!, value);
+  return out;
+}
+
+/** One tag list per customer index, in row order. */
+function attributeTags(): string[][] {
+  const all = Array.from({ length: HISTORY_CUSTOMERS }, (_, i) => i);
+  const persons = all.filter((i) => !isBusiness(i));
+  const region = spread("region", EMIRATES, all);
+  const age = spread("ageband", AGE_BANDS, persons);
+
+  // Income quintile is a quintile: exactly a fifth of the book per band, with
+  // the emirate lean showing up in the *joint* rather than in the marginal. A
+  // skewed "quintile" would be a lie about what the word means.
+  const lean = (i: number): number =>
+    (EMIRATE_INCOME[region.get(i) ?? ""] ?? 1) * INCOME_LEAN + scatter(`income:${i}`);
+  const ranked = [...persons].sort((a, b) => lean(a) - lean(b) || a - b);
+  const per = Math.max(1, Math.floor(persons.length / 5));
+
+  const quintile = new Map<number, number>();
+  ranked.forEach((i, n) => quintile.set(i, Math.min(5, Math.floor(n / per) + 1)));
+
+  return all.map((i) => {
+    const tags = [`language:${localeOf(String(i).padStart(3, "0"))}`];
+    const emirate = region.get(i);
+    if (emirate) tags.push(`region:${emirate}`);
+    // A company has no age band, life stage or household income quintile, and
+    // inventing them is exactly what a buyer notices first.
+    if (isBusiness(i)) return tags;
+    const band = age.get(i);
+    if (!band) return tags;
+    const stages = LIFESTAGE[band] ?? [];
+    tags.push(`ageband:${band}`, `incomequintile:${quintile.get(i) ?? 1}`);
+    if (stages.length) tags.push(`lifestage:${stages[scatter(`lifestage:${i}`) % stages.length]!}`);
+    return tags;
+  });
+}
+
+/** Roughly one in six is a company — SME motor fleets and group medical are
+ *  half the demo's product lines, and a person cannot hold either. */
+const isBusiness = (i: number): boolean => i % 6 === 5;
+
 /**
  * The customers the year's contracts belong to, written once and matched on
  * email thereafter (row ids are not reproducible across runs). A tenant that
@@ -640,11 +762,10 @@ async function seedCustomers(
   remap: Map<string, string>,
   counts: Record<string, number>
 ): Promise<void> {
+  const tags = attributeTags();
   const rows = Array.from({ length: HISTORY_CUSTOMERS }, (_, i) => {
     const key = String(i).padStart(3, "0");
-    // Roughly one in six is a company — SME motor fleets and group medical are
-    // half the demo's product lines, and a person cannot hold either.
-    const business = i % 6 === 5;
+    const business = isBusiness(i);
     const given = GIVEN[hashOf(`given:${key}`) % GIVEN.length]!;
     const family = FAMILY[hashOf(`family:${key}`) % FAMILY.length]!;
     const name = business ? `${family} ${BUSINESS[hashOf(`biz:${key}`) % BUSINESS.length]!}` : `${given} ${family}`;
@@ -661,10 +782,10 @@ async function seedCustomers(
       country: "AE",
       kycStatus: hashOf(`kyc:${key}`) % 17 === 0 ? "pending" : "verified",
       consentId: null,
-      tagsJson: null,
+      tagsJson: JSON.stringify(tags[i]!),
       ltvCached: null,
       riskFlagsJson: null,
-      locale: hashOf(`loc:${key}`) % 4 === 0 ? "ar" : "en",
+      locale: localeOf(key),
       // The book predates the window: these people were customers before the
       // year of history opened, which is why they have a year of history.
       createdAt: first,

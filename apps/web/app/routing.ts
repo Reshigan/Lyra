@@ -100,6 +100,12 @@ export const HIDDEN_ROUTES: Record<string, string> = {
   "/search/results": "the full result page behind the command palette, opened from its last row",
   "/onboarding/:kind/:ref": "one subject's onboarding checklist, opened from that partner, channel or staff record",
   "/orbit/journeys/:id/builder": "opens one journey's steps from the journeys list",
+  "/surface/:module/:screen":
+    "one screen from the Constellation design pull, opened from the link that names it — there is no single rail slot for a whole design catalogue (routes/surface.tsx)",
+  "/journey/axis": "the flagship AXIS->NORTH->SCOUT->SIGNAL demo journey, reached from the home dashboard's journey card, not the module rail",
+  "/journey/north": "next hop of the flagship demo journey, reached via JourneyContinue from /journey/axis",
+  "/journey/scout": "next hop of the flagship demo journey, reached via JourneyContinue from /journey/north",
+  "/journey/signal": "final hop of the flagship demo journey, reached via JourneyContinue from /journey/scout",
   // NORTH's eight sub-screens are deliberately NOT hidden: NorthShell owns its
   // own rail and lists all of them directly (docs/superpowers/specs
   // /2026-08-15-north-shell-fork-design.md §"Owns"). Only the detail route below

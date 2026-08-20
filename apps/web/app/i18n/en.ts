@@ -41,6 +41,7 @@ export const en = {
   "nav.axis/claims/desk": "Claims desk",
   "nav.axis/admin": "Admin",
   "nav.axis/dev": "Dev",
+  "nav.axis/bordereaux": "Bordereaux",
   "nav.orbit/console": "Console",
   "nav.orbit/supervisor": "Supervisor",
   "nav.orbit/save": "Save desk",
@@ -87,6 +88,26 @@ export const en = {
   "nav.admin": "Administration",
   "nav.platform": "Platform staff",
   "nav.settings": "Settings",
+
+  // The flagship demo journey: AXIS -> NORTH -> SCOUT -> SIGNAL
+  // (components/journey-nav.tsx, routes/journey-*.tsx).
+  "journey.demo": "Demo",
+  "journey.demoLabel": "Demo journey",
+  "journey.axis.title": "Transactions, grouped by product line",
+  "journey.axis.empty": "No cases yet",
+  "journey.north.title": "Insight, carried from AXIS",
+  "journey.north.empty": "No briefing yet",
+  "journey.north.continue": "See SCOUT's whitespace",
+  "journey.scout.title": "Whitespace, carried from NORTH",
+  "journey.scout.empty": "No whitespace yet",
+  "journey.scout.continue": "Draft SIGNAL's campaign",
+  "journey.signal.title": "Campaign, carried from SCOUT",
+  "journey.signal.subject": "Subject",
+  "journey.signal.suggestAudienceCard": "Suggest an audience",
+  "journey.signal.suggestAudience": "Suggest audience",
+  "journey.signal.generateCreativesCard": "Generate creatives",
+
+  "surface.empty": "Nothing on this screen yet",
 
   // Spend, budgets and agents are recorded against module keys the nav has no
   // rail entry for.

@@ -76,5 +76,21 @@ export function vocabulary(
   if (!tables) return () => undefined;
   const own = tables[locale] ?? {};
   const en = tables.en ?? {};
-  return (key) => own[key] ?? en[key];
+  const word = (key: string): string | undefined => own[key] ?? en[key];
+  return (key) => {
+    const exact = word(key);
+    if (exact !== undefined) return exact;
+    // A bespoke route qualifies a noun by the block it sits in: the quote desk's
+    // issue form asks for `issue.policyNo`, claim-detail for `payee.insurer`,
+    // policy-endorse for `field.premiumMinor`. This table is keyed on the noun,
+    // so without reading the suffix that whole family is unreachable by any pack
+    // — a retail tenant read "Order number" on every screen but the quote desk,
+    // which said "Contract number". ADR-0022 deferred exactly this half.
+    //
+    // Exact wins first, so a pack that wants a different word in a different
+    // block still says it (`process.insurer`, `kind.renewal` are keyed whole).
+    // Last dot, not first, so `issue.form.claimNo` still lands on the noun.
+    const dot = key.lastIndexOf(".");
+    return dot < 0 ? undefined : word(key.slice(dot + 1));
+  };
 }

@@ -72,6 +72,18 @@ export default [
     route("admin/products/:id/detail", "routes/product-detail.tsx"),
     route("distribution/channels/:id/detail", "routes/channel-detail.tsx"),
 
+    // Every screen from the Lyra Constellation design pull (packages/ui/src/
+    // sections/types.ts) — a static `surface` first segment, so it ranks
+    // above the generic `:module` fallback below with no ordering effort.
+    route("surface/:module/:screen", "routes/surface.tsx"),
+
+    // Flagship demo journey: AXIS -> NORTH -> SCOUT -> SIGNAL, real API data,
+    // context carried forward via query params (see components/journey-nav.tsx).
+    route("journey/axis", "routes/journey-axis.tsx"),
+    route("journey/north", "routes/journey-north.tsx"),
+    route("journey/scout", "routes/journey-scout.tsx"),
+    route("journey/signal", "routes/journey-signal.tsx"),
+
     route(":module", "routes/module.tsx"),
     route(":module/:resource", "routes/module.tsx", { id: "module-resource" }),
     route(":module/:resource/:id", "routes/record.tsx")
@@ -97,7 +109,8 @@ export default [
           route("axis/policies/:id/cancel", "routes/policy-cancel.tsx"),
           route("axis/claims/:id/detail", "routes/claim-detail.tsx"),
           route("axis/cases/:id/evidence-bundles/:bundleId/download", "routes/case-evidence-download.tsx"),
-          route("axis/cases/:id/detail", "routes/case-detail.tsx")
+          route("axis/cases/:id/detail", "routes/case-detail.tsx"),
+          route("axis/bordereaux", "routes/axis-bordereaux.tsx")
         ])
       ]
     : []),

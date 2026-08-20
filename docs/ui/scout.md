@@ -1,1385 +1,1159 @@
-# SCOUT — UI design brief
+# SCOUT — market intelligence, screen by screen
 
-*What is on the screen today, not what SCOUT should become. Every label, column,
-permission string and piece of copy below was read out of the code on 2026-07-30.
-Where a screen is thin, this file says so under "What is weak today" rather than
-describing an improved version that does not exist.*
+**Updated 2026-08-19.** Written for a designer with no access to the repository:
+everything you need to design against is in the prose here. It describes what is
+**actually built today**. Anything specced but unbuilt is marked **not yet
+built**. Where the code does not say, this file says "not determined from code"
+rather than guessing. Code is the authority; if this file and a screen disagree,
+the screen is right and this file is a bug.
+
+This is a rewrite. The previous version (2026-07-30) described a SCOUT made
+entirely of generated tables, with no bespoke screens, no charts and no AI
+markers anywhere. All three of those claims are now false and have been deleted
+rather than hedged — see §14 for the list, so anyone holding the old file knows
+what to stop believing.
 
 ---
 
-## 1. Orientation (read this first)
+## 1. Orientation
 
-1. SCOUT is LYRA's market and demand intelligence workspace: raw observations in,
-   an argument about what to build out.
-2. Its data flows in one direction — **signals** (raw observations) → **clusters**
-   (what clustering made of them) → **whitespace** (an opportunity with a demand
-   estimate) → **experiments** (a landing page that tests the estimate) — plus two
-   side tables: **panel benchmarks** (how each provider prices against the panel)
-   and **data products** (aggregate cuts sold back to the panel).
-3. Every row in SCOUT is an inference. Nothing here is a fact from an outside
-   authority; every number was computed by GONXT from its own quote book or its
-   own harvester. The screens exist to be argued with.
-4. The nav label — and therefore the `<h1>` of every SCOUT screen — is **"Market"**,
-   not "SCOUT". The word SCOUT never appears in the UI.
-5. Who lives here: the product lead (`scout.lead`, `scout.pm`) all day; the SCOUT
-   admin (`scout.admin`); executives and analysts who are allowed to see clusters
-   and nothing else (`north.exec`, `north.analyst`); a tenant admin who can read
-   everything and write nothing; a provider viewer who sees only panel benchmarks
-   and data products.
-6. Ten of the platform's other roles — `signal.lead`, `axis.lead`, `axis.agent`,
-   `orbit.agent`, `orbit.partners`, `orbit.retention`, `finance.controller`,
-   `finance.analyst`, `tenant.compliance`, `dev.admin` — hold **no SCOUT
-   permission at all**. They do not see the nav item.
-7. The three screens that matter most: **Whitespace** (the promotion decision,
-   where a number commits a build team), **Clusters** (the only screen an
-   executive ever sees), **Signals** (the evidence floor everything else rests on).
-8. Experiments matter fourth: they are the only place SCOUT spends money.
-9. Every SCOUT screen is generated. There is no bespoke SCOUT route, no SCOUT
-   chart, no SCOUT dashboard, no radar, no dossier. Six tables and a record form.
-10. There is no ✦ anywhere in SCOUT today, on any screen, even though clustering
-    and demand estimation are the most AI-derived numbers in the product.
+1. **SCOUT is the market-intelligence module.** It answers three questions:
+   what is the market asking for that we do not sell (*whitespace*), where do we
+   sit against the carriers we quote alongside (*panel and price benchmarks*),
+   and what can we package and sell back to that panel (*data products*).
+
+2. **Its nav label is "Market"** (Arabic: **السوق**). The word "SCOUT" is an
+   internal module name and appears in exactly two user-facing strings, both on
+   the module's own settings and integrator screens ("SCOUT settings", "SCOUT
+   for integrators"). Everywhere else the module is called Market. Its accent
+   colour is the design token `--module-scout` (a photon blue, #6e9bff) and no
+   screen hard-codes that hex.
+
+3. **SCOUT reads; it barely writes.** Signals arrive from a harvester, clusters
+   are computed, benchmarks are computed. Of everything on these screens only
+   four things are a human write: moving a whitespace card, creating and
+   deciding an experiment, changing a data product's status, and handing a
+   whitespace to the campaign studio.
+
+4. **SCOUT owns no money and no customer.** Nothing here debits anything, and no
+   individual person is ever the subject of a row. That is what makes the
+   k-anonymity rules in §4.3 the module's central design constraint rather than
+   a footnote.
+
+5. **The data is our own.** Every figure on every SCOUT screen is computed from
+   the tenant's own quote traffic, its own book and its own harvested signals.
+   The Radar says this out loud: *"Whitespace read off our own signals, clusters
+   and panel data — nothing bought in."* No screen may imply an industry survey.
+
+6. **Its counterparties can log in.** A provider (carrier) role can hold two
+   SCOUT read permissions, so a competitor of the tenant may be reading a SCOUT
+   surface. Two affordances are deliberately gated *higher* than their data
+   would suggest because of this — see §5.4.
+
+7. **The module has both a hover surface and a promote flow now.** Whitespace
+   commentary — one grounded sentence per candidate, with its evidence — is
+   prefetched with the Radar and revealed on hover and on focus. From the
+   dossier beside it, a whitespace can be handed to the SIGNAL campaign studio,
+   which drafts a campaign and six creatives and sends none of them.
+
+8. **AI is present, quiet, and marked.** SCOUT has exactly three AI-written
+   artifacts on screen (§12.1). Every one carries the single ✦ marker and an
+   inspectable "why". Deterministic fallback text — which reads like a sentence
+   but is a template — is deliberately **not** marked. There is no chat, no
+   modal, no autonomous action.
+
+9. **SCOUT has two coexisting UIs.** Nine bespoke screens in a SCOUT-specific
+   shell, and a generated six-tab CRUD workspace at the same `/scout` root.
+   Both are real, both are reachable, they show the same tables in two different
+   registers. §2 is entirely about that, because it is the fact a designer will
+   trip on first.
+
+10. **Nothing in SCOUT is real-time.** No screen polls, no screen streams, no
+    screen has a live region that updates on its own except the draft tray after
+    a promotion. Numbers change when a sweep runs or a period closes.
 
 ---
 
 ## 2. How SCOUT is built — say it plainly
 
-**SCOUT owns no route file.** `apps/web/app/routes.ts` declares three generic
-routes at the end of the workspace layout:
+There are **two SCOUT user interfaces**, and they share a URL prefix.
 
-```
-:module                      → routes/module.tsx     (list, first tab)
-:module/:resource            → routes/module.tsx     (list, named tab)
-:module/:resource/:id        → routes/record.tsx     (one record)
-```
+### 2.1 The bespoke shell — nine screens
 
-Other modules add bespoke routes (`/ledger/journal`, `/analytics/report/:id`,
-`/orbit/conversation/:id`, `/compliance/...`, `/admin/ai`). **SCOUT adds none.**
+Nine screens are hand-built, each its own layout, and they all sit inside a
+SCOUT-specific chrome (§3):
 
-What SCOUT does own is a *declaration*: `apps/web/app/modules/scout.ts` exports a
-`WorkspaceSpec` — a path, a two-locale label table (en + ar), and six resource
-tabs. `routes/module.tsx` renders any tab as a filter bar + table + create panel;
-`routes/record.tsx` renders any row as a definition list + an edit form. The API
-side mirrors this: `apps/api/src/resources.ts` registers six `Resource` entries
-and `apps/api/src/crud.ts` builds a REST router for each. **There is no
-`apps/api/src/routes/scout.ts`.** No bespoke SCOUT endpoint exists.
+| URL | Screen | § |
+|---|---|---|
+| `/scout/radar` | Radar — the whitespace quadrant and dossier | 10.1 |
+| `/scout/whitespace/:id` | Whitespace card — the full case for one theme | 10.2 |
+| `/scout/panel` | Panel intelligence — carriers on price and conversion | 10.3 |
+| `/scout/pricing` | Price benchmarks — our index against the median, by line | 10.4 |
+| `/scout/experiments` | Experiments — the bounded-test board | 10.5 |
+| `/scout/analytics` | Pricing analytics — elasticity, adequacy, export | 10.6 |
+| `/scout/data-products` | Data products — catalogue, k-monitor, subscribers | 10.7 |
+| `/scout/admin` | SCOUT settings — what governs the module | 10.8 |
+| `/scout/dev` | SCOUT for integrators — the two non-CRUD calls, live | 10.9 |
 
-Consequences a designer must accept as constraints:
+`/scout/whitespace/:id` is a *hidden* route: nothing in navigation points at it,
+it is opened from a dot on the Radar. The other eight are the module's nav rail.
 
-- Every SCOUT list looks structurally identical to every AXIS/ORBIT/LEDGER list.
-- A column that is not in the spec's `columns` array **does not exist on screen**,
-  even if the database stores it. Several important SCOUT columns are in this
-  state (§10).
-- No charts. No sparkline, no trend line, no radar, no scatter. The design system
-  *ships* `Sparkline`, `Stat` and `ProgressBar` (`packages/ui/src/data.tsx`) and
-  SCOUT uses none of them.
-- No row-level actions, no bulk actions, no export button, no soft delete (none of
-  the six SCOUT tables has a `deletedAt` column, so `?deleted=1` returns HTTP 400
-  `"<path> has no soft delete"` — and the toggle is never rendered because no
-  SCOUT tab declares a `remove` permission).
-- No full-text search on any SCOUT tab: no SCOUT resource is registered
-  `searchable`, so the search input is never rendered and `?q=` would answer 400
-  `"scout/signals is not searchable"`.
+### 2.2 The generated workspace — six tabs
+
+At the same time `/scout` itself is a **generated CRUD workspace**: six
+resources rendered by the platform's generic list and record screens, exactly
+like every other module's workspace. Its tabs are `signals`, `clusters`,
+`whitespaces`, `panel-bench`, `scout-experiments`, `data-products` (§7), and its
+record screen is `/scout/:resource/:id` (§8).
+
+### 2.3 How the router picks between them
+
+Static paths outrank the dynamic one. `/scout/radar` is a declared static path,
+so it renders the bespoke Radar. `/scout/signals` is not, so it falls through to
+the generic `:module/:resource` route and renders the generated signals table.
+There is no ambiguity and no redirect — a designer just needs to know that
+`/scout/panel` and `/scout/panel-bench` are two different screens over
+overlapping data.
+
+### 2.4 How a user crosses between them
+
+The generated workspace renders a **links strip** labelled "Reports and tools"
+above its tabs, and SCOUT declares eight links in it — one per bespoke screen.
+Each link is permission-gated (§5.3). Those links use *different words* from the
+nav rail for the same destinations, which is a real inconsistency worth fixing
+(§13):
+
+| Links-strip label (workspace) | Rail label (shell) | Destination |
+|---|---|---|
+| Opportunity radar | Radar | `/scout/radar` |
+| Panel benchmarks | Panel | `/scout/panel` |
+| Price benchmarks | Pricing | `/scout/pricing` |
+| Experiments | Experiments | `/scout/experiments` |
+| Pricing analytics | Analytics | `/scout/analytics` |
+| Data products | Data Products | `/scout/data-products` |
+| Settings | Admin | `/scout/admin` |
+| For integrators | Dev | `/scout/dev` |
+
+Going the other way — from a bespoke screen back into the generated tables —
+there is **no link at all**. A user on the Radar cannot reach the raw signals
+table except by typing the URL or going back through the workspace. That is a
+gap, not a decision (§13).
+
+### 2.5 SCOUT does own API routes
+
+The module has seven bespoke endpoints of its own beyond generated CRUD. A
+designer does not need their shapes, but does need to know these exist, because
+each is a screen affordance with its own failure mode:
+
+- run the whitespace sweep (a button on the Radar),
+- read all whitespace commentary (the Radar's prefetch),
+- read one row's commentary,
+- promote a whitespace to a SIGNAL campaign (§11),
+- compare two wordings word by word (integrator screen),
+- find the nearest stored signals to a phrase (integrator screen),
+- render the negotiation pack PDF (a button on Panel intelligence).
 
 ---
 
 ## 3. The frame every SCOUT screen sits in
 
-From `apps/web/app/components/shell.tsx`.
+The nine bespoke screens share one chrome — the "Horizon" module shell. Reading
+outward from the content:
 
-```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│ [logo] Tenant brand name          Signed in as Tariq  ·  Settings  Sign out  │ 56px sticky
-├──────────┬───────────────────────────────────────────────────────────────────┤
-│ • Home   │                                                                   │
-│ • Cases  │   main, max-width 100rem, padding 16px (24px ≥sm)                  │
-│ • Orbit  │                                                                   │
-│ • Signal │   ← every SCOUT screen renders here                               │
-│ ● Market │                                                                   │
-│ • North  │                                                                   │
-│ • …      │                                                                   │
-│  240px   │                                                                   │
-└──────────┴───────────────────────────────────────────────────────────────────┘
-```
+**Top band** (height is the token `--chrome-top`):
+- The Constellation mark and the tenant's product name, linking to
+  `/scout/radar` — SCOUT's home is the Radar, not a dashboard.
+- A hairline divider, then the **tenant's served name**, truncated to 16
+  characters, hidden below the `sm` breakpoint.
+- A **search palette** scoped to the eight rail destinations.
+- Pushed to the end of the line: posture chips, the theme toggle, a **companion
+  toggle** (the ✦ glyph, shown only at `lg` and up and only to an actor who may
+  read AI runs), and an account menu showing initials and the actor's role key.
 
-- Sidebar is `md:w-60` (240px); below the `md` breakpoint it collapses to a
-  horizontally scrollable strip of the same text labels. Never an icon rail —
-  the shell deliberately overrides docs/07 §3; nav items are always text.
-- Each nav item carries a 6px accent dot. SCOUT's is `--module-scout: #6e9bff`
-  (photon blue). Opacity 100% when active, 30% idle, 60% on hover.
-- The nav item is present only if the actor holds `scout:signals:read`
-  (`apps/api/src/routes/me.ts` gates `nav.scout` on that one permission). This is
-  a bug in itself: an actor with only `scout:clusters:read` (every `north.*` role)
-  **has no way to navigate to SCOUT** and must be linked or must type the URL.
-- Skip link "Skip to content" precedes the header.
+**Rail** (width is the token `--rail-width`, desktop only, `md` and up):
+- The module switcher (which lists every module *except* SCOUT itself),
+- the shift rail,
+- then the eight nav items. Each item is a text label with a 4px × 2px vertical
+  accent bar at its inline start: invisible at rest, 50% on hover, full on the
+  active item. Labels truncate; there are no icons and no counts.
 
-**Design tokens** (`packages/ui/src/tokens.css`, "Deep Field"):
-background `--ink-900 #070b14`; surface-1 `--ink-800 #0c1322`; surface-2
-`--ink-700 #131c31`; hover/elevated `--ink-600 #1c2842`; text `--star-100
-#f4f7fc`; muted `--star-300 #aeb9cf`; subtle `--star-500 #5e6b87`; accent
-(tenant-overridable) `--vega-500 #ffb020`; success `--ion-500 #37d3b2`; danger
-`--flare-500 #ff5d5d`; info/links `--photon-500 #6e9bff`. Type scale 12 / 13 / 14
-(body) / 16 / 18 / 22 / 28 / 36 / 48. Display face Space Grotesk, UI face Inter,
-mono IBM Plex Mono, Arabic IBM Plex Sans Arabic. Radii 6 / 10 / 16 / 999. 4px
-spacing grid.
+**Below `md`** the rail collapses to a module switcher plus a horizontally
+scrolling row of the same eight items.
 
----
+**Canvas**: `<main>` capped at `--measure-canvas`, with a 2px accent hairline
+across its top, breadcrumbs, and the screen. A skip link ("Skip to content")
+precedes everything and targets it. The main element is re-keyed on every
+navigation and takes focus, so each screen change announces from the top.
 
-## 4. Two facts from the data the design must accommodate
+**Status band** (`--chrome-status`, `sm` and up): the product name and, at the
+end of the line, a link to `/design` labelled "doctrine".
 
-### Fact 1 — a dismissed signal has no status column
+**A slow navigation shows a skeleton.** If a navigation has been settling for
+more than 400ms the canvas renders a page skeleton rather than a spinner or a
+frozen previous screen.
 
-`scout_signals` (`packages/db/src/schema/scout.ts`) has **no `status` column**.
-Signals are append-only: the tab buys `scout:signals:ingest`, which is create and
-nothing else. There is no update permission, no delete, no soft delete.
+Three things a designer should not assume:
 
-So "this observation was looked at and rejected as noise" is expressed as three
-things at once, none of which is a status:
-
-1. `weight` is set to **0**,
-2. `clusterId` is **null** (unclustered),
-3. the `payloadJson` gains a `dismissed` block naming the person and the reason.
-
-The seeded example is signal 11:
-
-```json
-{
-  "terms": ["gonxt", "gonxt insurance"],
-  "monthlyVolume": 9100,
-  "growthBps": 11200,
-  "dismissed": {
-    "by": "tariq.mansour",
-    "at": 1750000000000,
-    "reason": "The spike is GONXT's own December brand campaign showing up in its own harvester. It is our spend, not market demand, so the weight is zero and the signal is unclustered."
-  }
-}
-```
-
-**What the Signals table shows today:** a row where the Weight cell reads `0`, the
-Cluster cell reads `—`, and `payloadJson` is not a column at all. The reason is
-invisible on the list. On the record screen the Payload is a JSON blob in
-`text-11` mono, truncated at 60 characters in list contexts — in practice the
-reader sees `{"terms":["gonxt","gonxt insurance"],"monthlyVolume":9100,…`. The
-dismissal, the person and the reason are unreadable without opening dev tools.
-
-**Design requirement:** make "dismissed" legible *without inventing a status
-chip*, because there is no status field to drive one and adding one is a schema
-change. Legitimate moves: treat `weight === 0 && clusterId === null` as a row
-state (the `Table` primitive already accepts `rowState: (row) => "sealed" |
-"draft"`); surface the `dismissed.reason` and `dismissed.by` as a readable line
-rather than raw JSON; keep the row visible and never filter it out — the row
-exists precisely so the next harvester run can see this pattern was already
-rejected.
-
-### Fact 2 — every estimate carries its method, and "market" is our own median
-
-**(a) Demand estimates.** `scout_whitespaces.evidenceRefsJson` is not a bare list
-of references. Every row is:
-
-```json
-{
-  "refs": ["scout_cluster:clu_…", "funnel:gonxt-web/renewal-compare", "app-store:ae/gonxt-app/2026-01"],
-  "demandEstimate": {
-    "unit": "policies_per_year",
-    "method": "own renewal book × observed abandonment rate at the compare step",
-    "confidence": "high",
-    "note": "The base is GONXT's own expiring motor policies, so the estimate cannot be larger than the book it came from."
-  }
-}
-```
-
-`confidence` is exactly `"low" | "medium" | "high"`. The `demandEstimate` **column**
-is a bare integer (6200, 5400, 3400, 2100, 1900, 1800, 900) with the header
-"Estimated demand" and no unit. The unit, method, confidence and caveat live in a
-separate JSON column rendered as truncated mono text. Today a reader sees "6,200"
-and "1,800" side by side with no way to know that the first is measured against
-GONXT's own renewal book at high confidence and the second is "declined
-commercial-use requests × an assumed shift count, no book to check it against" at
-low confidence.
-
-**Design requirement:** the number never appears alone. Wherever `demandEstimate`
-renders, `unit`, `method` and `confidence` render with it — confidence as a
-visible qualifier on the number, method and note reachable in one interaction.
-`packages/ui/src/ai.tsx` already ships `EvidenceLink` (claim → dotted underline →
-popover with the source) and `ConfidenceMeter`; neither is used in SCOUT.
-
-**(b) The "market" price index is ours.** `scout_panel_bench.marketPriceIdx` is
-labelled **"Market price index"** in the UI. It is basis points against the panel
-median for the same risk, `10000` = the median — **and that median is GONXT's own
-quote responses, not an industry price survey.** Every seeded row has
-`marketPriceIdx: 10000` for exactly this reason: it is the normalisation baseline,
-not an external measurement.
-
-**Design requirement:** the UI must never present this as a third-party market
-figure. The label is a live bug today. Whatever replaces it must say what the
-baseline is (panel median of our own quote responses) at the point of reading, and
-must show `10000` as a baseline rather than as a comparable value. Two rows
-(Oryx/life, Meridian/loan) carry `null` for both indices — a life row with no
-second life row has no median to index against, and a loan referral has no premium
-— so "no index" is a real and meaningful state, not missing data.
-
-Related: `winRate` (0–100) is meaningless without `volume`. Gulf Health's 34% is
-**41 requests**. The two columns are adjacent in the table and nothing binds them.
+- **The rail is not permission-filtered.** Every actor inside the shell sees all
+  eight labels, including Settings and For integrators. Clicking one an actor
+  cannot use lands on a screen whose panels are individually withheld, not on a
+  403. This is deliberate — a withheld panel explains itself, a missing nav item
+  does not — but it means the rail is not a capability list.
+- **There is no accent dot per nav item.** The accent is the vertical bar
+  described above. (The old version of this doc described a 6px dot in a 240px
+  sidebar; that frame no longer exists.)
+- **The generated `/scout` workspace does not use this shell.** It uses the
+  platform's standard workspace chrome, with the module rail and tabs. Two
+  chromes, same prefix.
 
 ---
 
-## 5. Permission matrix — who sees what
+## 4. Facts from the data the design must accommodate
 
-Permission strings are `module:resource:action` (`packages/core/src/rbac.ts`).
-SCOUT declares twelve, plus two AI permissions.
+### 4.1 A dismissed signal has no status column
 
-| Tab | Read | Create | Update |
-|---|---|---|---|
-| Signals | `scout:signals:read` | `scout:signals:ingest` | — (append-only) |
-| Clusters | `scout:clusters:read` | — | — |
-| Whitespace | `scout:whitespaces:read` | — | `scout:whitespaces:promote` |
-| Panel benchmarks | `scout:panel_bench:read` | — | — |
-| Experiments | `scout:experiments:read` | `scout:experiments:create` | `scout:experiments:decide` |
-| Data products | `scout:data_products:read` | `scout:data_products:create` | `scout:data_products:publish` |
+`scout_signals` is append-only: source, reference, payload, weight, observed-at,
+plus which cluster it landed in. **There is no status, no dismissed flag, no
+reviewed flag.** So there is no "mark as reviewed" affordance to design, no
+inbox pattern, no unread count. A signal is data, not a task. Do not design a
+triage queue over this table; the storage cannot hold the result.
 
-Also declared: `scout:ai:invoke`, `ai:suggestions:read`. Nothing in the web app
-calls either from a SCOUT screen.
+### 4.2 Every estimate carries its own method, and "market" means our median
 
-| Role | Signals | Clusters | Whitespace | Panel | Experiments | Data products |
-|---|---|---|---|---|---|---|
-| `scout.admin` | read + create | read | read + edit | read | read + create + edit | read + create + edit |
-| `scout.lead` | **read only** | read | read + edit | read | read + create + edit | read + create, **no edit** |
-| `scout.pm` | read only | read | read + edit | read | read + create, **no edit** | — (no read) |
-| `tenant.admin` | read only | read | **read only** | read | read only | read only |
-| `north.exec` | — | read | — | — | — | — |
-| `north.analyst` | — | read | — | — | — | — |
-| `provider.viewer` | — | — | — | read | — | read |
-| `signal.lead`, `axis.lead`, `axis.agent`, `orbit.agent`, `orbit.partners`, `orbit.retention`, `finance.controller`, `finance.analyst`, `tenant.compliance`, `dev.admin` | — | — | — | — | — | — |
+A whitespace's demand estimate is stored beside a small blob describing how it
+was arrived at: a unit, a method, a confidence and a free-text note. Screens
+that show the estimate must show that blob with it — a number whose method is
+hidden is a number the reader will over-trust.
 
-Rules that follow from the code:
+The same applies to the word **market**. The "market price index" on every
+benchmark screen is *our quoted price over the median of the panel's own
+responses to the same request*. It is not an industry survey, and the Price
+benchmarks screen carries that sentence permanently as a note. Any new surface
+using the word must carry the same qualification.
 
-- **Tabs the actor cannot read are absent, not disabled.** `visibleTabs()` filters
-  the strip. A `north.exec` sees a single tab, so the tab strip is not rendered at
-  all (it only renders when more than one tab is visible) — they land on a bare
-  table with the heading "Market".
-- **Write affordances are absent, not disabled.** No create permission → no create
-  panel. No update permission → no edit form on the record screen. A `scout.lead`
-  opening a Signals row sees a read-only definition list with nothing below it.
-- **`/scout` with no resource** renders the first declared tab (Signals). If the
-  actor cannot read Signals, the loader catches the 403 and redirects to the first
-  tab they can read — so a `north.exec` typing `/scout` lands on `/scout/clusters`.
-- **Denied deep link** (e.g. `provider.viewer` opening `/scout/whitespaces`): the
-  API answers 403, `asRouteError` rethrows it as a route error, and root.tsx's
-  boundary renders a centred `max-w-prose` column: `<h1>` "This did not load",
-  body "Your roles do not include access to this area.", a mono line
-  "Reference {request-id}", and a "Try again" link back to the same path. There is
-  no navigation offered out of it beyond the shell.
+**Win rate is meaningless without volume.** A 100% win rate on three quotes is
+noise. Every screen showing win rate shows volume in the same row, and the
+blended figures on the analytics screen are volume-weighted, never averaged.
+
+### 4.3 Thin cuts are withheld, not shown thin
+
+SCOUT's central privacy rule: a cut of data below **20** underlying quotes can
+name the single counterparty behind it, so it is not served at all.
+
+- On the panel bench, a row below the floor **404s from the API**. The screen
+  therefore shows a permanent notice — "Thin cuts withheld" — explaining that
+  the row is missing by design, because a silently shorter table reads as a
+  data bug.
+- A whitespace candidate below the floor is **never written** by the sweep, so
+  it cannot appear on the Radar at all.
+- A whitespace whose evidence is below the floor returns commentary marked
+  *suppressed*: no sentence, no evidence, no AI marker (§9.3).
+- A promotion of a below-floor whitespace is refused (§11.3).
+- A data product may set its own floor, but a floor below the module's is
+  rejected on save.
+
+Design consequence: **absence is a state that must be explained on screen**, in
+every place a suppression can bite. There are four such notices and they are all
+permanent (not dismissible), because the condition is permanent.
+
+### 4.4 A whitespace's status is free text
+
+The stored status column is unconstrained text with a documented vocabulary of
+`candidate`, `validating`, `validated`, `parked`. The generated form offers
+exactly those four. The bespoke whitespace card offers a fifth — `promoted` —
+as a move out of `validated`, and because the column is free text the write
+succeeds. So a card can reach a status the generated table's filter does not
+list and the platform's own state machine does not know. **This is a defect, not
+a design** (§13). A designer should treat four statuses as the vocabulary and
+flag any fifth they see.
 
 ---
 
-## 6. Shared anatomy of a SCOUT list screen
+## 5. Permissions
 
-All six list routes are `routes/module.tsx`. Read this once; the per-route
-sections below only state what differs.
+### 5.1 The twelve SCOUT permissions
 
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│ Market                                              ← h1, display 24px │
-│ ┌──────┬─────────┬───────────┬────────┬───────────┬──────────────┐     │
-│ │Signals│Clusters│Whitespace │Panel…  │Experiments│Data products │     │  tab strip, 32px pills
-│ └──────┴─────────┴───────────┴────────┴───────────┴──────────────┘     │
-│                                                                        │
-│ [ Source ▾ ]  [ Apply ]  [ Clear ]                    ← filter Form    │  only if filters exist
-│                                                                        │
-│ ┌────────────────────────────────────────────────────────────────┐     │
-│ │ +  New — Signals                                               │     │  <details>, closed
-│ └────────────────────────────────────────────────────────────────┘     │  only if create perm
-│                                                                        │
-│ ┌────────────────────────────────────────────────────────────────┐     │
-│ │ SOURCE  SOURCE REF  CLUSTER  WEIGHT  OBSERVED ▼  CREATED ↕     │     │  sticky, 11px caps
-│ ├────────────────────────────────────────────────────────────────┤     │
-│ │ search  search-tre… clu_…        9   2 Jan 14:0  2 Jan 14:12   │     │  13px rows
-│ │ …                                                              │     │
-│ └────────────────────────────────────────────────────────────────┘     │
-│ 12 shown                                          [Previous] [Next]    │
-└────────────────────────────────────────────────────────────────────────┘
-```
-
-**Heading.** Always `t("nav.scout")` = **"Market"** (ar: "السوق"). It is the
-*workspace* name, not the tab name. Six different tables share one heading; the
-only indicator of which one you are on is the highlighted tab pill.
-
-**Tab strip.** `<nav aria-label="Sections">`, `<ul>` of `<li><Link>`. Each pill is
-`h-8 rounded-md px-3`, font-ui 13px. Active: `bg-surface-2`, `font-medium`,
-`text-text`, `aria-current="page"`. Idle: `text-subtle`, hover
-`bg-surface-2 text-text`. 150ms colour transition. Rendered only when more than
-one tab is visible to this actor.
-
-**Links strip** (`aria-label="Reports and tools"`): SCOUT declares no `links`, so
-this never renders.
-
-**Filter bar.** A `<Form method="get">`, `flex flex-wrap items-end gap-3`. Rendered
-only if the tab has `search`, `filters`, or the actor can restore. SCOUT has no
-search and no restore anywhere, so: **Signals, Whitespace, Experiments and Data
-products have a filter bar; Clusters and Panel benchmarks have none.** Each filter
-is a `<Select>` whose `aria-label` and placeholder are the field label and whose
-first option is "All". Then a secondary "Apply" button; a ghost "Clear" link
-appears only when a filter is currently applied. Filters are **exact match** on the
-API side; `?source=news,regulatory` would mean "either", but the Select only ever
-emits one value.
-
-**Create panel.** A `<details>` with `border border-border bg-surface-1
-rounded-lg`. Summary row: a `+` glyph that rotates 45° when open, then
-`New — <tab label>` at 13px. Body: `border-t`, `p-4`, a `grid gap-4 sm:grid-cols-2`
-of inputs, then a primary "Create" button. Closed by default; **re-opens
-automatically when the last submit was rejected**, with a red alert above it.
-
-**Problem alert.** `role="alert"`, `rounded-md border border-danger/40
-bg-danger/10 p-3`, one line of 13px text showing `problem.detail ?? problem.title`
-from the RFC 9457 body. Sits above the create panel and the table.
-
-**Table** (`packages/ui/src/data.tsx`). `density="compact"` → cells `px-2.5 py-1.5`;
-`stickyHeader`; wrapper `overflow-auto rounded-lg border border-border`; table
-font-ui 13px. Headers: `border-b border-border bg-surface-1 font-medium uppercase
-tracking-wider text-11 text-subtle`. Numeric and money columns align to the
-inline-end edge with `tabular-nums`. Every table carries an sr-only `<caption>`:
-`"Market — Signals"`.
-
-**Sortable headers** are `<button>`s showing the header text plus a glyph: `↕`
-inactive, `▲` ascending, `▼` descending; active header turns `text-accent`; the
-`<th>` carries `aria-sort`. Clicking sets `sort`/`order` in the query string and
-**drops the cursor** (back to page 1).
-
-**Row link.** The **first column only** is a link into the record
-(`/scout/<tab>/<id>`), `font-medium text-text` with hover underline. There is no
-whole-row click target.
-
-**Cell rendering** (`apps/web/app/components/fields.tsx`):
-
-| Type | Rendering |
+| Permission | What it unlocks |
 |---|---|
-| null / undefined / `""` | `—` in `text-subtle` |
-| `text` | truncated at 80 characters |
-| `number` | `tabular-nums`, right-aligned, no unit, no formatting |
-| `datetime` | `<DateTime precision="minute">`, locale-formatted |
-| `json` | `font-mono text-11 text-subtle`, **truncated at 60 characters** |
-| `badge` | `<Badge tone size="sm" dot>` — tone from a shared status map |
+| `scout:signals:read` | The signals table; the integrator screen's similarity search |
+| `scout:signals:ingest` | Writing a signal — a harvester key's grant, not a person's |
+| `scout:clusters:read` | Clusters, and the Radar |
+| `scout:whitespaces:read` | Whitespace rows and their commentary |
+| `scout:whitespaces:promote` | Moving a card, running the sweep, promoting to SIGNAL, and the negotiation pack |
+| `scout:panel_bench:read` | Panel, price and analytics screens; the wording differ |
+| `scout:experiments:read` | The experiment board |
+| `scout:experiments:create` | Spinning up a draft experiment |
+| `scout:experiments:decide` | Recording a verdict on an experiment |
+| `scout:data_products:read` | The data-product catalogue |
+| `scout:data_products:create` | Defining a data product |
+| `scout:data_products:publish` | Changing a data product's status |
 
-**Badge tones are a live problem in SCOUT.** The shared `TONES` map contains
-`draft: neutral` and `running: info` and nothing else SCOUT uses. Every other
-SCOUT status value — `candidate`, `validating`, `validated`, `parked`,
-`concluded`, `abandoned`, `published`, `suspended` — falls through to `neutral`.
-So on Whitespace all four statuses are the same grey pill; on Data products a
-published product, a draft and a **suspended** product are visually identical.
+Plus `scout:ai:invoke`, which is what lets a role trigger model work in the
+module at all.
 
-**Empty state.** `EmptyState` — a dashed-border `rounded-lg p-10` centred block
-with a thin-line constellation SVG, a 16px display title and a 13px subtle body.
-Title "Nothing here yet"; body "No records match this view. Clear the filters, or
-create the first one." — or, when a filter is applied, "No records match these
-filters."
+One permission carries far more than its name suggests:
+**`scout:whitespaces:promote` gates four unrelated affordances** — the card
+move, the whitespace sweep, the promote-to-SIGNAL handover, and the negotiation
+pack PDF. A role that should be able to do one of those gets all four.
 
-**Footer.** Left: `"{count} shown"` in 12px `tabular-nums` subtle — **the count of
-rows on this page, not a total.** Right: "Previous" (only when a cursor is in the
-URL; returns to page 1, keeping filters) and "Next" (only when the API returned a
-cursor). Keyset pagination, forward-only.
+### 5.2 The roles
 
-**Loading.** There is no skeleton and no spinner on a list. React Router loaders
-block navigation; the previous screen stays until the new one is ready. Buttons on
-in-flight forms get `loading` (the `Button` primitive's busy treatment).
-
----
-
-## 7. The six list routes
-
-### 7.1 `/scout` and `/scout/signals` — Signals
-
-| | |
+| Role | Holds |
 |---|---|
-| **Path** | `/scout/signals` (also served at `/scout`) |
-| **Page title** | "Market" (`nav.scout`); tab label "Signals" (`signals`, ar "الإشارات") |
-| **API** | `GET /v1/scout/signals`, `POST /v1/scout/signals` |
-| **Generated?** | Yes — entirely. `r("signals", schema.scoutSignals, "sig", "scout", …)` |
+| `scout.pm` | All SCOUT reads, `scout:ai:invoke`, AI suggestions read, `experiments:create`, `whitespaces:promote` |
+| `scout.lead` | Everything `scout.pm` has, plus `experiments:decide` and `data_products:create` |
+| `scout.admin` | `scout:*:*` — every SCOUT permission — plus AI suggestions read and full product/provider admin |
+| `provider.viewer` | Exactly two: `scout:data_products:read`, `scout:panel_bench:read` |
+| `north.exec`, `north.analyst` | `scout:clusters:read` only |
+| `tenant.admin` | `scout:*:read` — every SCOUT read |
 
-**Who sees it.** Read: `scout:signals:read` — `scout.admin`, `scout.lead`,
-`scout.pm`, `tenant.admin`. Create: `scout:signals:ingest` — **`scout.admin` only**.
-`north.exec`/`north.analyst`/`provider.viewer` and the ten no-SCOUT roles get the
-403 boundary ("Your roles do not include access to this area."), except that
-`/scout` bare redirects a clusters-only reader to `/scout/clusters`.
+Note what nobody holds: `data_products:publish` is reachable only through
+`scout.admin`'s wildcard. There is no non-admin publisher role.
 
-**Purpose.** The evidence floor: every raw observation the harvester or a human
-recorded, in the order it was observed.
+### 5.3 Getting into the shell is a separate gate from permissions
 
-**Layout.**
+Entry to the nine bespoke screens is decided by the actor's **role prefix**, not
+by their permissions. Only `scout.*` and `provider.*` roles resolve to the SCOUT
+shell. Everyone else gets a **403 on every `/scout/<screen>` URL**, before any
+loader runs.
 
-```
-Market
-[Signals][Clusters][Whitespace][Panel benchmarks][Experiments][Data products]
+That produces a genuinely confusing outcome a designer should know about:
+`tenant.admin`, `north.exec` and `north.analyst` all hold SCOUT read
+permissions, can see SCOUT data in the generated `/scout` tabs, and are refused
+at the door of the Radar. There is no explanatory screen for this — it is a bare
+403. (§13.)
 
-[ Source ▾ ] [Apply] [Clear]
+The eight workspace links are gated on permissions the actor may not have, and
+one of them is gated on a permission **that does not exist**: the Settings link
+requires `scout:whitespaces:write`, which is not a declared permission. Only a
+wildcard holder — `scout.admin` — passes that check, so in practice the Settings
+link is admin-only by accident rather than by design (§13).
 
-+ New — Signals                                    (scout.admin only)
+### 5.4 Two affordances gated deliberately higher than their data
 
-┌──────────────────────────────────────────────────────────────────────────┐
-│ SOURCE   SOURCE REFERENCE          CLUSTER   WEIGHT   OBSERVED ▼  CREATED│
-├──────────────────────────────────────────────────────────────────────────┤
-│ search   search-trends:ae/ev-car…  clu_9f2…       9   2 Jan 14:02  14:14 │
-│ quotes   dist_offering:GNX-MOT-STD clu_9f2…       7   2 Jan 07:11  07:23 │
-│ …                                                                        │
-│ search   search-trends:ae/brand-t…      —         0   7 Dec 09:40  09:52 │  ← dismissed
-└──────────────────────────────────────────────────────────────────────────┘
-12 shown                                                    [Previous][Next]
-```
+Because a carrier may be signed in:
 
-**Table columns** (in order, exactly):
+- **The negotiation pack PDF** is gated on `scout:whitespaces:promote`, not on
+  `scout:panel_bench:read`. The pack bakes every provider's price index, win
+  rate and volume into one document for the tenant's own negotiation prep;
+  `provider.viewer` holds the bench read, so gating it there would hand a
+  carrier its counterparties' numbers — or its own prep pack against itself.
+  The screen says so: *"The pack quotes counterparty numbers, so it needs the
+  promote permission."*
+- **Data products** are visible to `provider.viewer` only when published, and
+  further scoped to that provider's own subscriptions.
 
-| # | Column | Header (en / ar) | Type | Align | Sortable | Notes |
-|---|---|---|---|---|---|---|
-| 1 | `source` | Source / المصدر | text | start | no | **Raw enum value, untranslated.** Renders `search`, `quotes`, `abandonment`, `reviews`, `news`, `regulatory` — not "Search demand" etc., because the column is `type: "text"`, not `badge`, and only badges and select options go through `optionLabel`. The label table has the translations; the column does not use them. Also the row link. |
-| 2 | `sourceRef` | Source reference / مرجع المصدر | text | start | no | e.g. `search-trends:ae/ev-car-insurance`, `dist_offering:GNX-MOT-STD`, `app-store:ae/gonxt-app/2026-01`, `rss:gulf-logistics-weekly/2025-12-18`. Truncated at 80 chars. |
-| 3 | `clusterId` | Cluster / المجموعة | text | start | no | Raw id `clu_…`. **Not a link, not a theme name.** `—` when unclustered. |
-| 4 | `weight` | Weight / الوزن | number | end | no | 0–9 in the seed. No scale, no max, no unit. |
-| 5 | `observedAt` | Observed / تاريخ الرصد | datetime | start | **yes** | Default sort, descending. |
-| 6 | `createdAt` | Created / (common) | datetime | start | **yes** | Always `observedAt + 12 minutes` — the harvester batches every quarter hour. Two near-identical timestamps sit side by side. |
+### 5.5 What a withheld panel looks like
 
-Not shown anywhere on this screen: `payloadJson` (the entire observation),
-`embeddingRef` (`vec:scout-search-0`).
+Every bespoke SCOUT screen loads its panels independently and each read is
+individually protected: **a 403 on one read costs one panel, never the page**.
+The withheld panel renders a guardrail notice in its place, naming the missing
+grant in plain language and telling the reader to ask an administrator for the
+grant rather than for a one-off.
 
-**Filters.** One `<Select>`, `name="source"`, aria-label "Source", options: All /
-Search demand / Quote flow / Abandonment / Reviews / News / Regulatory. Note the
-mismatch: the filter dropdown shows the friendly labels, the table column shows
-the raw values.
-
-**Create form** (`scout.admin` only), 2-column grid:
-
-| Field | Label | Control | Required | Default | Validation |
-|---|---|---|---|---|---|
-| `source` | Source | `<Select>` — Search demand / Quote flow / Abandonment / Reviews / News / Regulatory | **yes** | none | HTML `required`; API rejects unknown values |
-| `sourceRef` | Source reference | `<Input type="text">` | no | none | free text |
-| `payloadJson` | Payload | `<Textarea rows={6}>`, `font-mono text-12` | **yes** | none | Parsed with `JSON.parse` in the action. **Malformed JSON throws before the request is sent and reaches the route error boundary — the actor gets "This did not load" and loses the typed payload.** |
-| `weight` | Weight | `<Input type="number" step={1}>` | no | DB default `1` | no min/max |
-| `observedAt` | Observed | `<Input type="datetime-local">` | **yes** | none | parsed to epoch ms |
-
-Submit: "Create". `id`, `tenantId`, `createdAt`, `updatedAt`, `deletedAt` are
-server-owned and are stripped from any submitted body.
-
-**States.**
-- *Empty:* "Nothing here yet" / "No records match this view. Clear the filters, or
-  create the first one." — offered even to an actor with no create permission.
-- *Filtered empty:* "No records match these filters."
-- *Loading:* nothing; the previous route stays.
-- *Error (create rejected):* red alert with the API's `detail`, create panel
-  re-opened, values retained by the browser.
-- *Permission denied:* full-page boundary, "Your roles do not include access to
-  this area."
-
-**AI surfaces.** None. Zero ✦ on this screen. Signals are the input to clustering
-and the embedding reference (`embeddingRef`) is written by the harvester, but
-neither the fact that a signal was embedded, nor which cluster the model assigned
-it to (beyond a raw id), nor any confidence is shown. If a ✦ belongs anywhere on
-this screen it is on `clusterId` — that assignment is a model output, and its
-"why" (which theme, how close) is exactly what an analyst would want on hover.
-
-**Actions and consequences.** Create only. **Ingestion is irreversible**: there is
-no edit, no delete, no soft delete, no restore. A mistyped signal is permanent and
-can only be answered by another signal. The create writes an audit entry
-`scout.signals.create` and emits `scout.signals.created` on the event bus.
-
-**Mobile.** Expo maps `/scout` → `scout/signals` (`apps/mobile/src/nav.ts`), so
-Signals **is** the whole of SCOUT on mobile. The list screen is a `FlatList` of
-cards; each card shows a title from the first of `name, title, reference, subject,
-code, email, key, id` that the row has — for a signal, **only `id` matches**, so
-every card reads `sig_01H…`. Subtitle comes from `status, state, stage, kind,
-type, email` — a signal has none, so there is no subtitle. The mobile SCOUT list
-is a column of opaque identifiers. Header shows "Market", a "Back" button, and
-"{n} shown". Empty: "There is nothing here yet." No filters, no create, read-only.
-
-**RTL.** Arabic mirrors the whole layout (`dir="rtl"` on the document; the shell
-uses logical properties throughout). Mirror: tab strip order, filter bar, table
-column order, the sidebar. Do **not** mirror: the `sourceRef` values
-(`search-trends:ae/ev-car-insurance`) and `clusterId` — these are LTR identifiers
-inside RTL text and need `dir="ltr"` with `unicode-bidi: isolate`, or they render
-with the colon and slashes in the wrong places. Numbers in the Weight column are
-`tabular-nums`; keep them LTR. Dates go through `<DateTime>` with the locale, so
-Arabic gets Arabic month names — correct.
-
-**What is weak today.**
-1. Fact 1 is unreadable. A dismissed signal is a row with `0` and `—` in it. The
-   named person, the date and the whole reason are in a column that is not on the
-   screen.
-2. `source` shows raw enum values in the table while the filter beside it shows
-   translated labels. Straight inconsistency.
-3. `clusterId` is a raw id and not a link. To find out what `clu_9f2…` is you must
-   go to the Clusters tab and eyeball ids.
-4. `Observed` and `Created` differ by exactly 12 minutes on every row — two columns
-   carrying one fact.
-5. `weight` is a bare integer with no scale. 9 vs 0 has no visual weight.
-6. The payload — the actual content of the observation — never appears in the list.
-   You cannot skim signals for meaning; you can only skim them for shape.
+Guardrail notices are used instead of disabled buttons, on purpose: a disabled
+control cannot take focus, so a screen reader would never reach the explanation
+of why it is disabled. **Never design a disabled control here.** Either the
+control is live, or it is replaced by prose.
 
 ---
 
-### 7.2 `/scout/clusters` — Clusters
+## 6. Shared anatomy of a generated SCOUT list screen
 
-| | |
-|---|---|
-| **Path** | `/scout/clusters` |
-| **Page title** | "Market"; tab label "Clusters" (`clusters`, ar "المجموعات") |
-| **API** | `GET /v1/scout/clusters` only — registered read-only (`ro(...)`) |
-| **Generated?** | Yes, entirely |
+The six tabs at §7 all render the same generic list screen. Top to bottom:
 
-**Who sees it.** `scout:clusters:read` — `scout.admin`, `scout.lead`, `scout.pm`,
-`tenant.admin`, **`north.exec`, `north.analyst`**. Nobody can write: there is no
-create, update or delete permission on this resource at all. `provider.viewer` and
-the ten no-SCOUT roles get the 403 boundary.
+1. **Links strip**, `aria-label="Reports and tools"` — SCOUT's eight bridges
+   into the bespoke screens (§2.4). Each link appears only if the actor holds
+   its permission.
+2. **Tab bar** — the six resources.
+3. **Filter row** — one select per declared filter, plus free-text search where
+   the resource declares searchable columns.
+4. **Table** — the declared columns in the declared order, sorted by the
+   resource's default sort. Status columns render as badges.
+5. **Create** — a form appears only if the resource declares a create
+   permission and the actor holds it.
+6. **Pagination.**
 
-**This is the only SCOUT screen an executive ever sees.** For `north.exec` and
-`north.analyst` it renders with **no tab strip** (only one visible tab) — heading
-"Market" over a bare table.
-
-**Purpose.** What clustering made of the signals: the themes, how much momentum
-each has, and how many signals sit behind it.
-
-**Layout.**
-
-```
-Market
-[Signals][Clusters][…]                      ← absent for north.exec / north.analyst
-
-                                            ← no filter bar, no create panel
-┌────────────────────────────────────────────────────────────────────────────────┐
-│ THEME          SUMMARY                        MOMENTUM ▼  SIGNALS  LAST SEEN   │
-├────────────────────────────────────────────────────────────────────────────────┤
-│ EV motor cover Battery damage, home-charger…        88      412    today 12:04 │
-│ Agency repair… Renewal quotes drop agency r…        71      305    today 09:11 │
-│ Domestic help… Motor and home shoppers ask …        64      218    yesterday   │
-│ Delivery ride… Riders and their fleet opera…        57      164    2 days ago  │
-│ Visa-applicat… Single-trip travel cover bou…        43      189    4 days ago  │
-│ Maternity wai… Health shoppers want the wai…        36       96    3 days ago  │
-│ Competitor br… A December spike in competit…         9       41    26 days ago │
-└────────────────────────────────────────────────────────────────────────────────┘
-7 shown
-```
-
-**Table columns:**
-
-| # | Column | Header | Type | Align | Sortable |
-|---|---|---|---|---|---|
-| 1 | `theme` | Theme / الموضوع | text | start | no |
-| 2 | `summary` | Summary / الملخص | text | start | no |
-| 3 | `momentumScore` | Momentum / مؤشر الزخم | number | end | **yes** |
-| 4 | `size` | Signals / عدد الإشارات | number | end | no |
-| 5 | `lastSeen` | Last seen / آخر ظهور | datetime | start | **yes** |
-| 6 | `updatedAt` | Updated / (common) | datetime | start | **yes** |
-
-Default sort `momentumScore` descending — the code comment says this is "what the
-radar quadrant is ordered by anyway".
-
-**The summary column is the problem.** Seeded summaries are 220–330 characters:
-
-> "Battery damage, home-charger damage and range-related towing come up in EV
-> motor searches and in call-centre questions. None of the four motor rows on the
-> panel prices them, so the comparison answers a question the shopper did not ask."
-
-`Cell` truncates `text` at 80 characters. So the reader gets the first sentence
-fragment of every cluster and must open each record to read the actual finding —
-which is the entire content of this table.
-
-**Not shown, though the table stores them:**
-- `firstSeen` — how long this theme has existed. Absent from the spec's columns.
-- `trailJson` — **the momentum trail**, one point per weekly clustering run,
-  `[{at, momentum}, …]`. EV motor cover: 24 → 41 → 63 → 82 → 88. Visa travel:
-  68 → 61 → 52 → 46 → 43 (declining). Competitor brand advertising: 47 → 31 → 14
-  → 9 (dead). **This column is not rendered anywhere in the product — not in the
-  list, not on the record screen.** The design system ships `Sparkline` (with a
-  required text alternative) and it is unused. Today a cluster at 43 and falling
-  and a cluster at 43 and rising look identical.
-
-**Filters.** None declared. No filter bar renders.
-
-**Forms.** None. Read-only resource; no create panel, no edit form on the record,
-no delete.
-
-**States.** Empty "Nothing here yet" (never filtered — there are no filters, so the
-"filtered" variant is unreachable here). Denied → boundary.
-
-**AI surfaces.** None — and this is the screen where their absence costs most.
-Every row on this table is a model output: the theme name, the summary prose, the
-membership count and the momentum score were all produced by clustering. Nothing
-carries a ✦, nothing says which run produced it, nothing offers a "why". The
-`AgentBadge` component in `packages/ui/src/ai.tsx` renders exactly this — an
-accent-tone chip with the single `✦` mark and a popover of the explanation — and
-SCOUT never imports it. An executive reading this table has no signal that these
-are inferences rather than counted facts.
-
-**Actions and consequences.** None. Nothing on this screen changes anything.
-
-**Mobile.** Not reachable. Mobile maps `/scout` to `scout/signals` only.
-
-**RTL.** Mirror the table. Do **not** mirror a momentum trail if one is added: a
-time series runs left→right in Arabic too when it is a chart; mirroring it inverts
-the meaning of "rising". The safe rule is the same one the tokens file implies —
-mirror layout, never mirror data-time axes. Theme and summary are prose and should
-be translated content; the seeded strings are English only.
-
-**What is weak today.**
-1. The summary — the actual finding — is cut at 80 characters.
-2. `trailJson` exists, is populated, is meaningful, and is invisible. Momentum is a
-   number with no direction.
-3. `size` (412 signals) is not a link to those signals. There is no way from a
-   cluster to its evidence.
-4. No confidence, no run identity, no ✦ on machine-generated prose.
-5. `lastSeen` and `updatedAt` are within hours of each other on every row.
-6. This is an executive's only SCOUT screen, and it is a six-column grey table.
+Empty state is the platform's standard empty table; there is no SCOUT-specific
+empty illustration or copy on these tabs.
 
 ---
 
-### 7.3 `/scout/whitespaces` — Whitespace
+## 7. The six generated tabs
 
-| | |
-|---|---|
-| **Path** | `/scout/whitespaces` |
-| **Page title** | "Market"; tab label "Whitespace" (`whitespaces`, ar "الفجوات السوقية") |
-| **API** | `GET /v1/scout/whitespaces`, `PATCH /v1/scout/whitespaces/:id` |
-| **Generated?** | Yes. There is **no bespoke promote endpoint** — "promote" is a generic PATCH gated on `scout:whitespaces:promote` |
+### 7.1 `/scout/signals`
+Read `scout:signals:read`; create `scout:signals:ingest`. Sorted by observed-at
+descending. Filter: source. Columns: source, source reference, cluster,
+weight, observed at, created at. Create fields: source, source reference,
+payload JSON, weight, observed at. Every ingested signal is embedded into the
+market vector index as a side effect of the write.
 
-**Who sees it.** Read: `scout:whitespaces:read` — `scout.admin`, `scout.lead`,
-`scout.pm`, `tenant.admin`. Edit: `scout:whitespaces:promote` — `scout.admin`,
-`scout.lead`, `scout.pm` (**not** `tenant.admin`, who sees the record with no form
-below it). Everyone else: 403 boundary.
+### 7.2 `/scout/clusters`
+Read `scout:clusters:read`. **Read-only** — no create, no edit. Sorted by
+momentum score descending. Columns: theme, summary, momentum score, size, last
+seen, updated at.
 
-**Purpose.** The promotion decision. This table is where a demand estimate turns
-into a commitment to build.
+### 7.3 `/scout/whitespaces`
+Read `scout:whitespaces:read`; update `scout:whitespaces:promote`. No create —
+rows are written by the sweep. Sorted by demand estimate descending. Filter:
+status (candidate / validating / validated / parked). Columns: description,
+cluster, evidence refs, demand estimate, competition score, status (badge),
+owner, promoted at, updated at. Editable: status (select of the same four),
+owner, promoted at.
 
-**Layout.**
+**Every edit here passes an approval gate** under the policy
+`scout.whitespace_promote`. Unless the tenant has explicitly allow-listed that
+policy for automatic approval, saving returns a 403 whose body names the policy,
+and the screen shows "Queued for approval — This change needs an approval under
+policy {policy}. It is queued, not lost." with a link to the approvals queue.
+An existing approval is single-use and expires after 24 hours.
 
-```
-Market
-[Signals][Clusters][Whitespace][Panel benchmarks][Experiments][Data products]
+The old version of this doc said promotion here was "a generic PATCH, no
+bespoke route in the API". The PATCH is still generic, but a bespoke
+promote-to-SIGNAL route now exists alongside it and does something different
+(§11) — this tab's edit changes a status; the Radar's button drafts a campaign.
 
-[ Status ▾ ] [Apply] [Clear]
-                                                        ← no create panel: whitespace
-                                                          is derived, never authored
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│ OPPORTUNITY      CLUSTER  EVIDENCE          EST. DEMAND ▼ COMPETITION STATUS OWNER  PRO…│
-├────────────────────────────────────────────────────────────────────────────────────────┤
-│ A motor renewal… clu_…    {"refs":["scout…       6200          62   ●Validated tariq… │
-│ Single-trip tra… clu_…    {"refs":["scout…       5400          84   ●Parked    tariq… │
-│ Motor cover tha… clu_…    {"refs":["scout…       3400          38   ●Validating tariq…│
-│ Domestic helper… clu_…    {"refs":["scout…       2100          45   ●Candidate    —   │
-│ Cedar Home Cont…   —      {"refs":["dist_…       1900          22   ●Validating dana… │
-│ Motor cover for… clu_…    {"refs":["scout…       1800          29   ●Candidate    —   │
-│ A health row th… clu_…    {"refs":["scout…        900          51   ●Candidate    —   │
-└────────────────────────────────────────────────────────────────────────────────────────┘
-7 shown
-```
+### 7.4 `/scout/panel-bench`
+Read `scout:panel_bench:read`. **Read-only.** Sorted by period descending.
+Columns: provider, line, period, our price index, market price index, win rate,
+volume, updated at. Rows below the k-anonymity floor are not served (§4.3), and
+the provider column shows raw identifiers here — the bespoke Panel screen
+resolves them to names, this one does not.
 
-**Table columns:**
+### 7.5 `/scout/scout-experiments`
+Read `scout:experiments:read`; create `scout:experiments:create`; update
+`scout:experiments:decide`. Filter: state (draft / running / concluded /
+abandoned). Columns: whitespace, landing reference, state (badge), started at,
+concluded at, created at.
 
-| # | Column | Header | Type | Align | Sortable | Notes |
-|---|---|---|---|---|---|---|
-| 1 | `description` | Opportunity / الفرصة | text | start | no | Row link. Seeded values are 60–95 chars; the 80-char truncation bites: "Cedar Home Contents offered at the Meridian mortgage step, where the embed sells m…" |
-| 2 | `clusterId` | Cluster / المجموعة | text | start | no | Raw id; `—` for the mortgage/home row, which has no cluster (it is a product × channel gap, not a theme) |
-| 3 | `evidenceRefsJson` | Evidence / الأدلة | json | start | no | **The whole of Fact 2(a), rendered as 60 characters of 11px mono.** |
-| 4 | `demandEstimate` | Estimated demand / الطلب المقدّر | number | end | **yes** | Default sort, desc. Bare integer, no unit, no thousands separator guarantee, **no confidence** |
-| 5 | `competitionScore` | Competition / مؤشر المنافسة | number | end | no | 0–100. Higher = more contested (84 parked the visa idea) — nothing on screen says which direction is bad |
-| 6 | `status` | Status / الحالة | text, **badge** | start | no | `candidate` / `validating` / `validated` / `parked` — **all four render the same neutral grey pill** |
-| 7 | `owner` | Owner / المسؤول | text | start | no | A raw handle: `tariq.mansour`, `dana.aziz`, or `—`. Not a user record, not an avatar |
-| 8 | `promotedAt` | Promoted / تاريخ الترقية | datetime | start | no | `—` for anything never promoted |
-| 9 | `updatedAt` | Updated | datetime | start | **yes** | |
-
-**Filters.** One `<Select>`, `name="status"`, aria-label "Status": All / Candidate
-/ Validating / Validated / Parked. (Translated labels here; the badge in the table
-does go through `optionLabel`, so status *is* consistently labelled — the one
-column in SCOUT that is.)
-
-**Forms.** No create. The record screen carries an edit form for holders of
-`scout:whitespaces:promote`:
-
-| Field | Label | Control | Required | Default | Notes |
-|---|---|---|---|---|---|
-| `status` | Status | `<Select>`: Candidate / Validating / Validated / Parked | no | current value | Any transition to any other is allowed — no state machine, no guard |
-| `owner` | Owner | `<Input type="text">` | no | current | Free text. No user picker, no validation that the handle exists |
-| `promotedAt` | Promoted | `<Input type="datetime-local">` | no | current | The spec comments why this is editable: "`promote` is a generic PATCH here (no bespoke route in the API), so the stamp has to be settable or the promotion has no date." **The actor types the date of their own promotion.** |
-
-Submit: "Save changes". An empty string means "not supplied" and is dropped from
-the PATCH body; a PATCH with nothing in it answers 400 "no fields to update".
-
-**States.** Empty / filtered-empty as §6. Rejected save → red alert above the form
-carrying the API's detail. Denied → boundary.
-
-**AI surfaces.** None today. This is the second-most important place for them.
-Every `demandEstimate` is a triangulation whose method, confidence and caveat are
-already recorded structurally (Fact 2a). The pieces already exist in
-`packages/ui/src/ai.tsx`: `EvidenceLink` (dotted accent underline → popover
-labelled "Evidence"), `ConfidenceMeter` (0–1, tone-graded, with a floor below
-which the UI should require review rather than offer acceptance), `AgentBadge`
-(the single ✦ with a "why" popover). None are imported. The design brief for this
-screen: **a demand number must never be readable without its confidence in the
-same glance and its method one interaction away.** No modal — a popover or an
-inline expansion, per the ambient AI grammar.
-
-**Actions and consequences.** Editing `status` to `validated` is the act that tells
-the business to build something; there is no approval step, no confirmation, no
-audit surface on the screen (the API does write `scout.whitespaces.update` audit
-entries with before/after images, but nothing in the UI shows them). It is
-reversible in the sense that you can set it back, but the promotion date is
-whatever anyone typed and the downstream build decision is not. No delete.
-
-**Mobile.** Web only. Not reachable from the Expo app.
-
-**RTL.** Mirror layout and column order. Keep `clusterId`, the `refs` strings
-(`scout_cluster:clu_…`, `dist_offering:CDR-HOM-CONT`) and the owner handles LTR.
-`demandEstimate` and `competitionScore` should keep Western digits with
-`tabular-nums` for column comparison; if Arabic-Indic digits are ever used, they
-must be used consistently down the whole column.
-
-**What is weak today.**
-1. Fact 2(a) is invisible. "6,200" and "1,800" look equally solid. One is measured
-   against our own renewal book (high confidence); the other is "an assumed shift
-   count, no book to check it against" (low).
-2. No unit anywhere. The estimates are policies per year and the screen never says
-   so.
-3. All four statuses are the same grey. The pipeline this table represents has no
-   visual shape.
-4. `competitionScore` has no polarity. 84 killed the visa opportunity; 22 is why
-   the mortgage row survives. Nothing says high is bad.
-5. Promotion is a text field plus a hand-typed date, not an action. There is no
-   "Promote" button, no reason capture, no record of who promoted.
-6. No path from a whitespace to its cluster, its signals, or its experiments —
-   even though `whitespaceId` on Experiments points straight back here.
-7. `owner: null` renders as `—` with no "assign" affordance.
+### 7.6 `/scout/data-products`
+Read `scout:data_products:read`; create `scout:data_products:create`; update
+`scout:data_products:publish`. Filter: delivery (API feed / report). Columns:
+name, consent basis, aggregation minimum, delivery, status (badge), updated at.
+Consent basis and aggregation minimum are **required** on create — a data
+product cannot exist without naming why it may exist and how thin it will go.
 
 ---
 
-### 7.4 `/scout/panel-bench` — Panel benchmarks
+## 8. The generated record screen — `/scout/:resource/:id`
 
-| | |
-|---|---|
-| **Path** | `/scout/panel-bench` |
-| **Page title** | "Market"; tab label "Panel benchmarks" (`panel-bench`, ar "مقارنة المزودين") |
-| **API** | `GET /v1/scout/panel-bench` only — read-only resource |
-| **Generated?** | Yes, entirely |
-
-**Who sees it.** `scout:panel_bench:read` — `scout.admin`, `scout.lead`,
-`scout.pm`, `tenant.admin`, **`provider.viewer`**. No writes exist for anyone.
-For `provider.viewer` the tab strip shows two tabs (Panel benchmarks, Data
-products) and nothing else.
-
-**Purpose.** How each panel provider prices and wins against the panel median, by
-line and month. It is the input to a negotiation conversation.
-
-**Layout.**
-
-```
-Market
-[…tabs…]
-                                            ← no filter bar (none declared), no create
-┌────────────────────────────────────────────────────────────────────────────────────┐
-│ PROVIDER   LINE    PERIOD ▼  OUR PRICE IDX  MARKET PRICE IDX  WIN RATE  VOLUME  UPD│
-├────────────────────────────────────────────────────────────────────────────────────┤
-│ prv_cedar  motor   2026-01           9420            10000        44    1812   …   │
-│ prv_falcon motor   2026-01          10380            10000        27    1640   …   │
-│ prv_gonxt  motor   2026-01          10110            10000        19    1704   …   │
-│ prv_oryx   motor   2026-01          10640            10000         6     388   …   │
-│ prv_gulfh… health  2026-01           9880            10000        34      41   …   │
-│ prv_gonxt  travel  2026-01           9240            10000        61     623   …   │
-│ prv_cedar  home    2026-01          10050            10000        52     214   …   │
-│ prv_oryx   life    2026-01              —                —        38      76   …   │
-│ prv_merid… loan    2026-01              —                —        71     132   …   │
-│ prv_cedar  motor   2025-12           9510            10000        47    1996   …   │
-│ …                                                                                  │
-└────────────────────────────────────────────────────────────────────────────────────┘
-12 shown
-```
-
-**Table columns:**
-
-| # | Column | Header | Type | Align | Sortable | Notes |
-|---|---|---|---|---|---|---|
-| 1 | `providerId` | Provider / المزود | text | start | no | Raw id. Not the provider's name. Row link. |
-| 2 | `line` | Line / خط المنتج | text | start | no | `motor`, `health`, `travel`, `home`, `life`, `loan` — raw, untranslated |
-| 3 | `period` | Period / الفترة | text | start | **yes** | `"YYYY-MM"` as a *string*. Default sort, desc — which happens to sort correctly, but it is lexical, not chronological |
-| 4 | `ourPriceIdx` | Our price index / مؤشر سعرنا | number | end | no | Basis points; 10000 = panel median. `9420` means 5.8% below median. Nothing on screen explains basis points |
-| 5 | `marketPriceIdx` | **Market price index** / مؤشر سعر السوق | number | end | no | **Always 10000. This is Fact 2(b): it is GONXT's own quote-response median, and the label says "Market".** |
-| 6 | `winRate` | Win rate / نسبة الفوز | number | end | no | 0–100, no `%` sign rendered |
-| 7 | `volume` | Volume / الكمية | number | end | no | Requests. Gulf Health's 34 win rate is on 41 requests |
-| 8 | `updatedAt` | Updated | datetime | start | **yes** | |
-
-**Not shown:** `coverageGapsJson`, which is the most decision-useful column in the
-table. Examples: `{"term":"agency_repair","ours":false,"panelMedian":true,"note":"The
-cheapest row is cheapest partly because of this."}`;
-`{"term":"quote_latency","oursSeconds":118,"panelMedianSeconds":3,"note":"Priced by
-hand against a 120s SLA, so most requests are decided before the row arrives."}`.
-This is the explanation for the win rate sitting in the next column, and it is not
-on the screen.
-
-**Filters.** None declared. No filter bar. There is no way to look at one provider,
-one line, or one period without reading the whole table.
-
-**Forms.** None. Read-only.
-
-**States.** Empty "Nothing here yet". Denied → boundary. No filtered state — no
-filters exist.
-
-**AI surfaces.** None. These are computed indices rather than model outputs, so the
-absence is defensible — but the derivation ("basis points against the panel median
-for the same risk, where the median is our own quote responses") is exactly the
-kind of claim `EvidenceLink` exists for.
-
-**Actions and consequences.** None.
-
-**Mobile.** Web only.
-
-**RTL.** Mirror the table. Numbers stay LTR with `tabular-nums`; a basis-point
-index is a magnitude comparison down a column and must stay column-aligned.
-`providerId` and `line` are LTR tokens. **Do not mirror a price-index scale** if
-one is added — a bar that runs from the 10000 baseline reads as "cheaper" in one
-direction, and mirroring it inverts the claim.
-
-**What is weak today.**
-1. "Market price index" is a false label (Fact 2b). It is our own median.
-2. Every value in that column is `10000`. A whole column of identical numbers,
-   because it is a baseline and not a measurement.
-3. `winRate` and `volume` are adjacent, unlinked numbers. 34% on 41 requests reads
-   the same as 44% on 1,812.
-4. `coverageGapsJson` — the reason behind every win rate on the table — is not
-   rendered at all.
-5. No filters on a table that is inherently sliced by provider × line × period.
-6. `providerId` is a raw id, so the reader must know which id is Cedar.
-7. `null` indices (life, loan) render as `—` with no explanation, though the data
-   explains them: no second life row to index against; a loan referral has no
-   premium.
-8. Basis points are shown as raw four- and five-digit integers.
+The platform's standard record screen: the row's fields as a definition list,
+an edit form for the resource's editable fields if the actor holds the update
+permission, and the row's audit trail. For `whitespaces` the same approval gate
+described in §7.3 applies to the save. Nothing about this screen is
+SCOUT-specific.
 
 ---
 
-### 7.5 `/scout/scout-experiments` — Experiments
+## 9. Whitespace commentary — the contract, and why this section exists
 
-| | |
-|---|---|
-| **Path** | `/scout/scout-experiments` (the doubled word is real — the resource is registered as `scout-experiments` under `/v1/scout/`) |
-| **Page title** | "Market"; tab label "Experiments" (`scout-experiments`, ar "التجارب") |
-| **API** | `GET/POST /v1/scout/scout-experiments`, `PATCH /v1/scout/scout-experiments/:id` |
-| **Generated?** | Yes, entirely |
+### 9.1 The lesson, first
 
-**Who sees it.** Read: `scout:experiments:read` — `scout.admin`, `scout.lead`,
-`scout.pm`, `tenant.admin`. Create: `scout:experiments:create` — `scout.admin`,
-`scout.lead`, `scout.pm`. Edit (conclude): `scout:experiments:decide` —
-**`scout.admin` and `scout.lead` only**. A `scout.pm` can start an experiment and
-cannot end one; the spec comment says why: "Concluding an experiment is a
-decision, not an edit." `tenant.admin` reads only.
+The component that renders whitespace commentary was once written against an
+**assumed** API contract. It expected a stance, a note, a confidence and a list
+of lines. The server sent none of those. Every rendered figure read `undefined`,
+the surface looked alive in review, and the tests stayed green — because the
+fixtures had been written to match the assumption rather than the server.
 
-**Purpose.** The landing-page tests that turn a demand estimate into an observed
-number, and the record of what each test concluded.
+A second near-miss on the same surface: an earlier draft called the coverage
+figure `coverageGap`, labelled it "Uncovered" and printed it with a percent
+sign. It is neither a gap nor a percentage — it is a **count of the tenant's own
+active contracts on that line**. Thirty-four contracts on the book rendered as
+"34% uncovered", a number a reader would have acted on.
 
-**Layout.**
+Hence this section. What follows is read off the server, not off the web
+component. If you are designing a new surface over this data, design against
+these fields and nothing else.
 
-```
-Market
-[…tabs…]
+### 9.2 What one commentary row actually contains
 
-[ State ▾ ] [Apply] [Clear]
+The Radar asks for all of them at once (default 50 rows, capped at 200, ordered
+by demand estimate descending, and only rows in `candidate`, `validating` or
+`validated`). One row carries exactly:
 
-+ New — Experiments
-
-┌──────────────────────────────────────────────────────────────────────────────────┐
-│ WHITESPACE   LANDING PAGE             STATE      STARTED ▼   CONCLUDED   CREATED │
-├──────────────────────────────────────────────────────────────────────────────────┤
-│ wsp_…        x/agency-repair-renewal  ●Concluded  8 Jun      29 Jun      4 Jun   │
-│ wsp_…        x/agency-repair-renewal  ●Concluded  6 Jul      27 Jul      4 Jul   │
-│ wsp_…        x/ev-battery-cover       ●Running   21 Jul          —      20 Jul   │
-│ wsp_…        x/domestic-helper-cover  ●Running   28 Jul          —      26 Jul   │
-│ wsp_…             —                   ●Draft         —          —      18 Jul   │
-│ wsp_…        x/single-trip-travel     ●Abandoned 10 Jul      14 Jul       8 Jul  │
-└──────────────────────────────────────────────────────────────────────────────────┘
-6 shown
-```
-
-**Table columns:**
-
-| # | Column | Header | Type | Align | Sortable | Notes |
-|---|---|---|---|---|---|---|
-| 1 | `whitespaceId` | Whitespace / الفجوة | text | start | no | Raw `wsp_…` id. Row link. Two rows share one whitespace (the replication pair) and nothing on screen shows that |
-| 2 | `landingRef` | Landing page / صفحة الهبوط | text | start | no | A path fragment: `x/agency-repair-renewal`. **Not a URL and not a link** — nothing on this screen opens the page being tested |
-| 3 | `state` | State / الوضع | text, **badge** | start | no | `draft` → grey, `running` → **info blue** (the only coloured badge in SCOUT), `concluded` → grey, `abandoned` → grey |
-| 4 | `startedAt` | Started / تاريخ البدء | datetime | start | **yes** | `—` on a draft |
-| 5 | `concludedAt` | Concluded / تاريخ الانتهاء | datetime | start | no | `—` while running |
-| 6 | `createdAt` | Created | datetime | start | **yes** | |
-
-**Not shown in the list:** `trafficPlanJson` and `resultsJson` — the spend cap and
-the outcome. So the list tells you an experiment ran and stopped, and nothing about
-what it cost or what it found.
-
-**Filters.** One `<Select>`, `name="state"`, aria-label "State": All / Draft /
-Running / Concluded / Abandoned.
-
-**Create form** (2-column grid):
-
-| Field | Label | Control | Required | Notes |
-|---|---|---|---|---|
-| `whitespaceId` | Whitespace | `<Input type="text">` | **yes** | **A free-text id field.** No picker, no validation against the whitespace table on the client; a wrong id is accepted until the API objects |
-| `landingRef` | Landing page | `<Input type="text">` | no | free text |
-| `trafficPlanJson` | Traffic plan | `<Textarea rows={6}>` mono 12px | no | Hand-authored JSON |
-
-The seeded traffic plans have a fixed shape the form does not hint at:
-
-```json
-{
-  "channels": ["gonxt-web", "gonxt-app"],
-  "dailyCapMinor": 120000,
-  "currency": "AED",
-  "maxDays": 21,
-  "bannerKey": "scout.experiment.not_yet_available",
-  "stopRule": "halt at the cap or at maxDays, whichever comes first"
-}
-```
-
-`bannerKey` is the honesty banner: a landing page measuring demand for something
-GONXT cannot yet sell must say so on the page. **The key `scout.experiment.not_yet_available`
-has no entry in `apps/web/app/i18n/en.ts` or `ar.ts`.** It exists in seeded data and
-resolves to nothing.
-
-**Edit form** (`scout:experiments:decide` holders only):
-
-| Field | Label | Control | Notes |
-|---|---|---|---|
-| `state` | State | `<Select>`: Draft / Running / Concluded / Abandoned | Any transition to any other; no guard, no confirm |
-| `startedAt` | Started | `<Input type="datetime-local">` | hand-typed |
-| `concludedAt` | Concluded | `<Input type="datetime-local">` | hand-typed |
-| `resultsJson` | Results | `<Textarea rows={6}>` mono | The verdict, hand-authored JSON |
-
-Seeded results carry a consistent vocabulary the form does not enforce:
-`{visits, quoteStarts, waitlist, qualifiedDemandBps, verdict, note}` for a
-concluded run (`"verdict": "supported"`, 686 bps); `{replicationOf, …, "verdict":
-"did_not_replicate"}` for the repeat that failed on broker and call traffic (159
-bps); `{interim: true, asOf, …, spentMinor}` with **no verdict** while running;
-`{…, stoppedReason, spentMinor}` for the abandoned one.
-
-**States.** Empty / filtered-empty as §6. Rejected create → alert + re-opened
-panel. Denied → boundary. There is no "running" indicator beyond the blue badge —
-no progress against `maxDays`, no spend against `dailyCapMinor`, even though
-`spentMinor` is in the results blob (810,000 minor units on the EV waitlist).
-
-**AI surfaces.** None.
-
-**Actions and consequences.** Creating an experiment records an intent to spend;
-setting `state` to `running` is the act that starts a public landing page pointed
-at a product that does not exist. There is **no confirmation dialog**, no approval
-gate, no budget display, no link to the page itself. Under CLAUDE.md §4 an
-outbound public surface is the shape of a consequential action; this screen treats
-it as a select box. Concluding is likewise a plain select. Nothing is deletable.
-
-**Mobile.** Web only.
-
-**RTL.** Mirror layout. Keep `landingRef` (`x/agency-repair-renewal`),
-`whitespaceId` and the JSON blocks LTR — a JSON object rendered in an RTL run puts
-the braces and colons in visually wrong places. The `<Textarea>` for JSON should
-carry `dir="ltr"` regardless of locale.
-
-**What is weak today.**
-1. The results — the only reason an experiment exists — are not in the list and
-   are raw JSON on the record.
-2. `verdict: "supported"` vs `verdict: "did_not_replicate"` is the single most
-   important word in this module and it is buried inside a blob.
-3. The replication pair (same whitespace, same landing page, different channels,
-   opposite outcomes) is invisible; `replicationOf` is inside the JSON.
-4. No spend surface. `dailyCapMinor`, `spentMinor` and `maxDays` exist and none
-   render. `BudgetMeter` exists in the design system and is unused here.
-5. `landingRef` is not a link.
-6. The honesty banner key has no translation.
-7. `whitespaceId` is typed by hand.
-8. `scout_experiments` has **no `updatedAt` column** at all — the record screen's
-   "Updated" row simply never appears for this resource.
-
----
-
-### 7.6 `/scout/data-products` — Data products
-
-| | |
-|---|---|
-| **Path** | `/scout/data-products` |
-| **Page title** | "Market"; tab label "Data products" (`data-products`, ar "منتجات البيانات") |
-| **API** | `GET/POST /v1/scout/data-products`, `PATCH /v1/scout/data-products/:id` |
-| **Generated?** | Yes, entirely |
-
-**Who sees it.** Read: `scout:data_products:read` — `scout.admin`, `scout.lead`,
-`tenant.admin`, **`provider.viewer`**. Create: `scout:data_products:create` —
-`scout.admin`, `scout.lead`. Edit/publish: `scout:data_products:publish` —
-**`scout.admin` only**. Note `scout.pm` has **no read** here at all: the tab is
-absent from their tab strip. A `scout.lead` can create a data product and cannot
-publish it.
-
-**Purpose.** The catalogue of aggregate cuts sold or shared back to the panel, each
-carrying what licenses it and the cell floor below which it is suppressed.
-
-**Layout.**
-
-```
-Market
-[…tabs…]
-
-[ Delivery ▾ ] [Apply] [Clear]
-
-+ New — Data products
-
-┌───────────────────────────────────────────────────────────────────────────────────┐
-│ NAME                                   CONSENT BASIS       AGG. FLOOR DELIVERY ST…│
-├───────────────────────────────────────────────────────────────────────────────────┤
-│ Motor demand curve by emirate and age…  consent:dataSharing        20   api  ●Publ…│
-│ Motor coverage-gap map                  provider_agreement…        20   report ●Pu…│
-│ Travel demand seasonality               consent:dataSharing        20   report ●Pu…│
-│ Health quote-to-bind elasticity         consent:dataSharing        50   report ●Dr…│
-│ Panel response-time benchmark           provider_agreement…        20   api  ●Susp…│
-│ Home contents sum-insured distribution  consent:dataSharing        20   api  ●Draft│
-└───────────────────────────────────────────────────────────────────────────────────┘
-6 shown
-```
-
-**Table columns:**
-
-| # | Column | Header | Type | Align | Sortable | Notes |
-|---|---|---|---|---|---|---|
-| 1 | `name` | Name / الاسم | text | start | no | Row link. "Motor demand curve by emirate and age band" is 44 chars, safely inside the 80-char cut |
-| 2 | `consentBasis` | Consent basis / أساس الموافقة | text | start | no | Two seeded values: `consent:dataSharing` (points at GONXT's own recorded consent flags) and `provider_agreement:panel_wordings` (a cut with no customer data in it) |
-| 3 | `aggregationMin` | Aggregation floor / الحد الأدنى للتجميع | number | end | no | k-anonymity floor. Module default 20; the health cut is 50 |
-| 4 | `delivery` | Delivery / طريقة التسليم | text | start | no | Raw `api` / `report` — untranslated in the column, translated in the filter |
-| 5 | `status` | Status / الحالة | text, **badge** | start | no | `published` / `draft` / **`suspended`** — all three neutral grey |
-| 6 | `updatedAt` | Updated | datetime | start | **yes** | |
-
-**Not shown:** `definitionJson` and `subscribersJson`. Both matter:
-
-- `definitionJson` contains a `refresh` block: `{cadence, lastRunAt, state}` where
-  `state` is `fresh` / `stale` / `never_run` / `halted`. One seeded product is
-  **published and stale** — "Travel demand seasonality", last run 23 days ago on a
-  weekly cadence, with `"failure": "the travel connector run has errored since the
-  last successful build"`. A subscriber is reading a report three weeks behind its
-  own cadence, and the catalogue screen — which the seed comment says "is meant to
-  surface exactly this" — does not surface it.
-- `subscribersJson` is who is receiving it, with `since` and sometimes
-  `suspendedAt`.
-
-**Filters.** One `<Select>`, `name="delivery"`: All / API / Report. **There is no
-status filter**, so there is no way to list the suspended or draft products.
-
-**Create form:**
-
-| Field | Label | Control | Required | Notes |
-|---|---|---|---|---|
-| `name` | Name | `<Input type="text">` | **yes** | |
-| `definitionJson` | Definition | `<Textarea rows={6}>` mono | **yes** | Hand-authored. Real shape: `{source, dimensions[], measures[], window, refresh{cadence,lastRunAt,state}, suppression}` |
-| `consentBasis` | Consent basis | `<Input type="text">` | **yes** | **Free text**, though only two values are in use. The spec comment: "Selling aggregate insight without a recorded basis is the one thing this table exists to prevent." |
-| `aggregationMin` | Aggregation floor | `<Input type="number" step={1}>` | **yes** | No minimum enforced in the UI; the module policy floor is 20 |
-| `delivery` | Delivery | `<Select>`: API / Report | no | DB default `report` |
-
-**Edit form** (`scout.admin` only):
-
-| Field | Label | Control | Notes |
-|---|---|---|---|
-| `status` | Status | **`<Input type="text">`** | Not a select. The publish/suspend decision is typed as a string, with no option list and no validation |
-| `aggregationMin` | Aggregation floor | number input | **Lowering this widens what is disclosed.** No confirmation |
-| `delivery` | Delivery | `<Select>`: API / Report | |
-| `subscribersJson` | Subscribers | `<Textarea rows={6}>` mono | Hand-edited JSON array |
-
-**States.** Empty / filtered-empty as §6. Denied → boundary. Rejected write →
-alert. There is no state for "stale", "halted" or "never run" — those live inside
-the definition blob.
-
-**AI surfaces.** None. Correctly so: nothing here is model-generated.
-
-**Actions and consequences.** **This is the most consequential screen in SCOUT and
-it looks like the least.** Setting `status` to `published` starts disclosing
-aggregate data derived from customers' quote requests to named external
-counterparties. Lowering `aggregationMin` changes the k-anonymity floor beneath
-which cells are dropped. Editing `subscribersJson` adds or removes a recipient.
-All three are plain form fields with a single "Save changes" button, no
-confirmation, no approval gate, no diff, no audit surface. The seeded suspension
-exists precisely because a cut keyed on `providerId` let a subscriber read a
-competitor's latency straight off it.
-
-**Mobile.** Web only.
-
-**RTL.** Mirror layout. Keep `consent:dataSharing`, `provider_agreement:panel_wordings`
-and the JSON blocks LTR. `aggregationMin` stays a Western-digit numeral aligned to
-the inline-end edge.
-
-**What is weak today.**
-1. The refresh state — fresh / stale / never_run / halted — is invisible, including
-   on a product that is published and 23 days stale with a recorded failure.
-2. `published`, `draft` and `suspended` are the same grey pill.
-3. No status filter, so the suspended product cannot be found by filtering.
-4. `status` is edited as free text on the record screen while it renders as a badge
-   in the list.
-5. `consentBasis` is free text on a field whose entire purpose is to be a checkable
-   basis.
-6. Subscribers are invisible in the list and hand-edited JSON on the record.
-7. Lowering the aggregation floor — a privacy decision — has no more friction than
-   renaming the product.
-
----
-
-## 8. The record route — `/scout/:resource/:id`
-
-One file (`routes/record.tsx`) serves all six SCOUT resources. There is no
-per-resource layout.
-
-**Path.** `/scout/signals/sig_…`, `/scout/clusters/clu_…`,
-`/scout/whitespaces/wsp_…`, `/scout/panel-bench/pnb_…`,
-`/scout/scout-experiments/sxp_…`, `/scout/data-products/dtp_…`.
-
-**Who sees it.** Same read permission as the parent tab. The edit form appears only
-if the tab declares an `update` permission **and** the actor holds it **and** the
-editable field list is non-empty. So: Signals, Clusters and Panel benchmarks are
-read-only for everyone; Whitespace, Experiments and Data products show a form to
-their respective holders. No SCOUT resource declares `remove`, so **the delete
-button never renders anywhere in SCOUT**. No SCOUT resource declares `actions`, so
-the "Actions" section never renders. No SCOUT resource declares `recordLink`, so
-the secondary button under the heading never renders.
-
-**Layout.**
-
-```
-Back to list                                        ← 12px subtle link
-Motor cover that prices battery, home charger…      ← h1, display 24px = column 1's value
-Whitespace · wsp_01H8…                              ← 12px subtle, id in mono
-
-┌──────────────────────────────────────────────────────────────────────┐
-│ Opportunity          Cluster              Evidence                   │  <dl>, 3 columns ≥lg
-│ Motor cover that…    clu_9f2…             {"refs":["scout_cluster…   │  2 columns ≥sm
-│                                                                      │  1 column below
-│ Estimated demand     Competition          Status                     │
-│ 3400                 38                   ●Validating                │
-│                                                                      │
-│ Owner                Promoted             Updated                    │
-│ tariq.mansour        18 Jul 2026 09:12    21 Jul 2026 14:03          │
-│                                                                      │
-│ Created                                                              │
-│ 2 Jun 2026 11:40                                                     │
-└──────────────────────────────────────────────────────────────────────┘
-
-┌──────────────────────────────────────────────────────────────────────┐
-│ Edit                                                                 │  h2, display 16px
-│ ┌──────────────────────┐  ┌──────────────────────┐                   │
-│ │ Status  [Validating▾]│  │ Owner  [tariq.mansour]│                  │  grid, 2 cols ≥sm
-│ └──────────────────────┘  └──────────────────────┘                   │
-│ ┌──────────────────────┐                                             │
-│ │ Promoted [2026-07-18T09:12]                                        │
-│ └──────────────────────┘                                             │
-│ [ Save changes ]                                                     │
-└──────────────────────────────────────────────────────────────────────┘
-```
-
-**Every element.**
-- "Back to list" — `common.back`, 12px subtle, links to the parent tab.
-- `<h1>` — **the value of the tab's first column**, not a title. So: a signal's
-  heading is its `source` word (`"search"`); a cluster's is its theme; a
-  whitespace's is its description sentence; a panel benchmark's is a raw
-  `providerId`; an experiment's is a raw `wsp_…` id; a data product's is its name.
-  Three of six SCOUT record screens are headed by something unreadable.
-- Sub-line: `<tab label> · <id in mono>`.
-- `<dl>` panel: `rounded-lg border border-border bg-surface-1 p-4`, `grid gap-x-8
-  gap-y-4`, `sm:grid-cols-2 lg:grid-cols-3`. Every column in the tab's `columns`
-  array gets a `<dt>` (12px subtle label) and a `<dd>` (13px value via the same
-  `Cell` renderer as the table — **including the 60-character JSON truncation**).
-  Then "Created" and "Updated" from `common.*` when the row has them.
-- Edit form: `<h2>` "Edit", a 2-column grid of `Field`-wrapped inputs, and a
-  primary "Save changes". Datetime inputs are pre-filled with
-  `iso.slice(0, 16)`; JSON textareas are pre-filled with
-  `JSON.stringify(value, null, 2)` — pretty-printed, 6 rows, mono 12px.
-
-**States.**
-- *Loading:* none — navigation blocks.
-- *Not found / denied:* the root boundary, "This did not load" + "There is nothing
-  at this address." (404) or "Your roles do not include access to this area."
-  (403), plus "Reference {id}" and "Try again".
-- *Rejected save:* red `role="alert"` above the definition list with the API's
-  detail; the form keeps the typed values.
-- *Successful save:* the loader re-runs and the values update. **There is no
-  success message on a plain update** — `common.saved` is only shown for declared
-  actions, and SCOUT declares none.
-- *Malformed JSON in a textarea:* `JSON.parse` throws inside the action, which is
-  not an `ApiError`, so it propagates to the error boundary: the actor gets the
-  generic "This did not load" page and loses everything they typed.
-
-**AI surfaces.** None on any SCOUT record. The record screen is the natural home
-for the inspectable "why" the ambient grammar requires — a cluster's membership and
-trail, a whitespace's method and confidence — and today it is a definition list of
-truncated JSON.
-
-**Mobile.** Only `/m/scout/<id>` exists, and only for signals. It renders **every
-field the API returns**, in API order, as `key` (the raw camelCase field name, not
-a translated label) over a selectable value; objects and arrays are
-`JSON.stringify(value, null, 2)`. So — perversely — the mobile signal detail is the
-only place in the product where a signal's full payload, including the `dismissed`
-block and its reason, is actually readable. It is readable as raw JSON under a
-label that says `payloadJson`.
-
-**RTL.** The `<dl>` grid mirrors. Values that are identifiers, JSON or references
-must not. The mono id in the sub-line needs `dir="ltr"`.
-
-**What is weak today.**
-1. The `<h1>` is column one's value, which for three of six SCOUT resources is an
-   opaque id or a bare enum word.
-2. JSON fields — Evidence, Payload, Traffic plan, Results, Definition, Subscribers
-   — display truncated at 60 characters in the read panel while the *edit* textarea
-   below shows the same value pretty-printed in full. The read view is strictly
-   worse than the write view.
-3. No history, no audit trail, no "who promoted this and when" beyond a hand-typed
-   date, though the API writes before/after audit images on every update.
-4. No links between records: a whitespace does not link to its cluster or its
-   experiments; an experiment does not link to its whitespace; a signal does not
-   link to its cluster.
-
----
-
-## 9. Cross-cutting notes
-
-### 9.1 AI surfaces — the summary
-
-**There is no ✦ anywhere in SCOUT.** No `AgentBadge`, no `GhostText`, no
-`EvidenceLink`, no `ConfidenceMeter`, no `GuardrailNotice`. Grepping the web app
-for those imports returns eight files — approvals, dist-offers, ai-run,
-quote-compare, conversation, ai-budget, ai-console, admin — and **not one SCOUT
-screen**, because SCOUT has no screen of its own to put them on.
-
-This matters more in SCOUT than anywhere else in the product, because SCOUT is the
-only workspace whose rows are *all* inferences. Specifically:
-
-| Where | What is model-derived | What the UI shows |
+| Field | Meaning | Can be empty? |
 |---|---|---|
-| Signals → `clusterId` | the model's cluster assignment | a raw id |
-| Signals → `embeddingRef` | the vector written by the harvester | nothing |
-| Clusters → `theme`, `summary` | generated prose | plain text, no marker |
-| Clusters → `momentumScore` | volume × growth × novelty, 0–100 | a bare integer |
-| Clusters → `trailJson` | the momentum series | nothing |
-| Whitespace → `demandEstimate` | a triangulation | a bare integer |
-| Whitespace → evidence `{method, confidence, note}` | the working | 60 chars of mono |
+| whitespace id | which row this is about | no |
+| category | the product line the candidate was flagged on | **yes — null** |
+| status | the whitespace's status word | no |
+| commentary | **one sentence** explaining why this is whitespace | **yes — null when suppressed** |
+| evidence | the five numbers the sentence was checked against | **yes — null when suppressed** |
+| why | the evidence as one plain line each, for display | **yes — empty when suppressed** |
+| ai | provenance: the ✦ marker, an audit reference, model, provider, tier, timestamp | **yes — null when the sentence was not written by a model** |
+| suppressed | true when there is too little behind the row to say anything | no |
 
-The grammar the platform requires (CLAUDE.md §11, docs/15 §4): ghost text, quiet
-chips, background drafts. Never a modal. One ✦ marker per AI artifact, and a "why"
-one interaction away. The components exist and are documented:
+The **evidence** object is five fields and no more: category, demand momentum
+(0–100), coverage (a **count** of active contracts on the book for that
+category), competition score (0–100, or **null** meaning "not measured"), and
+the count of demand signals behind the candidate.
 
-- `AgentBadge({agent, why})` — an accent `Badge` containing `✦` plus text; wrapped
-  in a `Popover` labelled "Why this was drafted" when `why` is supplied.
-- `EvidenceLink({children, source, sourceLabel})` — dotted accent underline on the
-  claim; popover with an uppercase "Evidence" caption and the source detail. This
-  is the right primitive for `demandEstimate` → `{method, confidence, note, refs}`.
-- `ConfidenceMeter({value, label, floor})` — 0–1, labelled bar, tone flips at the
-  floor (default 0.7); below the floor the UI is supposed to require review rather
-  than offer acceptance. SCOUT's confidence is a three-value enum
-  (`low`/`medium`/`high`), so it maps cleanly.
+The **why** lines are the exact lines the model was given and scored against —
+so the "why" a reader inspects and the pool the sentence was verified against
+cannot drift apart. They are rendered **verbatim and untranslated on purpose**:
+they are the audit trail, not copy. Do not design a localised or prettified
+version of them.
 
-**Constraints for any AI surface added here:** no modal; no auto-send; the marker
-is `✦` and only `✦`; the "why" must be inspectable, not a tooltip that vanishes;
-and an estimate below high confidence must read as an argument, not a fact.
+### 9.3 Three states, and what each looks like
 
-### 9.2 Vocabulary — a live rule
+**Written by a model.** `ai` is present, `commentary` is a sentence. The surface
+shows ✦, the sentence, and the "why" is inspectable. This is the only state in
+which a ✦ appears.
 
-CLAUDE.md §14: never hard-code industry nouns. SCOUT's label table is clean — it
-says "Opportunity", "Estimated demand", "Line", "Provider" rather than "product
-gap", "policies", "insurer". Keep it that way. But the *data* is full of insurance
-nouns (`motor`, `health`, `travel`, `agency repair`, `maternity waiting periods`)
-and that is fine — those are tenant content, not chrome. The line: a word baked
-into the design is a bug; a word that arrives from a row is data.
+**Written by the fallback.** When the model was unreachable, slow, or said
+something the evidence did not support, the sentence is a deterministic template
+— `"<category>: demand momentum <n> vs. <n> contracts on the book"`. It reads
+like prose but no model wrote it, so **`ai` is null and there is no ✦**. The
+reader still gets the sentence and the evidence.
 
-Related: the enum values `search`, `quotes`, `abandonment`, `reviews`, `news`,
-`regulatory`, `motor`, `health`, `api`, `report` render **raw** in table columns
-because those columns are `type: "text"`. Only `badge` columns and `select`
-options run through `optionLabel`. Any redesign should route every enum through
-the label table.
+**Suppressed.** Too few signals behind the cell (§4.3). `commentary`, `evidence`
+and `ai` are all null and `why` is empty. The surface shows, in place of the
+sentence: *"Too few signals behind this cell to say anything about it without
+describing the people in it."* No ✦, no numbers, no partial reveal.
 
-### 9.3 Mobile — the whole truth
+### 9.4 The two components that render it
 
-`apps/mobile` maps `/scout` → `scout/signals` and nothing else. Clusters,
-Whitespace, Panel benchmarks, Experiments and Data products are **web only**; they
-are not merely unstyled on mobile, they have no route. A nav href with no mapping
-renders "Not on mobile yet" — but `/scout` *is* mapped, so mobile users get a list
-of signal ids and never learn the other five tables exist.
+**The ghost** — what a Radar hover shows. A 224px-wide floating card, centred on
+the dot, above it by default and **below it when the dot sits high on the
+chart** so it never leaves the canvas. It is **always in the DOM and always in
+the accessibility tree**; hover and keyboard focus only change its opacity, and
+it respects reduced-motion. Each dot points at its own ghost by description, so
+tabbing to a dot announces the commentary without any pointer. Contents, in
+order: ✦ (only when a model wrote it), the sentence *or* the suppressed line,
+one fact line, and the status word.
 
-Mobile list copy: "Back", the workspace label "Market", "{n} shown", "There is
-nothing here yet.", "Loading", "Try again", "Reference {id}". Errors:
-"Your roles do not include access to this area." / "There is nothing at this
-address." / "No connection to the server. Check the network and try again."
+The fact line is four figures joined by a middle dot, all locale-formatted:
+**Demand momentum**, **On the book**, **Competition** (or "Not measured"), and
+**Signals read**.
 
-Cards are `minHeight: TOUCH_TARGET` with hairline borders and a pressed surface
-change. `accessibilityRole="link"`, label = `"<title>, <subtitle>"`. The back
-button aligns to `flex-end` when `dir === "rtl"`.
+**The chip** — what the dossier beside the Radar shows. A status badge, an
+evidence link that opens the "why", a ✦ when a model wrote it, and the sentence.
+When there is no "why" to open (a suppressed row), the evidence link degrades to
+plain text rather than an inert link.
 
-### 9.4 RTL — the general rule for this module
+The "why" panel itself contains: the five lines verbatim, an audit reference for
+the AI run, "provider · model", and the timestamp the sentence was written.
 
-Mirror: page layout, sidebar, tab strip, filter bar order, table column order,
-definition-list grid, form field order, button rows. The shell and every primitive
-already use logical properties (`margin-inline-start`, `text-start`, `ps-`/`pe-`),
-so this is free.
+### 9.5 Status words
 
-Do **not** mirror:
-- Identifiers and reference strings — `clu_…`, `wsp_…`, `sig_…`,
-  `search-trends:ae/ev-car-insurance`, `dist_offering:GNX-MOT-STD`,
-  `x/agency-repair-renewal`, `consent:dataSharing`. Wrap in `dir="ltr"` +
-  `unicode-bidi: isolate` or the punctuation lands in the wrong place.
-- JSON, in read view and in textareas alike.
-- Numeric magnitudes that are compared down a column (`demandEstimate`,
-  `momentumScore`, price indices, win rates) — keep `tabular-nums` and one digit
-  system for the whole column.
-- **Any trend line, sparkline or momentum series that is ever added.** A time axis
-  reads left→right in both locales; mirroring it inverts "rising" into "falling".
-  This is the single most likely RTL mistake in a redesigned SCOUT, because the
-  data most obviously missing from these screens is exactly the momentum trail.
-
-Sorted-column arrow glyphs (`▲ ▼ ↕`) are direction-neutral and need no change.
+Five status words are translated for display: **Candidate**, **Being checked**
+(`validating`), **Checked** (`validated`), **Parked**, and — for a status the
+front end does not recognise — **Status not read**. Note that the whitespace
+card screen uses a different, longer vocabulary for the same column (§10.2); the
+two do not agree, which is part of the §4.4 defect.
 
 ---
 
-## 10. What is weak across the whole module
+## 10. The nine bespoke screens
 
-In rough order of cost:
+Each entry below covers: URL, what the screen loads, what it renders, every
+interaction, its permission gate, any approval, its AI surfaces, and its
+empty/degraded/error states. All nine sit in the §3 shell and all nine are
+refused to actors outside the `scout.*` / `provider.*` role prefixes (§5.3).
 
-1. **No screen expresses SCOUT's actual shape.** Signals → clusters → whitespace →
-   experiments is a chain, and the UI is six unrelated tables with raw foreign-key
-   ids and no links between them.
-2. **The most decision-relevant data is in JSON columns that render as 60
-   characters of grey mono**: `evidenceRefsJson` (method, confidence, note),
-   `payloadJson` (the observation, including the dismissal), `resultsJson` (the
-   verdict), `trafficPlanJson` (the spend cap), `definitionJson` (the refresh
-   state), `subscribersJson` (the recipients).
-3. **Columns that exist in the database and on no screen:** `trailJson` and
-   `firstSeen` (clusters), `coverageGapsJson` (panel bench), `embeddingRef` and
-   `payloadJson` (signals — payload is on the record only, truncated).
-4. **Status has no colour.** Eight of SCOUT's ten status values fall through the
-   shared tone map to neutral grey. A suspended data product and a published one
-   are the same pill.
-5. **Zero AI markers on an all-inference workspace** (§9.1).
-6. **Consequential actions have no ceremony**: publishing a data product, lowering
-   a k-anonymity floor, starting a public landing page, promoting a whitespace to
-   validated — each is a form field and a "Save changes" button.
-7. **Every heading says "Market"**, on all six lists.
-8. **No SCOUT-specific empty states.** "Nothing here yet / No records match this
-   view. Clear the filters, or create the first one." is shown even on read-only
-   resources nobody can create into (Clusters, Panel benchmarks).
-9. **Untranslated enum values in table columns** while the filter above shows the
-   translated labels.
-10. **Nav gating is wrong**: the nav item requires `scout:signals:read`, so the
-    roles whose only SCOUT permission is `scout:clusters:read` — every `north.*`
-    role — cannot reach the one SCOUT screen they are entitled to see.
-11. **Mobile shows one of six tables**, as a list of identifiers.
-12. **`scout.experiment.not_yet_available`** is referenced by every seeded traffic
-    plan and does not exist in either locale file.
+Common to all nine:
 
----
+- **Every panel loads independently and fails alone.** A withheld read renders a
+  guardrail notice in that panel's place; the rest of the screen is unaffected.
+- **Every screen opens with an arithmetic headline** — one sentence stating the
+  single most useful count on the screen, computed from the loaded rows. Those
+  headlines are **not AI** and carry no ✦.
+- **Every write mints an idempotency key when the screen loads**, so a
+  double-submitted form is one write, not two.
+- **Approval-gated writes come back as "Queued for approval"** with the policy
+  name and a link to the approvals queue — never as an error.
 
-## 11. Reference — files behind this brief
+### 10.1 Radar — `/scout/radar`
 
-| Concern | File |
+**The module's home screen.** Loads, in parallel and each independently
+protected: up to 200 clusters (by momentum, descending), up to 200 whitespaces
+(by demand estimate, descending), and the commentary prefetch (§9.2). Selection
+is in the URL — `?w=<whitespace id>` — so a chosen theme is linkable and
+survives a reload.
+
+**Headline.** "N whitespace themes are worth pursuing right now" when any theme
+is both open and high-momentum; otherwise "N whitespace themes are plotted on
+the radar"; otherwise "N signals have not clustered into a theme yet";
+otherwise the empty line, "No clustered whitespace yet. Run a sweep."
+
+**Lede.** *"Whitespace read off our own signals, clusters and panel data —
+nothing bought in."*
+
+**The quadrant.** A 370px-tall plotting area with dashed midlines and two corner
+labels, **Pursue** (top, open market) and **Park** (bottom). Axes:
+
+- Horizontal: *"Fit with distribution strength"*. The value is **100 minus the
+  competition score** — an open market plots to the end of the axis. Both axes
+  are 0–100 percentages.
+- Vertical: **the linked cluster's demand momentum**.
+- **Dot area is evidence volume**: 14px at zero evidence references, growing 6px
+  per reference to a ceiling of 38px at four or more. It is a coarse signal on
+  purpose, not a scale to read values off.
+
+The axis caption states all three encodings in words: *"Vertical axis = demand
+momentum · dot size = evidence volume · choose a theme for its dossier."*
+
+Each dot is a label plus a marker in a zero-width column, so the label centres
+on the dot's position in both reading directions. Labels are two lines
+maximum, truncated. Each dot is focusable, carries its ghost (§9.4) and links
+to itself with `?w=`.
+
+**Unplotted rows are counted, never dropped.** A whitespace with no cluster has
+no momentum to plot against, so it appears as a count — "N unclustered" — with
+the explanation: *"Momentum is the cluster's, so a whitespace with no cluster
+has no vertical position and is left off the quadrant."* A whitespace with no
+competition score is unplottable for the same reason.
+
+**The dossier** (beside the quadrant, populated only when a theme is chosen;
+otherwise *"Choose a theme to read its dossier."*):
+
+- The **cluster summary**, carrying **✦** and the why-line *"Cluster summary
+  written by the clusterer over N signals."*
+- The **commentary chip** for the chosen theme (§9.4).
+- Four metrics: **Demand estimate**, **Competition**, **Momentum 90d**,
+  **Cluster size**.
+- A status badge and, if set, the promoted-at date.
+- The estimate's method, confidence and note (§4.2).
+- The evidence references behind the row.
+- A link to the full whitespace card (§10.2).
+
+**Three write affordances**, each its own form:
+
+| Action | Permission | Result copy |
+|---|---|---|
+| **Run the whitespace sweep** — "Re-reads the last quarter of quotes and rewrites the candidate list." | `scout:whitespaces:promote` | "N candidates written." |
+| **Spin up an experiment** — "Creates a draft experiment against this theme. Nothing goes live until you start it." | `scout:experiments:create` | "Draft experiment created." |
+| **Hand this to the campaign studio** | `scout:whitespaces:promote` | See §11 |
+
+Without the permission, each is replaced by a guardrail notice, never disabled.
+The experiment and handover forms require a chosen theme — submitting without
+one returns *"Pick a theme on the radar first."*
+
+**Empty/degraded.** No clusters at all: the empty headline and the sweep card,
+so the screen tells you what to do rather than showing a blank chart. Clusters
+but no whitespaces: the unclustered count carries the screen. A withheld
+commentary read costs the ghosts and the chip; the dots stay.
+
+### 10.2 Whitespace card — `/scout/whitespace/:id`
+
+Opened from a dot on the Radar; not in navigation. *"The whole case for one
+theme: what was observed, what it is estimated to be worth, what has been tried,
+and every move anyone has made on it."*
+
+Loads the whitespace row, up to 25 linked signals, up to 20 experiments, and up
+to 25 audit entries. Its lede counts the flags and experiments recorded against
+the theme.
+
+**Cards:**
+- **The case** — the description, the estimate with its method/confidence/note,
+  the status, the owner, the promoted-at date.
+- **Experiments** — "Every bounded test run against this theme, newest first."
+  Empty: *"Nothing has been tested against this theme yet."*
+- **Regulatory flags** — "Items the circular feed raised on this cluster and who
+  has to read them. A flag records that an item appeared — never what it
+  requires." Empty: *"No regulatory items raised on this cluster."* The second
+  sentence of that hint is a compliance boundary, not filler: this card must
+  never be designed to look like an instruction.
+- **Decision log** — "Every write against this card, from the audit log.
+  Append-only." Three states: withheld (*"Reading the audit log needs the audit
+  permission."*), empty (*"No moves recorded yet."*), or the list.
+- **Move this card** — the one write. A target-status select and an optional
+  owner field ("Who carries it from here. Leave as-is to keep the current
+  owner."). Gated on `scout:whitespaces:promote`, otherwise *"Moving a card
+  needs the promote permission."* When the card is in a state with no legal
+  target: *"This card is in a state with nowhere to move."* An illegal target
+  returns *"A card cannot move there from where it is."*
+
+  The card's own hint says the quiet part: *"Promoting or parking a card is an
+  approved change, so it queues for a second pair of eyes."* This write goes
+  through the generic whitespace update, so it passes the
+  `scout.whitespace_promote` approval gate (§7.3) — the realistic outcome of
+  pressing this button on a tenant without auto-approval is **"Queued for
+  approval"**, not "Moved to X". Design the queued state as the primary
+  outcome, not the exception.
+
+**The status vocabulary on this screen is wrong** (§4.4): it offers `promoted`
+as a move out of `validated`, a status the platform's state machine, the stored
+schema's documented vocabulary and the generated table's filter all lack.
+
+**Footer.** A link to draft creative for the theme in the SIGNAL studio — shown
+only if the actor's session actually has SIGNAL available, so the link never
+leads to a module the user cannot enter.
+
+**Missing row.** *"No whitespace with that reference on this board."* with a
+"Back to the radar" link.
+
+### 10.3 Panel intelligence — `/scout/panel`
+
+*"Where each carrier sits on price and conversion, for {period}."* Loads up to
+200 bench rows by period descending, takes the **latest period present** and
+rolls the rows up by provider. Provider identifiers are **resolved to carrier
+names** — an earlier version of this screen shipped a column headed CARRIER
+containing six raw identifiers.
+
+**Headline.** "N of M carriers are priced below the median", or if none are,
+"N carriers are on the bench for this period."
+
+**Table.** Carrier, lines covered, volume, share, win rate, price index, market
+index, position. Position is a word, not a number: **Below the median**, **At
+the median** (within 2%), **Above the median**, or **No price to index**. The
+index is shown as a ratio to two decimals, not in basis points.
+
+**The k-anonymity notice is always visible**, not conditional: *"Thin cuts
+withheld — A bench cut below 20 quotes names the one counterparty behind it, so
+the API withholds it rather than serving it thin."* Always, because the reader
+cannot tell a suppressed row from an absent one, and only a permanent notice
+covers both.
+
+**Wording gaps** are listed per carrier where recorded.
+
+**Commission is deliberately absent from this screen.** Price and conversion
+only. Do not add it.
+
+**Negotiation pack.** "Build the negotiation pack — Volume delivered,
+competitive index and the wording gaps, as a PDF." Gated on
+`scout:whitespaces:promote` (§5.4), otherwise *"The pack quotes counterparty
+numbers, so it needs the promote permission."* Pressing it downloads a PDF named
+for today's date; the download is a full document navigation, not an in-page
+fetch, and the response is marked never-cache. The export is audited.
+
+**Empty.** *"No bench rows for this period."*
+
+### 10.4 Price benchmarks — `/scout/pricing`
+
+*"Our quoted price against the panel median, by line, for {period}."* Same bench
+data as §10.3, rolled up **by line** instead of by carrier. Read-only — there is
+no control on this screen at all.
+
+**Headline.** "N of M lines are losing to the panel this period", or "N lines
+are on the bench for this period."
+
+Two panels: **Index against the median** (every line, with its distance rendered
+as "3% above" / "3% below" rather than a signed number or an arrow), and **Where
+we lose** — the lines above the median. When nothing is above: *"Every priced
+cut sits at or below the median."*
+
+**A permanent note carries the §4.2 qualification**: *"The index is our quoted
+price over the median of the panel's own responses to the same request. It is
+not an industry price survey."*
+
+**Empty.** *"Nothing priced in this period."*
+
+### 10.5 Experiments — `/scout/experiments`
+
+*"Every promoted whitespace runs as a bounded experiment with a written stop
+rule."* Loads experiments and the whitespace rows needed to name them, so the
+board shows themes rather than identifiers.
+
+**Headline.** "N of M experiments are running right now", or "N experiments are
+on the board."
+
+Each experiment shows: the theme, state, live-since date, the **stop rule**, the
+spend cap rendered as "{amount} {currency} a day, {days} days at most", quote
+starts, waitlist, and a verdict. Verdicts are words: **Supported**, **Did not
+replicate**, **Interim read**. Where no plan was recorded: *"No plan
+recorded."*
+
+**Vocabulary note:** the stored state `abandoned` displays as **Parked**, and a
+permanent footnote explains why: *"Parked is not failed — the evidence stays
+attached so the theme can be re-opened when the market moves."*
+
+**Record a decision.** A form offering exactly three decisions — running,
+concluded, parked. It appears only when the actor holds
+`scout:experiments:decide` **and** there is at least one experiment; there is no
+empty decision form. Its hint is a deliberate warning: *"Concluding an
+experiment is a decision about a build, so it is logged against you."* Submitting
+without a decision: *"Choose one of the three decisions."* Success: *"Decision
+recorded."*
+
+**Empty.** *"No experiments yet."*
+
+### 10.6 Pricing analytics — `/scout/analytics`
+
+*"Elasticity, win rate and price adequacy across the whole bench."* Loads the
+whole bench and computes across every period.
+
+**Headline.** "{pct}% of priced volume sits at or below the median, across N
+periods", or "N periods are on the bench."
+
+**KPI wall**: periods on the bench, blended win rate, blended index, volume at
+or below the median, priced volume. All blended figures are volume-weighted
+(§4.2).
+
+**Observed elasticity table.** Win-rate points moved per percent of price moved,
+between the last two periods of each cut. Its hint is the honesty of the screen:
+*"Observed, not measured: no experiment moved these prices on purpose."* Where
+the price did not move between periods the row reads **"Price held"** rather
+than dividing by zero.
+
+A detail worth preserving: the price-move and win-rate-move columns are joined
+by a **separator, not an arrow** — an arrow points the wrong way once the page
+is in Arabic.
+
+**Export.** Gated on the analytics export permission. Offers two tables —
+**Whitespace pipeline** and **Signal volume** — over a 365-day window at monthly
+grain, in a choice of formats, "Rendered by the platform's own report engine,
+with its own masking rules." Result states: **Ready.** with a download link, or
+**Queued.** Submitting without a table or a format returns the matching
+"Choose what to export." / "Choose a file format."
+
+**A permanent notice explains what cannot be exported**: *"The bench itself is
+not exportable — The report engine has no price-bench table registered, so the
+index and win-rate figures above cannot be rendered as a file. The negotiation
+pack is the export that carries them."* This is the model for how SCOUT states
+an absence: name it, explain it, point at the alternative.
+
+**Empty.** *"Fewer than two periods on the bench, so there is nothing to
+compare."*
+
+### 10.7 Data products — `/scout/data-products`
+
+*"Insight packaged and sold back to the panel. Every cut names its consent basis
+and the floor below which its cells are suppressed."* Selection is in the URL
+(`?product=<id>`) and does not scroll the page. Also loads the platform's export
+log to show what has actually been rendered.
+
+**Headline.** "N of M data products are flagged for review", or "N of M data
+products are published."
+
+**K-anonymity monitor.** Published count, module floor, subscribing carriers,
+flagged count. Its hint is the module's privacy doctrine in one line: *"The
+floor is the promise. A cut that can name one counterparty is flagged however
+high its floor."*
+
+Three warnings can be raised against a product, each with its own explanation:
+
+| Warning | Why |
 |---|---|
-| Routes (three generic, none SCOUT-specific) | `apps/web/app/routes.ts` |
-| List screen | `apps/web/app/routes/module.tsx` |
-| Record screen | `apps/web/app/routes/record.tsx` |
-| SCOUT tabs, columns, fields, labels (en + ar) | `apps/web/app/modules/scout.ts` |
-| Spec types, `labelsFor`, `optionLabel`, `bodyFrom` | `apps/web/app/modules/spec.ts` |
-| Cell + input rendering, status tone map | `apps/web/app/components/fields.tsx` |
-| Shell, nav, brand tokens | `apps/web/app/components/shell.tsx` |
-| Error boundary copy | `apps/web/app/root.tsx` |
-| Shared copy (`common.*`, `error.*`, `nav.scout`) | `apps/web/app/i18n/en.ts`, `ar.ts` |
-| Generated CRUD API + SCOUT resource registrations | `apps/api/src/crud.ts`, `apps/api/src/resources.ts` |
-| Nav permissions | `apps/api/src/routes/me.ts` |
+| Floor below the module minimum | "This cut suppresses below the module's floor of {floor}, so thin cells could reach a subscriber." |
+| Keyed on one counterparty | "Every cell of a cut keyed on the carrier names that carrier, whatever the floor is set to." |
+| Published on a feed that is not building | "Subscribers are reading a cut older than its own cadence claims." |
+
+**Catalogue**, most recently changed first. A chosen product shows its
+definition — source, window, dimensions, measures — captioned *"The cut as the
+builder defined it — not recomputed here"*, its consent basis, its floor as
+"k ≥ N" with the note *"Cells below this count are suppressed, not rounded"*,
+and its rebuild cadence (or *"No rebuild cadence set."*). Freshness reads as
+**Last built** / **Stale since** / **Never built.** / **Halted at**; a failed
+build says so outright: *"The last build did not complete."*
+
+**Subscribers** — "Read from the product's own subscriber list, suspensions
+included", so a suspended subscriber is shown as suspended rather than removed.
+Empty: *"Nobody subscribes to this product yet."*
+
+**Delivery log** — cuts rendered by the report engine. Empty: *"No cut of this
+product has been rendered yet."*
+
+**Change status.** Draft / Published / Suspended. Hint: *"Publishing exposes the
+cut to its subscribers. Suspending withdraws it without deleting it."* Gated on
+`scout:data_products:publish`, otherwise *"Publishing a data product needs the
+SCOUT publish permission."* Terminal state: *"This product has no status left to
+move to."* **A publish is refused outright when the product's floor is below the
+module floor**, with the reason stated: *"The suppression floor on that cut is
+below the module's k-anonymity floor, so it cannot be published from here."*
+
+**Empty.** *"No data product has been defined yet."*
+
+### 10.8 SCOUT settings — `/scout/admin`
+
+Read-only. Its lede is unusually candid and should stay that way: *"What governs
+the module, and where each number lives. Some of these are tenant settings; the
+rest are the module's own code, and this screen says which is which rather than
+pretending otherwise."*
+
+**Headline.** "N SCOUT changes are awaiting a decision", or "N signal sources
+have gone quiet."
+
+**Signal sources.** The six known sources — Search demand, Quote flow,
+Abandonment, Reviews, News, Regulatory — each **Ingesting**, **Quiet** (nothing
+in 14 days) or **Never ingested**. Counted from the signals themselves. A
+permanent notice explains the limit of the panel: *"Connectors are not
+configured here — The harvester's crawl politeness, robots handling and
+per-source credentials live with the harvester, not in a tenant setting. This
+panel reports what arrived; it cannot turn a source on."*
+
+**Suppression floors.** The module floor, with: *"Compiled into the module, not
+a tenant setting: cuts below it are suppressed before a reader sees them.
+Changing it is a code change with an ADR, so it cannot drift per tenant."* Plus
+any data products carrying their own floor (*"Every data product uses the module
+floor."* when none do).
+
+**SCOUT policy thresholds.** Versioned; the screen reads the live rows and takes
+the **highest version**, not the newest row. *"A change is a new version, never
+an edit."* When there are none, it says why rather than showing an empty table:
+*"SCOUT has no policy threshold set — Whitespace detection compares each
+category against the panel's own mean rather than a fixed number, so there is no
+momentum threshold to tune."*
+
+**Approval gates.** Which SCOUT moves are gated, and how many are awaiting a
+decision. Empty: *"No SCOUT change has been sent for approval."*
+
+**Hypothesis templates.** A permanent absence notice: *"Hypothesis templates are
+not stored — Experiments are written against a whitespace row rather than
+instantiated from a library, so there is no template set to edit. Copy an
+experiment that worked instead."*
+
+### 10.9 SCOUT for integrators — `/scout/dev`
+
+*"The two SCOUT calls that are not plain CRUD, run against this tenant's own
+data so what you see here is what your key returns."* Three panels.
+
+**Nearest signals.** A phrase (up to 4,000 characters, "The endpoint embeds it;
+it is not stored") and a neighbour count (a whole number 1–20, default 10).
+Returns stored signals nearest the phrase, closest first: signal, source,
+observed, distance. Gated on `scout:signals:read`. Validation copy: *"Type a
+phrase to search for."*, *"That phrase is longer than the endpoint accepts."*,
+*"Neighbours must be a whole number from 1 to 20."* Empty result explains the
+two possible causes: *"Nothing near that phrase — Either the index holds nothing
+like it, or the signals it matched have since been deleted; a match without a
+row is dropped rather than served as a bare id."* The raw response is shown
+beneath.
+
+**Wording differ.** Two plain-text fields, Before and After, word-level diff,
+counts rendered as "{added} words added · {removed} removed · {kept}
+unchanged." Gated on `scout:panel_bench:read`. Plain text only — extracting text
+from a PDF is explicitly out of scope and the screen says so. Missing input:
+*"Both versions of the wording are needed to compare them."*
+
+**The same calls from your own client.** Copyable request examples. *"Bearer
+authentication with an API key; the tenant comes from the key, never from the
+body."* Keys are minted in the developer portal and never shown here.
+
+Ingest is deliberately **not** offered: *"writing a signal needs
+scout:signals:ingest, which belongs to a harvester key rather than to a person
+signed in here"* — followed by the contract, so an integrator can still build
+against it.
+
+**One notice on this screen is now false.** It states *"SCOUT publishes no
+events — Nothing in this module emits onto the event bus, so there is no topic
+to subscribe a webhook to."* A completed promotion **does** emit a
+`scout.whitespace.promoted` event. The copy needs to change (§13).
+
+---
+
+## 11. Promote to signal — the handover, end to end
+
+This is SCOUT's only cross-module action and its only consequential one. It
+lives on the Radar dossier and reads: **"Hand this to the campaign studio"**,
+with the hint *"Drafts a campaign and its content from this reading. It needs an
+approval first, and it sends nothing."*
+
+### 11.1 Who sees it
+
+`scout:whitespaces:promote`. Without it, a guardrail notice replaces the button:
+*"Handing a theme over needs the {permission} grant. Ask an administrator for
+it, not for a one-off."* — the module's standard formulation, aimed at fixing
+the role rather than granting an exception.
+
+### 11.2 What happens when it succeeds
+
+A campaign is drafted from the whitespace's evidence, an audience is suggested,
+a plan is made, and **six creative variants** are written. The campaign is
+created in **draft**, with **no channels and zero budget**. Nothing is sent,
+nothing is scheduled, nothing is spent. The whitespace is moved to *validated*
+and stamped with a promoted-at date and an owner. The move is written to the
+audit log and announced on the event bus.
+
+The screen answers with a **draft tray**: a live region carrying ✦ and the
+heading **"Background drafts"**, and one of three sentences:
+
+- *"Handed over. N drafts written, none sent."*
+- *"Handed over. Nothing drafted yet."*
+- *"Queued for approval. Nothing has been drafted and nothing sent."*
+
+Only in the first two — and only when the actor may enter SIGNAL — does the tray
+offer **"Read the drafts"**, linking into the campaign studio at that campaign.
+
+The phrase "none sent" is load-bearing and should survive any rewrite. It is the
+whole promise of the ambient-AI grammar in one clause.
+
+### 11.3 The four ways it does not succeed
+
+1. **No approval yet.** The handover is gated by policy
+   `scout.whitespace_promote`. Unless the tenant auto-approves that policy, the
+   first press queues an approval and the tray says so. Approvals are
+   single-use and expire after 24 hours; a second handover after a consumed
+   approval queues again.
+2. **Too little evidence.** A whitespace whose signal count is below the
+   k-anonymity floor is refused, because a campaign built on a cell that thin
+   describes the people in it.
+3. **Already promoted.** A validated whitespace cannot be promoted twice — the
+   state machine has no self-hop, so a repeat is refused **independently of the
+   idempotency key**. There is no "promote again".
+4. **No category on the row.** Refused; there is nothing to build a brief
+   against.
+
+A double-click is not one of the failure modes: the screen mints an idempotency
+key when it loads, so the second submission returns the first result rather than
+drafting a second campaign.
+
+### 11.4 What the model is and is not allowed to write
+
+The brief is drafted from the same five evidence facts the commentary is
+grounded on (§9.2). The model is forbidden from stating a number the evidence
+did not give it, and from promising cover, acceptance, a price, or that the
+tenant is cheapest. A brief that states an unsupported number is **discarded
+entirely**, not trimmed — and a deterministic fallback brief is used instead.
+The handover therefore never blocks on a model call and never persists an
+unevidenced sentence.
+
+---
+
+## 12. Cross-cutting notes
+
+### 12.1 AI surfaces — all of them
+
+| Surface | Where | Marked | Its "why" |
+|---|---|---|---|
+| Whitespace commentary sentence | Radar ghost and dossier chip; anywhere commentary is shown | **✦, only when a model wrote it** | The five evidence lines, verbatim, plus the audit reference, provider · model and the time it was written |
+| Cluster summary | Radar dossier | **✦** | "Cluster summary written by the clusterer over N signals." |
+| Campaign brief and creative variants | Produced by the handover; **read in SIGNAL, not in SCOUT** | ✦ in the draft tray | Not rendered in SCOUT — the tray links to the studio |
+
+Rules a new SCOUT AI surface must follow:
+
+- **One ✦ per artifact, never per screen**, and never on a fallback or a
+  suppressed row. If a reader sees ✦, a model wrote that text and it is
+  inspectable.
+- **The "why" is the evidence, not an explanation of the evidence.** Show the
+  same lines the model was given.
+- **Nothing is a modal**, nothing auto-sends, nothing acts. Every AI artifact in
+  SCOUT is either a sentence beside a number or a draft that has to be opened
+  somewhere else.
+- **Arithmetic is not AI.** Every screen headline is computed; none carries ✦.
+
+### 12.2 Vocabulary
+
+No industry noun is hard-coded. "Carrier", "line", "contracts on the book" and
+the domain word in every AI prompt are read from the tenant's active domain
+pack, so the same screens work for a market that is not insurance. When
+designing copy, treat every industry noun as a slot.
+
+Two consequences: never write a label that only parses in insurance, and expect
+the same screen to read differently between two tenants.
+
+### 12.3 Mobile
+
+Below `md` the rail becomes a horizontally scrolling row (§3). Beyond that,
+**mobile parity is not determined from code** for these nine screens — the
+Radar's 370px quadrant in particular has no documented small-screen treatment,
+and it is the screen most in need of one (§13).
+
+### 12.4 RTL and internationalisation
+
+Every string on every SCOUT screen has an English and an Arabic entry; there is
+no untranslated user-facing copy, with one deliberate exception: the AI "why"
+lines (§9.2), which are the audit trail. Layout uses logical properties only, so
+the rail, the accent bars, the dot labels and the ghost all flip. Two specific
+decisions worth keeping:
+
+- **No arrows in comparison columns.** The analytics screen joins its move
+  columns with a separator, because an arrow points the wrong way in Arabic.
+- **The commentary ghost is centred on its dot** by an inline-start offset of
+  half its own width, so it centres correctly in both directions rather than
+  hanging off one side.
+
+### 12.5 Accessibility
+
+- **Hover is never the only path to information.** The commentary ghost is in
+  the DOM and the accessibility tree at all times, opens on focus as well as
+  hover, and is announced from the dot itself.
+- **No disabled controls.** A missing permission replaces the control with
+  prose (§5.5).
+- **Motion respects reduced-motion** on the ghost.
+- Skip link, focused main region, and a re-keyed canvas per navigation (§3).
+- Every one of the four "explained absence" notices is a permanent element, not
+  a transient toast, so it is reachable at any time.
+
+---
+
+## 13. What is weak across the whole module
+
+Ordered by how much design work each needs.
+
+1. **Two vocabularies for the same eight destinations** (§2.4). The rail says
+   "Radar / Panel / Pricing"; the workspace links say "Opportunity radar / Panel
+   benchmarks / Price benchmarks". One of the two is wrong. Pick one.
+2. **The bespoke screens are a dead end back to the data.** Nothing on the nine
+   screens links to the generated tables (§2.4), so a reader who wants the rows
+   behind a chart has nowhere to go.
+3. **The whitespace card offers a status the platform does not know** (§4.4,
+   §10.2). `promoted` is not in the stored vocabulary, not in the state machine
+   and not in the generated filter — and the column is free text, so the write
+   lands. Two screens now disagree about what statuses exist.
+4. **A bare 403 for role holders who can read the data** (§5.3). `tenant.admin`
+   and the NORTH roles hold SCOUT reads and are refused at the shell door with
+   no explanation. Either admit them or explain the refusal.
+5. **The Settings link is gated on a permission that does not exist** (§5.3),
+   so only a wildcard admin sees it — by accident.
+6. **One permission gates four unrelated things** (§5.1). Nobody can be given
+   the negotiation pack without also being given the sweep and the handover.
+7. **The integrator screen says SCOUT publishes no events** (§10.9). It does,
+   since the handover shipped.
+8. **The Radar has no documented mobile treatment** (§12.3).
+9. **The move card presents an approval as the exception** (§10.2) when on most
+   tenants it is the rule. The queued state deserves to be designed first.
+10. **Dot size saturates at four evidence references** (§10.1), so a theme with
+    forty references looks identical to one with four. Fine as a coarse cue,
+    misleading if a reader tries to compare two large dots.
+
+---
+
+## 14. What the previous version of this doc got wrong
+
+Recorded so nobody works from a stale copy:
+
+| Old claim | Reality |
+|---|---|
+| "Every SCOUT screen is generated. There is no bespoke SCOUT route, no SCOUT chart, no SCOUT dashboard, no radar, no dossier." | Nine bespoke screens, including a quadrant chart and a dossier (§2.1, §10). |
+| "SCOUT owns no route file." / "No bespoke SCOUT endpoint exists." | Seven bespoke endpoints (§2.5). |
+| "There is no ✦ anywhere in SCOUT today, on any screen." | Three AI surfaces, all marked (§12.1). |
+| "No charts. No sparkline, no trend line, no radar, no scatter." | The Radar is a two-axis scatter with a third encoding in dot area (§10.1). |
+| "SCOUT declares no links, so the links strip never renders." | Eight links declared (§2.4). |
+| "There is no bespoke promote endpoint." | There is, and it drafts a campaign and six creatives (§11). |
+| A 240px sidebar with a 6px accent dot per nav item, present only for holders of `scout:signals:read`. | A tokenised rail with a vertical accent bar, not permission-filtered, inside a module-specific shell (§3). |
+| "Nothing is marked" (the AI table). | See §12.1. |
+
+Still true from the old version and carried forward unchanged: the append-only
+signals table (§4.1), the estimate-carries-its-method and market-is-our-median
+facts (§4.2), the permission strings and roles (§5.1, §5.2), the generated-list
+anatomy (§6), the six tabs' columns (§7) and the generated record screen (§8).
+
+---
+
+## 15. Reference
+
+| Thing | Where it is decided |
+|---|---|
+| Which nine bespoke screens exist and at what URL | `apps/web/app/routes.ts` (the `scout` block) |
+| Which URLs are hidden from navigation | `apps/web/app/routing.ts` |
+| Who may enter the SCOUT shell | `apps/web/app/routing.ts` (role-prefix map), enforced in `apps/web/app/routes/scout-shell.tsx` |
+| The shell chrome and the eight rail items | `apps/web/app/components/scout-shell.tsx` |
+| The generated workspace: tabs, columns, filters, links | `apps/web/app/modules/scout.ts` |
+| Every screen's copy, in English and Arabic, and the bench arithmetic | `apps/web/app/routes/scout.shared.ts` |
+| The commentary payload — **the authoritative shape** | `apps/api/src/engines/scout-whitespace.ts` |
+| How commentary is rendered (ghost, chip, why) | `apps/web/app/components/whitespace-commentary.tsx` |
+| The promote handover, screen side | `apps/web/app/components/signal-handover.tsx` |
+| The promote handover, server side | `apps/api/src/engines/scout-promote.ts` |
+| The bespoke endpoints | `apps/api/src/routes/scout.ts` |
 | Permissions and roles | `packages/core/src/rbac.ts` |
-| Tables and column comments | `packages/db/src/schema/scout.ts` |
-| Demo data (every value quoted above) | `packages/core/src/seed/scout.ts` |
-| Table, EmptyState, Sparkline, Stat | `packages/ui/src/data.tsx` |
-| Button, Input, Select, Textarea, Badge, Field | `packages/ui/src/primitives.tsx` |
-| ✦ surfaces (all unused in SCOUT) | `packages/ui/src/ai.tsx` |
-| Colour, type, spacing tokens | `packages/ui/src/tokens.css` |
-| Mobile list / detail / nav mapping | `apps/mobile/app/m/[nav]/index.tsx`, `[id].tsx`, `apps/mobile/src/nav.ts`, `src/rows.ts` |
+| The whitespace state machine and the k-anonymity floor | `packages/core/src/whitespace.ts` |
+| The six tables and what may be null | `packages/db/src/schema/scout.ts` |
+| The AI prompts and what they may not say | `packages/model-gateway/src/whitespace-brief.ts` |
+
+---
+
+## 16. Not determined from code
+
+Stated here rather than guessed:
+
+- **Mobile layouts** for the nine bespoke screens below the `md` breakpoint,
+  beyond the rail collapsing (§12.3). The quadrant in particular.
+- **Print styles** for any SCOUT screen. The negotiation pack is a server-
+  rendered PDF, not a print stylesheet; nothing else has one.
+- **The visual design of the ghost card** beyond its size (224px), its position
+  and its contents — tone, border and elevation come from the design system's
+  defaults and are not specified in SCOUT.
+- **How a cluster's momentum score is computed.** Screens display it, and the
+  Radar plots against it; the clusterer's method is not documented here.
+- **Whether any SCOUT screen has ever been reviewed against a real Arabic
+  corpus.** Every string is translated; the layout is logical-property clean;
+  no RTL screenshot review is recorded.

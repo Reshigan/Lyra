@@ -173,7 +173,10 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
         locales: ["en", "ar"],
         defaultLocale: "en",
         currency: "AED",
-        domainPack: "insurance-retail",
+        // A UAE book prices in AED off a UAE panel; it does not segment on the
+        // SAARF/BRC LSM scale, which does not exist outside southern Africa.
+        // See packages/core/src/targeting.ts and ADR-0071.
+        domainPack: "insurance-gulf",
         autonomyDefault: "act_with_approval",
         autoApprove: ["signal.campaign_launch"]
       })
@@ -287,7 +290,8 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
     cedar: id("pv", now + 2),
     oryx: id("pv", now + 3),
     gulfHealth: id("pv", now + 4),
-    meridian: id("pv", now + 5)
+    meridian: id("pv", now + 5),
+    zenith: id("pv", now + 6)
   };
   await db.insert(schema.providers).values([
     {
@@ -364,6 +368,24 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
       kind: "financier",
       linesJson: JSON.stringify(["loan"]),
       integrationJson: JSON.stringify({ mode: "api" }),
+      currency: "AED",
+      panelStatus: "active",
+      createdAt: now,
+      updatedAt: now
+    },
+    {
+      id: providers.zenith,
+      tenantId,
+      name: "Zenith Direct",
+      kind: "insurer",
+      linesJson: JSON.stringify(["motor"]),
+      integrationJson: JSON.stringify({ mode: "api" }),
+      // The first-party reference underwriter (ADR-0072), reached over the
+      // CARRIER_SANDBOX service binding rather than a fake external host — the
+      // only offering below with `pricingMode: "api"` that resolves to a real
+      // HTTP hop instead of a table lookup.
+      quoteEndpointJson: JSON.stringify({ url: "https://api.lyra.vantax.co.za/carrier-sandbox/quote", binding: "CARRIER_SANDBOX" }),
+      settlementTermsJson: JSON.stringify({ frequency: "monthly", netDays: 30 }),
       currency: "AED",
       panelStatus: "active",
       createdAt: now,
@@ -446,7 +468,8 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
     gulfHealth: id("of", now + 5),
     gonxtTravel: id("of", now + 6),
     cedarHome: id("of", now + 7),
-    oryxLife: id("of", now + 8)
+    oryxLife: id("of", now + 8),
+    zenithMotor: id("of", now + 9)
   };
   const offering = (
     key: keyof typeof offerings,
@@ -571,6 +594,11 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
     offering("oryxLife", providers.oryx, products.life, "ORX-LIF-TERM", "Oryx Term Takaful", "أوريكس – تكافل الحياة", 300_000, {
       pricingMode: "manual",
       crossSellTagsJson: JSON.stringify(["new_parent"])
+    }),
+    offering("zenithMotor", providers.zenith, products.motor, "ZEN-MOT-LIVE", "Zenith Motor Live", "زينيث – حي للمركبات", 110_000, {
+      pricingMode: "api",
+      coverageJson: JSON.stringify({ excessMinor: 100_000, agencyRepair: false, roadside: false }),
+      crossSellTagsJson: JSON.stringify(["motor_owner"])
     })
   ]);
 
@@ -714,6 +742,16 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
     kycStatus: "verified",
     consentId,
     locale: "en",
+    // Targeting attributes under the `axis:value` grammar packages/core/src/targeting.ts
+    // parses, on the axes the Gulf pack declares. Her quote request below says
+    // 34 and Dubai; a AED 280k Land Cruiser puts her in the top fifth.
+    tagsJson: JSON.stringify([
+      "region:dubai",
+      "ageband:25-34",
+      "incomequintile:5",
+      "language:en",
+      "lifestage:family"
+    ]),
     createdAt: now,
     updatedAt: now
   });

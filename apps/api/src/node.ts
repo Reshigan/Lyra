@@ -90,7 +90,7 @@ function files(root: string) {
 
 /** `DB` stays unbound: auth.ts prefers `DB_CLIENT` and never reaches D1 here. */
 export function makeEnv(): Env {
-  return {
+  const env = {
     DB_CLIENT: makeLibsqlDb(need("LIBSQL_URL"), process.env.LIBSQL_AUTH_TOKEN || undefined) as unknown as Db,
     KV: kv(),
     FILES: files(resolve(process.env.FILES_DIR ?? "/var/lib/lyra/files")),
@@ -106,6 +106,15 @@ export function makeEnv(): Env {
     ...(process.env.ANTHROPIC_API_KEY ? { ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY } : {}),
     ...(process.env.AI_GATEWAY_URL ? { AI_GATEWAY_URL: process.env.AI_GATEWAY_URL } : {})
   } as unknown as Env;
+  // The reference underwriter (ADR-0072) is a self service binding on Workers.
+  // Here the same Worker is this process, so the binding is a real Request
+  // through the same app — the quote adapter cannot tell the difference, and
+  // without it every e2e run and every on-prem box renders the live-API
+  // offering as an error row instead of a price.
+  env.CARRIER_SANDBOX = {
+    fetch: async (input, init) => app.fetch(new Request(input, init), env, exec as never)
+  };
+  return env;
 }
 
 /* --------------------------------------------------------------- runtime */

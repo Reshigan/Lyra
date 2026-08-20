@@ -330,6 +330,58 @@ export interface AnalyticsUnitEconomics {
   updatedAt?: number;
 }
 
+export interface AxisBordereauLines {
+  id?: string;
+  tenantId?: string;
+  bordereauId: string;
+  lineNo: number;
+  policyId?: string;
+  policyVersionId?: string;
+  claimId?: string;
+  externalRef?: string;
+  riskRef?: string;
+  effectiveFrom?: number;
+  effectiveTo?: number;
+  grossPremiumMinor?: number;
+  taxMinor?: number;
+  netPremiumMinor?: number;
+  commissionMinor?: number;
+  claimsPaidMinor?: number;
+  reserveMinor?: number;
+  currency: string;
+  matchState?: string;
+  varianceMinor?: number;
+  rawJson?: string;
+  createdAt?: number;
+  updatedAt?: number;
+}
+
+export interface AxisBordereaux {
+  id?: string;
+  tenantId?: string;
+  direction: string;
+  counterpartyKind: string;
+  counterpartyId: string;
+  kind: string;
+  period: string;
+  currency: string;
+  lineCount?: number;
+  grossPremiumMinor?: number;
+  commissionMinor?: number;
+  claimsPaidMinor?: number;
+  reserveMinor?: number;
+  varianceMinor?: number;
+  state?: string;
+  fileId?: string;
+  sourceFileId?: string;
+  escrowBatchId?: string;
+  generatedBy?: string;
+  generatedAt?: number;
+  closedAt?: number;
+  createdAt?: number;
+  updatedAt?: number;
+}
+
 export interface AxisCaseApprovals {
   id?: string;
   tenantId?: string;
@@ -2335,7 +2387,11 @@ export interface Operations {
   "GET /v1/auth/sso/discover": Op<never, never, never, Record<string, unknown>>;
   "GET /v1/auth/sso/{id}/callback": Op<{ id: string }, never, never, Record<string, unknown>>;
   "GET /v1/auth/sso/{id}/start": Op<{ id: string }, never, never, Record<string, unknown>>;
+  "GET /v1/axis/bordereau-lines": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<AxisBordereauLines>>;
+  "GET /v1/axis/bordereau-lines/{id}": Op<{ id: string }, never, never, AxisBordereauLines>;
+  "GET /v1/axis/bordereaux": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<AxisBordereaux>>;
   "POST /v1/axis/bordereaux": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
+  "GET /v1/axis/bordereaux/{id}": Op<{ id: string }, never, never, AxisBordereaux>;
   "POST /v1/axis/bordereaux/{id}/reconcile": Op<{ id: string }, never, never, Record<string, unknown>>;
   "GET /v1/axis/case-approvals": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<AxisCaseApprovals>>;
   "GET /v1/axis/case-approvals/{id}": Op<{ id: string }, never, never, AxisCaseApprovals>;
@@ -3048,7 +3104,11 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "GET /v1/auth/sso/discover": { tag: "auth", summary: "Which identity provider, if any, owns an email domain", permission: null, public: true },
   "GET /v1/auth/sso/{id}/callback": { tag: "auth", summary: "Verify the id_token, link or provision the account, issue a session", permission: null, public: true },
   "GET /v1/auth/sso/{id}/start": { tag: "auth", summary: "Redirect to the provider's authorization endpoint (OIDC + PKCE)", permission: null, public: true },
+  "GET /v1/axis/bordereau-lines": { tag: "axis", summary: "List bordereau-lines", permission: "axis:bordereaux:read", public: false },
+  "GET /v1/axis/bordereau-lines/{id}": { tag: "axis", summary: "Fetch one bordereau line", permission: "axis:bordereaux:read", public: false },
+  "GET /v1/axis/bordereaux": { tag: "axis", summary: "List bordereaux", permission: "axis:bordereaux:read", public: false },
   "POST /v1/axis/bordereaux": { tag: "axis", summary: "Generate an outbound bordereau from ledger data, or store an inbound one's raw lines (idempotent per period)", permission: "axis:bordereaux:generate", public: false },
+  "GET /v1/axis/bordereaux/{id}": { tag: "axis", summary: "Fetch one bordereaux", permission: "axis:bordereaux:read", public: false },
   "POST /v1/axis/bordereaux/{id}/reconcile": { tag: "axis", summary: "Match an inbound bordereau's lines against our policies by policy number", permission: "axis:bordereaux:reconcile", public: false },
   "GET /v1/axis/case-approvals": { tag: "axis", summary: "List case-approvals", permission: "axis:cases:approve", public: false },
   "GET /v1/axis/case-approvals/{id}": { tag: "axis", summary: "Fetch one case approval", permission: "axis:cases:approve", public: false },

@@ -1,14 +1,18 @@
-import { Link, useLoaderData, type LoaderFunctionArgs } from "react-router";
-import { Badge, Card, EmptyState, KPIWall, Money, NoData, Stat, Table, type Column } from "@lyra/ui";
-import { api } from "../api.server";
+import { Form, Link, useActionData, useLoaderData, useNavigation, type ActionFunctionArgs, type LoaderFunctionArgs } from "react-router";
+import { Badge, Button, Card, EmptyState, Field, Input, KPIWall, Money, NoData, Stat, Table, hueVar, renderSection, type Column, type Section } from "@lyra/ui";
+import { ApiError, api } from "../api.server";
 import { cloudflare } from "../context";
+import { Gate } from "./staff";
 import { useSignalSessionData } from "./signal-shell";
 import {
+  PERM,
   WINDOWS,
   audValueHeadline,
   audienceValue,
+  explain,
   labelsIn,
   ltvToCac,
+  mintKey,
   multipleText,
   safe,
   windowDays,
@@ -17,6 +21,7 @@ import {
   type CampaignRow,
   type Label,
   type Page,
+  type Problemish,
   type SpendRow,
   type TouchRow
 } from "./signal.shared";
@@ -28,16 +33,64 @@ import {
 //
 // The join is the campaign: an audience is worth what the campaigns aimed at it
 // bound, and costs what those campaigns spent (audienceValue in signal.shared).
-// Read-only — an audience definition is edited on its own tab.
+// The table stays read-only — an audience definition is edited on its own tab
+// — but the screen also carries the one write SCOUT hands this journey off
+// for: propose a new pool from a subject, via POST /v1/signal/audiences/suggest.
 
 /** Below this many signings the multiple is noise, not a number. */
 const THIN = 5;
 
 const empty = <T,>(): Page<T> => ({ data: [] });
 
+/** Mirrors apps/api/src/engines/signal-audience.ts SuggestedAudience. */
+interface Attribute {
+  axis: string;
+  value: string;
+}
+
+/** Mirrors apps/api/src/engines/signal-audience.ts DemographicReason. */
+interface DemographicReason extends Attribute {
+  reason: string;
+  count: number;
+}
+
+/** Mirrors apps/api/src/engines/signal-audience.ts AttributeCount (@lyra/core). */
+interface AttributeCount extends Attribute {
+  count: number;
+}
+
+/** Mirrors packages/model-gateway/src/audience-brief.ts AudienceRule. Not
+ *  rendered — kept for shape parity since the API returns it on the same
+ *  object this screen reads the rest of. */
+interface AudienceRule {
+  all: Array<{ field: string; op: string; value: unknown }>;
+}
+
+/** Mirrors packages/model-gateway/src/audience-brief.ts TargetingProposal. */
+interface TargetingProposal {
+  name: string;
+  summary: string;
+  demographics: Attribute[];
+  reasons: DemographicReason[];
+  lsm: number[];
+  rule: AudienceRule;
+  estimatedReach: number;
+  confidence: number;
+}
+
+/** Mirrors apps/api/src/engines/signal-audience.ts SuggestedAudience. */
+interface SuggestedAudience {
+  audienceId: string;
+  proposal: TargetingProposal;
+  source: "ai" | "fallback";
+  auditId: string | null;
+  shownCounts: AttributeCount[];
+}
+
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = context.get(cloudflare).env;
-  const days = windowDays(new URL(request.url).searchParams.get("days"));
+  const url = new URL(request.url);
+  const days = windowDays(url.searchParams.get("days"));
   const from = Date.now() - days * 86_400_000;
 
   const [audiences, campaigns, spend, touches] = await Promise.all([
@@ -65,15 +118,60 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       (top, row) => (top === null || (row.multiple ?? 0) > (top.multiple ?? 0) ? row : top),
       null
     ),
-    losing: measured.filter((row) => (row.multiple ?? 0) < 1).length
+    losing: measured.filter((row) => (row.multiple ?? 0) < 1).length,
+    // The AXIS/NORTH/SCOUT/SIGNAL demo journey: SCOUT hands off a whitespace
+    // grouping as `subject`/`whitespaceId` (journey-signal.tsx reads the same
+    // pair). Carried here too so this screen's own suggest form starts from it.
+    subject: url.searchParams.get("subject") ?? "",
+    whitespaceId: url.searchParams.get("whitespaceId") ?? "",
+    key: mintKey("signal-aud")
   };
+}
+
+const text = (form: FormData, name: string): string => String(form.get(name) ?? "").trim();
+
+export interface ActionResult {
+  problem: Problemish | null;
+  suggestion: SuggestedAudience | null;
+}
+
+export async function action({ request, context }: ActionFunctionArgs): Promise<ActionResult> {
+  const env = context.get(cloudflare).env;
+  const form = await request.formData();
+  const intent = text(form, "intent");
+  if (intent !== "suggest_audience")
+    return { problem: { title: "bad_intent", status: 400, code: "bad_intent" }, suggestion: null };
+
+  const subject = text(form, "subject");
+  if (subject.length === 0 || subject.length > 200)
+    return { problem: { title: "subject_required", status: 400, code: "subject_required" }, suggestion: null };
+
+  const headers = { "idempotency-key": text(form, "key") || mintKey("signal-aud") };
+  try {
+    const suggestion = await api<SuggestedAudience>("/v1/signal/audiences/suggest", {
+      env,
+      request,
+      method: "POST",
+      headers,
+      body: { subject }
+    });
+    return { problem: null, suggestion };
+  } catch (error) {
+    if (error instanceof ApiError) return { problem: error.problem, suggestion: null };
+    throw error;
+  }
 }
 
 export default function AudienceValueScreen() {
   const loaded = useLoaderData<typeof loader>();
+  const result = useActionData<typeof action>();
   const shell = useSignalSessionData();
+  const navigation = useNavigation();
   const l = labelsIn(shell?.locale ?? "en", shell?.domainPack);
   const locale = shell?.locale ?? "en";
+  const may = new Set(shell?.permissions ?? []);
+  const busy = navigation.state !== "idle";
+  const suggestion = result?.suggestion ?? null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -96,6 +194,32 @@ export default function AudienceValueScreen() {
           ))}
         </nav>
       </header>
+
+      {result?.problem ? <Gate problem={explain(result.problem, l)} l={l} /> : null}
+
+      {may.has(PERM.audiencesEstimate) ? (
+        <Card title={l("aud.suggestTitle")} description={l("aud.suggestLede")}>
+          <Form method="post" className="mt-4 flex flex-wrap items-end gap-4">
+            <input type="hidden" name="intent" value="suggest_audience" />
+            <input type="hidden" name="key" value={loaded.key} />
+            <input type="hidden" name="whitespaceId" value={loaded.whitespaceId} />
+            <Field label={l("aud.suggestSubject")} required>
+              <Input name="subject" defaultValue={loaded.subject} required maxLength={200} />
+            </Field>
+            <Button type="submit" variant="secondary" disabled={busy}>
+              {l("aud.suggestAction")}
+            </Button>
+          </Form>
+
+          {suggestion ? (
+            <div className="mt-4 flex flex-col gap-4">
+              {renderSection(poolRadar(suggestion, l), "signal")}
+              {renderSection(suggestionKv(suggestion, l, locale), "signal")}
+              {suggestion.proposal.reasons.length > 0 ? renderSection(suggestionWhy(suggestion, l), "signal") : null}
+            </div>
+          ) : null}
+        </Card>
+      ) : null}
 
       <KPIWall>
         <Stat
@@ -144,6 +268,71 @@ export default function AudienceValueScreen() {
       </footer>
     </div>
   );
+}
+
+/** Every cell the model was shown, plotted by pool share (x) and whether it
+ *  survived into the proposal (y) — a rejected cell and an accepted one look
+ *  identical in a table; here the accepted ones visibly separate. */
+function poolRadar(suggestion: SuggestedAudience, l: Label): Section {
+  const maxCount = Math.max(1, ...suggestion.shownCounts.map((c) => c.count));
+  const accepted = new Set(suggestion.proposal.demographics.map((d) => `${d.axis}:${d.value}`));
+  return {
+    kind: "radar",
+    title: l("aud.suggestedPool"),
+    xlab: l("aud.suggestedPoolX"),
+    ylab: l("aud.suggestedPoolY"),
+    items: suggestion.shownCounts.map((c) => {
+      const inPool = accepted.has(`${c.axis}:${c.value}`);
+      const share = Math.round((c.count / maxCount) * 100);
+      return {
+        label: `${c.axis}: ${c.value} (${c.count})`,
+        x: `${Math.min(92, Math.max(4, share))}%`,
+        y: `${inPool ? 80 : 20}%`,
+        size: `${Math.max(14, Math.round(share * 0.4))}px`,
+        trail: inPool ? hueVar("signal") : "var(--text)",
+        hue: inPool ? hueVar("signal") : "var(--text)"
+      };
+    })
+  };
+}
+
+function suggestionKv(suggestion: SuggestedAudience, l: Label, locale: string): Section {
+  return {
+    kind: "kv",
+    title: suggestion.proposal.name,
+    items: [
+      {
+        label: l("aud.suggestedReach"),
+        value: suggestion.proposal.estimatedReach.toLocaleString(locale),
+        hue: hueVar("signal"),
+        font: ""
+      },
+      {
+        label: l("aud.suggestedConfidence"),
+        value: `${suggestion.proposal.confidence}%`,
+        hue: hueVar("signal"),
+        font: ""
+      },
+      {
+        label: l("aud.suggestedSource"),
+        value: suggestion.source === "ai" ? l("aud.sourceAi") : l("aud.sourceFallback"),
+        hue: "var(--text)",
+        font: ""
+      }
+    ]
+  };
+}
+
+function suggestionWhy(suggestion: SuggestedAudience, l: Label): Section {
+  return {
+    kind: "callout",
+    title: l("aud.why"),
+    items: suggestion.proposal.reasons.map((r, i) => ({
+      code: String(i + 1).padStart(2, "0"),
+      hue: hueVar("signal"),
+      body: `${r.axis}: ${r.value} — ${r.reason}`
+    }))
+  };
 }
 
 function valueColumns(l: Label, locale: string, currency: string): Array<Column<AudienceValue>> {

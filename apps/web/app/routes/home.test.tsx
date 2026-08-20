@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LoaderFunctionArgs } from "react-router";
 import type { Env } from "../env";
 import { loader as approvalsLoader } from "./approvals";
-import { hasApprovalsLink, isOwnWork, loader } from "./home";
+import { activeCampaignCount, hasApprovalsLink, isOwnWork, loader, openWhitespaceCount } from "./home";
 
 // The activity panel is headed "Your recent activity", which is a promise: it
 // lists what this person changed. Signing in is not a change, and the audit log
@@ -27,6 +27,45 @@ describe("what counts as your recent activity", () => {
 
   it("keeps an event with no subject at all", () => {
     expect(isOwnWork({ action: "core.settings.update", subjectRef: null })).toBe(true);
+  });
+});
+
+describe("openWhitespaceCount", () => {
+  it("counts everything that is not parked", () => {
+    expect(
+      openWhitespaceCount([
+        { id: "wsp_1", status: "candidate" },
+        { id: "wsp_2", status: "validating" },
+        { id: "wsp_3", status: "validated" },
+        { id: "wsp_4", status: "parked" }
+      ])
+    ).toBe(3);
+  });
+
+  it("is zero once every whitespace item is parked", () => {
+    expect(openWhitespaceCount([{ id: "wsp_1", status: "parked" }])).toBe(0);
+  });
+
+  it("is zero for an empty list", () => {
+    expect(openWhitespaceCount([])).toBe(0);
+  });
+});
+
+describe("activeCampaignCount", () => {
+  it("counts only campaigns actually live", () => {
+    expect(
+      activeCampaignCount([
+        { id: "cmp_1", state: "draft" },
+        { id: "cmp_2", state: "live" },
+        { id: "cmp_3", state: "live" },
+        { id: "cmp_4", state: "paused" },
+        { id: "cmp_5", state: "ended" }
+      ])
+    ).toBe(2);
+  });
+
+  it("is zero when nothing is live", () => {
+    expect(activeCampaignCount([{ id: "cmp_1", state: "scheduled" }])).toBe(0);
   });
 });
 

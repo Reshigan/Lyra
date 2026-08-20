@@ -35,6 +35,7 @@ import { analyticsRoutes, runDueSchedules } from "./routes/analytics.js";
 import { complianceRoutes } from "./routes/compliance.js";
 import { onboardingRoutes } from "./routes/onboarding.js";
 import { portalRoutes } from "./routes/portal.js";
+import { carrierSandboxRoutes } from "./routes/carrier-sandbox.js";
 import { channelsRoutes } from "./routes/channels.js";
 import { platformRoutes } from "./routes/platform.js";
 import { settlementRoutes } from "./routes/settlement.js";
@@ -102,6 +103,11 @@ app.route("/v1/platform", platformRoutes);
 app.route("/v1/search", searchRoutes);
 app.route("/v1/names", nameRoutes);
 app.route("/v1/directory", directoryRoutes);
+
+// Not a LYRA API and deliberately outside /v1: the reference underwriter
+// (ADR-0072) is a foreign carrier as far as the quote adapter is concerned,
+// has no tenant and no session, and belongs in no integrator's SDK.
+app.route("/carrier-sandbox", carrierSandboxRoutes);
 
 for (const [module, resources] of Object.entries(BY_MODULE)) {
   mountAll(app.basePath(`/v1/${module}`) as unknown as Hono<App>, resources);

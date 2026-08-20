@@ -12,7 +12,8 @@ says so rather than describing the screen it ought to be.
 1. NORTH is the platform's insight half. It splits across two URLs: `/analytics`
    (the machinery — dashboards, reports, runs, exports, schedules, saved views,
    unit economics, journey events) and `/north` (the executive layer — metrics,
-   snapshots, briefings, anomalies, scenarios, board packs, decisions).
+   snapshots, briefings, anomalies, scenarios, board packs, decisions). **`/north`
+   itself is now two unrelated systems that share a URL prefix — see point 11.**
 2. Two people live here. The **analyst** (role `north.analyst`) is in it all day:
    parameterise a report, run it, read the table, export it to Excel, check why
    last night's run failed.
@@ -39,6 +40,24 @@ says so rather than describing the screen it ought to be.
 10. Read §2 (who sees what) before designing anything. In this module, permission
     is not a footnote — it is the single largest determinant of what is on screen,
     and today it locks the analyst out of the two screens built for them.
+11. **`/north` is built twice, and the two builds do not know about each other.**
+    Everything in §4.6 is the OLD generic system: a `layout("routes/workspace.tsx")`
+    catch-all (`:module`, `:module/:resource`) driven by the declarative spec in
+    `apps/web/app/modules/north.ts`. Since it was written, a second, bespoke,
+    hand-built system landed alongside it: `layout("routes/north-shell.tsx")` wraps
+    nine static routes — `north/brief`, `north/explorer`, `north/anomalies`,
+    `north/whatif`, `north/board`, `north/board/:id/file`, `north/decisions`,
+    `north/admin`, `north/dev` (`apps/web/app/routes.ts`). React Router ranks a
+    static route above the dynamic `:module`/`:module/:resource` segment, so these
+    nine URLs are served entirely by the new system; every other `/north/*` path
+    (`/north`, `/north/metrics`, `/north/snapshots`, `/north/alerts`, …) still falls
+    through to the old one. The two systems are **not linked from each other's
+    nav**: the main shell's "Insight" link (`nav.north`) still resolves to `/north`,
+    the OLD system's home — a person who only ever clicks the main nav never sees
+    the new Brief/Explorer/Board/Decisions screens at all. The new system is reached
+    only by a direct URL, a bookmark, or a link some other bespoke screen happens to
+    render. See the new §4.6a for the bespoke system, and §9 for the two confirmed
+    dead-end links this split produces.
 
 ---
 
@@ -81,6 +100,37 @@ panels all follow it. The API re-checks every one of them. The single deliberate
 exception is a *whole screen* the actor navigated to directly — that degrades to
 a denial notice, because a blank page is worse than a sentence.
 
+### 1.1 The other frame: `NorthShell` (the bespoke fork)
+
+The nine routes named in §0.11 render inside `apps/web/app/components/north-shell.tsx`
+(`NorthShell`), not `shell.tsx`. It does not extend or wrap `Shell` — it duplicates
+the header/rail/footer JSX outright. A code comment on that duplication cites "this
+plan's Global Constraints" in `docs/superpowers/specs/2026-08-15-north-shell-fork-design.md`
+as the reason the shared `ShellChrome` extraction was deferred rather than done.
+
+- **Its own scoped rail.** `NORTH_NAV_PATHS` is a compile-time array of the eight
+  rail destinations (all nine routes except the `board/:id/file` detail route,
+  which is hidden the same way other `:id` routes are in `routing.ts`). It is
+  explicitly **not** derived from `session.nav` — a code comment notes `session.nav`
+  is shaped for `WORKSPACE_PATHS` (top-level roots only) and cannot express this
+  rail.
+- **Header logo/home link → `/north/brief`**, not `/north`. Footer links to `/design`,
+  the doctrine route.
+- **Module switcher excludes NORTH itself** from its own list of other modules.
+- **The Meridian scrubber lives here, once, at the shell.** `?asOf=<epoch-ms>` in
+  the URL drives every screen's replay moment. A non-finite value (`Number("abc")`
+  → `NaN`) is treated as "live" rather than forwarded — the shell computes
+  `initialAsOf` with this guard and passes it down; each screen's own loader then
+  independently re-reads `asOf` from `useSearchParams()`/`request.url` and applies
+  its own `Number.isFinite` guard again when building its own upstream query string
+  — the guard is not centralised into a single trusted value handed down by
+  context, it is the same defensive check repeated once at the shell (for the
+  scrub UI) and once per screen (for that screen's own API calls). Dragging the
+  scrubber updates the param via a history `replace`, so back/forward and
+  shareable links both carry the replay moment.
+- **A Companion panel gated on `ai:runs:read`** (`mayCompanion`), present in this
+  shell and not documented anywhere in the OLD system's chrome.
+
 ---
 
 ## 2. Who sees what
@@ -106,6 +156,29 @@ That single fact causes the module's worst defect (§9.1).
 | `analytics:saved_views:read` / `:write` | The Saved views tab |
 | `north:metrics:read` … `north:decisions:write` | The seven `/north` tabs |
 | A dataset's own permission | Each dashboard tile and each report definition, re-checked at query time |
+
+**The bespoke fork's permissions (§1.1) are a second, overlapping surface**, read
+per-screen rather than from the table above:
+
+| Permission | Gates |
+|---|---|
+| `north:briefings:generate` / `:approve` | `north/brief` — the generate form / the publish action |
+| `north:anomalies:assign` | `north/brief`'s inline "own this anomaly" action; `north/anomalies` |
+| `north:anomalies:read` | `north/anomalies` |
+| `north:snapshots:read` | `north/explorer`, `north/dev` |
+| `north:scenarios:read` / `:run` | `north/whatif` — read the library / save a question |
+| `north:boardpacks:read` / `:generate` | `north/board` |
+| `north:decisions:read` / `:write` | `north/decisions` |
+| `north:metrics:read` / `:write` | `north/admin` |
+| `north:snapshots:run` | `north/admin`, `north/dev` |
+| `north:alerts:read` | `north/admin` (gates a link to `/north/alerts`, which does not exist under this shell — §9) |
+| `core:api_keys:read` | `north/dev` |
+| `ai:runs:read` | the Companion panel in `NorthShell` itself |
+
+These strings are exact-segment permissions like every other grant in this module
+(§2 intro) — holding `north:briefings:generate` does not grant
+`north:briefings:approve`, and none of them is implied by the OLD system's
+`north:briefings:read` etc. in §2's first table.
 
 ### Role matrix for the named roles
 
@@ -1197,7 +1270,14 @@ register is a register you cannot act from.
 
 ---
 
-### 4.6 `/north` — Insight workspace (7 tabs)
+### 4.6 `/north` — Insight workspace (7 tabs) — the OLD/legacy generic system
+
+**This is the system the main shell's "Insight" nav link actually opens.** A
+second, bespoke, hand-built system now exists alongside it at `/north/brief` and
+eight sibling routes (§1.1, §4.6a) — reachable only by direct URL, never from
+this nav link. The two share the `/north` URL prefix; two of this system's tab
+names (`anomalies`, `decisions`) collide with the new system's route names, and
+the new system wins the match at those exact paths (§0.11).
 
 **Route + title.** `/north` and `/north/:resource`. `h1` = "Insight"
 (`nav.north`). Same generic list route as §4.4.
@@ -1378,6 +1458,128 @@ narrative, scenario result) are truncated JSON.
 
 ---
 
+### 4.6a NorthShell — the bespoke fork (8 hand-built screens)
+
+This is the system described in §1.1: nine routes under `layout("routes/north-shell.tsx")`
+in `apps/web/app/routes.ts` (eight distinct screens plus one file-download detail
+route). Unlike §4.6, none of these is generic CRUD — each is its own component,
+its own loader, its own `LABELS` (`en`/`ar`), reading through the shared helpers
+in `apps/web/app/routes/north-shared.tsx` (`labelsFrom`, `readable` — a 403/404
+degrades a card, not the screen; `parsed()` — safe against the CRUD's hydrated-JSON
+vs. a module route's raw-text split; `refuse`/`refused` — the common action-result
+shape; `MetricValue`/`num`/`pct` — the one place a stored minor-unit/basis-point
+integer becomes a displayed number).
+
+**Cross-screen mechanics common to all eight:**
+- **Idempotency.** Every write-capable screen's loader mints
+  `idempotencyKey: crypto.randomUUID()` once per page load; the form carries it as
+  a hidden field; the action forwards it as an `idempotency-key` header only when
+  present. One key per load, so a double-submitted write is the same write.
+- **Replay (`?asOf=`).** Time-scoped data (briefings, anomalies, snapshots) is
+  bound to the shell's Meridian moment; definitional/catalogue data (the metrics
+  list) deliberately is not — a code comment in `north-brief.tsx` gives the
+  rationale: bounding a *definitions* catalogue by the replay moment would hide
+  definitions created since, rather than replay their values, which is not what
+  replay is for.
+- **Consequential writes surface their approval gate rather than swallowing it**
+  (CLAUDE.md rule 4): an action that comes back `approval_required` renders via
+  the shared `Gate` component (`routes/staff.tsx`), never silently retried or hidden.
+- **Interruptions are inline, never a modal** (CLAUDE.md rule 11) — `GuardrailNotice`
+  rendered in the page flow.
+
+#### `north/brief` — The Brief
+
+Read-gated implicitly (no explicit `north:briefings:read` in this screen's own
+`PERM`; the API is the authority per `readable()`'s 403/404-to-null pattern).
+Write permissions: `north:briefings:generate`, `north:briefings:approve`,
+`north:anomalies:assign`. The module's flagship screen and its **only** real ✦ AI
+surface (see §7). Loader fetches the seven most recent briefings and anomalies
+(both replay-bound by `?asOf=`) and the metrics catalogue (deliberately not
+replay-bound, see above). Three actions: `generate` (creates a briefing for a
+question/audience, gated on `:generate`), `publish` (gated on `:approve`, may come
+back `approval_required` and is shown via `Gate`, not swallowed), and
+`own-anomaly` (assigns the current actor to an anomaly interrupting the brief,
+gated on `:assign`). The headline `<h1>` is not written copy — it is the model's
+own first sentence, extracted from the stored narrative
+(`firstSentence(paragraphs(brief.narrativeRef).at(0))`). Below it, a kicker line
+carries the actual `✦` glyph inside an `EvidenceLink`: `✦ Narrated by NORTH from
+the live ledger` (`en`) / `✦ صياغة نورث من السجل الحي` (`ar`), whose popover shows
+an audit-body sentence plus a `<Ref value={brief.aiAuditId}>` block when present —
+this specifically resolves the OLD system's §4.6 complaint that `aiAuditId` "links
+nowhere": here it opens an inspectable popover. A `draft`-status brief shows a
+`GuardrailNotice` "numbers unverified" warning when a figure could not be traced
+to a snapshot. Links out to `/north/board` ("Board pack"), `/north/whatif`
+("What-if"), `/north/anomalies/{id}`, and — for each metric highlight — a
+`Link to="/north/metrics?q=..."` (source at line ~520). **That last link is a
+dead end**: `/north/metrics` is not registered under `NorthShell` (§4.6, §9), so
+clicking a highlighted metric silently exits into the OLD system's chrome, losing
+the Meridian scrubber and the scoped rail with no warning. This is the module's
+flagship screen, so it is also the most-visited path to this defect.
+
+#### `north/whatif` — Scenarios ("What if")
+
+`PERM = { read: "north:scenarios:read", run: "north:scenarios:run" }`. **Confirms
+the doc's earlier finding: this is not a slider or simulator.** A scenario is
+literally a question plus free-text assumptions (`name: value` per line, parsed
+by `readAssumptions()` — a line with no `name:` is refused outright, not silently
+dropped) and, optionally, a stored result. The screen's own code comments are
+explicit about why: "Nothing in the API composes an answer yet… so this screen
+saves the question and its assumptions, renders a stored result where one exists,
+and says plainly that a stored figure is a point estimate with no band behind it.
+It does not invent a range to satisfy the guardrail — a fabricated band is worse
+than a missing one." Saving a scenario stores only `question`, `author`,
+`assumptionsJson` — never a fabricated `resultJson` or `modelRunRef`. The library
+table's "Result" column is a badge ("Answered"/"Unanswered") keyed off whether
+`resultJson` has any keys. The headline is deliberately marked as **not** an AI
+surface: `headlineFor()`'s own comment reads "Not AI-authored text, so no ✦
+(CLAUDE.md §11): a person typed this question, nothing summarised it." Numeric
+result fields are unit-decoded from their key's suffix (`*Minor` → money,
+`*Bps`/`*Ppm` → percent-shaped, `*Ms` → seconds) via `unitOf()`/`Value()` — the
+same convention `north-shared.tsx`'s `MetricValue` uses for stored metrics. Links
+back to `/north/brief` only.
+
+#### `north/explorer`, `north/anomalies`, `north/board` (+ `north/board/:id/file`), `north/decisions`, `north/admin`, `north/dev`
+
+These six were read in a prior investigation pass in this session; their exact
+on-screen copy strings were not re-verified in this final pass and are
+deliberately **not** quoted here to avoid presenting unconfirmed text as fact.
+Structural facts that were confirmed and are not in doubt:
+
+- **`north/explorer`** — `north:snapshots:read`. Browses the metric/snapshot
+  catalogue that the shell's Meridian scrubber replays against.
+- **`north/anomalies`** — `north:anomalies:read`, `north:anomalies:assign`. Has a
+  state-transition map (`explain` → `explained`, `own` → `action_created`,
+  `dismiss` → `dismissed`) mirrored by the inline anomaly-ownership action on
+  `north/brief`.
+- **`north/board`** (+ its file-download detail route `north/board/:id/file`) —
+  `north:boardpacks:read`, `north:boardpacks:generate`. Generation is served by
+  `apps/api/src/engines/north-boardpack.ts`. Unlike the OLD system's Board packs
+  tab (§4.6 Tab 6), where `pdfFileId`/`xlsxFileId` render as inert identifier
+  text, this bespoke screen has a dedicated file-download route.
+- **`north/decisions`** — `north:decisions:read`, `north:decisions:write`.
+- **`north/admin`** — `north:metrics:read`, `north:metrics:write`,
+  `north:snapshots:run`, `north:alerts:read`. Renders `<Link to="/north/alerts">`
+  gated on `:alerts:read`. **This is a dead end**: `/north/alerts` is not
+  registered under `NorthShell` either (it was never a §4.6 tab name at all — the
+  OLD system has no Alerts tab), so this link falls through to the OLD system's
+  generic `:module/:resource` route rather than any purpose-built screen.
+- **`north/dev`** — `north:snapshots:read`, `north:metrics:read`,
+  `north:snapshots:run`, `core:api_keys:read`.
+
+None of these six renders the `✦` mark, an `AgentBadge`, `GhostText`,
+`ConfidenceMeter`, or an `EvidenceLink` — each has a self-documenting code comment
+explaining why its headline/helper text is arithmetic on stored data rather than
+AI output, the same pattern `north-whatif.tsx`'s `headlineFor()` makes explicit.
+
+**AI surfaces across all eight bespoke screens, definitively:** exactly one —
+`north/brief`. The other seven deliberately have none.
+
+**A defect that is not specific to any one screen:** the fork exists as a set of
+direct URLs with no discoverable path from the main product nav (§0.11). Every
+fact above is reachable only by a person who already knows `/north/brief` exists.
+
+---
+
 ### 4.7 Screens that are referenced but do not exist
 
 Design should know these are gaps, not omissions from this brief.
@@ -1488,10 +1690,26 @@ Every rule below is enforced or expected across the whole module.
 
 ## 7. AI surfaces — where ✦ appears
 
-**Today, nowhere in this module.** That is the honest answer, and it is the single
-biggest divergence between the module's data model and its screens.
+**Nowhere in the OLD system (§4.6), and in exactly one of eight screens in the
+bespoke fork (§4.6a).** The claim that ✦ appears "nowhere in this module" is no
+longer accurate as a whole-module statement — `north/brief` renders a real
+`AGENT_MARK`/`EvidenceLink` surface — but it remains true of every other screen,
+old and new: seventeen of the module's eighteen screens (the OLD system's seven
+generic tabs plus seven of the bespoke fork's eight) have no ✦ anywhere.
 
-The design system provides the vocabulary, unused here:
+**The one real instance.** `north/brief`'s headline `<h1>` is the model's own
+first sentence, pulled straight from the stored narrative
+(`firstSentence(paragraphs(brief.narrativeRef).at(0))`) rather than written page
+copy. The `✦` glyph itself sits on the kicker line beneath it, inside an
+`EvidenceLink`: `<span aria-hidden="true">{AGENT_MARK}</span> {l("kicker")}` —
+"Narrated by NORTH from the live ledger" / "صياغة نورث من السجل الحي". Its popover
+source shows an audit-body sentence and, when present, a `<Ref value={brief.aiAuditId}>`
+block — an inspectable "why" one interaction away, exactly the pattern this
+section used to say the module lacked entirely. This specifically fixes the OLD
+system's own §4.6 complaint that `aiAuditId` "is a bare identifier that links
+nowhere" — it does, on the Briefings tab; it does not, on `north/brief`.
+
+The design system provides the vocabulary, still largely unused everywhere else:
 
 | Primitive | What it is | Interaction |
 |---|---|---|
@@ -1536,6 +1754,14 @@ collection:
 | `/north` | `/m/north` | `north/metrics` |
 | `/analytics` | `/m/analytics` | `analytics/reports` |
 
+This table describes the OLD system only (§4.6) — `session.nav`, which is what
+drives the mobile nav mapping, is `WORKSPACE_PATHS`-shaped and has no entries for
+`/north/brief` or any other bespoke-fork route (§1.1). Whether the bespoke fork
+has any mobile presence at all — a separate Expo screen, a deep link, or nothing
+— **is not determined from code**: this pass reviewed the Expo app's routing only
+far enough to confirm the `/m/north` → `north/metrics` mapping above, and did not
+audit the mobile app for bespoke-fork-specific screens.
+
 **List screen** (`/m/{nav}`). A `FlatList` with `gap: md`, `padding: lg`, safe-area
 insets top and bottom. Header block: a quiet "Back" button aligned to the reading
 edge (the stack draws no header, and an edge swipe is not reachable by
@@ -1566,7 +1792,23 @@ default dashboard, read-only, in the exec's ninety-second shape.
 
 ## 9. What is weak today — ranked
 
-**9.1 `north.analyst` is locked out of the two screens built for them.**
+**9.1 An entire second build of this module is invisible from the product's own
+navigation, and its own screens link into dead ends.** §0.11/§1.1/§4.6a: the
+bespoke `NorthShell` fork (`north/brief` and seven siblings) is reachable only by
+a direct URL — the main shell's "Insight" nav link still opens the OLD system
+(§4.6), and nothing in the OLD system links forward to the new one either. Two of
+the new system's route names (`anomalies`, `decisions`) URL-collide with OLD-system
+tab names, so the new system silently shadows those two OLD tabs at those exact
+paths. And the new system is not internally consistent about its own boundary:
+`north/admin` links to `/north/alerts` (gated on `north:alerts:read`) and
+`north/brief` — the module's flagship, most-visited screen — links each metric
+highlight to `/north/metrics?q=...`. Neither path is registered under
+`NorthShell`, so both clicks silently exit the new chrome (losing the Meridian
+scrubber and the scoped rail, with no visual warning) into the OLD system's
+generic `:module/:resource` route. This is not one incident; it is the same class
+of defect appearing twice, once on the module's own most-visited screen.
+
+**9.2 `north.analyst` is locked out of the two screens built for them.**
 The role holds `analytics:dashboards:write` and `analytics:reports:write` and
 neither `:read`. Permission matching is exact-segment; there is no implied
 hierarchy. Result: `/analytics/dashboard/:id` shows "You do not have permission to
@@ -1578,7 +1820,7 @@ report are both personal-scoped and owned by `north.analyst`, and that report's
 a grant-list bug, not a design problem, but every design decision about the
 analyst's screens is untestable until it is fixed.
 
-**9.2 The executive's default dashboard is four permission errors.**
+**9.3 The executive's default dashboard is four permission errors.**
 `dist.funnel` is the tenant default with no role allowlist; all four of its tiles
 read `dist:quote_requests:read`, which `north.exec` does not hold. The exec's board
 renders four grey notes reading "This tile could not be built. forbidden:
@@ -1586,7 +1828,7 @@ dist:quote_requests:read". Design must decide what a permission-denied tile look
 like — it must not be a raw permission string, and it must not be indistinguishable
 from a tile that genuinely broke.
 
-**9.3 Seeded runs and exports have no artefacts, and the UI does not say so.**
+**9.4 Seeded runs and exports have no artefacts, and the UI does not say so.**
 Every seeded `report_runs` row has `resultRef: null` and every seeded
 `analytics_exports` row has `fileId: null`. The rows list normally, show sizes
 (48,210 bytes, 12,884 bytes) and download counts (2, 1, 3), and any download
@@ -1595,7 +1837,7 @@ truthful state for "this row is a record of something that produced no artefact"
 — distinct from ready, from expired and from failed. Today all five states share a
 neutral grey badge.
 
-**9.4 The home revenue KPI under-reports across currencies.**
+**9.5 The home revenue KPI under-reports across currencies.**
 The fold pins to the first row's currency and skips every other row. A multi-
 currency tenant sees a fraction of its revenue under a label claiming to be
 revenue, with nothing indicating rows were dropped. Design surface this — do not
@@ -1603,7 +1845,7 @@ hide it. Either a per-currency stat set, or the number plus an explicit
 "AED only · 2 other currencies not included" line. The identical defect is in the
 "Where the work is" panel.
 
-**9.5 The paused dashboard schedule is deliberate and reads as broken.**
+**9.6 The paused dashboard schedule is deliberate and reads as broken.**
 "Daily funnel board" is `status: paused`, `lastState: failed`, `nextRunAt: null`,
 because **only report schedules are delivered — dashboard delivery is not built**.
 The screen shows a paused, failed schedule with no next run and no explanation. It
@@ -1611,7 +1853,7 @@ needs copy that distinguishes "paused because the capability does not exist yet"
 from "paused because someone paused it". And `north.exec`, whose morning PDF this
 concerns, cannot see the Schedules tab at all.
 
-**9.6 `nextRunAt` on seeded rows does not match the cron expression.**
+**9.7 `nextRunAt` on seeded rows does not match the cron expression.**
 The API's `nextRun()` is a real five-field cron walker stepping minute by minute in
 UTC over up to 366 days — correct. But the **seed** computes `nextRunAt`
 arithmetically as "now plus an offset", so a schedule showing `0 7 * * *` may have
@@ -1619,22 +1861,60 @@ a "Next run" three hours from now at an arbitrary minute. Any design that presen
 cron and next-run side by side will look wrong on a fresh install, and no screen
 translates the cron expression into readable words.
 
-**9.7 The Sparkline has no test.**
+**9.8 The Sparkline has no test.**
 The only chart primitive in the design system. Nothing covers the single-value
 case, the all-equal case (guarded by `span || 1`), or point placement. It is also
 the component with the unresolved RTL question in §6.4. Any redesign should treat
 its behaviour as unverified.
 
-**9.8 There is no builder, no funnel, no pause, and no download from the register.**
+**9.9 There is no builder, no funnel, no pause, and no download from the register.**
 See §4.7. Four named capabilities have data models, endpoints or labels but no
-screen.
+screen. (The bespoke fork's `north/board` is a partial exception — it does have a
+file-download route, §4.6a.)
 
-**9.9 No AI anywhere.**
-Three `/north` tabs exist to hold AI output and render it as truncated JSON in
-table cells. Zero ✦ marks in the module. See §7 for the five places it belongs.
+**9.10 AI surfaces are almost entirely absent, across both systems.**
+The OLD system's three `/north` tabs that exist to hold AI output (Briefings,
+Anomalies, Scenarios) render it as truncated JSON in table cells with zero ✦
+marks (§4.6, §7). The bespoke fork adds exactly one real surface — `north/brief`
+— across its eight screens (§4.6a, §7); the other seven have none, each by
+explicit design choice recorded in its own code comments. Fifteen of the module's
+eighteen screens, old and new combined, render AI-adjacent data with no ✦, no
+agent attribution, and no inspectable "why". See §7 for where it belongs and for
+the one screen that already does this correctly.
 
-**9.10 Dashboard tile headings are raw English keys** stored in layout JSON,
+**9.11 Dashboard tile headings are raw English keys** stored in layout JSON,
 untranslatable and un-brandable, on a screen whose entire chrome is translated.
+
+**9.12 The Meridian design spec promises more than the shipped shell builds.**
+`docs/superpowers/specs/2026-08-15-north-shell-fork-design.md`, cited directly in
+`north-shell.tsx`'s own code comments, describes a scenario-picker and confidence
+bands as part of the Meridian replay experience. Neither exists in the shipped
+`NorthShell`: the scrubber moves a single `?asOf=` timestamp and nothing else: no
+scenario selector, no confidence band rendered anywhere against a replayed value.
+
+**9.13 `north-snapshotter.ts` reads SCOUT's and SIGNAL's tables directly,
+bypassing the event bus.** CLAUDE.md rule 6 ("Events over calls… Direct
+cross-module imports are forbidden except from packages/core") is written for
+exactly this shape of coupling. `apps/api/src/engines/north-snapshotter.ts`
+computes `whitespacePromotionRate` from `schema.scoutWhitespaces` and
+`campaignReturnOnSpend`/`costPerLead`/`costPerAcquisition` from
+`schema.signalSpend`/`schema.signalAttributionEvents` via direct Drizzle queries
+against those modules' own tables, not via `lyra-events`. There is no code-level
+link between NORTH and SCOUT or SIGNAL anywhere at the UI/route layer — the
+"handover" described elsewhere as an organisational pattern between NORTH and
+SCOUT/SIGNAL has no code counterpart in either direction at that layer — but at
+the data layer this snapshotter is a real, working cross-module coupling that the
+architecture rule above says should not exist in this form.
+
+**9.14 `/north/whatif` has no slider, no simulator, and no confidence band —
+despite what "what-if" and "scenario" imply.** A scenario is a stored question
+plus free-text `name: value` assumption lines (§4.6a); there is no engine in this
+codebase that computes an answer from them (`apps/api/src/engines` holds the
+snapshotter and the board pack, not a scenario engine), so a saved scenario's
+result stays empty until something else fills it in by hand, and the screen says
+so explicitly rather than fabricating a range. This is a genuine capability gap
+against the feature's name, not a rendering defect — the screen is honest about
+the gap it has, which is the right call given the gap exists at all.
 
 ---
 
@@ -1710,3 +1990,42 @@ data" · "Schedule" · "Time zone" · "Recipients" · "Next run" · "Screen" · 
 "Up is good" · "Down is good" · "Exec" · "Board" · "Investor" · "Draft" · "Review" ·
 "Published" · "Final" · "Distributed" · "New" · "Explained" · "Action created" ·
 "Dismissed" · "Open" · "Reviewed" · "Reversed".
+
+**NorthShell — Brief (`north/brief`) — the module's only real ✦ surface, English
+strings verified verbatim against `LABELS.en` in `north-brief.tsx`** — "Narrated
+by NORTH from the live ledger" (the kicker beside the ✦ mark; Arabic: "صياغة نورث
+من السجل الحي") · "Numbers unverified" (the draft-status `GuardrailNotice`) ·
+"Board pack" · "What-if" (the two outbound links). Full copy for this screen's
+remaining labels (form fields, empty states, per-audience/per-status text) was
+read in a prior pass in this session but is not re-quoted here verbatim; treat
+only the strings above as confirmed against this final read.
+
+**NorthShell — Scenarios (`north/whatif`) — English strings verified verbatim
+against `LABELS.en` in `north-whatif.tsx`** — "Scenarios" · "What if — asked once,
+kept for the next person who asks it" · "The Brief" · "A scenario is a question
+plus the assumptions it rests on. Both are stored so the answer can be argued
+with later, which is the only kind of answer worth keeping." · "Ask a what-if" ·
+"The question" · "What if we move a fifth of the motor book onto the panel?"
+(hint copy) · "Assumptions" · "Asked by" · "Save the question" · "Saving records
+the question and its assumptions. No engine computes the answer yet, so the
+result stays empty until somebody fills it in." · "Saved scenarios" · "Every
+scenario asked in this tenant, most recent first" · "Question" · "Asked" ·
+"Result" · "Open" · "Answered" · "Unanswered" · "What it assumes" · "What it
+answers" · "Nothing has answered this yet. The question and its assumptions are
+stored; the result is empty because no engine has run against them." · "Shared
+with" · "Model run" · "Not recorded" · "These are point estimates. No confidence
+band was stored with them, so read them as a single line through a range nobody
+has measured." · "No scenarios have been asked" · "The first question somebody
+writes down is the first one anybody else can argue with." · "You do not have
+permission to read scenarios. Ask a tenant administrator for NORTH scenario
+access." · "Scenario saved." · "Queued for approval" · "Saving this scenario
+needs sign-off under policy {policy}. It is queued, not lost." · "Open the
+approvals queue" · "Write the question out — a scenario without one cannot be
+argued with later." · "Put your name to it." · "Assumptions are read one per line
+as name: value. One of these lines carried no name."
+
+**The other six bespoke-fork screens** (`north/explorer`, `north/anomalies`,
+`north/board`, `north/board/:id/file`, `north/decisions`, `north/admin`,
+`north/dev`) were read in a prior pass in this session; their exact copy strings
+are deliberately omitted here rather than quoted from memory — see §4.6a for
+their confirmed structural facts (permissions, endpoints, state machines).

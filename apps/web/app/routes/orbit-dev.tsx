@@ -239,7 +239,7 @@ export default function OrbitDev() {
 
   const locale = shell?.locale ?? "en";
   const t = translator(locale, shell?.overrides);
-  const l = labelsIn(locale);
+  const l = labelsIn(locale, shell?.domainPack);
   const busy = navigation.state !== "idle";
   const outcome = ran ? outcomeOf(ran.rows) : null;
 

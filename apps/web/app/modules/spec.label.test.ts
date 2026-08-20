@@ -73,6 +73,36 @@ describe("domain-pack vocabulary", () => {
     const label = labelsFor(spec(labels), "ar", "retail-ecom");
     expect(label("premiumMinor")).toBe("قيمة الطلب");
   });
+
+  // The bespoke routes qualify a noun by the block it sits in — the quote
+  // desk's issue form asks for `issue.policyNo`, claim-detail for
+  // `payee.insurer`, policy-endorse for `field.premiumMinor`. The pack table is
+  // keyed on the noun, so before this a whole family of screens was unreachable
+  // by any pack: a retail tenant read "Order number" everywhere and "Contract
+  // number" on the quote desk. ADR-0022 deferred exactly this half of the seam.
+  it("renames a noun a route qualified with its own block", () => {
+    const label = labelsFor(spec({ "issue.policyNo": "Policy number" }), "en", "retail-ecom");
+    expect(label("issue.policyNo")).toBe("Order number");
+  });
+
+  it("reads the noun off the end, so a nested key still resolves", () => {
+    const label = labelsFor(spec({}), "en", "retail-ecom");
+    expect(label("issue.form.claimNo")).toBe("Return number");
+  });
+
+  it("leaves a qualified key the pack has no noun for to the workspace", () => {
+    const label = labelsFor(spec({ "issue.customer": "Customer" }), "en", "retail-ecom");
+    expect(label("issue.customer")).toBe("Customer");
+  });
+
+  // `process.insurer` and `collectsPayment.underwriter` are in the pack table
+  // already, spelled qualified. The exact key has to keep winning, or a pack
+  // loses the ability to say a different word in a different block.
+  it("keeps an exactly-keyed qualified noun ahead of the suffix read", () => {
+    const label = labelsFor(spec({}), "en", "retail-ecom");
+    expect(label("process.insurer")).toBe("Supplier");
+    expect(label("collectsPayment.underwriter")).toBe("Supplier collects");
+  });
 });
 
 describe("humanise", () => {

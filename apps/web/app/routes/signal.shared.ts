@@ -29,6 +29,7 @@ export const PERM = {
   creativesGenerate: "signal:creatives:generate",
   creativesApprove: "signal:creatives:approve",
   audiencesRead: "signal:audiences:read",
+  audiencesEstimate: "signal:audiences:estimate",
   experimentsRead: "signal:experiments:read",
   experimentsCreate: "signal:experiments:create",
   experimentsDecide: "signal:experiments:decide",
@@ -1250,6 +1251,19 @@ const LABELS: Record<string, Record<string, string>> = {
     "aud.answer.best": "{name} leads at {multiple}.",
     "aud.answer.losing": "{n} audience(s) are costing more than they return.",
     "aud.answer.none": "Not enough signings yet to say what pays.",
+    "aud.suggestTitle": "Suggest an audience",
+    "aud.suggestLede": "The model sees only aggregate counts above the k-anonymity floor and proposes a rule over them — never a customer row.",
+    "aud.suggestSubject": "Subject",
+    "aud.suggestAction": "Suggest audience",
+    "aud.suggestedPool": "Proposed pool by attribute",
+    "aud.suggestedPoolX": "share of the book",
+    "aud.suggestedPoolY": "count shown to the model",
+    "aud.suggestedReach": "Estimated reach",
+    "aud.suggestedConfidence": "Confidence",
+    "aud.suggestedSource": "Source",
+    "aud.sourceAi": "Model",
+    "aud.sourceFallback": "Deterministic fallback",
+    "aud.why": "Why these",
 
     /* answer engines */
     "aeo.title": "Answer engines",
@@ -1471,6 +1485,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "problem.resource_required": "Choose which records to read.",
     "problem.limit_required": "Ask for between one and a hundred rows.",
     "problem.hook_required": "Pick the endpoint to ping.",
+    "problem.subject_required": "Say what the audience is for.",
 
     /* admin */
     "admin.title": "SIGNAL admin",
@@ -1783,6 +1798,19 @@ const LABELS: Record<string, Record<string, string>> = {
     "aud.answer.best": "{name} يتصدّر بمعدّل {multiple}.",
     "aud.answer.losing": "{n} جمهور يكلّف أكثر مما يعيد.",
     "aud.answer.none": "لا تعاقدات كافية بعد لمعرفة ما يُجدي.",
+    "aud.suggestTitle": "اقتراح جمهور",
+    "aud.suggestLede": "لا يرى النموذج سوى أعداد إجمالية فوق حد إخفاء الهوية ويقترح قاعدة عليها — لا يرى أي سجل عميل أبدًا.",
+    "aud.suggestSubject": "الموضوع",
+    "aud.suggestAction": "اقتراح الجمهور",
+    "aud.suggestedPool": "المجموعة المقترحة حسب السمة",
+    "aud.suggestedPoolX": "حصة من قاعدة العملاء",
+    "aud.suggestedPoolY": "العدد الذي عُرض على النموذج",
+    "aud.suggestedReach": "الوصول المقدّر",
+    "aud.suggestedConfidence": "الثقة",
+    "aud.suggestedSource": "المصدر",
+    "aud.sourceAi": "النموذج",
+    "aud.sourceFallback": "احتياطي حتمي",
+    "aud.why": "لماذا هذه",
 
     /* answer engines */
     "aeo.title": "محرّكات الإجابة",
@@ -1999,6 +2027,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "problem.resource_required": "اختر السجلات المطلوب قراءتها.",
     "problem.limit_required": "اطلب بين صف واحد ومئة صف.",
     "problem.hook_required": "اختر نقطة النهاية المطلوب اختبارها.",
+    "problem.subject_required": "بيّن الغرض من هذا الجمهور.",
 
     /* admin */
     "admin.title": "إدارة SIGNAL",

@@ -322,7 +322,7 @@ describe("seedStaff — delegations", () => {
     expect(travelCapped.reason).toBe("travel");
     expect(JSON.parse(travelCapped.scopeJson!)).toEqual({ modules: ["ledger"] });
     expect(travelCapped.maxAmountMinor).toBe(250_000);
-    expect(travelCapped.currency).toBe("ZAR");
+    expect(travelCapped.currency).toBe("AED");
     expect(travelCapped.startsAt).toBe(now - 2 * DAY);
     expect(travelCapped.endsAt).toBe(now + 3 * DAY);
     expect(travelCapped.status).toBe("active");

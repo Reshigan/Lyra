@@ -353,3 +353,90 @@ describe("the deployed panel", () => {
     expect(spy).not.toHaveBeenCalled();
   });
 });
+
+describe("reaching a carrier over a service binding", () => {
+  // ADR-0072: the reference underwriter is a route on this same Worker, so it
+  // is reached over a binding rather than by hostname (a Worker fetching its
+  // own zone is Cloudflare error 1042). Every guard the url path carries has
+  // to carry over, and a binding that is not there must never become a price.
+  const BOUND = JSON.stringify({ url: "https://carrier.invalid/quote", binding: "CARRIER_SANDBOX" });
+
+  /** A service binding: the same mock carrier, reached through `env` instead. */
+  function bound(reply: () => unknown) {
+    const service = vi.fn(async () => new Response(JSON.stringify(reply()), { status: 200 }));
+    return { env: { CARRIER_SANDBOX: { fetch: service } } as unknown as Env, service };
+  }
+
+  it("posts through the binding and never touches the global fetch", async () => {
+    const global = carrier(() => QUOTED);
+    const { env: bindingEnv, service } = bound(() => QUOTED);
+    const out = await quoteOne(ctx, entry(BOUND), { age: 34 }, quoterFor(bindingEnv));
+    expect(out.state).toBe("quoted");
+    expect(out.premiumMinor).toBe(214_500);
+    expect(service).toHaveBeenCalledTimes(1);
+    expect(global).not.toHaveBeenCalled();
+  });
+
+  it("still guards the url it posts to, binding or no binding", async () => {
+    const { env: bindingEnv } = bound(() => QUOTED);
+    for (const url of ["http://carrier.invalid/quote", "https://127.0.0.1/quote", "https://carrier.internal/quote"]) {
+      const out = await quoteOne(
+        ctx,
+        entry(JSON.stringify({ url, binding: "CARRIER_SANDBOX" })),
+        { age: 34 },
+        quoterFor(bindingEnv)
+      );
+      expect(out.state).toBe("error");
+    }
+  });
+
+  it("errors rather than quoting when the named binding is not bound in this environment", async () => {
+    const global = carrier(() => QUOTED);
+    const out = await quoteOne(ctx, entry(BOUND), { age: 34 }, quoterFor({} as unknown as Env));
+    expect(out.state).toBe("error");
+    expect(out.declineReason).toMatch(/service binding/i);
+    expect(out.premiumMinor).toBeUndefined();
+    // The url must not be a second chance: a missing binding is a visible row,
+    // never a silent fall back onto the open internet.
+    expect(global).not.toHaveBeenCalled();
+  });
+
+  it("errors when the name is bound to something that is not a fetcher", async () => {
+    const global = carrier(() => QUOTED);
+    for (const value of ["https://carrier.invalid/quote", { fetch: "not a function" }, {}]) {
+      const out = await quoteOne(
+        ctx,
+        entry(BOUND),
+        { age: 34 },
+        quoterFor({ CARRIER_SANDBOX: value } as unknown as Env)
+      );
+      expect(out.state).toBe("error");
+      expect(out.declineReason).toMatch(/service binding/i);
+    }
+    expect(global).not.toHaveBeenCalled();
+  });
+
+  it("refuses a binding name outside the CARRIER_ namespace — provider rows are tenant CRUD", async () => {
+    // BROWSER has a `fetch`, so without the namespace guard a tenant could
+    // name it and aim a headless browser at a host of their choosing.
+    const global = carrier(() => QUOTED);
+    for (const name of ["BROWSER", "AI", "carrier_sandbox", ""]) {
+      const out = await quoteOne(
+        ctx,
+        entry(JSON.stringify({ url: "https://carrier.invalid/quote", binding: name })),
+        { age: 34 },
+        quoterFor({ BROWSER: { fetch: vi.fn() }, AI: { fetch: vi.fn() } } as unknown as Env)
+      );
+      expect(out.state).toBe("error");
+      expect(out.declineReason).toMatch(/binding must name a CARRIER_/i);
+    }
+    expect(global).not.toHaveBeenCalled();
+  });
+
+  it("applies every body guard to a binding's answer exactly as it does to the internet's", async () => {
+    const { env: bindingEnv } = bound(() => ({ ...QUOTED, premiumMinor: 214_500.5 }));
+    const out = await quoteOne(ctx, entry(BOUND), { age: 34 }, quoterFor(bindingEnv));
+    expect(out.state).toBe("error");
+    expect(out.premiumMinor).toBeUndefined();
+  });
+});

@@ -12,6 +12,7 @@
 // §14), so nothing here is ever an English literal in a component.
 
 import { instantOf } from "@lyra/ui";
+import type { Screen } from "@lyra/ui";
 import { pseudoText, translator } from "../i18n";
 import { vocabulary } from "./vocabulary";
 import { humanise } from "@lyra/core/words";
@@ -156,6 +157,13 @@ export interface WorkspaceSpec {
   tabs: readonly ResourceSpec[];
   /** Bespoke routes that belong to this workspace, shown as a link strip. */
   links?: readonly LinkSpec[];
+  /**
+   * Screens from the Constellation design pull (packages/ui/src/sections),
+   * keyed by their own `id`. Optional and additive — most lookups go through
+   * `surfaceFor` in ./surfaces.ts instead, since some screen modules (the
+   * public portals, the phone gallery) have no `WorkspaceSpec` to hang off.
+   */
+  surfaces?: Record<string, Screen>;
 }
 
 /**

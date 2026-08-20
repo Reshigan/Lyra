@@ -60,7 +60,12 @@ const AXIS_NAV_PATHS = [
   "/axis/referrals",
   "/axis/claims/desk",
   "/axis/admin",
-  "/axis/dev"
+  "/axis/dev",
+  // ponytail: bordereaux is a standalone worklist/register (like renewals,
+  // referrals, claims/desk above), not a per-id detail page opened from
+  // another list — postdates the eleven-destination spec this file's own
+  // comment cites, added here rather than forking a second rail array.
+  "/axis/bordereaux"
 ] as const;
 
 type RailItem = Pick<NavItem, "href" | "labelKey">;

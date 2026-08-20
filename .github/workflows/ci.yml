@@ -60,6 +60,17 @@ jobs:
   eval-live:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    # The account id is genuinely one value, so the deploy copy is a fine
+    # fallback. The TOKEN is not: CLOUDFLARE_API_TOKEN is scoped to deploy
+    # (Workers Scripts / D1 / KV) and 401s on `ai/run`, which is how a green
+    # PR turned into a red main and a staging deploy that never fired —
+    # `FAIL cloudflare ai/run …: 401 Authentication error`. A token that
+    # cannot reach the model is not a cheaper copy of one that can, so the
+    # fallback is gone and the gate is honest about being unconfigured.
+    env:
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CF_AI_TOKEN: ${{ secrets.CF_AI_TOKEN }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -68,13 +79,13 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @lyra/model-gateway eval:live
-        env:
-          # The deploy workflow passes `secrets: inherit`, so the deploy
-          # credentials are here too — fall back to them rather than fail the
-          # whole gate for want of a second copy of the same account id.
-          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CF_AI_TOKEN: ${{ secrets.CF_AI_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+      # Loud, not silent: an unconfigured live gate is a visible annotation on
+      # every push until someone adds `CF_AI_TOKEN` (a token with Workers AI
+      # Read) or `ANTHROPIC_API_KEY`. It is not a pass.
+      - if: env.CF_AI_TOKEN == '' && env.ANTHROPIC_API_KEY == ''
+        run: echo "::warning title=live eval gate not configured::no CF_AI_TOKEN or ANTHROPIC_API_KEY — live model evals did not run"
+      - if: env.CF_AI_TOKEN != '' || env.ANTHROPIC_API_KEY != ''
+        run: pnpm --filter @lyra/model-gateway eval:live
 
   e2e:
     runs-on: ubuntu-latest

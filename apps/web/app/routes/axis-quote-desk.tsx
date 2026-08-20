@@ -581,7 +581,7 @@ export default function AxisQuoteDesk() {
   const navigation = useNavigation();
 
   const locale = shell?.locale ?? "en";
-  const l = labelsIn(locale);
+  const l = labelsIn(locale, shell?.domainPack);
   const held = new Set(shell?.permissions ?? []);
   const busy = navigation.state !== "idle";
   // A panel member is an insurer with a name; `prv_01KE…` is how it is stored.

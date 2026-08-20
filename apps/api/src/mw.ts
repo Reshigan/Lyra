@@ -34,6 +34,10 @@ const PUBLIC = new Set([
   // J-X3: portal signup has no session to authenticate against yet — that is
   // the whole point of the route (routes/onboarding.ts §partner signup).
   "/v1/onboarding/partners/signup",
+  // The reference underwriter (ADR-0072). It is a foreign carrier, not a LYRA
+  // API: no tenant, no session, no data — a stateless price calculator over the
+  // risk it is posted. Its own IP throttle is in routes/carrier-sandbox.ts.
+  "/carrier-sandbox/quote",
   "/openapi.json"
 ]);
 
