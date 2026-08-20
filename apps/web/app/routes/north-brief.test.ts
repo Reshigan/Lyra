@@ -1,11 +1,28 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { firstSentence } from "./north-brief";
+import { firstSentence, paragraphs } from "./north-brief";
 
 vi.mock("../api.server", () => ({ api: vi.fn() }));
 vi.mock("../context", () => ({ cloudflare: { toString: () => "cloudflare-context" } }));
 
 import { api } from "../api.server";
 import { loader } from "./north-brief";
+
+/**
+ * The brief read `narrativeRef` straight into its `<h1>` and its body. On live
+ * every row holds a storage key from before f506bf7, so the page was headlined
+ * with a filename. The guard lives in narrative() (north-shared) and reaches
+ * both call sites through paragraphs().
+ */
+describe("paragraphs", () => {
+  it("splits the model's own blank-line breaks", () => {
+    expect(paragraphs("One finding.\n\nAnd the next.")).toEqual(["One finding.", "And the next."]);
+  });
+
+  it("gives the screen nothing to print when the column holds a storage key", () => {
+    expect(paragraphs("briefings/tn_01KE953T001KXF59BET3N3P5S6/brf_01KE953T0188ZHZRJCA23ST82K.md")).toEqual([]);
+    expect(firstSentence(paragraphs("briefings/tn_1/brf_1.md").at(0))).toBeNull();
+  });
+});
 
 describe("firstSentence", () => {
   it("has nothing to headline with when there is no paragraph", () => {

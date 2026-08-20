@@ -10,7 +10,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("../api.server", () => ({ api: vi.fn() }));
 vi.mock("../context", () => ({ cloudflare: { toString: () => "cloudflare-context" } }));
 
-import { highlightsOf, narrative } from "./journey-north";
+import { highlightsOf } from "./journey-north";
 
 /** One row as apps/api/src/engines/narrator.ts writes it. */
 const row = (highlightsJson: unknown) => ({
@@ -40,23 +40,5 @@ describe("highlightsOf", () => {
     expect(highlightsOf(row("{not json"))).toEqual([]);
     expect(highlightsOf(row({ metricKey: "gwp" }))).toEqual([]);
     expect(highlightsOf(null)).toEqual([]);
-  });
-});
-
-describe("narrative", () => {
-  it("passes prose through", () => {
-    expect(narrative("Motor closed the month above every prior month.")).toBe(
-      "Motor closed the month above every prior month."
-    );
-  });
-
-  it("declines a storage key no bucket ever held", () => {
-    expect(narrative("briefings/tn_01KE953T001KXF59BET3N3P5S6/brf_01KE953T0188ZHZRJCA23ST82K.md")).toBeNull();
-    expect(narrative("")).toBeNull();
-    expect(narrative(null)).toBeNull();
-  });
-
-  it("does not mistake a sentence that mentions a file for a key", () => {
-    expect(narrative("See the attached brief.md for the full read.")).not.toBeNull();
   });
 });
