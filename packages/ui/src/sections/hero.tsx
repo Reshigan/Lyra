@@ -44,6 +44,26 @@ export function splitHeadline(target: string): { prefix: string; numStr: string;
 }
 
 /**
+ * One frame of a count-up, formatted the way the caller already formatted
+ * `numStr`: to the same number of decimals, and grouped only if the source was
+ * grouped.
+ *
+ * The grouping half is load-bearing. Plenty of chip values carry a leading
+ * numeral that is not a quantity — `2026-08-12` is a date, `2026` is a year —
+ * and `toLocaleString`'s default grouping settles those on `2,026-08-12`, a
+ * date nobody wrote. A source string that meant its numeral as a number has
+ * separators in it already.
+ */
+export function countFrame(numStr: string, value: number): string {
+  const decimals = numStr.includes(".") ? (numStr.split(".")[1]?.length ?? 0) : 0;
+  return value.toLocaleString(undefined, {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+    useGrouping: numStr.includes(",")
+  });
+}
+
+/**
  * Animates a display string from 0 up to the numeral inside `target`, once,
  * on mount or whenever `target` itself changes. Values with no parseable
  * leading numeral (or a browser that prefers reduced motion) render as-is —
@@ -67,17 +87,12 @@ function useCountUp(target: string, durationMs = 700): string {
       setDisplay(target);
       return;
     }
-    const decimals = numStr.includes(".") ? (numStr.split(".")[1]?.length ?? 0) : 0;
     const start = performance.now();
     let raf = 0;
     const step = (now: number) => {
       const t = Math.min(1, (now - start) / durationMs);
       const eased = 1 - Math.pow(1 - t, 3);
-      const formatted = (value * eased).toLocaleString(undefined, {
-        minimumFractionDigits: decimals,
-        maximumFractionDigits: decimals
-      });
-      setDisplay(`${prefix}${formatted}${suffix}`);
+      setDisplay(`${prefix}${countFrame(numStr, value * eased)}${suffix}`);
       if (t < 1) raf = requestAnimationFrame(step);
     };
     raf = requestAnimationFrame(step);
