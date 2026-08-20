@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { metricName, num, parsed, pct } from "./north-shared";
+import { metricName, narrative, num, parsed, pct } from "./north-shared";
 
 // The generic CRUD hydrates every `*Json` column before it leaves the API
 // (apps/api/src/crud.ts), while a bespoke module route hands the raw text
@@ -62,5 +62,23 @@ describe("pct", () => {
 
   it("has nothing to say without a prior", () => {
     expect(pct(null, "en")).toBeNull();
+  });
+});
+
+describe("narrative", () => {
+  it("passes prose through", () => {
+    expect(narrative("Motor closed the month above every prior month.")).toBe(
+      "Motor closed the month above every prior month."
+    );
+  });
+
+  it("declines a storage key no bucket ever held", () => {
+    expect(narrative("briefings/tn_01KE953T001KXF59BET3N3P5S6/brf_01KE953T0188ZHZRJCA23ST82K.md")).toBeNull();
+    expect(narrative("")).toBeNull();
+    expect(narrative(null)).toBeNull();
+  });
+
+  it("does not mistake a sentence that mentions a file for a key", () => {
+    expect(narrative("See the attached brief.md for the full read.")).not.toBeNull();
   });
 });

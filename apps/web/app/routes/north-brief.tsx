@@ -31,6 +31,7 @@ import {
   MetricValue,
   labelsFrom,
   metricName,
+  narrative,
   num,
   parsed,
   pct,
@@ -199,9 +200,16 @@ interface Highlight {
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-/** The narrative as paragraphs. Blank lines are the model's own breaks. */
+/**
+ * The narrative as paragraphs. Blank lines are the model's own breaks.
+ *
+ * Routed through `narrative()` because the column is not always prose: a row
+ * seeded before f506bf7 holds a storage key no bucket was ever bound to hold.
+ * Both call sites below read the same column, and both printed the key — the
+ * `<h1>` headlined with it. Guarding here fixes them together.
+ */
 export function paragraphs(text: string | null | undefined): string[] {
-  return (text ?? "")
+  return (narrative(text) ?? "")
     .split(/\n\s*\n/)
     .map((part) => part.trim())
     .filter(Boolean);

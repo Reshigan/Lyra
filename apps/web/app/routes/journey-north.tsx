@@ -5,7 +5,7 @@ import { cloudflare } from "../context";
 import { JourneyNav, JourneyContinue } from "../components/journey-nav";
 import { translator, DEFAULT_LOCALE } from "../i18n";
 import { humanise } from "../modules/spec";
-import { parsed } from "./north-shared";
+import { narrative, parsed } from "./north-shared";
 import { useShellData } from "./workspace";
 
 interface BriefingRow {
@@ -46,19 +46,6 @@ export function highlightsOf(row: BriefingRow | null | undefined): Highlight[] {
   const list = parsed<unknown>(row?.highlightsJson, []);
   if (!Array.isArray(list)) return [];
   return list.filter((h): h is Highlight => typeof h === "object" && h !== null && "metricKey" in h);
-}
-
-/**
- * `narrativeRef` holds the briefing prose (apps/api/src/engines/narrator.ts).
- * Rows seeded before f506bf7 hold a storage key like
- * `briefings/<tenant>/<id>.md` instead, and no bucket was ever bound to hold
- * that object — so printing it is the raw-key bug (ui.md §7 P3-14) pointing at
- * text that does not exist. Those rows get no narrative section rather than a
- * filename presented as a briefing.
- */
-export function narrative(ref: string | null | undefined): string | null {
-  if (!ref) return null;
-  return /^[\w/-]+\.md$/.test(ref) ? null : ref;
 }
 
 export async function loader({ request, context }: LoaderFunctionArgs) {

@@ -134,6 +134,23 @@ export function parsed<T>(raw: unknown, fallback: T): T {
 }
 
 /**
+ * `narrativeRef` holds the briefing prose (apps/api/src/engines/narrator.ts).
+ * Rows seeded before f506bf7 hold a storage key like
+ * `briefings/<tenant>/<id>.md` instead, and no bucket was ever bound to hold
+ * that object — so printing it is the raw-key bug (ui.md §7 P3-14) pointing at
+ * text that does not exist. Such a row gets no narrative rather than a filename
+ * presented as a briefing.
+ *
+ * Shared because both screens that read the column had the bug: the journey
+ * step printed the key as its narrative section, and north-brief additionally
+ * headlined the `<h1>` with it.
+ */
+export function narrative(ref: string | null | undefined): string | null {
+  if (!ref) return null;
+  return /^[\w/-]+\.md$/.test(ref) ? null : ref;
+}
+
+/**
  * A nullable stored integer inside a sentence, where a component cannot go.
  * An em dash rather than the string "null" when the detector recorded neither.
  */
