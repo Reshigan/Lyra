@@ -354,6 +354,160 @@ describe("action: request-payment", () => {
   });
 });
 
+describe("action: fraud-score", () => {
+  it("scores the claim with no body", async () => {
+    const calls = stubFetch(ok());
+
+    const result = await action(args(form({ intent: "fraud-score" })));
+
+    expect(calls[0]?.url).toBe("https://api.test/v1/axis/claims/clm_1/fraud-score");
+    expect(calls[0]?.method).toBe("POST");
+    expect(JSON.parse(calls[0]!.body!)).toEqual({});
+    expect(result.done).toBe("fraudScoreDone");
+  });
+});
+
+describe("action: reserve-recommendation", () => {
+  it("recommends a reserve with no body", async () => {
+    const calls = stubFetch(ok());
+
+    const result = await action(args(form({ intent: "reserve-recommendation" })));
+
+    expect(calls[0]?.url).toBe("https://api.test/v1/axis/claims/clm_1/reserve-recommendation");
+    expect(calls[0]?.method).toBe("POST");
+    expect(JSON.parse(calls[0]!.body!)).toEqual({});
+    expect(result.done).toBe("reserveRecDone");
+  });
+
+  it("surfaces the sign-off refusal instead of pretending a reserve was recommended", async () => {
+    stubFetch(
+      new Response(
+        JSON.stringify({
+          title: "approval required",
+          status: 403,
+          code: "approval_required",
+          policy_key: "axis.claim_reserve"
+        }),
+        { status: 403, headers: { "content-type": "application/json" } }
+      )
+    );
+
+    const result = await action(args(form({ intent: "reserve-recommendation" })));
+
+    expect(result.problem?.status).toBe(403);
+    expect(result.done).toBeNull();
+  });
+});
+
+describe("action: recovery-open", () => {
+  it("opens a recovery of the chosen kind", async () => {
+    const calls = stubFetch(ok());
+
+    const result = await action(
+      args(form({ intent: "recovery-open", kind: "subrogation", counterpartyRef: "third-party:1", expectedMinor: "50000" }))
+    );
+
+    expect(calls[0]?.url).toBe("https://api.test/v1/axis/claims/clm_1/recoveries");
+    expect(calls[0]?.method).toBe("POST");
+    expect(JSON.parse(calls[0]!.body!)).toEqual({
+      kind: "subrogation",
+      counterpartyRef: "third-party:1",
+      expectedMinor: 50000
+    });
+    expect(result.done).toBe("recoveryOpenDone");
+  });
+
+  it("refuses a kind outside the recovery vocabulary", async () => {
+    const calls = stubFetch(ok());
+
+    const result = await action(args(form({ intent: "recovery-open", kind: "not-a-kind" })));
+
+    expect(result.error).toBe("recoveryKindRequired");
+    expect(calls).toHaveLength(0);
+  });
+
+  it("refuses an expected amount that is not zero or a positive whole number", async () => {
+    const calls = stubFetch(ok());
+    for (const expectedMinor of ["-5", "12.34", "none"]) {
+      const result = await action(args(form({ intent: "recovery-open", kind: "salvage", expectedMinor })));
+      expect(result.error, expectedMinor).toBe("recoveryExpectedRequired");
+    }
+    expect(calls).toHaveLength(0);
+  });
+});
+
+describe("action: recovery-receipt", () => {
+  it("records a receipt against a recovery by its own id", async () => {
+    const calls = stubFetch(ok());
+
+    const result = await action(
+      args(form({ intent: "recovery-receipt", recoveryId: "rec_1", amountMinor: "42000", feeMinor: "500" }))
+    );
+
+    expect(calls[0]?.url).toBe("https://api.test/v1/axis/recoveries/rec_1/receipt");
+    expect(calls[0]?.method).toBe("POST");
+    expect(JSON.parse(calls[0]!.body!)).toEqual({ amountMinor: 42000, feeMinor: 500 });
+    expect(result.done).toBe("recoveryReceiptDone");
+  });
+
+  it("refuses a receipt with no recovery named or a non-positive whole amount", async () => {
+    const calls = stubFetch(ok());
+    const noId = await action(args(form({ intent: "recovery-receipt", amountMinor: "100" })));
+    expect(noId.error).toBe("recoveryReceiptRequired");
+    for (const amountMinor of ["0", "-5", "12.34", ""]) {
+      const result = await action(args(form({ intent: "recovery-receipt", recoveryId: "rec_1", amountMinor })));
+      expect(result.error, amountMinor).toBe("recoveryReceiptRequired");
+    }
+    expect(calls).toHaveLength(0);
+  });
+});
+
+describe("action: recovery-writeoff", () => {
+  it("writes off a recovery with a reason code", async () => {
+    const calls = stubFetch(ok());
+
+    const result = await action(
+      args(form({ intent: "recovery-writeoff", recoveryId: "rec_1", reasonCode: "uncollectable" }))
+    );
+
+    expect(calls[0]?.url).toBe("https://api.test/v1/axis/recoveries/rec_1/writeoff");
+    expect(calls[0]?.method).toBe("POST");
+    expect(JSON.parse(calls[0]!.body!)).toEqual({ reasonCode: "uncollectable" });
+    expect(result.done).toBe("recoveryWriteOffDone");
+  });
+
+  it("refuses a write-off missing the recovery id or the reason code", async () => {
+    const calls = stubFetch(ok());
+    const noId = await action(args(form({ intent: "recovery-writeoff", reasonCode: "uncollectable" })));
+    expect(noId.error).toBe("recoveryWriteOffRequired");
+    const noReason = await action(args(form({ intent: "recovery-writeoff", recoveryId: "rec_1" })));
+    expect(noReason.error).toBe("recoveryWriteOffRequired");
+    expect(calls).toHaveLength(0);
+  });
+
+  it("surfaces the sign-off refusal instead of pretending the write-off happened", async () => {
+    stubFetch(
+      new Response(
+        JSON.stringify({
+          title: "approval required",
+          status: 403,
+          code: "approval_required",
+          policy_key: "axis.recovery_writeoff"
+        }),
+        { status: 403, headers: { "content-type": "application/json" } }
+      )
+    );
+
+    const result = await action(
+      args(form({ intent: "recovery-writeoff", recoveryId: "rec_1", reasonCode: "uncollectable" }))
+    );
+
+    expect(result.problem?.status).toBe(403);
+    expect(result.done).toBeNull();
+  });
+});
+
+
 describe("action: idempotency key", () => {
   it("keys each intent by what it would write, so two writes in one page load don't collide", async () => {
     // All three intents share the one key the loader mints per page load. A
