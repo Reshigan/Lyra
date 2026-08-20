@@ -368,6 +368,24 @@
   --info: var(--photon-500);
   --info-contrast: #06080b;
 
+  /* Screen-surface hue aliases (Constellation import, docs/superpowers/specs
+     2026-08-16 revenue-lines design). The Lyra Constellation design file's
+     screen data (packages/ui/src/sections) carries literal `var(--x)` hue
+     strings — short module/status names rather than the `--accent`/
+     `--success` names above. These are pure `var()` aliases onto the tokens
+     already themed above, so they need no separate light-mode redeclaration:
+     the alias flips with whatever it points at. */
+  --acc: var(--accent);
+  --acc-fg: var(--accent-contrast);
+  --ok: var(--success);
+  --bad: var(--danger);
+  --warn: var(--warning);
+  --axis: var(--module-axis);
+  --orbit: var(--module-orbit);
+  --signal: var(--module-signal);
+  --scout: var(--module-scout);
+  --north: var(--module-north);
+
   /* Status triplets — the tinted chip: fill, hairline, and the two text
      weights that sit on it. `-soft`/`-line` above stay as their aliases. */
   --ok-bg: #08120f;
@@ -379,7 +397,10 @@
   --warn-line: #2a2417;
   --warn-tx: #e4d9c4;
   --warn-tx2: #c9a25c;
+  --bad-bg: #120a0a;
   --bad-line: #3a2020;
+  --info-bg: #080f18;
+  --info-line: #1c3350;
   --north-bg: #0f0c16;
   --north-line: #2a2438;
   --north-tx: #8e7bb5;
@@ -494,7 +515,10 @@
     --warn-line: #f0e0ae;
     --warn-tx: #6b4e07;
     --warn-tx2: #a16207;
+    --bad-bg: #fdf4f3;
     --bad-line: #f2c6c2;
+    --info-bg: #f0f6fe;
+    --info-line: #c7dbf7;
     --north-bg: #f7f4fe;
     --north-line: #ddd2f5;
     --north-tx: #5b21b6;
@@ -592,7 +616,10 @@
   --warn-line: #f0e0ae;
   --warn-tx: #6b4e07;
   --warn-tx2: #a16207;
+  --bad-bg: #fdf4f3;
   --bad-line: #f2c6c2;
+  --info-bg: #f0f6fe;
+  --info-line: #c7dbf7;
   --north-bg: #f7f4fe;
   --north-line: #ddd2f5;
   --north-tx: #5b21b6;

@@ -13,7 +13,8 @@ import {
 import type { Brand, NavItem } from "../api.server";
 import type { Translate } from "../i18n";
 import { humanise } from "../modules/spec";
-import { isRouted, landingFor } from "../routing";
+import { SURFACES } from "../modules/surfaces";
+import { isRouted, landingFor, shouldInclude } from "../routing";
 import { ColdOpen } from "./cold-open";
 import { Companion } from "./companion";
 import { ConstellationMark } from "./mark";
@@ -172,6 +173,35 @@ const MODULE_ACCENT: Record<string, string> = {
   "/scout": "var(--module-scout)",
   "/north": "var(--module-north)"
 };
+
+/** The five modules routes.ts gates behind `shouldInclude`; every other
+ *  screen key (ledger, admin, portals, mobile, system, hub, …) has no such
+ *  gate and is always on. */
+const GATED_MODULES = new Set(["axis", "orbit", "signal", "scout", "north"]);
+
+/**
+ * Screens from the design pull (packages/ui/src/sections/types.ts) that
+ * declare a `nav` label, grouped by their own `group` — a second batch of
+ * rail destinations alongside the API-driven `nav` groups above, one per
+ * `/surface/:module/:screen`. `nav`/`group` are the pull's own literal text
+ * (like every other field on `Screen`), not i18n keys, so they render as-is
+ * rather than through `t()` — the same treatment every section component
+ * already gives `screen.title`/`screen.sub`.
+ */
+function screenNavGroups(): { group: string; items: { href: string; label: string }[] }[] {
+  const byGroup = new Map<string, { href: string; label: string }[]>();
+  for (const [mod, screens] of Object.entries(SURFACES)) {
+    if (GATED_MODULES.has(mod) && !shouldInclude(mod)) continue;
+    for (const screen of screens) {
+      if (!screen.nav) continue;
+      const group = screen.group || mod;
+      const list = byGroup.get(group) ?? [];
+      list.push({ href: `/surface/${mod}/${screen.id}`, label: screen.nav });
+      byGroup.set(group, list);
+    }
+  }
+  return [...byGroup.entries()].map(([group, items]) => ({ group, items }));
+}
 
 /** Nav is grouped: a heading item carries no link of its own, only labelled
  *  children. Leaves (all in real, non-routed order) drop unrouted destinations
@@ -417,6 +447,40 @@ export function Shell({
             aria-label={t("nav.primary")}
             className="lyra-vt-rail hidden md:flex md:w-[var(--rail-width)] md:shrink-0 md:flex-col md:gap-0.5 md:overflow-y-auto md:border-e md:border-border md:p-[var(--gutter-rail)]"
           >
+            {/* Flagship demo entry point, pinned above everything else in the
+                rail: the AXIS→NORTH→SCOUT→SIGNAL click-through story that
+                /journey/axis opens. Literal text, not a t() key, the same
+                convention screenNavGroups below uses for anything that isn't
+                part of the API-driven `nav` contract. */}
+            <div className="mb-1">
+              <h2 className="mb-1 mt-0 px-3 font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">
+                Demo
+              </h2>
+              <ul className="flex flex-col gap-0.5">
+                <li>
+                  <NavLink
+                    to="/journey/axis"
+                    viewTransition
+                    className={({ isActive }) =>
+                      [
+                        "group flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-start font-ui text-13 transition-colors duration-150",
+                        "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
+                        isActive
+                          ? "bg-surface-2 font-medium text-text"
+                          : "text-muted hover:bg-surface-2 hover:text-text"
+                      ].join(" ")
+                    }
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="h-4 w-0.5 shrink-0 rounded-orbit"
+                      style={{ background: MODULE_ACCENT["/axis"] }}
+                    />
+                    <span className="truncate">Demo journey</span>
+                  </NavLink>
+                </li>
+              </ul>
+            </div>
             {/* The shift sits above the destinations, not instead of them: the
                 comp has no nav menu at all (its search overlay is the
                 navigation), but every screen still has to be reachable without
@@ -438,6 +502,34 @@ export function Shell({
                   {group.items.map((item) => (
                     <li key={item.href}>
                       <NavItemLink item={item} t={t} nested={Boolean(group.heading)} />
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+            {screenNavGroups().map(({ group, items: groupItems }) => (
+              <div key={`screen:${group}`} className="mb-1">
+                <h2 className="mb-1 mt-4 px-3 font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle first:mt-0">
+                  {group}
+                </h2>
+                <ul className="flex flex-col gap-0.5">
+                  {groupItems.map((item) => (
+                    <li key={item.href}>
+                      <NavLink
+                        to={item.href}
+                        viewTransition
+                        className={({ isActive }) =>
+                          [
+                            "group flex shrink-0 items-center gap-2 rounded-md px-3 py-1.5 text-start font-ui text-12 transition-colors duration-150",
+                            "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
+                            isActive
+                              ? "bg-surface-2 font-medium text-text"
+                              : "text-muted hover:bg-surface-2 hover:text-text"
+                          ].join(" ")
+                        }
+                      >
+                        <span className="truncate">{item.label}</span>
+                      </NavLink>
                     </li>
                   ))}
                 </ul>
