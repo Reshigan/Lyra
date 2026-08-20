@@ -5,7 +5,7 @@ import { cloudflare } from "../context";
 import { JourneyNav, JourneyContinue } from "../components/journey-nav";
 import { translator, DEFAULT_LOCALE } from "../i18n";
 import { humanise } from "../modules/spec";
-import { narrative, parsed } from "./north-shared";
+import { chosen, narrative, parsed } from "./north-shared";
 import { useShellData } from "./workspace";
 
 interface BriefingRow {
@@ -56,15 +56,19 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     `/v1/north/briefings?limit=${BRIEFING_HISTORY_LIMIT}&sort=createdAt&order=desc`,
     { env, request }
   );
-  const briefing = page.data[0] ?? null;
+  // The pick happens in the component: which briefing is readable depends on
+  // the reader's locale, and the shell knows that, the loader does not.
   const history = [...page.data].reverse();
-  return { briefing, productLine, history };
+  return { briefings: page.data, productLine, history };
 }
 
 export default function JourneyNorth({ loaderData }: { loaderData: Awaited<ReturnType<typeof loader>> }) {
-  const { briefing, productLine, history } = loaderData;
+  const { briefings, productLine, history } = loaderData;
   const shell = useShellData();
-  const t = translator(shell?.locale ?? DEFAULT_LOCALE, shell?.overrides);
+  const locale = shell?.locale ?? DEFAULT_LOCALE;
+  const t = translator(locale, shell?.overrides);
+
+  const briefing = chosen(briefings, null, locale);
 
   const highlights = highlightsOf(briefing);
   const prose = narrative(briefing?.narrativeRef);

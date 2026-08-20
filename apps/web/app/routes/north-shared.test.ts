@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { metricName, narrative, num, parsed, pct } from "./north-shared";
+import { chosen, metricName, narrative, num, parsed, pct } from "./north-shared";
 
 // The generic CRUD hydrates every `*Json` column before it leaves the API
 // (apps/api/src/crud.ts), while a bespoke module route hands the raw text
@@ -80,5 +80,41 @@ describe("narrative", () => {
 
   it("does not mistake a sentence that mentions a file for a key", () => {
     expect(narrative("See the attached brief.md for the full read.")).not.toBeNull();
+  });
+});
+
+/**
+ * NORTH narrates per audience *and* per locale, so a bilingual tenant has an en
+ * and an ar briefing for the same day. The rows arrive newest-first, and both
+ * screens used to take `rows[0]` — on staging the newest happened to be ar, so
+ * an English reader's brief opened in Arabic.
+ */
+describe("chosen", () => {
+  const rows = [
+    { id: "brf_ar", locale: "ar" },
+    { id: "brf_en", locale: "en" },
+    { id: "brf_old_en", locale: "en" }
+  ];
+
+  it("gives the reader the newest briefing in their own language", () => {
+    expect(chosen(rows, null, "en")?.id).toBe("brf_en");
+    expect(chosen(rows, null, "ar")?.id).toBe("brf_ar");
+  });
+
+  it("still shows the newest one when nothing was narrated in that language", () => {
+    expect(chosen(rows, null, "fr")?.id).toBe("brf_ar");
+  });
+
+  it("honours an explicit pick over the reader's language", () => {
+    expect(chosen(rows, "brf_old_en", "ar")?.id).toBe("brf_old_en");
+  });
+
+  it("falls back to the newest when the asked-for briefing is gone", () => {
+    expect(chosen(rows, "brf_deleted", "en")?.id).toBe("brf_ar");
+  });
+
+  it("has nothing to show before the first briefing exists", () => {
+    expect(chosen([], null, "en")).toBeNull();
+    expect(chosen(null, null, "en")).toBeNull();
   });
 });

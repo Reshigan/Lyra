@@ -134,6 +134,29 @@ export function parsed<T>(raw: unknown, fallback: T): T {
 }
 
 /**
+ * The briefing being read: the one asked for, else the newest the reader can
+ * actually read.
+ *
+ * The rows arrive newest-first, so the old `rows[0]` was "newest in any
+ * locale". A tenant that narrates in both en and ar therefore served whichever
+ * language happened to be generated last — on staging that put an Arabic
+ * paragraph on an English reader's brief and on the flagship journey's NORTH
+ * step. `locale` is the reader's, not the row's.
+ *
+ * Structural in its row type because two screens pick from the same column:
+ * north-brief.tsx and journey-north.tsx.
+ */
+export function chosen<T extends { id: string; locale: string }>(
+  rows: readonly T[] | null | undefined,
+  id: string | null,
+  locale: string
+): T | null {
+  if (!rows?.length) return null;
+  if (id) return rows.find((row) => row.id === id) ?? rows[0]!;
+  return rows.find((row) => row.locale === locale) ?? rows[0]!;
+}
+
+/**
  * `narrativeRef` holds the briefing prose (apps/api/src/engines/narrator.ts).
  * Rows seeded before f506bf7 hold a storage key like
  * `briefings/<tenant>/<id>.md` instead, and no bucket was ever bound to hold
