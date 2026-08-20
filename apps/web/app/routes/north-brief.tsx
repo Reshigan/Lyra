@@ -30,6 +30,7 @@ import { useNorthSessionData } from "./north-shell";
 import {
   MetricValue,
   labelsFrom,
+  chosen,
   metricName,
   narrative,
   num,
@@ -221,12 +222,6 @@ export function firstSentence(paragraph: string | undefined): string | null {
   return paragraph.split(/(?<=[.!?])\s+/)[0] ?? paragraph;
 }
 
-/** The briefing being read: the one asked for, else the most recent. */
-export function chosen(rows: readonly Briefing[] | null, id: string | null): Briefing | null {
-  if (!rows?.length) return null;
-  return (id ? rows.find((row) => row.id === id) : undefined) ?? rows[0]!;
-}
-
 /**
  * The anomaly worth interrupting a read for: unowned, and the largest deviation
  * of those. Anything already explained or actioned is somebody's job already.
@@ -351,7 +346,7 @@ export default function NorthBrief() {
   const held = new Set(shell?.permissions ?? []);
   const busy = navigation.state !== "idle";
 
-  const brief = chosen(loaded.briefings, params.get("id"));
+  const brief = chosen(loaded.briefings, params.get("id"), locale);
   const anomaly = unowned(loaded.anomalies);
   const byKey = new Map(loaded.metrics.map((metric) => [metric.key, metric]));
   const highlights = parsed<Highlight[]>(brief?.highlightsJson, []);
