@@ -1,0 +1,64 @@
+# Backfills a deployed tenant with a year of trading history.
+#
+# `wrangler d1 migrations apply` gives a deployed database its SHAPE; nothing in
+# deploy.yml gives it a PAST. The demo tenant was seeded once with the base
+# fixture (packages/core/src/seed.ts) and has been reading a fortnight of rows
+# ever since — eight contracts, one customer — while every screen is built to
+# show a book with a year behind it.
+#
+# This runs the two backfill passes (packages/core/src/seed/history.ts for the
+# ledger, seed/history-modules.ts for the operating history that ledger implies)
+# against a deployed D1 over the HTTP API. Both are idempotent and deterministic,
+# so a re-run reads a lot and writes nothing.
+#
+# Dispatch-only and gated on the same `production` Environment as the production
+# deploy: this writes to a live tenant's database.
+name: seed-history
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Which deployed database to backfill
+        type: choice
+        options: [lyra, lyra-staging]
+        default: lyra
+      days:
+        description: How many days of history to write
+        type: string
+        default: "365"
+
+concurrency:
+  # Two backfills of the same database at once would race on the natural-key
+  # read-back that makes them idempotent.
+  group: seed-history-${{ inputs.target }}
+  cancel-in-progress: false
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # The ids are the ones in apps/api/wrangler.jsonc. They are not secrets —
+      # a D1 database id is useless without a token scoped to the account.
+      - name: Backfill trading history
+        env:
+          CF_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          TARGET: ${{ inputs.target }}
+          DAYS: ${{ inputs.days }}
+        run: |
+          if [ "$TARGET" = "lyra" ]; then
+            DB_ID=e1f4ed16-86ee-49be-9c46-7c21915eccd2
+          else
+            DB_ID=81d1ede7-08fc-4941-a3aa-7e342bbbc0fb
+          fi
+          pnpm --filter @lyra/core seed:history --database "$DB_ID" --days "$DAYS"
