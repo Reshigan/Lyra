@@ -19,6 +19,21 @@ import type { HeroChip, HeroData, ScreenModule, SparkItem } from "./types.js";
 const VISIBLE_CHIPS = 3;
 
 /**
+ * Splits a headline value into prefix / numeral / suffix — "AED 4.2m" into
+ * "AED ", "4.2", "m".
+ *
+ * The prefix class excludes ',' as well as digits. The obvious `\D*` overlaps
+ * the group after it on every comma, so a value of nothing but commas makes the
+ * two groups fight over the same characters — polynomial backtracking, which is
+ * a hero `value` a tenant can supply (CodeQL js/polynomial-redos). No currency
+ * or unit prefix contains a comma, so the narrower class costs nothing.
+ *
+ * Exported for the test: the hook that uses it only runs in an effect, which
+ * server rendering never reaches.
+ */
+export const HEADLINE_NUMERAL = /^([^\d,]*)([\d,]+(?:\.\d+)?)(.*)$/;
+
+/**
  * Animates a display string from 0 up to the numeral inside `target`, once,
  * on mount or whenever `target` itself changes. Values with no parseable
  * leading numeral (or a browser that prefers reduced motion) render as-is —
@@ -27,7 +42,7 @@ const VISIBLE_CHIPS = 3;
 function useCountUp(target: string, durationMs = 700): string {
   const [display, setDisplay] = React.useState(target);
   React.useEffect(() => {
-    const match = /^(\D*)([\d,]+(?:\.\d+)?)(.*)$/.exec(target);
+    const match = HEADLINE_NUMERAL.exec(target);
     if (!match) {
       setDisplay(target);
       return;
