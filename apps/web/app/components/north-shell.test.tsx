@@ -40,6 +40,7 @@ function sessionWith(overrides: Partial<SessionBootstrap> = {}): SessionBootstra
     actorName: "Amina Al Farsi",
     domainPack: "insurance",
     calendar: "gregorian",
+    timezone: undefined,
     currency: "AED",
     overrides: {},
     availableShells: ["north"],

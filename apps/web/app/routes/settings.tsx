@@ -32,7 +32,7 @@ import { humanise, permissionTitle } from "@lyra/core/words";
 import { titleText } from "../modules/spec";
 import { Problem } from "./module";
 import { useShellData } from "./workspace";
-import { CALENDARS, FALLBACK_CURRENCY, calendarFrom } from "../calendar";
+import { CALENDARS, FALLBACK_CURRENCY, calendarFrom, timezoneFrom, zones } from "../calendar";
 import type { CalendarPreference } from "@lyra/ui";
 
 // The actor's own account, and — for whoever administers the tenant — the parts
@@ -323,11 +323,16 @@ const LABELS: Record<string, Record<string, string>> = {
     "calendar.localeHint": "What people see before they choose their own language.",
     "calendar.currency": "Currency",
     "calendar.currencyHint": "Three-letter code (ISO 4217), such as AED or SAR.",
+    "calendar.timezone": "Time zone",
+    "calendar.timezoneHint":
+      "Where this tenant's working day is. Cutoffs, due dates and scheduled reports are all read against it.",
+    "calendar.timezoneAuto": "Each reader's own zone",
     "calendar.submit": "Save",
     "calendar.ok": "Saved. It applies on the next screen you open.",
     "calendar.unknown": "That is not a calendar this platform renders.",
     "calendar.localeUnknown": "This tenant does not run in that language.",
     "calendar.currencyBad": "Use a three-letter currency code, such as AED.",
+    "calendar.timezoneBad": "That is not a time zone this platform can read dates in.",
 
     "dsar.title": "Your data",
     "dsar.intro":
@@ -515,11 +520,16 @@ const LABELS: Record<string, Record<string, string>> = {
     "calendar.localeHint": "ما يراه الناس قبل أن يختاروا لغتهم.",
     "calendar.currency": "العملة",
     "calendar.currencyHint": "رمز من ثلاثة أحرف (ISO 4217)، مثل AED أو SAR.",
+    "calendar.timezone": "المنطقة الزمنية",
+    "calendar.timezoneHint":
+      "أين يقع يوم العمل في هذه المؤسسة. تُقرأ عليها المواعيد النهائية وتواريخ الاستحقاق والتقارير المجدولة.",
+    "calendar.timezoneAuto": "منطقة كل قارئ نفسه",
     "calendar.submit": "حفظ",
     "calendar.ok": "تم الحفظ. يُطبَّق على الشاشة التالية التي تفتحها.",
     "calendar.unknown": "هذا ليس تقويمًا تعرضه المنصّة.",
     "calendar.localeUnknown": "هذه المؤسسة لا تعمل بهذه اللغة.",
     "calendar.currencyBad": "استخدم رمز عملة من ثلاثة أحرف، مثل AED.",
+    "calendar.timezoneBad": "هذه ليست منطقة زمنية تستطيع المنصّة قراءة التواريخ بها.",
 
     "dsar.title": "بياناتك",
     "dsar.intro":
@@ -683,9 +693,11 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     },
     /** Rendering preference, stored on tenant policy; see UiCalendarProvider. */
     calendar: calendarFrom(me.policy?.calendarPreference),
-    /** The other two tenant-wide regional settings, edited on the same panel. */
+    /** The other tenant-wide regional settings, edited on the same panel. */
     defaultLocale: stringFrom(me.policy?.defaultLocale, "en"),
     currency: stringFrom(me.policy?.currency, FALLBACK_CURRENCY),
+    /** Empty when the tenant has none — then every reader sees their own zone. */
+    timezone: timezoneFrom(me.policy?.timezone) ?? "",
     /** Which locales this tenant runs in — the only valid default locales. */
     locales: localesFrom(me.policy?.locales),
     dsar: dsar.value?.data ?? [],
@@ -889,6 +901,18 @@ export async function action({ request, context }: ActionFunctionArgs) {
         return { intent, errorKey: "calendar.currencyBad" } satisfies ActionResult;
       }
 
+      // Refused here rather than degraded, because this is the one place a
+      // human names the zone. Everywhere downstream degrades instead
+      // (apps/web/app/calendar.ts timezoneFrom): a zone Intl cannot read
+      // throws from inside formatToParts, during render, on every screen.
+      // `has` and not the value: submitted-and-empty clears the setting back
+      // to each reader's own zone, while an absent field leaves it alone.
+      const posted = form.has("timezone");
+      const timezone = text("timezone");
+      if (timezone && !timezoneFrom(timezone)) {
+        return { intent, errorKey: "calendar.timezoneBad" } satisfies ActionResult;
+      }
+
       await api(`/v1/core/tenants/${encodeURIComponent(me.tenant.id)}`, {
         env,
         request,
@@ -898,7 +922,10 @@ export async function action({ request, context }: ActionFunctionArgs) {
             ...me.policy,
             calendarPreference: calendar,
             ...(defaultLocale ? { defaultLocale } : {}),
-            ...(currency ? { currency } : {})
+            ...(currency ? { currency } : {}),
+            // undefined drops the key on the way through JSON, which is how
+            // "no configured zone" is stored — the field is optional, not "".
+            ...(posted ? { timezone: timezone || undefined } : {})
           }
         }
       });
@@ -1333,6 +1360,22 @@ export default function Settings() {
                     pattern="[A-Za-z]{3}"
                     autoComplete="off"
                     className="uppercase"
+                  />
+                </Field>
+                {/* The zones this runtime can actually format in, asked of the
+                    runtime rather than listed here — a hand-kept list goes
+                    stale every time a country moves its clocks. Same answer on
+                    the server and the client, so it cannot mismatch on
+                    hydration. Blank is a real choice: no tenant zone means
+                    each reader reads in their own. */}
+                <Field label={label("calendar.timezone")} hint={label("calendar.timezoneHint")}>
+                  <Select
+                    name="timezone"
+                    defaultValue={loaded.timezone}
+                    options={[
+                      { value: "", label: label("calendar.timezoneAuto") },
+                      ...zones(loaded.timezone).map((value) => ({ value, label: value.replace(/_/g, " ") }))
+                    ]}
                   />
                 </Field>
               </div>

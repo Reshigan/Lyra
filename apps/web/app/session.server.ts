@@ -2,7 +2,7 @@ import { data, redirect } from "react-router";
 import type { CalendarPreference } from "@lyra/ui";
 import type { Brand, NavItem } from "./api.server";
 import { api, ApiError, fetchMe, names } from "./api.server";
-import { calendarFrom, FALLBACK_CURRENCY } from "./calendar";
+import { calendarFrom, FALLBACK_CURRENCY, timezoneFrom } from "./calendar";
 import type { Names } from "./names";
 import type { Inbox } from "./components/shift";
 import { chosenLocale } from "./i18n";
@@ -28,6 +28,8 @@ export interface SessionBootstrap {
   actorName: string | null;
   domainPack: string;
   calendar: CalendarPreference;
+  /** The tenant's own zone, or absent — then a screen renders in the reader's. */
+  timezone: string | undefined;
   currency: string;
   overrides: Record<string, string>;
   /** Every module workspace this actor's real roles resolve to (Task 1/2's
@@ -81,6 +83,11 @@ export async function bootstrapSession(env: Env, request: Request): Promise<Sess
     // CLAUDE.md §14: the pack that renames every noun downstream of labelsFor.
     domainPack: typeof me.policy?.domainPack === "string" ? me.policy.domainPack : DEFAULT_PACK,
     calendar: calendarFrom(me.policy?.calendarPreference),
+    // What "today" means for this tenant. The scheduler already reckons a
+    // report's cron against a named zone (apps/api/src/routes/analytics.ts);
+    // without this the screens reckoned against whatever zone the reader's
+    // laptop was in, and the two disagreed about which day a cutoff fell on.
+    timezone: timezoneFrom(me.policy?.timezone),
     // What a money figure is denominated in when the row itself does not say.
     // Same policy field the brand editor writes (settings.tsx).
     currency: typeof me.policy?.currency === "string" ? me.policy.currency : FALLBACK_CURRENCY,

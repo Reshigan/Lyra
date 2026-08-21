@@ -2,6 +2,7 @@ import { data, Outlet, useLoaderData, useRouteLoaderData, type LoaderFunctionArg
 import { cloudflare } from "../context";
 import { bootstrapSession, type SessionBootstrap } from "../session.server";
 import { NorthShell } from "../components/north-shell";
+import { SessionRegion } from "../components/region";
 
 // NORTH's own layout: same bootstrap every other layout uses, but gated —
 // an actor whose roles never resolve to "north" is real (bootstrapSession
@@ -25,8 +26,10 @@ export function useNorthSessionData(): SessionBootstrap | undefined {
 export default function NorthShellLayout() {
   const session = useLoaderData<typeof loader>();
   return (
-    <NorthShell session={session}>
-      <Outlet />
-    </NorthShell>
+    <SessionRegion session={session}>
+      <NorthShell session={session}>
+        <Outlet />
+      </NorthShell>
+    </SessionRegion>
   );
 }

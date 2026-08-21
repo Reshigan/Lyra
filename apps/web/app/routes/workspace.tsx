@@ -6,10 +6,10 @@ import {
   type LoaderFunctionArgs,
   type MetaFunction
 } from "react-router";
-import { UiCalendarProvider } from "@lyra/ui";
 import { cloudflare } from "../context";
 import { ErrorPanel } from "../components/error-panel";
 import { Shell } from "../components/shell";
+import { SessionRegion } from "../components/region";
 import { DEFAULT_LOCALE, translator } from "../i18n";
 import { bootstrapSession } from "../session.server";
 
@@ -55,7 +55,7 @@ export function ErrorBoundary() {
   if (!shell) return <main className="mx-auto flex min-h-screen max-w-prose flex-col justify-center p-8">{panel}</main>;
 
   return (
-    <UiCalendarProvider calendar={shell.calendar}>
+    <SessionRegion session={shell}>
       <Shell
         t={t}
         nav={shell.nav}
@@ -69,7 +69,7 @@ export function ErrorBoundary() {
       >
         {panel}
       </Shell>
-    </UiCalendarProvider>
+    </SessionRegion>
   );
 }
 
@@ -78,9 +78,10 @@ export default function Workspace() {
   const t = translator(shell.locale, shell.overrides);
 
   return (
-    // Every <DateTime> below reads the tenant's calendar off this provider —
-    // the alternative is remembering a prop at 124 call sites.
-    <UiCalendarProvider calendar={shell.calendar}>
+    // Every <DateTime> and <Money> below reads the tenant's calendar and zone
+    // off this provider — the alternative is remembering a prop at 124 call
+    // sites, and the five module shells mount the same component.
+    <SessionRegion session={shell}>
       <Shell
         t={t}
         nav={shell.nav}
@@ -94,6 +95,6 @@ export default function Workspace() {
       >
         <Outlet />
       </Shell>
-    </UiCalendarProvider>
+    </SessionRegion>
   );
 }

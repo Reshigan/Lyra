@@ -2,6 +2,7 @@ import { data, Outlet, useLoaderData, useRouteLoaderData, type LoaderFunctionArg
 import { cloudflare } from "../context";
 import { bootstrapSession, type SessionBootstrap } from "../session.server";
 import { SignalShell } from "../components/signal-shell";
+import { SessionRegion } from "../components/region";
 
 // SIGNAL's own layout: same bootstrap every other layout uses, but gated —
 // an actor whose roles never resolve to "signal" is real (bootstrapSession
@@ -25,8 +26,10 @@ export function useSignalSessionData(): SessionBootstrap | undefined {
 export default function SignalShellLayout() {
   const session = useLoaderData<typeof loader>();
   return (
-    <SignalShell session={session}>
-      <Outlet />
-    </SignalShell>
+    <SessionRegion session={session}>
+      <SignalShell session={session}>
+        <Outlet />
+      </SignalShell>
+    </SessionRegion>
   );
 }

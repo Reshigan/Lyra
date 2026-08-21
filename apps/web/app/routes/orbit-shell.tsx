@@ -2,6 +2,7 @@ import { data, Outlet, useLoaderData, useRouteLoaderData, type LoaderFunctionArg
 import { cloudflare } from "../context";
 import { bootstrapSession, type SessionBootstrap } from "../session.server";
 import { OrbitShell } from "../components/orbit-shell";
+import { SessionRegion } from "../components/region";
 
 // ORBIT's own layout: same bootstrap every other layout uses, but gated —
 // an actor whose roles never resolve to "orbit" is real (bootstrapSession
@@ -25,8 +26,10 @@ export function useOrbitSessionData(): SessionBootstrap | undefined {
 export default function OrbitShellLayout() {
   const session = useLoaderData<typeof loader>();
   return (
-    <OrbitShell session={session}>
-      <Outlet />
-    </OrbitShell>
+    <SessionRegion session={session}>
+      <OrbitShell session={session}>
+        <Outlet />
+      </OrbitShell>
+    </SessionRegion>
   );
 }
