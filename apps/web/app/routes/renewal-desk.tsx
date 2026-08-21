@@ -26,6 +26,7 @@ import { cloudflare } from "../context";
 import { Gate } from "./staff";
 import { ORBIT, daysUntil, safe, type Page } from "./orbit-shared";
 import { labelsFrom } from "./detail-kit";
+import { localeFrom } from "../i18n";
 
 // D.7: the AXIS operator view of orbit_renewals — a read of the same table
 // orbit-save.tsx writes, joined to the policy head it renews. Two of its four
@@ -190,7 +191,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   );
 
   return {
-    locale: me.locale,
+    locale: localeFrom(request),
     now: Date.now(),
     nonce: crypto.randomUUID(),
     may: { read: held.has(PERM.read), write: held.has(PERM.write), bind: held.has(PERM.renew) },

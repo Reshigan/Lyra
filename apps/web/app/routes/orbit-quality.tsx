@@ -30,6 +30,7 @@ import { humanise } from "../modules/spec";
 import { who } from "../names";
 import { Gate } from "./staff";
 import { ORBIT, labelsFrom, refusal, safe, type Label, type Labels, type Page } from "./orbit-shared";
+import { localeFrom } from "../i18n";
 
 // Conversation QA. The scores are written by the quality agent, so every one of
 // them carries the ✦ and an inspectable breakdown (docs/15 §4): a reviewer
@@ -313,7 +314,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   );
 
   return {
-    locale: me.locale,
+    locale: localeFrom(request),
     nonce: crypto.randomUUID(),
     rubric,
     may: { read: held.has(ORBIT.qa), score: held.has(ORBIT.qaScore) },
