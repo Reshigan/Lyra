@@ -80,7 +80,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <UiTextProvider locale={locale}>
           {/* Timestamps render UTC on the server and on the first client pass,
               then the reader's own zone once mounted. Unpinned, the two passes
-              disagree and React drops the route to the error boundary. */}
+              disagree and React drops the route to the error boundary.
+              No zone here on purpose: this mount is the document, which also
+              carries the screens that have no tenant yet — login, the public
+              ORBIT portals. A tenant's own zone is mounted a level down, once
+              per shell, by components/region.tsx SessionRegion. */}
           <UiTimeZoneProvider>{children}</UiTimeZoneProvider>
         </UiTextProvider>
         <ScrollRestoration />

@@ -24,7 +24,7 @@ import { api, asRouteError, fetchMe, type Problem as ProblemShape } from "../api
 import { cloudflare } from "../context";
 import { Gate } from "./staff";
 import { ORBIT, labelsFrom, refusal, safe, type Label, type Labels, type Page } from "./orbit-shared";
-import { pseudoText } from "../i18n";
+import { localeFrom, pseudoText } from "../i18n";
 
 // Customer analytics for ORBIT. Two different machines feed this screen and it
 // says which is which:
@@ -304,7 +304,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const gone = lost.total ?? 0;
 
   return {
-    locale: me.locale,
+    locale: localeFrom(request),
     apiOrigin: env.API_ORIGIN,
     days,
     from,

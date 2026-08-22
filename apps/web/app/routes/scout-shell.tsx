@@ -2,6 +2,7 @@ import { data, Outlet, useLoaderData, useRouteLoaderData, type LoaderFunctionArg
 import { cloudflare } from "../context";
 import { bootstrapSession, type SessionBootstrap } from "../session.server";
 import { ScoutShell } from "../components/scout-shell";
+import { SessionRegion } from "../components/region";
 
 // SCOUT's own layout: same bootstrap every other layout uses, but gated —
 // an actor whose roles never resolve to "scout" is real (bootstrapSession
@@ -25,8 +26,10 @@ export function useScoutSessionData(): SessionBootstrap | undefined {
 export default function ScoutShellLayout() {
   const session = useLoaderData<typeof loader>();
   return (
-    <ScoutShell session={session}>
-      <Outlet />
-    </ScoutShell>
+    <SessionRegion session={session}>
+      <ScoutShell session={session}>
+        <Outlet />
+      </ScoutShell>
+    </SessionRegion>
   );
 }

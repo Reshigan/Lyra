@@ -61,3 +61,26 @@ describe("copy tables", () => {
     expect(gaps).toEqual([]);
   });
 });
+
+// A second way for a screen to lose its reader's language, and the one the
+// tables above cannot see: pick the right table with the wrong locale. Root
+// resolves the page locale from the request (localeFrom) and puts it on
+// <html lang> and dir; nine loaders returned `me.locale` — the signed-in
+// profile — instead. Sign-in and the settings picker both write the profile
+// into the lyra_locale cookie, so the two agree until someone switches
+// language, and then the ORBIT desks and the two AXIS desks rendered English
+// copy inside an RTL Arabic page.
+describe("the locale a screen speaks", () => {
+  const files = sources(APP.replace(/\/$/, ""));
+
+  it("is the one the reader asked for, not the one on their profile", () => {
+    const offenders = files.filter((file) => /\blocale:\s*me\.locale\b/.test(readFileSync(file, "utf8")));
+    expect(offenders.map((file) => file.slice(APP.length))).toEqual([]);
+  });
+
+  it("still has loaders to guard", () => {
+    // Same reason as above: a scan that matches nothing passes forever.
+    const loaders = files.filter((file) => /\blocale:\s*localeFrom\(request\)/.test(readFileSync(file, "utf8")));
+    expect(loaders.length).toBeGreaterThan(5);
+  });
+});

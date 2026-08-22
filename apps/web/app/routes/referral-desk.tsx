@@ -28,6 +28,7 @@ import { cloudflare } from "../context";
 import { Gate } from "./staff";
 import { daysUntil, safe, type Page } from "./orbit-shared";
 import { labelsFrom } from "./detail-kit";
+import { localeFrom } from "../i18n";
 
 // §A.4/§D.6: the underwriter's side of the referral gate.ts opens on the bind
 // path — a risk outside delegated authority, waiting on a person. One read
@@ -168,7 +169,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     : empty;
 
   return {
-    locale: me.locale,
+    locale: localeFrom(request),
     now: Date.now(),
     nonce: crypto.randomUUID(),
     may: { decide },

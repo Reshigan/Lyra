@@ -73,6 +73,11 @@ export const SHARED: Record<string, Record<string, string>> = {
     "kycStatus.verified": "Verified",
     "kycStatus.failed": "Failed",
 
+    // core_users — a staff row is invited before it is active (staff.tsx,
+    // staff-member.tsx both read this column).
+    "status.invited": "Invited",
+    "status.suspended": "Suspended",
+
     // axis_policies
     "status.active": "Active",
     "status.lapsed": "Lapsed",
@@ -203,6 +208,9 @@ export const SHARED: Record<string, Record<string, string>> = {
     "kycStatus.pending": "قيد التنفيذ",
     "kycStatus.verified": "تم التحقق",
     "kycStatus.failed": "فشل",
+
+    "status.invited": "مدعو",
+    "status.suspended": "موقوف",
 
     "status.active": "سارية",
     "status.lapsed": "منقضية",

@@ -331,8 +331,8 @@ describe("nextRun timezone", () => {
 });
 
 describe("schedule creation", () => {
-  const post = (payload: unknown) =>
-    router().fetch(
+  const post = (payload: unknown, over: Partial<Ctx> = {}) =>
+    router(over).fetch(
       new Request("http://api.test/v1/analytics/schedules", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -354,6 +354,44 @@ describe("schedule creation", () => {
     const row = (await res.json()) as { nextRunAt: number };
     // NOW is 2026-06-15T12:00Z = 16:00 in Dubai; next 09:00 Dubai is 05:00 UTC next day.
     expect(row.nextRunAt).toBe(Date.UTC(2026, 5, 16, 5));
+  });
+
+  // The zone is three answers in priority order, and the middle one is the one
+  // that was missing: a code literal ("Asia/Dubai") used to be the default, so a
+  // South African broker's daily report fired on Gulf wall-clock. NOW is
+  // 2026-06-15T12:00Z; 09:00 next day is 05:00Z in Dubai, 07:00Z in
+  // Johannesburg and 09:00Z in UTC — three distinct instants, so each branch
+  // below is told apart by the answer and not by the argument.
+  const daily = { reportId: "rep_1", name: { en: "Daily" }, cron: "0 9 * * *", recipients: ["u_owner"] };
+
+  it("prefers the zone the caller named over the tenant's own", async () => {
+    await seedSchedule({ status: "paused" });
+    const res = await post(
+      { ...daily, timezone: "Asia/Dubai" },
+      { policy: PolicyJson.parse({ timezone: "Africa/Johannesburg" }) }
+    );
+    expect(res.status).toBe(201);
+    const row = (await res.json()) as { nextRunAt: number; timezone: string };
+    expect(row.timezone).toBe("Asia/Dubai");
+    expect(row.nextRunAt).toBe(Date.UTC(2026, 5, 16, 5));
+  });
+
+  it("falls back to the tenant's zone when the caller names none", async () => {
+    await seedSchedule({ status: "paused" });
+    const res = await post(daily, { policy: PolicyJson.parse({ timezone: "Africa/Johannesburg" }) });
+    expect(res.status).toBe(201);
+    const row = (await res.json()) as { nextRunAt: number; timezone: string };
+    expect(row.timezone).toBe("Africa/Johannesburg");
+    expect(row.nextRunAt).toBe(Date.UTC(2026, 5, 16, 7));
+  });
+
+  it("stores UTC — not a market — when neither the caller nor the tenant has a zone", async () => {
+    await seedSchedule({ status: "paused" });
+    const res = await post(daily);
+    expect(res.status).toBe(201);
+    const row = (await res.json()) as { nextRunAt: number; timezone: string };
+    expect(row.timezone).toBe("UTC");
+    expect(row.nextRunAt).toBe(Date.UTC(2026, 5, 16, 9));
   });
 
   // deliverSchedule only renders reports; accepting a dashboard-only schedule

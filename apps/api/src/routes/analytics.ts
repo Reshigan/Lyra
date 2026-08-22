@@ -442,7 +442,10 @@ const ScheduleBody = z.object({
   dashboardId: z.string().optional(),
   name: z.record(z.string(), z.string()),
   cron: z.string().min(9).max(64),
-  timezone: z.string().min(3).max(64).default("Asia/Dubai"),
+  // No default: the tenant's own zone is the right one, and a code literal
+  // here fired a South African broker's report on Gulf wall-clock. Resolved
+  // below against tenant policy, UTC only when the tenant has none either.
+  timezone: z.string().min(3).max(64).optional(),
   format: z.enum(["xlsx", "pdf", "csv", "json"]).default("pdf"),
   recipients: z.array(z.string().min(3).max(200)).min(1).max(50),
   params: z.record(z.string(), z.unknown()).optional(),
@@ -470,7 +473,11 @@ analyticsRoutes.post("/schedules", async (c) => {
   // accepted here and then fail + alert its owner on every fire, forever.
   if (!input.reportId) throw badRequest("dashboard schedules are not supported yet: a schedule needs a reportId");
   await readableReport(ctx, input.reportId);
-  const next = nextRun(input.cron, ctx.now, input.timezone);
+  // What this tenant's business day runs on — the same field the screens
+  // render timestamps in (apps/web/app/session.server.ts), so the scheduler
+  // and the screen agree about which day a cutoff falls on.
+  const timezone = input.timezone ?? ctx.policy.timezone ?? "UTC";
+  const next = nextRun(input.cron, ctx.now, timezone);
 
   const row = {
     id: id("sch", ctx.now),
@@ -479,7 +486,7 @@ analyticsRoutes.post("/schedules", async (c) => {
     dashboardId: input.dashboardId ?? null,
     nameJson: JSON.stringify(input.name),
     cron: input.cron,
-    timezone: input.timezone,
+    timezone,
     format: input.format,
     // Delivery is consent-checked at send time (docs/12 §4); storing an address
     // here is not permission to mail it.

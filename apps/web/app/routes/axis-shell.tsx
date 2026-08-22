@@ -2,6 +2,7 @@ import { data, Outlet, useLoaderData, useRouteLoaderData, type LoaderFunctionArg
 import { cloudflare } from "../context";
 import { bootstrapSession, type SessionBootstrap } from "../session.server";
 import { AxisShell } from "../components/axis-shell";
+import { SessionRegion } from "../components/region";
 
 // AXIS's own layout: same bootstrap every other layout uses, but gated —
 // an actor whose roles never resolve to "axis" is real (bootstrapSession
@@ -25,8 +26,10 @@ export function useAxisSessionData(): SessionBootstrap | undefined {
 export default function AxisShellLayout() {
   const session = useLoaderData<typeof loader>();
   return (
-    <AxisShell session={session}>
-      <Outlet />
-    </AxisShell>
+    <SessionRegion session={session}>
+      <AxisShell session={session}>
+        <Outlet />
+      </AxisShell>
+    </SessionRegion>
   );
 }

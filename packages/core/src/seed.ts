@@ -173,6 +173,10 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
         locales: ["en", "ar"],
         defaultLocale: "en",
         currency: "AED",
+        // Where this tenant's business day is. Every timestamp on screen and
+        // every scheduled report's cron are reckoned here rather than in
+        // whatever zone the reader's laptop happens to sit in.
+        timezone: "Asia/Dubai",
         // A UAE book prices in AED off a UAE panel; it does not segment on the
         // SAARF/BRC LSM scale, which does not exist outside southern Africa.
         // See packages/core/src/targeting.ts and ADR-0071.

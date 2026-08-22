@@ -32,6 +32,7 @@ import {
   type Page
 } from "./orbit-shared";
 import type { Renewal } from "./orbit-save";
+import { localeFrom } from "../i18n";
 
 // Renewals as the pipeline they are: raised, offered, then won or lost, with
 // how many days are left on each. The stage order is the API's transition table
@@ -205,7 +206,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   );
 
   return {
-    locale: me.locale,
+    locale: localeFrom(request),
     now: Date.now(),
     nonce: crypto.randomUUID(),
     may: { read: held.has(ORBIT.renewals), sweep: held.has(ORBIT.renewalsWrite) },

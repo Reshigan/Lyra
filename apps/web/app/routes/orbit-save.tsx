@@ -40,6 +40,7 @@ import {
   type Page
 } from "./orbit-shared";
 import { useShellData } from "./workspace";
+import { localeFrom } from "../i18n";
 
 // The retention queue: who is about to leave, what we offered them, and how it
 // ended. A renewal is raised by the expiry sweep and its state machine lives in
@@ -305,7 +306,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   );
 
   return {
-    locale: me.locale,
+    locale: localeFrom(request),
     now: Date.now(),
     nonce: crypto.randomUUID(),
     may: { read: held.has(ORBIT.renewals), write: held.has(ORBIT.renewalsWrite) },

@@ -25,7 +25,7 @@ import {
   type Section
 } from "@lyra/ui";
 import { api, asRouteError, fetchMe, type Problem as ProblemShape } from "../api.server";
-import { arrowFor } from "../i18n";
+import { arrowFor, localeFrom } from "../i18n";
 import { cloudflare } from "../context";
 import { Gate } from "./staff";
 import { ORBIT, labelsFrom, orbitPortals, refusal, safe, type Label, type Labels, type Page } from "./orbit-shared";
@@ -395,7 +395,7 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
     : ({ data: [] } as Page<JourneyRun>);
 
   return {
-    locale: me.locale,
+    locale: localeFrom(request),
     nonce: crypto.randomUUID(),
     may: { edit: held.has(ORBIT.journeysWrite) },
     tenantSlug: me.tenant.slug,

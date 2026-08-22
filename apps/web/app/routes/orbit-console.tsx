@@ -27,6 +27,7 @@ import { who } from "../names";
 import { cloudflare } from "../context";
 import { Gate } from "./staff";
 import { ORBIT, labelsFrom, orbitPortals, refusal, safe, type Label, type Labels, type Page } from "./orbit-shared";
+import { localeFrom } from "../i18n";
 
 // The operator's view of the room: who the agent is holding, who a human is
 // holding, and how long anybody has been waiting on a reply.
@@ -300,7 +301,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   );
 
   return {
-    locale: me.locale,
+    locale: localeFrom(request),
     now: Date.now(),
     nonce: crypto.randomUUID(),
     may: { read: held.has(ORBIT.conversations), take: held.has(ORBIT.assign) },

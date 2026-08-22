@@ -27,6 +27,7 @@ import { Gate } from "./staff";
 import { ORBIT, labelsFrom, refusal, safe, type Label, type Labels, type Page } from "./orbit-shared";
 import { SLOW_MS, waitLabel, waitingMs, type LiveConversation } from "./orbit-console";
 import { containment } from "./orbit-analytics";
+import { localeFrom } from "../i18n";
 
 // docs/modules/orbit.md §4 screen 2 — the Supervisor Wall. The room from one
 // step back: how much is open, how long the worst of it has waited, how much
@@ -331,7 +332,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const openCount = (bot.total ?? bot.data.length) + (human.total ?? human.data.length);
 
   return {
-    locale: me.locale,
+    locale: localeFrom(request),
     now: Date.now(),
     may: {
       read: held.has(ORBIT.conversations),

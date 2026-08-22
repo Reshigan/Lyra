@@ -28,3 +28,33 @@ describe("memberLede", () => {
     expect(Object.keys(LABELS.ar ?? {}).sort()).toEqual(Object.keys(LABELS.en ?? {}).sort());
   });
 });
+
+/**
+ * A staff row is invited|active|suspended, and the badge under the name said
+ * `admin.status.active` on live — a key in no catalogue in either language,
+ * printed verbatim, while the directory two clicks away said "Active" for the
+ * same column. The three words now live in detail-kit's SHARED table, which is
+ * the resolver both screens already go through.
+ */
+describe("the state a member is in", () => {
+  it("says the word in English, not the key", () => {
+    const l = memberLabelsIn("en");
+    expect(l("status.invited")).toBe("Invited");
+    expect(l("status.active")).toBe("Active");
+    expect(l("status.suspended")).toBe("Suspended");
+  });
+
+  it("says it in Arabic for an Arabic reader", () => {
+    const l = memberLabelsIn("ar");
+    expect(l("status.invited")).toBe("مدعو");
+    expect(l("status.active")).toBe("سارية");
+    expect(l("status.suspended")).toBe("موقوف");
+  });
+
+  it("resolves every state the column can hold", () => {
+    const l = memberLabelsIn("en");
+    for (const state of ["invited", "active", "suspended"]) {
+      expect(l(`status.${state}`)).not.toBe(`status.${state}`);
+    }
+  });
+});

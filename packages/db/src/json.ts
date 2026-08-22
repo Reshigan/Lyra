@@ -71,6 +71,15 @@ export const PolicyJson = z.object({
   // Gulf tenants reckon dates in Hijri, or cite both on anything contractual.
   // A rendering preference, not a second stored value: timestamps stay epoch.
   calendarPreference: z.enum(["gregorian", "islamic-umalqura", "dual"]).default("gregorian"),
+  // The zone this tenant's business day runs in — what a cutoff, a due date and
+  // a scheduled report all mean by "today". Absent on purpose rather than
+  // defaulted: a screen with no configured zone renders in the reader's own,
+  // which is what every screen did before this field existed, and a *wrong*
+  // default would silently move every timestamp in the product. Unvalidated
+  // here because this schema also parses stored rows — a bad value must not
+  // throw a read (see apps/web/app/calendar.ts timezoneFrom, which degrades,
+  // and the settings panel, which refuses one on the way in).
+  timezone: z.string().optional(),
   currency: z.string().length(3).default("AED"),
   // docs/modules/signal.md §8: "one-click global pause" for budget autopilot —
   // a tenant-wide kill switch, distinct from a single campaign's own
