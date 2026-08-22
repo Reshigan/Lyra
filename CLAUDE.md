@@ -144,137 +144,192 @@ wins.
 Follow docs/14-roadmap.md milestones M0→M6. Do not start a milestone before the
 previous one's acceptance checklist passes (checklists are in that file).
 
-## Current status (2026-08-20)
+## Current status (2026-08-22)
 
 The revenue-lines build (`docs/superpowers/specs/2026-08-16-revenue-lines-full-build-design.md`)
-is **merged**. Groups A-E all landed on `main`: A and B as PRs #23/#24, C as #25,
-and C/D/E's stacked branch `group-e-telematics-ubi` as **PR #26** (162 commits,
-138 files, +46,782/-355). No revenue-lines work remains on a branch.
+is merged through PR #34, nothing left on a branch. Production answers:
+`curl https://api.lyra.vantax.co.za/health` returns 200
+`{"ok":true,"environment":"demo",…}` — the path is `/health`, not `/v1/health` —
+and `pnpm e2e:live` passed 18/18 against it.
 
-Eighteen whole-branch review rounds ran. The last two waves closed the
-unguarded-`Date`/NaN-instant family (`4f115cd eee6f44 4925eaf 21e7d69 cecc256
-ed32020 2e0dd89 09a3299`), lifted `@lyra/model-gateway`'s mutation score from
-64.73% to 76.96% by testing the schema/prompt builders and not just the parsers
-(`893dd1f`), and killed the shared `stripFence` ReDoS that CodeQL reported five
-times over (`c0a2144`).
+This worktree is on `claude-md-status`, clean, five commits ahead of
+`origin/main` and unpushed: `6b0e0e5` docs, `f4dfaa4` the staff-status key fix
+below, `a2d2f4b` nine ORBIT/desk routes translating into the reader's chosen
+language rather than their profile's, `e314a7d` the tenant's time zone as a real
+setting rather than an `"Asia/Dubai"` default, `6cb9b22` docs/29.
 
-Since #26 a second wave landed in this worktree: the Horizon/Instrument UI pass
-(tokenised frames and spacing, the chrome bands and module rail recorded in
-ADR-0068, a hero wall whose figures drill down, `StateFlow`/`PostingFlow` in
-`packages/ui/src/flow.tsx` drawn on transaction, settlement, claim, case and
-policy), ORBIT's four public portals, SCOUT's whitespace commentary with its
-promote-to-signal handover, a year of seeded module history, and a doctrine
-route at `/design` that is the design-system playground CLAUDE.md's definition
-of done has always asked for.
+Blocked on the user, not on code: seed-history run `32352805879` waits on the
+`production` Environment review, which is why `/v1/orbit/teams` still answers
+`{"data":[]}`; #32/#33/#34 plus these five commits are not on
+lyra.vantax.co.za until a `workflow_dispatch` of `deploy.yml` runs; and
+`staging.lyra.vantax.co.za` needs a Cloudflare-side fix before it verifies
+anything web-side (see Deployment).
 
-Three more PRs closed after that: **#27** (`f3e1a80`), **#28** (`8a69aea`,
-mutation tests and a race fix) and **#29** (`7c83eea`, the pack-driven affluence
-axis in `packages/core/src/targeting.ts` + the live carrier quoter in
-`apps/api/src/engines/dist-quoter.ts`, ADR-0069/ADR-0070).
-**Production is live and verified**: `curl https://api.lyra.vantax.co.za/health`
-returns 200 `{"ok":true,"environment":"demo",…}` (the health path is `/health`,
-not `/v1/health`) and `pnpm e2e:live` passes 18/18.
+Running under a self-paced `/loop` toward the full roadmap (M0-M6) in
+production. Loop iteration is autonomous; `pnpm deploy:prod` and any `git push`
+stay gated on explicit user confirmation at the moment they would happen.
 
-`ui.md` at the repo root is the full UI inventory — every screen, its route,
-layout, loader data, every interaction, its permission and approval gates, its
-AI surfaces and its i18n/a11y obligations, plus the Constellation design system
-and the Horizon/Instrument layout language. Read it before adding or changing a
-screen; keep it current when you do, the same way `/docs` is kept current.
+Changelog, demoted: #23-#26 landed groups A-E (162 commits, +46,782/-355) over
+eighteen review rounds — unguarded-`Date`/NaN family closed, mutation score to
+76.96% by testing builders and not only parsers (`893dd1f`), `stripFence` ReDoS
+killed (`c0a2144`); #27-#29 the Horizon/Instrument UI pass (ADR-0068,
+`packages/ui/src/flow.tsx`), ORBIT portals, SCOUT commentary, seeded history,
+`/design`, the live quoter (ADR-0069/70); #30-#34 gap-fill and NORTH.
 
-One thing that wave taught, worth keeping: `apps/web/app/components/whitespace-commentary.tsx`
-was written against an *assumed* contract while the API was built in parallel,
-and shipped a `WhitespaceCommentary` sharing exactly one field with what
-`GET /v1/scout/whitespaces/commentary` actually returns. Every rendered figure
-read `undefined`, and the tests stayed green because the fixtures mocked the
-assumption rather than the server. A web type that mirrors an API type belongs
-next to a comment naming the file it mirrors, and its fixture belongs in the
-shape the server sends.
+## Operational traps
 
-The same shape of bug, second sighting (`91d1085`): a seam whose parameter
-nobody passes is a dead seam, and it tests green because the unit test calls
-the function directly. `labelsFrom(LABELS)` has taken a domain pack all along;
-three routes called `labelsIn(locale)` and dropped it, so no pack could rename
-a noun on the quote desk, settlement or orbit-dev whatever the table said. When
-you add a parameter to a seam, grep its call sites in the same commit — and
-when a seam is keyed one way (`policyNo`) while its callers spell it another
-(`issue.policyNo`), that is the seam being unreachable, not the callers being
-wrong.
-
-Third and fourth sightings, same family, both on NORTH (#32 `25f3f4f`, #33
-`aae8be0`): `narrativeRef` is documented as holding the briefing prose, but every
-row seeded before `f506bf7` holds a storage key — `briefings/<tenant>/<id>.md` —
-and no bucket was ever bound to hold that object, so the text does not exist in
-any environment. The journey step printed the key as its narrative; the brief
-additionally *headlined its `<h1>` with it*. #32 guarded one caller, and a
-read-only sweep of all 74 routes found the sibling caller within the hour. The
-guard now lives in `narrative()` in `north-shared.tsx`, where every reader of the
-column routes through it. Fix at the seam the first time — this repo has now paid
-for the caller-by-caller version four times.
-
-Fixing one bug uncovers the next one it was masking (#34 `0536513`): with the key
-no longer standing in for the prose, `/journey/north` rendered its highlights in
-Arabic to an English reader. NORTH narrates per audience *and* per locale, so a
-bilingual tenant holds an `en` and an `ar` briefing for the same day; both screens
-took `rows[0]`, which is "newest in any language". `chosen(rows, id, locale)` in
-`north-shared.tsx` is the shared pick: newest in the reader's language, else
-newest at all, with an explicit `?id=` still winning. Verify a fix on a deployed
-environment, not only in the test — the locale bug was invisible until the first
-one was live.
-
-The route sweep that found these lives in the session scratchpad, not in `e2e/`:
-it signs in as the demo administrator, walks every static route read-only and
-greps the rendered `main` for text that is not prose — `[object Object]`, a bare
-`undefined`/`NaN`, an untranslated i18n key, a storage key, a year comma-grouped
-as a quantity, Arabic prose on an English session. Worth re-running after a
-contract change; expect false positives on permission scopes, curl examples and
-screens that show both languages by design.
-
-Deployment: merging #26 fired `deploy.yml` on push, which runs full CI then the
-staging deploy. The production job is `workflow_dispatch`-only and additionally
-gated on the `production` GitHub Environment (review from Reshigan). Both runs
-share concurrency group `deploy-deploy-refs/heads/main` with
-`cancel-in-progress: false`, so a dispatched production run queues *behind*
-staging rather than racing it.
-
-The trap in that chain, learned the expensive way on run 32289549099: **CI has
-a job that only runs on push, so a green PR proves less than it looks.**
-`eval-live` is `if: github.event_name != 'pull_request'` — it reported
-"skipping" on #29 and then 401'd on `main`, which skipped the staging deploy
-that push exists to fire. The cause was a fallback that treated
-`CLOUDFLARE_API_TOKEN` as a copy of `CF_AI_TOKEN`; the account id really is one
-value, the token is not, and a deploy-scoped token cannot call `ai/run`. The
-fallback is gone (`99c64ab`) and an unconfigured live gate now emits a warning
-annotation rather than a 401. `CF_AI_TOKEN` is set, and the gate now **runs and
-passes** against real thresholds (`fieldAccuracy`, `recall`, `calibrationError`
-and the rest) on every push. The habit still stands, though: after any push to
-`main`, read `gh run view <id> --json jobs` — a green PR proves less than it
-looks, because `eval-live` never ran on it.
-
-**lyra.vantax.co.za is production, not staging.** A push to `main` reaches
-`staging.lyra.vantax.co.za` / `api-staging.lyra.vantax.co.za` only; production
-needs a `workflow_dispatch` of `deploy.yml` plus the Environment review. A fix
-merged to `main` is therefore *not* on the demo site until that dispatch runs.
-
-After a deploy, verify with `pnpm e2e:live` — `playwright.live.config.ts` points
-at https://lyra.vantax.co.za, or set `LIVE_BASE_URL` for staging. Those specs
-are read-only by construction; never add a writing spec under `e2e/live`.
-
-Note: `pnpm eval` cannot be invoked by script name in an isolated worktree (the
-guard rejects any command containing `eval`). Run it as
+`pnpm eval` cannot be invoked by script name in a worktree — the guard rejects
+any command whose text contains `eval`. Run
 `pnpm --filter @lyra/model-gateway exec tsx evals/run.ts`.
 
-Note: before `pnpm e2e` in a worktree, check nothing else already listens on
-5173/8797 (`lsof -nP -iTCP:5173 -iTCP:8797 -sTCP:LISTEN`). `reuseExistingServer`
-is on locally, so a dev server left running by the main checkout is silently
-reused and the whole suite then tests *that* tree against a DB this one seeded.
-It reads as thirteen unrelated journey failures, not as a wrong-server error.
+The same guard refuses commands it cannot statically prove stay inside the
+worktree — compound `git … && …` chains, heredocs feeding `git commit -F -`,
+`if`/loop blocks with a redirect — reporting "too complex to verify that it
+stays inside the worktree". Use plain separate commands: write a long commit
+message to a file, then `git commit -F <absolute-path>`.
 
-Note: the repo has no required status checks, so `gh pr merge --auto` merges
-immediately instead of queuing behind the checks. Read `gh pr checks` and wait
-for green yourself before merging.
+Before `pnpm e2e` in a worktree, check nothing already listens on 5173/8797
+(`lsof -nP -iTCP:5173 -iTCP:8797 -sTCP:LISTEN`). `reuseExistingServer` is on
+locally, so a dev server left by the main checkout is silently reused and the
+suite tests *that* tree against a DB this one seeded. It reads as thirteen
+unrelated journey failures, not a wrong-server error.
 
-Running under a self-paced `/loop` toward "full roadmap to production"
-(M0-M6, through deployment to lyra.vantax.co.za). Loop iteration is
-autonomous, but `pnpm deploy:prod` and any git push stay gated on explicit
-user confirmation at the moment they'd happen — autonomy covers task
-execution cadence, not irreversible/shared-system actions.
+The repo has no required status checks, so `gh pr merge --auto` merges
+immediately instead of queuing behind them. Read `gh pr checks` and wait for
+green yourself.
+
+## The recurring defect: dead seams
+
+A dead seam is a declared contract nothing routes through: a web type assumed
+rather than mirrored, a parameter no caller passes, a column holding something
+other than what its name says. It tests green because the unit test calls the
+function directly and the fixture mocks the assumption instead of the server.
+Fix it at the seam every reader routes through, grep the call sites in the same
+commit, verify on a deployed environment. Six sightings so far.
+
+1. `apps/web/app/components/whitespace-commentary.tsx`, typed against an assumed
+   contract while the API was built in parallel, shared one field with what
+   `GET /v1/scout/whitespaces/commentary` returns and rendered `undefined`
+   everywhere. A web type mirroring an API type belongs beside a comment naming
+   the file it mirrors, its fixture in the server's shape.
+2. `91d1085`: `labelsFrom(LABELS)` has taken a domain pack all along; three
+   routes called `labelsIn(locale)` and dropped it, so no pack could rename a
+   noun on the quote desk, settlement or orbit-dev. A seam keyed `policyNo`
+   whose callers spell it `issue.policyNo` is unreachable, not wrongly called.
+3. NORTH, twice in one column (#32 `25f3f4f`, #33 `aae8be0`): `narrativeRef` is
+   documented as the briefing prose (`packages/db/src/schema/north.ts:55`) but
+   rows seeded before `f506bf7` hold a storage key `briefings/<tenant>/<id>.md`
+   for which no bucket was ever bound, so the text exists nowhere; the journey
+   step printed the key, the brief headlined its `<h1>` with it. The guard is
+   now `narrative()` at `apps/web/app/routes/north-shared.tsx:171`, where both
+   readers route. That uncovered what it masked (#34 `0536513`): NORTH narrates
+   per audience *and* per locale, both screens took `rows[0]` — newest in any
+   language — so an English reader got Arabic highlights. `chosen(rows, id,
+   locale)` is the shared pick: newest in the reader's language, else newest at
+   all, an explicit `?id=` winning. Invisible until the first fix was live.
+4. Detail-route sweep, 2026-08-22, against `staging.lyra.vantax.co.za` — which
+   serves the production worker's build, see Deployment: `/admin/staff/:id` rendered
+   the literal i18n key `admin.status.active` where the list screen beside it
+   translated the same column. Fixed in the shared detail kit (`f4dfaa4`,
+   `apps/web/app/routes/detail-kit.tsx`), not in the route that showed it.
+5. Same sweep: `/journey/north?productLine=motor` printed a `briefings/….md` key
+   as its narrative again and `/journey/north` printed a date as `1,990-08-12`,
+   a year comma-grouped as a quantity. Both readers do route through
+   `narrative()`, so this is that guard's limit: it decides by the *shape* of the
+   value (`/^[\w/-]+\.md$/`), which holds only for shapes it was shown. The
+   sharper reason, found later: the build answering that hostname predates the
+   guard entirely. A seam guard green in the tree says nothing about the rows
+   already in a database, and nothing at all about a hostname serving an older
+   build — re-sweep the deployed environment after a contract fix, and confirm
+   *which* build answered.
+
+One more, from writing docs/29 rather than from a screen: its draft headline
+("every posting hard-codes 5% tax") was wrong because citations inherited from a
+summary were never opened — those literals live in `packages/core/src/seed/`
+while the engines take `taxPpm` as a parameter all the way down
+(`apps/api/src/engines/rating.ts:169`, `packages/ledger/src/recipes.ts:48`).
+Open every `file:line` before publishing it.
+
+## Deployment
+
+A push to `main` fires `deploy.yml`: full CI, then the **staging** deploy
+(`staging.lyra.vantax.co.za` / `api-staging.lyra.vantax.co.za`).
+**lyra.vantax.co.za is production, not staging** — production is a
+`workflow_dispatch` of the same workflow gated on the `production` GitHub
+Environment (review from Reshigan), so a fix merged to `main` is not on the demo
+site until that dispatch runs. Both share concurrency group
+`deploy-deploy-refs/heads/main`, `cancel-in-progress: false`, so production
+queues *behind* staging rather than racing it.
+
+CI has a job that only runs on push, so **a green PR proves less than it
+looks**: `eval-live` is `if: github.event_name != 'pull_request'`, reported
+"skipping" on #29, then 401'd on `main` and took the staging deploy with it (run
+32289549099) because a fallback treated `CLOUDFLARE_API_TOKEN` as a copy of
+`CF_AI_TOKEN` — the account id is one value, the token is not, and a
+deploy-scoped token cannot call `ai/run`. That fallback is gone (`99c64ab`) and
+the gate passes real thresholds on every push. After any push to `main`, read
+`gh run view <id> --json jobs`.
+
+Verify a deploy with `pnpm e2e:live` — `playwright.live.config.ts` targets
+https://lyra.vantax.co.za, `LIVE_BASE_URL` for staging. Those specs are
+read-only by construction; never add a writing spec under `e2e/live`.
+
+**`staging.lyra.vantax.co.za` serves the production worker's assets, so no
+web-side fix has ever been verified there.** Both hostnames list byte-identical
+asset hashes (`manifest-f61f016b.js`) and `/portal/demo` is 5416 bytes on both;
+the chunk staging serves, `assets/journey-north-oot-d5sB.js`, still filters
+highlights with `typeof e === "string"` and renders `{body:t.narrativeRef}` —
+pre-#32 source, and exactly what the production deploy built (run `32349797112`,
+head `ebae5a8`). The staging run after it (`32369451060`, head `0536513`) built
+`assets/journey-north-CkYcefhK.js` and printed `Deployed lyra-web-staging
+triggers → staging.lyra.vantax.co.za`, version
+`30653f65-0091-489e-bbc7-558b0aa42264` — yet `curl` on that chunk path returns
+**302**, so it is absent from the manifest the hostname actually serves. Not an
+edge cache (no `cf-cache-status`; a cache-busting query returns the same old
+manifest) and web-only: `api-staging…/health` reports `"staging"` while
+`api…/health` reports `"demo"`. Ruled out: a stale committed `packages/ui/dist`
+(none exists), a staging job that skips the web build (it runs `pnpm build`
+first), a later overwriting deploy, turbo cache. What remains needs Cloudflare
+access — either the hostname is attached to `lyra-web` rather than
+`lyra-web-staging`, or `lyra-web-staging`'s live version is pinned older than
+`30653f65`. Check `wrangler deployments list --name lyra-web-staging`, the same
+for `lyra-web`, and the zone's route/DNS record for the `staging` hostname.
+Until then, **verify a web change locally or on production, never on staging.**
+Note that `apps/web` selects its env through `CLOUDFLARE_ENV=staging` plus a
+generated `build/server/wrangler.json`, not the `--env staging` flag the API
+uses — but the CI log proves the env *was* honored (worker `lyra-web-staging`,
+`API_ORIGIN "https://api-staging.lyra.vantax.co.za"`), so that asymmetry is not
+the cause.
+
+Three habits that finding cost. A green deploy job proves an upload happened,
+not that a hostname serves it — compare the content-hashed chunk the build
+printed against the one the served HTML links. Two SSR pages never `md5`-match,
+because the CSP header carries a per-request `nonce-<hex>`; compare byte length
+instead. And wrangler truncates its asset listing at 100 `+ /assets/…` lines, so
+a filename missing from a log reporting `Uploaded 151 files` is not evidence.
+
+## Reference
+
+`ui.md` at the repo root is the full UI inventory — every screen, its route,
+layout, loader data, interactions, permission and approval gates, AI surfaces
+and i18n/a11y obligations, plus Constellation and the Horizon/Instrument layout
+language. Read it before changing a screen; keep it current as you would `/docs`.
+
+`docs/27-feature-gap-register.md` is what eight domain experts found reading the
+code as written, closed items marked not deleted; `docs/29-global-launch-readiness.md`
+(`6cb9b22`) does the same for selling outside the UAE, `file:line` per claim:
+three dead seams (`tenants.region` routes nothing, `invoiceNumber()` is a
+reference not a statutory series, no PSP connector on any rail) and three
+missing *dimensions* (tax treatment for Europe, tax jurisdiction for the US, a
+legal entity to hang an invoice series on). Findings, not backlogs — each item
+needs an ADR or spec update first.
+
+The route sweeps live in the session scratchpad, not in `e2e/`: `sweep.mjs` walks
+the 76 static routes, `sweep-detail.mjs` harvests the ones behind an `:id` by
+following `main a[href]` from those pages instead of hard-coding them (38 last
+run). Both sign in as the demo administrator, read only, and grep the rendered
+`main` for text that is not prose: `[object Object]`, a bare `undefined`/`NaN`,
+an untranslated i18n key, a storage key, a comma-grouped year, Arabic prose on
+an English session. `SWEEP_BASE` picks the environment; false positives are
+permission scopes, curl examples, bilingual-by-design screens, labels like
+"Locale: ar", Arabic customer messages in seeded ORBIT threads.
