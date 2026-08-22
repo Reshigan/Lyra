@@ -160,10 +160,8 @@ setting rather than an `"Asia/Dubai"` default, `6cb9b22` docs/29.
 
 Blocked on the user, not on code: seed-history run `32352805879` waits on the
 `production` Environment review, which is why `/v1/orbit/teams` still answers
-`{"data":[]}`; #32/#33/#34 plus these five commits are not on
-lyra.vantax.co.za until a `workflow_dispatch` of `deploy.yml` runs; and
-`staging.lyra.vantax.co.za` needs a Cloudflare-side fix before it verifies
-anything web-side (see Deployment).
+`{"data":[]}`; and #32/#33/#34 plus these five commits are not on
+lyra.vantax.co.za until a `workflow_dispatch` of `deploy.yml` runs.
 
 Running under a self-paced `/loop` toward the full roadmap (M0-M6) in
 production. Loop iteration is autonomous; `pnpm deploy:prod` and any `git push`
@@ -227,8 +225,8 @@ commit, verify on a deployed environment. Six sightings so far.
    language — so an English reader got Arabic highlights. `chosen(rows, id,
    locale)` is the shared pick: newest in the reader's language, else newest at
    all, an explicit `?id=` winning. Invisible until the first fix was live.
-4. Detail-route sweep, 2026-08-22, against `staging.lyra.vantax.co.za` — which
-   serves the production worker's build, see Deployment: `/admin/staff/:id` rendered
+4. Detail-route sweep, 2026-08-22, against `staging.lyra.vantax.co.za` — then
+   serving a hand-deployed build three PRs old, see Deployment: `/admin/staff/:id` rendered
    the literal i18n key `admin.status.active` where the list screen beside it
    translated the same column. Fixed in the shared detail kit (`f4dfaa4`,
    `apps/web/app/routes/detail-kit.tsx`), not in the route that showed it.
@@ -274,39 +272,42 @@ Verify a deploy with `pnpm e2e:live` — `playwright.live.config.ts` targets
 https://lyra.vantax.co.za, `LIVE_BASE_URL` for staging. Those specs are
 read-only by construction; never add a writing spec under `e2e/live`.
 
-**`staging.lyra.vantax.co.za` serves the production worker's assets, so no
-web-side fix has ever been verified there.** Both hostnames list byte-identical
-asset hashes (`manifest-f61f016b.js`) and `/portal/demo` is 5416 bytes on both;
-the chunk staging serves, `assets/journey-north-oot-d5sB.js`, still filters
-highlights with `typeof e === "string"` and renders `{body:t.narrativeRef}` —
-pre-#32 source, and exactly what the production deploy built (run `32349797112`,
-head `ebae5a8`). The staging run after it (`32369451060`, head `0536513`) built
-`assets/journey-north-CkYcefhK.js` and printed `Deployed lyra-web-staging
-triggers → staging.lyra.vantax.co.za`, version
-`30653f65-0091-489e-bbc7-558b0aa42264` — yet `curl` on that chunk path returns
-**302**, so it is absent from the manifest the hostname actually serves. Not an
-edge cache (no `cf-cache-status`; a cache-busting query returns the same old
-manifest) and web-only: `api-staging…/health` reports `"staging"` while
-`api…/health` reports `"demo"`. Ruled out: a stale committed `packages/ui/dist`
-(none exists), a staging job that skips the web build (it runs `pnpm build`
-first), a later overwriting deploy, turbo cache. What remains needs Cloudflare
-access — either the hostname is attached to `lyra-web` rather than
-`lyra-web-staging`, or `lyra-web-staging`'s live version is pinned older than
-`30653f65`. Check `wrangler deployments list --name lyra-web-staging`, the same
-for `lyra-web`, and the zone's route/DNS record for the `staging` hostname.
-Until then, **verify a web change locally or on production, never on staging.**
-Note that `apps/web` selects its env through `CLOUDFLARE_ENV=staging` plus a
-generated `build/server/wrangler.json`, not the `--env staging` flag the API
-uses — but the CI log proves the env *was* honored (worker `lyra-web-staging`,
-`API_ORIGIN "https://api-staging.lyra.vantax.co.za"`), so that asymmetry is not
-the cause.
+**A local `wrangler deploy` outranks the pipeline, and nothing in the pipeline
+says so.** For two days `staging.lyra.vantax.co.za` served the *production*
+build: both hostnames listed `manifest-f61f016b.js`, `/portal/demo` was 5416
+bytes on both, and the chunk staging answered with,
+`assets/journey-north-oot-d5sB.js`, still filtered highlights with
+`typeof e === "string"` and rendered `{body:t.narrativeRef}` — pre-#32 source.
+The staging run for #34 (`32369451060`, head `0536513`) had built
+`assets/journey-north-CkYcefhK.js` and deployed version
+`30653f65-0091-489e-bbc7-558b0aa42264` at 12:40, and a `curl` on that chunk
+returned 302, so it was not in the manifest the hostname served.
 
-Three habits that finding cost. A green deploy job proves an upload happened,
-not that a hostname serves it — compare the content-hashed chunk the build
-printed against the one the served HTML links. Two SSR pages never `md5`-match,
-because the CSP header carries a per-request `nonce-<hex>`; compare byte length
-instead. And wrangler truncates its asset listing at 100 `+ /assets/…` lines, so
-a filename missing from a log reporting `Uploaded 151 files` is not evidence.
+The cause was not routing. `wrangler deployments list --name lyra-web-staging`
+showed a *newer* version, `66a08a96-46ef-4d4f-b9de-c859937a14df` at 14:20:43,
+and `wrangler versions view` on it reported `Source: Unknown (version_upload)`
+with the correct staging bindings (`ENVIRONMENT ("staging")`,
+`API_ORIGIN "https://api-staging.lyra.vantax.co.za"`). No workflow ran at 14:20
+— `gh run list` jumps from 12:33 to the next day — so that version came from
+someone's laptop, built from a tree at `ebae5a8`, which is exactly why its
+assets matched production's byte for byte. A hand deploy silently reverted
+staging past three merged PRs and left a green CI history behind it.
+
+So: deploy staging by pushing to `main`, never by hand, and after any local
+`wrangler deploy` check what the hostname then serves. Confirming a *route* is
+the wrong first move — `wrangler deployments list` plus `wrangler versions view`
+answer "which build is live, and who put it there" in one step, and the bindings
+in that output are what prove the hostname is on the worker you think it is.
+
+Four habits that cost. A green deploy job proves an upload happened, not that a
+hostname serves it — compare the content-hashed chunk the build printed against
+the one the served HTML links. Two SSR pages never `md5`-match, because the CSP
+header carries a per-request `nonce-<hex>`; compare byte length instead.
+Wrangler truncates its asset listing at 100 `+ /assets/…` lines, so a filename
+missing from a log reporting `Uploaded 151 files` is not evidence. And "no later
+CI run exists" does not rule out a later deploy: check the platform, not the
+pipeline.
+
 
 ## Reference
 
