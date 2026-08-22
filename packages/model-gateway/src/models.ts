@@ -20,6 +20,9 @@ export const CATALOGUE: Record<string, ModelDef> = {
   "llama-3.3-70b": { provider: "workers-ai", model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast", inPer1k: 290, outPer1k: 2_250, maxTokens: 8_192, tools: true },
   "llama-3.1-8b": { provider: "workers-ai", model: "@cf/meta/llama-3.1-8b-instruct-fast", inPer1k: 28, outPer1k: 226, maxTokens: 8_192, tools: false },
   "bge-m3": { provider: "workers-ai", model: "@cf/baai/bge-m3", inPer1k: 12, outPer1k: 0, maxTokens: 8_192, tools: false },
+  // OpenRouter is OpenAI-compatible at the HTTP layer, so it fits the same
+  // provider adapter as on-prem vLLM/Ollama, but with a hosted model slug.
+  "ox-alpha": { provider: "openai-compat", model: "stealth/ox-alpha", inPer1k: 0, outPer1k: 0, maxTokens: 131_072, tools: true },
   // On-prem: whatever vLLM serves. Cost is the tenant's own hardware, so zero.
   "internal-chat": { provider: "openai-compat", model: "internal-chat", inPer1k: 0, outPer1k: 0, maxTokens: 32_000, tools: true },
   "internal-embed": { provider: "openai-compat", model: "internal-embed", inPer1k: 0, outPer1k: 0, maxTokens: 8_192, tools: false }

@@ -205,3 +205,35 @@ export const guardrailEvents = sqliteTable(
   },
   (t) => [index("ai_guardrail_idx").on(t.tenantId, t.severity, t.ts)]
 );
+
+/** ADR-0073. An action the command loop wants taken, held for a human. The
+ *  loop never executes a consequential tool: it writes one of these and the
+ *  model sees `proposed:<id>` back. Execution happens only through the
+ *  module's real action path, so the approval gate fires exactly once for an
+ *  agent-raised and a desk-raised change alike (CLAUDE.md rule 4). */
+export const commandProposals = sqliteTable(
+  "ai_command_proposals",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    runId: text("run_id").notNull(),
+    module: text("module").notNull(),
+    toolName: text("tool_name").notNull(),
+    subjectRef: text("subject_ref"),
+    /** The approval policy this action gates under; null for a
+     *  non-consequential proposal (envelope held a read back). */
+    policyKey: text("policy_key"),
+    argsJson: text("args_json").notNull(),
+    /** The inspectable "why" (docs/15): the run's reasoning for this action. */
+    whyJson: text("why_json"),
+    state: text("state").notNull().default("proposed"), // proposed|actioned|dismissed|expired
+    decidedBy: text("decided_by"),
+    decidedAt: integer("decided_at"),
+    approvalId: text("approval_id"),
+    createdAt: integer("created_at").notNull()
+  },
+  (t) => [
+    index("ai_command_proposals_idx").on(t.tenantId, t.state, t.createdAt),
+    index("ai_command_proposals_run_idx").on(t.tenantId, t.runId)
+  ]
+);

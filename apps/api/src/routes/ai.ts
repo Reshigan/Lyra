@@ -6,6 +6,7 @@ import {
   actorRef,
   audit,
   badRequest,
+  conflict,
   flagEnabled,
   gate,
   notFound,
@@ -18,6 +19,7 @@ import { body, intParam, MAX_INSTANT_MS } from "../http.js";
 import { executeOrbitToolCalls, orbitToolsFor } from "../engines/orbit-tools.js";
 import { embedQuery } from "../engines/vectorize.js";
 import { agentByKey, activePrompt } from "../engines/ai-agent.js";
+import { runCommandLoop } from "../engines/command-loop.js";
 import { must } from "../rows.js";
 import type { App } from "../env.js";
 
@@ -568,4 +570,182 @@ aiRoutes.get("/audit/spend", async (c) => {
   }
   const data = [...by.values()].sort((a, b) => b.costMicro - a.costMicro);
   return c.json({ data, totals: data.reduce((t, r) => ({ calls: t.calls + r.calls, tokens: t.tokens + r.tokens, costMicro: t.costMicro + r.costMicro }), { calls: 0, tokens: 0, costMicro: 0 }) });
+});
+
+/* ------------------------------------------------------------ command center */
+
+/**
+ * ADR-0073. The command loop's front door. Runs the bounded multi-round agent
+ * over the unified registry; consequential tools become proposals, never
+ * executions. The run row is written here (state machine identical to
+ * /runs), the loop only computes.
+ */
+const CommandBody = z.object({
+  agentKey: z.string().min(1).max(64),
+  purpose: z.string().min(1).max(64),
+  subjectRef: z.string().max(200).optional(),
+  locale: z.enum(["en", "ar"]).optional(),
+  input: z.string().min(1).max(20_000)
+});
+
+aiRoutes.post("/command/runs", async (c) => {
+  const ctx = ctxOf(c);
+  const input = await body(c, CommandBody);
+  const agent = await agentByKey(ctx, input.agentKey);
+  require_(ctx.actor, `${agent.module}:ai:invoke`, { tenantId: ctx.tenantId, module: agent.module });
+  if (agent.status !== "active") throw badRequest(`agent ${agent.key} is ${agent.status}`);
+  // The loop is cross-module, so the purpose carries the agent's own module
+  // prefix (`axis.command.center` for an axis agent) — the (module, purpose)
+  // pair stays exact per the F40 rule.
+  const purpose = input.purpose.endsWith(".command.center")
+    ? input.purpose
+    : `${agent.module}.command.center`;
+  if (!isKnownPurpose(agent.module, purpose))
+    throw badRequest(`purpose ${purpose} is not registered for module ${agent.module}`);
+
+  const started = ctx.now;
+  return commandRun(c, ctx, agent, { ...input, purpose }, started);
+});
+
+async function commandRun(
+  c: Context<App>,
+  ctx: Ctx,
+  agent: { key: string; module: string; tier: string; toolsJson: string | null; autonomyLevel: string },
+  input: { agentKey: string; purpose: string; subjectRef?: string | undefined; locale?: "en" | "ar" | undefined; input: string },
+  started: number
+) {
+  try {
+    const result = await runCommandLoop(ctx, c.get("gateway"), agent, {
+      agentKey: input.agentKey,
+      purpose: input.purpose,
+      ...(input.subjectRef !== undefined ? { subjectRef: input.subjectRef } : {}),
+      ...(input.locale !== undefined ? { locale: input.locale } : {}),
+      input: input.input
+    });
+
+    await ctx.db.insert(schema.aiRuns).values({
+      id: result.runId,
+      tenantId: ctx.tenantId,
+      agentKey: agent.key,
+      module: agent.module,
+      purpose: input.purpose,
+      subjectRef: input.subjectRef ?? null,
+      actorRef: actorRef(ctx),
+      autonomyLevel: agent.autonomyLevel,
+      trigger: "user",
+      state: "succeeded",
+      inputHash: result.auditId,
+      outputRef: result.auditId,
+      evidenceJson: JSON.stringify({ rounds: result.rounds, proposals: result.proposalIds }),
+      tokensIn: result.usage.tokensIn,
+      tokensOut: result.usage.tokensOut,
+      costMicro: result.usage.costMicro,
+      latencyMs: ctx.now - started,
+      startedAt: started,
+      endedAt: ctx.now
+    });
+    await audit(ctx, {
+      action: "ai.command.run",
+      subjectRef: result.runId,
+      after: { rounds: result.rounds.length, proposals: result.proposalIds.length }
+    });
+    return c.json(result, 201);
+  } catch (err) {
+    await audit(ctx, {
+      action: "ai.command.run_failed",
+      subjectRef: input.agentKey,
+      after: { error: err instanceof Error ? err.message.slice(0, 200) : "error" }
+    });
+    throw err;
+  }
+}
+
+/** Pending proposals for the surface feed. */
+aiRoutes.get("/command/proposals", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "ai:command:read", { tenantId: ctx.tenantId, module: "ai" });
+  const state = c.req.query("state") ?? "proposed";
+  const rows = await ctx.db
+    .select()
+    .from(schema.aiCommandProposals)
+    .where(and(eq(schema.aiCommandProposals.tenantId, ctx.tenantId), eq(schema.aiCommandProposals.state, state)))
+    .orderBy(desc(schema.aiCommandProposals.createdAt))
+    .limit(100);
+  return c.json({ data: rows });
+});
+
+/** Dismiss a proposal — an explicit human decision, audited as such. */
+aiRoutes.post("/command/proposals/:id/dismiss", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "ai:command:read", { tenantId: ctx.tenantId, module: "ai" });
+  const id = c.req.param("id");
+  const row = (
+    await ctx.db
+      .select()
+      .from(schema.aiCommandProposals)
+      .where(and(eq(schema.aiCommandProposals.tenantId, ctx.tenantId), eq(schema.aiCommandProposals.id, id)))
+      .limit(1)
+  )[0];
+  if (!row) throw notFound("proposal");
+  if (row.state !== "proposed") throw conflict(`proposal is ${row.state}`);
+  await ctx.db
+    .update(schema.aiCommandProposals)
+    .set({ state: "dismissed", decidedBy: actorRef(ctx), decidedAt: ctx.now })
+    .where(and(eq(schema.aiCommandProposals.tenantId, ctx.tenantId), eq(schema.aiCommandProposals.id, id)));
+  await audit(ctx, { action: "ai.command.proposal_dismissed", subjectRef: id, before: { state: row.state }, after: { state: "dismissed" } });
+  return c.body(null, 204);
+});
+
+/**
+ * Action a proposal: execute it through the module's real engine function, so
+ * the approval gate fires exactly once for an agent-raised and a desk-raised
+ * change alike (the orbit-tools lesson — one execution path per action, never
+ * a second one). The permission checked is the underlying module's, not
+ * ai:command:read: acting on an endorsement is endorsing.
+ */
+aiRoutes.post("/command/proposals/:id/action", async (c) => {
+  const ctx = ctxOf(c);
+  const id = c.req.param("id");
+  const row = (
+    await ctx.db
+      .select()
+      .from(schema.aiCommandProposals)
+      .where(and(eq(schema.aiCommandProposals.tenantId, ctx.tenantId), eq(schema.aiCommandProposals.id, id)))
+      .limit(1)
+  )[0];
+  if (!row) throw notFound("proposal");
+  if (row.state !== "proposed") throw conflict(`proposal is ${row.state}`);
+
+  let result: unknown;
+  try {
+    switch (row.toolName) {
+      case "create_endorsement_request": {
+        // Same engine the desk route calls; axis.endorse gate fires inside.
+        const { endorsePolicy } = await import("../engines/axis-endorse.js");
+        const args = JSON.parse(row.argsJson) as { policyId?: string } & Record<string, unknown>;
+        const policy = await must(ctx, schema.axisPolicies, args.policyId ?? row.subjectRef ?? "", "policies");
+        require_(ctx.actor, "axis:policies:endorse", { tenantId: ctx.tenantId, module: "axis" });
+        result = await endorsePolicy(ctx, policy, {
+          changes: (args.changes ?? {}) as Record<string, never>,
+          reason: typeof args.reason === "string" ? args.reason : null,
+          ...(typeof args.premiumMinor === "number" ? { premiumMinor: args.premiumMinor } : {}),
+          ...(typeof args.effectiveFrom === "number" ? { effectiveFrom: args.effectiveFrom } : {})
+        });
+        break;
+      }
+      default:
+        throw badRequest(`no action path for tool ${row.toolName}`);
+    }
+  } catch (err) {
+    // The gate's own 403 (approval_required) is a *good* outcome here: the
+    // proposal stays proposed and the surface links to the pending approval.
+    throw err;
+  }
+
+  await ctx.db
+    .update(schema.aiCommandProposals)
+    .set({ state: "actioned", decidedBy: actorRef(ctx), decidedAt: ctx.now })
+    .where(and(eq(schema.aiCommandProposals.tenantId, ctx.tenantId), eq(schema.aiCommandProposals.id, id)));
+  await audit(ctx, { action: "ai.command.proposal_actioned", subjectRef: id, before: { state: row.state }, after: { state: "actioned" } });
+  return c.json({ ok: true, result }, 200);
 });

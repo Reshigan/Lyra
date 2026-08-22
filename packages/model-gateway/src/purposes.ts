@@ -84,7 +84,21 @@ export const PURPOSES: Record<string, PurposeDef> = {
 
   // core — platform-wide.
   "output.review": { module: "core", customerFacing: false },
-  "knowledge.embed": { module: "core", customerFacing: false }
+  "knowledge.embed": { module: "core", customerFacing: false },
+
+  // ADR-0073 — the command center loop. Staff-facing by construction: the
+  // surface sits behind the session, and every consequential action it touches
+  // becomes a proposal for a human, never an execution. The loop is
+  // cross-module by design, so the purpose is registered once per module it
+  // can run agents from — the (module, purpose) pair stays exact.
+  "command.center": { module: "ai", customerFacing: false },
+  "axis.command.center": { module: "axis", customerFacing: false },
+  "orbit.command.center": { module: "orbit", customerFacing: false },
+  "signal.command.center": { module: "signal", customerFacing: false },
+  "scout.command.center": { module: "scout", customerFacing: false },
+  "north.command.center": { module: "north", customerFacing: false },
+  "ledger.command.center": { module: "ledger", customerFacing: false },
+  "dist.command.center": { module: "dist", customerFacing: false }
 };
 
 export interface PurposeResolution {

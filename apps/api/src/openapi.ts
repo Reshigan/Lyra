@@ -235,6 +235,11 @@ const HAND_WRITTEN: Op[] = [
   { method: "post", path: "/v1/ai/suggestions", summary: "Record a suggestion shown to the current user", permission: "ai:suggestions:read", tag: "ai", requestBody: true },
   { method: "post", path: "/v1/ai/suggestions/{id}/outcome", summary: "Record whether the current user accepted, edited or dismissed it", permission: "ai:suggestions:read", tag: "ai", requestBody: true },
   { method: "get", path: "/v1/ai/suggestions/acceptance", summary: "Acceptance rate by surface and module", permission: "ai:runs:read", tag: "ai" },
+  // ADR-0073 — the command center.
+  { method: "post", path: "/v1/ai/command/runs", summary: "Run the bounded multi-round command loop; consequential tools become proposals, never executions", permission: "core:ai:invoke", tag: "ai", requestBody: true },
+  { method: "get", path: "/v1/ai/command/proposals", summary: "List command-center proposals by state (default: proposed)", permission: "ai:command:read", tag: "ai" },
+  { method: "post", path: "/v1/ai/command/proposals/{id}/dismiss", summary: "Dismiss a proposal — an explicit human decision", permission: "ai:command:read", tag: "ai", requestBody: true },
+  { method: "post", path: "/v1/ai/command/proposals/{id}/action", summary: "Execute a proposal through the module's real engine path; the approval gate fires there", permission: "core:approvals:decide", tag: "ai", requestBody: true },
   // The killswitch is `pause`, not `write`: compliance may pull it mid-incident
   // without also being able to reconfigure the agent. A reason is required.
   { method: "post", path: "/v1/ai/agents/{key}/pause", summary: "Pause an agent", permission: "ai:agents:pause", tag: "ai", requestBody: true },

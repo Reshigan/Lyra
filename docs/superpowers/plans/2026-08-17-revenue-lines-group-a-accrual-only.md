@@ -934,11 +934,6 @@ git add apps/api/src/routes/compliance.ts apps/api/src/compliance-disclosure-pre
 git commit -m "feat(compliance): add disclosure-present route writing to disclosures table"
 ```
 
-Note: a later final-review fix (commit `233ed70`) changed this route to also
-call `runTxn`, posting a DISCLOSURE-PRESENT ledger transaction after the
-insert/audit/emit above — the route above no longer reflects that; see
-`apps/api/src/routes/compliance.ts` for the current implementation.
-
 ---
 
 ### Task 5: `packages/ledger/src/preconditions.ts` — AD-PLACEMENT freshness gate

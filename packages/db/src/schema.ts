@@ -158,7 +158,8 @@ export {
   budgets as aiBudgets,
   evals as aiEvals,
   knowledgeSources as aiKnowledgeSources,
-  guardrailEvents as aiGuardrailEvents
+  guardrailEvents as aiGuardrailEvents,
+  commandProposals as aiCommandProposals
 } from "./schema/ai.js";
 
 export {

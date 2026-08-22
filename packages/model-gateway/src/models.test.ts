@@ -98,6 +98,16 @@ describe("CATALOGUE", () => {
     expect(d.outPer1k).toBe(0);
     expect(d.maxTokens).toBe(8_192);
   });
+
+  it("ox-alpha: openai-compat OpenRouter model, tool-capable, zero cost", () => {
+    const d = CATALOGUE["ox-alpha"]!;
+    expect(d.provider).toBe("openai-compat");
+    expect(d.model).toBe("stealth/ox-alpha");
+    expect(d.tools).toBe(true);
+    expect(d.inPer1k).toBe(0);
+    expect(d.outPer1k).toBe(0);
+    expect(d.maxTokens).toBe(131_072);
+  });
 });
 
 describe("EMBED_MODEL", () => {
@@ -188,7 +198,7 @@ describe("resolveModel: needsTools", () => {
       overrides: { reasoning: "internal-embed" },
       needsTools: true
     });
-    expect(def.key).toBe("internal-chat");
+    expect(def.key).toBe("ox-alpha");
     expect(def.provider).toBe("openai-compat");
     expect(def.tools).toBe(true);
   });

@@ -228,6 +228,10 @@ export const PERMISSIONS = [
   "ai:prompts:read", "ai:prompts:write",
   "ai:runs:read",
   "ai:suggestions:read",
+  // ADR-0073: the command center. Reading proposals and the run timeline is
+  // governance-adjacent; actioning a proposal rides the underlying module's
+  // own permission (the gate fires there), never this one.
+  "ai:command:read",
   "ai:budgets:read", "ai:budgets:write",
   "ai:evals:read", "ai:evals:run",
   "ai:audit:read",
@@ -297,7 +301,7 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
   "platform.admin": ["*:*:*"],
   "platform.support": [
     "admin:diagnostics:read", "admin:dlq:read", "core:impersonate:use",
-    "core:audit:read", "ai:runs:read", "ai:suggestions:read"
+    "core:audit:read", "ai:runs:read", "ai:suggestions:read", "ai:command:read"
   ],
   "platform.engineer": ["admin:diagnostics:read", "admin:dlq:read", "admin:dlq:replay", "admin:flags:read", "admin:flags:write"],
 
@@ -330,6 +334,7 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     "core:audit:read", "core:audit:export", "core:consents:read", "core:customers:read",
     "core:pii:view", "core:approvals:read", "core:approvals:decide",
     "compliance:*:*", "ai:audit:read", "ai:runs:read", "ai:suggestions:read",
+    "ai:command:read",
     // Reads the diligence trail behind anything that went live; may waive a
     // step that compliance itself owns, but never edit one.
     "core:onboarding:read", "core:onboarding:waive", "dist:agreements:read",
@@ -348,7 +353,7 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
 
   /* AXIS */
   "axis.agent": [
-    ...readsOf("axis"), "axis:ai:invoke", "ai:suggestions:read",
+    ...readsOf("axis"), "axis:ai:invoke", "ai:suggestions:read", "ai:command:read",
     "axis:cases:create", "axis:cases:update",
     "axis:quotes:create", "axis:quotes:compare",
     "axis:documents:upload", "axis:documents:extract",
@@ -365,7 +370,7 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     "dist:quote_requests:select", "dist:offers:read", "dist:offers:surface"
   ],
   "axis.lead": [
-    ...readsOf("axis"), "axis:ai:invoke", "ai:suggestions:read",
+    ...readsOf("axis"), "axis:ai:invoke", "ai:suggestions:read", "ai:command:read",
     "axis:cases:create", "axis:cases:update", "axis:cases:assign",
     "axis:cases:approve", "axis:quotes:create", "axis:quotes:compare", "axis:quotes:approve",
     "axis:documents:upload", "axis:documents:extract", "axis:documents:verify",
@@ -407,7 +412,7 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
 
   /* ORBIT */
   "orbit.agent": [
-    ...readsOf("orbit"), "orbit:ai:invoke", "ai:suggestions:read",
+    ...readsOf("orbit"), "orbit:ai:invoke", "ai:suggestions:read", "ai:command:read",
     "orbit:conversations:reply", "orbit:conversations:close",
     "orbit:messages:send", "orbit:handover:write", "orbit:presence:write",
     // docs/06 J-C2: the agent's whole job is reading the customer's message
@@ -417,7 +422,7 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     "axis:policies:read", "axis:cases:read", "axis:cases:create"
   ],
   "orbit.lead": [
-    ...readsOf("orbit"), "orbit:ai:invoke", "ai:suggestions:read",
+    ...readsOf("orbit"), "orbit:ai:invoke", "ai:suggestions:read", "ai:command:read",
     "orbit:conversations:reply", "orbit:conversations:assign",
     "orbit:conversations:close", "orbit:messages:send", "orbit:handover:write",
     "orbit:qa:score", "orbit:renewals:update", "orbit:journeys:write",
@@ -429,7 +434,7 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     "analytics:saved_views:read", "analytics:saved_views:write"
   ],
   "orbit.retention": [
-    ...readsOf("orbit"), "orbit:ai:invoke", "ai:suggestions:read",
+    ...readsOf("orbit"), "orbit:ai:invoke", "ai:suggestions:read", "ai:command:read",
     "orbit:renewals:update", "orbit:conversations:reply",
     "orbit:messages:send",
     "core:customers:read", "core:consents:read", "core:search:read",
@@ -442,7 +447,7 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     "dist:offers:read"
   ],
   "orbit.partners": [
-    ...readsOf("orbit"), "orbit:ai:invoke", "ai:suggestions:read",
+    ...readsOf("orbit"), "orbit:ai:invoke", "ai:suggestions:read", "ai:command:read",
     "orbit:partners:create", "orbit:partners:update",
     "orbit:partners:certify", "orbit:partner_keys:issue_test",
     "ledger:txns:read", "analytics:reports:read", "analytics:reports:run",
@@ -463,7 +468,7 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
 
   /* SIGNAL */
   "signal.marketer": [
-    ...readsOf("signal"), "signal:ai:invoke", "ai:suggestions:read",
+    ...readsOf("signal"), "signal:ai:invoke", "ai:suggestions:read", "ai:command:read",
     "signal:campaigns:create", "signal:campaigns:update",
     "signal:audiences:create", "signal:audiences:estimate",
     "signal:creatives:generate", "signal:aeo:write", "signal:experiments:create",
@@ -471,7 +476,7 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     "analytics:reports:read", "analytics:reports:run"
   ],
   "signal.lead": [
-    ...readsOf("signal"), "signal:ai:invoke", "ai:suggestions:read",
+    ...readsOf("signal"), "signal:ai:invoke", "ai:suggestions:read", "ai:command:read",
     "signal:campaigns:create", "signal:campaigns:update",
     "signal:campaigns:launch", "signal:campaigns:pause",
     "signal:audiences:create", "signal:audiences:estimate",
@@ -493,13 +498,13 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
 
   /* SCOUT */
   "scout.pm": [
-    ...readsOf("scout"), "scout:ai:invoke", "ai:suggestions:read",
+    ...readsOf("scout"), "scout:ai:invoke", "ai:suggestions:read", "ai:command:read",
     "scout:experiments:create", "scout:whitespaces:promote",
     "core:products:read", "core:providers:read", "dist:offerings:read",
     "analytics:reports:read", "analytics:reports:run"
   ],
   "scout.lead": [
-    ...readsOf("scout"), "scout:ai:invoke", "ai:suggestions:read",
+    ...readsOf("scout"), "scout:ai:invoke", "ai:suggestions:read", "ai:command:read",
     "scout:experiments:create", "scout:experiments:decide",
     "scout:whitespaces:promote", "scout:data_products:create",
     "core:products:read", "core:providers:read", "core:approvals:read", "core:approvals:decide",
@@ -512,7 +517,7 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
 
   /* NORTH */
   "north.exec": [
-    ...readsOf("north"), "north:ai:invoke", "ai:suggestions:read",
+    ...readsOf("north"), "north:ai:invoke", "ai:suggestions:read", "ai:command:read",
     "north:anomalies:assign", "north:scenarios:run",
     "north:decisions:write", "north:boardpacks:generate", "north:snapshots:run",
     "axis:metrics:read", "signal:attribution:read", "signal:spend:read",
@@ -523,7 +528,7 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
     "analytics:saved_views:read", "analytics:saved_views:write"
   ],
   "north.analyst": [
-    ...readsOf("north"), "north:ai:invoke", "ai:suggestions:read",
+    ...readsOf("north"), "north:ai:invoke", "ai:suggestions:read", "ai:command:read",
     "north:metrics:write", "north:briefings:generate",
     "north:scenarios:run", "north:alerts:write",
     "axis:metrics:read", "signal:attribution:read", "signal:spend:read",
@@ -544,7 +549,7 @@ export const ROLES: Readonly<Record<string, readonly Permission[]>> = {
 
   /* finance — money movement is separated from operations by design (docs/19 §7) */
   "finance.analyst": [
-    ...readsOf("ledger"), "ledger:ai:invoke", "ledger:recon:run", "ledger:recon:export", "ledger:invoices:create",
+    ...readsOf("ledger"), "ledger:ai:invoke", "ai:command:read", "ledger:recon:run", "ledger:recon:export", "ledger:invoices:create",
     // Drafts a manual journal but cannot post it — deliberately not
     // `ledger:journals:post`, which is the whole point of the split.
     "ledger:journals:draft",
