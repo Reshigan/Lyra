@@ -985,7 +985,11 @@ const SCORERS: Record<string, (dir: string) => Promise<Metric[]>> = {
   // The commentary a hover shows is `verifyGroundedness` over the candidate's own
   // evidence lines — the same function axis-copilot/orbit-draft are gated on, so
   // the same scorer, not a third copy of it.
-  "scout-commentary": scoreGroundedness
+  "scout-commentary": scoreGroundedness,
+  // ADR-0073: the command loop's answers are gated on the same rule — state no
+  // number the tool results did not give you, and never claim a proposal was
+  // executed. The context lines are the loop's tool results verbatim.
+  "command-center": scoreGroundedness
 };
 
 async function main(): Promise<void> {
