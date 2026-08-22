@@ -14,14 +14,18 @@ import {
   Card,
   DateTime,
   EmptyState,
+  KPIWall,
   Select,
+  Sparkline,
+  Stat,
   Textarea
 } from "@lyra/ui";
 import { Eyebrow, Figure, Hairline, HueBar, Lede, Panel } from "@lyra/ui";
 import type { LyraModule } from "@lyra/ui";
 import { ApiError, api } from "../api.server";
 import { cloudflare } from "../context";
-import { pseudoText, translator } from "../i18n";
+import { translator } from "../i18n";
+import { labelsFrom, type Label } from "./detail-kit";
 import { Problem } from "./module";
 import { useShellData } from "./workspace";
 
@@ -53,7 +57,13 @@ const LABELS: Record<string, Record<string, string>> = {
     "runs.empty": "No runs yet. Start with a question above.",
     "runs.rounds": "rounds",
     "runs.proposals": "proposals",
-    "answer.title": "The loop's answer"
+    "answer.title": "The loop's answer",
+    "hero.waiting": "Waiting on you",
+    "hero.runs24h": "Runs · 24h",
+    "hero.modules": "Modules connected",
+    "hero.autonomy": "Autonomy",
+    "constellation.title": "The loop's reach",
+    "constellation.hint": "Each module the registry can read. Connections light where a run touched two."
   },
   ar: {
     title: "مركز القيادة",
@@ -73,16 +83,19 @@ const LABELS: Record<string, Record<string, string>> = {
     "runs.empty": "لا تشغيلات بعد. ابدأ بسؤال أعلاه.",
     "runs.rounds": "جولات",
     "runs.proposals": "مقترحات",
-    "answer.title": "إجابة الحلقة"
+    "answer.title": "إجابة الحلقة",
+    "hero.waiting": "بانتظار قرارك",
+    "hero.runs24h": "تشغيلات · ٢٤س",
+    "hero.modules": "وحدات متصلة",
+    "hero.autonomy": "الاستقلالية",
+    "constellation.title": "مدى الحلقة",
+    "constellation.hint": "كل وحدة يستطيع السجل قراءتها. تضيء الروابط حيث لمست التشغيل وحدتين."
   }
 };
 
-type Label = (key: string, fallback?: string) => string;
-
-function labeller(locale: string): Label {
-  return (key, fallback) =>
-    pseudoText(locale, LABELS[locale]?.[key] ?? LABELS["en"]?.[key] ?? fallback ?? key);
-}
+/** Pack-aware via the shared kit (detail-kit labelsFrom): a domain pack may
+ *  rename "policy" nouns on this surface too, so the tenant's pack rides the
+ *  same resolution chain as every other screen. */
 
 /* ------------------------------------------------------------------- shapes */
 
@@ -236,6 +249,16 @@ function hueModule(module: string): LyraModule | null {
   return ["axis", "orbit", "signal", "scout", "north"].includes(module) ? (module as LyraModule) : null;
 }
 
+/** The five shells the constellation draws. Ledger and dist read through the
+ *  registry too but carry no hue of their own; they light through the five. */
+const CONSTELLATION: { id: LyraModule; label: string; labelAr: string }[] = [
+  { id: "axis", label: "Operations", labelAr: "العمليات" },
+  { id: "orbit", label: "Conversations", labelAr: "المحادثات" },
+  { id: "signal", label: "Marketing", labelAr: "التسويق" },
+  { id: "scout", label: "Intelligence", labelAr: "المعلومات" },
+  { id: "north", label: "Insight", labelAr: "الرؤى" }
+];
+
 function humaniseTool(name: string): string {
   return name.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
 }
@@ -271,9 +294,24 @@ export default function CommandCenter() {
   const action = useActionData<typeof action>() as ActionResult | undefined;
   const navigation = useNavigation();
   const shell = useShellData();
-  const t = labeller(locale);
+  const t = labelsFrom(LABELS)(locale, shell?.domainPack);
   const shared = translator(locale, shell?.overrides);
   const running = navigation.state !== "idle";
+
+  // Hero numbers: what is waiting, how hard the loop has worked today, and
+  // which modules it can reach. Derived from the same loader data the feed
+  // renders — no second round trip.
+  const dayAgo = Date.now() - 24 * 3_600_000;
+  const runs24h = runs.filter((r) => r.startedAt >= dayAgo).length;
+  const touchedModules = new Set<string>([...proposals.map((p) => p.module), ...runs.map((r) => r.module)]);
+  const connectedCount = CONSTELLATION.filter((m) => touchedModules.has(m.id)).length;
+  const roundsByRun = runs.map((r) => {
+    try {
+      return ((JSON.parse(r.evidenceJson ?? "{}") as { rounds?: unknown[] }).rounds ?? []).length;
+    } catch {
+      return 0;
+    }
+  });
 
   return (
     <main className="mx-auto w-full max-w-6xl px-6 py-10">
@@ -283,6 +321,45 @@ export default function CommandCenter() {
       </Eyebrow>
       <h1 className="font-serif text-3xl font-medium tracking-tight">{t("title")}</h1>
       <Lede className="mt-2 max-w-prose">{t("intro")}</Lede>
+
+      {/* ------------------------------------------------------- hero wall */}
+      <KPIWall className="mt-8">
+        <Stat label={t("hero.waiting")} value={proposals.length} live />
+        <Stat label={t("hero.runs24h")} value={runs24h} hint={`${runs.length} ${t("runs.title").toLowerCase()}`} />
+        <Stat label={t("hero.modules")} value={`${connectedCount}/${CONSTELLATION.length}`} />
+        <div className="flex flex-col gap-1">
+          <span className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">{t("hero.autonomy")}</span>
+          <Sparkline values={roundsByRun.length ? roundsByRun : [0]} label={t("runs.rounds")} tone="info" className="max-w-32" />
+        </div>
+      </KPIWall>
+
+      {/* --------------------------------------------------- constellation */}
+      <section className="mt-10" aria-labelledby="cc-map">
+        <h2 id="cc-map" className="font-serif text-xl font-medium">{t("constellation.title")}</h2>
+        <Hairline className="my-3" />
+        <ul className="flex flex-wrap items-center gap-x-8 gap-y-4">
+          {CONSTELLATION.map((m) => {
+            const lit = touchedModules.has(m.id);
+            const count = proposals.filter((p) => p.module === m.id).length;
+            return (
+              <li key={m.id} className="flex items-center gap-2" title={lit ? `${count} ${t("runs.proposals")}` : undefined}>
+                <span
+                  aria-hidden="true"
+                  className={`size-2.5 rounded-full transition-opacity ${lit ? "" : "opacity-25"}`}
+                  style={{ background: `var(--module-${m.id})` }}
+                />
+                <span className={`text-13 ${lit ? "font-medium text-text" : "text-subtle"}`}>
+                  {locale === "ar" ? m.labelAr : m.label}
+                </span>
+                {count > 0 ? (
+                  <Badge tone="warning" size="sm">{count}</Badge>
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+        <p className="mt-2 text-12 opacity-60">{t("constellation.hint")}</p>
+      </section>
 
       {action?.problem ? (
         <div className="mt-6">
@@ -351,17 +428,35 @@ export default function CommandCenter() {
           <EmptyState title={t("feed.empty")} />
         ) : (
           <ul className="flex flex-col gap-3">
-            {proposals.map((p) => (
+            {proposals.map((p) => {
+              let argSummary = "";
+              try {
+                const args = JSON.parse(p.argsJson) as Record<string, unknown>;
+                argSummary = Object.entries(args)
+                  .filter(([k]) => k !== "policyId")
+                  .slice(0, 3)
+                  .map(([k, v]) => `${k}: ${typeof v === "object" ? "…" : String(v).slice(0, 40)}`)
+                  .join(" · ");
+              } catch {
+                // malformed args render as nothing rather than raw JSON
+              }
+              return (
               <li key={p.id}>
                 <Panel module={hueModule(p.module)} className="p-4">
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
                     <Badge tone={MODULE_TONE[p.module] ?? "neutral"}>{p.module}</Badge>
                     <span className="text-14 font-medium">{humaniseTool(p.toolName)}</span>
                     {p.subjectRef ? <code className="text-12 opacity-70">{p.subjectRef}</code> : null}
+                    {p.policyKey ? (
+                      <Badge tone="neutral" size="sm">{p.policyKey}</Badge>
+                    ) : null}
                     <span className="ms-auto text-12 opacity-60">
                       <DateTime value={p.createdAt} relative />
                     </span>
                   </div>
+                  {argSummary ? (
+                    <p className="mt-1.5 truncate font-mono text-12 opacity-70" dir="ltr">{argSummary}</p>
+                  ) : null}
                   <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
                     <Why proposal={p} t={t} />
                     <div className="flex gap-2">
@@ -383,7 +478,8 @@ export default function CommandCenter() {
                   </div>
                 </Panel>
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </section>
