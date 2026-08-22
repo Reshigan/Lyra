@@ -2302,6 +2302,10 @@ export interface Operations {
   "GET /v1/ai/budgets/{id}": Op<{ id: string }, never, never, AiBudgets>;
   "PATCH /v1/ai/budgets/{id}": Op<{ id: string }, never, AiBudgets, AiBudgets>;
   "DELETE /v1/ai/budgets/{id}": Op<{ id: string }, never, never, void>;
+  "GET /v1/ai/command/proposals": Op<never, never, never, Record<string, unknown>>;
+  "POST /v1/ai/command/proposals/{id}/action": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
+  "POST /v1/ai/command/proposals/{id}/dismiss": Op<{ id: string }, never, Record<string, unknown>, Record<string, unknown>>;
+  "POST /v1/ai/command/runs": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/ai/evals": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<AiEvals>>;
   "POST /v1/ai/evals": Op<never, never, AiEvals, AiEvals>;
   "GET /v1/ai/evals/{id}": Op<{ id: string }, never, never, AiEvals>;
@@ -3019,6 +3023,10 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "GET /v1/ai/budgets/{id}": { tag: "ai", summary: "Fetch one budget", permission: "ai:budgets:read", public: false },
   "PATCH /v1/ai/budgets/{id}": { tag: "ai", summary: "Update a budget", permission: "ai:budgets:write", public: false },
   "DELETE /v1/ai/budgets/{id}": { tag: "ai", summary: "Soft-delete a budget", permission: "ai:budgets:write", public: false },
+  "GET /v1/ai/command/proposals": { tag: "ai", summary: "List command-center proposals by state (default: proposed)", permission: "ai:command:read", public: false },
+  "POST /v1/ai/command/proposals/{id}/action": { tag: "ai", summary: "Execute a proposal through the module's real engine path; the approval gate fires there", permission: "core:approvals:decide", public: false },
+  "POST /v1/ai/command/proposals/{id}/dismiss": { tag: "ai", summary: "Dismiss a proposal — an explicit human decision", permission: "ai:command:read", public: false },
+  "POST /v1/ai/command/runs": { tag: "ai", summary: "Run the bounded multi-round command loop; consequential tools become proposals, never executions", permission: "core:ai:invoke", public: false },
   "GET /v1/ai/evals": { tag: "ai", summary: "List evals", permission: "ai:evals:read", public: false },
   "POST /v1/ai/evals": { tag: "ai", summary: "Create a eval", permission: "ai:evals:run", public: false },
   "GET /v1/ai/evals/{id}": { tag: "ai", summary: "Fetch one eval", permission: "ai:evals:read", public: false },

@@ -6,7 +6,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { schema, type Db } from "@lyra/db";
 import { seed, totpAt, TOTP_STEP_SEC } from "@lyra/core";
-import type { ToolCall, ToolDef } from "@lyra/model-gateway";
+import type { ToolDef } from "@lyra/model-gateway";
 import { app } from "./index.js";
 import type { Env } from "./env.js";
 

@@ -27,6 +27,7 @@ export const en = {
   "nav.breadcrumb": "You are here",
   "nav.doctrine": "Design doctrine",
   "nav.home": "Home",
+  "nav.center": "Command center",
   "nav.whatif": "Scenarios",
   "nav.group.modules": "Modules",
   "nav.axis": "Operations",

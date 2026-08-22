@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { schema } from "@lyra/db";
 import { badRequest, require_, scoped, type Ctx } from "@lyra/core";
 

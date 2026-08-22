@@ -28,6 +28,7 @@ export default [
     route("settings/:tab", "routes/settings.tsx", { id: "settings-tab" }),
     route("approvals", "routes/approvals.tsx"),
     route("admin/ai/console", "routes/ai-console.tsx"),
+    route("center", "routes/command-center.tsx"),
     route("admin/ai/budget", "routes/ai-budget.tsx"),
     route("admin/ai/runs/:id", "routes/ai-run.tsx"),
     route("admin/cost-explorer", "routes/cost-explorer.tsx"),

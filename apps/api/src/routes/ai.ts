@@ -717,30 +717,26 @@ aiRoutes.post("/command/proposals/:id/action", async (c) => {
   if (row.state !== "proposed") throw conflict(`proposal is ${row.state}`);
 
   let result: unknown;
-  try {
-    switch (row.toolName) {
-      case "create_endorsement_request": {
-        // Same engine the desk route calls; axis.endorse gate fires inside.
-        const { endorsePolicy } = await import("../engines/axis-endorse.js");
-        const args = JSON.parse(row.argsJson) as { policyId?: string } & Record<string, unknown>;
-        const policy = await must(ctx, schema.axisPolicies, args.policyId ?? row.subjectRef ?? "", "policies");
-        require_(ctx.actor, "axis:policies:endorse", { tenantId: ctx.tenantId, module: "axis" });
-        result = await endorsePolicy(ctx, policy, {
-          changes: (args.changes ?? {}) as Record<string, never>,
-          reason: typeof args.reason === "string" ? args.reason : null,
-          ...(typeof args.premiumMinor === "number" ? { premiumMinor: args.premiumMinor } : {}),
-          ...(typeof args.effectiveFrom === "number" ? { effectiveFrom: args.effectiveFrom } : {})
-        });
-        break;
-      }
-      default:
-        throw badRequest(`no action path for tool ${row.toolName}`);
+  switch (row.toolName) {
+    case "create_endorsement_request": {
+      // Same engine the desk route calls; axis.endorse gate fires inside.
+      const { endorsePolicy } = await import("../engines/axis-endorse.js");
+      const args = JSON.parse(row.argsJson) as { policyId?: string } & Record<string, unknown>;
+      const policy = await must(ctx, schema.axisPolicies, args.policyId ?? row.subjectRef ?? "", "policies");
+      require_(ctx.actor, "axis:policies:endorse", { tenantId: ctx.tenantId, module: "axis" });
+      result = await endorsePolicy(ctx, policy, {
+        changes: (args.changes ?? {}) as Record<string, never>,
+        reason: typeof args.reason === "string" ? args.reason : null,
+        ...(typeof args.premiumMinor === "number" ? { premiumMinor: args.premiumMinor } : {}),
+        ...(typeof args.effectiveFrom === "number" ? { effectiveFrom: args.effectiveFrom } : {})
+      });
+      break;
     }
-  } catch (err) {
-    // The gate's own 403 (approval_required) is a *good* outcome here: the
-    // proposal stays proposed and the surface links to the pending approval.
-    throw err;
+    default:
+      throw badRequest(`no action path for tool ${row.toolName}`);
   }
+  // The gate's own 403 (approval_required) is a *good* outcome here: the
+  // proposal stays proposed and the surface links to the pending approval.
 
   await ctx.db
     .update(schema.aiCommandProposals)
