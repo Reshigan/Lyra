@@ -68,6 +68,14 @@ export const PolicyJson = z.object({
     })
     .default({ messagesMonths: 24, filesYears: 7, aiAuditYears: 7 }),
   domainPack: z.string().default("insurance-retail"),
+  // ADR-0073: the command center's autonomy envelope — how much the central
+  // loop may do without asking. Absent means draft_only (reads yes, writes
+  // no); consequential actions propose under every level, here or anywhere.
+  commandCenter: z
+    .object({
+      autonomy: z.enum(["draft_only", "assist", "act_with_approval"]).default("draft_only")
+    })
+    .default({ autonomy: "draft_only" }),
   // Gulf tenants reckon dates in Hijri, or cite both on anything contractual.
   // A rendering preference, not a second stored value: timestamps stay epoch.
   calendarPreference: z.enum(["gregorian", "islamic-umalqura", "dual"]).default("gregorian"),

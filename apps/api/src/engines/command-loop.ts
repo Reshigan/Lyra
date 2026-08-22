@@ -3,6 +3,8 @@ import { type Ctx } from "@lyra/core";
 import type { Gateway, Message, ToolCall } from "@lyra/model-gateway";
 import { isOrbitTool, runOrbitTool } from "./orbit-tools.js";
 import { toolsFor, type CommandToolDef } from "./command-tools.js";
+import { embedQuery } from "./vectorize.js";
+import type { Env } from "../env.js";
 
 // ADR-0073. The command loop: a bounded multi-round agent over the unified
 // registry. The one rule that cannot bend (CLAUDE.md rule 4): a consequential
@@ -86,12 +88,17 @@ function primeConsequentialMap(defs: CommandToolDef[]): void {
  * handler (each checks its own permission); consequential calls become
  * proposals — never executed here, whatever the model asks for.
  */
+/** Registry tools that write without being tagged consequential. The envelope
+ *  gates these: a draft_only tenant's loop reads but does not write. */
+const WRITES = new Set(["start_quote"]);
+
 async function executeCall(
   ctx: Ctx,
   runId: string,
   call: ToolCall,
   allow: ReadonlySet<string>,
-  why: string
+  why: string,
+  envelope: Envelope
 ): Promise<ToolOutcome> {
   if (!allow.has(call.name)) {
     return { outcome: "error", result: `tool ${call.name} is not on this agent's allowlist` };
@@ -131,6 +138,15 @@ async function executeCall(
   try {
     let result: unknown;
     if (isOrbitTool(call.name)) {
+      // Envelope gate (docs/16 H2, ADR-0049): below `assist`, the loop may only
+      // read. `start_quote` writes a case — held back to draft_only tenants as
+      // a proposal-shaped refusal rather than a silent write.
+      if (WRITES.has(call.name) && envelope.level === "draft_only") {
+        return {
+          outcome: "error",
+          result: `held: the tenant's autonomy envelope (${envelope.level}) lets this loop read but not write. Raise the envelope to run ${call.name}.`
+        };
+      }
       result = await runOrbitTool(ctx, call.name, call.args);
     } else {
       const { runCommandRead } = await import("./command-reads.js");
@@ -152,6 +168,7 @@ async function executeCall(
 export async function runCommandLoop(
   ctx: Ctx,
   gateway: Gateway,
+  env: Env,
   agent: { key: string; module: string; tier: string; toolsJson: string | null },
   input: LoopInput
 ): Promise<LoopResult> {
@@ -159,6 +176,11 @@ export async function runCommandLoop(
   primeConsequentialMap(defs);
   const allow = new Set(defs.map((d) => d.name));
   const runId = newId("air", ctx.now);
+  // docs/16 H2 / ADR-0049: the envelope is tenant policy, not agent config —
+  // one tenant-wide answer to "how much may the loop do without asking".
+  const envelope: Envelope = {
+    level: ctx.policy.commandCenter?.autonomy ?? "draft_only"
+  };
 
   const messages: Message[] = [
     {
@@ -170,6 +192,27 @@ export async function runCommandLoop(
     },
     { role: "user", content: input.input }
   ];
+
+  // F52's first reader: recall from VEC_MARKET (the market-intelligence corpus
+  // scout's harvester writes) so a run about one module can surface what the
+  // tenant already knows from another. Tenant-filtered — never another
+  // customer's signals. No index bound (dev, on-prem without Vectorize) means
+  // no recall, same as embedQuery's own contract.
+  const recall = await embedQuery(ctx, gateway, env.VEC_MARKET, {
+    module: "ai",
+    purpose: "command.center",
+    text: input.input,
+    topK: 5,
+    filter: { tenantId: ctx.tenantId }
+  }).catch(() => []);
+  if (recall.length) {
+    messages.splice(1, 0, {
+      role: "user",
+      content:
+        "relevant prior intelligence:\n" +
+        recall.map((m) => `- ${JSON.stringify(m.metadata ?? {}).slice(0, 200)}`).join("\n")
+    });
+  }
 
   const rounds: LoopRound[] = [];
   const proposalIds: string[] = [];
@@ -201,7 +244,7 @@ export async function runCommandLoop(
     const round: LoopRound = { seq, toolCalls: [] };
 
     for (const call of last.toolCalls) {
-      const outcome = await executeCall(ctx, runId, call, allow, last.text);
+      const outcome = await executeCall(ctx, runId, call, allow, last.text, envelope);
       if (outcome.proposalId) proposalIds.push(outcome.proposalId);
       round.toolCalls.push({
         name: call.name,

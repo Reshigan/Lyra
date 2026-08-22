@@ -615,7 +615,7 @@ async function commandRun(
   started: number
 ) {
   try {
-    const result = await runCommandLoop(ctx, c.get("gateway"), agent, {
+    const result = await runCommandLoop(ctx, c.get("gateway"), c.env, agent, {
       agentKey: input.agentKey,
       purpose: input.purpose,
       ...(input.subjectRef !== undefined ? { subjectRef: input.subjectRef } : {}),
