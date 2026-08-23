@@ -2250,6 +2250,23 @@ export interface SignalCreatives {
   updatedAt?: number;
 }
 
+export interface SignalOutreach {
+  id?: string;
+  tenantId?: string;
+  campaignId: string;
+  customerId: string;
+  channel: string;
+  locale?: string;
+  text: string;
+  state?: string;
+  approvedBy: string;
+  externalRef?: string;
+  convertedRef?: string;
+  aiAuditId?: string;
+  ts: number;
+  updatedAt?: number;
+}
+
 export interface SignalSignalExperiments {
   id?: string;
   tenantId?: string;
@@ -2987,6 +3004,9 @@ export interface Operations {
   "PATCH /v1/signal/creatives/{id}": Op<{ id: string }, never, SignalCreatives, SignalCreatives>;
   "GET /v1/signal/creatives/{id}/image": Op<{ id: string }, never, never, Record<string, unknown>>;
   "POST /v1/signal/demo/spend-tick": Op<never, never, never, Record<string, unknown>>;
+  "GET /v1/signal/outreach": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<SignalOutreach>>;
+  "POST /v1/signal/outreach/run": Op<never, never, never, Record<string, unknown>>;
+  "GET /v1/signal/outreach/{id}": Op<{ id: string }, never, never, SignalOutreach>;
   "GET /v1/signal/signal-experiments": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<SignalSignalExperiments>>;
   "POST /v1/signal/signal-experiments": Op<never, never, SignalSignalExperiments, SignalSignalExperiments>;
   "GET /v1/signal/signal-experiments/{id}": Op<{ id: string }, never, never, SignalSignalExperiments>;
@@ -3712,6 +3732,9 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "PATCH /v1/signal/creatives/{id}": { tag: "signal", summary: "Update a creative", permission: "signal:creatives:approve", public: false },
   "GET /v1/signal/creatives/{id}/image": { tag: "signal", summary: "Re-stream a previously generated creative image's bytes", permission: "signal:creatives:read", public: false },
   "POST /v1/signal/demo/spend-tick": { tag: "signal", summary: "Insert a spend row per channel per live campaign, keyed off the simulated clock (non-production only)", permission: "signal:autopilot:run", public: false },
+  "GET /v1/signal/outreach": { tag: "signal", summary: "List outreach", permission: "signal:outreach:read", public: false },
+  "POST /v1/signal/outreach/run": { tag: "signal", summary: "Run the acquisition outreach sweep now — draft, consent-gate, approval-gate, send, and record the lead touch (also runs on the nightly tick)", permission: "signal:outreach:send", public: false },
+  "GET /v1/signal/outreach/{id}": { tag: "signal", summary: "Fetch one outreach", permission: "signal:outreach:read", public: false },
   "GET /v1/signal/signal-experiments": { tag: "signal", summary: "List signal-experiments", permission: "signal:experiments:read", public: false },
   "POST /v1/signal/signal-experiments": { tag: "signal", summary: "Create a signal experiment", permission: "signal:experiments:create", public: false },
   "GET /v1/signal/signal-experiments/{id}": { tag: "signal", summary: "Fetch one signal experiment", permission: "signal:experiments:read", public: false },
