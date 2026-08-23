@@ -205,8 +205,15 @@ export async function loader({ request, context, params }: LoaderFunctionArgs) {
   // "the read worked, so endorse is on". Reading a policy and endorsing it are
   // different grants; the button must reflect the latter or the actor only
   // discovers the gate when the POST itself 403s.
-  const me = await fetchMe(env, request);
-  const mayEndorse = new Set(me.permissions).has(PERM.endorse);
+  let mayEndorse = false;
+  try {
+    const me = await fetchMe(env, request);
+    mayEndorse = new Set(me.permissions).has(PERM.endorse);
+  } catch (error) {
+    // An unresolvable actor cannot hold the endorse grant — degrade to false
+    // rather than throwing past the guard below. Non-API failures rethrow.
+    if (!(error instanceof ApiError)) throw error;
+  }
   try {
     const policy = await api<Policy>(`/v1/axis/policies/${id}`, { env, request });
     return { policy, notFound: false, may: { read: true, endorse: mayEndorse } };

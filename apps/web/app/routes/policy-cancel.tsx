@@ -158,8 +158,15 @@ export async function loader({ request, context, params }: LoaderFunctionArgs) {
   const id = params.id ?? "";
   // F55: same fix as policy-endorse — `may.cancel` is the actor's real grant,
   // not an assumption from a successful read.
-  const me = await fetchMe(env, request);
-  const mayCancel = new Set(me.permissions).has(PERM.cancel);
+  let mayCancel = false;
+  try {
+    const me = await fetchMe(env, request);
+    mayCancel = new Set(me.permissions).has(PERM.cancel);
+  } catch (error) {
+    // An unresolvable actor cannot hold the cancel grant — degrade to false
+    // rather than throwing past the guard below. Non-API failures rethrow.
+    if (!(error instanceof ApiError)) throw error;
+  }
   try {
     const policy = await api<Policy>(`/v1/axis/policies/${id}`, { env, request });
     return { policy, notFound: false, may: { read: true, cancel: mayCancel } };
