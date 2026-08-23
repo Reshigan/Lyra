@@ -7,7 +7,7 @@ import {
   type ActionFunctionArgs,
   type LoaderFunctionArgs
 } from "react-router";
-import { Button, EmptyState } from "@lyra/ui";
+import { AgentBadge, Button, EmptyState } from "@lyra/ui";
 import { ApiError, api, fetchMe } from "../api.server";
 import { FieldInput } from "../components/fields";
 import { cloudflare } from "../context";
@@ -156,9 +156,22 @@ export default function AxisDev() {
 
           {result?.result ? (
             <section aria-labelledby="results-heading" className="flex flex-col gap-3 rounded-lg border border-border p-4">
-              <h2 id="results-heading" className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">
-                {l("resultsTitle")}
-              </h2>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 id="results-heading" className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">
+                  {l("resultsTitle")}
+                </h2>
+                {/* F54: this is a model's finding, so it carries the single ✦
+                    with its "why" one interaction away (CLAUDE.md §11) — the
+                    model and confidence are the provenance, not plain text. */}
+                <AgentBadge
+                  agent={result.result.model}
+                  why={
+                    <span className="font-ui text-13 text-text">
+                      {l("confidence")}: {result.result.confidence}%
+                    </span>
+                  }
+                />
+              </div>
               <dl className="grid grid-cols-2 gap-x-4 gap-y-2 font-ui text-13">
                 {Object.entries(result.result.values).map(([key, value]) => (
                   <div key={key} className="contents">
@@ -167,9 +180,6 @@ export default function AxisDev() {
                   </div>
                 ))}
               </dl>
-              <p className="font-ui text-12 text-subtle">
-                {l("confidence")}: {result.result.confidence}% &middot; {l("model")}: {result.result.model}
-              </p>
             </section>
           ) : null}
 
