@@ -21,6 +21,7 @@ import {
   Sparkline,
   Stat,
   Table,
+  shortRef,
   type Column
 } from "@lyra/ui";
 import { ApiError, api, fetchMe } from "../api.server";
@@ -46,8 +47,10 @@ import {
   safe,
   totalSpendMinor,
   windowDays,
+  channelLabel,
   type CampaignRow,
   type MoveRow,
+  type OutreachRow,
   type Page,
   type Problemish,
   type SpendRow,
@@ -71,7 +74,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const from = Date.now() - days * 86_400_000;
   const window = `sort=ts&from=${from}&limit=200`;
 
-  const [me, campaigns, spend, touches, moves] = await Promise.all([
+  const [me, campaigns, spend, touches, moves, outreach] = await Promise.all([
     safe(() => fetchMe(env, request), null),
     safe(() => api<Page<CampaignRow>>("/v1/signal/campaigns?limit=200", { env, request }), empty<CampaignRow>()),
     safe(() => api<Page<SpendRow>>(`/v1/signal/spend?${window}`, { env, request }), empty<SpendRow>()),
@@ -79,7 +82,11 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       () => api<Page<TouchRow>>(`/v1/signal/attribution-events?${window}`, { env, request }),
       empty<TouchRow>()
     ),
-    safe(() => api<Page<MoveRow>>(`/v1/signal/budget-moves?${window}`, { env, request }), empty<MoveRow>())
+    safe(() => api<Page<MoveRow>>(`/v1/signal/budget-moves?${window}`, { env, request }), empty<MoveRow>()),
+    // The acquisition outreach ledger (engines/signal-outreach.ts): what was
+    // sent, to whom, and which rows closed into a policy. This is the loop's
+    // proof side — spend is the left edge, these are the middle and the close.
+    safe(() => api<Page<OutreachRow>>(`/v1/signal/outreach?${window}`, { env, request }), empty<OutreachRow>())
   ]);
 
   const running = campaigns.data.filter((campaign) => RUNNING_STATES.includes(campaign.state));
@@ -93,6 +100,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     spend: spend.data,
     touches: touches.data,
     moves: moves.data,
+    outreach: outreach.data,
     // A move names its campaign by ref; the changes table printed the ref.
     campaignNames: Object.fromEntries(campaigns.data.map((one) => [one.id, one.name])) as Record<string, string>,
     running,
@@ -142,6 +150,19 @@ export async function action({ request, context }: ActionFunctionArgs): Promise<
         const moves = Array.isArray(result.adjusted) ? result.adjusted.length : Number(result.adjusted) || 0;
         return { problem: null, done: intent, adjusted: moves };
       }
+      // The acquisition outreach sweep. The API returns outcome counts; the
+      // screen reports them the same way it reports autopilot moves — what
+      // happened, in numbers, with the loop panel right below showing rows.
+      case "outreach": {
+        const result = await api<{ sent: number; pendingApproval: number }>("v1/signal/outreach/run", {
+          env,
+          request,
+          method: "POST",
+          headers
+        });
+        const touched = result.sent + result.pendingApproval;
+        return { problem: null, done: intent, adjusted: touched };
+      }
       default:
         return refuse("bad_intent");
     }
@@ -165,6 +186,9 @@ export default function GrowthCockpit() {
   const rolls = rollByChannel(loaded.spend, loaded.touches);
   const binds = rolls.reduce((sum, roll) => sum + roll.binds, 0);
   const cac = cacMinor(spent, binds);
+  // The loop, folded per campaign: what went out and how much came back.
+  const loop = loopSummary(loaded.outreach, loaded.touches);
+  const converted = loaded.outreach.filter((one) => one.state === "converted");
   const trend = dailySpend(loaded.spend);
   const planPct = loaded.plannedMinor > 0 ? Math.round((spent / loaded.plannedMinor) * 100) : 0;
   const currency = loaded.currency;
@@ -284,6 +308,63 @@ export default function GrowthCockpit() {
         )}
       </Card>
 
+      {/* The acquisition loop (engines/signal-outreach.ts): spend → message →
+          lead → bind, with the closed loops named. A converted row IS the
+          proof — "SIGNAL bought this customer" with a policy ref to click,
+          not a dashboard's word for it. Absent without signal:outreach:read,
+          the same withheld-not-disabled rule every panel follows. */}
+      {may.has(PERM.outreachRead) ? (
+        <Card
+          title={l("cockpit.loop")}
+          description={l("cockpit.loopCaption")}
+          actions={
+            may.has(PERM.outreachSend) ? (
+              <Form method="post">
+                <input type="hidden" name="key" value={loaded.key} />
+                <Button type="submit" name="intent" value="outreach" variant="secondary" size="sm" disabled={busy}>
+                  {l("cockpit.runOutreach")}
+                </Button>
+              </Form>
+            ) : null
+          }
+        >
+          {loop.length === 0 ? (
+            <EmptyState title={l("cockpit.noLoop")} />
+          ) : (
+            <Table
+              caption={l("cockpit.loopCaption")}
+              captionHidden
+              rowKey={(row) => row.campaignId}
+              rows={loop}
+              columns={loopColumns(l, loaded.campaignNames)}
+            />
+          )}
+          {converted.length ? (
+            <div className="mt-3 flex flex-col gap-1.5 border-t border-border pt-3">
+              {converted.slice(0, 5).map((one) => (
+                <p key={one.id} className="flex flex-wrap items-center gap-2 font-ui text-12 text-muted">
+                  <span aria-hidden="true" className="text-accent">&#10022;</span>
+                  <span>
+                    {l("cockpit.closedLoop", {
+                      channel: channelLabel(one.channel, locale),
+                      campaign: loaded.campaignNames[one.campaignId] ?? one.campaignId
+                    })}
+                  </span>
+                  {one.convertedRef ? (
+                    <Link
+                      to={`/axis/policies/${one.convertedRef}/detail`}
+                      className="font-mono text-accent underline-offset-2 hover:underline"
+                    >
+                      {shortRef(one.convertedRef)}
+                    </Link>
+                  ) : null}
+                </p>
+              ))}
+            </div>
+          ) : null}
+        </Card>
+      ) : null}
+
       <Card
         title={l("cockpit.liveCampaigns")}
         actions={
@@ -398,5 +479,54 @@ export function moveColumns(
         </Badge>
       )
     }
+  ];
+}
+
+/** One row per campaign: what went out, what came back, and how far the loop
+ *  closed. Leads and binds come from the attribution touches (the same rows
+ *  onBindIssued writes), sends from the outreach ledger. */
+export function loopSummary(
+  outreach: OutreachRow[],
+  touches: TouchRow[]
+): Array<{ campaignId: string; channel: string; sends: number; leads: number; binds: number }> {
+  const byCampaign = new Map<string, { campaignId: string; channel: string; sends: number; leads: number; binds: number }>();
+  const at = (campaignId: string, channel: string) => {
+    const key = `${campaignId}:${channel}`;
+    let row = byCampaign.get(key);
+    if (!row) {
+      row = { campaignId, channel, sends: 0, leads: 0, binds: 0 };
+      byCampaign.set(key, row);
+    }
+    return row;
+  };
+  for (const one of outreach) {
+    if (one.state === "sent" || one.state === "converted") {
+      at(one.campaignId, one.channel).sends++;
+    }
+  }
+  for (const touch of touches) {
+    if (!touch.campaignId) continue;
+    if (touch.touchType === "lead") at(touch.campaignId, touch.channel).leads++;
+    else if (touch.touchType === "bind") at(touch.campaignId, touch.channel).binds++;
+  }
+  return [...byCampaign.values()];
+}
+
+/** The loop table's columns. Counts first, conversion last — reading down the
+ *  row is reading the funnel. */
+export function loopColumns(
+  l: (key: string) => string,
+  names: Record<string, string>
+): Array<Column<{ campaignId: string; channel: string; sends: number; leads: number; binds: number }>> {
+  return [
+    {
+      key: "campaign",
+      header: l("campaign"),
+      render: (row) => names[row.campaignId] ?? shortRef(row.campaignId)
+    },
+    { key: "channel", header: l("channel"), render: (row) => channelLabel(row.channel) },
+    { key: "sends", header: l("cockpit.loopSends"), numeric: true, render: (row) => row.sends },
+    { key: "leads", header: l("cockpit.loopLeads"), numeric: true, render: (row) => row.leads },
+    { key: "binds", header: l("binds"), numeric: true, render: (row) => row.binds }
   ];
 }

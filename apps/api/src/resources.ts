@@ -622,7 +622,13 @@ export const SIGNAL = register(
   r("attribution-events", schema.signalAttributionEvents, "atr", "signal", ro("signal:attribution:read"), {
     immutable: true
   }),
-  r("spend", schema.signalSpend, "spd", "signal", ro("signal:spend:read"))
+  r("spend", schema.signalSpend, "spd", "signal", ro("signal:spend:read")),
+  // The acquisition outreach ledger (engines/signal-outreach.ts). Read-only:
+  // rows are written by the sweep and stamped converted by the loop-back —
+  // a hand edit would forge the very proof the cockpit shows.
+  r("outreach", schema.signalOutreach, "otr", "signal", ro("signal:outreach:read"), {
+    immutable: true
+  })
 );
 
 /* ------------------------------------------------------------------- scout */

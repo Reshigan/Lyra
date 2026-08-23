@@ -137,6 +137,12 @@ export const APPROVAL_POLICIES: Record<string, ApprovalPolicy> = Object.fromEntr
     policy({ key: "signal.budget_commit", module: "signal", decide: "signal:campaigns:launch", dualControl: "above_threshold", defaultThresholdMinor: 50_000_00 }),
     policy({ key: "signal.boost", module: "signal", decide: "signal:campaigns:update", dualControl: "never" }),
     policy({ key: "signal.creator_brief", module: "signal", decide: "signal:creatives:approve", dualControl: "never" }),
+    // Outbound acquisition contact (engines/signal-outreach.ts). Consequential
+    // by definition — it is a message to a person — so every send gates here
+    // unless the tenant's auto_approve allowlist names this policy. Consent is
+    // checked separately at runtime; the approval covers the *act of sending*,
+    // not the permission to.
+    policy({ key: "signal.outreach_send", module: "signal", decide: "signal:outreach:send", dualControl: "never" }),
     // docs/modules/scout.md §4: "whitespace approvals (promote/park)" — a
     // product-strategy decision, same shape as dist.offering_publish.
     policy({ key: "scout.whitespace_promote", module: "scout", decide: "scout:whitespaces:promote", dualControl: "never" }),

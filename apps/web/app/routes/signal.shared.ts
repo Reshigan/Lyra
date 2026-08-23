@@ -39,6 +39,8 @@ export const PERM = {
   aeoWrite: "signal:aeo:write",
   attributionRead: "signal:attribution:read",
   spendRead: "signal:spend:read",
+  outreachRead: "signal:outreach:read",
+  outreachSend: "signal:outreach:send",
   autopilotPause: "signal:autopilot:pause",
   autopilotRun: "signal:autopilot:run",
   exportCreate: "analytics:exports:create"
@@ -131,6 +133,24 @@ export interface TouchRow {
   currency: string | null;
   subjectRef: string | null;
   ts: number;
+}
+
+/** Mirrors packages/db/src/schema/signal.ts `signal_outreach` — the acquisition
+ *  outreach ledger the cockpit's loop panel reads. */
+export interface OutreachRow {
+  id: string;
+  campaignId: string;
+  customerId: string;
+  channel: string;
+  locale: string;
+  text: string;
+  state: string; // pending_approval|sent|failed|converted
+  approvedBy: string;
+  externalRef: string | null;
+  convertedRef: string | null;
+  aiAuditId: string | null;
+  ts: number;
+  updatedAt: number | null;
 }
 
 export interface AudienceRow {
@@ -271,6 +291,8 @@ export const SIGNAL_CHANNELS: ReadonlyArray<{ slug: string; en: string; ar: stri
   { slug: "bing_search", en: "Bing Search", ar: "بحث Bing" },
   { slug: "meta", en: "Facebook", ar: "فيسبوك" },
   { slug: "instagram", en: "Instagram", ar: "إنستغرام" },
+  { slug: "tiktok", en: "TikTok", ar: "تيك توك" },
+  { slug: "snapchat", en: "Snapchat", ar: "سناب شات" },
   { slug: "youtube", en: "YouTube", ar: "يوتيوب" },
   { slug: "email", en: "Email", ar: "البريد الإلكتروني" },
   { slug: "whatsapp", en: "WhatsApp", ar: "واتساب" },
@@ -1132,6 +1154,13 @@ const LABELS: Record<string, Record<string, string>> = {
     "cockpit.againstPlan": "Against plan",
     "cockpit.pipeline": "Pipeline by channel",
     "cockpit.pipelineCaption": "Spend, clicks and signings per channel over the window",
+    "cockpit.loop": "Acquisition loop",
+    "cockpit.loopCaption": "Messages sent, leads raised and policies bound per campaign — the loop from spend to customer",
+    "cockpit.loopSends": "Sent",
+    "cockpit.loopLeads": "Leads",
+    "cockpit.runOutreach": "Run outreach now",
+    "cockpit.noLoop": "No outreach has been sent in this window yet.",
+    "cockpit.closedLoop": "A {channel} message for {campaign} became a policy:",
     "cockpit.liveCampaigns": "Running now",
     "cockpit.liveCaption": "Campaigns in a live or paused state",
     "cockpit.changesToday": "What the agents changed",
@@ -1679,6 +1708,13 @@ const LABELS: Record<string, Record<string, string>> = {
     "cockpit.againstPlan": "مقابل الخطة",
     "cockpit.pipeline": "المسار حسب القناة",
     "cockpit.pipelineCaption": "الإنفاق والنقرات والتعاقدات لكل قناة خلال الفترة",
+    "cockpit.loop": "حلقة اكتساب العملاء",
+    "cockpit.loopCaption": "الرسائل المُرسلة والعملاء المحتملون وثائق التأمين المُبرمة لكل حملة — الحلقة من الإنفاق إلى العميل",
+    "cockpit.loopSends": "أُرسلت",
+    "cockpit.loopLeads": "عملاء محتملون",
+    "cockpit.runOutreach": "تشغيل التواصل الآن",
+    "cockpit.noLoop": "لم تُرسل رسائل تواصل في هذه الفترة بعد.",
+    "cockpit.closedLoop": "رسالة عبر {channel} لحملة {campaign} أصبحت وثيقة:",
     "cockpit.liveCampaigns": "تعمل الآن",
     "cockpit.liveCaption": "الحملات المباشرة أو المتوقفة مؤقتًا",
     "cockpit.changesToday": "ما غيّره الوكلاء",

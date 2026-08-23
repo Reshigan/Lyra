@@ -13,6 +13,7 @@ import { backupTenant } from "./engines/backup.js";
 import { anchorAudit } from "./engines/anchor.js";
 import { nudgeApiKeyRotation } from "./engines/api-key-rotation.js";
 import { runBudgetAutopilot } from "./engines/signal-autopilot.js";
+import { runAcquisitionSweep } from "./engines/signal-outreach.js";
 import { expireDelegations } from "./engines/staff.js";
 import { COOKIE, allTenants, authRoutes, ctxFor, db, pruneSessions } from "./auth.js";
 import { mountAll } from "./crud.js";
@@ -207,6 +208,11 @@ export default {
             await sweepRouting(ctx);
             await sweepBilling(ctx);
             await runBudgetAutopilot(ctx);
+            // Acquisition outreach (engines/signal-outreach.ts): draft →
+            // consent gate → approval gate → send → lead touch. Quiet hours
+            // and the weekly frequency cap are enforced inside the sweep; the
+            // tick is just the clock that runs it.
+            await runAcquisitionSweep(ctx, gatewayFor(env));
             await runDueSchedules(ctx, env.FILES, env.BROWSER);
             // A delegation that has run out must stop showing as active, or every
             // admin screen lies about who currently holds the authority to approve.

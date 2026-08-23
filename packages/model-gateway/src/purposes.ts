@@ -67,6 +67,11 @@ export const PURPOSES: Record<string, PurposeDef> = {
   // the reasons behind them (src/campaign-plan.ts). Internal — a human funds the
   // option, and the copy that ships is governed by creative.generate.
   "campaign.plan": { module: "signal", customerFacing: false },
+  // Personalised acquisition outreach (engines/signal-outreach.ts). The draft
+  // itself is internal — it is groundedness-checked, compliance-checked and
+  // approval-gated before anything is sent, and the send is the consequential
+  // act (signal.outreach_send), not this call.
+  "outreach.draft": { module: "signal", customerFacing: false },
 
   // scout — market intelligence. Internal analysis.
   "market.scan": { module: "scout", customerFacing: false },

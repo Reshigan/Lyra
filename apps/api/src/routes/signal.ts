@@ -288,6 +288,17 @@ signalRoutes.post("/autopilot/run", async (c) => {
   return c.json({ adjusted: await runBudgetAutopilot(ctx) });
 });
 
+// The acquisition outreach sweep (engines/signal-outreach.ts): draft, consent-
+// gate, approval-gate, send, and record the lead touch that closes the loop.
+// Manual trigger for the same sweep the nightly tick runs — a growth lead
+// pressing this sees the outcome counts immediately, not tomorrow.
+signalRoutes.post("/outreach/run", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "signal:outreach:send", { tenantId: ctx.tenantId, module: "signal" });
+  const { runAcquisitionSweep } = await import("../engines/signal-outreach.js");
+  return c.json(await runAcquisitionSweep(ctx, c.get("gateway")));
+});
+
 const DAY_MS = 86_400_000;
 
 // The acquisition funnel, aggregated per campaign and channel for a window.

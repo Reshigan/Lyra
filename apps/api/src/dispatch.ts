@@ -13,6 +13,7 @@ import {
 import { onFinancingLapseDue } from "./engines/axis-lifecycle.js";
 import { onConsentUpdated } from "./engines/signal-suppression.js";
 import { onBindIssued } from "./engines/signal-attribution.js";
+import { onLeadConverted } from "./engines/signal-outreach.js";
 import { onDsarCreated } from "./engines/compliance-dsar.js";
 
 // The outbox drain. Events are written in the same request that changed the row,
@@ -68,9 +69,15 @@ export async function drainOutbox(ctx: Ctx, queue?: EventQueue, limit = 100): Pr
         await consume(ctx.db, event, "axis.lifecycle", (e) => onFinancingLapseDue(ctx, e), ctx.now);
       }
       // A policy issued closes SIGNAL's funnel: the customer's most recent
-      // attributed lead becomes a bind touch (engines/signal-attribution.ts).
+      // attributed lead becomes a bind touch (engines/signal-attribution.ts),
+      // and if that lead came from an outreach send, the loop is stamped
+      // closed — the cockpit's "SIGNAL bought this customer" proof.
       if (event.type === "axis.policy.issued") {
-        await consume(ctx.db, event, "signal.attribution", (e) => onBindIssued(ctx, e).then(() => undefined), ctx.now);
+        await consume(ctx.db, event, "signal.attribution", async (e) => {
+          await onBindIssued(ctx, e);
+          const data = e.data as { customerId?: string; policyId?: string };
+          if (data.customerId && data.policyId) await onLeadConverted(ctx, data.customerId, data.policyId);
+        }, ctx.now);
       }
       // F61: a portal-filed DSAR gets its acknowledgement here — the compliance
       // staff are notified so the request never arrives with no owner.
