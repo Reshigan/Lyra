@@ -11,7 +11,10 @@ import { Button, Card, EmptyState, Field, Input, Money, MoneyField, Select } fro
 import { ApiError, api, fetchMe } from "../api.server";
 import { cloudflare } from "../context";
 import { ConfirmButton } from "../components/confirm";
-import { Problem } from "./module";
+// F64: MANUAL-JRNL is dual-control always on, so the first submit is an
+// approval request — Gate renders that as a calm "queued" notice instead of
+// the raw policy key in a danger alert.
+import { Gate } from "./module";
 import { useShellData } from "./workspace";
 import { FALLBACK_CURRENCY } from "../calendar";
 import { PERM, labelIn } from "./ledger.shared";
@@ -140,7 +143,7 @@ export default function LedgerJournal() {
           : ""}
       </p>
 
-      {result?.problem ? <Problem problem={result.problem} /> : null}
+      {result?.problem ? <Gate problem={result.problem} l={l} /> : null}
 
       <Form
         method="post"

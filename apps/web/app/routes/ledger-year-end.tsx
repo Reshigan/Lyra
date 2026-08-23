@@ -13,7 +13,10 @@ import { ApiError, api, fetchMe } from "../api.server";
 import { cloudflare } from "../context";
 import { translator } from "../i18n";
 import { ConfirmButton } from "../components/confirm";
-import { Problem } from "./module";
+// F64: YEAR-END-CLOSE is dual-control always on, so the first submit is an
+// approval request — Gate renders that as a calm "queued" notice instead of
+// the raw policy key in a danger alert.
+import { Gate } from "./module";
 import { useShellData } from "./workspace";
 import { PERM, labelIn, yearEndHeadline } from "./ledger.shared";
 
@@ -135,7 +138,7 @@ export default function LedgerYearEnd() {
 
       {result?.problem ? (
         <div className="flex flex-col gap-2">
-          <Problem problem={result.problem} />
+          <Gate problem={result.problem} l={l} />
           {/* The refusal names the months; this says what to do about them. */}
           {String(result.problem.detail ?? "").includes("open periods") ? (
             <p className="max-w-prose font-ui text-13 text-subtle">

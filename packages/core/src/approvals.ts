@@ -532,10 +532,14 @@ export async function pendingApprovals(ctx: Ctx, module?: string, limit = 100): 
       )
     : and(eq(schema.approvals.tenantId, ctx.tenantId), eq(schema.approvals.decision, "pending"));
 
+  // F60: oldest first. The inbox is a work queue, and a cap that cuts off the
+  // tail must drop the *newest* rows — the ones with the least waiting — never
+  // the longest-waiting approvals, which a newest-first order silently lost
+  // once a tenant held more than `limit` pending rows.
   return ctx.db
     .select()
     .from(schema.approvals)
     .where(where)
-    .orderBy(desc(schema.approvals.requestedAt))
+    .orderBy(schema.approvals.requestedAt)
     .limit(limit) as Promise<ApprovalRow[]>;
 }

@@ -1603,7 +1603,10 @@ function MfaPanel({
           )}
           {enrolled === false ? null : (
             <Button asChild variant="ghost">
-              <Link to="/settings?mfa=off">{label("mfa.disableLink")}</Link>
+              {/* F53: the disable flow lives on the security tab, so the link
+                  must carry the :tab segment or the loader defaults to
+                  "account" and the mfa=off param is never read. */}
+              <Link to="/settings/security?mfa=off">{label("mfa.disableLink")}</Link>
             </Button>
           )}
         </div>

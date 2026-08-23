@@ -654,7 +654,7 @@ describe("delegations", () => {
 });
 
 describe("pendingApprovals", () => {
-  it("lists only pending rows for the tenant, newest first, optionally filtered by module and capped by limit", async () => {
+  it("lists only pending rows for the tenant, oldest first, optionally filtered by module and capped by limit", async () => {
     const analyst = makeCtx(actor("finance.analyst", "u_ops"), 1_700_000_000_000);
     const finance = makeCtx(actor("finance.controller", "u_fin"), 1_700_000_000_000);
 
@@ -674,14 +674,16 @@ describe("pendingApprovals", () => {
     const ops = makeCtx(actor("finance.analyst", "u_ops"), 1_700_000_000_300);
     await gate(ops, { policyKey: "axis.case_issue", subjectRef: "case:1", amountMinor: 60_000_00 }).catch(() => {});
 
+    // F60: oldest first — the longest-waiting approvals are never dropped by
+    // the cap; the newest rows fall off instead.
     const all = await pendingApprovals(analyst);
-    expect(all.map((r) => r.subjectRef)).toEqual(["case:1", "txn:c", "txn:a"]);
+    expect(all.map((r) => r.subjectRef)).toEqual(["txn:a", "txn:c", "case:1"]);
 
     const ledgerOnly = await pendingApprovals(analyst, "ledger");
-    expect(ledgerOnly.map((r) => r.subjectRef)).toEqual(["txn:c", "txn:a"]);
+    expect(ledgerOnly.map((r) => r.subjectRef)).toEqual(["txn:a", "txn:c"]);
 
     const capped = await pendingApprovals(analyst, undefined, 1);
     expect(capped).toHaveLength(1);
-    expect(capped[0]!.subjectRef).toBe("case:1");
+    expect(capped[0]!.subjectRef).toBe("txn:a");
   });
 });

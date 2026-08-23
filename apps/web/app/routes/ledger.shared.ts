@@ -318,6 +318,12 @@ export const LABELS: Record<string, Record<string, string>> = {
     when: "When",
     actor: "Actor",
     idempotencyNote: "This form carries a one-time key, so pressing twice posts once.",
+    // F64: dual-control writes (manual journal, year-end close) are approval-gated
+    // always on, so the first submit is a request, not a posting — say so calmly
+    // instead of showing the raw policy key in a danger alert.
+    approvalTitle: "Waiting on an approval",
+    approvalBody: "This needs sign-off under {policy} before it can go through.",
+    approvalLink: "Open the approval queue",
 
     /* transaction detail */
     "txn.title": "Transaction",
@@ -701,6 +707,9 @@ export const LABELS: Record<string, Record<string, string>> = {
     when: "الوقت",
     actor: "المنفّذ",
     idempotencyNote: "يحمل هذا النموذج مفتاحًا لمرة واحدة، فالضغط مرتين يُرسل مرة واحدة.",
+    approvalTitle: "بانتظار موافقة",
+    approvalBody: "يتطلب هذا اعتمادًا بموجب {policy} قبل أن يُنفَّذ.",
+    approvalLink: "افتح قائمة الموافقات",
 
     "txn.title": "المعاملة",
     "txn.intro": "معاملة واحدة، وقيودها، وكل ما جرى عليها.",
