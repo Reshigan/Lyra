@@ -12,6 +12,7 @@ export const WORKSPACE_PATHS = [
   "/signal",
   "/scout",
   "/north",
+  "/north/alerts",
   "/distribution",
   "/ledger",
   "/analytics",

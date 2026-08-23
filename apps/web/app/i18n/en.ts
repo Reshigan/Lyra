@@ -76,6 +76,7 @@ export const en = {
   "nav.north/explorer": "Explorer",
   "nav.north/anomalies": "Anomalies",
   "nav.north/whatif": "Scenarios",
+  "nav.north/alerts": "Alerts",
   "nav.north/board": "Board",
   "nav.north/decisions": "Decisions",
   "nav.north/admin": "Admin",

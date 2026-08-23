@@ -2593,6 +2593,8 @@ export interface Operations {
   "PATCH /v1/core/message-templates/{id}": Op<{ id: string }, never, CoreMessageTemplates, CoreMessageTemplates>;
   "DELETE /v1/core/message-templates/{id}": Op<{ id: string }, never, never, void>;
   "POST /v1/core/message-templates/{id}/restore": Op<{ id: string }, never, never, CoreMessageTemplates>;
+  "GET /v1/core/modules/config": Op<never, never, never, Record<string, unknown>>;
+  "PATCH /v1/core/modules/{module}/config": Op<{ module: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/core/notifications": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<CoreNotifications>>;
   "GET /v1/core/notifications/{id}": Op<{ id: string }, never, never, CoreNotifications>;
   "GET /v1/core/onboarding-steps": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<CoreOnboardingSteps>>;
@@ -2917,6 +2919,7 @@ export interface Operations {
   "GET /v1/portal/{tenantSlug}/renewals/{id}": Op<{ tenantSlug: string; id: string }, never, never, Record<string, unknown>>;
   "POST /v1/portal/{tenantSlug}/renewals/{id}/accept": Op<{ tenantSlug: string; id: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/portal/{tenantSlug}/site": Op<{ tenantSlug: string }, never, never, Record<string, unknown>>;
+  "POST /v1/portal/{tenantSlug}/track": Op<{ tenantSlug: string }, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/realtime": Op<never, never, never, Record<string, unknown>>;
   "GET /v1/scout/clusters": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<ScoutClusters>>;
   "GET /v1/scout/clusters/{id}": Op<{ id: string }, never, never, ScoutClusters>;
@@ -2959,6 +2962,7 @@ export interface Operations {
   "DELETE /v1/signal/aeo-pages/{id}": Op<{ id: string }, never, never, void>;
   "GET /v1/signal/attribution-events": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<SignalAttributionEvents>>;
   "GET /v1/signal/attribution-events/{id}": Op<{ id: string }, never, never, SignalAttributionEvents>;
+  "GET /v1/signal/attribution/funnel": Op<never, never, never, Record<string, unknown>>;
   "GET /v1/signal/audiences": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<SignalAudiences>>;
   "POST /v1/signal/audiences": Op<never, never, SignalAudiences, SignalAudiences>;
   "POST /v1/signal/audiences/suggest": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
@@ -3314,6 +3318,8 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "PATCH /v1/core/message-templates/{id}": { tag: "core", summary: "Update a message template", permission: "core:templates:write", public: false },
   "DELETE /v1/core/message-templates/{id}": { tag: "core", summary: "Soft-delete a message template", permission: "core:templates:write", public: false },
   "POST /v1/core/message-templates/{id}/restore": { tag: "core", summary: "Restore a soft-deleted message template", permission: "core:templates:write", public: false },
+  "GET /v1/core/modules/config": { tag: "core", summary: "Every module's effective configuration — enabled flag, autonomy override, model tier and settings", permission: "core:settings:read", public: false },
+  "PATCH /v1/core/modules/{module}/config": { tag: "core", summary: "Update one module's configuration; absent keys fall through to the tenant-wide defaults", permission: "core:settings:update", public: false },
   "GET /v1/core/notifications": { tag: "core", summary: "List notifications", permission: "core:notifications:read", public: false },
   "GET /v1/core/notifications/{id}": { tag: "core", summary: "Fetch one notification", permission: "core:notifications:read", public: false },
   "GET /v1/core/onboarding-steps": { tag: "core", summary: "List onboarding-steps", permission: "core:onboarding:read", public: false },
@@ -3638,6 +3644,7 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "GET /v1/portal/{tenantSlug}/renewals/{id}": { tag: "portal", summary: "Open a renewal offer with its link token (reference, expiry and state only)", permission: null, public: true },
   "POST /v1/portal/{tenantSlug}/renewals/{id}/accept": { tag: "portal", summary: "Customer accepts a renewal in one tap; records the decision, does not bind or charge", permission: null, public: true },
   "GET /v1/portal/{tenantSlug}/site": { tag: "portal", summary: "A tenant's public storefront: brand and active products", permission: null, public: true },
+  "POST /v1/portal/{tenantSlug}/track": { tag: "portal", summary: "Record an acquisition touch (impression, click or visit) from the public tracking pixel; rate-limited per IP", permission: null, public: true },
   "GET /v1/realtime": { tag: "realtime", summary: "Server-Sent Events stream of the caller's own live updates", permission: null, public: false },
   "GET /v1/scout/clusters": { tag: "scout", summary: "List clusters", permission: "scout:clusters:read", public: false },
   "GET /v1/scout/clusters/{id}": { tag: "scout", summary: "Fetch one cluster", permission: "scout:clusters:read", public: false },
@@ -3680,6 +3687,7 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "DELETE /v1/signal/aeo-pages/{id}": { tag: "signal", summary: "Soft-delete a aeo page", permission: "signal:aeo:write", public: false },
   "GET /v1/signal/attribution-events": { tag: "signal", summary: "List attribution-events", permission: "signal:attribution:read", public: false },
   "GET /v1/signal/attribution-events/{id}": { tag: "signal", summary: "Fetch one attribution event", permission: "signal:attribution:read", public: false },
+  "GET /v1/signal/attribution/funnel": { tag: "signal", summary: "The acquisition funnel aggregated per campaign and channel for a window — impressions, clicks, visits, leads, binds and value", permission: "signal:attribution:read", public: false },
   "GET /v1/signal/audiences": { tag: "signal", summary: "List audiences", permission: "signal:audiences:read", public: false },
   "POST /v1/signal/audiences": { tag: "signal", summary: "Create a audience", permission: "signal:audiences:create", public: false },
   "POST /v1/signal/audiences/suggest": { tag: "signal", summary: "Propose a targetable audience for a subject from k-anonymous attribute counts, with the reason each band was chosen (docs/17 §SIG-025; protected attributes excluded per §SIG-034)", permission: "signal:audiences:estimate", public: false },

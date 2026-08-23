@@ -75,6 +75,7 @@ export const ar: Messages = {
   "nav.north/explorer": "المستكشف",
   "nav.north/anomalies": "الحالات الشاذة",
   "nav.north/whatif": "السيناريوهات",
+  "nav.north/alerts": "التنبيهات",
   "nav.north/board": "مجلس الإدارة",
   "nav.north/decisions": "القرارات",
   "nav.north/admin": "الإدارة",
