@@ -8,7 +8,7 @@ import {
   type LoaderFunctionArgs
 } from "react-router";
 import { Button, Card, Checkbox, DatePicker, EmptyState, Field, GuardrailNotice, Money, MoneyField, Textarea } from "@lyra/ui";
-import { ApiError, api } from "../api.server";
+import { ApiError, api, fetchMe } from "../api.server";
 import { cloudflare } from "../context";
 import { labelsFrom } from "./detail-kit";
 import { policyLede, type Policy } from "./policy-detail";
@@ -201,12 +201,18 @@ function bodyFrom(changes: Record<string, unknown>, extras: ReturnType<typeof ex
 export async function loader({ request, context, params }: LoaderFunctionArgs) {
   const env = context.get(cloudflare).env;
   const id = params.id ?? "";
+  // F55: `may.endorse` is the actor's real permission, not an assumption that
+  // "the read worked, so endorse is on". Reading a policy and endorsing it are
+  // different grants; the button must reflect the latter or the actor only
+  // discovers the gate when the POST itself 403s.
+  const me = await fetchMe(env, request);
+  const mayEndorse = new Set(me.permissions).has(PERM.endorse);
   try {
     const policy = await api<Policy>(`/v1/axis/policies/${id}`, { env, request });
-    return { policy, notFound: false, may: { read: true, endorse: true } };
+    return { policy, notFound: false, may: { read: true, endorse: mayEndorse } };
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) {
-      return { policy: null, notFound: true, may: { read: true, endorse: true } };
+      return { policy: null, notFound: true, may: { read: true, endorse: mayEndorse } };
     }
     if (error instanceof ApiError && error.status === 403) {
       return { policy: null, notFound: false, may: { read: false, endorse: false } };

@@ -520,7 +520,7 @@ export default function NorthBrief() {
                       className="flex flex-wrap items-baseline justify-between gap-2 py-2 first:pt-0 last:pb-0"
                     >
                       <Link
-                        to={`/north/metrics?q=${encodeURIComponent(highlight.metricKey)}`}
+                        to={`/north/explorer?metric=${encodeURIComponent(highlight.metricKey)}`}
                         className="font-ui text-13 text-accent underline underline-offset-4"
                       >
                         {name(highlight.metricKey)}

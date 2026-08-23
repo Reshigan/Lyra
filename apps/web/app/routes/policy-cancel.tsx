@@ -8,7 +8,7 @@ import {
   type LoaderFunctionArgs
 } from "react-router";
 import { Button, Card, Checkbox, DatePicker, EmptyState, Field, Money, Select, Textarea } from "@lyra/ui";
-import { ApiError, api } from "../api.server";
+import { ApiError, api, fetchMe } from "../api.server";
 import { cloudflare } from "../context";
 import { labelsFrom } from "./detail-kit";
 import { policyLede, type Policy } from "./policy-detail";
@@ -156,12 +156,16 @@ function bodyFrom(extras: ReturnType<typeof extrasFrom>) {
 export async function loader({ request, context, params }: LoaderFunctionArgs) {
   const env = context.get(cloudflare).env;
   const id = params.id ?? "";
+  // F55: same fix as policy-endorse — `may.cancel` is the actor's real grant,
+  // not an assumption from a successful read.
+  const me = await fetchMe(env, request);
+  const mayCancel = new Set(me.permissions).has(PERM.cancel);
   try {
     const policy = await api<Policy>(`/v1/axis/policies/${id}`, { env, request });
-    return { policy, notFound: false, may: { read: true, cancel: true } };
+    return { policy, notFound: false, may: { read: true, cancel: mayCancel } };
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) {
-      return { policy: null, notFound: true, may: { read: true, cancel: true } };
+      return { policy: null, notFound: true, may: { read: true, cancel: mayCancel } };
     }
     if (error instanceof ApiError && error.status === 403) {
       return { policy: null, notFound: false, may: { read: false, cancel: false } };

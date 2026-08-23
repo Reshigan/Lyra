@@ -545,3 +545,93 @@ describe("the retired generic CRUD door onto commission-entries is gone", () => 
     expect(res.status).toBe(200);
   });
 });
+
+/* -------------------------------- F56: select carries an idempotency key */
+
+describe("F56: POST /quote-requests/:id/select is idempotent and single-shot", () => {
+  let requestId: string;
+  let responseId: string;
+  const KEY = "select-replay-1";
+
+  beforeAll(async () => {
+    requestId = newId("qrq", Date.now());
+    responseId = newId("qrs", Date.now());
+    const now = Date.now();
+    await database.insert(schema.distQuoteRequests).values({
+      id: requestId,
+      tenantId: seeded.tenantId,
+      channelId: "chn_select_test",
+      productId: "prd_select_test",
+      inputsJson: "{}",
+      currency: "AED",
+      state: "open",
+      createdAt: now,
+      updatedAt: now
+    });
+    await database.insert(schema.distQuoteResponses).values({
+      id: responseId,
+      tenantId: seeded.tenantId,
+      requestId,
+      offeringId: "off_select_test",
+      providerId: "prv_select_test",
+      state: "quoted",
+      premiumMinor: 120_000_00,
+      currency: "AED",
+      createdAt: now,
+      updatedAt: now
+    });
+  });
+
+  it("replays the stored result for the same idempotency key and selects once", async () => {
+    const first = await call("axis.lead", "POST", `/v1/dist/quote-requests/${requestId}/select`, { responseId }, { "idempotency-key": KEY });
+    expect(first.status).toBe(200);
+
+    const replay = await call("axis.lead", "POST", `/v1/dist/quote-requests/${requestId}/select`, { responseId }, { "idempotency-key": KEY });
+    expect(replay.status).toBe(200);
+
+    const [row] = await database
+      .select()
+      .from(schema.distQuoteResponses)
+      .where(eq(schema.distQuoteResponses.id, responseId));
+    expect(row?.selectedAt).not.toBeNull();
+  });
+
+  it("refuses a second selection once the comparison is converted", async () => {
+    const res = await call("axis.lead", "POST", `/v1/dist/quote-requests/${requestId}/select`, { responseId }, { "idempotency-key": "select-second" });
+    expect(res.status).toBe(409);
+  });
+});
+
+/* -------------------------------- F56: decide refuses an already-decided offer */
+
+describe("F56: POST /next-best-offers/:id/decide refuses a decided offer", () => {
+  let offerId: string;
+
+  beforeAll(async () => {
+    offerId = newId("nbo", Date.now());
+    const customer = (await database.select().from(schema.customers).limit(1))[0]!;
+    await database.insert(schema.distNextBestOffers).values({
+      id: offerId,
+      tenantId: seeded.tenantId,
+      customerId: customer.id,
+      kind: "cross_sell",
+      offeringId: "off_decide_test",
+      score: 80,
+      reasonKey: "nbo.cross_sell",
+      state: "proposed",
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    });
+  });
+
+  it("decides once, then refuses a replay instead of re-emitting", async () => {
+    const first = await call("axis.lead", "POST", `/v1/dist/next-best-offers/${offerId}/decide`, { decision: "accepted" });
+    expect(first.status).toBe(204);
+
+    const replay = await call("axis.lead", "POST", `/v1/dist/next-best-offers/${offerId}/decide`, { decision: "dismissed" });
+    expect(replay.status).toBe(409);
+
+    const [row] = await database.select().from(schema.distNextBestOffers).where(eq(schema.distNextBestOffers.id, offerId));
+    expect(row?.state).toBe("accepted");
+  });
+});

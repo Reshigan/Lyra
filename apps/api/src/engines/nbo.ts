@@ -1,6 +1,6 @@
 import { and, desc, eq, gt, inArray, isNull, lte, or } from "drizzle-orm";
 import { id as newId, schema } from "@lyra/db";
-import { emit, hasPurpose, type Ctx } from "@lyra/core";
+import { conflict, emit, hasPurpose, notFound, type Ctx } from "@lyra/core";
 import { parseJson } from "./rating.js";
 
 // Next-best-offer. Cross-sell, upsell, renewal and top-up all answer the same
@@ -279,6 +279,18 @@ export async function decideOffer(
   decision: "accepted" | "dismissed",
   quoteRequestId?: string
 ): Promise<void> {
+  // F56/F57: a decision is a state transition, so it only applies to an offer
+  // still open to being decided. A replayed or second decision on an
+  // already-decided offer is refused rather than re-emitted — otherwise one
+  // double-clicked accept fires `dist.nbo.accepted` twice.
+  const [offer] = await ctx.db
+    .select({ state: schema.distNextBestOffers.state })
+    .from(schema.distNextBestOffers)
+    .where(and(eq(schema.distNextBestOffers.tenantId, ctx.tenantId), eq(schema.distNextBestOffers.id, offerId)))
+    .limit(1);
+  if (!offer) throw notFound("offer");
+  if (offer.state !== "proposed" && offer.state !== "surfaced") throw conflict("that offer is already decided");
+
   await ctx.db
     .update(schema.distNextBestOffers)
     .set({

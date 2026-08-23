@@ -994,7 +994,7 @@ function OfferCard({
           <Form method="post">
             <input type="hidden" name="intent" value="surface" />
             <input type="hidden" name="offerId" value={offer.id} />
-            <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
+            <input type="hidden" name="idempotencyKey" value={`${idempotencyKey}:${offer.id}:surface`} />
             <Button type="submit" size="sm" variant="secondary" loading={busy}>
               {l("surface")}
             </Button>
@@ -1004,7 +1004,7 @@ function OfferCard({
           <Form method="post">
             <input type="hidden" name="intent" value="dismiss" />
             <input type="hidden" name="offerId" value={offer.id} />
-            <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
+            <input type="hidden" name="idempotencyKey" value={`${idempotencyKey}:${offer.id}:dismiss`} />
             <Button type="submit" size="sm" variant="ghost" loading={busy}>
               {l("dismiss")}
             </Button>

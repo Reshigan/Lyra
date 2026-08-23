@@ -369,6 +369,10 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   return {
     // Expiry is decided on the server so the first paint and the hydration agree.
     now: Date.now(),
+    // F56: consequential writes (select, offer decide) carry an idempotency key.
+    // One per page load, then made unique per offer+intent in the form so two
+    // different decisions never share a key.
+    idempotencyKey: crypto.randomUUID(),
     request: comparison.request,
     // The API already strips commission for customer actors; staff without the
     // commission permission get the same treatment before the payload ships.
@@ -404,25 +408,34 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
   // instead of leaving the operator to infer it from a changed table.
   let done: string | null = null;
 
+  // F56: every consequential write here carries an idempotency key, unique per
+  // intent and target so two different decisions in one page load never share
+  // one. The base key comes from the loader; the suffix makes it per-write.
+  const baseKey = String(form.get("idempotencyKey") ?? "");
+
   try {
     if (intent === "share") {
       await api(`/v1/dist/quote-requests/${id}/share`, { env, request, method: "POST" });
       done = "done.share";
     } else if (intent === "select") {
+      const responseId = String(form.get("responseId") ?? "");
       await api(`/v1/dist/quote-requests/${id}/select`, {
         env,
         request,
         method: "POST",
-        body: { responseId: String(form.get("responseId") ?? "") }
+        body: { responseId },
+        ...(baseKey ? { headers: { "idempotency-key": `${baseKey}:${responseId}:select` } } : {})
       });
       done = "done.select";
     } else if (intent === "offer") {
       const decision = String(form.get("decision") ?? "");
-      await api(`/v1/dist/next-best-offers/${String(form.get("offerId") ?? "")}/decide`, {
+      const offerId = String(form.get("offerId") ?? "");
+      await api(`/v1/dist/next-best-offers/${offerId}/decide`, {
         env,
         request,
         method: "POST",
-        body: { decision, ...(decision === "accepted" ? { quoteRequestId: id } : {}) }
+        body: { decision, ...(decision === "accepted" ? { quoteRequestId: id } : {}) },
+        ...(baseKey ? { headers: { "idempotency-key": `${baseKey}:${offerId}:${decision}` } } : {})
       });
       done = decision === "accepted" ? "done.accepted" : "done.dismissed";
     } else if (intent === "shop") {
@@ -691,6 +704,7 @@ export default function QuoteCompare() {
                         <Form method="post">
                           <input type="hidden" name="intent" value="select" />
                           <input type="hidden" name="responseId" value={quote.id} />
+                          <input type="hidden" name="idempotencyKey" value={loaded.idempotencyKey} />
                           <Button
                             type="submit"
                             size="sm"
@@ -746,6 +760,7 @@ export default function QuoteCompare() {
                 L={L}
                 canDecide={loaded.can.decide}
                 busy={busy}
+                idempotencyKey={loaded.idempotencyKey}
               />
             ))}
           </div>
@@ -829,13 +844,15 @@ function OfferCard({
   locale,
   L,
   canDecide,
-  busy
+  busy,
+  idempotencyKey
 }: {
   offer: Offer;
   locale: string;
   L: (key: string, vars?: Record<string, string>) => string;
   canDecide: boolean;
   busy: boolean;
+  idempotencyKey: string;
 }) {
   const evidence = jsonObject(offer.reasonJson);
   return (
@@ -908,6 +925,7 @@ function OfferCard({
           <Form method="post" className="flex flex-wrap gap-2">
             <input type="hidden" name="intent" value="offer" />
             <input type="hidden" name="offerId" value={offer.id} />
+            <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
             <Button type="submit" name="decision" value="accepted" variant="secondary" size="sm" loading={busy}>
               {L("accept")}
             </Button>

@@ -190,50 +190,64 @@ distRoutes.post("/quote-requests/:id/select", async (c) => {
   const { responseId } = await body(c, z.object({ responseId: z.string().min(1) }));
   const request = await one(ctx, schema.distQuoteRequests, c.req.param("id"));
   if (!request) throw notFound("quote request");
+  // F56: selecting a response converts the comparison — money-adjacent state
+  // (docs/19), so it takes an idempotency key like every other consequential
+  // write in this module. The converted-state guard lives *inside* the wrapper
+  // so a same-key replay returns the stored result, while a fresh key against
+  // an already-converted comparison is refused rather than double-converting.
+  return c.json(
+    await withIdempotency(ctx, c.req.header("idempotency-key"), "dist.select", { requestId: request.id, responseId }, async () => {
+      const current = await one(ctx, schema.distQuoteRequests, request.id);
+      // Refuse only terminal states: a converted comparison must not convert
+      // twice, and an expired/abandoned one must not be selected at all. A
+      // request that is open, fanned_out or complete is still selectable.
+      if (!current || current.state === "converted" || current.state === "expired" || current.state === "abandoned")
+        throw conflict("that comparison is already decided");
+      const rows = await ctx.db
+        .select()
+        .from(schema.distQuoteResponses)
+        .where(
+          and(
+            eq(schema.distQuoteResponses.tenantId, ctx.tenantId),
+            eq(schema.distQuoteResponses.id, responseId),
+            eq(schema.distQuoteResponses.requestId, request.id)
+          )
+        )
+        .limit(1);
+      const response = rows[0];
+      if (!response) throw notFound("quote response");
+      if (response.state !== "quoted") throw conflict("that response is not a quote");
+      if (response.validUntil !== null && response.validUntil < ctx.now) throw conflict("quote has expired");
 
-  const rows = await ctx.db
-    .select()
-    .from(schema.distQuoteResponses)
-    .where(
-      and(
-        eq(schema.distQuoteResponses.tenantId, ctx.tenantId),
-        eq(schema.distQuoteResponses.id, responseId),
-        eq(schema.distQuoteResponses.requestId, request.id)
-      )
-    )
-    .limit(1);
-  const response = rows[0];
-  if (!response) throw notFound("quote response");
-  if (response.state !== "quoted") throw conflict("that response is not a quote");
-  if (response.validUntil !== null && response.validUntil < ctx.now) throw conflict("quote has expired");
+      await ctx.db
+        .update(schema.distQuoteResponses)
+        .set({ selectedAt: ctx.now, updatedAt: ctx.now })
+        .where(and(eq(schema.distQuoteResponses.tenantId, ctx.tenantId), eq(schema.distQuoteResponses.id, response.id)));
+      await ctx.db
+        .update(schema.distQuoteRequests)
+        .set({ state: "converted", updatedAt: ctx.now })
+        .where(and(eq(schema.distQuoteRequests.tenantId, ctx.tenantId), eq(schema.distQuoteRequests.id, request.id)));
 
-  await ctx.db
-    .update(schema.distQuoteResponses)
-    .set({ selectedAt: ctx.now, updatedAt: ctx.now })
-    .where(and(eq(schema.distQuoteResponses.tenantId, ctx.tenantId), eq(schema.distQuoteResponses.id, response.id)));
-  await ctx.db
-    .update(schema.distQuoteRequests)
-    .set({ state: "converted", updatedAt: ctx.now })
-    .where(and(eq(schema.distQuoteRequests.tenantId, ctx.tenantId), eq(schema.distQuoteRequests.id, request.id)));
-
-  await audit(ctx, {
-    action: "dist.quote_response.select",
-    subjectRef: response.id,
-    after: { premiumMinor: response.premiumMinor, offeringId: response.offeringId }
-  });
-  await emit(ctx, {
-    module: "dist",
-    type: "dist.quote_response.selected",
-    subject: response.id,
-    data: {
-      requestId: request.id,
-      offeringId: response.offeringId,
-      providerId: response.providerId,
-      premiumMinor: response.premiumMinor,
-      customerId: request.customerId
-    }
-  });
-  return c.json({ ...response, selectedAt: ctx.now });
+      await audit(ctx, {
+        action: "dist.quote_response.select",
+        subjectRef: response.id,
+        after: { premiumMinor: response.premiumMinor, offeringId: response.offeringId }
+      });
+      await emit(ctx, {
+        module: "dist",
+        type: "dist.quote_response.selected",
+        subject: response.id,
+        data: {
+          requestId: request.id,
+          offeringId: response.offeringId,
+          providerId: response.providerId,
+          premiumMinor: response.premiumMinor,
+          customerId: request.customerId
+        }
+      });
+      return { ...response, selectedAt: ctx.now };
+    })
+  );
 });
 
 /* ------------------------------------------------------------ commission */

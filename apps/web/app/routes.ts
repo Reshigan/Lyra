@@ -168,6 +168,7 @@ export default [
           route("north/brief", "routes/north-brief.tsx"),
           route("north/explorer", "routes/north-explorer.tsx"),
           route("north/anomalies", "routes/north-anomalies.tsx"),
+          route("north/alerts", "routes/north-alerts.tsx"),
           route("north/whatif", "routes/north-whatif.tsx"),
           route("north/board", "routes/north-board.tsx"),
           route("north/board/:id/file", "routes/north-board-file.tsx"),

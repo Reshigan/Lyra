@@ -160,7 +160,10 @@ export const scout: WorkspaceSpec = {
     { href: "/scout/experiments", labelKey: "link.experiments", permission: "scout:experiments:read" },
     { href: "/scout/analytics", labelKey: "link.analytics", permission: "scout:panel_bench:read" },
     { href: "/scout/data-products", labelKey: "link.dataProducts", permission: "scout:data_products:read" },
-    { href: "/scout/admin", labelKey: "link.admin", permission: "scout:whitespaces:write" },
+    // F58: was scout:whitespaces:write — a permission that does not exist in
+    // the RBAC vocabulary (only :read and :promote), so the link was dead for
+    // every role. The screen's primary data is signal-source health.
+    { href: "/scout/admin", labelKey: "link.admin", permission: "scout:signals:read" },
     { href: "/scout/dev", labelKey: "link.dev", permission: "scout:signals:read" }
   ],
   tabs: [
