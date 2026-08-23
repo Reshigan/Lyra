@@ -337,7 +337,14 @@ registered: `north-admin.tsx:584` links to `/north/alerts`, and
 registers only `north/brief`, `north/explorer`, `north/anomalies`,
 `north/whatif`, `north/board`, `north/board/:id/file`, `north/decisions`,
 `north/admin` and `north/dev` — neither `alerts` nor `metrics` is a route, so
-both links 404 (**F63**).
+both links 404 (**F63**). *Closed 2026-08-23.* `/north/alerts` shipped as a
+bespoke screen (routes.ts, north-alerts.tsx) and joined NorthShell's own rail
+beside anomalies; the north-admin link panel now points at a real screen. The
+`/north/metrics?q=...` link was removed with the explorer covering the same
+ground. F62 remains open: the snapshotter still reads SIGNAL/SCOUT tables
+directly, though the new signal-outreach and scout-validate engines emit
+(`signal.acquisition.closed`, `scout.whitespace.validated`) on the bus, giving
+the event-driven rewrite its consumers' vocabulary.
 
 *Ledger.* `ledger-journal.tsx` and `ledger-year-end.tsx` import only
 `Problem`, never `Gate` — the component that renders an approval-gated 403 as
