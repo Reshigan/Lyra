@@ -16,6 +16,7 @@ const REGISTERED: [purpose: string, module: string, customerFacing: boolean][] =
   ["axis.claim.reserve_recommend", "axis", false],
   ["axis.claim.fraud_score", "axis", false],
   ["axis.case.sla_predict", "axis", false],
+  ["axis.policy.ubi_reprice", "axis", false],
   ["conversation.reply", "orbit", true],
   ["orbit.conversation.reply", "orbit", true],
   ["orbit.renewal.draft_reply", "orbit", true],

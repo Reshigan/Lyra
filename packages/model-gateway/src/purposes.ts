@@ -35,6 +35,9 @@ export const PURPOSES: Record<string, PurposeDef> = {
   "axis.claim.reserve_recommend": { module: "axis", customerFacing: false },
   "axis.claim.fraud_score": { module: "axis", customerFacing: false },
   "axis.case.sla_predict": { module: "axis", customerFacing: false },
+  // UBI repricing proposes a premium delta a human endorses (engines/telematics.ts).
+  // Staff-facing: the proposal never leaves the desk until an endorsement is approved.
+  "axis.policy.ubi_reprice": { module: "axis", customerFacing: false },
 
   // orbit — conversations. A draft reply is customer-facing the moment it is
   // sent, and the send path is the same row, so it is customer-facing here.

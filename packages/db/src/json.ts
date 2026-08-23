@@ -101,7 +101,24 @@ export const PolicyJson = z.object({
   // docs/27 F8. Tier -> model-gateway catalogue key. Values are validated by
   // the gateway's own CATALOGUE (an unknown key is ignored, not obeyed), which
   // is why this stays a loose record: @lyra/db must not depend on the gateway.
-  modelOverrides: z.record(z.string(), z.string()).default({})
+  modelOverrides: z.record(z.string(), z.string()).default({}),
+  // Per-module configuration. Each module gets its own autonomy override,
+  // model tier, and enabled flag — so a tenant can run SIGNAL standalone with
+  // aggressive autonomy while keeping AXIS conservative, without touching the
+  // global defaults. Absent keys fall through to the tenant-wide defaults
+  // (autonomyDefault, modelOverrides, entitlements.modules).
+  moduleConfig: z
+    .record(
+      z.string(),
+      z.object({
+        enabled: z.boolean().default(true),
+        autonomy: AutonomyLevel.optional(),
+        modelTier: z.string().optional(),
+        // Free-form per-module settings (e.g. signal: { dailyBudgetCapMinor })
+        settings: z.record(z.string(), z.unknown()).default({})
+      })
+    )
+    .default({})
 });
 export type PolicyJson = z.infer<typeof PolicyJson>;
 

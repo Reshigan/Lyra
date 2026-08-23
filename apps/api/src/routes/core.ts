@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
-import { id as newId, schema } from "@lyra/db";
+import { id as newId, schema, PolicyJson, toJson, parseJson, AutonomyLevel } from "@lyra/db";
 import {
   actorRef,
   audit,
@@ -10,6 +10,7 @@ import {
   can,
   forbidden,
   isKnownPermission,
+  notFound,
   require_,
   requiresMfa,
   scoped,
@@ -447,4 +448,69 @@ coreRoutes.get("/customers/:id/position", async (c) => {
     ltvMinor: customer.ltvCached ?? 0,
     currency: positions[0]?.currency ?? "AED"
   });
+});
+
+// Per-module configuration (docs/05 module independence). Each module gets its
+// own enabled flag, autonomy override, model tier and free-form settings, so a
+// tenant can run SIGNAL standalone with aggressive autonomy while keeping AXIS
+// conservative. Absent keys fall through to the tenant-wide defaults — the
+// resolver is moduleSettings() in packages/core, the single reader every module
+// routes through.
+const MODULES = ["axis", "orbit", "signal", "scout", "north", "ledger", "dist"] as const;
+
+coreRoutes.get("/modules/config", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "core:settings:read", { tenantId: ctx.tenantId, module: "core" });
+  const data = MODULES.map((m) => ({
+    module: m,
+    ...(ctx.policy.moduleConfig[m] ?? { enabled: true, settings: {} })
+  }));
+  return c.json({ data });
+});
+
+const ModuleConfigBody = z
+  .object({
+    enabled: z.boolean().optional(),
+    autonomy: AutonomyLevel.optional(),
+    modelTier: z.string().max(64).optional(),
+    settings: z.record(z.string(), z.unknown()).optional()
+  })
+  .strict();
+
+coreRoutes.patch("/modules/:module/config", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "core:settings:update", { tenantId: ctx.tenantId, module: "core" });
+  const module = c.req.param("module");
+  if (!(MODULES as readonly string[]).includes(module)) throw badRequest(`unknown module ${module}`);
+  const input = await body(c, ModuleConfigBody);
+
+  const [row] = await ctx.db.select().from(schema.tenants).where(eq(schema.tenants.id, ctx.tenantId)).limit(1);
+  if (!row) throw notFound("tenant");
+  const before = parseJson(PolicyJson, row.policyJson);
+  const own = before.moduleConfig[module] ?? { enabled: true, settings: {} };
+  const after = {
+    ...before,
+    moduleConfig: {
+      ...before.moduleConfig,
+      [module]: {
+        enabled: input.enabled ?? own.enabled,
+        ...(input.autonomy !== undefined ? { autonomy: input.autonomy } : own.autonomy !== undefined ? { autonomy: own.autonomy } : {}),
+        ...(input.modelTier !== undefined ? { modelTier: input.modelTier } : own.modelTier !== undefined ? { modelTier: own.modelTier } : {}),
+        settings: { ...own.settings, ...(input.settings ?? {}) }
+      }
+    }
+  };
+
+  await ctx.db
+    .update(schema.tenants)
+    .set({ policyJson: toJson(PolicyJson, after), updatedAt: ctx.now })
+    .where(eq(schema.tenants.id, ctx.tenantId));
+
+  await audit(ctx, {
+    action: "core.module.config_updated",
+    subjectRef: `module:${module}`,
+    before: { module: before.moduleConfig[module] ?? null },
+    after: { module: after.moduleConfig[module] }
+  });
+  return c.json({ module, config: after.moduleConfig[module] });
 });

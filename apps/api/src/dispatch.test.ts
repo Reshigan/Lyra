@@ -74,4 +74,40 @@ describe("drainOutbox", () => {
     const ok = await ctx.db.select().from(schema.eventOutbox).where(eq(schema.eventOutbox.id, second.id));
     expect(ok[0]?.publishedAt).toBe(ctx.now);
   });
+
+  it("closes SIGNAL's funnel when a policy is issued — the lead becomes a bind", async () => {
+    // A lead the portal tracking pixel attributed to a campaign.
+    await ctx.db.insert(schema.signalAttributionEvents).values({
+      id: "att_lead",
+      tenantId: ctx.tenantId,
+      customerId: "cus_1",
+      anonId: null,
+      touchType: "lead",
+      channel: "meta",
+      campaignId: "cmp_1",
+      creativeId: null,
+      valueMinor: null,
+      currency: null,
+      subjectRef: null,
+      ts: ctx.now
+    });
+
+    await emit(ctx, {
+      module: "axis",
+      type: "axis.policy.issued",
+      subject: "pol_1",
+      data: { policyId: "pol_1", customerId: "cus_1", premiumMinor: 120_000_00, currency: "AED" }
+    });
+
+    await drainOutbox(ctx);
+
+    const binds = await ctx.db
+      .select()
+      .from(schema.signalAttributionEvents)
+      .where(eq(schema.signalAttributionEvents.touchType, "bind"));
+    expect(binds).toHaveLength(1);
+    expect(binds[0]?.campaignId).toBe("cmp_1");
+    expect(binds[0]?.valueMinor).toBe(120_000_00);
+    expect(binds[0]?.subjectRef).toBe("pol_1");
+  });
 });

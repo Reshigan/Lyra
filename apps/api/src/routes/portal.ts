@@ -19,6 +19,7 @@ import {
 } from "../engines/rating.js";
 import { runShop } from "../engines/shop.js";
 import { quoterFor } from "../engines/dist-quoter.js";
+import { recordTouch } from "../engines/signal-attribution.js";
 import type { App, Env } from "../env.js";
 
 // The public comparison site (yallacompare-style). No session exists at all —
@@ -970,10 +971,10 @@ export type PortalLinkKind = "renewal" | "feedback";
 /** The credential in a renewal/feedback link. Staff read it back via
  *  `GET /v1/orbit/portal-links/:kind/:id` (routes/orbit.ts) to send it. */
 export async function portalLinkToken(
-  env: Pick<Env, "FIELD_KEY">,
-  kind: PortalLinkKind,
-  tenantId: string,
-  rowId: string
+  env: Pick<Env, "FIELD_KEY">
+  , kind: PortalLinkKind
+  , tenantId: string
+  , rowId: string
 ): Promise<string> {
   return hmacHex(fieldKey(env), `portal-link.v1:${kind}:${tenantId}:${rowId}`);
 }
@@ -984,11 +985,11 @@ export async function portalLinkToken(
  * answer would confirm that somebody else's row exists.
  */
 async function assertPortalLink(
-  env: Pick<Env, "FIELD_KEY">,
-  kind: PortalLinkKind,
-  tenantId: string,
-  rowId: string,
-  token: string | undefined
+  env: Pick<Env, "FIELD_KEY">
+  , kind: PortalLinkKind
+  , tenantId: string
+  , rowId: string
+  , token: string | undefined
 ): Promise<void> {
   const expected = await portalLinkToken(env, kind, tenantId, rowId);
   if (!token || !timingSafeEqual(token, expected)) throw notFound(kind);
@@ -1155,4 +1156,43 @@ portalRoutes.post("/:tenantSlug/feedback/:id", async (c) => {
   });
 
   return c.json(feedbackView({ ...row, csat: input.rating }));
+});
+
+// The acquisition tracking pixel. Public by shape (it sits on /v1/portal/*),
+// throttled by IP, and tenant-scoped by the slug segment — a visitor's browser
+// posts impression/click/visit touches here so SIGNAL's funnel has something to
+// measure. No session, no customer row: touches carry an anonId the page
+// generated, and only become a named customer when a lead is captured.
+// (engines/signal-attribution.ts is the writer this feeds.)
+const TRACK_MAX = 60;
+const TRACK_WINDOW_SEC = 60;
+
+const TrackBody = z
+  .object({
+    touchType: z.enum(["impression", "click", "visit"]),
+    channel: z.string().min(1).max(64),
+    campaignId: z.string().max(64).optional(),
+    creativeId: z.string().max(64).optional(),
+    anonId: z.string().min(1).max(128)
+  })
+  .strict();
+
+portalRoutes.post("/:tenantSlug/track", async (c) => {
+  const now = Date.now();
+  const input = await body(c, TrackBody);
+  const ip = c.req.header("cf-connecting-ip");
+  if (ip) await throttle(c.env, `portal-track-ip:${ip}`, TRACK_MAX, TRACK_WINDOW_SEC);
+
+  const database = rawDb(c.env);
+  const tenant = await activeTenant(database, c.req.param("tenantSlug"));
+  const ctx = await portalCtx(c, tenant.id, now, "portal-track");
+
+  const id = await recordTouch(ctx, {
+    touchType: input.touchType,
+    channel: input.channel,
+    campaignId: input.campaignId ?? null,
+    creativeId: input.creativeId ?? null,
+    anonId: input.anonId
+  });
+  return c.json({ id }, 201);
 });

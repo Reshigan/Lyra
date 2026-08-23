@@ -10,6 +10,7 @@ import { generateCreativeImage, generateCreatives } from "../engines/signal-crea
 import { attributeCounts, suggestTargeting } from "../engines/signal-audience.js";
 import { creativeContextFor, planAudience, planCampaign } from "../engines/signal-campaign-plan.js";
 import { runBudgetAutopilot } from "../engines/signal-autopilot.js";
+import { funnelByCampaign } from "../engines/signal-attribution.js";
 import { demoOnly } from "../auth.js";
 import type { App } from "../env.js";
 
@@ -288,6 +289,18 @@ signalRoutes.post("/autopilot/run", async (c) => {
 });
 
 const DAY_MS = 86_400_000;
+
+// The acquisition funnel, aggregated per campaign and channel for a window.
+// This is what the measurement screen reads — it was a dead seam until
+// engines/signal-attribution.ts started writing touches (the portal tracking
+// pixel and the axis.policy.issued consumer).
+signalRoutes.get("/attribution/funnel", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "signal:attribution:read", { tenantId: ctx.tenantId, module: "signal" });
+  const since = Number(c.req.query("since") ?? ctx.now - 30 * DAY_MS);
+  const until = Number(c.req.query("until") ?? ctx.now);
+  return c.json({ data: await funnelByCampaign(ctx, since, until) });
+});
 
 /**
  * Demo-only, temporary (same idiom as auth.ts's demoOnly() routes — remove

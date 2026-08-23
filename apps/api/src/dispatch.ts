@@ -12,6 +12,7 @@ import {
 } from "@lyra/core";
 import { onFinancingLapseDue } from "./engines/axis-lifecycle.js";
 import { onConsentUpdated } from "./engines/signal-suppression.js";
+import { onBindIssued } from "./engines/signal-attribution.js";
 
 // The outbox drain. Events are written in the same request that changed the row,
 // so delivery can fail all it likes without ever losing the fact that something
@@ -64,6 +65,11 @@ export async function drainOutbox(ctx: Ctx, queue?: EventQueue, limit = 100): Pr
       }
       if (event.type === "ledger.financing.lapse_due") {
         await consume(ctx.db, event, "axis.lifecycle", (e) => onFinancingLapseDue(ctx, e), ctx.now);
+      }
+      // A policy issued closes SIGNAL's funnel: the customer's most recent
+      // attributed lead becomes a bind touch (engines/signal-attribution.ts).
+      if (event.type === "axis.policy.issued") {
+        await consume(ctx.db, event, "signal.attribution", (e) => onBindIssued(ctx, e).then(() => undefined), ctx.now);
       }
 
       if (queue) {

@@ -73,6 +73,11 @@ const HAND_WRITTEN: Op[] = [
 
   { method: "post", path: "/v1/core/webhooks/{id}/rotate", summary: "Rotate a webhook's signing secret to a fresh, server-generated one", permission: "core:webhooks:write", tag: "core" },
 
+  // Per-module configuration (docs/05 module independence): each module's
+  // enabled flag, autonomy override, model tier and free-form settings.
+  { method: "get", path: "/v1/core/modules/config", summary: "Every module's effective configuration — enabled flag, autonomy override, model tier and settings", permission: "core:settings:read", tag: "core" },
+  { method: "patch", path: "/v1/core/modules/{module}/config", summary: "Update one module's configuration; absent keys fall through to the tenant-wide defaults", permission: "core:settings:update", tag: "core", requestBody: true },
+
   // SQL aggregate for the 360 screen's Position card — never a paged read.
   { method: "get", path: "/v1/core/customers/{id}/position", summary: "Financial position: premium, commission and settled claims summed per currency", permission: "core:customers:read", tag: "core" },
 
@@ -397,6 +402,7 @@ const HAND_WRITTEN: Op[] = [
   { method: "post", path: "/v1/staff/delegations/expire", summary: "Sweep delegations whose window has closed (also runs on the scheduled tick)", permission: "core:delegations:write", tag: "staff" },
   { method: "post", path: "/v1/north/snapshotter/run", summary: "Force the NORTH metric snapshot and anomaly scan now (also runs on the scheduled tick)", permission: "north:snapshots:run", tag: "north" },
   { method: "post", path: "/v1/signal/autopilot/run", summary: "Force the SIGNAL budget autopilot pass now", permission: "signal:autopilot:run", tag: "signal" },
+  { method: "get", path: "/v1/signal/attribution/funnel", summary: "The acquisition funnel aggregated per campaign and channel for a window — impressions, clicks, visits, leads, binds and value", permission: "signal:attribution:read", tag: "signal" },
   // Demo deployments only: answers 404 when ENVIRONMENT is production.
   { method: "post", path: "/v1/signal/demo/spend-tick", summary: "Insert a spend row per channel per live campaign, keyed off the simulated clock (non-production only)", permission: "signal:autopilot:run", tag: "signal" },
 
@@ -445,6 +451,7 @@ const HAND_WRITTEN: Op[] = [
   // both are public by shape (mw.ts `/v1/portal/*`).
   { method: "get", path: "/v1/portal/{tenantSlug}/site", summary: "A tenant's public storefront: brand and active products", tag: "portal", public: true },
   { method: "post", path: "/v1/portal/{tenantSlug}/leads", summary: "Submit a quote lead from the public storefront; rate-limited per email", tag: "portal", requestBody: true, public: true },
+  { method: "post", path: "/v1/portal/{tenantSlug}/track", summary: "Record an acquisition touch (impression, click or visit) from the public tracking pixel; rate-limited per IP", tag: "portal", requestBody: true, public: true },
   // J-C1 self-serve. The visitor has no session, so the one-time token from the
   // lead response is the credential on all three (ADR-0043).
   { method: "get", path: "/v1/portal/{tenantSlug}/quote-requests/{id}", summary: "Re-open a self-serve comparison with the one-time token", tag: "portal", public: true },
