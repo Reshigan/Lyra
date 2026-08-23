@@ -49,11 +49,16 @@ const NORTH_ACCENT = "var(--module-north)";
  * routing.ts), so it can never carry a sub-screen. `/north/board/:id/file` is
  * a detail route opened from the board pack list, not a rail destination —
  * same as every other `:id` route in routing.ts's HIDDEN_ROUTES.
+ *
+ * `/north/alerts` sits beside anomalies: a rule is managed where its trips are
+ * read. It shipped reachable only from north-admin's link panel — a screen
+ * nobody could find from the shell it belongs to.
  */
 const NORTH_NAV_PATHS = [
   "/north/brief",
   "/north/explorer",
   "/north/anomalies",
+  "/north/alerts",
   "/north/whatif",
   "/north/board",
   "/north/decisions",

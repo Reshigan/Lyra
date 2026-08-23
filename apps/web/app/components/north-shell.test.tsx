@@ -57,7 +57,7 @@ function markupFor(session: SessionBootstrap): string {
 }
 
 describe("NorthShell", () => {
-  it("renders all eight of NORTH's own nav destinations, not other modules'", () => {
+  it("renders all nine of NORTH's own nav destinations, not other modules'", () => {
     const html = markupFor(sessionWith());
     // The spec (docs/superpowers/specs/2026-08-15-north-shell-fork-design.md
     // §"Owns") gives this shell the north/* destinations directly. These are
@@ -67,6 +67,7 @@ describe("NorthShell", () => {
       ["/north/brief", "Brief"],
       ["/north/explorer", "Explorer"],
       ["/north/anomalies", "Anomalies"],
+      ["/north/alerts", "Alerts"],
       ["/north/whatif", "Scenarios"],
       ["/north/board", "Board"],
       ["/north/admin", "Admin"],

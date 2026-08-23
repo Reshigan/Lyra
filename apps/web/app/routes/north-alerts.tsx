@@ -38,8 +38,6 @@ export const PERM = { read: "north:alerts:read", write: "north:alerts:write" } a
 
 // Type-only tuples: the wire values are validated server-side; these pin the
 // union types the labels below key off.
-// Type-only tuples: the wire values are validated server-side; these pin the
-// union types the labels below key off.
 export const OPERATORS = ["gt", "gte", "lt", "lte", "eq"] as const;
 export const GRAINS = ["day", "week", "month"] as const;
 export type Operator = (typeof OPERATORS)[number];

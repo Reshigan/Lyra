@@ -110,7 +110,11 @@ const LABELS: Labels = {
     approvalLink: "Open the approvals queue",
     "problem.missing_id": "That anomaly could not be identified.",
     "problem.missing_owner": "Put your name to it — an anomaly nobody signed for is still unowned.",
-    "problem.bad_intent": "That form did not carry a recognised action."
+    "problem.bad_intent": "That form did not carry a recognised action.",
+    // The natural next stop after reading a deviation: the rule that watches
+    // for it. Permission-gated by the shell's own rail entry; this link only
+    // renders when the actor holds the read.
+    "alerts.link": "Alert rules"
   },
   ar: {
     title: "الحالات الشاذة",
@@ -157,7 +161,8 @@ const LABELS: Labels = {
     approvalLink: "افتح قائمة الموافقات",
     "problem.missing_id": "تعذّر تحديد هذه الحالة.",
     "problem.missing_owner": "ضع اسمك عليها — الحالة بلا توقيع تبقى بلا مسؤول.",
-    "problem.bad_intent": "لم يحمل هذا النموذج إجراءً معروفاً."
+    "problem.bad_intent": "لم يحمل هذا النموذج إجراءً معروفاً.",
+    "alerts.link": "قواعد التنبيه"
   }
 };
 
@@ -324,6 +329,14 @@ export default function NorthAnomalies() {
         {openAnomaly ? (
           <Link to={`/north/anomalies/${openAnomaly.id}`} className="w-fit font-ui text-13 text-accent underline">
             {l("headline.action")}
+          </Link>
+        ) : null}
+        {/* The rule behind the deviation: after reading what moved, the next
+            question is "who was watching for this". Withheld, not disabled,
+            when the actor cannot read alert rules (ui.md §4 rule 2). */}
+        {held.has("north:alerts:read") ? (
+          <Link to="/north/alerts" className="w-fit font-ui text-13 text-accent underline">
+            {l("alerts.link")}
           </Link>
         ) : null}
       </header>
