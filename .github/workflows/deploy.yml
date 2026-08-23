@@ -1,7 +1,9 @@
 name: deploy
 
-# staging: automatic on merge to main. production: manual only, behind the
-# `production` GitHub Environment gate (docs/10 §4 — "prod (manual approve)").
+# Both stages are automatic on merge to main: staging first, then production
+# queues behind it via the shared concurrency group (docs/10 §4). The
+# `production` GitHub Environment keeps a branch policy (main only) but no
+# reviewer gate as of 2026-08-22 — auto-deploy requested by Reshigan.
 on:
   push:
     branches: [main]
@@ -61,15 +63,13 @@ jobs:
         run: pnpm --filter @lyra/web deploy:staging
 
   production:
-    if: github.event_name == 'workflow_dispatch'
+    # Runs after every green push to main (queued behind staging by the
+    # concurrency group above) and on manual dispatch. Approval used to live
+    # on the `production` Environment (required reviewer: Reshigan); that
+    # gate was removed 2026-08-22 for auto-deploy. The Environment's branch
+    # policy still restricts deployments to `main`.
     needs: checks
     runs-on: ubuntu-latest
-    # Approval gate for prod lives on the `production` GitHub Environment
-    # (repo Settings > Environments > production > required reviewers), not
-    # in this file. As of 2026-08-10 that Environment requires review from
-    # Reshigan and only deploys off `main` (set via the API — `can_admins_bypass`
-    # is still true, a repo-admin can override, but there is no longer a
-    # zero-gate path through workflow_dispatch alone).
     environment: production
     steps:
       - uses: actions/checkout@v7
