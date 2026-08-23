@@ -13,6 +13,7 @@ import {
 import { onFinancingLapseDue } from "./engines/axis-lifecycle.js";
 import { onConsentUpdated } from "./engines/signal-suppression.js";
 import { onBindIssued } from "./engines/signal-attribution.js";
+import { onDsarCreated } from "./engines/compliance-dsar.js";
 
 // The outbox drain. Events are written in the same request that changed the row,
 // so delivery can fail all it likes without ever losing the fact that something
@@ -70,6 +71,11 @@ export async function drainOutbox(ctx: Ctx, queue?: EventQueue, limit = 100): Pr
       // attributed lead becomes a bind touch (engines/signal-attribution.ts).
       if (event.type === "axis.policy.issued") {
         await consume(ctx.db, event, "signal.attribution", (e) => onBindIssued(ctx, e).then(() => undefined), ctx.now);
+      }
+      // F61: a portal-filed DSAR gets its acknowledgement here — the compliance
+      // staff are notified so the request never arrives with no owner.
+      if (event.type === "compliance.dsar-requests.created") {
+        await consume(ctx.db, event, "compliance.dsar", (e) => onDsarCreated(ctx, e), ctx.now);
       }
 
       if (queue) {

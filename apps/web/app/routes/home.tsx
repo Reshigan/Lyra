@@ -97,6 +97,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "notice.analytics.schedule.delivered": "A scheduled report was delivered",
     "notice.analytics.schedule.undelivered": "A scheduled report reached only some recipients",
     "notice.analytics.schedule.failed": "A scheduled report could not be produced",
+    "notice.compliance.dsar.created": "A data-subject request arrived and needs verification",
 
     "activity.title": "Your recent activity",
     "activity.label": "Your recent activity",
@@ -170,6 +171,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "notice.analytics.schedule.delivered": "تم تسليم تقرير مجدول",
     "notice.analytics.schedule.undelivered": "وصل تقرير مجدول إلى بعض المستلمين فقط",
     "notice.analytics.schedule.failed": "تعذّر إنتاج تقرير مجدول",
+    "notice.compliance.dsar.created": "وصل طلب من صاحب بيانات ويحتاج إلى تحقق",
 
     "activity.title": "نشاطك الأخير",
     "activity.label": "نشاطك الأخير",

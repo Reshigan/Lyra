@@ -110,4 +110,39 @@ describe("drainOutbox", () => {
     expect(binds[0]?.valueMinor).toBe(120_000_00);
     expect(binds[0]?.subjectRef).toBe("pol_1");
   });
+
+  it("acknowledges a portal-filed DSAR by notifying the compliance staff", async () => {
+    // A user holding the tenant.compliance role.
+    const roleId = "rol_compliance";
+    await ctx.db.insert(schema.roles).values({
+      id: roleId,
+      tenantId: ctx.tenantId,
+      key: "tenant.compliance",
+      name: "Compliance",
+      permissionsJson: "[]",
+      system: true,
+      createdAt: ctx.now
+    });
+    await ctx.db.insert(schema.userRoles).values({
+      id: "ur_1",
+      tenantId: ctx.tenantId,
+      userId: "u_comp",
+      roleId,
+      createdAt: ctx.now
+    });
+
+    await emit(ctx, {
+      module: "compliance",
+      type: "compliance.dsar-requests.created",
+      subject: "dsr_1",
+      data: { id: "dsr_1", type: "access", via: "portal" }
+    });
+
+    await drainOutbox(ctx);
+
+    const notes = await ctx.db.select().from(schema.notifications).where(eq(schema.notifications.tenantId, ctx.tenantId));
+    expect(notes).toHaveLength(1);
+    expect(notes[0]?.userId).toBe("u_comp");
+    expect(notes[0]?.subjectRef).toBe("dsr_1");
+  });
 });
