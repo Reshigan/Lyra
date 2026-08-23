@@ -1,7 +1,7 @@
 import { eq, inArray } from "drizzle-orm";
 import { id } from "@lyra/db";
 import { PaymentPlanWrite, schema } from "@lyra/db";
-import { badRequest, can, checkKAnonymity, CUSTOMER_PII, DEFAULT_K_FLOOR, gate, scoped, sealFields } from "@lyra/core";
+import { badRequest, can, checkKAnonymity, CUSTOMER_PII, DEFAULT_K_FLOOR, emit, gate, scoped, sealFields } from "@lyra/core";
 import { SENSITIVE_EXTRACTION_FIELDS } from "@lyra/model-gateway";
 import { fieldKey } from "./env.js";
 import { register, type Resource } from "./crud.js";
@@ -623,7 +623,26 @@ export const SIGNAL = register(
   r("attribution-events", schema.signalAttributionEvents, "atr", "signal", ro("signal:attribution:read"), {
     immutable: true
   }),
-  r("spend", schema.signalSpend, "spd", "signal", ro("signal:spend:read")),
+  r("spend", schema.signalSpend, "spd", "signal", ro("signal:spend:read"), {
+    // F62 groundwork: spend lands on the bus as signal.spend.recorded, so
+    // NORTH's snapshotter can eventually consume the event instead of
+    // querying this module's table directly (CLAUDE.md rule 6).
+    afterWrite: async (ctx, row) => {
+      await emit(ctx, {
+        module: "signal",
+        type: "signal.spend.recorded",
+        subject: String(row.id),
+        data: {
+          campaignId: row.campaignId,
+          channel: row.channel,
+          day: row.day,
+          amountMinor: row.amountMinor,
+          currency: row.currency,
+          conversions: row.conversions
+        }
+      });
+    }
+  }),
   // The acquisition outreach ledger (engines/signal-outreach.ts). Read-only:
   // rows are written by the sweep and stamped converted by the loop-back —
   // a hand edit would forge the very proof the cockpit shows.
