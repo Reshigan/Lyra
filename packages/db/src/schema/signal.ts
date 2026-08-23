@@ -175,3 +175,36 @@ export const spend = sqliteTable(
   },
   (t) => [uniqueIndex("signal_spend_uq").on(t.tenantId, t.campaignId, t.channel, t.day)]
 );
+
+/**
+ * The acquisition outreach ledger (engines/signal-outreach.ts). One row per
+ * drafted message: what was sent, to whom, on which channel, under whose
+ * authority, and — when the loop closes — which policy it became. `state`
+ * pending_approval|sent|failed|converted; `convertedRef` is the policy id a
+ * bind resolved to, which is what makes "SIGNAL bought this customer" a row
+ * you can click rather than a dashboard's word for it.
+ */
+export const outreach = sqliteTable(
+  "signal_outreach",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    campaignId: text("campaign_id").notNull(),
+    customerId: text("customer_id").notNull(),
+    channel: text("channel").notNull(), // email|whatsapp|sms
+    locale: text("locale").notNull().default("en"),
+    text: text("text").notNull(),
+    state: text("state").notNull().default("pending_approval"), // pending_approval|sent|failed|converted
+    approvedBy: text("approved_by").notNull(), // auto|pending|user:<id>
+    externalRef: text("external_ref"), // provider-side message id on send
+    convertedRef: text("converted_ref"), // the policy id the loop closed on
+    aiAuditId: text("ai_audit_id"),
+    ts: integer("ts").notNull(),
+    updatedAt: integer("updated_at")
+  },
+  (t) => [
+    index("signal_outreach_tenant_idx").on(t.tenantId, t.ts),
+    index("signal_outreach_campaign_idx").on(t.tenantId, t.campaignId, t.state),
+    index("signal_outreach_customer_idx").on(t.tenantId, t.customerId, t.ts)
+  ]
+);
