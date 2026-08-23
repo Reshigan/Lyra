@@ -36,8 +36,14 @@ import {
 
 export const PERM = { read: "north:alerts:read", write: "north:alerts:write" } as const;
 
-const OPERATORS = ["gt", "gte", "lt", "lte", "eq"] as const;
-const GRAINS = ["day", "week", "month"] as const;
+// Type-only tuples: the wire values are validated server-side; these pin the
+// union types the labels below key off.
+// Type-only tuples: the wire values are validated server-side; these pin the
+// union types the labels below key off.
+export const OPERATORS = ["gt", "gte", "lt", "lte", "eq"] as const;
+export const GRAINS = ["day", "week", "month"] as const;
+export type Operator = (typeof OPERATORS)[number];
+export type Grain = (typeof GRAINS)[number];
 
 /* ------------------------------------------------------------------ labels */
 
@@ -111,9 +117,9 @@ const labelsIn = (locale: string) => labelsFrom(LABELS, locale);
 interface AlertRule {
   id: string;
   metricKey: string;
-  operator: (typeof OPERATORS)[number];
+  operator: Operator;
   thresholdValue: number;
-  windowGrain: (typeof GRAINS)[number];
+  windowGrain: Grain;
   notifyChannelRef: string | null;
   enabled: boolean;
 }

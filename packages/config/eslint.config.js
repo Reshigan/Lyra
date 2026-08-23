@@ -12,7 +12,9 @@ export default tseslint.config(
       "**/.wrangler/**",
       "**/migrations/**",
       "**/.react-router/**",
-      "**/.stryker-tmp/**"
+      "**/.stryker-tmp/**",
+      // Agent scratch worktrees — not source, never shipped.
+      "**/.claude/**"
     ]
   },
   js.configs.recommended,
