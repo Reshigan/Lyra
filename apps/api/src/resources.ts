@@ -8,6 +8,7 @@ import { register, type Resource } from "./crud.js";
 import { gatewayFor } from "./mw.js";
 import { embedUpsert } from "./engines/vectorize.js";
 import { assertCanGrant, bundleOf } from "./engines/staff.js";
+import { onExperimentConcluded } from "./engines/scout-validate.js";
 import { must } from "./rows.js";
 import {
   dashboardVisible,
@@ -702,6 +703,15 @@ export const SCOUT = register(
     read: "scout:experiments:read",
     create: "scout:experiments:create",
     update: "scout:experiments:decide"
+  }, {
+    // The validation loop-back (engines/scout-validate.ts): a concluded
+    // experiment stamps its whitespace validated/parked and emits the event
+    // the radar reads. Fired from afterWrite so the CRUD update path — the
+    // only way an experiment concludes — always carries the verdict through.
+    afterWrite: async (ctx, row, action) => {
+      if (action !== "update") return;
+      await onExperimentConcluded(ctx, row as unknown as { id: string; whitespaceId: string; state: string; resultsJson: string | null });
+    }
   }),
   r("data-products", schema.scoutDataProducts, "dtp", "scout", {
     read: "scout:data_products:read",
