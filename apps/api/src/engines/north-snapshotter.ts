@@ -395,7 +395,6 @@ const avgHandlingTimeCases: Compute = async (ctx, p) => {
   return median(rows.map((r) => r.closedAt! - r.createdAt));
 };
 
-/** ponytail: one reserve-history lookup per closed claim (N+1) — fine at nightly-snapshot volumes, revisit if a tenant closes thousands of claims a day. */
 const reserveAdequacy: Compute = async (ctx, p) => {
   if (p.grain !== "month") return null;
   const claims = await ctx.db
@@ -411,24 +410,47 @@ const reserveAdequacy: Compute = async (ctx, p) => {
     );
   if (!claims.length) return null;
 
+  // One batched pass over the reserve history for every closed claim, instead
+  // of a lookup per claim (the old N+1). The per-claim deadline differs
+  // (reportedAt + 30d), so the query takes the widest window and the loop
+  // below applies each claim's own cutoff, keeping the newest reserve at or
+  // before it.
+  const ids = claims.map((c) => c.id);
+  const earliestReport = Math.min(...claims.map((c) => c.reportedAt));
+  const latestDeadline = Math.max(...claims.map((c) => c.reportedAt)) + 30 * DAY_MS;
+  const history = await ctx.db
+    .select({
+      claimId: schema.axisClaimReserves.claimId,
+      amountMinor: schema.axisClaimReserves.amountMinor,
+      setAt: schema.axisClaimReserves.setAt
+    })
+    .from(schema.axisClaimReserves)
+    .where(
+      and(
+        eq(schema.axisClaimReserves.tenantId, ctx.tenantId),
+        inArray(schema.axisClaimReserves.claimId, ids),
+        eq(schema.axisClaimReserves.head, "indemnity"),
+        // Widest window that can contain any claim's relevant reserves; the
+        // per-claim cutoff below applies each claim's own report+30d exactly.
+        gte(schema.axisClaimReserves.setAt, earliestReport),
+        lte(schema.axisClaimReserves.setAt, latestDeadline)
+      )
+    )
+    .orderBy(desc(schema.axisClaimReserves.setAt));
+
+  const latestByClaim = new Map<string, number>();
+  const byId = new Map(claims.map((c) => [c.id, c]));
+  for (const r of history) {
+    const claim = byId.get(r.claimId);
+    if (!claim || r.setAt > claim.reportedAt + 30 * DAY_MS) continue;
+    if (!latestByClaim.has(r.claimId)) latestByClaim.set(r.claimId, r.amountMinor);
+  }
+
   let reserveAt30 = 0;
   let finalPaid = 0;
   for (const claim of claims) {
     finalPaid += claim.paidMinor;
-    const [reserve] = await ctx.db
-      .select({ amountMinor: schema.axisClaimReserves.amountMinor })
-      .from(schema.axisClaimReserves)
-      .where(
-        and(
-          eq(schema.axisClaimReserves.tenantId, ctx.tenantId),
-          eq(schema.axisClaimReserves.claimId, claim.id),
-          eq(schema.axisClaimReserves.head, "indemnity"),
-          lte(schema.axisClaimReserves.setAt, claim.reportedAt + 30 * DAY_MS)
-        )
-      )
-      .orderBy(desc(schema.axisClaimReserves.setAt))
-      .limit(1);
-    reserveAt30 += reserve?.amountMinor ?? 0;
+    reserveAt30 += latestByClaim.get(claim.id) ?? 0;
   }
   return finalPaid > 0 ? Math.round((reserveAt30 / finalPaid) * 10_000) : null;
 };

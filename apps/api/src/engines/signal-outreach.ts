@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import { id as newId, schema } from "@lyra/db";
 import {
   assertChannel,
@@ -85,14 +85,29 @@ export async function acquisitionCampaigns(ctx: Ctx): Promise<OutreachCampaign[]
 export async function recipientsFor(ctx: Ctx, campaign: OutreachCampaign): Promise<Recipient[]> {
   if (!campaign.audienceId) return [];
   const members = await audienceMemberIds(ctx, campaign.audienceId);
+  if (!members.length) return [];
+
+  // One query for every member's latest consent instead of one per member:
+  // the max(ts) subquery picks each customer's newest row and the outer
+  // select fetches them in a single round trip.
+  const consents = await ctx.db
+    .select()
+    .from(schema.consents)
+    .where(
+      and(
+        eq(schema.consents.tenantId, ctx.tenantId),
+        inArray(
+          schema.consents.customerId,
+          members
+        ),
+        sql`${schema.consents.ts} = (select max(c2.ts) from ${schema.consents} c2 where c2.customer_id = ${schema.consents.customerId} and c2.tenant_id = ${schema.consents.tenantId})`
+      )
+    );
+  const consentByCustomer = new Map(consents.map((c) => [c.customerId, c]));
+
   const out: Recipient[] = [];
   for (const customerId of members) {
-    const [consent] = await ctx.db
-      .select()
-      .from(schema.consents)
-      .where(and(eq(schema.consents.tenantId, ctx.tenantId), eq(schema.consents.customerId, customerId)))
-      .orderBy(desc(schema.consents.ts))
-      .limit(1);
+    const consent = consentByCustomer.get(customerId);
     if (!consent) continue;
     let purposes: { marketing?: boolean } = {};
     let channels: Record<string, boolean> = {};
