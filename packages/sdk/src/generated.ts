@@ -2418,6 +2418,8 @@ export interface Operations {
   "GET /v1/axis/case-approvals/{id}": Op<{ id: string }, never, never, AxisCaseApprovals>;
   "GET /v1/axis/cases": Op<never, { limit?: number; cursor?: string; q?: string; sort?: string }, never, Page<AxisCases>>;
   "POST /v1/axis/cases": Op<never, never, AxisCases, AxisCases>;
+  "POST /v1/axis/cases/bulk": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
+  "POST /v1/axis/cases/import": Op<never, never, Record<string, unknown>, Record<string, unknown>>;
   "GET /v1/axis/cases/{id}": Op<{ id: string }, never, never, AxisCases>;
   "PATCH /v1/axis/cases/{id}": Op<{ id: string }, never, AxisCases, AxisCases>;
   "DELETE /v1/axis/cases/{id}": Op<{ id: string }, never, never, void>;
@@ -3146,6 +3148,8 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "GET /v1/axis/case-approvals/{id}": { tag: "axis", summary: "Fetch one case approval", permission: "axis:cases:approve", public: false },
   "GET /v1/axis/cases": { tag: "axis", summary: "List cases", permission: "axis:cases:read", public: false },
   "POST /v1/axis/cases": { tag: "axis", summary: "Create a cas", permission: "axis:cases:create", public: false },
+  "POST /v1/axis/cases/bulk": { tag: "axis", summary: "Bulk actions on cases — assign, reprioritise, close, tag (AXIS-007). Per-row permission checks and audit; the response names every case that failed and why", permission: "axis:cases:update", public: false },
+  "POST /v1/axis/cases/import": { tag: "axis", summary: "Bulk-import cases from CSV (AXIS-001). Per-row honest: the response names every line that failed and why; duplicate refs are counted, not errors", permission: "axis:cases:create", public: false },
   "GET /v1/axis/cases/{id}": { tag: "axis", summary: "Fetch one cas", permission: "axis:cases:read", public: false },
   "PATCH /v1/axis/cases/{id}": { tag: "axis", summary: "Update a cas", permission: "axis:cases:update", public: false },
   "DELETE /v1/axis/cases/{id}": { tag: "axis", summary: "Soft-delete a cas", permission: "axis:cases:delete", public: false },

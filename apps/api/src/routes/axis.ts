@@ -44,6 +44,8 @@ import { must } from "../rows.js";
 import { EndorseBody, changeSetHashOf, endorsePolicy, priceEndorsement } from "../engines/axis-endorse.js";
 import { MAX_POINTS_PER_BATCH, TelematicsIngest, repriceFromTelemetry, unpricedExposureKey } from "../engines/telematics.js";
 import { bindGroup, brokerFee } from "../engines/group-commission.js";
+import { importCases } from "../engines/axis-case-import.js";
+import { applyBulkAction } from "../engines/axis-bulk.js";
 import {
   CancelBody,
   LapseBody,
@@ -1561,4 +1563,47 @@ axisRoutes.post("/bordereaux/:id/reconcile", async (c) => {
   const bordereau = await must(ctx, schema.axisBordereaux, c.req.param("id"), "bordereaux");
   const out = await reconcileBordereaux(ctx, bordereau);
   return c.json(out, 200);
+});
+
+// AXIS-001's bulk half: CSV case import. Web intake, the partner API and
+// ORBIT handoffs existed; this is the door a migration or an operations team
+// actually uses. Per-row honest — the response names every line that failed
+// and why, because a partial silent success on a compliance-adjacent surface
+// is worse than a loud failure (engines/axis-case-import.ts).
+axisRoutes.post("/cases/import", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "axis:cases:create", { tenantId: ctx.tenantId, module: "axis" });
+  const contentType = c.req.header("content-type") ?? "";
+  let csvText: string;
+  if (contentType.includes("multipart/form-data")) {
+    const form = await c.req.formData();
+    const file = form.get("file");
+    if (!(file instanceof File)) throw badRequest("attach the CSV as a \"file\" field");
+    csvText = await file.text();
+  } else {
+    const input = (await c.req.json()) as { csv?: unknown };
+    if (typeof input.csv !== "string" || !input.csv) throw badRequest("body must carry a csv string");
+    csvText = input.csv;
+  }
+  const result = await importCases(ctx, csvText);
+  return c.json(result, 201);
+});
+
+// AXIS-007: bulk actions with per-row permission checks and audit. Per-row
+// honesty again — the response names every case that failed and why, because
+// an operator who selected fifty cases deserves to know the three that did
+// not happen (engines/axis-bulk.ts).
+axisRoutes.post("/cases/bulk", async (c) => {
+  const ctx = ctxOf(c);
+  const input = await body(
+    c,
+    z.object({
+      action: z.enum(["assign", "reprioritise", "close", "tag"]),
+      caseIds: z.array(z.string().min(1)).min(1).max(500),
+      ownerRef: z.string().optional(),
+      priority: z.enum(["low", "normal", "high", "urgent"]).optional(),
+      tag: z.string().max(64).optional()
+    })
+  );
+  return c.json(await applyBulkAction(ctx, input));
 });
