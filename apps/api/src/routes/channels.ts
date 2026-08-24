@@ -6,6 +6,8 @@ import { ctxFor, db as rawDb } from "../auth.js";
 import { fieldKey } from "../env.js";
 import { adapterFor } from "../engines/orbit-channel-adapters.js";
 import { processChannelEvents } from "../engines/orbit-channel-inbound.js";
+import { recordSignal } from "../engines/orbit-signal.js";
+import { gatewayFor } from "../mw.js";
 import type { App, Env } from "../env.js";
 
 // A provider's webhook call carries no session — same reasoning as
@@ -76,5 +78,11 @@ channelsRoutes.post("/:connectorId/webhook", async (c) => {
     now
   );
 
-  return c.json(await processChannelEvents(ctx, connector, events));
+  return c.json(
+    await processChannelEvents(ctx, connector, events, {
+      // Language + sentiment per inbound message (orbit-signal.ts): feeds
+      // routing's sentimentBelow and the churn model's lastSentiment.
+      signal: (conversationId, customerId, text) => recordSignal(ctx, gatewayFor(c.env), conversationId, customerId, text)
+    })
+  );
 });

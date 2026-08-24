@@ -108,7 +108,8 @@ async function getOrCreateConversation(
 export async function processChannelEvents(
   ctx: Ctx,
   connector: ChannelConnectorRow,
-  events: InboundEvent[]
+  events: InboundEvent[],
+  opts: { signal?: (conversationId: string, customerId: string | null, text: string) => Promise<void> } = {}
 ): Promise<{ processed: number; skipped: number }> {
   let processed = 0;
   let skipped = 0;
@@ -146,6 +147,10 @@ export async function processChannelEvents(
         .set({ lastMessageAt: event.message.sentAt, updatedAt: ctx.now })
         .where(eq(schema.orbitConversations.id, conversation.id));
       processed++;
+      // Language + sentiment annotation (engines/orbit-signal.ts). Runs after
+      // the message is durable; a failure leaves the previous signal standing.
+      // Awaited so webhook return implies the conversation is fully annotated.
+      await opts.signal?.(conversation.id, conversation.customerId, event.message.text);
     } catch (err) {
       if (!isUniqueViolation(err)) throw err;
       skipped++;

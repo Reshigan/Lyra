@@ -14,6 +14,7 @@ import { anchorAudit } from "./engines/anchor.js";
 import { nudgeApiKeyRotation } from "./engines/api-key-rotation.js";
 import { runBudgetAutopilot } from "./engines/signal-autopilot.js";
 import { runAcquisitionSweep } from "./engines/signal-outreach.js";
+import { sweepQaScores } from "./engines/orbit-qa.js";
 import { expireDelegations } from "./engines/staff.js";
 import { COOKIE, allTenants, authRoutes, ctxFor, db, pruneSessions } from "./auth.js";
 import { mountAll } from "./crud.js";
@@ -221,6 +222,10 @@ export default {
             // on us, so the inbox opens with something to approve instead of a
             // blank box. Draft only — nothing is sent without a human.
             await sweepConversationDrafts(ctx, gatewayFor(env));
+            // QA agent (engines/orbit-qa.ts): score closed conversations that
+            // have no QA score yet — docs/modules/orbit.md §2.1's "scores 100%
+            // of conversations", fed by the cx-judge rubric.
+            await sweepQaScores(ctx, gatewayFor(env));
             // docs/10 §6: nightly D1 -> R2 backup, one write per tenant per day.
             if (isBackupWindow) await backupTenant(ctx, env.EXPORTS);
             // docs/12 §1: tamper evidence for the audit chain, pinned outside D1.

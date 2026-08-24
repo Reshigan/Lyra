@@ -89,6 +89,10 @@ export const PURPOSES: Record<string, PurposeDef> = {
 
   // ledger — reconciliation proposals. Never leave finance.
   "recon.match": { module: "ledger", customerFacing: false },
+  // Per-message language + sentiment analysis on inbound ORBIT conversations
+  // (engines/orbit-signal.ts). Internal: it annotates the conversation for
+  // routing and churn scoring, it never talks to the customer.
+  "conversation.signal": { module: "orbit", customerFacing: false },
 
   // core — platform-wide.
   "output.review": { module: "core", customerFacing: false },
