@@ -109,6 +109,11 @@ const LABELS: Record<string, Record<string, string>> = {
     "state.cancelled": "Cancelled",
     "wip.count": "{open} open",
     "wip.congested": "Holding {open}, above the {limit} this lane should carry",
+    // AXIS-008's explainable ordering: the card names its own rank factors —
+    // value, risk and SLA pressure, each 0-100 — so the order to work the lane
+    // in is a claim a reader can check, not an oracle.
+    "rank.why": "Value {value} · Risk {risk} · SLA {sla}",
+    "rank.title": "Why this order",
     overflow: "and {more} more",
     unassigned: "Nobody",
     "sev.breach": "Overdue",
@@ -153,6 +158,8 @@ const LABELS: Record<string, Record<string, string>> = {
     "state.cancelled": "ملغاة",
     "wip.count": "{open} مفتوحة",
     "wip.congested": "يحمل {open}، أكثر من {limit} المسموح لهذا المسار",
+    "rank.why": "القيمة {value} · المخاطرة {risk} · الموعد {sla}",
+    "rank.title": "لماذا هذا الترتيب",
     overflow: "و{more} غيرها",
     unassigned: "بلا مسؤول",
     "sev.breach": "متأخرة",
@@ -549,6 +556,35 @@ export default function AxisBoard() {
                           ) : null}
                         </span>
                         <span className="font-ui text-12 text-muted">{card.kind}</span>
+                        {/* AXIS-008's explainable ordering: the three factors
+                            behind this card's place in the lane, restated as
+                            0-100 so the order is checkable at a glance. */}
+                        {(() => {
+                          const score = priorityScore(card, now);
+                          const value = Math.round(Math.min(1, (card.valueMinor ?? 0) / WEIGHTS.valueCapMinor) * 100);
+                          const risk = Math.round(((card.riskScore ?? 50) / 100) * 100);
+                          const sla = Math.round(
+                            ((card.slaDueAt == null
+                              ? 0.5
+                              : card.slaDueAt <= now
+                                ? 1
+                                : Math.max(0, 1 - (card.slaDueAt - now) / WEIGHTS.slaHorizonMs)) * 100)
+                          );
+                          return (
+                            <span
+                              className="font-mono text-11 text-subtle"
+                              title={l("rank.title")}
+                            >
+                              {l("rank.why", {
+                                value: String(value),
+                                risk: String(risk),
+                                sla: String(sla)
+                              })}
+                              {" · "}
+                              {Math.round(score * 100)}
+                            </span>
+                          );
+                        })()}
                         <span className="flex items-center justify-between gap-2 font-ui text-12 text-subtle">
                           <span>{who(card.ownerRef, loaded.names) ?? l("unassigned")}</span>
                           {card.valueMinor !== null && card.currency ? (
