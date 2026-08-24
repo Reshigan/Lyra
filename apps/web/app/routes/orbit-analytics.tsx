@@ -317,6 +317,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     handoverRate: ratio(handed, total),
     retention: ratio(won, won + gone),
     csat: meanOf(closed.data.map((row) => row.csat)),
+    // The conversation-signal engine (orbit-signal.ts) writes this per inbound
+    // message; averaged here so the trend is visible without opening a thread.
+    sentiment: meanOf(closed.data.map((row) => row.sentiment)),
     quality: meanOf(scores.data.map((row) => row.score))
   };
 }
@@ -458,6 +461,14 @@ export default function CustomerAnalytics() {
           >
             <span className="font-ui text-12 text-subtle">{l("csat")}</span>
           </EvidenceLink>
+          <span className="font-ui text-12 text-subtle" title={l("sentimentWhy")
+}>
+            {l("sentiment")}:{" "}
+            {loaded.sentiment === null
+              ? "—"
+              : `${loaded.sentiment > 0 ? "+" : ""}${Math.round(loaded.sentiment
+)}`}
+          </span>
           <span className="font-ui text-12 text-subtle">
             {l("quality")}: {outOf(loaded.quality, 100)}
           </span>
