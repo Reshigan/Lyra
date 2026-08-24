@@ -29,7 +29,7 @@ let client: Client;
 let ctx: Ctx;
 const NOW = Date.parse("2026-08-20T12:00:00Z");
 
-function actorWith(grants: string[]): Actor {
+function actorWith(grants: readonly string[]): Actor {
   return {
     kind: "user",
     id: "u_1",
@@ -40,7 +40,7 @@ function actorWith(grants: string[]): Actor {
 
 // An operations role: bulk actions are desk work, not admin work —
   // axis.lead carries exactly the case permissions the actions need.
-  async function makeCtx(permissions: string[] = permissionsForRole("axis.lead")): Promise<Ctx> {
+  async function makeCtx(permissions: readonly string[] = permissionsForRole("axis.lead")): Promise<Ctx> {
   return {
     db: drizzle(client) as unknown as Ctx["db"],
     tenantId: "t_1",
