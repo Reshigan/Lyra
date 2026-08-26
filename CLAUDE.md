@@ -144,7 +144,7 @@ wins.
 Follow docs/14-roadmap.md milestones M0→M6. Do not start a milestone before the
 previous one's acceptance checklist passes (checklists are in that file).
 
-## Current status (2026-08-22)
+## Current status (2026-08-26)
 
 The revenue-lines build (`docs/superpowers/specs/2026-08-16-revenue-lines-full-build-design.md`)
 is merged through PR #34, nothing left on a branch. Production answers:
@@ -152,16 +152,21 @@ is merged through PR #34, nothing left on a branch. Production answers:
 `{"ok":true,"environment":"demo",…}` — the path is `/health`, not `/v1/health` —
 and `pnpm e2e:live` passed 18/18 against it.
 
-This worktree is on `claude-md-status`, clean, five commits ahead of
-`origin/main` and unpushed: `6b0e0e5` docs, `f4dfaa4` the staff-status key fix
-below, `a2d2f4b` nine ORBIT/desk routes translating into the reader's chosen
-language rather than their profile's, `e314a7d` the tenant's time zone as a real
-setting rather than an `"Asia/Dubai"` default, `6cb9b22` docs/29.
+`main` carries two fixes from an eleven-persona production sweep: `f622a2e`,
+the three journey loaders serving HTTP 500 to any reader without the module
+permission (seventh dead-seam sighting, see below), and `5aa8684`, the libSQL
+busy timeout that took `f622a2e`'s own deploy down on a `checks / e2e` race.
 
-Blocked on the user, not on code: seed-history run `32352805879` waits on the
-`production` Environment review, which is why `/v1/orbit/teams` still answers
-`{"data":[]}`; and #32/#33/#34 plus these five commits are not on
-lyra.vantax.co.za until a `workflow_dispatch` of `deploy.yml` runs.
+Two claims that stood here for days and were both wrong: seed-history run
+`32352805879` was recorded as blocked on a `production` Environment review —
+it is `"conclusion":"success"`, completed 2026-08-20. And the production deploy
+gate was recorded as needing a `workflow_dispatch` and the user's review; that
+gate was removed 2026-08-22, `deploy.yml:66-70` says so in its own comment.
+Read the workflow before describing what it does.
+
+`/v1/orbit/teams` answering `{"data":[]}` was attributed to that blocked seed
+run, so the cause is unknown again and the symptom needs re-testing under an
+authenticated session (unauthenticated it is a 401, which proves nothing).
 
 Running under a self-paced `/loop` toward the full roadmap (M0-M6) in
 production. Loop iteration is autonomous; `pnpm deploy:prod` and any `git push`
@@ -196,6 +201,21 @@ The repo has no required status checks, so `gh pr merge --auto` merges
 immediately instead of queuing behind them. Read `gh pr checks` and wait for
 green yourself.
 
+`@libsql/client` has **no** default busy timeout: a second writer on the same
+`file:` database raises `SQLITE_BUSY` at 0ms rather than waiting. That is the
+shape of an e2e spec that passes on a laptop and fails on a loaded CI runner,
+and it is now set once in `makeLibsqlDb` (`packages/db/src/client-libsql.ts`)
+where all seven callers route through. The knob is the client config field
+`timeout`, **not** a URL query parameter — `@libsql/core` rejects an unknown
+one outright (`URL_PARAM_NOT_SUPPORTED`, `config.js:52`) and accepts only `tls`
+and `authToken`, so `?busy_timeout=5000` breaks every caller including the API
+server.
+
+A function returned from a vitest `beforeEach` is that hook's *teardown* and
+gets invoked. `beforeEach(() => api.mockClear())` therefore calls the mock, and
+a mock whose implementation rejects fails the test with its own rejection —
+which reads as the code under test being broken. Use a braced body.
+
 ## The recurring defect: dead seams
 
 A dead seam is a declared contract nothing routes through: a web type assumed
@@ -203,7 +223,7 @@ rather than mirrored, a parameter no caller passes, a column holding something
 other than what its name says. It tests green because the unit test calls the
 function directly and the fixture mocks the assumption instead of the server.
 Fix it at the seam every reader routes through, grep the call sites in the same
-commit, verify on a deployed environment. Six sightings so far.
+commit, verify on a deployed environment. Nine sightings so far.
 
 1. `apps/web/app/components/whitespace-commentary.tsx`, typed against an assumed
    contract while the API was built in parallel, shared one field with what
@@ -240,6 +260,56 @@ commit, verify on a deployed environment. Six sightings so far.
    already in a database, and nothing at all about a hostname serving an older
    build — re-sweep the deployed environment after a contract fix, and confirm
    *which* build answered.
+6. `f622a2e`, found by an eleven-persona sweep: `/journey/axis`, `/journey/north`
+   and `/journey/scout` served HTTP 500 to every reader who is not a full tenant
+   administrator. Journey routes sit outside the module shells on purpose — a
+   cross-module journey any signed-in reader can walk — so
+   `availableShellsForRoles` never gates them and the API is the only thing that
+   says no. All three loaders called `api()` bare, and an `ApiError` is a crash
+   to React Router. `asRouteError` (`apps/web/app/api.server.ts:19`) is the seam
+   that already existed for exactly this, docstring and all, and
+   `orbit-journey.tsx` already routed its three calls through it. Green in tests
+   the whole time because unit tests call loaders with an administrator's
+   context: the fixture supplied the permission the bug needed absent. When a
+   route's failure mode is "the caller lacks a permission", the test has to
+   *be* that caller.
+7. The ORBIT routing desk printed `[object Object]` where three columns should
+   hold text: teams' `nameJson`, team members' `skillsJson`, routing rules'
+   `conditionsJson`. `Cell`'s `json` branch already existed and already routes a
+   value through `readable()` — locale out of a localised name, join for a list,
+   flatten for a small map — added when the customers list printed
+   `{"en":"E2E Visitor"}`. These three declared `type: "text"` in `columns`
+   while the `fields` entry directly beside them correctly said `"json"`: the
+   write side right, the read side wrong, and nothing compared the two because
+   both are valid `FieldType`s. The guard is
+   `apps/web/app/modules/spec.json-columns.test.ts`, which walks the real
+   `WORKSPACES` and fails on any `*Json` column not declared `json` — the shape
+   `spec.routes.test.ts` already uses to break on a link with no screen. Two
+   lessons worth more than the fix. A seam can be *present, correct and unused*:
+   the renderer was right the whole time and no reader reached it, so grep for
+   the declarations that should route through a seam, not only for its callers.
+   And the route sweep missed all three because `sweep.mjs` signs in as
+   `tenant.admin`, which resolves only to the `admin` shell (`lens.ts` — a
+   cross-module read deliberately does not imply a shell, ADR-0054 being the one
+   named exception), so every `/orbit/*` shell screen answered 403 and was never
+   rendered. A sweep's coverage is bounded by its persona's shells; `[object
+   Object]` was already one of its own CHECKS patterns and it still saw nothing.
+8. `/north/explorer` served HTTP 500 to every reader, on every parameter
+   combination, while its four sibling NORTH screens rendered. Its snapshots
+   call asked for `limit=${WINDOW * 4}` = 360; `ListQuery.limit` is capped at
+   `MAX_PAGE = 200` (`apps/api/src/http.ts:186,218`), so the API answered 400 —
+   *not* a truncated page — and `readable()` (`north-shared.tsx`) swallowed only
+   403 and 404, so the rethrown `ApiError` reached React Router as a crash. Two
+   fixes, one commit: the loader now asks for `MAX_PAGE`, and `readable()`
+   swallows any 4xx except 401 (a signed-out reader still needs the login
+   redirect; a 5xx still rethrows). Green in CI the whole time because
+   `north-explorer.test.ts` does `vi.mock("../api.server")` and resolves it with
+   hand-made pages — the fixture supplied the success the bug needed absent, the
+   same shape as sighting 6. Two lessons: a caller-side constant that feeds a
+   server-side validated bound is a contract, so grep every `limit=` against
+   `MAX_PAGE` (explorer was the only one over it); and a status allowlist in a
+   swallow-helper is a seam that decides which failures become crashes — write
+   it as "what must NOT be swallowed", not as a list of what may.
 
 One more, from writing docs/29 rather than from a screen: its draft headline
 ("every posting hard-codes 5% tax") was wrong because citations inherited from a
@@ -250,14 +320,21 @@ Open every `file:line` before publishing it.
 
 ## Deployment
 
-A push to `main` fires `deploy.yml`: full CI, then the **staging** deploy
-(`staging.lyra.vantax.co.za` / `api-staging.lyra.vantax.co.za`).
-**lyra.vantax.co.za is production, not staging** — production is a
-`workflow_dispatch` of the same workflow gated on the `production` GitHub
-Environment (review from Reshigan), so a fix merged to `main` is not on the demo
-site until that dispatch runs. Both share concurrency group
-`deploy-deploy-refs/heads/main`, `cancel-in-progress: false`, so production
-queues *behind* staging rather than racing it.
+A push to `main` fires `deploy.yml`: full CI, then **both** deploys — staging
+(`staging.lyra.vantax.co.za` / `api-staging.lyra.vantax.co.za`) and production
+(`lyra.vantax.co.za`). **lyra.vantax.co.za is production, not staging.** The
+`staging` job is `if: github.event_name == 'push'`; the `production` job has
+`needs: checks` and `environment: production` and *no* event condition, so it
+runs on every green push as well as on `workflow_dispatch`. The required
+reviewer that used to gate it was removed 2026-08-22 (`deploy.yml:66-70`); the
+Environment's branch policy still restricts deployments to `main`. Both jobs
+share concurrency group `deploy-deploy-refs/heads/main`,
+`cancel-in-progress: false`, so production queues *behind* staging rather than
+racing it.
+
+So a push to `main` is a production release. There is no second gate between
+the two, which is exactly why the `git push` confirmation is the one that
+matters.
 
 CI has a job that only runs on push, so **a green PR proves less than it
 looks**: `eval-live` is `if: github.event_name != 'pull_request'`, reported

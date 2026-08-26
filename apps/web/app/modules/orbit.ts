@@ -710,7 +710,7 @@ export const orbit: WorkspaceSpec = {
       filters: [{ name: "status", options: ["active", "disabled"] }],
       columns: [
         { name: "key", type: "text" },
-        { name: "nameJson", type: "text" },
+        { name: "nameJson", type: "json" },
         { name: "isDefault", type: "boolean" },
         { name: "status", type: "text", badge: true },
         { name: "updatedAt", type: "datetime", sortable: true }
@@ -736,7 +736,7 @@ export const orbit: WorkspaceSpec = {
       columns: [
         { name: "teamId", type: "text" },
         { name: "userId", type: "text" },
-        { name: "skillsJson", type: "text" },
+        { name: "skillsJson", type: "json" },
         { name: "maxConcurrent", type: "number" },
         { name: "createdAt", type: "datetime", sortable: true }
       ],
@@ -762,7 +762,7 @@ export const orbit: WorkspaceSpec = {
       columns: [
         { name: "seq", type: "number", sortable: true },
         { name: "teamId", type: "text" },
-        { name: "conditionsJson", type: "text" },
+        { name: "conditionsJson", type: "json" },
         { name: "enabled", type: "boolean" },
         { name: "updatedAt", type: "datetime", sortable: true }
       ],

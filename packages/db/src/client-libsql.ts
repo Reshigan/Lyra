@@ -12,9 +12,7 @@ import * as schema from "./schema.js";
  * the deploy of f622a2e down this way while passing locally in 18s.
  *
  * Five seconds is longer than any write this codebase makes and short enough
- * that a genuine deadlock still fails the run instead of hanging it. Remote
- * libsql-server URLs manage their own locking, so the timeout is only applied
- * to file-backed databases.
+ * that a genuine deadlock still fails the run instead of hanging it.
  */
 const BUSY_TIMEOUT_MS = 5_000;
 
