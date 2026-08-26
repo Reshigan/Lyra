@@ -12,7 +12,7 @@ import { parseWhitespaceBrief, type WhitespaceEvidence } from "../src/whitespace
 import { parseAudienceProposal, type AudienceEvidence } from "../src/audience-brief.js";
 import { CAMPAIGN_CHANNELS, parseCampaignPlan, type CampaignPlanEvidence } from "../src/campaign-plan.js";
 import { promptNouns } from "../src/vocabulary.js";
-import { aggregateCxScore, localeGap } from "../src/cx-judge.js";
+import { aggregateCxScore, cxRubricSummary } from "../src/cx-judge.js";
 import {
   verifyNumericClaims,
   verifyGroundedness,
@@ -583,42 +583,37 @@ interface CxQualityThresholds {
 // docs/13 §3.3: "CX quality rubric >= 4.2/5 (ar+en separately — parity gap
 // <= 0.2)". Scores the exact judge in packages/model-gateway/src/cx-judge.ts.
 // The judge replies are canned for the same reason the axis model replies are:
-// a gate that calls a live model is not a gate. The live weekly re-score
-// (docs/12 §4) runs the same rubric against sampled production conversations.
+// a gate that calls a live model is not a gate. That makes this task a parser
+// regression and nothing more — it cannot see a prompt edit or a model swap.
+// `live-cx-quality` in evals/live.ts is the other half, running the same rubric
+// through a real judge; and docs/12 §4's weekly re-score over sampled
+// production conversations is the third, which is ops.
 async function scoreCxQuality(dir: string): Promise<Metric[]> {
   const cases = await loadCases<CxQualityCase>(dir);
   const thresholds = await loadThresholds<CxQualityThresholds>(dir);
 
-  const byLocale = new Map<string, number[]>();
-  let scored = 0;
-  for (const c of cases) {
-    const score = aggregateCxScore(c.judgeReplies);
-    if (score === null) continue;
-    scored += 1;
-    byLocale.set(c.locale, [...(byLocale.get(c.locale) ?? []), score]);
-  }
+  // Same aggregation the live task uses (`cxRubricSummary`), so the two halves
+  // of the CX gate cannot drift apart on the arithmetic — they differ only in
+  // where the score came from.
+  const summary = cxRubricSummary(
+    cases.map((c) => ({ locale: c.locale, score: aggregateCxScore(c.judgeReplies), expectPass: true }))
+  );
 
-  const mean = (xs: number[]): number => xs.reduce((a, b) => a + b, 0) / xs.length;
-  const locales = [...byLocale.entries()].sort(([a], [b]) => a.localeCompare(b));
-  const metrics = locales.map(([locale, scores]) =>
-    metric(`rubric.${locale}`, mean(scores), { min: thresholds.rubricMin })
+  const metrics = summary.perLocale.map(([locale, value]) =>
+    metric(`rubric.${locale}`, value, { min: thresholds.rubricMin })
   );
 
   // The gap is only meaningful between two languages; with one locale in the
   // set there is no parity claim to make, so the metric stays off rather than
   // reporting a flattering zero.
-  if (locales.length === 2) {
-    const [a, b] = locales as [[string, number[]], [string, number[]]];
-    metrics.push(
-      metric(`parityGap.${a[0]}-${b[0]}`, localeGap(mean(a[1]), mean(b[1])), {
-        max: thresholds.parityGapMax
-      })
-    );
+  if (summary.parityGap) {
+    const [a, b, gap] = summary.parityGap;
+    metrics.push(metric(`parityGap.${a}-${b}`, gap, { max: thresholds.parityGapMax }));
   }
 
   // A judge that stops returning parseable scores would otherwise show up as a
   // suspiciously good run over the handful of samples that still worked.
-  metrics.push(metric("scoredRate", cases.length ? scored / cases.length : 1, { min: thresholds.scoredMin }));
+  metrics.push(metric("scoredRate", summary.scoredRate, { min: thresholds.scoredMin }));
   return metrics;
 }
 

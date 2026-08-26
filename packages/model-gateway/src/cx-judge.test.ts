@@ -5,6 +5,7 @@ import {
   CX_RUBRIC,
   aggregateCxScore,
   cxJudgePrompt,
+  cxRubricSummary,
   localeGap,
   parseCxScore
 } from "./cx-judge.js";
@@ -114,5 +115,49 @@ describe("localeGap", () => {
 
   it("is zero for parity", () => {
     expect(localeGap(4.3, 4.3)).toBe(0);
+  });
+});
+
+describe("cxRubricSummary", () => {
+  const s = (locale: string, score: number | null, expectPass = true) => ({ locale, score, expectPass });
+
+  it("means the passing samples per locale, sorted", () => {
+    const out = cxRubricSummary([s("en", 4.5), s("ar", 4.1), s("en", 4.3), s("ar", 4.5)]);
+    expect(out.perLocale).toEqual([
+      ["ar", 4.3],
+      ["en", 4.4]
+    ]);
+  });
+
+  it("excludes the reject cases from the locale means", () => {
+    // A 1.0 reject inside the mean would drag a passing locale under the floor
+    // and read as a bad model rather than a working gate.
+    const out = cxRubricSummary([s("en", 4.4), s("en", 1.0, false)]);
+    expect(out.perLocale).toEqual([["en", 4.4]]);
+  });
+
+  it("reports the parity gap only between exactly two locales", () => {
+    expect(cxRubricSummary([s("en", 4.4), s("ar", 4.2)]).parityGap).toEqual(["ar", "en", expect.closeTo(0.2, 5)]);
+    expect(cxRubricSummary([s("en", 4.4)]).parityGap).toBeNull();
+    expect(cxRubricSummary([s("en", 4.4), s("ar", 4.2), s("fr", 4.3)]).parityGap).toBeNull();
+  });
+
+  it("takes the worst reject, not the mean — one waved-through payout is the failure", () => {
+    const out = cxRubricSummary([s("en", 1.2, false), s("ar", 4.9, false)]);
+    expect(out.worstReject).toBe(4.9);
+  });
+
+  it("has no reject metric when the set has no reject cases", () => {
+    expect(cxRubricSummary([s("en", 4.4)]).worstReject).toBeNull();
+  });
+
+  it("counts unscored samples against scoredRate and nowhere else", () => {
+    const out = cxRubricSummary([s("en", 4.4), s("en", null)]);
+    expect(out.scoredRate).toBe(0.5);
+    expect(out.perLocale).toEqual([["en", 4.4]]);
+  });
+
+  it("is a scoredRate of 1 for an empty set rather than a divide by zero", () => {
+    expect(cxRubricSummary([]).scoredRate).toBe(1);
   });
 });

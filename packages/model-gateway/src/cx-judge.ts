@@ -127,3 +127,62 @@ export function aggregateCxScore(replies: readonly string[]): number | null {
 export function localeGap(a: number, b: number): number {
   return Math.abs(a - b);
 }
+
+export interface CxScoredSample {
+  locale: string;
+  /** null when no judge run parsed — counted against `scoredRate`, nothing else. */
+  score: number | null;
+  /** false for a reply the rubric is supposed to mark down. */
+  expectPass: boolean;
+}
+
+export interface CxRubricSummary {
+  /** Mean of the passing samples, per locale, sorted by locale. */
+  perLocale: [string, number][];
+  /** Gap between exactly two locales, else null — one language makes no parity claim. */
+  parityGap: [string, string, number] | null;
+  /** Worst score among the samples that should have been marked down, else null. */
+  worstReject: number | null;
+  /** Fraction of samples the judge returned a usable score for. */
+  scoredRate: number;
+}
+
+/**
+ * The arithmetic behind the CX gate, kept out of the scorer so it can be tested
+ * without a judge. Both halves of the gate share it: the canned `cx-quality`
+ * task and the live one, which differ only in where `score` came from.
+ *
+ * `worstReject` is a max and not a mean on purpose — one hallucinated payout
+ * waved through is the failure, and a mean over both languages hides it.
+ */
+export function cxRubricSummary(samples: readonly CxScoredSample[]): CxRubricSummary {
+  const mean = (xs: number[]): number => xs.reduce((a, b) => a + b, 0) / xs.length;
+
+  const byLocale = new Map<string, number[]>();
+  for (const s of samples) {
+    if (s.score === null || !s.expectPass) continue;
+    byLocale.set(s.locale, [...(byLocale.get(s.locale) ?? []), s.score]);
+  }
+  const perLocale = [...byLocale.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([locale, scores]) => [locale, mean(scores)] as [string, number]);
+
+  const parityGap =
+    perLocale.length === 2
+      ? ([perLocale[0]![0], perLocale[1]![0], localeGap(perLocale[0]![1], perLocale[1]![1])] as [
+          string,
+          string,
+          number
+        ])
+      : null;
+
+  const rejects = samples.filter((s) => !s.expectPass && s.score !== null).map((s) => s.score as number);
+  const usable = samples.filter((s) => s.score !== null).length;
+
+  return {
+    perLocale,
+    parityGap,
+    worstReject: rejects.length ? Math.max(...rejects) : null,
+    scoredRate: samples.length ? usable / samples.length : 1
+  };
+}

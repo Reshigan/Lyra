@@ -6,6 +6,7 @@ import { EntitlementsJson, PolicyJson } from "@lyra/db";
 import { permissionsForRole, type Ctx } from "@lyra/core";
 import { Gateway } from "../src/gateway.js";
 import { EXTRACTION_FIELDS, extractionMessages, extractionSchema, normalizeField, parseExtraction } from "../src/extract.js";
+import { CX_JUDGE_SAMPLES, CX_JUDGE_VERSION, aggregateCxScore, cxJudgePrompt, cxRubricSummary } from "../src/cx-judge.js";
 import type { ProviderEnv } from "../src/types.js";
 import { loadCases, loadThresholds, metric, type Metric } from "./harness.js";
 
@@ -179,6 +180,83 @@ export async function scoreLiveExtraction(dir: string): Promise<Metric[]> {
     );
 }
 
+interface LiveCxCase {
+  id: string;
+  locale: string;
+  context: string[];
+  reply: string;
+  /** false for a reply the rubric must mark down — see `reject` below. */
+  expectPass: boolean;
+}
+
+interface LiveCxThresholds {
+  rubricMin: number;
+  parityGapMax: number;
+  scoredMin: number;
+  /** Ceiling the bad replies must stay under. */
+  rejectMax: number;
+}
+
+/**
+ * docs/13 §3.3's CX rubric measured against a real judge. The deterministic
+ * `cx-quality` task next door scores canned `judgeReplies`, which gates the
+ * parse and the aggregate and nothing else: it cannot notice a prompt edit, a
+ * model swap or a judge that has started rating everything a 5. This task runs
+ * `cxJudgePrompt` through the real Gateway `CX_JUDGE_SAMPLES` times per case and
+ * medians them, exactly as `sweepQaScores` does in apps/api/src/engines/orbit-qa.ts
+ * — same module, same purpose, so a routing or guardrail change shows up here.
+ *
+ * The set is two-sided on purpose. Good replies must clear `rubricMin`; the
+ * `expectPass: false` cases invent a settlement figure the conversation never
+ * gave, and must land under `rejectMax`. A one-sided set passes just as well
+ * with a judge that has stopped reading.
+ */
+export async function scoreLiveCxQuality(dir: string): Promise<Metric[]> {
+  const cases = await loadCases<LiveCxCase>(dir);
+  const thresholds = await loadThresholds<LiveCxThresholds>(dir);
+  const provider = liveProvider();
+  const ctx = await liveCtx(provider.overrides);
+  const gateway = new Gateway({ env: provider.env });
+  console.log(`  provider: ${provider.label}, judge ${CX_JUDGE_VERSION}, n=${CX_JUDGE_SAMPLES}`);
+
+  const scored = await Promise.all(
+    cases.map(async (c) => {
+      const prompt = cxJudgePrompt({ locale: c.locale, context: c.context, reply: c.reply });
+      const replies = await Promise.all(
+        Array.from({ length: CX_JUDGE_SAMPLES }, async () => {
+          const res = await gateway.complete(ctx, {
+            module: "orbit",
+            purpose: "output.review",
+            tier: "standard",
+            subjectRef: c.id,
+            locale: c.locale,
+            messages: [{ role: "user", content: prompt }]
+          });
+          return res.text;
+        })
+      );
+      const score = aggregateCxScore(replies);
+      if (score === null) console.log(`  ${c.id}: no parseable judge run out of ${CX_JUDGE_SAMPLES}`);
+      return { ...c, score };
+    })
+  );
+
+  const summary = cxRubricSummary(scored);
+  const metrics: Metric[] = summary.perLocale.map(([locale, value]) =>
+    metric(`rubric.${locale}`, value, { min: thresholds.rubricMin })
+  );
+  if (summary.parityGap) {
+    const [a, b, gap] = summary.parityGap;
+    metrics.push(metric(`parityGap.${a}-${b}`, gap, { max: thresholds.parityGapMax }));
+  }
+  if (summary.worstReject !== null) {
+    metrics.push(metric("reject", summary.worstReject, { max: thresholds.rejectMax }));
+  }
+  metrics.push(metric("scoredRate", summary.scoredRate, { min: thresholds.scoredMin }));
+  return metrics;
+}
+
 export const LIVE_SCORERS: Record<string, (dir: string) => Promise<Metric[]>> = {
-  "live-extraction": scoreLiveExtraction
+  "live-extraction": scoreLiveExtraction,
+  "live-cx-quality": scoreLiveCxQuality
 };
