@@ -244,6 +244,10 @@ export async function scoreLiveCxQuality(dir: string): Promise<Metric[]> {
       );
       const score = aggregateCxScore(replies);
       if (score === null) console.log(`  ${c.id}: no parseable judge run out of ${CX_JUDGE_SAMPLES}`);
+      // parityGap is a metric over locale means, so it can fail with every case
+      // clearing its own floor and nothing above explaining which case moved.
+      // One line each, always, is what turns that into a diagnosis.
+      else console.log(`  ${c.id} (${c.locale}): ${score.toFixed(3)}`);
       // ADR-0074 §2. A bare "reject = 4.000" cannot tell a judge that scored
       // accuracy 1 and was outvoted by the other three dimensions from one that
       // rated the fabrication accurate — and those want opposite fixes. Print
