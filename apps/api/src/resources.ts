@@ -1,7 +1,7 @@
 import { eq, inArray } from "drizzle-orm";
 import { id } from "@lyra/db";
 import { PaymentPlanWrite, schema } from "@lyra/db";
-import { badRequest, can, checkKAnonymity, CUSTOMER_PII, DEFAULT_K_FLOOR, emit, gate, scoped, sealFields } from "@lyra/core";
+import { autoApproveProblem, badRequest, can, checkKAnonymity, CUSTOMER_PII, DEFAULT_K_FLOOR, emit, gate, scoped, sealFields } from "@lyra/core";
 import { SENSITIVE_EXTRACTION_FIELDS } from "@lyra/model-gateway";
 import { fieldKey } from "./env.js";
 import { register, type Resource } from "./crud.js";
@@ -66,6 +66,33 @@ export const CORE = register(
   r("tenants", schema.tenants, "tn", "core", {
     read: "core:tenants:read",
     update: "core:tenants:update"
+  }, {
+    // `policyJson` is replaced wholesale here, and one of its fields is the
+    // auto-approve allowlist — the documented way out of the approval gate.
+    // The settings endpoint that owns the list validates what goes in it; this
+    // path reaches the same array, and a guard on only one of two doors is not
+    // a guard. Same rule, same function (packages/core/src/approvals.ts): no
+    // unknown key, and nothing docs/19 §7 puts a floor under.
+    beforeWrite: (_ctx, values) => {
+      const policy = values.policyJson;
+      let parsed: unknown = policy;
+      if (typeof policy === "string") {
+        try {
+          parsed = JSON.parse(policy);
+        } catch {
+          throw badRequest("policyJson is not valid JSON");
+        }
+      }
+      if (parsed && typeof parsed === "object") {
+        const list = (parsed as { autoApprove?: unknown }).autoApprove;
+        if (list !== undefined) {
+          if (!Array.isArray(list)) throw badRequest("policy.autoApprove must be an array");
+          const problem = autoApproveProblem(list);
+          if (problem) throw badRequest(problem);
+        }
+      }
+      return values;
+    }
   }),
   r("users", schema.users, "us", "core", rcud("core:users"), {
     searchable: ["name", "email"],

@@ -78,6 +78,11 @@ const HAND_WRITTEN: Op[] = [
   { method: "get", path: "/v1/core/modules/config", summary: "Every module's effective configuration — enabled flag, autonomy override, model tier and settings", permission: "core:settings:read", tag: "core" },
   { method: "patch", path: "/v1/core/modules/{module}/config", summary: "Update one module's configuration; absent keys fall through to the tenant-wide defaults", permission: "core:settings:update", tag: "core", requestBody: true },
 
+  // The escape hatch out of the approval gate, so the write path validates what
+  // the seed never had to: an unknown policy key is a 400 rather than an inert
+  // entry, and a `neverAutoApprove` policy is refused outright (docs/19 §7).
+  { method: "patch", path: "/v1/core/settings/auto-approve", summary: "Add or remove approval policy keys from the tenant's auto-approve allowlist; never-auto-approve policies are refused", permission: "core:settings:update", tag: "core", requestBody: true },
+
   // SQL aggregate for the 360 screen's Position card — never a paged read.
   { method: "get", path: "/v1/core/customers/{id}/position", summary: "Financial position: premium, commission and settled claims summed per currency", permission: "core:customers:read", tag: "core" },
 

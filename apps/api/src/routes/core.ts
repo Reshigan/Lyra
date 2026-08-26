@@ -5,6 +5,7 @@ import { id as newId, schema, PolicyJson, toJson, parseJson, AutonomyLevel } fro
 import {
   actorRef,
   audit,
+  autoApproveProblem,
   badRequest,
   base32Encode,
   can,
@@ -513,4 +514,48 @@ coreRoutes.patch("/modules/:module/config", async (c) => {
     after: { module: after.moduleConfig[module] }
   });
   return c.json({ module, config: after.moduleConfig[module] });
+});
+
+// The tenant's auto-approve allowlist (CLAUDE.md convention 4, docs/19 §7).
+// Until this endpoint it had five readers and one writer — the seed — so an
+// operator could not change it at runtime at all. What may go in the array is
+// `autoApproveProblem`'s call, shared with the tenant CRUD path that can also
+// reach it (packages/core/src/approvals.ts).
+const AutoApproveBody = z
+  .object({
+    add: z.array(z.string().max(128)).max(64).optional(),
+    remove: z.array(z.string().max(128)).max(64).optional()
+  })
+  .strict();
+
+coreRoutes.patch("/settings/auto-approve", async (c) => {
+  const ctx = ctxOf(c);
+  require_(ctx.actor, "core:settings:update", { tenantId: ctx.tenantId, module: "core" });
+  const input = await body(c, AutoApproveBody);
+
+  const problem = autoApproveProblem(input.add ?? []);
+  if (problem) throw badRequest(problem);
+
+  const [row] = await ctx.db.select().from(schema.tenants).where(eq(schema.tenants.id, ctx.tenantId)).limit(1);
+  if (!row) throw notFound("tenant");
+  const before = parseJson(PolicyJson, row.policyJson);
+
+  const removing = new Set(input.remove ?? []);
+  const autoApprove = [
+    ...new Set([...before.autoApprove.filter((k) => !removing.has(k)), ...(input.add ?? [])])
+  ].sort();
+  const after = { ...before, autoApprove };
+
+  await ctx.db
+    .update(schema.tenants)
+    .set({ policyJson: toJson(PolicyJson, after), updatedAt: ctx.now })
+    .where(eq(schema.tenants.id, ctx.tenantId));
+
+  await audit(ctx, {
+    action: "core.auto_approve.updated",
+    subjectRef: `tenant:${ctx.tenantId}`,
+    before: { autoApprove: before.autoApprove },
+    after: { autoApprove }
+  });
+  return c.json({ autoApprove });
 });

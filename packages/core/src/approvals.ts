@@ -39,6 +39,33 @@ function policy(p: ApprovalPolicy): ApprovalPolicy {
   return p;
 }
 
+/**
+ * Validate a proposed `policy.autoApprove` allowlist, returning the reason it
+ * may not be stored, or null.
+ *
+ * Every writer of the array routes through here, because the array is the one
+ * documented way out of the approval gate and it has two doors: the settings
+ * endpoint that owns it, and the generic tenant CRUD PATCH that replaces
+ * `policyJson` wholesale. A guard on one of those is not a guard.
+ *
+ * Two rules. An unknown key sits in the array granting nothing — the readers
+ * look policies up by exact key — so it is refused rather than stored as an
+ * inert entry that reads like a permission. And a `neverAutoApprove` policy may
+ * not be listed at all: docs/19 §7 puts a floor under any tenant setting, so no
+ * payout, client-money movement or regulatory crossing is automatable. `gate()`
+ * already declines to honour such an entry; refusing it on the way in means the
+ * stored policy never claims something the engine will not do.
+ */
+export function autoApproveProblem(keys: readonly unknown[]): string | null {
+  for (const key of keys) {
+    if (typeof key !== "string") return "auto-approve entries must be approval policy keys";
+    const p = APPROVAL_POLICIES[key];
+    if (!p) return `unknown approval policy "${key}"`;
+    if (p.neverAutoApprove) return `"${key}" may never be auto-approved (docs/19 §7)`;
+  }
+  return null;
+}
+
 export const APPROVAL_POLICIES: Record<string, ApprovalPolicy> = Object.fromEntries(
   [
     // money
