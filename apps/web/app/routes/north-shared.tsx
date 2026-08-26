@@ -29,12 +29,20 @@ export function labelsFrom(
  * A section the actor may not read is absent, not an error: the API is the
  * authority on what they see, so one withheld permission costs a card rather
  * than the whole screen.
+ *
+ * Any 4xx, not only 403/404. This swallowed exactly those two for months and
+ * /north/explorer served HTTP 500 to everyone the whole time: its snapshots
+ * call asked for `limit=360`, MAX_PAGE is 200 (apps/api/src/http.ts:186), the
+ * API answered 400, and a rethrown ApiError is a crash to React Router. A card
+ * the API refuses is still a missing card, whatever it refused it for; a 5xx
+ * still rethrows, because that one really is broken. So does 401: a signed-out
+ * reader needs the login redirect, not a page of empty cards.
  */
 export async function readable<T>(call: Promise<T>): Promise<T | null> {
   try {
     return await call;
   } catch (error) {
-    if (error instanceof ApiError && (error.status === 403 || error.status === 404)) return null;
+    if (error instanceof ApiError && error.status >= 400 && error.status < 500 && error.status !== 401) return null;
     throw error;
   }
 }

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "../api-error";
 import { deltaBps, headlineDirection } from "./north-explorer";
 
 vi.mock("../api.server", () => ({ api: vi.fn() }));
@@ -74,5 +75,30 @@ describe("north-explorer loader asOf", () => {
     } as never);
     const snapshotsCall = vi.mocked(api).mock.calls[1]?.[0] as string;
     expect(snapshotsCall).not.toContain("&to=");
+  });
+
+  // Both halves of the 500 this screen served in production. The loader asked
+  // for limit=360, MAX_PAGE is 200 (apps/api/src/http.ts:186), so the API
+  // answered 400 — and `readable()` swallowed only 403/404, so the rethrown
+  // ApiError reached React Router as a crash. Every earlier test here mocked
+  // `api` with a resolved page, which is why it was green the whole time.
+  it("never asks the list API for more rows than it will serve", async () => {
+    vi.mocked(api).mockResolvedValueOnce({ data: [{ key: "gwp", grain: "day" }] });
+    vi.mocked(api).mockResolvedValueOnce({ data: [] });
+    await loader({ request: new Request("https://lyra.test/north/explorer"), context: fakeContext() } as never);
+    for (const [url] of vi.mocked(api).mock.calls) {
+      const limit = Number(new URL(url as string, "https://api.test").searchParams.get("limit"));
+      expect(limit).toBeLessThanOrEqual(200);
+    }
+  });
+
+  it("renders without the snapshots rather than crashing when the API refuses them", async () => {
+    vi.mocked(api).mockResolvedValueOnce({ data: [{ key: "gwp", grain: "day" }] });
+    vi.mocked(api).mockRejectedValueOnce(new ApiError({ title: "bad request", status: 400 }, null));
+    const out = (await loader({
+      request: new Request("https://lyra.test/north/explorer"),
+      context: fakeContext()
+    } as never)) as { snapshots: unknown };
+    expect(out.snapshots).toBeNull();
   });
 });

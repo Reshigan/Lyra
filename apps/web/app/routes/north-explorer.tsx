@@ -33,6 +33,10 @@ import {
 export const PERM = { read: "north:snapshots:read" } as const;
 
 const WINDOW = 90;
+// The list API's ceiling (MAX_PAGE, apps/api/src/http.ts:186). Asking past it
+// is a 400, not a truncated page — `limit=${WINDOW * 4}` was 360 and this
+// screen answered HTTP 500 to every reader because of it.
+const MAX_PAGE = 200;
 const GRAINS = ["day", "week", "month"] as const;
 
 /* ------------------------------------------------------------------ labels */
@@ -172,7 +176,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const page = metric
     ? await readable(
         api<Page<Snapshot>>(
-          `/v1/north/snapshots?metricKey=${encodeURIComponent(metric.key)}&grain=${grain}&sort=period&order=desc&limit=${WINDOW * 4}${to}`,
+          `/v1/north/snapshots?metricKey=${encodeURIComponent(metric.key)}&grain=${grain}&sort=period&order=desc&limit=${MAX_PAGE}${to}`,
           opts
         )
       )
