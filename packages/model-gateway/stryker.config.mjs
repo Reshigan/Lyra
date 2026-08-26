@@ -22,7 +22,9 @@ export default {
   packageManager: "pnpm",
   plugins: ["@stryker-mutator/vitest-runner"],
   testRunner: "vitest",
-  reporters: ["html", "clear-text", "progress"],
+  // json alongside html: the html report is a single-page app with the data
+  // inlined, so "which mutants survived in one file" is only greppable from json.
+  reporters: ["html", "json", "clear-text", "progress"],
   coverageAnalysis: "perTest",
   tempDirName: "packages/model-gateway/.stryker-tmp",
   ignorePatterns: [

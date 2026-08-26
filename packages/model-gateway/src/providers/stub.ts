@@ -43,6 +43,7 @@ export function makeStub(
       };
     },
     async embed(req) {
+      if (script.fail) throw script.fail;
       // Hash-bucketed unit vectors: stable per text, no network, similar texts differ.
       const vectors = req.texts.map((t) => {
         const v = new Array<number>(8).fill(0);
