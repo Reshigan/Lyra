@@ -1,6 +1,6 @@
 import { Hero, ScreenState, renderSection, hueVar, type Section } from "@lyra/ui";
 import type { LoaderFunctionArgs } from "react-router";
-import { api } from "../api.server";
+import { api, asRouteError } from "../api.server";
 import { cloudflare } from "../context";
 import { JourneyNav, JourneyContinue } from "../components/journey-nav";
 import { translator, DEFAULT_LOCALE } from "../i18n";
@@ -47,10 +47,14 @@ function groupByProductLine(cases: CaseRow[]): ProductLineTotal[] {
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = context.get(cloudflare).env;
+  // A journey route sits outside the module shells on purpose, so every signed-in
+  // reader reaches this loader and the API is the only thing that says no. Without
+  // asRouteError an ApiError is a crash: production served 500 "could not build the
+  // page" to north.exec and tenant.compliance on /journey/axis.
   const page = await api<{ data: CaseRow[] }>(
     `/v1/axis/cases?limit=${CASES_LIMIT}&sort=valueMinor&order=desc`,
     { env, request }
-  );
+  ).catch(asRouteError);
   const lines = groupByProductLine(page.data);
   return { lines, caseCount: page.data.length };
 }

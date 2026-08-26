@@ -1,6 +1,6 @@
 import { Hero, ScreenState, renderSection, hueVar, type Section } from "@lyra/ui";
 import type { LoaderFunctionArgs } from "react-router";
-import { api } from "../api.server";
+import { api, asRouteError } from "../api.server";
 import { cloudflare } from "../context";
 import { JourneyNav, JourneyContinue } from "../components/journey-nav";
 import { translator, DEFAULT_LOCALE } from "../i18n";
@@ -47,10 +47,13 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = context.get(cloudflare).env;
   const url = new URL(request.url);
   const productLine = url.searchParams.get("productLine") ?? "";
+  // Outside the module shells by design, so an unpermitted reader reaches this
+  // loader and only the API refuses. asRouteError turns that into the boundary's
+  // "not permitted"; without it production served 500 to north.exec.
   const page = await api<{ data: WhitespaceCommentary[] }>(
     `/v1/scout/whitespaces/commentary?limit=${COMMENTARY_LIMIT}`,
     { env, request }
-  );
+  ).catch(asRouteError);
   const rows = page.data.filter((r) => !r.suppressed);
   const ranked = [...rows].sort((a, b) => Number(matches(b.category, productLine)) - Number(matches(a.category, productLine)));
   return { rows: ranked, productLine };

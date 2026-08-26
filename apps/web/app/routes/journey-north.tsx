@@ -1,6 +1,6 @@
 import { Hero, ScreenState, renderSection, hueVar, type Section } from "@lyra/ui";
 import type { LoaderFunctionArgs } from "react-router";
-import { api } from "../api.server";
+import { api, asRouteError } from "../api.server";
 import { cloudflare } from "../context";
 import { JourneyNav, JourneyContinue } from "../components/journey-nav";
 import { translator, DEFAULT_LOCALE } from "../i18n";
@@ -52,10 +52,13 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = context.get(cloudflare).env;
   const url = new URL(request.url);
   const productLine = url.searchParams.get("productLine") ?? "";
+  // Outside the module shells by design, so an unpermitted reader reaches this
+  // loader and only the API refuses. asRouteError turns that into the boundary's
+  // "not permitted"; without it production served 500 to tenant.compliance.
   const page = await api<{ data: BriefingRow[] }>(
     `/v1/north/briefings?limit=${BRIEFING_HISTORY_LIMIT}&sort=createdAt&order=desc`,
     { env, request }
-  );
+  ).catch(asRouteError);
   // The pick happens in the component: which briefing is readable depends on
   // the reader's locale, and the shell knows that, the loader does not.
   const history = [...page.data].reverse();
