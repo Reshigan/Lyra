@@ -28,7 +28,12 @@ const JAILBREAK = [
   /\bdisregard (?:your|the) (?:system )?prompt\b/i,
   /\breveal (?:your )?(?:system )?prompt\b/i,
   /\bpretend you are (?:not|no longer)\b/i,
-  /\bdeveloper mode\b/i
+  /\bdeveloper mode\b/i,
+  // ar. Lyra ships en+ar (CLAUDE.md §7), so an English-only pattern set is a
+  // guard with a hole the size of half the product's locales.
+  /تجاهل\s+(?:كل\s+)?(?:التعليمات|الأوامر)/,
+  /(?:اكشف|أظهر)\s+(?:عن\s+)?(?:موجه|تعليمات)\s*(?:النظام)?/,
+  /تظاهر\s+أنك/
 ];
 
 /** Placeholders the model invented rather than echoed — a sign it is hallucinating PII. */
@@ -92,9 +97,25 @@ export function checkOutput(input: PostCheckInput): GuardrailHit[] {
   return hits;
 }
 
-export function checkInput(text: string): GuardrailHit[] {
+/**
+ * Screens a turn before it reaches the model.
+ *
+ * Severity is a property of provenance, not of the sentence. Text a signed-in
+ * human typed is warned about — staff probe the assistant, and refusing them
+ * teaches nothing. Text nobody in this tenant authored on purpose — a tool
+ * result, a retrieved document, a harvested page — carries the operator's
+ * authority into the prompt without the operator's intent, so a jailbreak
+ * pattern there blocks. Callers that splice third-party content into a turn
+ * pass `untrusted` (gateway.complete does it for role=tool automatically;
+ * anything embedding retrieved text into a user turn must say so).
+ */
+export function checkInput(text: string, opts: { untrusted?: boolean } = {}): GuardrailHit[] {
   for (const re of JAILBREAK) {
-    if (re.test(text)) return [{ rule: "prompt_injection", severity: "warn", detail: re.source.slice(0, 40) }];
+    if (re.test(text)) {
+      return [
+        { rule: "prompt_injection", severity: opts.untrusted ? "block" : "warn", detail: re.source.slice(0, 40) }
+      ];
+    }
   }
   return [];
 }

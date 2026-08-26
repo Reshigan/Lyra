@@ -185,6 +185,12 @@ export interface ApprovalRow {
 }
 
 export interface GateInput {
+  /**
+   * The caller's own autonomy bound already cleared this amount (see
+   * signal-autopilot's boundCheck). Auto-approves — unless the policy is
+   * `neverAutoApprove`, which no bound may override.
+   */
+  withinBound?: boolean;
   policyKey: string;
   subjectRef: string;
   /** Drives threshold-based dual control. */
@@ -209,6 +215,20 @@ function needsDualControl(p: ApprovalPolicy, amountMinor: number | undefined): b
 export async function gate(ctx: Ctx, input: GateInput): Promise<ApprovalRow | null> {
   const p = APPROVAL_POLICIES[input.policyKey];
   if (!p) throw internal(`unknown approval policy ${input.policyKey}`);
+
+  // An autonomy bound is a standing grant the tenant configured (an autopilot
+  // spend bound, say), so a call under it acts without asking. It is still
+  // routed through here rather than around here: `neverAutoApprove` is a floor
+  // no bound may undercut, and the decision lands in the audit trail either
+  // way. Callers pass `withinBound` instead of skipping the gate entirely.
+  if (input.withinBound && !p.neverAutoApprove) {
+    await audit(ctx, {
+      action: "core.approval.auto",
+      subjectRef: input.subjectRef,
+      after: { policyKey: p.key, amountMinor: input.amountMinor, withinBound: true }
+    });
+    return null;
+  }
 
   if (!p.neverAutoApprove && ctx.policy.autoApprove.includes(p.key)) {
     await audit(ctx, {

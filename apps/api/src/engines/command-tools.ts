@@ -77,7 +77,9 @@ export function toolsFor(agent: { toolsJson: string | null }): CommandToolDef[] 
       allow = [];
     }
   }
-  return allow ? COMMAND_TOOL_DEFS.filter((t) => allow!.includes(t.name)) : COMMAND_TOOL_DEFS;
+  // An unconfigured column is not a grant of everything: without an explicit
+  // allowlist an agent gets the non-consequential subset only.
+  return COMMAND_TOOL_DEFS.filter((t) => (allow ? allow.includes(t.name) : !t.consequential));
 }
 
 export function isCommandTool(name: string): boolean {

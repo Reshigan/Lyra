@@ -77,7 +77,9 @@ export class Gateway {
     // the same authority as the user turn, so it is screened with it. Assistant
     // turns are our own prior output and are not re-screened.
     const preHits: GuardrailHit[] = scrubbed.messages.flatMap((m) =>
-      m.role === "user" || m.role === "tool" ? checkInput(m.content) : []
+      m.role === "user" || m.role === "tool"
+        ? checkInput(m.content, { untrusted: m.role === "tool" || m.untrusted === true })
+        : []
     );
     for (const h of preHits) flags.add(h.rule);
 
@@ -118,7 +120,44 @@ export class Gateway {
       }
     }
 
-    const outbound = { ...req, messages: scrubbed.messages };
+    // An injection pattern in untrusted text is refused before the provider
+    // sees it — the only guardrail in the pre-flight set that can stop a call.
+    // Audited and recorded like any other refusal, with no tokens burned.
+    if (blocked(preHits)) {
+      await this.writeAudit(ctx, {
+        auditId,
+        req,
+        def,
+        inputHash,
+        outputHash: null,
+        tokensIn: 0,
+        tokensOut: 0,
+        cost: 0,
+        latencyMs: Date.now() - started,
+        toolCalls: [],
+        flags: [...flags, "refused_input"],
+        outcome: "refused"
+      });
+      await recordGuardrails(ctx, preHits, req.subjectRef ? { subjectRef: req.subjectRef } : {});
+      return {
+        text: "",
+        toolCalls: [],
+        model: def.model,
+        provider: def.provider,
+        tier: req.tier,
+        usage: { tokensIn: 0, tokensOut: 0, costMicro: 0 },
+        latencyMs: Date.now() - started,
+        finishReason: "refusal",
+        flags: [...flags, "refused_input"],
+        auditId
+      };
+    }
+
+    // `untrusted` steers guardrails only — strip it before the provider call.
+    const outbound = {
+      ...req,
+      messages: scrubbed.messages.map(({ untrusted: _untrusted, ...m }) => m)
+    };
 
     let result;
     let lastError: unknown;
@@ -199,26 +238,98 @@ export class Gateway {
 
   /** bge-m3 covers ar+en in one space (docs/02 §5), so no per-locale index. */
   async embed(ctx: Ctx, req: EmbedRequest): Promise<EmbedResponse> {
-    // A paused tenant is paused for indexing too, or a kill switch quietly
-    // leaves half the AI running.
-    await assertNotKilled(ctx, req.module);
-    await assertBudget(ctx, req.module);
+    const started = Date.now();
     const onPrem = ctx.policy.dataResidency === "on-prem";
     const key = onPrem ? EMBED_MODEL.onprem : EMBED_MODEL.cloud;
     const def = CATALOGUE[key];
     if (!def) throw new Error(`no embedding model ${key}`);
+
+    // EmbedRequest carries no tier or subject — embeddings are one shape of
+    // call — so the audit row records the pair it does have.
+    const audit: Pick<ModelRequest, "module" | "purpose" | "tier" | "subjectRef"> = {
+      module: req.module,
+      purpose: req.purpose,
+      tier: "fast"
+    };
+    const inputHash = await hashObject({ model: def.model, texts: req.texts });
+    const auditId = id("aia", ctx.now);
+
+    // A paused tenant is paused for indexing too, or a kill switch quietly
+    // leaves half the AI running. Audited before the throw for the same reason
+    // complete() does it: every call lands in ai_audit_log, not just the ones
+    // that reach a provider (CLAUDE.md §3).
+    for (const [outcome, check] of [
+      ["killed", () => assertNotKilled(ctx, req.module)],
+      ["budget_exceeded", () => assertBudget(ctx, req.module)]
+    ] as const) {
+      try {
+        await check();
+      } catch (err) {
+        await this.writeAudit(ctx, {
+          auditId,
+          req: audit,
+          def,
+          inputHash,
+          outputHash: null,
+          tokensIn: 0,
+          tokensOut: 0,
+          cost: 0,
+          latencyMs: Date.now() - started,
+          toolCalls: [],
+          flags: [outcome],
+          outcome
+        });
+        throw err;
+      }
+    }
 
     const provider = this.pick(def.provider);
     if (!provider.embed) throw new Error(`${def.provider} cannot embed`);
 
     // Embeddings are indexed and long-lived; scrubbing keeps PII out of the vector store.
     const scrubbed = scrubMessages(req.texts.map((content) => ({ content })));
-    const out = await provider.embed(
-      { ...req, texts: scrubbed.messages.map((m) => m.content) },
-      def.model,
-      this.opts.env
-    );
+    let out;
+    try {
+      out = await provider.embed(
+        { ...req, texts: scrubbed.messages.map((m) => m.content) },
+        def.model,
+        this.opts.env
+      );
+    } catch (err) {
+      await this.writeAudit(ctx, {
+        auditId,
+        req: audit,
+        def,
+        inputHash,
+        outputHash: null,
+        tokensIn: 0,
+        tokensOut: 0,
+        cost: 0,
+        latencyMs: Date.now() - started,
+        toolCalls: [],
+        flags: ["error"],
+        outcome: "error"
+      });
+      throw err;
+    }
+
     const cost = costMicro(def, out.usage.tokensIn, 0);
+    await this.writeAudit(ctx, {
+      auditId,
+      req: audit,
+      def,
+      inputHash,
+      // Vectors are not text; the hash covers what went in, and there is no
+      // output content to reconstruct.
+      outputHash: null,
+      tokensIn: out.usage.tokensIn,
+      tokensOut: 0,
+      cost,
+      latencyMs: Date.now() - started,
+      toolCalls: [],
+      flags: scrubbed.flags,
+      outcome: "ok"
+    });
     await charge(ctx, { tokensIn: out.usage.tokensIn, tokensOut: 0, costMicro: cost }, req.module);
 
     return {

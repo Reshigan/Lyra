@@ -284,23 +284,27 @@ async function commitMove(
   const moveId = newId("bmv", ctx.now);
 
   let approvedBy = "auto";
-  if (proposal.decision === "act_with_approval") {
-    try {
-      const approval = await gate(ctx, {
-        policyKey: "signal.budget_move",
-        subjectRef: `budget-moves:${moveId}`,
-        amountMinor: proposal.amountMinor,
-        context: { fromRef, toRef, boundMinor: proposal.boundMinor }
-      });
-      // gate() returned instead of throwing: either auto-approved by tenant
-      // policy, or an existing still-valid approved row — either way, acted.
-      approvedBy = approval?.decidedBy ?? "auto";
-    } catch (err) {
-      if (err instanceof AppError && err.code === "approval_required") {
-        approvedBy = "pending";
-      } else {
-        throw err;
-      }
+  // Every move goes through the approvals engine, under-bound ones included.
+  // The bound is a tenant autonomy grant, so it is passed as `withinBound`
+  // rather than as a reason to skip the call: gate() still honours
+  // `neverAutoApprove` (a floor no bound may undercut) and still writes the
+  // decision to the audit chain. Deciding with a bare `if` here left both out.
+  try {
+    const approval = await gate(ctx, {
+      policyKey: "signal.budget_move",
+      subjectRef: `budget-moves:${moveId}`,
+      amountMinor: proposal.amountMinor,
+      withinBound: proposal.decision === "act",
+      context: { fromRef, toRef, boundMinor: proposal.boundMinor }
+    });
+    // gate() returned instead of throwing: within bound, auto-approved by
+    // tenant policy, or an existing still-valid approved row — either way, acted.
+    approvedBy = approval?.decidedBy ?? "auto";
+  } catch (err) {
+    if (err instanceof AppError && err.code === "approval_required") {
+      approvedBy = "pending";
+    } else {
+      throw err;
     }
   }
 

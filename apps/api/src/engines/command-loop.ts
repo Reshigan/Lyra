@@ -1,7 +1,7 @@
 import { id as newId, schema } from "@lyra/db";
 import { type Ctx } from "@lyra/core";
 import type { Gateway, Message, ToolCall } from "@lyra/model-gateway";
-import { isOrbitTool, runOrbitTool } from "./orbit-tools.js";
+import { isOrbitTool, recordToolCall, runOrbitTool } from "./orbit-tools.js";
 import { toolsFor, type CommandToolDef } from "./command-tools.js";
 import { embedQuery } from "./vectorize.js";
 import type { Env } from "../env.js";
@@ -92,7 +92,36 @@ function primeConsequentialMap(defs: CommandToolDef[]): void {
  *  gates these: a draft_only tenant's loop reads but does not write. */
 const WRITES = new Set(["start_quote"]);
 
-async function executeCall(
+/** Exported for the audit test: the stub provider never emits a tool call, so
+ *  the only way to exercise this path is to call it. */
+export async function executeCall(
+  ctx: Ctx,
+  runId: string,
+  seq: number,
+  call: ToolCall,
+  allow: ReadonlySet<string>,
+  why: string,
+  envelope: Envelope
+): Promise<ToolOutcome> {
+  const startedAt = Date.now();
+  const outcome = await executeCallInner(ctx, runId, call, allow, why, envelope);
+  // Same `ai_tool_calls` row the ORBIT chat loop writes. This loop used to call
+  // runOrbitTool directly and audit nothing, so a command-center run left no
+  // record of what it touched while openapi.ts documented one.
+  await recordToolCall(ctx, {
+    runId,
+    seq,
+    name: call.name,
+    args: call.args,
+    outcome: outcome.outcome === "proposed" ? "awaiting_approval" : outcome.outcome,
+    approvalId: null,
+    result: outcome.result,
+    durationMs: Date.now() - startedAt
+  });
+  return outcome;
+}
+
+async function executeCallInner(
   ctx: Ctx,
   runId: string,
   call: ToolCall,
@@ -208,6 +237,9 @@ export async function runCommandLoop(
   if (recall.length) {
     messages.splice(1, 0, {
       role: "user",
+      // Corpus text, not the operator's words — a harvested page that says
+      // "ignore previous instructions" must not inherit their authority.
+      untrusted: true,
       content:
         "relevant prior intelligence:\n" +
         recall.map((m) => `- ${JSON.stringify(m.metadata ?? {}).slice(0, 200)}`).join("\n")
@@ -237,6 +269,7 @@ export async function runCommandLoop(
   };
 
   let seq = 0;
+  let toolSeq = 0;
   let last = await callOnce();
 
   while (last.toolCalls.length > 0 && seq < MAX_ROUNDS - 1) {
@@ -244,7 +277,7 @@ export async function runCommandLoop(
     const round: LoopRound = { seq, toolCalls: [] };
 
     for (const call of last.toolCalls) {
-      const outcome = await executeCall(ctx, runId, call, allow, last.text, envelope);
+      const outcome = await executeCall(ctx, runId, toolSeq++, call, allow, last.text, envelope);
       if (outcome.proposalId) proposalIds.push(outcome.proposalId);
       round.toolCalls.push({
         name: call.name,

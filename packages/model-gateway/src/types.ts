@@ -14,7 +14,15 @@ export const Message = z.object({
   content: z.string(),
   /** Set on role=tool so the provider adapter can thread the result back. */
   toolCallId: z.string().optional(),
-  name: z.string().optional()
+  name: z.string().optional(),
+  /**
+   * This turn carries third-party text the tenant did not author — retrieved
+   * documents, harvested pages, partner payloads — spliced into a user turn.
+   * role=tool is untrusted implicitly; anything else must say so, because the
+   * gateway cannot tell an operator's sentence from a corpus excerpt.
+   * Stripped before the provider call: it steers guardrails, not the model.
+   */
+  untrusted: z.boolean().optional()
 });
 export type Message = z.infer<typeof Message>;
 

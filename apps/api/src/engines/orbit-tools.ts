@@ -174,6 +174,42 @@ export async function runOrbitTool(ctx: Ctx, name: string, args: Record<string, 
  * becomes an `awaiting_approval` row and a tool result the model can react to,
  * so one blocked action does not fail the whole run.
  */
+/**
+ * The one place an ORBIT tool call becomes an `ai_tool_calls` row. Both
+ * executors route through it: the chat loop here and the command loop in
+ * command-loop.ts, which called `runOrbitTool` directly and so left its runs
+ * with no tool audit at all while openapi.ts advertised the rows.
+ */
+export async function recordToolCall(
+  ctx: Ctx,
+  entry: {
+    runId: string;
+    seq: number;
+    name: string;
+    args: Record<string, unknown>;
+    outcome: "ok" | "error" | "awaiting_approval";
+    approvalId: string | null;
+    result: unknown;
+    durationMs: number;
+  }
+): Promise<void> {
+  await ctx.db.insert(schema.aiToolCalls).values({
+    id: newId("atc", ctx.now),
+    tenantId: ctx.tenantId,
+    runId: entry.runId,
+    seq: entry.seq,
+    tool: entry.name,
+    argsHash: await hashObject(entry.args),
+    argsRedactedJson: JSON.stringify(entry.args),
+    consequential: ORBIT_TOOL_DEFS.find((d) => d.name === entry.name)?.consequential ?? false,
+    approvalId: entry.approvalId,
+    outcome: entry.outcome,
+    resultHash: await hashObject(entry.result),
+    durationMs: entry.durationMs,
+    ts: ctx.now
+  });
+}
+
 export async function executeOrbitToolCalls(
   ctx: Ctx,
   runId: string,
@@ -183,7 +219,6 @@ export async function executeOrbitToolCalls(
   const messages: Message[] = [];
   let seq = 0;
   for (const call of toolCalls) {
-    const def = ORBIT_TOOL_DEFS.find((d) => d.name === call.name);
     const startedAt = Date.now();
     let outcome: "ok" | "error" | "awaiting_approval" = "ok";
     let approvalId: string | null = null;
@@ -206,20 +241,15 @@ export async function executeOrbitToolCalls(
         result = { error: err instanceof Error ? err.message : "tool error" };
       }
     }
-    await ctx.db.insert(schema.aiToolCalls).values({
-      id: newId("atc", ctx.now),
-      tenantId: ctx.tenantId,
+    await recordToolCall(ctx, {
       runId,
       seq: seq++,
-      tool: call.name,
-      argsHash: await hashObject(call.args),
-      argsRedactedJson: JSON.stringify(call.args),
-      consequential: def?.consequential ?? false,
-      approvalId,
+      name: call.name,
+      args: call.args,
       outcome,
-      resultHash: await hashObject(result),
-      durationMs: Date.now() - startedAt,
-      ts: ctx.now
+      approvalId,
+      result,
+      durationMs: Date.now() - startedAt
     });
     // A tool result is prompt text, and an epoch instant is a 13-digit run —
     // which the scrubber's card rule eats whenever it passes Luhn, so
@@ -236,8 +266,24 @@ export async function executeOrbitToolCalls(
   return messages;
 }
 
-/** Filters the registry down to what an agent is allowed to reach for. */
+/**
+ * Filters the registry down to what an agent is allowed to reach for.
+ *
+ * A null `tools_json` is an unconfigured column, not a grant of everything:
+ * it used to hand an agent `create_endorsement_request` — a consequential tool
+ * — because nobody had filled the field in. Absent config now means the
+ * read-only subset; reaching a consequential tool takes an explicit listing.
+ */
 export function orbitToolsFor(agent: { toolsJson: string | null }): ToolDef[] {
-  const allow = agent.toolsJson ? (JSON.parse(agent.toolsJson) as string[]) : null;
-  return ORBIT_TOOL_DEFS.filter((t) => !allow || allow.includes(t.name));
+  let allow: string[] | null = null;
+  if (agent.toolsJson) {
+    try {
+      const parsed: unknown = JSON.parse(agent.toolsJson);
+      if (Array.isArray(parsed)) allow = parsed.filter((x): x is string => typeof x === "string");
+    } catch {
+      // A malformed allowlist offers nothing rather than everything.
+      allow = [];
+    }
+  }
+  return ORBIT_TOOL_DEFS.filter((t) => (allow ? allow.includes(t.name) : !t.consequential));
 }

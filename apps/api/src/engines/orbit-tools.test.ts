@@ -418,8 +418,18 @@ describe("tool results as prompt text", () => {
 });
 
 describe("orbitToolsFor", () => {
-  it("returns every tool def when the agent carries no allowlist", () => {
-    expect(orbitToolsFor({ toolsJson: null })).toHaveLength(ORBIT_TOOL_DEFS.length);
+  // An unconfigured column is not consent: a null allowlist used to hand the
+  // model `create_endorsement_request`. Absent config = read-only subset.
+  it("withholds consequential tools when the agent carries no allowlist", () => {
+    const defs = orbitToolsFor({ toolsJson: null });
+    expect(defs).toHaveLength(ORBIT_TOOL_DEFS.filter((t) => !t.consequential).length);
+    expect(defs.some((t) => t.name === "create_endorsement_request")).toBe(false);
+  });
+
+  it("still grants a consequential tool when it is explicitly listed", () => {
+    expect(orbitToolsFor({ toolsJson: JSON.stringify(["create_endorsement_request"]) }).map((t) => t.name)).toEqual([
+      "create_endorsement_request"
+    ]);
   });
 
   it("filters to the agent's allowlist", () => {

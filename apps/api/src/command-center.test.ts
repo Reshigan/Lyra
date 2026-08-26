@@ -158,6 +158,49 @@ describe("A1: the command loop is multi-round and proposes instead of acting", (
     expect(Array.isArray(proposals.body.data ?? proposals.body)).toBe(true);
   });
 
+  // openapi.ts documents ai_tool_calls for command runs; the loop called
+  // runOrbitTool directly and wrote none, so "what did this agent touch" was
+  // answerable for the ORBIT chat loop and blank here. The stub provider never
+  // emits a tool call, so the executor is exercised directly.
+  it("audits every tool call it executes", async () => {
+    const { executeCall } = await import("./engines/command-loop.js");
+    const { PolicyJson, EntitlementsJson } = await import("@lyra/db");
+    const { permissionsForRole } = await import("@lyra/core");
+    const ctx = {
+      db: database as unknown as Parameters<typeof executeCall>[0]["db"],
+      tenantId,
+      actor: {
+        kind: "user" as const,
+        id: "usr_test_audit",
+        tenantId,
+        roles: ["axis.lead"],
+        permissions: permissionsForRole("axis.lead"),
+        grants: []
+      },
+      requestId: "req_audit",
+      now: Date.now(),
+      locale: "en" as const,
+      policy: PolicyJson.parse({}),
+      entitlements: EntitlementsJson.parse({})
+    } as Parameters<typeof executeCall>[0];
+
+    const before = (await database.select().from(schema.aiToolCalls)).length;
+    await executeCall(
+      ctx,
+      "air_test_audit",
+      0,
+      { id: "tc1", name: "fetch_policy", args: { policyId: "pol_demo_001" } },
+      new Set(["fetch_policy"]),
+      "because the operator asked",
+      { level: "assist" }
+    );
+
+    const rows = await database.select().from(schema.aiToolCalls);
+    expect(rows.length - before).toBe(1);
+    expect(rows.at(-1)!.runId).toBe("air_test_audit");
+    expect(rows.at(-1)!.tool).toBe("fetch_policy");
+  });
+
   it("caps rounds at 6 even when the model keeps asking for tools", async () => {
     // Engine-level property; asserted via the exported constant so a tuning
     // change is deliberate, not silent.

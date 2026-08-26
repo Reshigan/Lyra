@@ -231,6 +231,32 @@ describe("gateway.complete", () => {
     const budget = await ctx.db.select().from(schema.aiBudgets);
     expect(budget[0]!.tokensUsed).toBeGreaterThan(0);
   });
+
+  // CLAUDE.md §3: every model call is audited. embed() charged budget but wrote
+  // no row, so "what did we send a model about this customer" had a hole on
+  // every ORBIT and command-center run.
+  it("writes an audit row like every other model call", async () => {
+    const stub = makeStub();
+    const gw = new Gateway({ env: {}, providers: { "workers-ai": stub } });
+    await gw.embed(ctx, { module: "scout", purpose: "scout.signal.embed", texts: ["motor cover"] });
+    const audit = await ctx.db.select().from(schema.aiAuditLog);
+    expect(audit).toHaveLength(1);
+    expect(audit[0]!.purpose).toBe("scout.signal.embed");
+    expect(audit[0]!.model).toBe("@cf/baai/bge-m3");
+    expect(audit[0]!.outcome).toBe("ok");
+    expect(audit[0]!.tokensIn).toBeGreaterThan(0);
+  });
+
+  it("audits a killed embed, so a paused tenant still leaves a trail", async () => {
+    const stub = makeStub();
+    const gw = new Gateway({ env: {}, providers: { "workers-ai": stub } });
+    const paused = { ...ctx, policy: { ...ctx.policy, aiPaused: true } };
+    await expect(
+      gw.embed(paused, { module: "scout", purpose: "scout.signal.embed", texts: ["x"] })
+    ).rejects.toThrow();
+    const audit = await ctx.db.select().from(schema.aiAuditLog);
+    expect(audit[0]!.outcome).toBe("killed");
+  });
 });
 
 describe("gateway.generateImage", () => {

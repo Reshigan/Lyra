@@ -262,6 +262,31 @@ describe("runBudgetAutopilot", () => {
     expect(moves).toHaveLength(0);
   });
 
+  // The bound is a tenant autonomy grant, not a reason to skip the engine. An
+  // under-bound move used to set approvedBy="auto" from a bare `if` and never
+  // reach gate(), so `neverAutoApprove` on the policy could not floor it and
+  // nothing recorded that a decision had been auto-made. Route it through.
+  it("records an auto-approval decision for an under-bound move", async () => {
+    await campaign({ id: "cmp_motor", autonomyLevel: "act", boundMinor: 1_000_000 });
+    await spendRow("cmp_motor", "google_search", "2023-11-10", 200_000, 40);
+    await spendRow("cmp_motor", "meta", "2023-11-10", 200_000, 20);
+    await bind("cmp_motor", 500_000, ctx.now - 2 * DAY_MS);
+
+    expect(await runBudgetAutopilot(ctx)).toBe(1);
+
+    const moves = await ctx.db.select().from(schema.signalBudgetMoves);
+    expect(moves).toHaveLength(1);
+    expect(moves[0]!.approvedBy).toBe("auto");
+
+    // The audit chain stores payload hashes, not payloads, so the evidence a
+    // decision was made is the entry itself against the move's subjectRef.
+    const chain = await chainFor(ctx);
+    const auto = chain.filter((r) => r.action === "core.approval.auto");
+    expect(auto).toHaveLength(1);
+    expect(auto[0]!.subjectRef).toBe(`budget-moves:${moves[0]!.id}`);
+    expect(auto[0]!.afterHash).not.toBeNull();
+  });
+
   it("routes an over-bound move to act_with_approval via the signal.budget_move gate", async () => {
     await campaign({ id: "cmp_health", autonomyLevel: "act_with_approval", boundMinor: 100_000 });
     // Deliberately large spend gap so the proposed move exceeds the bound.
