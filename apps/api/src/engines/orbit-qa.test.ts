@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { PolicyJson, EntitlementsJson, schema } from "@lyra/db";
 import { permissionsForRole, type Actor, type Ctx } from "@lyra/core";
-import { Gateway, makeStub } from "@lyra/model-gateway";
+import { CX_JUDGE_VERSION, Gateway, makeStub } from "@lyra/model-gateway";
 import { sweepQaScores } from "./orbit-qa.js";
 
 // The QA agent's scoring sweep. These tests pin the contract the coaching
@@ -52,9 +52,11 @@ async function makeCtx(now = NOW): Promise<Ctx> {
   };
 }
 
-function judgeGateway(score5: number) {
+function judgeGateway(score5: number | Record<string, number>) {
   const reply = JSON.stringify(
-    Object.fromEntries(["accuracy", "clarity", "tone", "actionability"].map((k) => [k, score5]))
+    typeof score5 === "number"
+      ? Object.fromEntries(["accuracy", "clarity", "tone", "actionability"].map((k) => [k, score5]))
+      : score5
   );
   const stub = makeStub({ replies: [reply] });
   return new Gateway({ env: {}, providers: { "workers-ai": stub, anthropic: stub, "openai-compat": stub } });
@@ -126,6 +128,23 @@ describe("sweepQaScores", () => {
     expect(row?.scoredBy).toBe("agent:qa");
     expect(row?.score).toBe(80); // 4/5 → 80/100
     expect(row?.rubricKey).toBe("cx_judge");
+  });
+
+  // ADR-0074. Under v1 this reply — clear, warm, actionable, and inventing a
+  // payout figure — stored 80/100 with the accuracy score discarded, so nobody
+  // reviewing the QA wall could see what was wrong with it.
+  it("caps a fluent fabrication at its accuracy score and stores the breakdown", async () => {
+    const convId = await seedConversation();
+    const dimensions = { accuracy: 1, clarity: 5, tone: 5, actionability: 5 };
+    expect(await sweepQaScores(ctx, judgeGateway(dimensions))).toBe(1);
+
+    const [row] = await ctx.db.select().from(schema.orbitQaScores).where(eq(schema.orbitQaScores.conversationId, convId));
+    expect(row?.score).toBe(20); // 1/5, not the 4.0 mean
+    expect(JSON.parse(row!.breakdownJson!)).toEqual({
+      judgeVersion: CX_JUDGE_VERSION,
+      score5: 1,
+      dimensions
+    });
   });
 
   it("never re-scores a conversation that already has a QA score", async () => {

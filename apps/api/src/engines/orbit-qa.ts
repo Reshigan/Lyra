@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
 import { id as newId, schema } from "@lyra/db";
 import { audit, type Ctx } from "@lyra/core";
-import { cxJudgePrompt, parseCxScore, type Gateway } from "@lyra/model-gateway";
+import { CX_JUDGE_VERSION, cxJudgePrompt, parseCxDimensions, type Gateway } from "@lyra/model-gateway";
 import { agentByKey } from "./ai-agent.js";
 
 // The QA half of ORBIT §2.1's promise: "QA agent scores 100% of
@@ -78,8 +78,9 @@ export async function sweepQaScores(ctx: Ctx, gateway: Gateway): Promise<number>
           { role: "user", content: cxJudgePrompt({ locale: conv.lang, context: transcript.context, reply: transcript.reply }) }
         ]
       });
-      const score5 = parseCxScore(res.text);
-      if (score5 === null) continue;
+      const judged = parseCxDimensions(res.text);
+      if (judged === null) continue;
+      const score5 = judged.score;
 
       // Rubric is 1..5; the column stores 0..100 so both scales coexist
       // without a second column.
@@ -91,7 +92,16 @@ export async function sweepQaScores(ctx: Ctx, gateway: Gateway): Promise<number>
         conversationId: conv.id,
         rubricKey: "cx_judge",
         score: score100,
-        breakdownJson: JSON.stringify({ judgeVersion: "cx-rubric-v1", score5 }),
+        // ADR-0074 §2: the per-dimension scores are the reason a reply scored
+        // what it did. v1 stored the composite alone, so a reviewer could not
+        // tell a weak reply from an inaccurate one — and the composite now
+        // caps at accuracy, which is only legible with the breakdown beside it.
+        breakdownJson: JSON.stringify({
+          judgeVersion: CX_JUDGE_VERSION,
+          score5,
+          dimensions: judged.dimensions,
+          ...(judged.why ? { why: judged.why } : {})
+        }),
         scoredBy: "agent:qa",
         ts: ctx.now
       });

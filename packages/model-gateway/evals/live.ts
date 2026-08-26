@@ -6,7 +6,14 @@ import { EntitlementsJson, PolicyJson } from "@lyra/db";
 import { permissionsForRole, type Ctx } from "@lyra/core";
 import { Gateway } from "../src/gateway.js";
 import { EXTRACTION_FIELDS, extractionMessages, extractionSchema, normalizeField, parseExtraction } from "../src/extract.js";
-import { CX_JUDGE_SAMPLES, CX_JUDGE_VERSION, aggregateCxScore, cxJudgePrompt, cxRubricSummary } from "../src/cx-judge.js";
+import {
+  CX_JUDGE_SAMPLES,
+  CX_JUDGE_VERSION,
+  aggregateCxScore,
+  cxJudgePrompt,
+  cxRubricSummary,
+  parseCxDimensions
+} from "../src/cx-judge.js";
 import type { ProviderEnv } from "../src/types.js";
 import { loadCases, loadThresholds, metric, type Metric } from "./harness.js";
 
@@ -237,6 +244,19 @@ export async function scoreLiveCxQuality(dir: string): Promise<Metric[]> {
       );
       const score = aggregateCxScore(replies);
       if (score === null) console.log(`  ${c.id}: no parseable judge run out of ${CX_JUDGE_SAMPLES}`);
+      // ADR-0074 §2. A bare "reject = 4.000" cannot tell a judge that scored
+      // accuracy 1 and was outvoted by the other three dimensions from one that
+      // rated the fabrication accurate — and those want opposite fixes. Print
+      // the breakdown whenever a case lands on the wrong side of its threshold.
+      const missed = c.expectPass
+        ? score !== null && score < thresholds.rubricMin
+        : score === null || score > thresholds.rejectMax;
+      if (missed) {
+        for (const r of replies) {
+          const parsed = parseCxDimensions(r);
+          if (parsed) console.log(`  ${c.id}: ${JSON.stringify(parsed.dimensions)}${parsed.why ? ` — ${parsed.why}` : ""}`);
+        }
+      }
       return { ...c, score };
     })
   );

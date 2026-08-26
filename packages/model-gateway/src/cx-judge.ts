@@ -14,7 +14,13 @@ import { parseJsonObject } from "./parse.js";
  * version travels inside the prompt: a judge run kept as evidence names the
  * rubric it was scored against.
  */
-export const CX_JUDGE_VERSION = "cx-rubric-v1";
+export const CX_JUDGE_VERSION = "cx-rubric-v2";
+
+/**
+ * The dimension that caps the composite (ADR-0074). Named rather than indexed
+ * so `CX_RUBRIC` can be reordered without silently moving the veto.
+ */
+const VETO_DIMENSION = "accuracy";
 
 /** docs/13 §3.4: five runs per sample, aggregated by median. */
 export const CX_JUDGE_SAMPLES = 5;
@@ -74,6 +80,12 @@ export function cxJudgePrompt(sample: CxSample): string {
     "Score each dimension from 1 (fails entirely) to 5 (could not be better):",
     dimensions,
     "",
+    // ADR-0074 §4: v1 left this to inference and the judge inferred generously,
+    // scoring an invented payout figure 1 on accuracy but the reply 4 overall.
+    "Score accuracy against the conversation above and nothing else. A number,",
+    "date or decision the conversation does not support is a 1, however well the",
+    "reply is written — accuracy caps the overall score.",
+    "",
     "Conversation:",
     ...sample.context,
     "",
@@ -84,16 +96,32 @@ export function cxJudgePrompt(sample: CxSample): string {
   ].join("\n");
 }
 
+export interface CxDimensionScores {
+  /** Every dimension in `CX_RUBRIC`, by name. */
+  dimensions: Record<string, number>;
+  /** The composite the gate and the QA column use. */
+  score: number;
+  /** The judge's one-sentence rationale, when it gave one. */
+  why?: string;
+}
+
 /**
- * One judge run to one score, or null if the run is unusable. Null rather than a
- * low score: a judge that returned prose, or dropped a dimension, has told us
- * nothing about the reply — scoring that as a 1 would let a flaky judge fail a
- * good sample.
+ * One judge run to its full breakdown, or null if the run is unusable. Null
+ * rather than a low score: a judge that returned prose, or dropped a dimension,
+ * has told us nothing about the reply — scoring that as a 1 would let a flaky
+ * judge fail a good sample.
+ *
+ * The composite is `min(mean, accuracy)` (ADR-0074). An equal-weight mean rated
+ * a reply that invented a settlement figure 4.0/5, because it was clear, warm
+ * and actionable about something untrue. Accuracy caps the score instead: a
+ * reply is worth no more than it is true, however well it is written. The cap
+ * does not bind on an accurate reply, where the mean still governs.
  */
-export function parseCxScore(reply: string): number | null {
+export function parseCxDimensions(reply: string): CxDimensionScores | null {
   const parsed = parseJsonObject(reply);
   if (!parsed) return null;
 
+  const dimensions: Record<string, number> = {};
   let total = 0;
   for (const dimension of CX_RUBRIC) {
     const value = parsed[dimension.name];
@@ -101,9 +129,23 @@ export function parseCxScore(reply: string): number | null {
     // Out of range means the judge ignored the rubric it was handed. Clamping
     // would hide that; the run is discarded and the median carries the sample.
     if (value < MIN_SCORE || value > MAX_SCORE) return null;
+    dimensions[dimension.name] = value;
     total += value;
   }
-  return total / CX_RUBRIC.length;
+
+  const mean = total / CX_RUBRIC.length;
+  const veto = dimensions[VETO_DIMENSION];
+  const why = parsed["why"];
+  return {
+    dimensions,
+    score: veto === undefined ? mean : Math.min(mean, veto),
+    ...(typeof why === "string" ? { why } : {})
+  };
+}
+
+/** The composite alone. See `parseCxDimensions` for how it is derived. */
+export function parseCxScore(reply: string): number | null {
+  return parseCxDimensions(reply)?.score ?? null;
 }
 
 /** Median of the parseable runs, or null when none parsed. */

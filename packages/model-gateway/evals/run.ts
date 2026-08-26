@@ -571,11 +571,15 @@ interface CxQualityCase {
   reply: string;
   /** One entry per judge run — `CX_JUDGE_SAMPLES` of them (docs/13 §3.4). */
   judgeReplies: string[];
+  /** Absent means true. false for a reply the rubric must mark down (ADR-0074). */
+  expectPass?: boolean;
 }
 
 interface CxQualityThresholds {
   rubricMin: number;
   parityGapMax: number;
+  /** Ceiling the marked-down replies must stay under. */
+  rejectMax: number;
   /** Fraction of samples that must produce a usable score at all. */
   scoredMin: number;
 }
@@ -596,7 +600,11 @@ async function scoreCxQuality(dir: string): Promise<Metric[]> {
   // of the CX gate cannot drift apart on the arithmetic — they differ only in
   // where the score came from.
   const summary = cxRubricSummary(
-    cases.map((c) => ({ locale: c.locale, score: aggregateCxScore(c.judgeReplies), expectPass: true }))
+    cases.map((c) => ({
+      locale: c.locale,
+      score: aggregateCxScore(c.judgeReplies),
+      expectPass: c.expectPass !== false
+    }))
   );
 
   const metrics = summary.perLocale.map(([locale, value]) =>
@@ -609,6 +617,12 @@ async function scoreCxQuality(dir: string): Promise<Metric[]> {
   if (summary.parityGap) {
     const [a, b, gap] = summary.parityGap;
     metrics.push(metric(`parityGap.${a}-${b}`, gap, { max: thresholds.parityGapMax }));
+  }
+
+  // ADR-0074. Without a reject side this task gated the mean and nothing else:
+  // the accuracy cap could be deleted and every metric here would stay green.
+  if (summary.worstReject !== null) {
+    metrics.push(metric("reject", summary.worstReject, { max: thresholds.rejectMax }));
   }
 
   // A judge that stops returning parseable scores would otherwise show up as a

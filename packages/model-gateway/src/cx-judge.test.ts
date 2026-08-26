@@ -7,6 +7,7 @@ import {
   cxJudgePrompt,
   cxRubricSummary,
   localeGap,
+  parseCxDimensions,
   parseCxScore
 } from "./cx-judge.js";
 
@@ -47,6 +48,26 @@ describe("parseCxScore", () => {
     expect(parseCxScore(good)).toBeCloseTo(4.5, 5);
   });
 
+  // ADR-0074. The reject fixture in evals/live-cx-quality invents a settlement
+  // figure the conversation never gave and is otherwise a lovely reply: it
+  // scored accuracy 1, clarity 5, tone 5, actionability 5 — mean 4.0, which
+  // v1 called 80%. Accuracy caps the composite, so it is worth 1.0.
+  it("caps the score at accuracy: a fluent fabrication is not a good reply", () => {
+    expect(parseCxScore(reply({ accuracy: 1, clarity: 5, tone: 5, actionability: 5 }))).toBe(1);
+    expect(parseCxScore(reply({ accuracy: 2, clarity: 5, tone: 5, actionability: 5 }))).toBe(2);
+  });
+
+  it("leaves an accurate reply on its mean", () => {
+    // accuracy 5, mean 4.5 — the cap is above the mean and does not bind.
+    expect(parseCxScore(good)).toBeCloseTo(4.5, 5);
+    // accuracy 5, everything else poor: the mean governs, not the cap.
+    expect(parseCxScore(reply({ accuracy: 5, clarity: 1, tone: 1, actionability: 1 }))).toBe(2);
+  });
+
+  it("is the mean when accuracy ties it", () => {
+    expect(parseCxScore(reply({ accuracy: 3, clarity: 3, tone: 3, actionability: 3 }))).toBe(3);
+  });
+
   it("reads a reply the judge wrapped in a code fence", () => {
     expect(parseCxScore("```json\n" + good + "\n```")).toBeCloseTo(4.5, 5);
   });
@@ -76,6 +97,41 @@ describe("parseCxScore", () => {
   it("rejects a score outside the 1-5 rubric rather than clamping it", () => {
     expect(parseCxScore(reply({ accuracy: 9, clarity: 5, tone: 5, actionability: 5 }))).toBeNull();
     expect(parseCxScore(reply({ accuracy: 0, clarity: 5, tone: 5, actionability: 5 }))).toBeNull();
+  });
+});
+
+// ADR-0074 §2. The eval could report "reject = 4.000" and nothing else, so the
+// cause had to be reconstructed by arithmetic. The breakdown now survives the
+// parse: the scorer prints it on a miss and the QA sweep stores it.
+describe("parseCxDimensions", () => {
+  it("returns the per-dimension scores and the composite together", () => {
+    const parsed = parseCxDimensions(reply({ accuracy: 1, clarity: 5, tone: 5, actionability: 5 }));
+    expect(parsed).toEqual({
+      dimensions: { accuracy: 1, clarity: 5, tone: 5, actionability: 5 },
+      score: 1
+    });
+  });
+
+  it("carries the judge's rationale when it gave one", () => {
+    const withWhy = JSON.stringify({
+      accuracy: 1,
+      clarity: 5,
+      tone: 5,
+      actionability: 5,
+      why: "invents a settlement figure"
+    });
+    expect(parseCxDimensions(withWhy)?.why).toBe("invents a settlement figure");
+  });
+
+  it("omits `why` rather than inventing one when the judge gave none", () => {
+    expect(parseCxDimensions(good)?.why).toBeUndefined();
+  });
+
+  it("is null on the same replies parseCxScore rejects", () => {
+    for (const raw of ["null", "not json", reply({ accuracy: 5, clarity: 5, tone: 5 })]) {
+      expect(parseCxDimensions(raw)).toBeNull();
+      expect(parseCxScore(raw)).toBeNull();
+    }
   });
 });
 
