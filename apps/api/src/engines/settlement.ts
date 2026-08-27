@@ -662,8 +662,17 @@ export async function statementTable(
   ctx: Ctx,
   settlement: SettlementRow
 ): Promise<{ table: ReportTable; totals: Record<string, number>; terms: SettlementTerms }> {
-  const terms = await resolveTerms(ctx, channelOf(settlement.counterpartyRef));
-  const entries = await settlementEntries(ctx, settlement);
+  // Commission entries are keyed by channel, so only a payable counterparty has
+  // lines at all: an insurer settlement is money *in* against a provider
+  // remittance (`assertPayable`) and its ref is `provider:{id}`, which
+  // `channelOf` rejects. Both readers used to inherit that 400 as a crash — the
+  // detail screen swallowed only 403 — so every insurer settlement in the seed
+  // served a 500. The advice is still the advice; it just has no lines.
+  const payable = (PAYABLE_KINDS as readonly string[]).includes(settlement.counterpartyKind);
+  const terms = payable
+    ? await resolveTerms(ctx, channelOf(settlement.counterpartyRef))
+    : { minPayoutMinor: 0, agreementId: null, agreementVersion: null };
+  const entries = payable ? await settlementEntries(ctx, settlement) : [];
   const { startAt } = monthBounds(settlement.period);
   const agreement = terms.agreementVersion === null ? "—" : `v${terms.agreementVersion}`;
 

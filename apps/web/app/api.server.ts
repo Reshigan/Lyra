@@ -208,6 +208,31 @@ export function fileProxyHeaders(upstream: Response, fallbackContentType: string
   });
 }
 
+/**
+ * One file route's whole job: fetch the bytes and hand them back under the
+ * headers above.
+ *
+ * The reason it exists is that `apiFetch` *throws* on a non-2xx, so every
+ * caller that wrote `new Response(upstream.body, { status: upstream.status })`
+ * had an unreachable error path — the API's 404 for a missing object became an
+ * unhandled `ApiError` and the reader got "Unexpected Server Error", which is
+ * what `/axis/documents/:id/file` served in production. Statuses are relayed
+ * here instead, with no body, since a `Problem` JSON rendered under
+ * `content-disposition: attachment` is not an error message anyone can read.
+ */
+export async function proxyFile(path: string, options: ApiOptions, fallbackContentType: string): Promise<Response> {
+  try {
+    const upstream = await apiFetch(path, options);
+    return new Response(upstream.body, {
+      status: upstream.status,
+      headers: fileProxyHeaders(upstream, fallbackContentType)
+    });
+  } catch (error) {
+    if (error instanceof ApiError) return new Response(null, { status: error.status });
+    throw error;
+  }
+}
+
 /** Copy the API's Set-Cookie headers onto our own response, verbatim. */
 export function relayCookies(from: Response, to: Headers): Headers {
   const cookies: string[] =

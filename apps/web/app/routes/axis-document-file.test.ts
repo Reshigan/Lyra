@@ -77,6 +77,28 @@ describe("loader", () => {
     expect(res.headers.get("content-disposition")).toBe("attachment");
   });
 
+  // Sighting 13. This route used to read `upstream.status` off `apiFetch`'s
+  // return — but `apiFetch` *throws* on a non-2xx (api.server.ts), so that path
+  // was unreachable and the API's 404 for a missing object reached React Router
+  // as an unhandled ApiError: the reader got "Unexpected Server Error" with a
+  // 500 behind it. All four file-proxy routes had the same defect; the guard
+  // lives in `proxyFile`, which all four now route through.
+  it("relays the API's status instead of crashing when the object is missing", async () => {
+    vi.stubGlobal(
+      "fetch",
+      async () =>
+        new Response(JSON.stringify({ title: "Not Found" }), {
+          status: 404,
+          headers: { "content-type": "application/problem+json" }
+        })
+    );
+
+    const res = await loader(args());
+
+    expect(res.status).toBe(404);
+    expect(await res.text()).toBe("");
+  });
+
   it("allows inline for a render-safe content-type", async () => {
     vi.stubGlobal(
       "fetch",

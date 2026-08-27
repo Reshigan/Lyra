@@ -301,7 +301,10 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
     const lines = await api<LinesPayload>(`/v1/settlement/settlements/${id}/lines`, { env, request });
     return { lines, may, apiOrigin, idempotencyKey };
   } catch (error) {
-    if (error instanceof ApiError && error.status === 403) return shut;
+    // What must NOT be swallowed, rather than a list of what may: a 401 still
+    // needs the login redirect and a 5xx is a real fault, but any other 4xx is
+    // this settlement's lines being unavailable, not a crash (sighting 8).
+    if (error instanceof ApiError && error.status >= 400 && error.status < 500 && error.status !== 401) return shut;
     throw error;
   }
 }

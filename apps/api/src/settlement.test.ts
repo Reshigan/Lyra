@@ -706,6 +706,38 @@ describe("remittance advice", () => {
     expect(table.rows.map((r) => r.earnedOn)).toContain("unknown");
   });
 
+  // Sighting 12. An insurer settlement is money *in* — `assertPayable` refuses
+  // to draft one, but the seed carries three and the list screen shows them, so
+  // the detail route opens one. Its ref is `provider:{id}`, which `channelOf`
+  // rejects with a 400, and the web loader inherited that as a crash: every
+  // insurer settlement served a 500. Commission entries are keyed by channel, so
+  // the right answer is an empty table, not a throw.
+  it("renders an insurer settlement as an empty advice rather than throwing", async () => {
+    await ctx.db.insert(schema.ledgerSettlements).values({
+      id: "setl_insurer",
+      tenantId: ctx.tenantId,
+      counterpartyKind: "insurer",
+      counterpartyRef: "provider:prv_cedar",
+      period: THIS_MONTH,
+      grossMinor: 40_000,
+      adjustmentsMinor: 0,
+      netMinor: 40_000,
+      currency: "AED",
+      state: "paid",
+      createdAt: NOW,
+      updatedAt: NOW
+    });
+    const settlement = await getSettlement(ctx, "setl_insurer");
+
+    const { table, totals, terms } = await statementTable(ctx, settlement);
+
+    expect(table.rows).toEqual([]);
+    // The stored total stands — it is money the insurer owes, computed against
+    // the provider remittance. Only the per-channel line breakdown is absent.
+    expect(totals.netMinor).toBe(40_000);
+    expect(terms.agreementId).toBeNull();
+  });
+
   it("keeps the rendered advice and points the settlement at it", async () => {
     await partner(ctx, 0);
     await entry(ctx, 30_000, NOW - 2 * DAY);
