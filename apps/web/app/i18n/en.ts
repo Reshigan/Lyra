@@ -29,7 +29,7 @@ export const en = {
   "nav.home": "Home",
   "nav.center": "Command center",
   // The ✦ eyebrow over the command center: what the agents on this page are.
-  "nav.ai": "AI operations",
+  "nav.ai": "Agent loop",
   "nav.whatif": "Scenarios",
   "nav.group.modules": "Modules",
   "nav.axis": "Operations",

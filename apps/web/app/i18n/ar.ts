@@ -27,7 +27,7 @@ export const ar: Messages = {
   "nav.doctrine": "العقيدة التصميمية",
   "nav.home": "الرئيسية",
   "nav.center": "مركز القيادة",
-  "nav.ai": "عمليات الذكاء الاصطناعي",
+  "nav.ai": "حلقة الوكيل",
   "nav.whatif": "السيناريوهات",
   "nav.group.modules": "الوحدات",
   "nav.axis": "العمليات",
