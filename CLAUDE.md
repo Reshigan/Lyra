@@ -182,9 +182,12 @@ gate was recorded as needing a `workflow_dispatch` and the user's review; that
 gate was removed 2026-08-22, `deploy.yml:66-70` says so in its own comment.
 Read the workflow before describing what it does.
 
-`main` is ahead of production by two docs-only commits, `fe0e833` and `edd62c4`
-(F67 plus the layout fix, and `scripts/sweep.mjs`). Neither changes a deployed
-artifact, but a push is still a production release.
+`main` is ahead of production by eight commits, all code-bearing: `0cad1ef`
+through `61c2745` are the empty-state ratchet (63 screens now teach one action,
+`ALLOWED` emptied, the contract guarded rather than the table prop), `9823033`
+keeps the reference id on every error state, and `d768164` + `8f29bda` are dead
+seam 15 — `problem.errors` read, and the rejected input marked at `FieldInput`.
+A push is a production release.
 
 Running under a self-paced `/loop` toward the full roadmap (M0-M6) in
 production. Loop iteration is autonomous; `pnpm deploy:prod` and any `git push`
@@ -428,6 +431,37 @@ commit, verify on a deployed environment. Fifteen sightings so far.
    general shape: **a boolean that answers two questions will eventually answer
    the wrong one**, and a sweep that classifies on status cannot see a screen
    that fails politely.
+
+15. `d768164` + `8f29bda`, and the first found by asking "what does the API
+   send that nothing reads?" rather than by a screen misbehaving. `Problem.errors`
+   (RFC 9457, docs/04 §1) is the field-level validation map every API 400
+   carries, keyed by the zod path joined with dots — **the same string the form
+   posts as `name`** (`apps/api/src/http.ts:33`). It was dead at *both* ends: no
+   web screen read it, and no API test asserted it, so a rejected create told the
+   actor only that something was wrong and never which input. The narrowing point
+   is the general shape behind sightings 8, 11 and 14 too: a loader or action that
+   *rebuilds* an `ApiError`'s problem into a fresh literal or flattens it to a
+   string is where the contract dies — not the render site, which is merely where
+   the loss becomes visible. Here nothing was lost at the narrowing point (twenty
+   actions already carried the whole problem through); the gap was that no render
+   read it. The fix is at `FieldInput` (`components/fields.tsx`), the one component
+   every spec-driven form renders inputs through, which already holds `field.name`
+   — one optional prop covers every declared resource in every workspace via
+   `module.tsx` and `record.tsx`. Two constraints worth keeping: the map's
+   *values* are zod's own English and no API schema overrides them, so they are
+   unshowable to an Arabic reader (CLAUDE.md §7) — only the key crosses, the
+   wording is the screen's (`error.field`); and `fields.tsx` is deliberately
+   translator-free, which is why `invalid` is a function and not the map.
+   Bespoke (non-spec-driven) forms — `settings.tsx` 26 Fields, `staff.tsx` 17,
+   `onboarding.tsx` 13 — put `name` on the inner `<input>` under a `<Field>`
+   wrapper, so they have no shared seam and stay unmarked by choice.
+
+One process lesson from the same round, cheap and repeatedly paid for: a
+`pnpm typecheck` run *before* the last edits does not cover them. `9823033` was
+committed green on a run that predated three of its own edits and left three
+`TS2375` errors behind (`exactOptionalPropertyTypes` is on in the web tsconfig,
+so `{ id: string | undefined }` is not assignable to `{ id?: string }`).
+Re-run after every edit round, not once per session.
 
 One more, from writing docs/29 rather than from a screen: its draft headline
 ("every posting hard-codes 5% tax") was wrong because citations inherited from a
