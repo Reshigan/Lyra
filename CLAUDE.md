@@ -450,12 +450,16 @@ missing *dimensions* (tax treatment for Europe, tax jurisdiction for the US, a
 legal entity to hang an invoice series on). Findings, not backlogs — each item
 needs an ADR or spec update first.
 
-The route sweeps live in the session scratchpad, not in `e2e/`: `sweep.mjs` walks
-the 76 static routes, `sweep-detail.mjs` harvests the ones behind an `:id` by
-following `main a[href]` from those pages instead of hard-coding them (38 last
-run). Both sign in as the demo administrator, read only, and grep the rendered
+`scripts/sweep.mjs` walks the 76 static routes. It signs in as the demo
+administrator, reads only, and greps the rendered
 `main` for text that is not prose: `[object Object]`, a bare `undefined`/`NaN`,
 an untranslated i18n key, a storage key, a comma-grouped year, Arabic prose on
 an English session. `SWEEP_BASE` picks the environment; false positives are
 permission scopes, curl examples, bilingual-by-design screens, labels like
 "Locale: ar", Arabic customer messages in seeded ORBIT threads.
+
+Its sibling `sweep-detail.mjs` — which harvested the routes behind an `:id` by
+following `main a[href]` rather than hard-coding them, 38 last run, and found
+sighting 4 — was never committed and no longer exists. Detail routes are
+currently unswept; rebuild it beside `sweep.mjs` when that coverage is next
+needed. That loss is why the static sweep is now in the repo.
