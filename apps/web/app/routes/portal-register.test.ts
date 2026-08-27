@@ -151,9 +151,27 @@ describe("register action", () => {
       const result = await registerAction(
         registerArgs({ kind: "person", name: "A", email: "a@example.test", consent: "on" })
       );
-      expect(result).toEqual({ ok: false, errorKey: key });
+      expect(result).toEqual({ ok: false, errorKey: key, invalid: [] });
       vi.unstubAllGlobals();
     }
+  });
+
+  // "Check the highlighted fields" was the copy long before anything was
+  // highlighted. The API names them in `problem.errors` (apps/api/src/http.ts:33);
+  // the action's job is only to carry the names across to the form.
+  it("carries the fields the API rejected, so the form can mark them", async () => {
+    stubFetch(
+      json(
+        { title: "Bad request", status: 400, errors: { email: "Invalid email", _: "and so on" } },
+        400
+      )
+    );
+    const result = await registerAction(
+      registerArgs({ kind: "person", name: "A", email: "nope", consent: "on" })
+    );
+    // `_` names no input, so it is not something the form can point at.
+    expect(result).toEqual({ ok: false, errorKey: "register.error.validation", invalid: ["email"] });
+    vi.unstubAllGlobals();
   });
 });
 

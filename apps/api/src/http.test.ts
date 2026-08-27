@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { InstantMsParam, IsoMonth, instantParam, monthRangeMs } from "./http.js";
+import { z } from "zod";
+
+import { AppError } from "@lyra/core";
+
+import { InstantMsParam, IsoMonth, instantParam, monthRangeMs, parse } from "./http.js";
 
 describe("monthRangeMs", () => {
   // `Date.UTC(y, m - 1, 1)` maps years 0-99 onto 1900-1999, so a bordereau or a
@@ -48,5 +52,37 @@ describe("instantParam", () => {
   it("leaves a blank parameter to the endpoint's own default", () => {
     expect(instantParam(undefined)).toBeUndefined();
     expect(instantParam("")).toBeUndefined();
+  });
+});
+
+describe("parse", () => {
+  // The field-level map is the half of RFC 9457 the web needs to mark the input
+  // the reader must fix (docs/04 §1). It is keyed by the zod path joined with
+  // dots, which is the same string the form posts as `name` — apps/web's
+  // `invalidFields` rests entirely on that, so it is a contract, not a detail.
+  const schema = z.object({ email: z.string().email(), companyName: z.string().min(2) });
+
+  it("carries a key per rejected field, named as the form names it", () => {
+    try {
+      parse(schema, { email: "not-an-email", companyName: "x" });
+      throw new Error("expected parse to throw");
+    } catch (error) {
+      expect(error).toBeInstanceOf(AppError);
+      const problem = (error as AppError).toProblem();
+      expect(problem.status).toBe(400);
+      expect(Object.keys(problem.errors as Record<string, string>).sort()).toEqual([
+        "companyName",
+        "email"
+      ]);
+    }
+  });
+
+  it("keys an issue with no path as `_`, which names no input", () => {
+    try {
+      parse(schema, "not an object");
+      throw new Error("expected parse to throw");
+    } catch (error) {
+      expect(Object.keys((error as AppError).toProblem().errors as Record<string, string>)).toEqual(["_"]);
+    }
   });
 });

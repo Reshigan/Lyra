@@ -21,6 +21,23 @@ export interface Problem {
   requestId?: string;
 }
 
+/**
+ * Which submitted fields the API rejected, as `name -> true`, keyed by the
+ * `name` on the input (apps/api/src/http.ts:33 joins the zod path with dots,
+ * which is the same key the form posts). Empty when the failure was not a
+ * field-level validation one.
+ *
+ * The *messages* in `problem.errors` are zod's own English ("String must
+ * contain at least 2 character(s)") and no schema in the API overrides them,
+ * so they cannot be shown to an Arabic reader (CLAUDE.md §7). The key is the
+ * translatable half: it says which input to mark, and the screen supplies its
+ * own wording. Keeping the map itself out of the UI is deliberate.
+ */
+export function invalidFields(problem: Problem | null | undefined): Set<string> {
+  if (!problem || problem.status !== 400 || !problem.errors) return new Set();
+  return new Set(Object.keys(problem.errors).filter((key) => key !== "_"));
+}
+
 export class ApiError extends Error {
   constructor(
     readonly problem: Problem,

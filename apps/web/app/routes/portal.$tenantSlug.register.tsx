@@ -11,7 +11,7 @@ import {
 } from "react-router";
 import { Button, Card, Checkbox, Field, Input } from "@lyra/ui";
 import { cloudflare } from "../context";
-import { ApiError, api, asRouteError, type Brand } from "../api.server";
+import { ApiError, api, asRouteError, invalidFields, type Brand } from "../api.server";
 import { DEFAULT_LOCALE, localeFrom, pseudoText } from "../i18n";
 import { brandStyle } from "../components/shell";
 import { Turnstile } from "../components/turnstile";
@@ -55,6 +55,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     "register.error.throttled": "Too many registrations from here — try again tomorrow.",
     "register.error.challenge": "The security check did not pass. Reload the page and try again.",
     "register.error.validation": "Check the highlighted fields and try again.",
+    "register.error.field": "This needs correcting.",
     "register.error.generic": "Something went wrong. Please try again.",
     "register.back": "Back to products"
   },
@@ -82,6 +83,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     "register.error.throttled": "تسجيلات كثيرة من هنا — حاول غدًا.",
     "register.error.challenge": "لم يجتز فحص الأمان. أعد تحميل الصفحة وحاول مرة أخرى.",
     "register.error.validation": "تحقق من الحقول المحددة وحاول مرة أخرى.",
+    "register.error.field": "يحتاج هذا إلى تصحيح.",
     "register.error.generic": "حدث خطأ ما. حاول مرة أخرى.",
     "register.back": "العودة إلى المنتجات"
   }
@@ -119,7 +121,12 @@ export const meta: MetaFunction<typeof loader> = ({ loaderData: loaded }) => [
   { title: loaded ? `${loaded.tenant.name} — register` : "" }
 ];
 
-type ActionData = { ok: boolean; errorKey?: string };
+/**
+ * `invalid` names the inputs the API rejected, so the reader is pointed at the
+ * field to correct instead of being told only that "something" was invalid.
+ * An array rather than a Set because this crosses the action boundary.
+ */
+type ActionData = { ok: boolean; errorKey?: string; invalid?: string[] };
 
 export async function action({ request, params, context }: ActionFunctionArgs) {
   const env = context.get(cloudflare).env;
@@ -172,7 +179,7 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
           : error.status === 400
             ? "register.error.validation"
             : "register.error.generic";
-    return { ok: false, errorKey } satisfies ActionData;
+    return { ok: false, errorKey, invalid: [...invalidFields(error.problem)] } satisfies ActionData;
   }
 }
 
@@ -186,6 +193,10 @@ export default function PortalRegister() {
   // The chooser is a pair of links, not client state: a visitor with no
   // JavaScript still reaches the business form, and the URL is shareable.
   const kind = registrationKind(searchParams.get("kind"));
+  // The API names the fields it rejected; its zod messages are English-only, so
+  // the wording is ours and only the placement comes from the API.
+  const invalid = new Set(result?.invalid ?? []);
+  const bad = (name: string) => (invalid.has(name) ? l("register.error.field") : undefined);
 
   const tab = (value: "person" | "business") => (
     <Link
@@ -229,19 +240,19 @@ export default function PortalRegister() {
               <input type="hidden" name="locale" value={locale} />
               {kind === "business" ? (
                 <>
-                  <Field label={l("register.companyName")} id="register-company" required>
+                  <Field label={l("register.companyName")} id="register-company" error={bad("companyName")} required>
                     <Input name="companyName" required minLength={2} maxLength={200} autoComplete="organization" />
                   </Field>
-                  <Field label={l("register.contactName")} id="register-contact" required>
+                  <Field label={l("register.contactName")} id="register-contact" error={bad("contactName")} required>
                     <Input name="contactName" required maxLength={200} autoComplete="name" />
                   </Field>
-                  <Field label={l("register.registrationNo")} id="register-registration-no">
+                  <Field label={l("register.registrationNo")} id="register-registration-no" error={bad("registrationNo")}>
                     <Input name="registrationNo" maxLength={80} autoComplete="off" spellCheck={false} />
                   </Field>
-                  <Field label={l("register.taxId")} id="register-tax-id">
+                  <Field label={l("register.taxId")} id="register-tax-id" error={bad("taxId")}>
                     <Input name="taxId" maxLength={80} autoComplete="off" spellCheck={false} />
                   </Field>
-                  <Field label={l("register.country")} id="register-country">
+                  <Field label={l("register.country")} id="register-country" error={bad("country")}>
                     {/* ISO 3166-1 alpha-2. Two characters is the column, so the
                         pattern refuses "United Arab Emirates" here rather than
                         after a round trip. */}
@@ -257,14 +268,14 @@ export default function PortalRegister() {
                   </Field>
                 </>
               ) : (
-                <Field label={l("register.name")} id="register-name" required>
+                <Field label={l("register.name")} id="register-name" error={bad("name")} required>
                   <Input name="name" required maxLength={200} autoComplete="name" />
                 </Field>
               )}
-              <Field label={l("register.email")} id="register-email" required>
+              <Field label={l("register.email")} id="register-email" error={bad("email")} required>
                 <Input name="email" type="email" required autoComplete="email" />
               </Field>
-              <Field label={l("register.phone")} id="register-phone">
+              <Field label={l("register.phone")} id="register-phone" error={bad("phone")}>
                 <Input name="phone" type="tel" maxLength={40} autoComplete="tel" />
               </Field>
               <Checkbox name="consent" required label={l("register.consent")} />
