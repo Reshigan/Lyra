@@ -2399,6 +2399,100 @@ export async function syncChartOfAccounts(db: CoreDb, tenantId: string): Promise
 }
 
 /**
+ * Add the personas a tenant is missing from `PEOPLE`, with their role grant.
+ *
+ * `seed()` refuses a second call once "gonxt" exists, and nothing else writes
+ * staff, so `PEOPLE` reaches a deployed tenant exactly once: every persona
+ * added to that list since is a login that exists in this file and nowhere in
+ * production. On the demo tenant that is `hind.saqr` (orbit.admin, dec6b07) and
+ * `yasmin.faris` (provider.viewer, ee2e5e9) — both absent from the live
+ * `/v1/auth/demo/personas`, which enumerates users and so cannot show a row
+ * that was never written. Same staleness the three reconcilers beside this one
+ * already answer for roles, accounts and the demo admin.
+ *
+ * Idempotent by email: an existing address is left entirely alone (password,
+ * name, roles), so this can only ever add. Returns the addresses it created.
+ */
+export async function ensureSeedPeople(
+  db: CoreDb,
+  tenantId: string,
+  opts: { now?: number; passwordHash?: string; mfaSecret?: string } = {}
+): Promise<{ created: string[] }> {
+  const now = opts.now ?? Date.now();
+  const existing = new Set(
+    (
+      await db
+        .select({ email: schema.users.email })
+        .from(schema.users)
+        .where(eq(schema.users.tenantId, tenantId))
+    ).map((r) => r.email)
+  );
+  const roleIds = new Map(
+    (
+      await db
+        .select({ id: schema.roles.id, key: schema.roles.key })
+        .from(schema.roles)
+        .where(eq(schema.roles.tenantId, tenantId))
+    ).map((r) => [r.key, r.id])
+  );
+
+  const created: string[] = [];
+  let n = 0;
+  for (const person of PEOPLE) {
+    const email = `${person.local}@gonxt.ae`;
+    // A role this tenant does not carry cannot be granted, and a user with no
+    // grant is a login that can reach nothing — skip rather than half-create.
+    const roleId = roleIds.get(person.role);
+    if (existing.has(email) || !roleId) continue;
+
+    const uid = id("us", now + n++);
+    await db.insert(schema.users).values({
+      id: uid,
+      tenantId,
+      email,
+      name: person.name,
+      locale: person.locale ?? "en",
+      status: "active",
+      authProvider: "password",
+      passwordHash: opts.passwordHash ?? (await hashPassword(DEFAULT_PASSWORD)),
+      mfaEnrolled: Boolean(opts.mfaSecret) && requiresMfa([person.role]),
+      mfaSecret: opts.mfaSecret && requiresMfa([person.role]) ? opts.mfaSecret : null,
+      createdAt: now,
+      updatedAt: now
+    });
+    await db.insert(schema.userRoles).values({
+      id: id("ur", now + n++),
+      tenantId,
+      userId: uid,
+      roleId,
+      scopeJson: null,
+      createdAt: now
+    });
+
+    // ROLE-028 (ADR-0025): provider.viewer is scoped to one provider's own
+    // rows, and an unscoped one is a WIDER grant than intended, not a narrower
+    // one — so this persona is only created if the provider it belongs to is
+    // there to scope it to. seed.ts does this by id at seed time; here the
+    // name is the only handle left.
+    if (person.role === "provider.viewer") {
+      const [falcon] = await db
+        .select({ id: schema.providers.id })
+        .from(schema.providers)
+        .where(and(eq(schema.providers.tenantId, tenantId), eq(schema.providers.name, "Falcon Insurance")))
+        .limit(1);
+      if (!falcon) {
+        await db.delete(schema.userRoles).where(eq(schema.userRoles.userId, uid));
+        await db.delete(schema.users).where(eq(schema.users.id, uid));
+        continue;
+      }
+      await db.update(schema.users).set({ providerId: falcon.id }).where(eq(schema.users.id, uid));
+    }
+    created.push(email);
+  }
+  return { created };
+}
+
+/**
  * Provision (or top up) the all-access demo login. Idempotent, and safe on a
  * tenant that was seeded before this account existed: it creates the user only
  * if the address is free, then adds whichever internal roles the account is

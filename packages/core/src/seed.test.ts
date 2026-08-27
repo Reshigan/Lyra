@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { CHART_OF_ACCOUNTS, schema } from "@lyra/db";
-import { ensureDemoAdmin, seed, SEED_TENANT_SLUG, syncChartOfAccounts } from "./seed.js";
+import { ensureDemoAdmin, ensureSeedPeople, seed, SEED_TENANT_SLUG, syncChartOfAccounts } from "./seed.js";
 import { hashPassword, needsRehash, verifyPassword } from "./password.js";
 import { TENANT_ROLE_KEYS, isInternalRole, permissionsForRole } from "./rbac.js";
 import type { CoreDb } from "./context.js";
@@ -193,6 +193,72 @@ describe("seed", () => {
 
     const second = await ensureDemoAdmin(db, tenantId);
     expect(second).toMatchObject({ created: false, userId: first.userId, granted: [] });
+  });
+
+  /**
+   * The live symptom this was written for: `hind.saqr` and `yasmin.faris` were
+   * added to PEOPLE after the demo tenant was provisioned, `seed()` refuses a
+   * second call, and so neither appears in production's /demo/personas.
+   */
+  it("adds a persona the tenant was seeded before, and adds nothing twice", async () => {
+    const { tenantId } = await seed(db, { password: "gonxt-test-password" });
+
+    // The state a tenant seeded before dec6b07 is in.
+    const [hind] = await db.select().from(schema.users).where(eq(schema.users.email, "hind.saqr@gonxt.ae"));
+    await db.delete(schema.userRoles).where(eq(schema.userRoles.userId, hind!.id));
+    await db.delete(schema.users).where(eq(schema.users.id, hind!.id));
+
+    const first = await ensureSeedPeople(db, tenantId);
+    expect(first.created).toEqual(["hind.saqr@gonxt.ae"]);
+
+    const [again] = await db
+      .select({ id: schema.users.id, name: schema.users.name })
+      .from(schema.users)
+      .where(eq(schema.users.email, "hind.saqr@gonxt.ae"));
+    expect(again!.name).toBe("Hind Saqr");
+    const [role] = await db
+      .select({ key: schema.roles.key })
+      .from(schema.userRoles)
+      .innerJoin(schema.roles, eq(schema.roles.id, schema.userRoles.roleId))
+      .where(eq(schema.userRoles.userId, again!.id));
+    expect(role!.key).toBe("orbit.admin");
+
+    // A second run touches nothing — every address is already taken.
+    expect((await ensureSeedPeople(db, tenantId)).created).toEqual([]);
+  });
+
+  /**
+   * An unscoped provider.viewer is a WIDER grant than the seeded one (ROLE-028,
+   * ADR-0025), so a backfill that cannot find the provider must not create the
+   * persona at all rather than create it seeing every provider's rows.
+   */
+  it("scopes a backfilled provider viewer, or declines to create it", async () => {
+    const { tenantId } = await seed(db, { password: "gonxt-test-password" });
+    const [yasmin] = await db.select().from(schema.users).where(eq(schema.users.email, "yasmin.faris@gonxt.ae"));
+    await db.delete(schema.userRoles).where(eq(schema.userRoles.userId, yasmin!.id));
+    await db.delete(schema.users).where(eq(schema.users.id, yasmin!.id));
+
+    const { created } = await ensureSeedPeople(db, tenantId);
+    expect(created).toContain("yasmin.faris@gonxt.ae");
+    const [back] = await db
+      .select({ providerId: schema.users.providerId })
+      .from(schema.users)
+      .where(eq(schema.users.email, "yasmin.faris@gonxt.ae"));
+    const [falcon] = await db
+      .select({ id: schema.providers.id })
+      .from(schema.providers)
+      .where(eq(schema.providers.name, "Falcon Insurance"));
+    expect(back!.providerId).toBe(falcon!.id);
+
+    // Same persona missing, no Falcon to scope it to: nothing is written.
+    const [again] = await db.select().from(schema.users).where(eq(schema.users.email, "yasmin.faris@gonxt.ae"));
+    await db.delete(schema.userRoles).where(eq(schema.userRoles.userId, again!.id));
+    await db.delete(schema.users).where(eq(schema.users.id, again!.id));
+    await db.update(schema.providers).set({ name: "Falcon Renamed" }).where(eq(schema.providers.id, falcon!.id));
+
+    expect((await ensureSeedPeople(db, tenantId)).created).toEqual([]);
+    const rows = await db.select().from(schema.users).where(eq(schema.users.email, "yasmin.faris@gonxt.ae"));
+    expect(rows).toEqual([]);
   });
 
   it("opens the three desks scoped to their owning module", async () => {

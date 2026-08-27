@@ -3128,7 +3128,7 @@ export const OPERATIONS: Record<OperationId, OperationMeta> = {
   "POST /v1/auth/demo/clock": { tag: "auth", summary: "Advance the simulated clock used by non-production timestamps (non-production only)", permission: null, public: true },
   "POST /v1/auth/demo/login": { tag: "auth", summary: "Sign in as a seeded demo persona without a password (non-production only)", permission: null, public: true },
   "GET /v1/auth/demo/personas": { tag: "auth", summary: "Seeded demo personas offered as one-click sign-in (non-production only)", permission: null, public: true },
-  "POST /v1/auth/demo/resync-roles": { tag: "auth", summary: "Refresh the demo tenant's system role permissions and chart of accounts to match the compiled tables (non-production only)", permission: null, public: true },
+  "POST /v1/auth/demo/resync-roles": { tag: "auth", summary: "Refresh the demo tenant's system role permissions, chart of accounts and seeded personas to match the compiled tables (non-production only)", permission: null, public: true },
   "POST /v1/auth/demo/seed": { tag: "auth", summary: "Seed one demo tenant with its personas and starting data (non-production only)", permission: null, public: true },
   "POST /v1/auth/login": { tag: "auth", summary: "Password login, returns a session cookie", permission: null, public: true },
   "POST /v1/auth/logout": { tag: "auth", summary: "End the current session", permission: null, public: true },

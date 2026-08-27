@@ -8,6 +8,7 @@ import {
   can,
   emit,
   ensureDemoAdmin,
+  ensureSeedPeople,
   entitledGrants,
   forbidden,
   grantsFor,
@@ -585,7 +586,13 @@ authRoutes.post("/demo/resync-roles", async (c) => {
   // DEMO_ADMIN) arrived after this tenant was provisioned, and every role added
   // to rbac.ts since then is a role it does not hold yet.
   const demo = await ensureDemoAdmin(database as unknown as CoreDb, tenantId);
-  return c.json({ tenantId, updated, accounts, demo });
+  // Fourth instance of the same staleness, and the one with a visible symptom:
+  // `PEOPLE` in seed.ts reaches a deployed tenant exactly once, so the two
+  // personas added after this tenant was provisioned are missing from the
+  // login picker — /demo/personas enumerates users, so it can only ever show
+  // rows that were written.
+  const people = await ensureSeedPeople(database as unknown as CoreDb, tenantId);
+  return c.json({ tenantId, updated, accounts, demo, people });
 });
 
 /**
