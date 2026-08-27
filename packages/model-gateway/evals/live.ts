@@ -194,6 +194,8 @@ interface LiveCxCase {
   reply: string;
   /** false for a reply the rubric must mark down — see `reject` below. */
   expectPass: boolean;
+  /** ADR-0077: measured and printed, held out of every gated aggregate. */
+  diagnostic?: boolean;
 }
 
 interface LiveCxThresholds {
@@ -217,6 +219,12 @@ interface LiveCxThresholds {
  * `expectPass: false` cases invent a settlement figure the conversation never
  * gave, and must land under `rejectMax`. A one-sided set passes just as well
  * with a judge that has stopped reading.
+ *
+ * A third kind, `diagnostic: true`, is measured and printed but gates nothing
+ * (ADR-0077). It carries the classes the rubric is suspected of missing, which
+ * by definition may score badly — and this task runs on every push to `main`,
+ * so a case expected to fail inside the gate would block releases rather than
+ * report a weakness.
  */
 export async function scoreLiveCxQuality(dir: string): Promise<Metric[]> {
   const cases = await loadCases<LiveCxCase>(dir);
@@ -252,9 +260,13 @@ export async function scoreLiveCxQuality(dir: string): Promise<Metric[]> {
       // accuracy 1 and was outvoted by the other three dimensions from one that
       // rated the fabrication accurate — and those want opposite fixes. Print
       // the breakdown whenever a case lands on the wrong side of its threshold.
-      const missed = c.expectPass
-        ? score !== null && score < thresholds.rubricMin
-        : score === null || score > thresholds.rejectMax;
+      // A diagnostic has no threshold to miss (ADR-0077), so print its
+      // breakdown always: it is the whole output of the probe.
+      const missed = c.diagnostic
+        ? true
+        : c.expectPass
+          ? score !== null && score < thresholds.rubricMin
+          : score === null || score > thresholds.rejectMax;
       if (missed) {
         for (const r of replies) {
           const parsed = parseCxDimensions(r);
@@ -277,6 +289,10 @@ export async function scoreLiveCxQuality(dir: string): Promise<Metric[]> {
     metrics.push(metric("reject", summary.worstReject, { max: thresholds.rejectMax }));
   }
   metrics.push(metric("scoredRate", summary.scoredRate, { min: thresholds.scoredMin }));
+  // ADR-0077. No bound, so `metricOk` cannot fail it — the probe measures a
+  // rubric weakness we intend to watch move, and a case expected to score badly
+  // inside a deploy-blocking gate is a release blocker, not a measurement.
+  if (summary.diagnostic !== null) metrics.push(metric("diagnostic", summary.diagnostic, {}));
   return metrics;
 }
 

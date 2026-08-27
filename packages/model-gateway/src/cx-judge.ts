@@ -14,7 +14,7 @@ import { parseJsonObject } from "./parse.js";
  * version travels inside the prompt: a judge run kept as evidence names the
  * rubric it was scored against.
  */
-export const CX_JUDGE_VERSION = "cx-rubric-v2";
+export const CX_JUDGE_VERSION = "cx-rubric-v3";
 
 /**
  * The dimension that caps the composite (ADR-0074). Named rather than indexed
@@ -82,9 +82,19 @@ export function cxJudgePrompt(sample: CxSample): string {
     "",
     // ADR-0074 §4: v1 left this to inference and the judge inferred generously,
     // scoring an invented payout figure 1 on accuracy but the reply 4 overall.
-    "Score accuracy against the conversation above and nothing else. A number,",
-    "date or decision the conversation does not support is a 1, however well the",
-    "reply is written — accuracy caps the overall score.",
+    //
+    // ADR-0077: v2 wrote that as an enumeration — "a number, date or decision" —
+    // and a scope qualifier ("on each claim") is none of the three, so a reply
+    // that attached an unsupported condition to a figure the conversation *did*
+    // give fell outside the letter of the list. English read past it and scored
+    // the reply down anyway; Arabic followed the list exactly and scored it 4.
+    // A rule, not a longer list: any detail is the class, and the nouns survive
+    // only as examples of it.
+    "Score accuracy against the conversation above and nothing else. Any detail",
+    "the conversation does not support is a 1 — a number, a date, a decision, and",
+    "equally a scope, condition, exclusion, deadline or term attached to one that",
+    "it does support. However well the reply is written — accuracy caps the",
+    "overall score.",
     "",
     "Conversation:",
     ...sample.context,
@@ -176,6 +186,19 @@ export interface CxScoredSample {
   score: number | null;
   /** false for a reply the rubric is supposed to mark down. */
   expectPass: boolean;
+  /**
+   * A sample measured and reported but held out of every gated aggregate
+   * (ADR-0077). The probe class this exists for is a rubric weakness we have
+   * observed once and cannot yet reproduce: putting it in the gated set would
+   * make an expected failure a permanent release blocker, since `worstReject`
+   * feeds a metric with `rejectMax` and `eval-live` runs on push to `main`.
+   *
+   * A separate flag rather than a third value of `expectPass`, because
+   * `expectPass` is read as a boolean in three aggregates below and `!expectPass`
+   * would silently file a diagnostic as a reject — the exact gate it must stay
+   * out of.
+   */
+  diagnostic?: boolean;
 }
 
 export interface CxRubricSummary {
@@ -187,6 +210,13 @@ export interface CxRubricSummary {
   worstReject: number | null;
   /** Fraction of samples the judge returned a usable score for. */
   scoredRate: number;
+  /**
+   * Worst score among the `diagnostic` samples, else null. Reported, never
+   * gated (ADR-0077) — a max for the same reason `worstReject` is one: the
+   * probe asks whether the rubric catches a class at all, and a mean over two
+   * languages hides the one that missed it.
+   */
+  diagnostic: number | null;
 }
 
 /**
@@ -200,8 +230,14 @@ export interface CxRubricSummary {
 export function cxRubricSummary(samples: readonly CxScoredSample[]): CxRubricSummary {
   const mean = (xs: number[]): number => xs.reduce((a, b) => a + b, 0) / xs.length;
 
+  // ADR-0077. Held out here, once, rather than at each of the four aggregates
+  // below — `scoredRate` included, since a diagnostic the judge failed to parse
+  // is a fact about the probe and not about the gated set.
+  const diagnostics = samples.filter((s) => s.diagnostic);
+  const gated = samples.filter((s) => !s.diagnostic);
+
   const byLocale = new Map<string, number[]>();
-  for (const s of samples) {
+  for (const s of gated) {
     if (s.score === null || !s.expectPass) continue;
     byLocale.set(s.locale, [...(byLocale.get(s.locale) ?? []), s.score]);
   }
@@ -218,13 +254,16 @@ export function cxRubricSummary(samples: readonly CxScoredSample[]): CxRubricSum
         ])
       : null;
 
-  const rejects = samples.filter((s) => !s.expectPass && s.score !== null).map((s) => s.score as number);
-  const usable = samples.filter((s) => s.score !== null).length;
+  const rejects = gated.filter((s) => !s.expectPass && s.score !== null).map((s) => s.score as number);
+  const usable = gated.filter((s) => s.score !== null).length;
+
+  const probes = diagnostics.filter((s) => s.score !== null).map((s) => s.score as number);
 
   return {
     perLocale,
     parityGap,
     worstReject: rejects.length ? Math.max(...rejects) : null,
-    scoredRate: samples.length ? usable / samples.length : 1
+    scoredRate: gated.length ? usable / gated.length : 1,
+    diagnostic: probes.length ? Math.max(...probes) : null
   };
 }

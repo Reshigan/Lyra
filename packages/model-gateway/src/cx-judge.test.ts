@@ -185,6 +185,23 @@ describe("cxRubricSummary", () => {
     ]);
   });
 
+  it("holds a diagnostic out of every gated aggregate", () => {
+    // ADR-0077. The probe carries a class the rubric may miss, so it can score
+    // anywhere — 4.9 is the shape that would do the damage: filed as a reject it
+    // blows `worstReject` past `rejectMax` and blocks the deploy. Asserting all
+    // four aggregates, because the flag has to be honoured at each of them and
+    // `scoredRate` is the one easiest to leave behind.
+    const base = [s("en", 4.4), s("en", 1.0, false)];
+    const withProbe = cxRubricSummary([...base, { locale: "en", score: 4.9, expectPass: false, diagnostic: true }]);
+    const without = cxRubricSummary(base);
+    expect(withProbe.perLocale).toEqual(without.perLocale);
+    expect(withProbe.worstReject).toBe(without.worstReject);
+    expect(withProbe.parityGap).toEqual(without.parityGap);
+    expect(withProbe.scoredRate).toBe(without.scoredRate);
+    // Held out of the gate, not dropped: it is still reported.
+    expect(withProbe.diagnostic).toBe(4.9);
+  });
+
   it("excludes the reject cases from the locale means", () => {
     // A 1.0 reject inside the mean would drag a passing locale under the floor
     // and read as a bad model rather than a working gate.
