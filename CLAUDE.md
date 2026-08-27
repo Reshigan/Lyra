@@ -241,7 +241,7 @@ rather than mirrored, a parameter no caller passes, a column holding something
 other than what its name says. It tests green because the unit test calls the
 function directly and the fixture mocks the assumption instead of the server.
 Fix it at the seam every reader routes through, grep the call sites in the same
-commit, verify on a deployed environment. Thirteen sightings so far.
+commit, verify on a deployed environment. Fourteen sightings so far.
 
 1. `apps/web/app/components/whitespace-commentary.tsx`, typed against an assumed
    contract while the API was built in parallel, shared one field with what
@@ -392,6 +392,25 @@ commit, verify on a deployed environment. Thirteen sightings so far.
    every fixture returned 200. Grep for a helper's *throwing* contract, not only
    its return type — a caller reading `.status` off a function that throws on
    the interesting statuses is dead code that looks like error handling.
+
+13. `6b7a794`, the defect from the other direction — a *screen with no link*.
+   `/onboarding/:kind/:ref` is a fully implemented checklist that nothing in the
+   app opens: every `/onboarding/` hit in the tree is a `/v1/onboarding/...` API
+   call. `HIDDEN_ROUTES` (`apps/web/app/routing.ts`) is a map of route to *why it
+   never appears in nav*, and most entries answer with a reachability claim —
+   this one said "opened from that partner, channel or staff record" — but
+   nothing ever verified one. `spec.routes.test.ts` breaks on a link with no
+   screen; `routing.reachable.test.ts` is its missing inverse, checking that
+   something *builds* each parameterised hidden path (a `:param` route can only
+   be reached by code that constructs it, which is the thing that goes missing).
+   It holds 13 claims and isolated exactly this one, no false positives. The
+   opener is the seam that already existed: `recordLink` (`modules/spec.ts:146`),
+   eight tabs already use it, `record.tsx` interpolates `{id}`. Two lessons. A
+   guard that only checks one direction of a two-way contract leaves the other
+   direction free to rot silently — write the inverse. And when a doc claims more
+   than the code delivers, narrow the doc: staff onboarding stays unreachable
+   (`/admin/staff` is bespoke, no workspace tab to hang a `recordLink` on), so
+   the claim now says partners and channels, which is what the guard can hold.
 
 One more, from writing docs/29 rather than from a screen: its draft headline
 ("every posting hard-codes 5% tax") was wrong because citations inherited from a
