@@ -241,7 +241,7 @@ rather than mirrored, a parameter no caller passes, a column holding something
 other than what its name says. It tests green because the unit test calls the
 function directly and the fixture mocks the assumption instead of the server.
 Fix it at the seam every reader routes through, grep the call sites in the same
-commit, verify on a deployed environment. Eleven sightings so far.
+commit, verify on a deployed environment. Thirteen sightings so far.
 
 1. `apps/web/app/components/whitespace-commentary.tsx`, typed against an assumed
    contract while the API was built in parallel, shared one field with what
@@ -362,6 +362,36 @@ commit, verify on a deployed environment. Eleven sightings so far.
    `labels.shared.test.ts`, a guard already there, because `fnol-intake.tsx`
    had carried an identical local `choose` — two guards over the same catalogue
    disagreeing is the signal to delete the duplicate, not to rename around it.
+
+11. `dd14993`, found by the rebuilt detail sweep against production: three of
+   the five seeded settlements served HTTP 500 on `/ledger/settlements/:id`.
+   `statementTable` calls `channelOf(counterpartyRef)`, a 400 on any ref not
+   starting `channel:`, and three seeded rows are `counterpartyKind: "insurer"`
+   with a `provider:{id}` ref — three provider settlements, three failing
+   routes, counted at source rather than inferred. `settlement.tsx:318` carries
+   a comment proving the list screen *knows* insurer rows exist, shows them, and
+   links to a detail route that crashes on every one. The fix is not to widen
+   `channelOf`: commission entries are keyed by `channelId`, so a provider
+   settlement genuinely has no lines, and `statementTable` now gates the
+   channel-only work on the `PAYABLE_KINDS` seam that already separates money-out
+   from money-in. The reusable half is the loader: its swallow allowed 403 only,
+   so a 400 became a crash — rewritten as **what must NOT be swallowed** (any
+   4xx except 401), which is sighting 8's lesson applying a second time. When a
+   list screen displays a row kind its detail path was never built for, the
+   comment admitting it is the tell.
+12. `dd14993` again: all four file-proxy routes had an *unreachable* error path.
+   `apiFetch` throws on a non-2xx (`api.server.ts:67`), so
+   `new Response(upstream.body, { status: upstream.status })` could only ever
+   see a 2xx — the API's 404 for a missing R2 object became an unhandled
+   `ApiError` and the reader got raw `Unexpected Server Error` under a 500.
+   `axis-document-file`, `signal-creative-image`, `north-board-file` and
+   `case-evidence-download` were identical, so the fix is one `proxyFile` in
+   `api.server.ts` beside `fileProxyHeaders`, relaying the status with no body.
+   The purest form of the defect yet: a declared contract (`status:
+   upstream.status`) that nothing could route through, green in tests because
+   every fixture returned 200. Grep for a helper's *throwing* contract, not only
+   its return type — a caller reading `.status` off a function that throws on
+   the interesting statuses is dead code that looks like error handling.
 
 One more, from writing docs/29 rather than from a screen: its draft headline
 ("every posting hard-codes 5% tax") was wrong because citations inherited from a
