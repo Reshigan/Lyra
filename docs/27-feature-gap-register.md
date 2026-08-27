@@ -422,6 +422,25 @@ third state beside `expectPass` that `live.ts:255-258` reports without failing �
 and that choice belongs in the `cx-rubric-v3` ADR, alongside the prompt change it
 is meant to verify. Until one exists, this finding stays a single observation.
 
+**F66 closed by ADR-0077, 2026-08-27.** Both halves shipped. The accuracy clause
+is now a rule with the nouns demoted to examples — *"any detail the conversation
+does not support is a 1 — a number, a date, a decision, and equally a scope,
+condition, exclusion, deadline or term attached to one that it does support"* —
+and the judge bumped to `cx-rubric-v3`, so stored `orbit_qa_scores` rows keep the
+version they were scored under.
+
+The place to measure turned out to need no new concept. `metricOk`
+(`harness.ts:37`) already fails only against a bound, and `metric()` defaults an
+absent one to `±Infinity`, so an unbounded metric is reported and cannot gate. A
+sample flagged `diagnostic: true` is held out of all four aggregates —
+`perLocale`, `parityGap`, `worstReject`, `scoredRate` — and reported as a max
+under that name. A separate flag and not a third value of `expectPass`, because
+`!expectPass` on a tri-state files the probe as a reject, feeding it into the one
+gate it exists to avoid. The `en`/`ar` qualifier pair now runs there: excess given
+correctly, "on each claim" invented. A unit test asserts every gated aggregate is
+identical with and without a 4.9 diagnostic present — the score that would blow
+`rejectMax` if the hold-out ever regressed.
+
 ### New finding — on-prem image generation, 2026-08-27
 
 *Model gateway / on-prem.* Text generation has two homes and images have one.
@@ -499,6 +518,24 @@ stays small and stays available; what is not decided is *which* on-prem image
 server (docs/02 §9) and what visual-quality threshold would gate it
 (docs/13 §3.4). Refusing now is what keeps both from being guessed at under
 deadline (**F67**).
+
+**F67 closed, 2026-08-27 — ADR-0076 decides the second half.** The visual-quality
+threshold this finding asked for is not going to be a number, and the ADR says why
+rather than leaving it open a second time. Every scorer in `evals/run.ts` compares
+model output that is *text* to an expected value, including the one that looks like
+a counter-example: `scoreAxisVision` (`run.ts:186`) sends an image and scores the
+**extraction** against `c.expected`. A generated image has no expected value — two
+`flux-schnell` runs on one brief differ and both may be fine — so the only absolute
+gate available is a model judging taste, which docs/13 §3.4 would require frozen
+and which F66 is the standing evidence against buying untested.
+
+So the gate is the properties a wrong image actually breaks: injection screening
+(already `evals/creative-image/`), residency (ADR-0075), and the approval step,
+which is stronger than a rubric because a person is accountable for the send. The
+ADR names the trigger that makes a measured gate worth its cost — **a second image
+model becoming a candidate**, at which point a comparative A/B on a fixed brief set
+is both meaningful and cheap. Adding an `onprem` or second cloud key to
+`IMAGE_MODEL` (`models.ts:66`) fires that trigger by construction.
 
 ## P2 — depth, not absence
 
