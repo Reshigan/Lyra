@@ -144,7 +144,7 @@ wins.
 Follow docs/14-roadmap.md milestones M0→M6. Do not start a milestone before the
 previous one's acceptance checklist passes (checklists are in that file).
 
-## Current status (2026-08-26)
+## Current status (2026-08-27)
 
 The revenue-lines build (`docs/superpowers/specs/2026-08-16-revenue-lines-full-build-design.md`)
 is merged through PR #34, nothing left on a branch. Production answers:
@@ -152,10 +152,21 @@ is merged through PR #34, nothing left on a branch. Production answers:
 `{"ok":true,"environment":"demo",…}` — the path is `/health`, not `/v1/health` —
 and `pnpm e2e:live` passed 18/18 against it.
 
-`main` carries two fixes from an eleven-persona production sweep: `f622a2e`,
-the three journey loaders serving HTTP 500 to any reader without the module
-permission (seventh dead-seam sighting, see below), and `5aa8684`, the libSQL
-busy timeout that took `f622a2e`'s own deploy down on a `checks / e2e` race.
+`main` is green and ahead of production by two commits: `10f858f`, the seeded
+personas a deployed tenant never received (ninth sighting), and `c352551`,
+three shell i18n keys called and never defined plus the guard that finds the
+next one (tenth). Both need a push, which is a production release.
+
+The last verified production state, from a 77-route sweep on 2026-08-26: dead
+seam 8 confirmed fixed live — `/north/explorer` answers `200` where it served
+500 — the hostname on `manifest-0fbe92fd.js`, off the `manifest-8b4ed7fb.js`
+baseline, and **0 routes unswept**, which closes sighting 7's coverage hole
+(the all-roles demo persona now reaches every shell). Six flagged hits, all
+triaged: four false positives (permission scopes, webhook topics), two real
+and now fixed in `c352551`.
+
+After the next deploy: `POST /v1/auth/demo/resync-roles` against production to
+actually run the backfill, then check `/v1/auth/demo/personas` returns 18.
 
 Two claims that stood here for days and were both wrong: seed-history run
 `32352805879` was recorded as blocked on a `production` Environment review —
@@ -167,6 +178,8 @@ Read the workflow before describing what it does.
 `/v1/orbit/teams` answering `{"data":[]}` was attributed to that blocked seed
 run, so the cause is unknown again and the symptom needs re-testing under an
 authenticated session (unauthenticated it is a 401, which proves nothing).
+Sighting 9 is the likeliest explanation now and worth checking first: teams are
+written by `seed()`, which ran once.
 
 Running under a self-paced `/loop` toward the full roadmap (M0-M6) in
 production. Loop iteration is autonomous; `pnpm deploy:prod` and any `git push`
@@ -223,7 +236,7 @@ rather than mirrored, a parameter no caller passes, a column holding something
 other than what its name says. It tests green because the unit test calls the
 function directly and the fixture mocks the assumption instead of the server.
 Fix it at the seam every reader routes through, grep the call sites in the same
-commit, verify on a deployed environment. Nine sightings so far.
+commit, verify on a deployed environment. Eleven sightings so far.
 
 1. `apps/web/app/components/whitespace-commentary.tsx`, typed against an assumed
    contract while the API was built in parallel, shared one field with what
@@ -310,6 +323,40 @@ commit, verify on a deployed environment. Nine sightings so far.
    `MAX_PAGE` (explorer was the only one over it); and a status allowlist in a
    swallow-helper is a seam that decides which failures become crashes — write
    it as "what must NOT be swallowed", not as a list of what may.
+
+9. `10f858f`: `hind.saqr` and `yasmin.faris` are in `PEOPLE`
+   (`packages/core/src/seed.ts`) and in no deployed tenant. `seed()` refuses a
+   second call once "gonxt" exists, `seed-history.yml` backfills trading rows
+   only (its own header says so), and nothing else writes staff — so that list
+   reaches a deployed tenant **exactly once**, and both personas landed after
+   this one was provisioned (`dec6b07` 2026-08-09, `ee2e5e9` 2026-08-10;
+   everything from `71acde6` 2026-07-30 is live). `/demo/personas` enumerates
+   users, so it can only ever show rows that were written. The seam that
+   already answers this staleness three times is
+   `/v1/auth/demo/resync-roles` — role permissions, chart of accounts, demo
+   admin — and `ensureSeedPeople` is now the fourth beside them. The general
+   shape: **a compiled table read only at provisioning time is a seam with one
+   delivery**, so ask of every constant in `seed.ts` how a tenant seeded last
+   month gets the version in the tree. ROLE-028 (ADR-0025) adds the sharp edge:
+   an unscoped `provider.viewer` is a *wider* grant than the seeded one, so a
+   backfill that cannot resolve the scope must create nothing.
+10. `c352551`: `staff.tsx:488` binds `t = translator(locale)` — the shell
+   catalogue — and calls `t("common.default")` and `t("common.choose")`, keys
+   in no catalogue in either language, so the invite form's two select
+   placeholders printed their own keys. Same shape as sighting 4
+   (`admin.status.active`), and invisible to TypeScript because `t` takes a
+   string. The guard is in `apps/web/app/i18n.test.ts`: every `t("…")` in a
+   file binding `translator(` must exist in `en` (`ar` is already held to en's
+   key set by the `Messages` type). It resolves shell-vs-route-local the way a
+   reader does — by the name each file binds `translator(...)` to — so a route
+   binding its own `labelsFrom(LABELS)` to `t` is correctly out of scope, which
+   is what separated these two from four false positives (`north.admin` and
+   `axis.bind` are permission scopes, `signal.budget.moved` a webhook topic).
+   It found a third on its first run: `nav.ai`, printed in the ✦ eyebrow over
+   the command center's own title. Then adding `common.choose` tripped
+   `labels.shared.test.ts`, a guard already there, because `fnol-intake.tsx`
+   had carried an identical local `choose` — two guards over the same catalogue
+   disagreeing is the signal to delete the duplicate, not to rename around it.
 
 One more, from writing docs/29 rather than from a screen: its draft headline
 ("every posting hard-codes 5% tax") was wrong because citations inherited from a
