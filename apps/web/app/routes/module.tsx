@@ -12,7 +12,7 @@ import {
   type LoaderFunctionArgs
 } from "react-router";
 import { Button, EmptyState, Input, Panel, Select, Table, type Column, isOpaqueRef } from "@lyra/ui";
-import { ApiError, api, asRouteError, fetchMe, names } from "../api.server";
+import { ApiError, api, asRouteError, fetchMe, names, rejectedBy } from "../api.server";
 import { Cell, FieldInput } from "../components/fields";
 import { cloudflare } from "../context";
 import { translator } from "../i18n";
@@ -203,6 +203,10 @@ export default function ModuleList() {
   const tab = tabOf(spec, loaded.resource);
   if (!tab) return null;
   const label = labelsFor(spec, locale, shell?.domainPack);
+  // Marks the inputs a rejected create named, so the reader is pointed at the
+  // field to fix rather than told only that something was wrong. Every declared
+  // resource in every workspace creates through this one form.
+  const rejected = rejectedBy(problem, () => t("error.field"));
   const held = new Set(permissions);
 
   const tabs = visibleTabs(spec, permissions);
@@ -418,7 +422,7 @@ export default function ModuleList() {
       ) : null}
 
       {canCreate ? (
-        <CreatePanel tab={tab} label={label} t={t} busy={busy} defaultOpen={Boolean(problem)} />
+        <CreatePanel tab={tab} label={label} t={t} busy={busy} defaultOpen={Boolean(problem)} rejected={rejected} />
       ) : null}
 
       {/* The table is the screen, so it gets the screen's container: a Horizon
@@ -583,13 +587,17 @@ function CreatePanel({
   label,
   t,
   busy,
-  defaultOpen
+  defaultOpen,
+  rejected
 }: {
   tab: ResourceSpec;
   label: (key: string) => string;
   t: (key: string, vars?: Record<string, string>) => string;
   busy: boolean;
   defaultOpen: boolean;
+  /** Which inputs the last rejected create named — the panel already reopens
+   *  itself on a problem, and this is what it reopens *pointing at*. */
+  rejected: (name: string) => string | undefined;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   useEffect(() => {
@@ -621,7 +629,7 @@ function CreatePanel({
         <input type="hidden" name="intent" value="create" />
         <div className="grid gap-4 sm:grid-cols-2">
           {(tab.fields ?? []).map((field) => (
-            <FieldInput key={field.name} field={field} label={label} />
+            <FieldInput key={field.name} field={field} label={label} invalid={rejected} />
           ))}
         </div>
         <div>
@@ -653,7 +661,7 @@ const LOCAL_PROBLEM_TITLES: Record<string, "error.unknownIntent"> = {
  * not differ between them. Renders nothing when the failure never reached the
  * API, which is when there is no id to quote.
  */
-export function RequestId({ id }: { id?: string }) {
+export function RequestId({ id }: { id?: string | undefined }) {
   const shell = useShellData();
   const t = translator(shell?.locale ?? "en");
   if (!id) return null;

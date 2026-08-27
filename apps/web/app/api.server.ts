@@ -1,5 +1,5 @@
 import { data } from "react-router";
-import { ApiError, invalidFields } from "./api-error";
+import { ApiError, invalidFields, rejectedBy } from "./api-error";
 import type { Problem } from "./api-error";
 import type { Env } from "./env";
 import type { Names } from "./names";
@@ -12,7 +12,7 @@ import type { Names } from "./names";
 
 // Moved to ./api-error so client-bundled kits can `instanceof` it; re-exported
 // here so the 70-odd loader/action importers keep one import site.
-export { ApiError, invalidFields };
+export { ApiError, invalidFields, rejectedBy };
 export type { Problem };
 
 /**

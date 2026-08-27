@@ -10,7 +10,7 @@ import {
   type LoaderFunctionArgs
 } from "react-router";
 import { Button, DateTime, isOpaqueRef, shortRef } from "@lyra/ui";
-import { ApiError, api, asRouteError, names } from "../api.server";
+import { ApiError, api, asRouteError, names, rejectedBy } from "../api.server";
 import { Cell, FieldInput } from "../components/fields";
 import { cloudflare } from "../context";
 import { translator } from "../i18n";
@@ -108,6 +108,8 @@ export default function Record() {
   if (!tab) return null;
 
   const label = labelsFor(spec, locale, shell?.domainPack);
+  // Marks the inputs a rejected edit or create named (see module.tsx).
+  const rejected = rejectedBy(problem, () => t("error.field"));
   const row = loaded.row;
   const busy = navigation.state !== "idle";
   const editable = tab.editable ?? tab.fields ?? [];
@@ -199,7 +201,7 @@ export default function Record() {
           </h2>
           <div className="flex flex-wrap items-end gap-4">
             {actions.map((entry) => (
-              <ActionForm key={entry.intent} action={entry} label={label} busy={busy} />
+              <ActionForm key={entry.intent} action={entry} label={label} busy={busy} rejected={rejected} />
             ))}
           </div>
         </section>
@@ -211,7 +213,7 @@ export default function Record() {
           <input type="hidden" name="intent" value="update" />
           <div className="grid gap-4 sm:grid-cols-2">
             {editable.map((field) => (
-              <FieldInput key={field.name} field={field} row={row} label={label} />
+              <FieldInput key={field.name} field={field} row={row} label={label} invalid={rejected} />
             ))}
           </div>
           <div>
@@ -247,11 +249,14 @@ export default function Record() {
 function ActionForm({
   action: spec,
   label,
-  busy
+  busy,
+  rejected
 }: {
   action: ActionSpec;
   label: (key: string) => string;
   busy: boolean;
+  /** Which inputs the last rejected run of this action named. */
+  rejected: (name: string) => string | undefined;
 }) {
   // Action fields are fresh input the endpoint asks for — a reason, a note —
   // not the record's own columns, so nothing is pre-filled from the row.
@@ -267,7 +272,7 @@ function ActionForm({
       {fields.length ? (
         <div className="grid gap-4 sm:grid-cols-2">
           {fields.map((field) => (
-            <FieldInput key={field.name} field={field} label={label} />
+            <FieldInput key={field.name} field={field} label={label} invalid={rejected} />
           ))}
         </div>
       ) : null}

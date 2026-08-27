@@ -152,18 +152,31 @@ export function Cell({ column, row, locale, label, resolved = {} }: CellProps) {
   }
 }
 
-/** The input for one spec field, pre-filled from `row` when editing. */
+/**
+ * The input for one spec field, pre-filled from `row` when editing.
+ *
+ * `invalid` answers "did the API reject this input, and what should it say" for
+ * one field name. A function rather than the `problem.errors` map itself for two
+ * reasons: the map's values are zod's own English and unshowable (CLAUDE.md §7),
+ * so the wording has to come from the caller's labeller; and this file is
+ * deliberately translator-free — every string reaches it through `label`.
+ * `field.name` is the same string the form posts and the same key
+ * `apps/api/src/http.ts:33` builds, which is what makes the lookup direct.
+ */
 export function FieldInput({
   field,
   row,
   label,
-  disabled
+  disabled,
+  invalid
 }: {
   field: FieldSpec;
   row?: Row;
   label: (key: string) => string;
   disabled?: boolean;
+  invalid?: (name: string) => string | undefined;
 }) {
+  const error = invalid?.(field.name);
   const value = inputValue(field, row);
   // Spread conditionally: exactOptionalPropertyTypes rejects an explicit
   // `undefined` where the prop is optional.
@@ -174,7 +187,10 @@ export function FieldInput({
   };
 
   if (field.type === "boolean") {
-    // Checkbox carries its own label, so it does not sit inside a Field.
+    // Checkbox carries its own label, so it does not sit inside a Field — and
+    // so it has no error slot. ponytail: a boolean coerces rather than failing
+    // validation, so nothing has been seen to land here; give Checkbox an
+    // `error` prop if one ever does.
     return (
       <Checkbox
         name={field.name}
@@ -190,6 +206,7 @@ export function FieldInput({
       label={label(field.name)}
       required={field.required ?? false}
       {...(field.hintKey ? { hint: label(field.hintKey) } : {})}
+      {...(error ? { error } : {})}
     >
       {field.type === "select" ? (
         <Select

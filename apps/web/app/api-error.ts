@@ -38,6 +38,20 @@ export function invalidFields(problem: Problem | null | undefined): Set<string> 
   return new Set(Object.keys(problem.errors).filter((key) => key !== "_"));
 }
 
+/**
+ * `FieldInput`'s `invalid` prop, built from a problem: says which inputs the API
+ * rejected, in the caller's own words. `say` is the caller's translator because
+ * the message cannot come from the API (see above) — every caller passes the
+ * same `error.field`, but the translator is theirs.
+ */
+export function rejectedBy(
+  problem: Problem | null | undefined,
+  say: () => string
+): (name: string) => string | undefined {
+  const fields = invalidFields(problem);
+  return (name) => (fields.has(name) ? say() : undefined);
+}
+
 export class ApiError extends Error {
   constructor(
     readonly problem: Problem,

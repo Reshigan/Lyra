@@ -256,6 +256,7 @@ export const ar: Messages = {
   "error.retry": "أعد المحاولة",
   "error.home": "انتقل إلى مساحة عملك",
   "error.requestId": "المرجع {id}",
+  "error.field": "يحتاج هذا إلى تصحيح.",
   "error.detail": "التفاصيل",
   "error.unknownIntent": "هذا الإجراء غير متاح."
 };

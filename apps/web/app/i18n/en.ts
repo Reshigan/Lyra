@@ -275,6 +275,10 @@ export const en = {
      reproduces the page. */
   "error.home": "Go to your workspace",
   "error.requestId": "Reference {id}",
+  /* Marks the one input the API named in `problem.errors`. Its wording is ours,
+     not the API's: zod's messages are English-only (CLAUDE.md §7), so only the
+     field *name* crosses the wire and the sentence is written here. */
+  "error.field": "This needs correcting.",
   "error.detail": "Details",
   /* Routes refuse an unrecognised form intent by title. Only reachable if a
      request is made outside the UI, but a refusal is still read by a person. */
