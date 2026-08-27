@@ -1,5 +1,8 @@
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { chosenLocale, langFor, localeFrom, moduleName, pseudoText, translator } from "./i18n";
+import { en } from "./i18n/en";
 import { labelsIn } from "./routes/search-results";
 
 const request = (headers: Record<string, string>) => new Request("https://lyra.test/", { headers });
@@ -74,5 +77,40 @@ describe("moduleName", () => {
 
   it("title-cases a module nobody has named yet rather than printing nav.x", () => {
     expect(moduleName(translator("en"), "atlas")).toBe("Atlas");
+  });
+});
+
+// staff.tsx called t("common.default") and t("common.choose") against the shell
+// translator; neither key was in any catalogue, so the invite form's two select
+// placeholders rendered the literal key. Same shape as admin.status.active
+// before it: TypeScript cannot see it because `t` takes a string.
+//
+// The ar catalogue is already held to en's key set by the `Messages` type, so
+// this only has to check en. It scans source rather than exporting a registry:
+// the bug is a lookup that never routes anywhere, and only the source shows it.
+describe("shell catalogue covers every lookup", () => {
+  const appDir = new URL("./", import.meta.url).pathname;
+  const files = execFileSync("grep", ["-rl", "translator(", appDir], { encoding: "utf8" })
+    .split("\n")
+    .filter((f) => f.endsWith(".tsx") || (f.endsWith(".ts") && !f.endsWith(".test.ts")));
+
+  it("scans the files that bind the shell translator", () => {
+    expect(files.length).toBeGreaterThan(20);
+  });
+
+  it("has a key for every t(\"…\") in them", () => {
+    const missing: string[] = [];
+    for (const file of files) {
+      const src = readFileSync(file, "utf8");
+      // Only the name this file binds `translator(...)` to — a route that binds
+      // its own labelsFrom(LABELS) table to `t` resolves against that table, not
+      // this catalogue, and is not this test's business.
+      for (const [, name] of src.matchAll(/const (\w+) = translator\(/g)) {
+        for (const [, key] of src.matchAll(new RegExp(`\\b${name}\\("([\\w.]+)"`, "g"))) {
+          if (!(key! in en)) missing.push(`${file.replace(appDir, "")}: ${key}`);
+        }
+      }
+    }
+    expect(missing).toEqual([]);
   });
 });

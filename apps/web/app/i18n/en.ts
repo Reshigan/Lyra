@@ -28,6 +28,8 @@ export const en = {
   "nav.doctrine": "Design doctrine",
   "nav.home": "Home",
   "nav.center": "Command center",
+  // The ✦ eyebrow over the command center: what the agents on this page are.
+  "nav.ai": "AI operations",
   "nav.whatif": "Scenarios",
   "nav.group.modules": "Modules",
   "nav.axis": "Operations",
@@ -198,6 +200,10 @@ export const en = {
   "common.apply": "Apply",
   "common.clear": "Clear",
   "common.all": "All",
+  // The empty option at the head of a <select>: "default" where leaving it
+  // blank means inherit, "choose" where a value is required.
+  "common.default": "Default",
+  "common.choose": "Choose…",
   "common.new": "New",
   "common.create": "Create",
   "common.save": "Save changes",
