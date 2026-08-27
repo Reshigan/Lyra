@@ -166,6 +166,7 @@ export const LABELS: Labels = {
     to: "To",
     when: "When",
     written: "Note written by",
+    whyWritten: "The agent summarised the conversation so the person taking it over starts read-in.",
     noneAgent: "Nothing is waiting on the agent.",
     noneHuman: "Nobody is holding a conversation.",
     noneHandovers: "No handovers yet.",
@@ -229,6 +230,7 @@ export const LABELS: Labels = {
     to: "إلى",
     when: "الوقت",
     written: "كاتب الملاحظة",
+    whyWritten: "لخّص الوكيل الذكي المحادثة ليبدأ من يستلمها وهو مطّلع عليها.",
     noneAgent: "لا شيء ينتظر الوكيل الذكي.",
     noneHuman: "لا أحد يحمل محادثة.",
     noneHandovers: "لا تسليمات بعد.",
@@ -538,7 +540,7 @@ export default function OrbitConsole() {
                   // translating the primitive is a @lyra/ui change, not a screen change.
                   render: (row) =>
                     row.generatedBy?.startsWith("agent:") ? (
-                      <AgentBadge agent={row.generatedBy.slice("agent:".length)} />
+                      <AgentBadge agent={row.generatedBy.slice("agent:".length)} why={l("whyWritten")} />
                     ) : (
                       <span className="font-ui text-12 text-muted">{row.generatedBy ?? "—"}</span>
                     )
