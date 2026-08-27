@@ -397,6 +397,31 @@ evidence above as the context. Until then the gate cannot see this class of
 defect in Arabic, and `parityGap` will only catch it when English happens to
 catch what Arabic misses.
 
+**Root cause, and why no fixture can currently show it, 2026-08-27.** The
+accuracy instruction is an enumeration, not a rule: `cx-judge.ts:85-87` says *"A
+number, date or decision the conversation does not support is a 1"*. `"on each
+claim"` is none of the three — it is a scope qualifier on a figure the
+conversation *did* give. English scored it 4 anyway, reading past the letter of
+the list; Arabic followed the list exactly. So the parity gap is not two judges
+of differing skill, it is one under-specified instruction that one language
+happened to over-perform. `cx-rubric-v3` should widen the clause to cover any
+detail the conversation does not support — scope, condition, exclusion, term —
+rather than add a fourth noun to the list.
+
+A probe pair for this class was written and then pulled back out rather than
+committed, which is the part worth recording. The only `expectPass: false` cases
+in `live-cx-quality` invent a **figure** — the case both languages catch — so
+nothing in the golden set exercises the qualifier class, and the register's claim
+that Arabic under-detects rests on the one production observation above and not
+on a repeatable measurement. But `worstReject` gates the deploy (`live.ts:277`,
+`rejectMax: 3.5`), and `eval-live` runs on push to `main` and has taken a deploy
+down before (run 32289549099). Adding a case that is *expected* to fail into a
+deploy-blocking gate turns a measurement into a release blocker. The probe needs
+somewhere to run that is not the gate — an unthresholded diagnostic task, or a
+third state beside `expectPass` that `live.ts:255-258` reports without failing —
+and that choice belongs in the `cx-rubric-v3` ADR, alongside the prompt change it
+is meant to verify. Until one exists, this finding stays a single observation.
+
 ### New finding — on-prem image generation, 2026-08-27
 
 *Model gateway / on-prem.* Text generation has two homes and images have one.
@@ -411,23 +436,26 @@ it reads `IMAGE_CATALOGUE[IMAGE_MODEL.cloud]` unconditionally
 sibling `EMBED_MODEL` (`models.ts:49`) has both `cloud` and `onprem`. So the
 residency guarantee that text gets by construction, images do not get at all.
 
-This is currently latent rather than live, in two ways worth stating precisely,
-because both are load-bearing for how urgent it is:
+~~This is currently latent rather than live~~ — **struck 2026-08-27, it was
+live.** The draft rested on "nothing calls it", from a grep that never left
+`packages/model-gateway`:
 
-1. **Nothing calls it.** `generateImage` has no caller outside the gateway and
-   its own tests — grep finds only `gateway.ts:350` (the definition),
-   `types.ts:143` (the optional provider method) and `workers-ai.ts:91` (the
-   one adapter that implements it). No route, module or agent generates an
-   image, so no on-prem tenant's prompt is reaching Cloudflare today.
-2. **It is a marked simplification, not an oversight.** `gateway.ts:348` reads
+1. ~~**Nothing calls it.**~~ `apps/api/src/engines/signal-creative.ts:289` calls
+   it from `generateCreativeImage`, routed at `apps/api/src/routes/signal.ts:195`
+   as `POST /v1/signal/creatives/image`. The route checks
+   `signal:creatives:generate` and nothing about residency, so an on-prem
+   tenant's image brief did reach Cloudflare. SIGNAL did not need to "grow a
+   caller"; it had one.
+2. **It is a marked simplification, not an oversight.** `gateway.ts:348` read
    `// ponytail: Workers AI cloud only, no on-prem image model yet.` — the
-   ceiling was named where the shortcut was taken.
+   ceiling was named where the shortcut was taken. Which is the lesson worth
+   more than the fix: a named ceiling is a promise to check the callers before
+   one arrives, and no one did. The comment made the gap legible and let it
+   read as accounted for.
 
-The gap becomes real the moment SIGNAL grows a caller, which is the direction
-the module is already pointed (docs/27 SIGNAL verdict: "content generation
-without the publish loop it advertises"). The failure mode then is silent: an
-on-prem tenant's campaign prompt leaves the building, and the only thing that
-would have stopped it is a branch that exists for text and not for images.
+The failure mode was silent by construction: an on-prem tenant's campaign
+prompt left the building, and the only thing that would have stopped it is a
+branch that exists for text and not for images.
 
 Two further observations from the same read, both corrections to assumptions
 worth recording so they are not re-derived:
