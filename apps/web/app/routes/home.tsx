@@ -88,11 +88,13 @@ const LABELS: Record<string, Record<string, string>> = {
     "approvals.deciding": "Recording your decision…",
     "approvals.empty": "No decision is waiting on you right now.",
     "approvals.failed": "That decision was not recorded, and nothing changed.",
+    "approvals.recorded": "Your decision was recorded.",
 
     "notifications.title": "Notifications",
     "notifications.label": "Unread notifications",
     "notifications.dismiss": "Mark as read",
     "notifications.dismissing": "Marking…",
+    "notifications.dismissed": "Marked as read.",
     "notifications.empty": "Nothing unread.",
     "notice.analytics.schedule.delivered": "A scheduled report was delivered",
     "notice.analytics.schedule.undelivered": "A scheduled report reached only some recipients",
@@ -162,11 +164,13 @@ const LABELS: Record<string, Record<string, string>> = {
     "approvals.deciding": "جارٍ تسجيل قرارك…",
     "approvals.empty": "لا يوجد قرار بانتظارك الآن.",
     "approvals.failed": "لم يُسجَّل القرار، ولم يتغيّر شيء.",
+    "approvals.recorded": "تم تسجيل قرارك.",
 
     "notifications.title": "الإشعارات",
     "notifications.label": "إشعارات غير مقروءة",
     "notifications.dismiss": "تحديد كمقروء",
     "notifications.dismissing": "جارٍ التحديد…",
+    "notifications.dismissed": "تم التحديد كمقروء.",
     "notifications.empty": "لا شيء غير مقروء.",
     "notice.analytics.schedule.delivered": "تم تسليم تقرير مجدول",
     "notice.analytics.schedule.undelivered": "وصل تقرير مجدول إلى بعض المستلمين فقط",
@@ -430,11 +434,6 @@ function map<T, U>(from: Panel<T>, to: (value: T) => U): Panel<U> {
   return from.state === "ok" ? { state: "ok", data: to(from.data) } : from;
 }
 
-/** Whether the header's decisions-waiting link is worth showing at all. */
-export function hasApprovalsLink(counts: { approvals: number } | null | undefined): boolean {
-  return Boolean(counts?.approvals);
-}
-
 /**
  * Unit economics arrive as one row per day/module/unit. The dashboard wants the
  * window, so it is folded here rather than in the browser: the client has no
@@ -515,32 +514,35 @@ function byArea(rows: UnitEconomicsRow[]): AreaRow[] {
 export async function action({
   request,
   context
-}: ActionFunctionArgs): Promise<{ problem: Problem | null }> {
+  // `done` is what succeeded, not what was asked: it is null on every failure,
+  // so the screen's live region can announce an outcome without re-deriving it
+  // from the form data of a submission that may not have taken effect.
+}: ActionFunctionArgs): Promise<{ problem: Problem | null; done: "decide" | "read" | null }> {
   const env = context.get(cloudflare).env;
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "decide");
   const id = String(form.get("id") ?? "");
   const unknown: Problem = { title: "unknown intent", status: 400 };
-  if (!id) return { problem: unknown };
+  if (!id) return { problem: unknown, done: null };
 
   try {
     if (intent === "read") {
       await api(`/v1/me/notifications/${id}/read`, { env, request, method: "POST" });
-      return { problem: null };
+      return { problem: null, done: "read" };
     }
     const decision = String(form.get("decision") ?? "");
     if (intent !== "decide" || (decision !== "approved" && decision !== "rejected")) {
-      return { problem: unknown };
+      return { problem: unknown, done: null };
     }
     // Permission, dual control and the audit row are all enforced by `decide()`
     // behind this endpoint; deciding from here is a shortcut through the UI, not
     // through the policy.
     await api(`/v1/me/approvals/${id}/decide`, { env, request, method: "POST", body: { decision } });
   } catch (error) {
-    if (error instanceof ApiError) return { problem: error.problem };
+    if (error instanceof ApiError) return { problem: error.problem, done: null };
     throw error;
   }
-  return { problem: null };
+  return { problem: null, done: "decide" };
 }
 
 /* ------------------------------------------------------------------ screen */
@@ -576,6 +578,7 @@ export default function Home() {
   const links = (shell?.nav ?? []).flatMap(routedLeaves).filter((item) => item.href !== "/");
   const offered = new Set(links.map((item) => item.href));
   const problem = fetcher.data?.problem ?? null;
+  const done = fetcher.data?.done ?? null;
   // Which row the in-flight submission belongs to, so one busy control does not
   // freeze the other five.
   const busyId = fetcher.state === "idle" ? null : String(fetcher.formData?.get("id") ?? "");
@@ -670,11 +673,14 @@ export default function Home() {
         {brand ? (
           <p className="font-ui text-13 text-subtle">{label("subtitle", { brand })}</p>
         ) : null}
-        {hasApprovalsLink(loaded.counts) ? (
-          <Link to="/approvals" className="w-fit font-ui text-13 text-accent underline">
-            {label("approvals.all")}
-          </Link>
-        ) : null}
+        {/* No "Open the full queue" link here. It used to render directly
+            above a KPI wall whose first tile already goes to /approvals, and
+            above a decisions panel whose footer carries the same label to the
+            same place — and it only appeared when approvals existed, which is
+            precisely when both of those are showing too. Three doors to one
+            room, two of them within a screen of each other. The panel footer
+            is the one routing.ts documents as this route's door, and it is
+            unconditional, so it is the one that stays. */}
       </header>
 
       {loaded.counts || econ ? (
@@ -726,6 +732,14 @@ export default function Home() {
         <div>{renderSection(journeySteps, "hub")}</div>
         <JourneyContinue to="/journey/axis" label={label("journey.cta")} />
       </section>
+
+      {/* A failed decision shouts (role="alert"); a successful one is announced
+          politely and shows nothing, because the row it belonged to has already
+          left the list. Without this the only feedback a screen-reader user got
+          for a succeeding approve was silence. */}
+      <p aria-live="polite" className="sr-only">
+        {fetcher.state === "idle" && done ? label(done === "read" ? "notifications.dismissed" : "approvals.recorded") : ""}
+      </p>
 
       {problem ? (
         <div role="alert" className="rounded-md border border-danger/40 bg-danger/10 p-3">

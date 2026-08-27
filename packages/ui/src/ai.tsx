@@ -276,6 +276,13 @@ export interface ApprovalStripProps {
  * Docks at the block-end of a Case Room while something is pending (docs/07 §4).
  * A blocked strip explains itself rather than rendering a disabled button
  * (docs/22 §5.4).
+ *
+ * Both decisions are irreversible and neither has an undo, so each takes two
+ * clicks: the first arms, restating the consequence, and only the second calls
+ * the handler. That is the commitment step CLAUDE.md §4 asks of a consequential
+ * action, held here at the primitive rather than in one caller — the strip is
+ * the only place either decision is offered, so every screen that offers one
+ * gets it.
  */
 export function ApprovalStrip({
   summary,
@@ -288,6 +295,7 @@ export function ApprovalStrip({
   label
 }: ApprovalStripProps) {
   const t = useUiText();
+  const [armed, setArmed] = React.useState<"approve" | "reject" | null>(null);
   return (
     <div
       role="region"
@@ -308,15 +316,40 @@ export function ApprovalStrip({
       </div>
       {blockedReason ? (
         <p className="font-ui text-12 text-warning">{blockedReason}</p>
+      ) : armed ? (
+        // CLAUDE.md §4: a consequential action is not a single click. The armed
+        // state replaces both buttons rather than sitting beside them, so the
+        // only thing one more click can do is the thing just restated — there is
+        // no adjacent target to hit by mistake, and no way to arm one decision
+        // and commit the other. `role="alert"` because the consequence appears
+        // after the actor has already acted once.
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+          <p role="alert" className="font-ui text-12 text-muted">
+            {t(armed === "approve" ? "approveIsFinal" : "rejectIsFinal")}
+          </p>
+          <Button variant="ghost" onClick={() => setArmed(null)}>
+            {t("cancel")}
+          </Button>
+          <Button
+            variant={armed === "approve" ? "primary" : "ghost"}
+            autoFocus
+            onClick={() => {
+              setArmed(null);
+              (armed === "approve" ? onApprove : onReject)?.();
+            }}
+          >
+            {t(armed === "approve" ? "confirmApprove" : "confirmReject")}
+          </Button>
+        </div>
       ) : (
         <div className="flex shrink-0 items-center gap-2">
           {onReject ? (
-            <Button variant="ghost" {...(onReject ? { onClick: onReject } : {})}>
+            <Button variant="ghost" onClick={() => setArmed("reject")}>
               {t("reject")}
             </Button>
           ) : null}
           {onApprove ? (
-            <Button variant="primary" {...(onApprove ? { onClick: onApprove } : {})}>
+            <Button variant="primary" onClick={() => setArmed("approve")}>
               {t("approve")}
             </Button>
           ) : null}

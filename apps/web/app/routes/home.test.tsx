@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LoaderFunctionArgs } from "react-router";
 import type { Env } from "../env";
 import { loader as approvalsLoader } from "./approvals";
-import { activeCampaignCount, hasApprovalsLink, isOwnWork, loader, openWhitespaceCount } from "./home";
+import { activeCampaignCount, isOwnWork, loader, openWhitespaceCount } from "./home";
 
 // The activity panel is headed "Your recent activity", which is a promise: it
 // lists what this person changed. Signing in is not a change, and the audit log
@@ -69,20 +69,6 @@ describe("activeCampaignCount", () => {
   });
 });
 
-describe("hasApprovalsLink", () => {
-  it("shows the link when something is waiting", () => {
-    expect(hasApprovalsLink({ approvals: 1 })).toBe(true);
-  });
-
-  it("hides it once the queue is empty", () => {
-    expect(hasApprovalsLink({ approvals: 0 })).toBe(false);
-  });
-
-  it("hides it when the inbox never loaded", () => {
-    expect(hasApprovalsLink(null)).toBe(false);
-    expect(hasApprovalsLink(undefined)).toBe(false);
-  });
-});
 
 describe("the hero figure and what clicking it shows", () => {
   const env = { ENVIRONMENT: "test", API_ORIGIN: "https://api.test", SESSION_COOKIE: "s" } as Env;
