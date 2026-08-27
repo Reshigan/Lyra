@@ -397,6 +397,69 @@ evidence above as the context. Until then the gate cannot see this class of
 defect in Arabic, and `parityGap` will only catch it when English happens to
 catch what Arabic misses.
 
+### New finding — on-prem image generation, 2026-08-27
+
+*Model gateway / on-prem.* Text generation has two homes and images have one.
+`resolveModel` (`packages/model-gateway/src/models.ts:79`) branches on
+`opts.onPrem` and pins every tier to `ONPREM_ROUTES`, and it enforces that pin
+over a tenant override — `models.ts:87` re-routes any non-`openai-compat`
+model back to internal, with the comment naming why ("an on-prem tenant with a
+cloud override is a data-residency breach"). `generateImage` has no equivalent:
+it reads `IMAGE_CATALOGUE[IMAGE_MODEL.cloud]` unconditionally
+(`packages/model-gateway/src/gateway.ts:352`), and `IMAGE_MODEL` is
+`{ cloud: "flux-schnell" }` (`models.ts:66`) — a one-key map where its text
+sibling `EMBED_MODEL` (`models.ts:49`) has both `cloud` and `onprem`. So the
+residency guarantee that text gets by construction, images do not get at all.
+
+This is currently latent rather than live, in two ways worth stating precisely,
+because both are load-bearing for how urgent it is:
+
+1. **Nothing calls it.** `generateImage` has no caller outside the gateway and
+   its own tests — grep finds only `gateway.ts:350` (the definition),
+   `types.ts:143` (the optional provider method) and `workers-ai.ts:91` (the
+   one adapter that implements it). No route, module or agent generates an
+   image, so no on-prem tenant's prompt is reaching Cloudflare today.
+2. **It is a marked simplification, not an oversight.** `gateway.ts:348` reads
+   `// ponytail: Workers AI cloud only, no on-prem image model yet.` — the
+   ceiling was named where the shortcut was taken.
+
+The gap becomes real the moment SIGNAL grows a caller, which is the direction
+the module is already pointed (docs/27 SIGNAL verdict: "content generation
+without the publish loop it advertises"). The failure mode then is silent: an
+on-prem tenant's campaign prompt leaves the building, and the only thing that
+would have stopped it is a branch that exists for text and not for images.
+
+Two further observations from the same read, both corrections to assumptions
+worth recording so they are not re-derived:
+
+- **The on-prem stack is not missing.** `ops/docker-compose.yml` serves Ollama
+  (`:132`), vLLM behind a `gpu` profile (`:139-146`) and TEI embeddings
+  (`:161-163`), every image and model env-var pinned, weights persisted in a
+  `models:` volume. CLAUDE.md's repository layout said `infra/onprem/`, which
+  does not exist — ADR-0010 moved it to `ops/` deliberately, and three handover
+  docs had been carrying the correction for it. Reading that layout is what
+  produced this finding's first, wrong draft ("there is no on-prem deployment"),
+  so the layout block and `docs/11-deployment-onprem.md:7` were fixed at source
+  rather than annotated again. Updating a text model on-prem is therefore an existing
+  operational job (change `VLLM_MODEL`, restart), not missing capability: the
+  `internal-chat` catalogue key is a slug, so whatever the server loads under
+  it is what runs, with no code change at all.
+- **An image eval exists but does not measure images.**
+  `evals/creative-image/` is scored by `scoreInjection` (`evals/run.ts:977`)
+  and its cases are jailbreak prompts asserting `expectHit: true`. That guards
+  prompt-injection screening on the image path, which is worth having and is
+  not the same thing as measuring whether a newer image model is better. So
+  the eval-first discipline that governs a text model swap (CLAUDE.md §4) has
+  no equivalent for a visual one — there is no golden set a candidate image
+  model could be scored against.
+
+Not a backlog item as it stands. Adding `internal-image` to `IMAGE_CATALOGUE`
+and an `onprem` key to `IMAGE_MODEL`, routed through the same `openai-compat`
+adapter the text tiers use, is small; deciding *which* on-prem image server the
+platform supports is an ADR under docs/02 §9, and giving visual quality a
+measured gate is a second one under docs/13 §3.4. Both are cheaper to make
+before SIGNAL has a caller than after (**F67**).
+
 ## P2 — depth, not absence
 
 Commission is flat-rate only — no ladders, tiers, volume bonuses or overrides

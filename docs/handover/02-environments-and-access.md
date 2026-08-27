@@ -117,10 +117,10 @@ Do not "fix" it by disabling the gate.
 ## 3. The on-prem twin (local or customer-hosted)
 
 The Docker stack is [`ops/docker-compose.yml`](../../ops/docker-compose.yml).
-Note that [`docs/11-deployment-onprem.md`](../11-deployment-onprem.md) and
-[`CLAUDE.md`](../../CLAUDE.md) refer to `infra/onprem/` — **that directory does
-not exist**; `ops/` is the real location, and the root `onprem:up` script points
-there correctly.
+There is no `infra/onprem/` and never will be — ADR-0010. Older text referring
+to it was corrected 2026-08-27; `docs/IMPLEMENTATION.md` still shows the old
+path where it quotes the M0-era `package.json`, which is a record of what was
+written then, not a live instruction.
 
 ```sh
 pnpm lyra onprem init          # writes ops/.env from .env.example, generating fresh secrets

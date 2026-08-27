@@ -22,7 +22,8 @@ record the decision in docs/decisions/ADR-NNNN.md (create the folder on first us
   /config         # eslint, tsconfig, tailwind preset
 /infra
   /cloudflare     # wrangler.jsonc per app, Terraform for accounts/zones (optional)
-  /onprem         # docker-compose.yml, Dockerfiles, Caddyfile, model configs
+/ops              # on-prem stack (ADR-0010): docker-compose.yml, Caddyfile,
+                  # Ollama/vLLM/TEI model services
 /docs             # this pack
 ```
 
@@ -37,7 +38,7 @@ Package manager: **pnpm** (workspaces) + **turbo**. Node 22. TypeScript strict.
 - `pnpm lint` / `pnpm typecheck`
 - `pnpm db:generate` / `pnpm db:migrate` — Drizzle kit
 - `pnpm deploy:staging` / `pnpm deploy:prod` — wrangler deploy (CI only for prod)
-- `pnpm onprem:up` — docker compose -f infra/onprem/docker-compose.yml up
+- `pnpm onprem:up` / `pnpm onprem:down` — docker compose -f ops/docker-compose.yml
 
 ## Development method — TDD, non-negotiable
 

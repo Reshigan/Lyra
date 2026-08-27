@@ -22,9 +22,10 @@ Those documents say what LYRA *should* be and why; this pack says what LYRA
 
 **Where the two disagree, this pack describes reality and says so explicitly.**
 Several spec paths in [`docs/`](../) and [`CLAUDE.md`](../../CLAUDE.md) do not
-match the code as built (for example, the on-prem stack lives in
-[`ops/`](../../ops), not `infra/onprem/`). Each divergence is called out where
-it matters, with the real path.
+match the code as built (for example `withTenant(db, tenantId)`, which CLAUDE.md
+names as the tenancy helper, does not exist — the real ones are `scoped(ctx,
+table)` and `assertTenant(...)`). Each divergence is called out where it
+matters, with the real path.
 
 ## 2. Audience
 

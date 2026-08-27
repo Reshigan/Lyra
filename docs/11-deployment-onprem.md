@@ -4,7 +4,7 @@ For regulated tenants requiring full data residency: the same application,
 packaged as a Docker Compose stack (Kubernetes Helm chart derives from it,
 v1.1), with an **internal LLM** so no data leaves the estate.
 
-## 1. Stack (infra/onprem/docker-compose.yml)
+## 1. Stack (ops/docker-compose.yml)
 
 | Service | Image | Role |
 |---|---|---|

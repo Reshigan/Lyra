@@ -122,7 +122,7 @@ looking for these paths you will not find them:
 | Spec says | Reality | Notes |
 |---|---|---|
 | `apps/agents` (Durable Objects + Workflows) | Does not exist. Lives in [`apps/api/src/engines/`](../../apps/api/src/engines) | `agent-room.ts`, `rate-counter.ts`, `user-channel.ts`, `renewal-workflow.ts` |
-| `infra/onprem/docker-compose.yml` | [`ops/docker-compose.yml`](../../ops/docker-compose.yml) | The root `onprem:up` script points at `ops/`, correctly |
+| ~~`infra/onprem/docker-compose.yml`~~ | [`ops/docker-compose.yml`](../../ops/docker-compose.yml) | **Resolved 2026-08-27** — CLAUDE.md and docs/11 corrected to `ops/`, per ADR-0010 |
 | `apps/api/src/modules/<m>` | [`apps/api/src/routes/`](../../apps/api/src/routes) — one file per module | Plus generated CRUD, see §4.3 |
 | `packages/core/tools`, `packages/core/seams`, `packages/core/rooms` | Flat files: [`packages/core/src/seams.ts`](../../packages/core/src/seams.ts); tools in [`apps/api/src/engines/orbit-tools.ts`](../../apps/api/src/engines/orbit-tools.ts) | |
 | `withTenant(db, tenantId)` | **Does not exist.** The real helpers are `scoped(ctx, table)` and `assertTenant(...)` in [`packages/core/src/context.ts`](../../packages/core/src/context.ts) | See §6. This is the single most common source of confusion when reading `CLAUDE.md` against the code |

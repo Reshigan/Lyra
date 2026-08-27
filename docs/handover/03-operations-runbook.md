@@ -58,9 +58,8 @@ Source of truth for all of the above: [`apps/api/wrangler.jsonc`](../../apps/api
 
 There is also an **on-prem twin** — the same code on libSQL/Docker — described
 in [`docs/11-deployment-onprem.md`](../11-deployment-onprem.md) and driven by
-[`ops/docker-compose.yml`](../../ops/docker-compose.yml). Note that
-[`CLAUDE.md`](../../CLAUDE.md) still says `infra/onprem/docker-compose.yml`;
-that path is stale, the real one is `ops/`.
+[`ops/docker-compose.yml`](../../ops/docker-compose.yml). There is no
+`infra/onprem/` — ADR-0010.
 
 ### 1.2 Tools you need
 
