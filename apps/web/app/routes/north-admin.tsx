@@ -71,7 +71,8 @@ const LABELS: Labels = {
       "The metric registry as a registry: owner, audience, direction and target, plus whether the snapshotter is still feeding each one. A change here is what every chart in NORTH reads next.",
     "registry.title": "Metric registry",
     "registry.caption": "Every metric in this tenant, with its owner, audience, target and last snapshot",
-    "registry.empty": "No metric is registered yet. NORTH has nothing to narrate until one is.",
+    "registry.empty": "No metric is registered yet.",
+    "registry.empty.body": "NORTH has nothing to narrate until one is. Metrics are provisioned with the tenant, not added here — this screen edits the target and owner of ones that exist.",
     "col.metric": "Metric",
     "col.grain": "Grain",
     "col.owner": "Owner",
@@ -137,7 +138,8 @@ const LABELS: Labels = {
       "سجل المقاييس بوصفه سجلاً: المالك والجمهور والاتجاه والمستهدف، ومعه هل ما زال المُلقِط يغذّي كل مقياس. أي تغيير هنا هو ما ستقرأه كل رسوم نورث بعده.",
     "registry.title": "سجل المقاييس",
     "registry.caption": "كل مقياس في هذه المؤسسة، مع مالكه وجمهوره ومستهدفه وآخر لقطة",
-    "registry.empty": "لا يوجد مقياس مسجَّل بعد. لا شيء لنورث ليرويه حتى يُسجَّل واحد.",
+    "registry.empty": "لا يوجد مقياس مسجَّل بعد.",
+    "registry.empty.body": "لا شيء لنورث ليرويه حتى يُسجَّل واحد. تُهيَّأ المقاييس مع المستأجر ولا تُضاف من هنا — هذه الشاشة تعدّل هدف ومالك المقاييس الموجودة.",
     "col.metric": "المقياس",
     "col.grain": "الحبيبة",
     "col.owner": "المالك",
@@ -539,7 +541,7 @@ export default function NorthAdmin() {
               rows={rows}
               rowKey={(row) => row.id}
               caption={l("registry.caption")}
-              empty={<EmptyState title={l("registry.empty")} />}
+              empty={<EmptyState title={l("registry.empty")} body={l("registry.empty.body")} />}
             />
           </section>
 

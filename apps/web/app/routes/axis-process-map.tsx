@@ -257,6 +257,8 @@ const LABELS: Record<string, Record<string, string>> = {
     "headline.empty": "No steps recorded yet",
     "headline.bottleneck": "Work pools most between {from} and {to}",
     "headline.moving": "Work is moving with no clear bottleneck",
+    none: "Nothing has moved through this process yet.",
+    "none.body": "The map draws itself from recorded steps — as soon as a case, claim or quote changes state, its path appears here.",
   },
   ar: {
     title: "خريطة العملية",
@@ -264,6 +266,8 @@ const LABELS: Record<string, Record<string, string>> = {
     "headline.empty": "لا توجد خطوات مسجّلة بعد",
     "headline.bottleneck": "يتراكم العمل أكثر بين {from} و{to}",
     "headline.moving": "العمل يتحرك دون عائق واضح",
+    none: "لم يمر أي عمل عبر هذه العملية بعد.",
+    "none.body": "تُرسم الخريطة من الخطوات المسجّلة — بمجرد أن تغيّر حالة قضية أو مطالبة أو عرض سعر، يظهر مسارها هنا.",
   },
 };
 
@@ -315,7 +319,7 @@ export default function AxisProcessMap() {
       {!loaded.may ? (
         <EmptyState title={l("deniedTitle")} body={t("error.forbidden")} />
       ) : laid.nodes.length === 0 ? (
-        <EmptyState title={l("none")} />
+        <EmptyState title={l("none")} body={l("none.body")} />
       ) : (
         // The diagram is the screen, so it gets the screen's container rather
         // than floating on the page background like a debug render.

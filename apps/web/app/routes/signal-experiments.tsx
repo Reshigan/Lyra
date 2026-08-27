@@ -229,7 +229,7 @@ export default function Experiments() {
 
       <Card title={l("exp.title")} description={l("exp.caption")}>
         {loaded.rows.length === 0 ? (
-          <EmptyState title={l("exp.none")} className="mt-4" />
+          <EmptyState title={l("exp.none")} body={l("exp.none.body")} className="mt-4" />
         ) : (
           <Table
             className="mt-4"

@@ -469,6 +469,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     "period.recent": "Periods",
     "period.recentCaption": "Recent accounting periods",
     "period.noneRecent": "No periods have been closed yet.",
+    "period.noneRecent.body": "A period appears here once it is closed. Closing locks its journal so the balances can be reported.",
     "period.noneSelected": "No period chosen.",
     "period.noneSelectedBody":
       "Pick a period from the list below, or look one up by code, to see its checks and close it.",
@@ -607,6 +608,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     "recon.runs": "Runs",
     "recon.runsCaption": "Recent reconciliation runs",
     "recon.noRuns": "No reconciliation runs yet.",
+    "recon.noRuns.body": "A run compares a bank statement against the ledger. Start one from the accounts screen to see breaks here.",
     "recon.run": "Run",
     "recon.matched": "Matched",
     "recon.variance": "Variance",
@@ -850,6 +852,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     "period.recent": "الفترات",
     "period.recentCaption": "الفترات المحاسبية الأخيرة",
     "period.noneRecent": "لم يتم إقفال أي فترة بعد.",
+    "period.noneRecent.body": "تظهر الفترة هنا بعد إقفالها. الإقفال يقفل دفترها ليتسنى إصدار الأرصدة.",
     "period.noneSelected": "لم يتم اختيار فترة.",
     "period.noneSelectedBody":
       "اختر فترة من القائمة أدناه، أو ابحث عنها بالرمز، لعرض فحوصها وإقفالها.",
@@ -980,6 +983,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     "recon.runs": "عمليات التشغيل",
     "recon.runsCaption": "أحدث عمليات التسوية",
     "recon.noRuns": "لا توجد عمليات تسوية بعد.",
+    "recon.noRuns.body": "تقارن العملية كشف البنك بدفتر الأستاذ. ابدأ واحدة من شاشة الحسابات لترى الفروقات هنا.",
     "recon.run": "التشغيل",
     "recon.matched": "مطابَق",
     "recon.variance": "فروقات",

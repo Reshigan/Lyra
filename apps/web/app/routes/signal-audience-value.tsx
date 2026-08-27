@@ -239,6 +239,7 @@ export default function AudienceValueScreen() {
         {loaded.rows.length === 0 ? (
           <EmptyState
             title={l("aud.unmeasured")}
+            body={l("aud.unmeasured.body")}
             className="mt-4"
             action={
               <Link to="/signal/audiences" className="font-ui text-13 text-accent underline-offset-2 hover:underline">

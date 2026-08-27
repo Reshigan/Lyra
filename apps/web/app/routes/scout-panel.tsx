@@ -131,7 +131,7 @@ export default function ScoutPanel() {
 
       <Card>
         {loaded.rolls.length === 0 ? (
-          <EmptyState title={l("panel.empty")} />
+          <EmptyState title={l("panel.empty")} body={l("panel.empty.body")} />
         ) : (
           <Table
             caption={l("panel.title")}

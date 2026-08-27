@@ -213,6 +213,7 @@ const OWN: Record<string, Record<string, string>> = {
     linesTitle: "Remittance lines",
     linesCaption: "Every entry this settlement was drafted from.",
     linesEmpty: "No entries were drafted into this settlement.",
+    "linesEmpty.body": "A settlement to an insurer has no commission lines — those are keyed by channel. Its net comes from the statement above.",
     actionsTitle: "Decide",
     approve: "Approve",
     pay: "Pay",
@@ -256,6 +257,7 @@ const OWN: Record<string, Record<string, string>> = {
     linesTitle: "بنود الحوالة",
     linesCaption: "كل قيد صيغت منه هذه التسوية.",
     linesEmpty: "لم يُدرج أي قيد في هذه التسوية.",
+    "linesEmpty.body": "التسوية إلى شركة تأمين لا تحمل سطور عمولة — فتلك مرتبطة بالقناة. صافيها يأتي من الكشف أعلاه.",
     actionsTitle: "القرار",
     approve: "موافقة",
     pay: "دفع",
@@ -522,7 +524,7 @@ export default function SettlementDetail() {
           columns={columns}
           rows={table.rows}
           rowKey={(row) => String(row.policyId ?? "")}
-          empty={<EmptyState title={l("linesEmpty")} />}
+          empty={<EmptyState title={l("linesEmpty")} body={l("linesEmpty.body")} />}
         />
       </Card>
     </div>

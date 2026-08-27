@@ -146,6 +146,7 @@ export default function AnswerEngines() {
         {loaded.pages.length === 0 ? (
           <EmptyState
             title={l("aeo.noPages")}
+            body={l("aeo.noPages.body")}
             className="mt-4"
             action={
               <Link to="/signal/aeo-pages" className="font-ui text-13 text-accent underline-offset-2 hover:underline">

@@ -190,6 +190,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "col.note": "Note",
     "result.evidence": "Bundle",
     "result.evidenceEmpty": "No files were captured in this run.",
+    "result.evidenceEmpty.body": "This check passed on data alone — it read records rather than documents, so there was nothing to attach.",
     bundleHash: "Bundle hash",
     "bundleHash.hint": "sha256 of the archive, manifest included. Quote it with the bundle.",
     "col.path": "File",
@@ -285,6 +286,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "col.note": "ملاحظة",
     "result.evidence": "الحزمة",
     "result.evidenceEmpty": "لم يتم التقاط أي ملفات في هذا التشغيل.",
+    "result.evidenceEmpty.body": "اجتاز هذا الفحص بالبيانات وحدها — قرأ سجلات لا مستندات، فلم يكن هناك ما يُرفق.",
     bundleHash: "بصمة الحزمة",
     "bundleHash.hint": "بصمة sha256 للأرشيف بما فيه قائمة المحتويات. اذكرها مع الحزمة.",
     "col.path": "الملف",
@@ -740,7 +742,7 @@ function BundleResult({
         rowKey={(file) => file.path}
         caption={l("result.evidence")}
         density="compact"
-        empty={<EmptyState title={l("result.evidenceEmpty")} />}
+        empty={<EmptyState title={l("result.evidenceEmpty")} body={l("result.evidenceEmpty.body")} />}
       />
     </section>
   );

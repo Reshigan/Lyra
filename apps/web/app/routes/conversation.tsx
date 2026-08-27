@@ -404,6 +404,7 @@ const LABELS: Record<string, Record<string, string>> = {
     send: "Send reply",
     noReply: "You do not hold the permission to reply in this conversation.",
     empty: "No messages yet.",
+    "empty.body": "This customer reached out on a channel but no message has been recorded — the first reply or inbound message will open the thread.",
     denied: "You can see this conversation but not its messages.",
     older: "Load older messages",
     start: "This is the start of the conversation.",
@@ -486,6 +487,7 @@ const LABELS: Record<string, Record<string, string>> = {
     send: "إرسال الرد",
     noReply: "لا تملك صلاحية الرد في هذه المحادثة.",
     empty: "لا توجد رسائل بعد.",
+    "empty.body": "تواصل هذا العميل عبر قناة دون تسجيل أي رسالة — أول رد أو رسالة واردة تفتح الخيط.",
     denied: "يمكنك رؤية هذه المحادثة دون رسائلها.",
     older: "تحميل الرسائل الأقدم",
     start: "هذه بداية المحادثة.",
@@ -726,7 +728,7 @@ export default function ConversationThread() {
       {loaded.denied ? (
         <GuardrailNotice title={l("thread")} reason={l("denied")} tone="warning" />
       ) : loaded.messages.length === 0 && !draft ? (
-        <EmptyState title={l("empty")} />
+        <EmptyState title={l("empty")} body={l("empty.body")} />
       ) : (
         <div className="flex flex-col gap-3">
           <p className="font-ui text-12 text-subtle">

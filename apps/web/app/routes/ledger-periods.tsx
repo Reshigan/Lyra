@@ -376,7 +376,7 @@ export default function LedgerPeriods() {
           density="compact"
           rows={loaded.recent}
           rowKey={(row) => row.id}
-          empty={<EmptyState title={l("period.noneRecent")} />}
+          empty={<EmptyState title={l("period.noneRecent")} body={l("period.noneRecent.body")} />}
           columns={[
               {
                 key: "code",

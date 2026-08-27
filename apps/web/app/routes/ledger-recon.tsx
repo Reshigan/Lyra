@@ -533,7 +533,7 @@ export default function LedgerRecon() {
           density="compact"
           rows={loaded.runs}
           rowKey={(row) => row.id}
-          empty={<EmptyState title={l("recon.noRuns")} />}
+          empty={<EmptyState title={l("recon.noRuns")} body={l("recon.noRuns.body")} />}
           columns={[
               {
                 key: "process",

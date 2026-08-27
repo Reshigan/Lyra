@@ -70,7 +70,8 @@ const LABELS: Labels = {
     "query.run": "Run the query",
     "query.rows": "Rows returned",
     "query.caption": "Snapshot rows returned by the query",
-    "query.empty": "No row matches that metric, grain and period. Nothing is broken — the snapshotter has simply not written that period.",
+    "query.empty": "No row matches that metric, grain and period.",
+    "query.empty.body": "Nothing is broken — the snapshotter has simply not written that period yet. Widen the period or pick another grain.",
     "query.raw": "Response body",
     "col.metric": "Metric key",
     "col.period": "Period",
@@ -124,7 +125,8 @@ const LABELS: Labels = {
     "query.run": "شغّل الاستعلام",
     "query.rows": "الصفوف المُعادة",
     "query.caption": "صفوف اللقطات التي أعادها الاستعلام",
-    "query.empty": "لا صف يطابق هذا المقياس والحبيبة والفترة. لا شيء معطّل — المُلقِط ببساطة لم يكتب تلك الفترة.",
+    "query.empty": "لا صف يطابق هذا المقياس والحبيبة والفترة.",
+    "query.empty.body": "لا شيء معطّل — المُلقِط ببساطة لم يكتب تلك الفترة بعد. وسّع الفترة أو اختر حبيبة أخرى.",
     "query.raw": "جسم الاستجابة",
     "col.metric": "مفتاح المقياس",
     "col.period": "الفترة",
@@ -386,7 +388,7 @@ export default function NorthDev() {
                   rows={result.rows}
                   rowKey={(row) => row.id}
                   caption={l("query.caption")}
-                  empty={<EmptyState title={l("query.empty")} />}
+                  empty={<EmptyState title={l("query.empty")} body={l("query.empty.body")} />}
                 />
                 <details>
                   <summary className="cursor-pointer font-ui text-13 text-accent">{l("query.raw")}</summary>

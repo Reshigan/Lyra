@@ -16,9 +16,10 @@ import { describe, expect, it } from "vitest";
 // leaves `empty=` genuinely unreachable and correctly absent. Both shapes
 // converge on the same EmptyState, so that is where the contract lives.
 //
-// 106 of 228 renders carry no body. This is a ratchet, not a wall: ALLOWED
-// holds the ones not yet given copy and may only shrink. Delete a line when you
-// write its `body=`; adding one needs a reason in review.
+// Every EmptyState in routes/ now carries a body, so ALLOWED is empty and the
+// ratchet has become a wall. It stays a Map rather than a boolean because that
+// is what lets a genuinely bodiless state be admitted with a reason in review
+// instead of the guard being deleted.
 //
 // Same shape as spec.json-columns.test.ts — walk the real source, fail on the
 // contract violation, keep a list that shrinks.
@@ -26,25 +27,7 @@ import { describe, expect, it } from "vitest";
 const ROUTES = join(__dirname, "routes");
 
 /** Title-only empty states, `file:count`. Raise-only downward. */
-const ALLOWED = new Map<string, number>([
-  ["axis-process-map.tsx", 1],
-  ["compliance-run.tsx", 1],
-  ["conversation.tsx", 1],
-  ["ledger-periods.tsx", 1],
-  ["ledger-recon.tsx", 1],
-  ["north-admin.tsx", 1],
-  ["north-alerts.tsx", 1],
-  ["north-dev.tsx", 1],
-  ["scout-admin.tsx", 1],
-  ["scout-analytics.tsx", 1],
-  ["scout-experiments.tsx", 1],
-  ["scout-panel.tsx", 1],
-  ["settlement-detail.tsx", 1],
-  ["settlement.tsx", 1],
-  ["signal-answer-engines.tsx", 1],
-  ["signal-audience-value.tsx", 1],
-  ["signal-experiments.tsx", 1],
-]);
+const ALLOWED = new Map<string, number>();
 
 /**
  * The text of every `<EmptyState …>` opening tag. Depth-tracked rather than a

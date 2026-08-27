@@ -207,7 +207,7 @@ export default function ScoutAnalytics() {
 
       <Card title={l("an.elasticity")} description={l("an.elasticityHint")}>
         {loaded.elasticities.length === 0 ? (
-          <EmptyState title={l("an.empty")} className="mt-4" />
+          <EmptyState title={l("an.empty")} body={l("an.empty.body")} className="mt-4" />
         ) : (
           <Table
             className="mt-4"

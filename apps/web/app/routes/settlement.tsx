@@ -326,6 +326,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     queueTitle: "Settlement queue",
     queueCaption: "Settlements by state, with the net each state holds",
     queueEmpty: "Nothing waiting to settle.",
+    "queueEmpty.body": "Settlements are drafted when a period closes and commission is due. Close a period in the ledger to fill this queue.",
     listCaption: "Settlements matching this counterparty and period",
     colCounterparty: "Counterparty",
     colPeriod: "Period",
@@ -376,6 +377,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     queueTitle: "قائمة التسويات",
     queueCaption: "التسويات بحسب الحالة، مع صافي كل حالة",
     queueEmpty: "لا يوجد شيء بانتظار التسوية.",
+    "queueEmpty.body": "تُصاغ التسويات عند إقفال فترة واستحقاق العمولة. أقفل فترة في دفتر الأستاذ لتمتلئ هذه القائمة.",
     listCaption: "التسويات المطابقة لهذا الطرف المقابل وهذه الفترة",
     colCounterparty: "الطرف المقابل",
     colPeriod: "الفترة",
@@ -695,7 +697,7 @@ export default function SettlementPeriod() {
             density="compact"
             rowKey={(group) => `${group.state}|${group.currency}`}
             rows={groups}
-            empty={<EmptyState title={l("queueEmpty")} />}
+            empty={<EmptyState title={l("queueEmpty")} body={l("queueEmpty.body")} />}
             columns={[
               {
                 key: "state",

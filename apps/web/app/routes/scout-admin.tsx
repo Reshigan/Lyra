@@ -270,7 +270,7 @@ export default function ScoutAdmin() {
       <Card title={l("adm.approvals")} description={l("adm.approvalsHint")}>
         <p className="mt-2 font-ui text-13 text-muted">{l("adm.pending", { count: String(loaded.pending) })}</p>
         {loaded.approvals.length === 0 ? (
-          <EmptyState title={l("adm.noApprovals")} />
+          <EmptyState title={l("adm.noApprovals")} body={l("adm.noApprovals.body")} />
         ) : (
           <ul className="mt-3 flex flex-col gap-2">
             {loaded.approvals.map((row) => (

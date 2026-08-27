@@ -52,7 +52,8 @@ const LABELS: Labels = {
     intro:
       "A threshold a metric is watched against. When a snapshot crosses one, NORTH raises an alert. Switch a rule off to stop it firing without deleting it.",
     denied: "You cannot read NORTH alert rules.",
-    empty: "No alert rules yet. Add one from the NORTH admin screen to start watching a metric.",
+    empty: "No alert rules yet.",
+    "empty.body": "Add one from the NORTH admin screen to start watching a metric.",
     "col.metric": "Metric",
     "col.operator": "Fires when",
     "col.threshold": "Threshold",
@@ -82,7 +83,8 @@ const LABELS: Labels = {
     intro:
       "عتبة يُراقَب مقياس مقابلها. عندما يتجاوزها لقطة، يرفع نورث تنبيهاً. أوقف قاعدة دون حذفها لتتوقف عن الإطلاق.",
     denied: "لا يمكنك قراءة قواعد تنبيه نورث.",
-    empty: "لا توجد قواعد تنبيه بعد. أضف واحدة من شاشة إدارة نورث لبدء مراقبة مقياس.",
+    empty: "لا توجد قواعد تنبيه بعد.",
+    "empty.body": "أضف واحدة من شاشة إدارة نورث لبدء مراقبة مقياس.",
     "col.metric": "المقياس",
     "col.operator": "يُطلق عندما",
     "col.threshold": "العتبة",
@@ -255,7 +257,7 @@ export default function NorthAlerts() {
           <p className="font-ui text-13 text-subtle">{l("denied")}</p>
         </Panel>
       ) : rules.length === 0 ? (
-        <EmptyState title={l("empty")} />
+        <EmptyState title={l("empty")} body={l("empty.body")} />
       ) : (
         <Table rows={rules} columns={columns} rowKey={(row) => row.id} caption={l("title")} captionHidden />
       )}

@@ -147,7 +147,7 @@ export default function ScoutExperiments() {
 
       <Card>
         {loaded.rows.length === 0 ? (
-          <EmptyState title={l("xp.empty")} />
+          <EmptyState title={l("xp.empty")} body={l("xp.empty.body")} />
         ) : (
           <Table
             caption={l("xp.title")}
