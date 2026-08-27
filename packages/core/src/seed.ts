@@ -232,7 +232,12 @@ export async function seed(db: CoreDb, opts: SeedOptions = {}): Promise<SeedResu
   let u = 0;
   for (const person of PEOPLE) {
     const uid = id("us", now + u++);
-    users[person.role] = uid;
+    // ponytail: first person wins a shared role. Two personas hold
+    // finance.controller and the seven readers below all want a *specific*
+    // user, so last-write-wins would silently hand them the other one the day
+    // someone reorders PEOPLE. Keyed lookups stay for the roles held once;
+    // give a second holder its own key if a reader ever needs it.
+    users[person.role] ??= uid;
     await db.insert(schema.users).values({
       id: uid,
       tenantId,

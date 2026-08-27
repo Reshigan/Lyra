@@ -272,6 +272,31 @@ describe("seedStaff — leaver", () => {
   });
 });
 
+// Two personas hold finance.controller and `users` is keyed by role, so exactly
+// one of them is reachable through that key. Seven production readers use it —
+// ledger, settlement, staff, admin, onboarding — and onboarding.ts:81 calls the
+// value `faisal`, which under last-write-wins it was not. First-wins makes the
+// name true; this pins it so a reorder of PEOPLE cannot quietly swap the signer
+// on every seeded ledger and settlement row.
+describe("seed — a role held by two people resolves to the first", () => {
+  it("gives finance.controller to Faisal Omar, the reader that names him", async () => {
+    const [controller] = await db
+      .select()
+      .from(schema.users)
+      .where(eq(schema.users.id, users["finance.controller"]!));
+    expect(controller?.email).toBe("faisal.omar@gonxt.ae");
+  });
+
+  it("still writes the second holder as a user in her own right", async () => {
+    const [nadia] = await db
+      .select()
+      .from(schema.users)
+      .where(eq(schema.users.email, "nadia.rahman@gonxt.ae"));
+    expect(nadia?.id).toBeDefined();
+    expect(nadia?.id).not.toBe(users["finance.controller"]);
+  });
+});
+
 describe("seedStaff — delegations", () => {
   it("covers the offboarding handover, a scoped cover, a capped cover, a revoke and an expiry", async () => {
     const admin = users["tenant.admin"]!;
