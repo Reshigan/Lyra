@@ -194,6 +194,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     routingIntro: "Read top to bottom; the first rule whose conditions match wins.",
     routingCaption: "Routing rules in order",
     routingEmpty: "No routing rule yet, so everything falls to the default team.",
+    "routingEmpty.body": "Add a rule to send a conversation to the team that should own it.",
     routingManage: "Edit routing rules",
     colSeq: "Order",
     colTeam: "Team",
@@ -205,6 +206,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     rosterIntro: "Who is on each team and how much more they can take right now.",
     rosterCaption: "Teams and their coverage",
     rosterEmpty: "No team yet.",
+    "rosterEmpty.body": "Create a team, then add the people who answer for it.",
     rosterManage: "Edit teams",
     membersManage: "Edit team members",
     presenceManage: "Edit agent presence",
@@ -215,11 +217,13 @@ export const LABELS: Record<string, Record<string, string>> = {
     channelsIntro: "The connectors that carry conversations in and out.",
     channelsCaption: "Channel connectors",
     channelsEmpty: "No channel connector is configured.",
+    "channelsEmpty.body": "Connect a channel — email, WhatsApp, web — so customers have somewhere to reach you.",
     channelsManage: "Edit channels",
     slaTitle: "Service targets",
     slaIntro: "The reply and resolution clocks conversations are measured against.",
     slaCaption: "SLA policies",
     slaEmpty: "No SLA policy yet.",
+    "slaEmpty.body": "Set a policy to hold replies to a response time and see breaches before they happen.",
     slaManage: "Edit SLA policies",
     colFrt: "First reply",
     colResolution: "Resolution",
@@ -249,6 +253,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     routingIntro: "اقرأ من الأعلى إلى الأسفل؛ تفوز أول قاعدة تتطابق شروطها.",
     routingCaption: "قواعد التوجيه بالترتيب",
     routingEmpty: "لا توجد قاعدة توجيه بعد، فكل شيء يؤول إلى الفريق الافتراضي.",
+    "routingEmpty.body": "أضف قاعدة لتوجيه المحادثة إلى الفريق الذي يجب أن يتولاها.",
     routingManage: "تحرير قواعد التوجيه",
     colSeq: "الترتيب",
     colTeam: "الفريق",
@@ -260,6 +265,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     rosterIntro: "من في كل فريق، وكم يمكنهم استيعابه الآن.",
     rosterCaption: "الفرق وتغطيتها",
     rosterEmpty: "لا يوجد فريق بعد.",
+    "rosterEmpty.body": "أنشئ فريقاً، ثم أضف من يجيب باسمه.",
     rosterManage: "تحرير الفرق",
     membersManage: "تحرير أعضاء الفريق",
     presenceManage: "تحرير حضور الوكلاء",
@@ -270,11 +276,13 @@ export const LABELS: Record<string, Record<string, string>> = {
     channelsIntro: "الموصلات التي تحمل المحادثات دخولًا وخروجًا.",
     channelsCaption: "موصلات القنوات",
     channelsEmpty: "لا يوجد موصل قناة مهيّأ.",
+    "channelsEmpty.body": "اربط قناة — بريد أو واتساب أو الويب — ليجد العملاء وسيلة للوصول إليك.",
     channelsManage: "تحرير القنوات",
     slaTitle: "أهداف الخدمة",
     slaIntro: "ساعات الرد والإغلاق التي تُقاس بها المحادثات.",
     slaCaption: "سياسات مستوى الخدمة",
     slaEmpty: "لا توجد سياسة مستوى خدمة بعد.",
+    "slaEmpty.body": "حدّد سياسة لضبط زمن الرد وترى التجاوزات قبل وقوعها.",
     slaManage: "تحرير سياسات مستوى الخدمة",
     colFrt: "أول رد",
     colResolution: "الإغلاق",
@@ -504,7 +512,7 @@ export default function OrbitAdmin() {
               rows={loaded.rules}
               rowKey={(row) => row.id}
               rowState={(row) => (truthy(row.enabled) ? undefined : "sealed")}
-              empty={<EmptyState title={l("routingEmpty")} />}
+              empty={<EmptyState title={l("routingEmpty")} body={l("routingEmpty.body")} />}
             />
             <Link to="/orbit/routing-rules" className="font-ui text-13 text-accent underline underline-offset-2">
               {l("routingManage")}
@@ -521,7 +529,7 @@ export default function OrbitAdmin() {
               columns={coverageColumns}
               rows={loaded.coverage}
               rowKey={(row) => row.teamId}
-              empty={<EmptyState title={l("rosterEmpty")} />}
+              empty={<EmptyState title={l("rosterEmpty")} body={l("rosterEmpty.body")} />}
             />
             <div className="flex flex-wrap gap-4">
               <Link to="/orbit/teams" className="font-ui text-13 text-accent underline underline-offset-2">
@@ -549,7 +557,7 @@ export default function OrbitAdmin() {
               rows={loaded.connectors}
               rowKey={(row) => row.id}
               rowState={(row) => (row.status === "active" ? undefined : "sealed")}
-              empty={<EmptyState title={l("channelsEmpty")} />}
+              empty={<EmptyState title={l("channelsEmpty")} body={l("channelsEmpty.body")} />}
             />
             <Link to="/orbit/channel-connectors" className="font-ui text-13 text-accent underline underline-offset-2">
               {l("channelsManage")}
@@ -566,7 +574,7 @@ export default function OrbitAdmin() {
               columns={slaColumns}
               rows={loaded.slas}
               rowKey={(row) => row.id}
-              empty={<EmptyState title={l("slaEmpty")} />}
+              empty={<EmptyState title={l("slaEmpty")} body={l("slaEmpty.body")} />}
             />
             <Link to="/orbit/sla-policies" className="font-ui text-13 text-accent underline underline-offset-2">
               {l("slaManage")}

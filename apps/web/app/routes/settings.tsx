@@ -243,6 +243,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "sessions.endConfirm": "End this session? Whoever is signed in on that device is signed out immediately and has to sign in again.",
     "sessions.ok": "That session has been ended.",
     "sessions.none": "No sessions recorded.",
+    "sessions.none.body": "Sign-ins appear here so you can spot a device you do not recognise.",
     "sessions.unavailable": "Your sessions could not be read just now.",
     "sessions.unknown": "Unknown",
 
@@ -265,6 +266,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "keys.confirm": "Revoke this key? Anything using it stops working immediately.",
     "keys.ok": "That key has been revoked.",
     "keys.none": "No keys have been issued.",
+    "keys.none.body": "Issue a key to let one of your own tools sign in as you.",
     "keys.unavailable": "Keys could not be read just now.",
     "keys.newTitle": "Issue a key",
     "keys.newIntro":
@@ -353,6 +355,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "dsar.due": "Answer due",
     "dsar.raised": "Raised",
     "dsar.none": "You have raised no requests.",
+    "dsar.none.body": "Raise a request to get a copy of your data, or to have it erased.",
     "dsar.unavailable": "Existing requests could not be read just now.",
 
     "problem.unknown": "That action is not one this screen offers."
@@ -442,6 +445,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "sessions.endConfirm": "هل تريد إنهاء هذه الجلسة؟ سيُسجَّل خروج من يستخدم ذلك الجهاز فوراً وسيحتاج إلى تسجيل الدخول مرة أخرى.",
     "sessions.ok": "تم إنهاء تلك الجلسة.",
     "sessions.none": "لا توجد جلسات مسجّلة.",
+    "sessions.none.body": "تظهر عمليات تسجيل الدخول هنا لترصد أي جهاز لا تعرفه.",
     "sessions.unavailable": "تعذّرت قراءة جلساتك الآن.",
     "sessions.unknown": "غير معروف",
 
@@ -464,6 +468,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "keys.confirm": "هل تريد إبطال هذا المفتاح؟ سيتوقف كل ما يستخدمه فورًا.",
     "keys.ok": "تم إبطال المفتاح.",
     "keys.none": "لم تُصدر أي مفاتيح.",
+    "keys.none.body": "أصدر مفتاحاً ليتمكن أحد أدواتك من الدخول باسمك.",
     "keys.unavailable": "تعذّرت قراءة المفاتيح الآن.",
     "keys.newTitle": "إصدار مفتاح",
     "keys.newIntro": "يحمل المفتاح الصلاحيات التي تمنحها له فقط، ولا يمكنك منح ما لا تملكه أنت.",
@@ -551,6 +556,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "dsar.due": "موعد الإجابة",
     "dsar.raised": "تاريخ الطلب",
     "dsar.none": "لم تُرسل أي طلبات.",
+    "dsar.none.body": "أرسل طلباً للحصول على نسخة من بياناتك أو لمحوها.",
     "dsar.unavailable": "تعذّرت قراءة الطلبات القائمة الآن.",
 
     "problem.unknown": "هذا الإجراء ليس من إجراءات هذه الشاشة."
@@ -1266,7 +1272,7 @@ export default function Settings() {
               rowKey={(row) => row.id}
               caption={label("sessions.caption")}
               density="compact"
-              empty={<EmptyState title={label("sessions.none")} />}
+              empty={<EmptyState title={label("sessions.none")} body={label("sessions.none.body")} />}
             />
           ) : (
             <p className="font-ui text-13 text-subtle">{label("sessions.unavailable")}</p>
@@ -1286,7 +1292,7 @@ export default function Settings() {
                 rowKey={(row) => row.id}
                 caption={label("keys.caption")}
                 density="compact"
-                empty={<EmptyState title={label("keys.none")} />}
+                empty={<EmptyState title={label("keys.none")} body={label("keys.none.body")} />}
               />
             ) : (
               <p className="font-ui text-13 text-subtle">{label("keys.unavailable")}</p>
@@ -1436,7 +1442,7 @@ export default function Settings() {
                   rowKey={(row) => row.id}
                   caption={label("dsar.caption")}
                   density="compact"
-                  empty={<EmptyState title={label("dsar.none")} />}
+                  empty={<EmptyState title={label("dsar.none")} body={label("dsar.none.body")} />}
                 />
               ) : (
                 <p className="font-ui text-13 text-subtle">{label("dsar.unavailable")}</p>

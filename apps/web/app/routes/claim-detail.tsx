@@ -450,7 +450,16 @@ export const LABELS: Record<string, Record<string, string>> = {
     colReason: "Note",
     colAction: "Change",
     noPolicy: "You can't see the cover this claim sits on.",
-    noCase: "No work item is attached, so there is no evidence to show."
+    noCase: "No work item is attached, so there is no evidence to show.",
+    // Each panel is empty for its own reason, and on a claim the reason is
+    // usually a step nobody has taken yet. Name the step, not the absence.
+    noneReserves: "Nothing is set aside for this claim yet. Post a reserve to hold the expected cost against it.",
+    nonePayments: "Nothing has been paid on this claim.",
+    noneRecoveries: "Nothing is being recovered. Open a recovery when another party owes part of this loss.",
+    noneApprovals: "Nothing on this claim has needed an approval so far.",
+    noneHistory: "Nothing has changed on this claim since it was reported.",
+    noneDocuments: "No evidence has been attached to the work item behind this claim.",
+    noHopsBody: "Every move from here is either blocked or already taken — the flow below shows where it stands."
   },
   ar: {
     intro: "ما تم الإبلاغ عنه، والمبلغ المحتجز، والمستندات المرتبطة، ومن اعتمده.",
@@ -620,7 +629,14 @@ export const LABELS: Record<string, Record<string, string>> = {
     colReason: "ملاحظة",
     colAction: "التغيير",
     noPolicy: "لا يمكنك الاطلاع على التغطية المرتبطة بهذه المطالبة.",
-    noCase: "لا يوجد بند عمل مرتبط، لذا لا توجد أدلة لعرضها."
+    noCase: "لا يوجد بند عمل مرتبط، لذا لا توجد أدلة لعرضها.",
+    noneReserves: "لم يُخصَّص شيء لهذه المطالبة بعد. سجّل احتياطياً لحجز التكلفة المتوقعة عليها.",
+    nonePayments: "لم يُدفع أي مبلغ على هذه المطالبة.",
+    noneRecoveries: "لا يوجد استرداد جارٍ. افتح استرداداً عندما يتحمل طرف آخر جزءاً من هذه الخسارة.",
+    noneApprovals: "لم تحتج أي خطوة في هذه المطالبة إلى موافقة حتى الآن.",
+    noneHistory: "لم يتغير شيء في هذه المطالبة منذ الإبلاغ عنها.",
+    noneDocuments: "لم تُرفق أي أدلة ببند العمل المرتبط بهذه المطالبة.",
+    noHopsBody: "كل انتقال من هنا إما محجوب أو تم بالفعل — المسار أدناه يوضح الوضع الحالي."
   }
 };
 
@@ -1326,7 +1342,7 @@ export default function ClaimDetail() {
         {loaded.may.update ? (
           <Card title={l("hopTitle")} description={l("hopIntro")}>
             {hops.length === 0 ? (
-              <EmptyState title={l("noHops")} />
+              <EmptyState title={l("noHops")} body={l("noHopsBody")} />
             ) : (
               <HopForm claim={claim} hops={hops} idempotencyKey={loaded.idempotencyKey} l={l} busy={busy} />
             )}
@@ -1404,7 +1420,7 @@ export default function ClaimDetail() {
           columns={reserveColumns}
           rows={loaded.reserves}
           rowKey={(row) => row.id}
-          empty={<EmptyState title={l("none")} />}
+          empty={<EmptyState title={l("none")} body={l("noneReserves")} />}
         />
       </Card>
 
@@ -1414,7 +1430,7 @@ export default function ClaimDetail() {
           columns={paymentColumns}
           rows={loaded.payments}
           rowKey={(row) => row.id}
-          empty={<EmptyState title={l("none")} />}
+          empty={<EmptyState title={l("none")} body={l("nonePayments")} />}
         />
       </Card>
 
@@ -1427,7 +1443,7 @@ export default function ClaimDetail() {
           columns={recoveryColumns}
           rows={loaded.recoveries}
           rowKey={(row) => row.id}
-          empty={<EmptyState title={l("none")} />}
+          empty={<EmptyState title={l("none")} body={l("noneRecoveries")} />}
         />
         {loaded.may.recover ? (
           <div className="border-t border-hairline px-6 py-4">
@@ -1465,7 +1481,7 @@ export default function ClaimDetail() {
           columns={documentColumns}
           rows={loaded.documents}
           rowKey={(row) => row.id}
-          empty={<EmptyState title={claim.caseId ? l("none") : l("noCase")} />}
+          empty={<EmptyState title={l("none")} body={claim.caseId ? l("noneDocuments") : l("noCase")} />}
         />
       </Card>
 
@@ -1475,7 +1491,7 @@ export default function ClaimDetail() {
           columns={approvalColumns}
           rows={loaded.approvals}
           rowKey={(row) => row.id}
-          empty={<EmptyState title={l("none")} />}
+          empty={<EmptyState title={l("none")} body={l("noneApprovals")} />}
         />
       </Card>
 
@@ -1496,7 +1512,7 @@ export default function ClaimDetail() {
           columns={trailColumns}
           rows={loaded.trail}
           rowKey={(row) => row.id}
-          empty={<EmptyState title={l("none")} />}
+          empty={<EmptyState title={l("none")} body={l("noneHistory")} />}
         />
       </Card>
     </div>

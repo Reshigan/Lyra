@@ -97,7 +97,10 @@ export const LABELS: Record<string, Record<string, string>> = {
     deniedTitle: "Not visible to you",
     registerTitle: "Register",
     registerCaption: "Every bordereau generated this tenant, most recent period first.",
+    noLines: "No lines on this bordereau.",
+    "noLines.body": "This bordereau reports no risks — it was generated for a period with nothing to report.",
     noneYet: "No bordereaux generated yet.",
+    "noneYet.body": "A bordereau is generated when a period closes, or on demand from the register above.",
     colPeriod: "Period",
     colDirection: "Direction",
     colCounterparty: "Counterparty",
@@ -127,6 +130,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     selectedTitle: "Selected bordereau",
     selectedCaption: "Totals as last generated or reconciled.",
     noneSelected: "Pick a bordereau from the register to see its lines.",
+    "noneSelected.body": "Each bordereau lists the risks it reports. Pick one to read its lines.",
     kvGross: "Gross premium",
     kvCommission: "Commission",
     kvClaimsPaid: "Claims paid",
@@ -174,7 +178,10 @@ export const LABELS: Record<string, Record<string, string>> = {
     deniedTitle: "غير مرئي لك",
     registerTitle: "السجل",
     registerCaption: "كل قائمة تسوية أُنشئت لهذا المستأجر، الأحدث فترة أولًا.",
+    noLines: "لا توجد بنود في قائمة التسوية هذه.",
+    "noLines.body": "لا تبلّغ هذه القائمة عن أي مخاطر — أُنشئت لفترة لا شيء فيها للإبلاغ.",
     noneYet: "لم تُنشأ أي قائمة تسوية بعد.",
+    "noneYet.body": "تُنشأ قائمة التسوية عند إقفال فترة، أو عند الطلب من السجل أعلاه.",
     colPeriod: "الفترة",
     colDirection: "الاتجاه",
     colCounterparty: "الطرف المقابل",
@@ -204,6 +211,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     selectedTitle: "قائمة التسوية المحددة",
     selectedCaption: "الإجماليات كما آخر إنشاء أو تسوية.",
     noneSelected: "اختر قائمة تسوية من السجل لعرض بنودها.",
+    "noneSelected.body": "تُدرج كل قائمة تسوية المخاطر التي تبلّغ عنها. اختر واحدة لقراءة بنودها.",
     kvGross: "إجمالي القسط",
     kvCommission: "العمولة",
     kvClaimsPaid: "المطالبات المدفوعة",
@@ -548,7 +556,7 @@ export default function AxisBordereaux() {
               onRowActivate={(row) => {
                 window.location.href = `/axis/bordereaux?id=${encodeURIComponent(row.id)}`;
               }}
-              empty={<EmptyState title={l("noneYet")} />}
+              empty={<EmptyState title={l("noneYet")} body={l("noneYet.body")} />}
             />
           </Card>
         </div>
@@ -591,12 +599,12 @@ export default function AxisBordereaux() {
               columns={lineColumns}
               rows={lines}
               rowKey={(row) => row.id}
-              empty={<EmptyState title={l("noneYet")} />}
+              empty={<EmptyState title={l("noLines")} body={l("noLines.body")} />}
             />
           </Card>
         </>
       ) : bordereaux.length > 0 ? (
-        <EmptyState title={l("noneSelected")} />
+        <EmptyState title={l("noneSelected")} body={l("noneSelected.body")} />
       ) : null}
 
       {result?.error ? (

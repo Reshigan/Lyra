@@ -225,6 +225,10 @@ export function stateOfAudit(action: string): string | null {
 
 export const LABELS: Record<string, Record<string, string>> = {
   en: {
+    noneClaims: "No claim has been reported against this agreement.",
+    noneVersions: "This agreement has not been endorsed or renewed since it was issued.",
+    noneEntries: "Nothing has been posted to the ledger against this agreement yet.",
+    noneDocuments: "No files are attached to this agreement.",
     intro: "What is covered, what it costs, what has been claimed against it, and the paper behind it.",
     back: "Back to the register",
     heroLede: "{status} · {from} – {to}",
@@ -297,6 +301,10 @@ export const LABELS: Record<string, Record<string, string>> = {
     colFiled: "Filed"
   },
   ar: {
+    noneClaims: "لم تُسجَّل أي مطالبة على هذه الاتفاقية.",
+    noneVersions: "لم تُعدَّل هذه الاتفاقية أو تُجدَّد منذ إصدارها.",
+    noneEntries: "لم يُرحَّل شيء إلى الدفاتر على هذه الاتفاقية بعد.",
+    noneDocuments: "لا توجد ملفات مرفقة بهذه الاتفاقية.",
     intro: "ما هو مغطّى، وتكلفته، والمطالبات المسجّلة عليه، والمستندات المرتبطة به.",
     back: "العودة إلى السجل",
     heroLede: "{status} · من {from} إلى {to}",
@@ -1005,7 +1013,7 @@ export default function PolicyDetail() {
           columns={claimColumns}
           rows={loaded.claims}
           rowKey={(row) => row.id}
-          empty={<EmptyState title={l("none")} />}
+          empty={<EmptyState title={l("none")} body={l("noneClaims")} />}
         />
       </Card>
 
@@ -1015,7 +1023,7 @@ export default function PolicyDetail() {
           columns={versionColumns}
           rows={loaded.versions}
           rowKey={(row) => row.id}
-          empty={<EmptyState title={l("none")} />}
+          empty={<EmptyState title={l("none")} body={l("noneVersions")} />}
         />
       </Card>
 
@@ -1025,7 +1033,7 @@ export default function PolicyDetail() {
           columns={entryColumns}
           rows={loaded.entries}
           rowKey={(row) => row.id}
-          empty={<EmptyState title={l("none")} />}
+          empty={<EmptyState title={l("none")} body={l("noneEntries")} />}
         />
       </Card>
 
@@ -1035,7 +1043,7 @@ export default function PolicyDetail() {
           columns={fileColumns}
           rows={loaded.documents}
           rowKey={(row) => row.id}
-          empty={<EmptyState title={l("none")} />}
+          empty={<EmptyState title={l("none")} body={l("noneDocuments")} />}
         />
       </Card>
     </div>

@@ -105,6 +105,10 @@ export const PERM = {
 
 export const LABELS: Record<string, Record<string, string>> = {
   en: {
+    noneOfferings: "No version has been made available on this channel. Restrict one to this channel from its product record.",
+    noneRates: "No commission rate is set, so nothing this channel sells will earn them anything yet.",
+    noneQuotes: "This channel has not quoted anyone yet.",
+    noneSettlements: "Nothing has been settled with this channel. A statement appears once a period closes.",
     intro: "What this channel may sell, what it is paid, what it is asking for, and where its money stands.",
     back: "Back to the channels",
     heroLede: "{kind} · {medium} · {status} · {n} live requests",
@@ -159,6 +163,10 @@ export const LABELS: Record<string, Record<string, string>> = {
     "earnedOn.collection": "Collection"
   },
   ar: {
+    noneOfferings: "لم يُتَح أي إصدار على هذه القناة. اقصر إصداراً على هذه القناة من سجل المنتج.",
+    noneRates: "لم تُحدَّد نسبة عمولة، لذا لن يكسب هذا المنفذ شيئاً مما يبيعه بعد.",
+    noneQuotes: "لم يسعّر هذا المنفذ لأحد بعد.",
+    noneSettlements: "لم تُسوَّ أي مبالغ مع هذا المنفذ. يظهر الكشف بعد إقفال فترة.",
     intro: "ما تبيعه هذه القناة، وما تحصل عليه، وما تطلبه، وموقف مستحقاتها.",
     back: "العودة إلى القنوات",
     heroLede: "{kind} · {medium} · {status} · {n} طلب قائم",
@@ -536,7 +544,7 @@ export default function ChannelDetail() {
           columns={offeringColumns}
           rows={loaded.offerings}
           rowKey={(row) => row.id}
-          empty={<EmptyState title={loaded.unrestricted ? l("offeringsAll") : l("none")} />}
+          empty={<EmptyState title={l("none")} body={loaded.unrestricted ? l("offeringsAll") : l("noneOfferings")} />}
         />
       </Card>
 
@@ -546,7 +554,7 @@ export default function ChannelDetail() {
           columns={rateColumns}
           rows={loaded.rates}
           rowKey={(row) => row.id}
-          empty={<EmptyState title={l("none")} />}
+          empty={<EmptyState title={l("none")} body={l("noneRates")} />}
         />
       </Card>
 
@@ -556,7 +564,7 @@ export default function ChannelDetail() {
           columns={quoteColumns}
           rows={loaded.quotes}
           rowKey={(row) => row.id}
-          empty={<EmptyState title={l("none")} />}
+          empty={<EmptyState title={l("none")} body={l("noneQuotes")} />}
         />
       </Card>
 
@@ -566,7 +574,7 @@ export default function ChannelDetail() {
           columns={settlementColumns}
           rows={loaded.settlements}
           rowKey={(row) => row.id}
-          empty={<EmptyState title={l("none")} />}
+          empty={<EmptyState title={l("none")} body={l("noneSettlements")} />}
         />
       </Card>
     </div>

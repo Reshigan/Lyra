@@ -157,10 +157,12 @@ export const LABELS: Record<string, Record<string, string>> = {
     surfaceTags: "Modules",
     surfaceLink: "Open the OpenAPI document",
     surfaceMissing: "The API did not return a description of itself.",
+    "surfaceMissing.body": "Nothing to document without it. Retry, and if it persists the API build is missing its OpenAPI output.",
     keysTitle: "API keys",
     keysIntro: "Test keys touch test data only. A live key acts on real records, so treat it as a password.",
     keysCaption: "API keys issued for this organisation",
     keysEmpty: "No API keys yet.",
+    "keysEmpty.body": "Issue a key to let a system call this tenant's API on your behalf.",
     keysMint: "Mint a key in your settings",
     colKeyName: "Name",
     colPrefix: "Prefix",
@@ -175,6 +177,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     hooksIntro: "Every delivery is signed. Verify the signature before you trust the body.",
     hooksCaption: "Webhook endpoints and their signing state",
     hooksEmpty: "No webhook endpoints yet.",
+    "hooksEmpty.body": "Add an endpoint to have events pushed to your systems as they happen.",
     hooksManage: "Add or edit endpoints in the integrations tab",
     colUrl: "Endpoint",
     colEvents: "Events",
@@ -211,10 +214,12 @@ export const LABELS: Record<string, Record<string, string>> = {
     surfaceTags: "الوحدات",
     surfaceLink: "افتح مستند OpenAPI",
     surfaceMissing: "لم تُرجع الواجهة البرمجية وصفًا لنفسها.",
+    "surfaceMissing.body": "لا شيء لتوثيقه بدونه. أعد المحاولة، وإن استمر فإن بناء الواجهة يفتقد مخرجات OpenAPI.",
     keysTitle: "مفاتيح الواجهة البرمجية",
     keysIntro: "مفاتيح الاختبار تمسّ بيانات الاختبار فقط. المفتاح الحقيقي يتصرف في سجلات حقيقية، فتعامل معه ككلمة مرور.",
     keysCaption: "مفاتيح الواجهة البرمجية الصادرة لهذه المؤسسة",
     keysEmpty: "لا توجد مفاتيح بعد.",
+    "keysEmpty.body": "أصدر مفتاحاً ليتمكن نظام من استدعاء واجهة هذا المستأجر نيابة عنك.",
     keysMint: "أصدر مفتاحًا من إعداداتك",
     colKeyName: "الاسم",
     colPrefix: "البادئة",
@@ -229,6 +234,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     hooksIntro: "كل تسليم موقَّع. تحقّق من التوقيع قبل أن تثق بالمحتوى.",
     hooksCaption: "نقاط الويب هوك وحالة توقيعها",
     hooksEmpty: "لا توجد نقاط ويب هوك بعد.",
+    "hooksEmpty.body": "أضف نقطة نهاية لتُدفع إليها الأحداث فور وقوعها.",
     hooksManage: "أضف النقاط أو عدّلها من تبويب التكاملات",
     colUrl: "النقطة",
     colEvents: "الأحداث",
@@ -490,7 +496,7 @@ export default function AdminDeveloper() {
             </a>
           </div>
         ) : (
-          <EmptyState title={l("surfaceMissing")} />
+          <EmptyState title={l("surfaceMissing")} body={l("surfaceMissing.body")} />
         )}
       </Card>
 
@@ -503,7 +509,7 @@ export default function AdminDeveloper() {
               rows={loaded.keys}
               rowKey={(row) => row.id}
               rowState={(row) => (row.revokedAt ? "sealed" : undefined)}
-              empty={<EmptyState title={l("keysEmpty")} />}
+              empty={<EmptyState title={l("keysEmpty")} body={l("keysEmpty.body")} />}
             />
             <Link to="/settings/security" className="font-ui text-13 text-accent underline underline-offset-2">
               {l("keysMint")}
@@ -522,7 +528,7 @@ export default function AdminDeveloper() {
               columns={hookColumns}
               rows={loaded.hooks}
               rowKey={(row) => row.id}
-              empty={<EmptyState title={l("hooksEmpty")} />}
+              empty={<EmptyState title={l("hooksEmpty")} body={l("hooksEmpty.body")} />}
             />
             <div className="flex flex-col gap-2 border-t border-border pt-3">
               <h3 className="font-display text-14 text-text">{l("signingTitle")}</h3>

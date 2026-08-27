@@ -188,6 +188,10 @@ export function stateOfAudit(action: string): string | null {
 
 export const LABELS: Record<string, Record<string, string>> = {
   en: {
+    noneEvents: "Nothing has happened on this work item since it was opened.",
+    noneDocuments: "No files are attached. Evidence uploaded against this item appears here.",
+    noneApprovals: "No step on this item has needed a decision so far.",
+    noneTasks: "No task is outstanding. Tasks appear here when a step needs someone to act.",
     intro: "Where this work item stands, the steps behind it, and what is still waiting on someone.",
     back: "Back to the queue",
     heroLede: "{status} · {priority} priority",
@@ -267,6 +271,10 @@ export const LABELS: Record<string, Record<string, string>> = {
     "kind.claim": "Claim"
   },
   ar: {
+    noneEvents: "لم يحدث شيء في بند العمل هذا منذ فتحه.",
+    noneDocuments: "لا توجد ملفات مرفقة. تظهر هنا الأدلة المرفوعة على هذا البند.",
+    noneApprovals: "لم تحتج أي خطوة في هذا البند إلى قرار حتى الآن.",
+    noneTasks: "لا توجد مهمة معلّقة. تظهر المهام هنا عندما تحتاج خطوة إلى من ينفّذها.",
     intro: "موقف بند العمل، والخطوات التي أوصلته، وما لا يزال بانتظار أحد.",
     back: "العودة إلى قائمة العمل",
     heroLede: "{status} · أولوية {priority}",
@@ -791,7 +799,7 @@ export default function CaseDetail() {
           columns={eventColumns}
           rows={loaded.events}
           rowKey={(row) => row.id}
-          empty={<EmptyState title={l("none")} />}
+          empty={<EmptyState title={l("none")} body={l("noneEvents")} />}
         />
       </Card>
 
@@ -801,7 +809,7 @@ export default function CaseDetail() {
           columns={documentColumns}
           rows={loaded.documents}
           rowKey={(row) => row.id}
-          empty={<EmptyState title={l("none")} />}
+          empty={<EmptyState title={l("none")} body={l("noneDocuments")} />}
         />
       </Card>
 
@@ -811,7 +819,7 @@ export default function CaseDetail() {
           columns={approvalColumns}
           rows={loaded.approvals}
           rowKey={(row) => row.id}
-          empty={<EmptyState title={l("none")} />}
+          empty={<EmptyState title={l("none")} body={l("noneApprovals")} />}
         />
       </Card>
 
@@ -821,7 +829,7 @@ export default function CaseDetail() {
           columns={taskColumns}
           rows={loaded.tasks}
           rowKey={(row) => row.id}
-          empty={<EmptyState title={l("none")} />}
+          empty={<EmptyState title={l("none")} body={l("noneTasks")} />}
         />
       </Card>
 

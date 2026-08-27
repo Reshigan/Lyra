@@ -262,7 +262,7 @@ export default function ScoutWhitespace() {
     return (
       <div className="flex flex-col gap-6">
         <h1 className="font-serif text-22 leading-[1.2] text-text">{l("wsp.title")}</h1>
-        <EmptyState title={l("wsp.missing")} />
+        <EmptyState title={l("wsp.missing")} body={l("wsp.missing.body")} />
         <Link to="/scout/radar" className="font-ui text-13 text-accent underline-offset-2 hover:underline">
           {l("wsp.openRadar")}
         </Link>
@@ -370,7 +370,7 @@ export default function ScoutWhitespace() {
 
           <Card title={l("wsp.experiments")} description={l("wsp.experimentsHint")}>
             {loaded.experiments.length === 0 ? (
-              <EmptyState title={l("wsp.noExperiments")} />
+              <EmptyState title={l("wsp.noExperiments")} body={l("wsp.noExperiments.body")} />
             ) : (
               <ul className="flex flex-col divide-y divide-line">
                 {loaded.experiments.map((row) => {
@@ -421,7 +421,7 @@ export default function ScoutWhitespace() {
         <div className="flex flex-col gap-4">
           <Card title={l("wsp.flags")} description={l("wsp.flagsHint")}>
             {loaded.flags.length === 0 ? (
-              <EmptyState title={l("wsp.noFlags")} />
+              <EmptyState title={l("wsp.noFlags")} body={l("wsp.noFlags.body")} />
             ) : (
               <ul className="flex flex-col divide-y divide-line">
                 {loaded.flags.map((flag) => (
@@ -446,9 +446,9 @@ export default function ScoutWhitespace() {
 
           <Card title={l("wsp.decisions")} description={l("wsp.decisionsHint")}>
             {loaded.decisions === null ? (
-              <EmptyState title={l("wsp.decisionsWithheld")} />
+              <EmptyState title={l("wsp.decisionsWithheld")} body={l("wsp.decisionsWithheld.body")} />
             ) : loaded.decisions.length === 0 ? (
-              <EmptyState title={l("wsp.noDecisions")} />
+              <EmptyState title={l("wsp.noDecisions")} body={l("wsp.noDecisions.body")} />
             ) : (
               <ul className="flex flex-col gap-2">
                 {loaded.decisions.map((row) => (
@@ -469,7 +469,7 @@ export default function ScoutWhitespace() {
       {may.has(PERM.whitespacesPromote) ? (
         <Card title={l("wsp.move")} description={l("wsp.moveHint")}>
           {loaded.moves.length === 0 ? (
-            <EmptyState title={l("wsp.noMoves")} />
+            <EmptyState title={l("wsp.noMoves")} body={l("wsp.noMoves.body")} />
           ) : (
             <Form method="post" className="mt-2 flex flex-wrap items-end gap-3">
               <input type="hidden" name="intent" value="move" />

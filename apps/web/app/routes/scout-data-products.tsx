@@ -285,7 +285,7 @@ export default function ScoutDataProducts() {
             <p className="font-ui text-13 text-muted">{l("dtp.lede")}</p>
           </div>
         </header>
-        <EmptyState title={l("dtp.empty")} />
+        <EmptyState title={l("dtp.empty")} body={l("dtp.empty.body")} />
       </div>
     );
   }
@@ -402,7 +402,7 @@ export default function ScoutDataProducts() {
 
           <Card title={l("dtp.subscribers")} description={l("dtp.subscribersHint")}>
             {subscribers.length === 0 ? (
-              <EmptyState title={l("dtp.noSubscribers")} />
+              <EmptyState title={l("dtp.noSubscribers")} body={l("dtp.noSubscribers.body")} />
             ) : (
               <ul className="mt-3 flex flex-col gap-3">
                 {subscribers.map((one) => (
@@ -429,7 +429,7 @@ export default function ScoutDataProducts() {
 
           <Card title={l("dtp.deliveries")} description={l("dtp.deliveriesHint")}>
             {loaded.deliveries.length === 0 ? (
-              <EmptyState title={l("dtp.noDeliveries")} />
+              <EmptyState title={l("dtp.noDeliveries")} body={l("dtp.noDeliveries.body")} />
             ) : (
               <ul className="mt-3 flex flex-col gap-3">
                 {loaded.deliveries.map((row) => (
@@ -456,7 +456,7 @@ export default function ScoutDataProducts() {
       {may.has(PERM.dataProductsPublish) ? (
         <Card title={l("dtp.move")} description={l("dtp.moveHint")}>
           {loaded.moves.length === 0 ? (
-            <EmptyState title={l("dtp.noMoves")} />
+            <EmptyState title={l("dtp.noMoves")} body={l("dtp.noMoves.body")} />
           ) : (
             <Form method="post" className="mt-2 flex flex-wrap items-end gap-3">
               <input type="hidden" name="intent" value="move" />

@@ -220,6 +220,17 @@ export const LABELS: Record<string, Record<string, string>> = {
     consentsCaption: "The permissions on file, newest first.",
     documentsTitle: "Documents",
     documentsCaption: "Files filed against this customer.",
+    // A section on a 360 is empty for a reason the reader can act on: nothing
+    // has happened yet, or the thing that would create a row lives on another
+    // screen. Each body names which, and the card's own "Open" link is the
+    // action — so these say where the row comes from, not "no data".
+    nonePolicies: "This customer holds no cover yet. A bound quote becomes their first agreement.",
+    noneClaims: "No claim has been reported against their cover.",
+    noneCases: "Nothing is in flight. Quoting, underwriting and renewal work appears here while it is open.",
+    noneConversations: "No one has spoken with this customer through ORBIT yet.",
+    noneQuotes: "They have not been quoted. Raise a comparative request to shop the market for them.",
+    noneConsents: "No permissions are on file. Consent is recorded when the customer grants it.",
+    noneDocuments: "No files are attached to this customer.",
     offersTitle: "Next best offer",
     offersCaption: "Ranked suggestions, with the signals behind each one.",
     offerWhy: "Why this",
@@ -285,6 +296,13 @@ export const LABELS: Record<string, Record<string, string>> = {
     consentsCaption: "الأذونات المسجّلة، الأحدث أولًا.",
     documentsTitle: "المستندات",
     documentsCaption: "الملفات المرفقة بهذا العميل.",
+    nonePolicies: "لا يملك هذا العميل أي تغطية بعد. أول اتفاقية له تنشأ من عرض سعر مرتبط.",
+    noneClaims: "لم تُسجَّل أي مطالبة على تغطيته.",
+    noneCases: "لا يوجد عمل جارٍ. تظهر هنا أعمال التسعير والاكتتاب والتجديد ما دامت مفتوحة.",
+    noneConversations: "لم يتحدث أحد مع هذا العميل عبر ORBIT بعد.",
+    noneQuotes: "لم يُسعَّر بعد. افتح طلب مقارنة لاستطلاع السوق له.",
+    noneConsents: "لا توجد أذونات مسجّلة. تُسجَّل الموافقة عندما يمنحها العميل.",
+    noneDocuments: "لا توجد ملفات مرفقة بهذا العميل.",
     offersTitle: "العرض الأنسب",
     offersCaption: "اقتراحات مرتبة، مع الإشارات التي بُنيت عليها.",
     offerWhy: "سبب الاقتراح",
@@ -831,7 +849,7 @@ export default function Customer360() {
           columns={policyColumns}
           rows={loaded.policies}
           rowKey={(row) => row.id}
-          empty={<EmptyState title={l("none")} />}
+          empty={<EmptyState title={l("none")} body={l("nonePolicies")} />}
         />
       </LinkedCard>
 
@@ -841,7 +859,7 @@ export default function Customer360() {
           columns={claimColumns}
           rows={loaded.claims}
           rowKey={(row) => row.id}
-          empty={<EmptyState title={l("none")} />}
+          empty={<EmptyState title={l("none")} body={l("noneClaims")} />}
         />
       </LinkedCard>
 
@@ -851,7 +869,7 @@ export default function Customer360() {
           columns={caseColumns}
           rows={loaded.cases}
           rowKey={(row) => row.id}
-          empty={<EmptyState title={l("none")} />}
+          empty={<EmptyState title={l("none")} body={l("noneCases")} />}
         />
       </LinkedCard>
 
@@ -884,7 +902,7 @@ export default function Customer360() {
           columns={conversationColumns}
           rows={loaded.conversations}
           rowKey={(row) => row.id}
-          empty={<EmptyState title={l("none")} />}
+          empty={<EmptyState title={l("none")} body={l("noneConversations")} />}
         />
       </LinkedCard>
 
@@ -894,7 +912,7 @@ export default function Customer360() {
           columns={quoteColumns}
           rows={loaded.quotes}
           rowKey={(row) => row.id}
-          empty={<EmptyState title={l("none")} />}
+          empty={<EmptyState title={l("none")} body={l("noneQuotes")} />}
         />
       </LinkedCard>
 
@@ -904,7 +922,7 @@ export default function Customer360() {
           columns={consentColumns}
           rows={loaded.consents}
           rowKey={(row) => row.id}
-          empty={<EmptyState title={l("none")} />}
+          empty={<EmptyState title={l("none")} body={l("noneConsents")} />}
         />
       </LinkedCard>
 
@@ -914,7 +932,7 @@ export default function Customer360() {
           columns={fileColumns}
           rows={loaded.documents}
           rowKey={(row) => row.id}
-          empty={<EmptyState title={l("none")} />}
+          empty={<EmptyState title={l("none")} body={l("noneDocuments")} />}
         />
       </LinkedCard>
     </div>

@@ -27,20 +27,6 @@ const ROUTES = join(__dirname, "routes");
 
 /** Title-only empty states, `file:count`. Raise-only downward. */
 const ALLOWED = new Map<string, number>([
-  ["claim-detail.tsx", 7],
-  ["customer-360.tsx", 7],
-  ["platform.tsx", 6],
-  ["scout-whitespace.tsx", 6],
-  ["case-detail.tsx", 4],
-  ["channel-detail.tsx", 4],
-  ["orbit-admin.tsx", 4],
-  ["policy-detail.tsx", 4],
-  ["scout-data-products.tsx", 4],
-  ["signal-admin.tsx", 4],
-  ["signal-cockpit.tsx", 4],
-  ["admin-developer.tsx", 3],
-  ["axis-bordereaux.tsx", 3],
-  ["settings.tsx", 3],
   ["admin-roles.tsx", 2],
   ["admin-security.tsx", 2],
   ["axis-admin.tsx", 2],

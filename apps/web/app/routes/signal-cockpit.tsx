@@ -296,7 +296,7 @@ export default function GrowthCockpit() {
 
       <Card title={l("cockpit.pipeline")}>
         {rolls.length === 0 ? (
-          <EmptyState title={l("growth.noSpend")} />
+          <EmptyState title={l("growth.noSpend")} body={l("growth.noSpend.body")} />
         ) : (
           <Table
             caption={l("cockpit.pipelineCaption")}
@@ -329,7 +329,7 @@ export default function GrowthCockpit() {
           }
         >
           {loop.length === 0 ? (
-            <EmptyState title={l("cockpit.noLoop")} />
+            <EmptyState title={l("cockpit.noLoop")} body={l("cockpit.noLoop.body")} />
           ) : (
             <Table
               caption={l("cockpit.loopCaption")}
@@ -374,7 +374,7 @@ export default function GrowthCockpit() {
         }
       >
         {loaded.running.length === 0 ? (
-          <EmptyState title={l("cockpit.noCampaigns")} />
+          <EmptyState title={l("cockpit.noCampaigns")} body={l("cockpit.noCampaigns.body")} />
         ) : (
           <Table
             caption={l("cockpit.liveCaption")}
@@ -388,7 +388,7 @@ export default function GrowthCockpit() {
 
       <Card title={l("cockpit.changesToday")} description={l("cockpit.changesCaption")}>
         {loaded.moves.length === 0 ? (
-          <EmptyState title={l("cockpit.noChanges")} />
+          <EmptyState title={l("cockpit.noChanges")} body={l("cockpit.noChanges.body")} />
         ) : (
           <Table
             caption={l("cockpit.changesCaption")}

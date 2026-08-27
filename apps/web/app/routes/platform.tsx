@@ -127,6 +127,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     colDlq: "Dead letters",
     colApprovals: "Waiting",
     healthEmpty: "No active tenants",
+    healthEmptyBody: "No tenant is provisioned on this deployment yet, so there is nothing to report health on.",
 
     sloTitle: "Service levels",
     sloCaption: "Target against measured, with error budget burned",
@@ -137,6 +138,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     colBurn: "Budget burned",
     colWindow: "Window",
     sloEmpty: "No objectives defined",
+    sloEmptyBody: "No service objective is defined, so nothing here is being measured against a target.",
 
     incidentsTitle: "Outages",
     incidentsCaption: "Operational incidents raised in any tenant",
@@ -145,6 +147,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     colState: "State",
     colOpened: "Opened",
     incidentsEmpty: "No open outages",
+    incidentsEmptyBody: "Nothing is degraded right now. Open incidents appear here the moment one is declared.",
 
     deploysTitle: "Deployments",
     deploysCaption: "What shipped where, and when",
@@ -154,6 +157,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     colDeployed: "Deployed",
     colBy: "By",
     deploysEmpty: "No deployments recorded",
+    deploysEmptyBody: "No release has been recorded against this deployment yet.",
 
     flagsTitle: "Capability flags",
     flagsCaption: "Global switches, with the share of tenants they reach",
@@ -163,6 +167,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     colRollout: "Rollout",
     colUpdated: "Changed",
     flagsEmpty: "No flags yet",
+    flagsEmptyBody: "No feature flag exists yet. Use the form below to add the first one.",
     flagsShut: "You cannot read capability flags",
     flagOn: "Live",
     flagOff: "Off",
@@ -186,6 +191,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     colReason: "Reason",
     endSession: "End session",
     noSessions: "No live session",
+    noSessionsBody: "Nobody is impersonating a tenant right now. Start a session with the form below.",
     fieldTargetUser: "User to stand in for",
     fieldReason: "Why",
     confirmImpersonate: "I understand this is recorded against my name",
@@ -226,6 +232,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     colDlq: "الفاشلة",
     colApprovals: "منتظرة",
     healthEmpty: "لا مستأجرين نشطين",
+    healthEmptyBody: "لا يوجد مستأجر مُهيّأ على هذا النشر بعد، لذا لا توجد حالة صحية لعرضها.",
 
     sloTitle: "مستويات الخدمة",
     sloCaption: "الهدف مقابل المقاس، مع نسبة الميزانية المستهلكة",
@@ -236,6 +243,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     colBurn: "الميزانية المستهلكة",
     colWindow: "النافذة",
     sloEmpty: "لا أهداف محددة",
+    sloEmptyBody: "لم يُحدَّد أي هدف خدمة، لذا لا يُقاس شيء هنا مقابل هدف.",
 
     incidentsTitle: "الانقطاعات",
     incidentsCaption: "حوادث تشغيلية مسجلة في أي مستأجر",
@@ -244,6 +252,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     colState: "الحالة",
     colOpened: "فُتح",
     incidentsEmpty: "لا انقطاعات مفتوحة",
+    incidentsEmptyBody: "لا يوجد تدهور حالياً. تظهر الانقطاعات المفتوحة هنا فور الإعلان عنها.",
 
     deploysTitle: "الإصدارات",
     deploysCaption: "ما نُشر وأين ومتى",
@@ -253,6 +262,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     colDeployed: "نُشر",
     colBy: "بواسطة",
     deploysEmpty: "لا إصدارات مسجلة",
+    deploysEmptyBody: "لم يُسجَّل أي إصدار على هذا النشر بعد.",
 
     flagsTitle: "مفاتيح القدرات",
     flagsCaption: "مفاتيح عامة، ونسبة المؤسسات التي تشملها",
@@ -262,6 +272,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     colRollout: "نسبة الإطلاق",
     colUpdated: "آخر تغيير",
     flagsEmpty: "لا مفاتيح بعد",
+    flagsEmptyBody: "لا يوجد مفتاح ميزة بعد. استخدم النموذج أدناه لإضافة أول واحد.",
     flagsShut: "لا يمكنك قراءة مفاتيح القدرات",
     flagOn: "مفعّل",
     flagOff: "متوقف",
@@ -285,6 +296,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     colReason: "السبب",
     endSession: "إنهاء الجلسة",
     noSessions: "لا جلسة جارية",
+    noSessionsBody: "لا أحد ينتحل صفة مستأجر حالياً. ابدأ جلسة من النموذج أدناه.",
     fieldTargetUser: "المستخدم المنوب عنه",
     fieldReason: "السبب",
     confirmImpersonate: "أفهم أن هذا يُسجل باسمي",
@@ -678,7 +690,7 @@ export default function Platform() {
           rowKey={(row) => row.tenantId}
           caption={l("healthCaption")}
           density="compact"
-          empty={<EmptyState title={l("healthEmpty")} />}
+          empty={<EmptyState title={l("healthEmpty")} body={l("healthEmptyBody")} />}
         />
       </Card>
 
@@ -688,7 +700,7 @@ export default function Platform() {
           rows={loaded.slos}
           rowKey={(row) => row.id}
           caption={l("sloCaption")}
-          empty={<EmptyState title={l("sloEmpty")} />}
+          empty={<EmptyState title={l("sloEmpty")} body={l("sloEmptyBody")} />}
         />
       </Card>
 
@@ -698,7 +710,7 @@ export default function Platform() {
           rows={loaded.incidents}
           rowKey={(row) => row.id}
           caption={l("incidentsCaption")}
-          empty={<EmptyState title={l("incidentsEmpty")} />}
+          empty={<EmptyState title={l("incidentsEmpty")} body={l("incidentsEmptyBody")} />}
         />
       </Card>
 
@@ -709,7 +721,7 @@ export default function Platform() {
           rowKey={(row) => row.id}
           density="compact"
           caption={l("deploysCaption")}
-          empty={<EmptyState title={l("deploysEmpty")} />}
+          empty={<EmptyState title={l("deploysEmpty")} body={l("deploysEmptyBody")} />}
         />
       </Card>
 
@@ -721,7 +733,7 @@ export default function Platform() {
               rows={loaded.flags}
               rowKey={(row) => row.id}
               caption={l("flagsCaption")}
-              empty={<EmptyState title={l("flagsEmpty")} />}
+              empty={<EmptyState title={l("flagsEmpty")} body={l("flagsEmptyBody")} />}
             />
             {loaded.may.flagsWrite ? (
               <Form method="post" className="flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-end">
@@ -755,7 +767,7 @@ export default function Platform() {
               rows={loaded.sessions}
               rowKey={(row) => row.id}
               caption={l("activeTitle")}
-              empty={<EmptyState title={l("noSessions")} />}
+              empty={<EmptyState title={l("noSessions")} body={l("noSessionsBody")} />}
             />
             <Form method="post" className="flex flex-col gap-3 border-t border-border pt-4">
               <input type="hidden" name="intent" value="impersonate-start" />
