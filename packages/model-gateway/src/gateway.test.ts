@@ -664,4 +664,17 @@ describe("on-prem data residency routing", () => {
     expect(res.provider).toBe("openai-compat");
     expect(res.model).toBe("internal-embed");
   });
+
+  // The third sibling of those two, and the one with no on-prem model to route
+  // to (ADR-0075). It has to refuse before the provider call, or an on-prem
+  // tenant's prompt reaches Workers AI — the breach the other two prevent.
+  it("refuses generateImage() for an on-prem tenant instead of routing it to the cloud", async () => {
+    const onPremCtx = makeCtx({ dataResidency: "on-prem" });
+    const stub = makeStub({ imageBytes: new Uint8Array([1]) });
+    const gw = new Gateway({ env: {}, providers: { "workers-ai": stub } });
+    await expect(
+      gw.generateImage(onPremCtx, { module: "signal", purpose: "creative.image_generate", prompt: "a logo" })
+    ).rejects.toMatchObject({ status: 403, code: "onprem_no_image_model" });
+    expect(stub.imageCalls).toEqual([]);
+  });
 });

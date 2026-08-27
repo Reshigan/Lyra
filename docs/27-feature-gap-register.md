@@ -453,12 +453,24 @@ worth recording so they are not re-derived:
   no equivalent for a visual one — there is no golden set a candidate image
   model could be scored against.
 
-Not a backlog item as it stands. Adding `internal-image` to `IMAGE_CATALOGUE`
-and an `onprem` key to `IMAGE_MODEL`, routed through the same `openai-compat`
-adapter the text tiers use, is small; deciding *which* on-prem image server the
-platform supports is an ADR under docs/02 §9, and giving visual quality a
-measured gate is a second one under docs/13 §3.4. Both are cheaper to make
-before SIGNAL has a caller than after (**F67**).
+**Correction, 2026-08-27 — SIGNAL already has that caller, so this was live and
+not latent.** This finding said "nothing outside the gateway calls
+`generateImage`". `apps/api/src/engines/signal-creative.ts:289` calls it from
+`generateCreativeImage`, routed at `apps/api/src/routes/signal.ts:195` as
+`POST /v1/signal/creatives/image` — permission-gated, not residency-gated. An
+on-prem tenant could therefore send an image brief to Workers AI over the one
+path that did not check `ctx.policy.dataResidency`. The same reading mistake as
+the layout block above: a claim about what calls a function, made without
+grepping outside the package that defines it.
+
+Closed by **ADR-0075**: on-prem deployments have no image generation and say
+so — `generateImage` refuses before the provider call, pinned by the third
+on-prem sibling test beside `complete()`'s and `embed()`'s. Adding
+`internal-image` to `IMAGE_CATALOGUE` and an `onprem` key to `IMAGE_MODEL`
+stays small and stays available; what is not decided is *which* on-prem image
+server (docs/02 §9) and what visual-quality threshold would gate it
+(docs/13 §3.4). Refusing now is what keeps both from being guessed at under
+deadline (**F67**).
 
 ## P2 — depth, not absence
 

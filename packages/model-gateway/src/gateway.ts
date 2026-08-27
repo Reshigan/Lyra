@@ -1,5 +1,5 @@
 import { id, schema } from "@lyra/db";
-import { actorRef, hashObject, sha256Hex, type Ctx } from "@lyra/core";
+import { AppError, actorRef, hashObject, sha256Hex, type Ctx } from "@lyra/core";
 import { assertBudget, charge } from "./budget.js";
 import { assertNotKilled } from "./kill.js";
 import { blocked, checkInput, checkOutput, recordGuardrails, type GuardrailHit } from "./guardrails.js";
@@ -345,10 +345,28 @@ export class Gateway {
    * than complete(): no checkOutput, no retry loop. checkInput still screens
    * the prompt, same function complete() runs on user turns, but a hit only
    * flags — it never blocks (checkInput's hits are all severity "warn").
-   * ponytail: Workers AI cloud only, no on-prem image model yet.
+   * There is no on-prem image model (ADR-0075), and IMAGE_CATALOGUE holds one
+   * cloud entry, so an on-prem tenant reaching here would send its prompt to a
+   * third party — the breach resolveModel(models.ts:87) exists to prevent on
+   * the text path and embed() repeats at :243. Refuse rather than route: this
+   * is a capability an on-prem deployment does not have, not a tier to
+   * downgrade. Give IMAGE_MODEL an `onprem` key beside EMBED_MODEL's and this
+   * guard becomes the same ternary those two use.
    */
   async generateImage(ctx: Ctx, req: ImageRequest): Promise<ImageResponse> {
     const started = Date.now();
+    // AppError, not a bare Error: the bare ones above are unreachable-config
+    // bugs and 500 is right for them, while this is a policy refusal a caller
+    // can act on. POST /v1/signal/creatives/image is a live route
+    // (apps/api/src/routes/signal.ts:195), so an untyped throw there is a 500
+    // on a request the platform understood perfectly.
+    if (ctx.policy.dataResidency === "on-prem")
+      throw new AppError(
+        403,
+        "onprem_no_image_model",
+        "Image generation is unavailable on-prem",
+        "This deployment keeps prompts internal and has no on-prem image model (ADR-0075)."
+      );
     const def = IMAGE_CATALOGUE[IMAGE_MODEL.cloud];
     if (!def) throw new Error(`no image model ${IMAGE_MODEL.cloud}`);
 
