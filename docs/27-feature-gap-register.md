@@ -365,6 +365,38 @@ are invisible to a screen reader (**F65**).
 
 ---
 
+### New finding — CX judge locale parity, 2026-08-27
+
+*ORBIT / model-gateway.* The live CX judge marks an ungrounded detail down in
+English and lets the identical detail through in Arabic. Deploy run
+33032591942 scored `rubric.ar = 5.000`, `rubric.en = 4.750`, failing
+`parityGap.ar-en = 0.250 (need <= 0.2)`. The whole gap is one case: five judge
+samples out of five returned `accuracy: 4` for `en-quote-confirm`, each citing
+the same reason — the reply said the AED 1,000 excess applied "on each claim"
+where the conversation gave only "excess AED 1,000". Under ADR-0074's
+`min(mean, accuracy)` cap that is a 4.0. `ar-quote-confirm` adds the same
+detail in the same position (`عن كل مطالبة`) against the same context and
+scored 5.000.
+
+The direction matters and is the opposite of what the parity metric was built
+to catch. This is not Arabic being marked harshly; it is Arabic
+*under-detecting*. An unsupported policy term slipping past the rubric in one
+language is precisely the customer-facing failure the CX gate exists to stop,
+and the same `parseCxScore`/`cxJudgePrompt` path serves ORBIT's production QA
+sweep (`apps/api/src/engines/orbit-qa.ts:81`), so the blind spot is not
+confined to the eval — Arabic replies on the QA wall are being scored by a
+judge that is measurably less sensitive to fabrication than the English one
+(**F66**).
+
+The two fixtures were corrected in the same commit as this entry (they asserted
+`expectPass: true` over an invented per-claim term, which a golden set should
+never do), so the gate no longer fails on them. That unblocks the deploy; it
+does not address F66. Fixing the judge means a prompt change under docs/13 §3.4
+— a frozen judge version, so `cx-rubric-v3` and its own ADR, with the parity
+evidence above as the context. Until then the gate cannot see this class of
+defect in Arabic, and `parityGap` will only catch it when English happens to
+catch what Arabic misses.
+
 ## P2 — depth, not absence
 
 Commission is flat-rate only — no ladders, tiers, volume bonuses or overrides
