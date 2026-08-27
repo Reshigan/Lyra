@@ -25,6 +25,22 @@ import type {
 // guarded and audited — calling a provider adapter directly bypasses all four,
 // which is why they are not exported from the package root.
 
+/**
+ * Written out identically at twelve call sites before this — ten `writeAudit`
+ * rows and two response objects — so `Date.now() + started` survived every
+ * mutant: each site is asserted on its other fields and nothing reads the
+ * duration. One expression the twelve route through is both the smaller diff
+ * and the only place a check can bite (`gateway.test.ts`, "latency is a
+ * duration").
+ *
+ * Exported only so that check can reach it. `index.ts` re-exports this module
+ * with `export *`, so the name is public whether or not anyone wants it —
+ * internal to the gateway by convention, not by the type system.
+ */
+export function elapsed(started: number): number {
+  return Date.now() - started;
+}
+
 const REGISTRY: Partial<Record<ProviderName, Provider>> = {
   "workers-ai": workersAi,
   anthropic,
@@ -111,7 +127,7 @@ export class Gateway {
           tokensIn: 0,
           tokensOut: 0,
           cost: 0,
-          latencyMs: Date.now() - started,
+          latencyMs: elapsed(started),
           toolCalls: [],
           flags: [...flags, outcome],
           outcome
@@ -133,7 +149,7 @@ export class Gateway {
         tokensIn: 0,
         tokensOut: 0,
         cost: 0,
-        latencyMs: Date.now() - started,
+        latencyMs: elapsed(started),
         toolCalls: [],
         flags: [...flags, "refused_input"],
         outcome: "refused"
@@ -146,7 +162,7 @@ export class Gateway {
         provider: def.provider,
         tier: req.tier,
         usage: { tokensIn: 0, tokensOut: 0, costMicro: 0 },
-        latencyMs: Date.now() - started,
+        latencyMs: elapsed(started),
         finishReason: "refusal",
         flags: [...flags, "refused_input"],
         auditId
@@ -182,7 +198,7 @@ export class Gateway {
         tokensIn: 0,
         tokensOut: 0,
         cost: 0,
-        latencyMs: Date.now() - started,
+        latencyMs: elapsed(started),
         toolCalls: [],
         flags: [...flags, "provider_error"],
         outcome: "error"
@@ -213,7 +229,7 @@ export class Gateway {
       tokensIn: result.tokensIn,
       tokensOut: result.tokensOut,
       cost,
-      latencyMs: Date.now() - started,
+      latencyMs: elapsed(started),
       toolCalls: result.toolCalls,
       flags: [...flags],
       outcome: refused ? "refused" : "ok"
@@ -229,7 +245,7 @@ export class Gateway {
       provider: def.provider,
       tier: req.tier,
       usage: { tokensIn: result.tokensIn, tokensOut: result.tokensOut, costMicro: cost },
-      latencyMs: Date.now() - started,
+      latencyMs: elapsed(started),
       finishReason: refused ? "refusal" : result.finishReason,
       flags: [...flags],
       auditId
@@ -274,7 +290,7 @@ export class Gateway {
           tokensIn: 0,
           tokensOut: 0,
           cost: 0,
-          latencyMs: Date.now() - started,
+          latencyMs: elapsed(started),
           toolCalls: [],
           flags: [outcome],
           outcome
@@ -305,7 +321,7 @@ export class Gateway {
         tokensIn: 0,
         tokensOut: 0,
         cost: 0,
-        latencyMs: Date.now() - started,
+        latencyMs: elapsed(started),
         toolCalls: [],
         flags: ["error"],
         outcome: "error"
@@ -325,7 +341,7 @@ export class Gateway {
       tokensIn: out.usage.tokensIn,
       tokensOut: 0,
       cost,
-      latencyMs: Date.now() - started,
+      latencyMs: elapsed(started),
       toolCalls: [],
       flags: scrubbed.flags,
       outcome: "ok"
@@ -401,7 +417,7 @@ export class Gateway {
           tokensIn: 0,
           tokensOut: 0,
           cost: 0,
-          latencyMs: Date.now() - started,
+          latencyMs: elapsed(started),
           toolCalls: [],
           flags: [...flags, outcome],
           outcome
@@ -426,7 +442,7 @@ export class Gateway {
         tokensIn: 0,
         tokensOut: 0,
         cost: 0,
-        latencyMs: Date.now() - started,
+        latencyMs: elapsed(started),
         toolCalls: [],
         flags: [...flags, "provider_error"],
         outcome: "error"
@@ -446,7 +462,7 @@ export class Gateway {
       tokensIn: 0,
       tokensOut: 0,
       cost,
-      latencyMs: Date.now() - started,
+      latencyMs: elapsed(started),
       toolCalls: [],
       flags: [...flags],
       outcome: "ok"

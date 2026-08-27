@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { EntitlementsJson, PolicyJson, schema } from "@lyra/db";
 import { permissionsForRole, AppError, type Ctx } from "@lyra/core";
 import { charge, checkBudget, dayKey } from "./budget.js";
-import { Gateway } from "./gateway.js";
+import { Gateway, elapsed } from "./gateway.js";
 import { resolveModel, costMicro, CATALOGUE } from "./models.js";
 import { rehydrate, scrubMessages } from "./scrub.js";
 import { makeStub } from "./providers/stub.js";
@@ -433,6 +433,7 @@ describe("gateway.complete edge cases", () => {
   });
 
   it("retries once on a transient error and succeeds on the second attempt", async () => {
+    const t0 = Date.now();
     let attempts = 0;
     const flaky: Provider = {
       name: "workers-ai",
@@ -451,6 +452,11 @@ describe("gateway.complete edge cases", () => {
     });
     expect(res.text).toBe("recovered");
     expect(attempts).toBe(2);
+    // RETRY_DELAYS_MS is [0, 250, 1000]: the first attempt is immediate and the
+    // second waits 250ms. Asserting only `attempts` leaves the backoff itself
+    // untested — drop the sleep and a retry storm hits the provider as fast as
+    // the loop can spin, which is the failure mode backoff exists to prevent.
+    expect(Date.now() - t0).toBeGreaterThanOrEqual(200);
   });
 
   it("omits subjectRef from the audit row when the request has none", async () => {
@@ -676,5 +682,20 @@ describe("on-prem data residency routing", () => {
       gw.generateImage(onPremCtx, { module: "signal", purpose: "creative.image_generate", prompt: "a logo" })
     ).rejects.toMatchObject({ status: 403, code: "onprem_no_image_model" });
     expect(stub.imageCalls).toEqual([]);
+  });
+});
+
+// Twelve call sites wrote `Date.now() - started` inline and every one of them
+// survived a `+` mutant: each row is asserted on its other fields, and a
+// latency of 1.7e12 ms reads as a number like any other. The sign is the whole
+// content of the expression, so that is what this pins.
+describe("elapsed", () => {
+  it("is a duration since `started`, not a sum with it", () => {
+    const started = Date.now() - 50;
+    const ms = elapsed(started);
+    expect(ms).toBeGreaterThanOrEqual(50);
+    // Any plausible duration is far below the epoch; `Date.now() + started` is
+    // roughly twice it. One bound catches the sign flip without timing flake.
+    expect(ms).toBeLessThan(60_000);
   });
 });
