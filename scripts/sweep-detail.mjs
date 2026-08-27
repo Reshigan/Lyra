@@ -44,6 +44,12 @@ for (const path of STATIC) {
   for (const href of hrefs) {
     if (!href?.startsWith("/")) continue; // external and #anchors are not ours
     const url = href.split(/[?#]/)[0];
+    // An attachment route streams bytes with a Content-Disposition, so a
+    // `page.goto` on it triggers a download rather than a render: there is no
+    // `main` to grep, and the sweep reported the browser's own "Download is
+    // starting" as a finding. Their failure mode belongs to proxyFile
+    // (api.server.ts) and its unit tests, not to a screen sweep.
+    if (/\/(?:file|download)$/.test(url)) continue;
     if (found.has(url)) continue;
     const m = MATCHERS.find(({ re }) => re.test(url));
     if (m) found.set(url, m.pattern);
