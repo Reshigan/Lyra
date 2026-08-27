@@ -99,6 +99,23 @@ the same reason `worstReject` is a max rather than a mean.
   while accuracy is the sole veto. This ADR widens what accuracy *means*; it does
   not add a second veto, so the cap arithmetic is unchanged.
 
+## What the change exposed in the fixtures
+
+Reading the ten `expectPass: true` cases against the new clause before pushing
+found one that the old enumeration had let stand: both `quote-confirm` replies
+offered to "hold this price for 7 days" / "تثبيت السعر لمدة 7 أيام", and neither
+conversation mentions a hold or a period. Under v2 that was a *term*, on no list,
+and scored fine. Under v3 it is a 1 on accuracy, which caps the composite and —
+across five cases per locale — would have taken both locale means under
+`rubricMin` and blocked the deploy, in both languages symmetrically so the parity
+metric would have reported nothing wrong.
+
+The fixture was wrong, not the rubric: a sample asserted to pass has to be
+grounded in its own context, and v2 simply never asked. Both replies now end at
+"reply here and I'll issue it". The general lesson is that widening what a judge
+counts as unsupported re-scores the *passing* set too, so a rubric change means
+re-reading every pass fixture, not only writing the new reject.
+
 ## What this does not decide
 
 Whether the qualifier class is now caught in both languages. That is what the
