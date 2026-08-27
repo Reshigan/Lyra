@@ -32,7 +32,7 @@ import { ApiError, api, directory, fetchMe, type ApiOptions } from "../api.serve
 import { whoIs } from "../people";
 import { cloudflare } from "../context";
 import { translator } from "../i18n";
-import { humanise } from "../modules/spec";
+import { optionLabel } from "../modules/spec";
 import { labelsFrom } from "./detail-kit";
 import { Problem } from "./module";
 import { useOrbitSessionData } from "./orbit-shell";
@@ -774,13 +774,14 @@ export default function ConversationThread() {
         >
           <div className="flex flex-wrap items-center gap-3">
             <AgentBadge
-              agent={run?.agentKey ?? l("agent")}
+              agent={run ? optionLabel(l, "agentKey", run.agentKey) : l("agent")}
               why={
                 <div className="flex flex-col gap-2 text-start">
                   <span className="font-ui text-13 text-muted">{l("draftNote")}</span>
                   {run ? (
                     <span className="font-ui text-12 text-subtle">
-                      {humanise(run.purpose)} · {l("autonomy")}: {humanise(run.autonomyLevel)}
+                      {optionLabel(l, "purpose", run.purpose)} · {l("autonomy")}:{" "}
+                      {optionLabel(l, "autonomy", run.autonomyLevel)}
                     </span>
                   ) : null}
                 </div>

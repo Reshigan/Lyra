@@ -239,6 +239,28 @@ export const en = {
   "common.field.hint.json": "JSON — an object or a list, exactly as it is stored.",
   "common.field.hint.rate": "A percentage. 2.5 means two and a half percent.",
   "common.field.hint.ratio": "A multiplier, not a percentage. 18.5 means 18.5 times.",
+  // Every agent key and AI purpose the platform mints, in words. Both are code
+  // constants (`renewal`, `claim_reserve`) that six screens print — home, the
+  // agent console three times, a run's detail and a conversation — and they
+  // reach a reader through `optionLabel`, which resolves `<owner>.<value>` here
+  // before falling back to `humanise`. Shared rather than per-route because the
+  // same eight values read identically on all six.
+  "common.agentKey.briefing": "Briefing agent",
+  "common.agentKey.copilot": "Copilot",
+  "common.agentKey.creative": "Creative agent",
+  "common.agentKey.discovery": "Discovery agent",
+  "common.agentKey.qa": "Quality agent",
+  "common.agentKey.quoting": "Quoting agent",
+  "common.agentKey.recon": "Reconciliation agent",
+  "common.agentKey.renewal": "Renewal agent",
+  "common.purpose.audit": "Audit",
+  "common.purpose.briefing": "Briefing",
+  "common.purpose.claim_reserve": "Claim reserve",
+  "common.purpose.creative_draft": "Creative draft",
+  "common.purpose.dispute": "Dispute",
+  "common.purpose.internal": "Internal",
+  "common.purpose.marketing": "Marketing",
+  "common.purpose.regulator": "Regulator",
   "common.restore": "Restore",
   "common.deleted.state": "Records shown",
   "common.deleted.live": "Live records",

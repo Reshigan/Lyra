@@ -32,7 +32,7 @@ import { routedLeaves } from "../components/shell";
 import { JourneyContinue } from "../components/journey-nav";
 import { cloudflare } from "../context";
 import { DEFAULT_LOCALE, moduleName, pseudoText, translator } from "../i18n";
-import { humanise, titleText } from "../modules/spec";
+import { humanise, optionLabel, titleText } from "../modules/spec";
 import { labelKeyFor, moduleOf } from "../routing";
 import { policyTitle } from "./approvals";
 import { useShellData } from "./workspace";
@@ -944,15 +944,18 @@ export default function Home() {
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="min-w-0 break-words font-ui text-13 text-text">
                       {/* `agentKey` is minted in code (`renewal`, `qa`) and this
-                          panel is the one place a person reads it. */}
-                      {humanise(run.agentKey)}
+                          panel is the one place a person reads it. `optionLabel`
+                          is the seam every other enum value routes through: the
+                          pack's words when it has them, `humanise` when it does
+                          not — so a new agent key still reads as prose. */}
+                      {optionLabel(label, "agentKey", run.agentKey)}
                     </span>
                     <Badge tone={RUN_TONE[run.state] ?? "neutral"} size="sm">
                       {label(`runs.state.${run.state}`)}
                     </Badge>
                   </div>
                   <p className="break-words font-ui text-12 text-subtle">
-                    {humanise(run.purpose)} ·{" "}
+                    {optionLabel(label, "purpose", run.purpose)} ·{" "}
                     <DateTime value={run.startedAt} precision="minute" locale={locale} />
                   </p>
                 </li>

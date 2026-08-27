@@ -31,7 +31,7 @@ import { ApiError, api, names } from "../api.server";
 import { who, type Names } from "../names";
 import { cloudflare } from "../context";
 import { moduleName, pseudoText, translator } from "../i18n";
-import { humanise } from "../modules/spec";
+import { humanise, optionLabel } from "../modules/spec";
 import { Problem } from "./module";
 import { useShellData } from "./workspace";
 
@@ -400,8 +400,17 @@ type Label = (key: string, fallback?: string) => string;
 
 /** Locale first, English next, then whatever the API actually said. */
 function labeller(locale: string): Label {
-  return (key, fallback) =>
-    pseudoText(locale, LABELS[locale]?.[key] ?? LABELS["en"]?.[key] ?? fallback ?? key);
+  const t = translator(locale);
+  return (key, fallback) => {
+    const mine = LABELS[locale]?.[key] ?? LABELS["en"]?.[key];
+    if (mine !== undefined) return pseudoText(locale, mine);
+    // Same fall-through as ai-run.tsx and as `labelsFrom` (detail-kit.tsx):
+    // the shared catalogue answers before the caller's fallback, so an agent
+    // key or an AI purpose reads the same here as on the home screen.
+    const shared = t(`common.${key}`);
+    if (shared !== `common.${key}`) return shared;
+    return pseudoText(locale, fallback ?? key);
+  };
 }
 
 /* ------------------------------------------------------------------- shapes */
@@ -792,7 +801,7 @@ export default function AiConsole() {
       )
     },
     { key: "module", header: L("runs.askedBy"), render: (run) => moduleName(t, run.module) },
-    { key: "purpose", header: L("runs.purpose"), render: (run) => humanise(run.purpose) },
+    { key: "purpose", header: L("runs.purpose"), render: (run) => optionLabel(L, "purpose", run.purpose) },
     {
       key: "state",
       header: L("runs.state"),
@@ -822,7 +831,7 @@ export default function AiConsole() {
     // Spend and the audit log are keyed by module code (`dist`, `core`); the
     // person reading the table navigates by the name on the rail.
     { key: "module", header: L("spend.module"), render: (row) => moduleName(t, row.module) },
-    { key: "purpose", header: L("spend.purpose"), render: (row) => humanise(row.purpose) },
+    { key: "purpose", header: L("spend.purpose"), render: (row) => optionLabel(L, "purpose", row.purpose) },
     { key: "calls", header: L("spend.calls"), numeric: true, render: (row) => nf.format(row.calls) },
     { key: "tokens", header: L("spend.tokens"), numeric: true, render: (row) => nf.format(row.tokens) },
     {
@@ -889,7 +898,7 @@ export default function AiConsole() {
     },
     { key: "actorRef", header: L("audit.actor"), render: (row) => who(row.actorRef, loaded.names) },
     { key: "module", header: L("audit.module"), render: (row) => moduleName(t, row.module) },
-    { key: "purpose", header: L("audit.purpose"), render: (row) => humanise(row.purpose) },
+    { key: "purpose", header: L("audit.purpose"), render: (row) => optionLabel(L, "purpose", row.purpose) },
     {
       key: "model",
       header: L("audit.model"),

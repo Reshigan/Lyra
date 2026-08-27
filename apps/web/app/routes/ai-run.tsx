@@ -24,7 +24,7 @@ import { ApiError, api, directory, type DirectoryEntry } from "../api.server";
 import { whoIs } from "../people";
 import { cloudflare } from "../context";
 import { moduleName, pseudoText, translator } from "../i18n";
-import { humanise } from "../modules/spec";
+import { humanise, optionLabel } from "../modules/spec";
 import { useShellData } from "./workspace";
 
 // One agent run, opened. `GET /v1/ai/runs/:id/detail` (apps/api/src/routes/ai.ts)
@@ -204,8 +204,18 @@ const LABELS: Record<string, Record<string, string>> = {
 type Label = (key: string, fallback?: string) => string;
 
 function labeller(locale: string): Label {
-  return (key, fallback) =>
-    pseudoText(locale, LABELS[locale]?.[key] ?? LABELS["en"]?.[key] ?? fallback ?? key);
+  const t = translator(locale);
+  return (key, fallback) => {
+    const mine = LABELS[locale]?.[key] ?? LABELS["en"]?.[key];
+    if (mine !== undefined) return pseudoText(locale, mine);
+    // The shared catalogue is the last stop before the caller's own fallback —
+    // the same fall-through `labelsFrom` (detail-kit.tsx) gives every screen
+    // built on it, so words that read identically everywhere (an agent key, an
+    // AI purpose) live in `common.` once instead of in each route's table.
+    const shared = t(`common.${key}`);
+    if (shared !== `common.${key}`) return shared;
+    return pseudoText(locale, fallback ?? key);
+  };
 }
 
 /* ------------------------------------------------------------------ shapes */
@@ -619,7 +629,7 @@ export default function AiRun() {
           <Card title={L("run.why")}>
             <div className="flex flex-col gap-4">
               <dl className="flex flex-col gap-2">
-                <Pair term={L("run.purpose")} detail={humanise(run.purpose)} />
+                <Pair term={L("run.purpose")} detail={optionLabel(L, "purpose", run.purpose)} />
                 <Pair term={L("run.module")} detail={moduleName(t, run.module)} />
                 <Pair term={L("run.trigger")} detail={humanise(run.trigger)} />
                 <Pair
