@@ -51,12 +51,29 @@ export function labelsFrom(table: Labels, locale: string, pack?: string): Label 
   return kitLabelsFrom(table)(locale, pack);
 }
 
-/** A withheld read is an empty panel, not a blank screen. */
+/**
+ * A read the caller cannot have is an empty panel, not a blank screen.
+ *
+ * Written as what must NOT be swallowed, because the allowlist form of this is
+ * how `readable()` in north-shared.tsx turned a 400 into an HTTP 500 on every
+ * /north/explorer request (dead seam 8). The same trap was live here: this
+ * swallowed 403 alone, while crud.ts:83 states the opposite policy in so many
+ * words — "A hidden row is 404, never 403 — 403 confirms it exists". So every
+ * by-id read behind this seam (a claim, a product) answered the status the API
+ * deliberately sends and crashed React Router with it, though the loader
+ * directly below already renders the `null` fallback as "not found".
+ *
+ * 401 still rethrows: a signed-out reader needs the login redirect, not an
+ * empty panel that hides why it is empty. A 5xx still rethrows — the server
+ * failing is not the same as the server saying no.
+ */
 export async function safe<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
   try {
     return await fn();
   } catch (error) {
-    if (error instanceof ApiError && error.status === 403) return fallback;
+    if (error instanceof ApiError && error.status >= 400 && error.status < 500 && error.status !== 401) {
+      return fallback;
+    }
     throw error;
   }
 }

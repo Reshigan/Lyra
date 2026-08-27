@@ -80,7 +80,8 @@ import {
   ratio,
   windowDays
 } from "./orbit-analytics";
-import { ORBIT, daysUntil, orbitPortals } from "./orbit-shared";
+import { ApiError } from "../api-error";
+import { ORBIT, daysUntil, orbitPortals, safe } from "./orbit-shared";
 
 // The six bespoke ORBIT screens. Everything below is either a rule an operator
 // leans on (who is waiting, what may be offered, what stops a journey going
@@ -1079,5 +1080,39 @@ describe("the save desk's risk door", () => {
 
     expect(lensOf(rows, saveLenses, "risk")).toEqual(atRisk(rows));
     expect(lensOf(rows, saveLenses, "risk").map((row) => row.id)).toEqual(["ren_01"]);
+  });
+});
+
+/**
+ * `safe()` decides which API refusals become an empty panel and which become a
+ * crash, and the allowlist form of that decision is dead seam 8 (a 400 reaching
+ * React Router as an HTTP 500 on every /north/explorer request). It swallowed
+ * 403 alone while crud.ts:83 states "A hidden row is 404, never 403", so every
+ * by-id read behind it crashed on the status the API deliberately sends.
+ */
+describe("what safe() swallows", () => {
+  const refuse = <T,>(status: number, fallback: T) =>
+    safe<T>(() => Promise.reject(new ApiError({ title: "no", status }, null)), fallback);
+
+  it("renders the fallback for a row that is missing or not this tenant's", async () => {
+    await expect(refuse(404, null)).resolves.toBeNull();
+  });
+
+  it("renders the fallback for a refused read and a rejected query alike", async () => {
+    await expect(refuse(403, null)).resolves.toBeNull();
+    await expect(refuse(400, null)).resolves.toBeNull();
+    await expect(refuse(422, null)).resolves.toBeNull();
+  });
+
+  it("rethrows 401 so a signed-out reader still gets the login redirect", async () => {
+    await expect(refuse(401, null)).rejects.toBeInstanceOf(ApiError);
+  });
+
+  it("rethrows a server fault — the server failing is not the server saying no", async () => {
+    await expect(refuse(500, null)).rejects.toBeInstanceOf(ApiError);
+  });
+
+  it("leaves a non-ApiError alone", async () => {
+    await expect(safe(() => Promise.reject(new TypeError("boom")), null)).rejects.toBeInstanceOf(TypeError);
   });
 });
