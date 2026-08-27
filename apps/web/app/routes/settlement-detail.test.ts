@@ -1,5 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "../api-error";
 import { detailHeadlineKey, netBalance, netLegs } from "./settlement-detail";
+
+vi.mock("../api.server", async () => ({ api: vi.fn(), fetchMe: vi.fn(), ApiError: (await import("../api-error")).ApiError }));
+vi.mock("../context", () => ({ cloudflare: { toString: () => "cloudflare-context" } }));
+
+import { api, fetchMe } from "../api.server";
+import { loader } from "./settlement-detail";
+
+const fakeContext = () => ({ get: () => ({ env: { API_ORIGIN: "https://api.lyra.test" } }) });
 
 describe("detailHeadlineKey", () => {
   it("flags a ledger mismatch even when a decision is open", () => {
@@ -62,5 +71,44 @@ describe("netBalance", () => {
       deltaMinor: -50_00,
       balanced: false
     });
+  });
+});
+
+describe("loader — a failed /lines fetch is not a permission denial", () => {
+  beforeEach(() => {
+    vi.mocked(api).mockReset();
+    vi.mocked(fetchMe).mockReset();
+  });
+
+  const holder = { permissions: ["dist:commissions:read"] };
+  const call = () =>
+    loader({
+      request: new Request("https://lyra.test/ledger/settlements/stl_1"),
+      params: { id: "stl_1" },
+      context: fakeContext()
+    } as never) as Promise<{ lines: unknown; may: { read: boolean } }>;
+
+  it("keeps may.read true when the API answers 4xx", async () => {
+    // The screen conflated two facts and told an actor holding
+    // dist:commissions:read that they lacked it, because `shut` forced
+    // read:false for any 4xx on the lines endpoint.
+    vi.mocked(fetchMe).mockResolvedValue(holder as never);
+    vi.mocked(api).mockRejectedValueOnce(new ApiError({ title: "bad request", status: 400 }, null));
+    const out = await call();
+    expect(out.lines).toBeNull();
+    expect(out.may.read).toBe(true);
+  });
+
+  it("still reports a denial when the actor holds nothing", async () => {
+    vi.mocked(fetchMe).mockResolvedValue({ permissions: [] } as never);
+    const out = await call();
+    expect(out.may.read).toBe(false);
+    expect(vi.mocked(api)).not.toHaveBeenCalled();
+  });
+
+  it("rethrows a 5xx rather than presenting it as an empty statement", async () => {
+    vi.mocked(fetchMe).mockResolvedValue(holder as never);
+    vi.mocked(api).mockRejectedValueOnce(new ApiError({ title: "boom", status: 500 }, null));
+    await expect(call()).rejects.toThrow();
   });
 });

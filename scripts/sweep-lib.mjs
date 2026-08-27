@@ -66,7 +66,13 @@ export const CHECKS = [
   [/\bNaN\b/, "NaN"],
   [I18N_KEY_RE, "untranslated i18n key"],
   [/[\w/-]+\/[\w-]+\.md\b/, "storage key"],
-  [/\b\d{1,3},\d{3}-\d{2}-\d{2}\b/, "comma-grouped year"]
+  [/\b\d{1,3},\d{3}-\d{2}-\d{2}\b/, "comma-grouped year"],
+  // The sweep signs in holding all 24 roles, so a rendered permission wall is
+  // always a lie about *this* reader — it is a 200 whose body says no, which
+  // trips no other pattern and scored `ok`. That is how the settlement detail
+  // screen hid: a 4xx on its /lines fetch was reported to the actor as a
+  // missing grant. The prose is i18n/en.ts `error.forbidden`.
+  [/Your roles do not include access/i, "permission wall shown to the all-roles persona"]
 ];
 
 /**

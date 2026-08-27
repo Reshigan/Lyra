@@ -188,6 +188,8 @@ const TRANSITIONS: Record<string, { path: string; reason: boolean; confirm: bool
 const OWN: Record<string, Record<string, string>> = {
   en: {
     deniedTitle: "You can't open this settlement",
+    unavailableTitle: "This statement can't be shown",
+    unavailableBody: "The lines behind this settlement couldn't be loaded. Nothing has changed — try again, or open it from the settlements list.",
     title: "Settlement",
     intro: "The entries it was drafted from, and the terms that priced them.",
     back: "Back to settlements",
@@ -229,6 +231,8 @@ const OWN: Record<string, Record<string, string>> = {
   },
   ar: {
     deniedTitle: "لا يمكنك فتح هذه التسوية",
+    unavailableTitle: "تعذّر عرض هذا الكشف",
+    unavailableBody: "تعذّر تحميل بنود هذه التسوية. لم يتغيّر شيء — أعد المحاولة أو افتحها من قائمة التسويات.",
     title: "التسوية",
     intro: "القيود التي صيغت منها، والشروط التي سعّرتها.",
     back: "العودة إلى التسويات",
@@ -293,9 +297,13 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   const may = { read: held.has(PERM.read), settle: held.has(PERM.settle), pay: held.has(PERM.pay) };
   const apiOrigin = env.API_ORIGIN;
   const idempotencyKey = crypto.randomUUID();
-  const shut = { lines: null as LinesPayload | null, may: { ...may, read: false }, apiOrigin, idempotencyKey };
+  // Two separate facts, and conflating them made the screen lie: `may.read` is
+  // whether this actor holds dist:commissions:read, `lines: null` is whether
+  // the statement could be fetched. A 4xx on /lines forced read:false and an
+  // all-roles administrator was told they lacked a permission they hold.
+  const shut = { lines: null as LinesPayload | null, may, apiOrigin, idempotencyKey };
 
-  if (!may.read) return shut;
+  if (!may.read) return { ...shut, may: { ...may, read: false } };
 
   try {
     const lines = await api<LinesPayload>(`/v1/settlement/settlements/${id}/lines`, { env, request });
@@ -366,10 +374,14 @@ export default function SettlementDetail() {
   );
 
   if (!loaded.may.read || !loaded.lines) {
+    const denied = !loaded.may.read;
     return (
       <div className="flex flex-col gap-6">
         <PageHeader title={l("title")} description={l("intro")} back={back} />
-        <EmptyState title={l("deniedTitle")} body={t("error.forbidden")} />
+        <EmptyState
+          title={denied ? l("deniedTitle") : l("unavailableTitle")}
+          body={denied ? t("error.forbidden") : l("unavailableBody")}
+        />
       </div>
     );
   }
