@@ -4,7 +4,7 @@ import {
   useFetcher,
   useLoaderData,
   type ActionFunctionArgs,
-  type LoaderFunctionArgs
+  type LoaderFunctionArgs,
 } from "react-router";
 import {
   ApprovalStrip,
@@ -23,7 +23,7 @@ import {
   Timeline,
   type BadgeTone,
   type Section,
-  type TimelineEvent
+  type TimelineEvent,
 } from "@lyra/ui";
 import { ApiError, api, fetchMe, names, type Problem } from "../api.server";
 import { who } from "../names";
@@ -33,7 +33,7 @@ import { JourneyContinue } from "../components/journey-nav";
 import { cloudflare } from "../context";
 import { DEFAULT_LOCALE, moduleName, pseudoText, translator } from "../i18n";
 import { humanise, optionLabel, titleText } from "../modules/spec";
-import { labelKeyFor, moduleOf } from "../routing";
+import { labelKeyFor } from "../routing";
 import { policyTitle } from "./approvals";
 import { useShellData } from "./workspace";
 
@@ -70,7 +70,8 @@ const LABELS: Record<string, Record<string, string>> = {
     "answer.decisions": "There is work waiting on your decision.",
     "answer.unread": "Nothing needs your decision; there is news to read.",
     "answer.clear": "Nothing is waiting on you.",
-    "answer.unknown": "Your inbox did not load. Everything else on this page did.",
+    "answer.unknown":
+      "Your inbox did not load. Everything else on this page did.",
 
     "kpi.approvals": "Waiting on you",
     "kpi.notifications": "Unread",
@@ -97,9 +98,12 @@ const LABELS: Record<string, Record<string, string>> = {
     "notifications.dismissed": "Marked as read.",
     "notifications.empty": "Nothing unread.",
     "notice.analytics.schedule.delivered": "A scheduled report was delivered",
-    "notice.analytics.schedule.undelivered": "A scheduled report reached only some recipients",
-    "notice.analytics.schedule.failed": "A scheduled report could not be produced",
-    "notice.compliance.dsar.created": "A data-subject request arrived and needs verification",
+    "notice.analytics.schedule.undelivered":
+      "A scheduled report reached only some recipients",
+    "notice.analytics.schedule.failed":
+      "A scheduled report could not be produced",
+    "notice.compliance.dsar.created":
+      "A data-subject request arrived and needs verification",
 
     "activity.title": "Your recent activity",
     "activity.label": "Your recent activity",
@@ -122,8 +126,6 @@ const LABELS: Record<string, Record<string, string>> = {
     "areas.units": "{count} delivered",
     "areas.empty": "Nothing has been measured in this window yet.",
 
-    "links.title": "Your workspaces",
-    "links.label": "Workspaces",
 
     "journey.title": "The flagship journey",
     "journey.cta": "Walk the journey",
@@ -133,12 +135,14 @@ const LABELS: Record<string, Record<string, string>> = {
     "journey.scout.note": "Open whitespace",
     "journey.signal.note": "Live campaigns",
 
-    "panel.failed": "This did not load. Nothing is wrong with your work — try again in a moment.",
+    "panel.failed":
+      "This did not load. Nothing is wrong with your work — try again in a moment.",
     "panel.retry": "Reload",
 
     "empty.title": "Nothing is waiting",
-    "empty.body": "No decisions, no unread notifications. Open a workspace to pick up work.",
-    "empty.action": "Open a workspace"
+    "empty.body":
+      "No decisions, no unread notifications. Open a workspace to pick up work.",
+    "empty.action": "Open a workspace",
   },
   ar: {
     greeting: "أهلًا بعودتك، {name}",
@@ -173,7 +177,8 @@ const LABELS: Record<string, Record<string, string>> = {
     "notifications.dismissed": "تم التحديد كمقروء.",
     "notifications.empty": "لا شيء غير مقروء.",
     "notice.analytics.schedule.delivered": "تم تسليم تقرير مجدول",
-    "notice.analytics.schedule.undelivered": "وصل تقرير مجدول إلى بعض المستلمين فقط",
+    "notice.analytics.schedule.undelivered":
+      "وصل تقرير مجدول إلى بعض المستلمين فقط",
     "notice.analytics.schedule.failed": "تعذّر إنتاج تقرير مجدول",
     "notice.compliance.dsar.created": "وصل طلب من صاحب بيانات ويحتاج إلى تحقق",
 
@@ -198,8 +203,6 @@ const LABELS: Record<string, Record<string, string>> = {
     "areas.units": "{count} منجزة",
     "areas.empty": "لم يُقَس أي نشاط في هذه الفترة بعد.",
 
-    "links.title": "مساحات عملك",
-    "links.label": "مساحات العمل",
 
     "journey.title": "الرحلة الرئيسية",
     "journey.cta": "استعرض الرحلة",
@@ -209,13 +212,15 @@ const LABELS: Record<string, Record<string, string>> = {
     "journey.scout.note": "فرص غير مستغلة مفتوحة",
     "journey.signal.note": "حملات نشطة",
 
-    "panel.failed": "تعذّر تحميل هذا الجزء. لم يتأثّر عملك؛ أعد المحاولة بعد قليل.",
+    "panel.failed":
+      "تعذّر تحميل هذا الجزء. لم يتأثّر عملك؛ أعد المحاولة بعد قليل.",
     "panel.retry": "إعادة التحميل",
 
     "empty.title": "لا شيء ينتظرك",
-    "empty.body": "لا قرارات ولا إشعارات غير مقروءة. افتح إحدى مساحات العمل لبدء العمل.",
-    "empty.action": "افتح مساحة عمل"
-  }
+    "empty.body":
+      "لا قرارات ولا إشعارات غير مقروءة. افتح إحدى مساحات العمل لبدء العمل.",
+    "empty.action": "افتح مساحة عمل",
+  },
 };
 
 type Label = (key: string, vars?: Record<string, string>) => string;
@@ -223,9 +228,15 @@ type Label = (key: string, vars?: Record<string, string>) => string;
 function labeller(locale: string): Label {
   const table = LABELS[locale] ?? LABELS[DEFAULT_LOCALE];
   return (key, vars) => {
-    const template = pseudoText(locale, table?.[key] ?? LABELS[DEFAULT_LOCALE]?.[key] ?? key);
+    const template = pseudoText(
+      locale,
+      table?.[key] ?? LABELS[DEFAULT_LOCALE]?.[key] ?? key,
+    );
     if (!vars) return template;
-    return template.replace(/\{(\w+)\}/g, (whole, name: string) => vars[name] ?? whole);
+    return template.replace(
+      /\{(\w+)\}/g,
+      (whole, name: string) => vars[name] ?? whole,
+    );
   };
 }
 
@@ -321,8 +332,13 @@ export function activeCampaignCount(rows: CampaignRow[]): number {
  * into something a person can act on. Session history stays where it belongs,
  * on Settings › security.
  */
-export function isOwnWork(entry: Pick<AuditRow, "action" | "subjectRef">): boolean {
-  return !entry.subjectRef?.startsWith("ses_") && !entry.action.startsWith("core.session.");
+export function isOwnWork(
+  entry: Pick<AuditRow, "action" | "subjectRef">,
+): boolean {
+  return (
+    !entry.subjectRef?.startsWith("ses_") &&
+    !entry.action.startsWith("core.session.")
+  );
 }
 
 /**
@@ -331,7 +347,10 @@ export function isOwnWork(entry: Pick<AuditRow, "action" | "subjectRef">): boole
  * is a failure, and the difference has to survive to the screen: an empty panel
  * and a broken one look identical to a reader unless one of them says so.
  */
-type Panel<T> = { state: "ok"; data: T } | { state: "denied" } | { state: "error"; requestId?: string };
+type Panel<T> =
+  | { state: "ok"; data: T }
+  | { state: "denied" }
+  | { state: "error"; requestId?: string };
 
 /* ------------------------------------------------------------------ loader */
 
@@ -348,40 +367,48 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   // Every branch resolves to a Panel, so one lost permission or one failing
   // endpoint costs one panel and never the screen.
-  const [inbox, economics, activity, runs, briefings, whitespaces, campaigns] = await Promise.all([
-    // The inbox is the actor's own queue; the API scopes it to them, so there is
-    // no permission to check before asking for it.
-    panel<Inbox>(true, () => api("/v1/me/inbox", { env, request })),
-    panel<{ data: UnitEconomicsRow[] }>(held.has("analytics:reports:read"), () =>
-      api(`/v1/analytics/unit-economics?since=${since}`, { env, request })
-    ),
-    panel<{ data: AuditRow[] }>(held.has("core:audit:read"), () =>
-      api(
-        `/v1/core/audit-log?actorRef=${encodeURIComponent(`${me.actor.kind}:${me.actor.id}`)}&sort=ts&order=desc&limit=24`,
-        { env, request }
-      )
-    ),
-    panel<{ data: AiRun[] }>(held.has("ai:runs:read"), () =>
-      api("/v1/ai/runs?sort=startedAt&order=desc&limit=5", { env, request })
-    ),
-    // The three panels below feed the AXIS→NORTH→SCOUT→SIGNAL journey step —
-    // the same endpoints journey-north.tsx/journey-scout.tsx already read
-    // (generic CRUD resources registered in apps/api/src/resources.ts), kept
-    // to one page each since the step only ever shows a headline.
-    panel<{ data: BriefingSummary[] }>(held.has("north:briefings:read"), () =>
-      api("/v1/north/briefings?limit=1&sort=createdAt&order=desc", { env, request })
-    ),
-    panel<{ data: WhitespaceRow[] }>(held.has("scout:whitespaces:read"), () =>
-      api("/v1/scout/whitespaces?limit=200", { env, request })
-    ),
-    panel<{ data: CampaignRow[] }>(held.has("signal:campaigns:read"), () =>
-      api("/v1/signal/campaigns?limit=200", { env, request })
-    )
-  ]);
+  const [inbox, economics, activity, runs, briefings, whitespaces, campaigns] =
+    await Promise.all([
+      // The inbox is the actor's own queue; the API scopes it to them, so there is
+      // no permission to check before asking for it.
+      panel<Inbox>(true, () => api("/v1/me/inbox", { env, request })),
+      panel<{ data: UnitEconomicsRow[] }>(
+        held.has("analytics:reports:read"),
+        () =>
+          api(`/v1/analytics/unit-economics?since=${since}`, { env, request }),
+      ),
+      panel<{ data: AuditRow[] }>(held.has("core:audit:read"), () =>
+        api(
+          `/v1/core/audit-log?actorRef=${encodeURIComponent(`${me.actor.kind}:${me.actor.id}`)}&sort=ts&order=desc&limit=24`,
+          { env, request },
+        ),
+      ),
+      panel<{ data: AiRun[] }>(held.has("ai:runs:read"), () =>
+        api("/v1/ai/runs?sort=startedAt&order=desc&limit=5", { env, request }),
+      ),
+      // The three panels below feed the AXIS→NORTH→SCOUT→SIGNAL journey step —
+      // the same endpoints journey-north.tsx/journey-scout.tsx already read
+      // (generic CRUD resources registered in apps/api/src/resources.ts), kept
+      // to one page each since the step only ever shows a headline.
+      panel<{ data: BriefingSummary[] }>(held.has("north:briefings:read"), () =>
+        api("/v1/north/briefings?limit=1&sort=createdAt&order=desc", {
+          env,
+          request,
+        }),
+      ),
+      panel<{ data: WhitespaceRow[] }>(held.has("scout:whitespaces:read"), () =>
+        api("/v1/scout/whitespaces?limit=200", { env, request }),
+      ),
+      panel<{ data: CampaignRow[] }>(held.has("signal:campaigns:read"), () =>
+        api("/v1/signal/campaigns?limit=200", { env, request }),
+      ),
+    ]);
 
   const rows = economics.state === "ok" ? economics.data.data : [];
-  const approvals = inbox.state === "ok" ? inbox.data.approvals.slice(0, 3) : [];
-  const notifications = inbox.state === "ok" ? inbox.data.notifications.slice(0, 6) : [];
+  const approvals =
+    inbox.state === "ok" ? inbox.data.approvals.slice(0, 3) : [];
+  const notifications =
+    inbox.state === "ok" ? inbox.data.notifications.slice(0, 6) : [];
 
   // Approvals, the timeline and the notice list all carry refs and no display
   // text, so the home screen greeted people with three columns of ULIDs. One
@@ -390,10 +417,12 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const resolved = await names(
     [
       ...approvals.flatMap((one) => [one.subjectRef, one.requestedBy]),
-      ...(activity.state === "ok" ? activity.data.data.map((entry) => entry.subjectRef) : []),
-      ...notifications.map((note) => note.subjectRef)
+      ...(activity.state === "ok"
+        ? activity.data.data.map((entry) => entry.subjectRef)
+        : []),
+      ...notifications.map((note) => note.subjectRef),
     ],
-    { env, request }
+    { env, request },
   );
 
   return {
@@ -409,7 +438,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     runs: map(runs, (r) => r.data),
     briefing: map(briefings, (b) => b.data[0] ?? null),
     scoutOpen: map(whitespaces, (w) => openWhitespaceCount(w.data)),
-    signalActive: map(campaigns, (c) => activeCampaignCount(c.data))
+    signalActive: map(campaigns, (c) => activeCampaignCount(c.data)),
   };
 }
 
@@ -419,14 +448,20 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
  * mid-session should cost the actor a panel, not the page. Anything else is an
  * error the panel admits to, because silently drawing zero would be a lie.
  */
-async function panel<T>(permitted: boolean, fetch: () => Promise<T>): Promise<Panel<T>> {
+async function panel<T>(
+  permitted: boolean,
+  fetch: () => Promise<T>,
+): Promise<Panel<T>> {
   if (!permitted) return { state: "denied" };
   try {
     return { state: "ok", data: await fetch() };
   } catch (error) {
     if (!(error instanceof ApiError)) throw error;
-    if (error.status === 403 || error.status === 404) return { state: "denied" };
-    return error.requestId ? { state: "error", requestId: error.requestId } : { state: "error" };
+    if (error.status === 403 || error.status === 404)
+      return { state: "denied" };
+    return error.requestId
+      ? { state: "error", requestId: error.requestId }
+      : { state: "error" };
   }
 }
 
@@ -467,11 +502,15 @@ function summarise(rows: UnitEconomicsRow[]): {
   return {
     revenueMinor,
     costMinor,
-    marginPct: revenueMinor ? Math.round(((revenueMinor - costMinor) / revenueMinor) * 100) : null,
+    marginPct: revenueMinor
+      ? Math.round(((revenueMinor - costMinor) / revenueMinor) * 100)
+      : null,
     volume,
     currency,
     // ISO days sort lexically, so the sparkline reads left-to-right in time.
-    trend: [...byDay.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, v]) => v)
+    trend: [...byDay.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([, v]) => v),
   };
 }
 
@@ -498,14 +537,16 @@ function byArea(rows: UnitEconomicsRow[]): AreaRow[] {
     totals.set(row.module, at);
   }
 
-  const ranked = [...totals.entries()].sort(([, a], [, b]) => b.volume - a.volume).slice(0, 6);
+  const ranked = [...totals.entries()]
+    .sort(([, a], [, b]) => b.volume - a.volume)
+    .slice(0, 6);
   const top = ranked[0]?.[1].volume ?? 0;
   return ranked.map(([module, at]) => ({
     module,
     volume: at.volume,
     revenueMinor: at.revenueMinor,
     currency,
-    share: top ? Math.round((at.volume / top) * 100) : 0
+    share: top ? Math.round((at.volume / top) * 100) : 0,
   }));
 }
 
@@ -513,11 +554,14 @@ function byArea(rows: UnitEconomicsRow[]): AreaRow[] {
 
 export async function action({
   request,
-  context
+  context,
   // `done` is what succeeded, not what was asked: it is null on every failure,
   // so the screen's live region can announce an outcome without re-deriving it
   // from the form data of a submission that may not have taken effect.
-}: ActionFunctionArgs): Promise<{ problem: Problem | null; done: "decide" | "read" | null }> {
+}: ActionFunctionArgs): Promise<{
+  problem: Problem | null;
+  done: "decide" | "read" | null;
+}> {
   const env = context.get(cloudflare).env;
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "decide");
@@ -527,19 +571,32 @@ export async function action({
 
   try {
     if (intent === "read") {
-      await api(`/v1/me/notifications/${id}/read`, { env, request, method: "POST" });
+      await api(`/v1/me/notifications/${id}/read`, {
+        env,
+        request,
+        method: "POST",
+      });
       return { problem: null, done: "read" };
     }
     const decision = String(form.get("decision") ?? "");
-    if (intent !== "decide" || (decision !== "approved" && decision !== "rejected")) {
+    if (
+      intent !== "decide" ||
+      (decision !== "approved" && decision !== "rejected")
+    ) {
       return { problem: unknown, done: null };
     }
     // Permission, dual control and the audit row are all enforced by `decide()`
     // behind this endpoint; deciding from here is a shortcut through the UI, not
     // through the policy.
-    await api(`/v1/me/approvals/${id}/decide`, { env, request, method: "POST", body: { decision } });
+    await api(`/v1/me/approvals/${id}/decide`, {
+      env,
+      request,
+      method: "POST",
+      body: { decision },
+    });
   } catch (error) {
-    if (error instanceof ApiError) return { problem: error.problem, done: null };
+    if (error instanceof ApiError)
+      return { problem: error.problem, done: null };
     throw error;
   }
   return { problem: null, done: "decide" };
@@ -555,7 +612,7 @@ const RUN_TONE: Record<string, BadgeTone> = {
   refused: "danger",
   failed: "danger",
   cancelled: "neutral",
-  budget_stopped: "warning"
+  budget_stopped: "warning",
 };
 
 export default function Home() {
@@ -575,13 +632,16 @@ export default function Home() {
   // Nav is grouped now: a heading carries no href of its own (""), so filtering
   // on `href !== "/"` kept every heading — six links to nowhere, all sharing the
   // React key "". Same flattening the rail does, from the same helper.
-  const links = (shell?.nav ?? []).flatMap(routedLeaves).filter((item) => item.href !== "/");
+  const links = (shell?.nav ?? [])
+    .flatMap(routedLeaves)
+    .filter((item) => item.href !== "/");
   const offered = new Set(links.map((item) => item.href));
   const problem = fetcher.data?.problem ?? null;
   const done = fetcher.data?.done ?? null;
   // Which row the in-flight submission belongs to, so one busy control does not
   // freeze the other five.
-  const busyId = fetcher.state === "idle" ? null : String(fetcher.formData?.get("id") ?? "");
+  const busyId =
+    fetcher.state === "idle" ? null : String(fetcher.formData?.get("id") ?? "");
 
   const submit = (fields: Record<string, string>) =>
     fetcher.submit(fields, { method: "post", action: "/?index" });
@@ -592,13 +652,24 @@ export default function Home() {
   // serif sentence, before it shows a single number. Derived from the inbox
   // counts the KPI wall is already drawing — nothing is inferred, so the
   // sentence carries no ✦ (it is arithmetic, not an agent).
-  const answer = !loaded.counts
-    ? label("answer.unknown")
+  //
+  // `state` is that sentence as a value, so it can order the page as well as
+  // word it. A headline that says "three decisions are waiting" over a screen
+  // that opens with a KPI wall, a journey rail and four panels has answered the
+  // reader and then made them hunt for the thing it named. Nothing is hidden —
+  // every section below still renders — but what leads changes.
+  const state: "unknown" | "decisions" | "unread" | "clear" = !loaded.counts
+    ? "unknown"
     : loaded.counts.approvals
-      ? label("answer.decisions")
+      ? "decisions"
       : loaded.counts.notifications
-        ? label("answer.unread")
-        : label("answer.clear");
+        ? "unread"
+        : "clear";
+  const answer = label(`answer.${state}`);
+  // Whether the decisions section leads the page. Only "decisions" earns it:
+  // the other three states name nothing the reader has to act on, and a page
+  // that reorders itself for every state teaches no stable shape at all.
+  const leads = state === "decisions";
 
   const barren =
     !filled(loaded.approvals) &&
@@ -613,8 +684,10 @@ export default function Home() {
   // module, built only from panels the actor actually holds; a denied or
   // failed panel reads as "—", not as an invented number.
   const briefing = loaded.briefing.state === "ok" ? loaded.briefing.data : null;
-  const scoutOpen = loaded.scoutOpen.state === "ok" ? loaded.scoutOpen.data : null;
-  const signalActive = loaded.signalActive.state === "ok" ? loaded.signalActive.data : null;
+  const scoutOpen =
+    loaded.scoutOpen.state === "ok" ? loaded.scoutOpen.data : null;
+  const signalActive =
+    loaded.signalActive.state === "ok" ? loaded.signalActive.data : null;
   const journeySteps: Section = {
     kind: "steps",
     title: label("journey.title"),
@@ -624,12 +697,15 @@ export default function Home() {
         dot: hueVar("axis"),
         title: moduleName(t, "axis"),
         money: econ
-          ? new Intl.NumberFormat(locale, { style: "currency", currency: econ.currency }).format(
-              econ.revenueMinor / 100
-            )
+          ? new Intl.NumberFormat(locale, {
+              style: "currency",
+              currency: econ.currency,
+            }).format(econ.revenueMinor / 100)
           : "—",
-        note: econ ? label("journey.axis.note", { count: number.format(econ.volume) }) : label("journey.axis.empty"),
-        hue: hueVar("axis")
+        note: econ
+          ? label("journey.axis.note", { count: number.format(econ.volume) })
+          : label("journey.axis.empty"),
+        hue: hueVar("axis"),
       },
       {
         code: "NORTH",
@@ -637,7 +713,7 @@ export default function Home() {
         title: moduleName(t, "north"),
         money: briefing?.audience ?? "—",
         note: briefing?.date ?? label("journey.north.empty"),
-        hue: hueVar("north")
+        hue: hueVar("north"),
       },
       {
         code: "SCOUT",
@@ -645,7 +721,7 @@ export default function Home() {
         title: moduleName(t, "scout"),
         money: scoutOpen === null ? "—" : number.format(scoutOpen),
         note: label("journey.scout.note"),
-        hue: hueVar("scout")
+        hue: hueVar("scout"),
       },
       {
         code: "SIGNAL",
@@ -653,10 +729,117 @@ export default function Home() {
         title: moduleName(t, "signal"),
         money: signalActive === null ? "—" : number.format(signalActive),
         note: label("journey.signal.note"),
-        hue: hueVar("signal")
-      }
-    ]
+        hue: hueVar("signal"),
+      },
+    ],
   };
+
+  // Bound once and rendered in one of two places, because where it goes is the
+  // point: `leads` puts it directly under the headline that named it, and the
+  // ordinary case leaves it where a dashboard's action list belongs, after the
+  // orientation blocks. The live region and the failure alert travel with it —
+  // they report on this section's own submissions and are useless anywhere else.
+  const decisions = (
+    <section
+      aria-label={label("approvals.title")}
+      className="flex flex-col gap-3"
+    >
+      {/* A failed decision shouts (role="alert"); a successful one is announced
+          politely and shows nothing, because the row it belonged to has already
+          left the list. Without this the only feedback a screen-reader user got
+          for a succeeding approve was silence. */}
+      <p aria-live="polite" className="sr-only">
+        {fetcher.state === "idle" && done
+          ? label(
+              done === "read"
+                ? "notifications.dismissed"
+                : "approvals.recorded",
+            )
+          : ""}
+      </p>
+
+      {problem ? (
+        <div
+          role="alert"
+          className="rounded-md border border-danger/40 bg-danger/10 p-3"
+        >
+          <p className="font-ui text-13 text-text">
+            {problem.detail ?? label("approvals.failed")}
+          </p>
+          {problem.requestId ? (
+            <p className="font-mono text-12 text-muted">
+              {t("error.requestId", { id: problem.requestId })}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+      {/* Eyebrow's classes rather than <Eyebrow>: the block still needs a
+            real heading in the outline, and the component is a <p>. */}
+      <h2 className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">
+        {label("approvals.title")}
+      </h2>
+      {loaded.approvals.state === "error" ? (
+        <PanelFailure
+          label={label}
+          t={t}
+          {...(loaded.approvals.requestId
+            ? { requestId: loaded.approvals.requestId }
+            : {})}
+        />
+      ) : loaded.approvals.state === "ok" && loaded.approvals.data.length ? (
+        loaded.approvals.data.map((approval) => (
+          <ApprovalStrip
+            key={approval.id}
+            // The policy key said as words, the same way /approvals says it:
+            // the module owns the noun, so `axis.claim_reserve` reads as
+            // "Claim reserve" without the shell knowing what a claim is.
+            summary={policyTitle(approval.policyKey, approval.module)}
+            consequence={label("approvals.subject", {
+              ref: who(approval.subjectRef, loaded.names) ?? "",
+            })}
+            requestedBy={who(approval.requestedBy, loaded.names) ?? ""}
+            // Each strip is a region landmark. Sharing one name with the
+            // section around them makes a landmark list of identical entries
+            // (axe landmark-unique), so each carries what it is waiting on.
+            label={`${label("approvals.title")}: ${policyTitle(approval.policyKey, approval.module)}`}
+            // A strip mid-decision explains why its buttons are gone rather
+            // than offering a second click that would race the first.
+            {...(busyId === approval.id
+              ? { blockedReason: label("approvals.deciding") }
+              : {
+                  onApprove: () =>
+                    submit({ id: approval.id, decision: "approved" }),
+                  onReject: () =>
+                    submit({ id: approval.id, decision: "rejected" }),
+                })}
+          />
+        ))
+      ) : (
+        <p className="font-ui text-13 text-subtle">
+          {label("approvals.empty")}
+        </p>
+      )}
+      <p className="flex flex-wrap items-center gap-x-3 gap-y-1 font-ui text-12 text-subtle">
+        {loaded.approvals.state === "ok" &&
+        loaded.counts &&
+        loaded.counts.approvals > loaded.approvals.data.length ? (
+          <span>
+            {label("approvals.more", {
+              count: number.format(
+                loaded.counts.approvals - loaded.approvals.data.length,
+              ),
+            })}
+          </span>
+        ) : null}
+        {/* routing.ts documents /approvals as "reached from the
+              decisions-waiting panel on the home dashboard" — this is that
+              link, and without it the route has no door. */}
+        <Link to="/approvals" className="text-accent underline">
+          {label("approvals.all")}
+        </Link>
+      </p>
+    </section>
+  );
 
   return (
     <div className="flex flex-col gap-8">
@@ -668,10 +851,18 @@ export default function Home() {
             stand-in below), and the component is a <p>. No ✦ here either —
             that mark is reserved for text an agent produced, and this
             sentence is arithmetic on the inbox counts (see `answer` above). */}
-        <Eyebrow>{actorName ? label("greeting", { name: actorName }) : label("greeting.anon")}</Eyebrow>
-        <h1 className="max-w-[46ch] font-serif text-28 leading-[1.25] text-text">{answer}</h1>
+        <Eyebrow>
+          {actorName
+            ? label("greeting", { name: actorName })
+            : label("greeting.anon")}
+        </Eyebrow>
+        <h1 className="max-w-[46ch] font-serif text-28 leading-[1.25] text-text">
+          {answer}
+        </h1>
         {brand ? (
-          <p className="font-ui text-13 text-subtle">{label("subtitle", { brand })}</p>
+          <p className="font-ui text-13 text-subtle">
+            {label("subtitle", { brand })}
+          </p>
         ) : null}
         {/* No "Open the full queue" link here. It used to render directly
             above a KPI wall whose first tile already goes to /approvals, and
@@ -682,6 +873,16 @@ export default function Home() {
             is the one routing.ts documents as this route's door, and it is
             unconditional, so it is the one that stays. */}
       </header>
+
+      {/* The header's sentence and the page's first section have to agree: when
+          the headline says decisions are waiting, the decisions are what comes
+          next. `leads` moves them ahead of the scan-and-orient blocks — the KPI
+          wall and the journey rail — which are what a reader with nothing to
+          decide is here for. The JSX moves rather than a CSS `order`, because
+          this container has eight children and ordering two of them leaves the
+          other six at 0; and DOM order is what a screen reader and the tab
+          sequence follow, so the visual order has to be the real one. */}
+      {leads ? decisions : null}
 
       {loaded.counts || econ ? (
         <KPIWall>
@@ -705,10 +906,16 @@ export default function Home() {
             <Stat
               label={label("kpi.revenue")}
               value={
-                <Money amountMinor={econ.revenueMinor} currency={econ.currency} locale={locale} />
+                <Money
+                  amountMinor={econ.revenueMinor}
+                  currency={econ.currency}
+                  locale={locale}
+                />
               }
               hint={label("kpi.revenue.hint")}
-              {...(econ.marginPct === null ? {} : { delta: econ.marginPct, deltaSuffix: "%" })}
+              {...(econ.marginPct === null
+                ? {}
+                : { delta: econ.marginPct, deltaSuffix: "%" })}
             />
           ) : null}
           {econ ? (
@@ -717,7 +924,10 @@ export default function Home() {
               value={number.format(econ.volume)}
               hint={
                 econ.trend.length > 1 ? (
-                  <Sparkline values={econ.trend} label={label("kpi.volume.trend")} />
+                  <Sparkline
+                    values={econ.trend}
+                    label={label("kpi.volume.trend")}
+                  />
                 ) : null
               }
             />
@@ -725,7 +935,10 @@ export default function Home() {
         </KPIWall>
       ) : null}
 
-      <section aria-label={label("journey.title")} className="flex flex-col gap-3">
+      <section
+        aria-label={label("journey.title")}
+        className="flex flex-col gap-3"
+      >
         <h2 className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">
           {label("journey.title")}
         </h2>
@@ -733,82 +946,7 @@ export default function Home() {
         <JourneyContinue to="/journey/axis" label={label("journey.cta")} />
       </section>
 
-      {/* A failed decision shouts (role="alert"); a successful one is announced
-          politely and shows nothing, because the row it belonged to has already
-          left the list. Without this the only feedback a screen-reader user got
-          for a succeeding approve was silence. */}
-      <p aria-live="polite" className="sr-only">
-        {fetcher.state === "idle" && done ? label(done === "read" ? "notifications.dismissed" : "approvals.recorded") : ""}
-      </p>
-
-      {problem ? (
-        <div role="alert" className="rounded-md border border-danger/40 bg-danger/10 p-3">
-          <p className="font-ui text-13 text-text">{problem.detail ?? label("approvals.failed")}</p>
-          {problem.requestId ? (
-            <p className="font-mono text-12 text-muted">{t("error.requestId", { id: problem.requestId })}</p>
-          ) : null}
-        </div>
-      ) : null}
-
-      <section aria-label={label("approvals.title")} className="flex flex-col gap-3">
-        {/* Eyebrow's classes rather than <Eyebrow>: the block still needs a
-            real heading in the outline, and the component is a <p>. */}
-        <h2 className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">
-          {label("approvals.title")}
-        </h2>
-        {loaded.approvals.state === "error" ? (
-          <PanelFailure
-            label={label}
-            t={t}
-            {...(loaded.approvals.requestId ? { requestId: loaded.approvals.requestId } : {})}
-          />
-        ) : loaded.approvals.state === "ok" && loaded.approvals.data.length ? (
-          loaded.approvals.data.map((approval) => (
-            <ApprovalStrip
-              key={approval.id}
-              // The policy key said as words, the same way /approvals says it:
-              // the module owns the noun, so `axis.claim_reserve` reads as
-              // "Claim reserve" without the shell knowing what a claim is.
-              summary={policyTitle(approval.policyKey, approval.module)}
-              consequence={label("approvals.subject", {
-                ref: who(approval.subjectRef, loaded.names) ?? ""
-              })}
-              requestedBy={who(approval.requestedBy, loaded.names) ?? ""}
-              // Each strip is a region landmark. Sharing one name with the
-              // section around them makes a landmark list of identical entries
-              // (axe landmark-unique), so each carries what it is waiting on.
-              label={`${label("approvals.title")}: ${policyTitle(approval.policyKey, approval.module)}`}
-              // A strip mid-decision explains why its buttons are gone rather
-              // than offering a second click that would race the first.
-              {...(busyId === approval.id
-                ? { blockedReason: label("approvals.deciding") }
-                : {
-                    onApprove: () => submit({ id: approval.id, decision: "approved" }),
-                    onReject: () => submit({ id: approval.id, decision: "rejected" })
-                  })}
-            />
-          ))
-        ) : (
-          <p className="font-ui text-13 text-subtle">{label("approvals.empty")}</p>
-        )}
-        <p className="flex flex-wrap items-center gap-x-3 gap-y-1 font-ui text-12 text-subtle">
-          {loaded.approvals.state === "ok" &&
-          loaded.counts &&
-          loaded.counts.approvals > loaded.approvals.data.length ? (
-            <span>
-              {label("approvals.more", {
-                count: number.format(loaded.counts.approvals - loaded.approvals.data.length)
-              })}
-            </span>
-          ) : null}
-          {/* routing.ts documents /approvals as "reached from the
-              decisions-waiting panel on the home dashboard" — this is that
-              link, and without it the route has no door. */}
-          <Link to="/approvals" className="text-accent underline">
-            {label("approvals.all")}
-          </Link>
-        </p>
-      </section>
+      {leads ? null : decisions}
 
       {/* Deliberately not four equal cards: the two panels an actor reads line
           by line are wider than the two they scan. */}
@@ -823,17 +961,17 @@ export default function Home() {
           render={(rows) => (
             <Timeline
               label={label("activity.label")}
-              events={rows.map(
-                (entry): TimelineEvent => ({
-                  id: entry.id,
-                  // Audit codes (`core.session.login`) are not a sentence a
-                  // person reads. ponytail: humanise, not a per-code label
-                  // table nobody maintains.
-                  title: humanise(entry.action),
-                  at: entry.ts,
-                  ...(entry.subjectRef ? { detail: who(entry.subjectRef, loaded.names) ?? "" } : {})
-                })
-              )}
+              events={rows.map((entry): TimelineEvent => ({
+                id: entry.id,
+                // Audit codes (`core.session.login`) are not a sentence a
+                // person reads. ponytail: humanise, not a per-code label
+                // table nobody maintains.
+                title: humanise(entry.action),
+                at: entry.ts,
+                ...(entry.subjectRef
+                  ? { detail: who(entry.subjectRef, loaded.names) ?? "" }
+                  : {}),
+              }))}
             />
           )}
         />
@@ -845,17 +983,30 @@ export default function Home() {
           t={t}
           empty={label("notifications.empty")}
           render={(notes) => (
-            <ul aria-label={label("notifications.label")} className="flex flex-col gap-4">
+            <ul
+              aria-label={label("notifications.label")}
+              className="flex flex-col gap-4"
+            >
               {notes.map((note) => (
-                <li key={note.id} className="flex items-start justify-between gap-2">
+                <li
+                  key={note.id}
+                  className="flex items-start justify-between gap-2"
+                >
                   <div className="min-w-0">
                     {/* An unknown key renders as itself: a notification nobody
                         translated should look wrong in review, not invisible. */}
                     <p className="break-words font-ui text-13 text-text">
-                      {titleText(label(`notice.${note.titleKey}`), note.titleKey)}
+                      {titleText(
+                        label(`notice.${note.titleKey}`),
+                        note.titleKey,
+                      )}
                     </p>
                     <p className="mt-0.5 font-ui text-12 text-subtle">
-                      <DateTime value={note.createdAt} precision="minute" locale={locale} />
+                      <DateTime
+                        value={note.createdAt}
+                        precision="minute"
+                        locale={locale}
+                      />
                     </p>
                     {note.subjectRef ? (
                       <p className="mt-0.5 break-words font-ui text-12 text-muted">
@@ -890,7 +1041,10 @@ export default function Home() {
           className="lg:col-span-2"
           empty={label("areas.empty")}
           render={(rows) => (
-            <ul aria-label={label("areas.label")} className="flex flex-col gap-3">
+            <ul
+              aria-label={label("areas.label")}
+              className="flex flex-col gap-3"
+            >
               {rows.map((row) => {
                 const href = `/${row.module}`;
                 // Areas the actor cannot open are still counted — the business
@@ -899,13 +1053,18 @@ export default function Home() {
                 // Named either way. A door being closed is no reason to print
                 // "dist" at someone — and the areas the actor cannot open are
                 // exactly the ones whose keys the nav never labels.
-                const name = reachable ? t(labelKeyFor(href)) : moduleName(t, row.module);
+                const name = reachable
+                  ? t(labelKeyFor(href))
+                  : moduleName(t, row.module);
                 return (
                   <li key={row.module} className="flex flex-col gap-1">
                     <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
                       <span className="min-w-0 break-words font-ui text-13 text-text">
                         {reachable ? (
-                          <Link to={href} className="underline-offset-2 hover:underline">
+                          <Link
+                            to={href}
+                            className="underline-offset-2 hover:underline"
+                          >
                             {name}
                           </Link>
                         ) : (
@@ -913,7 +1072,10 @@ export default function Home() {
                         )}
                       </span>
                       <span className="font-ui text-12 text-subtle">
-                        {label("areas.units", { count: number.format(row.volume) })} ·{" "}
+                        {label("areas.units", {
+                          count: number.format(row.volume),
+                        })}{" "}
+                        ·{" "}
                         <Money
                           amountMinor={row.revenueMinor}
                           currency={row.currency}
@@ -923,7 +1085,10 @@ export default function Home() {
                     </div>
                     {/* A bar, not a chart: the comparison is the whole point and
                         the numbers are already on the row. */}
-                    <div className="h-1 rounded-orbit bg-surface-2" aria-hidden="true">
+                    <div
+                      className="h-1 rounded-orbit bg-surface-2"
+                      aria-hidden="true"
+                    >
                       <div
                         className="h-1 rounded-orbit bg-accent"
                         style={{ inlineSize: `${Math.max(row.share, 2)}%` }}
@@ -945,14 +1110,20 @@ export default function Home() {
           {...(offered.has("/admin")
             ? {
                 actions: (
-                  <Link to="/admin/ai/console" className="font-ui text-12 text-accent underline">
+                  <Link
+                    to="/admin/ai/console"
+                    className="font-ui text-12 text-accent underline"
+                  >
                     {label("runs.console")}
                   </Link>
-                )
+                ),
               }
             : {})}
           render={(runs) => (
-            <ul aria-label={label("runs.label")} className="flex flex-col gap-4">
+            <ul
+              aria-label={label("runs.label")}
+              className="flex flex-col gap-4"
+            >
               {runs.map((run) => (
                 <li key={run.id} className="flex flex-col gap-1">
                   <div className="flex flex-wrap items-center gap-2">
@@ -970,7 +1141,11 @@ export default function Home() {
                   </div>
                   <p className="break-words font-ui text-12 text-subtle">
                     {optionLabel(label, "purpose", run.purpose)} ·{" "}
-                    <DateTime value={run.startedAt} precision="minute" locale={locale} />
+                    <DateTime
+                      value={run.startedAt}
+                      precision="minute"
+                      locale={locale}
+                    />
                   </p>
                 </li>
               ))}
@@ -979,32 +1154,14 @@ export default function Home() {
         />
       </div>
 
-      {links.length ? (
-        <nav aria-label={label("links.label")} className="flex flex-col gap-3">
-          <h2 className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">
-            {label("links.title")}
-          </h2>
-          <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {links.map((item) => (
-              <li key={item.href}>
-                <Link
-                  to={item.href}
-                  className="flex h-10 items-center gap-2.5 overflow-hidden rounded-md border border-border pe-3 font-ui text-13 text-text transition-colors duration-150 hover:border-border-strong hover:bg-surface-2"
-                >
-                  {/* The module signs its own door: 2px of its hue, the same
-                      bar the sidebar draws beside the current item. */}
-                  <span
-                    aria-hidden="true"
-                    className="h-full w-0.5 shrink-0"
-                    style={{ background: hueVar(moduleOf(item.href)) }}
-                  />
-                  <span className="truncate">{t(item.labelKey)}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </nav>
-      ) : null}
+      {/* No workspace-tile grid here. It rendered `links` — the flattened nav —
+          as a second copy of the sidebar, which is on screen beside it at every
+          breakpoint this route is read at, and it sat at the foot of the page
+          where nobody scrolls to find navigation they already have. `links` is
+          still computed: `offered` gates the areas panel and the runs console
+          link, and `links[0]` is the door the barren empty state offers, which
+          is the one case where the sidebar is *not* enough — a first-run actor
+          needs to be told which door to take, not shown all of them. */}
 
       {barren ? (
         <EmptyState
@@ -1019,7 +1176,7 @@ export default function Home() {
                   >
                     {label("empty.action")}
                   </Link>
-                )
+                ),
               }
             : {})}
         />
@@ -1045,7 +1202,7 @@ function PanelCard<T>({
   empty,
   render,
   className,
-  actions
+  actions,
 }: {
   title: string;
   panel: Panel<T[]>;
@@ -1058,7 +1215,11 @@ function PanelCard<T>({
 }) {
   if (panel.state === "denied") return null;
   return (
-    <Card title={title} {...(className ? { className } : {})} {...(actions ? { actions } : {})}>
+    <Card
+      title={title}
+      {...(className ? { className } : {})}
+      {...(actions ? { actions } : {})}
+    >
       {panel.state === "error" ? (
         <PanelFailure
           label={label}
@@ -1078,7 +1239,7 @@ function PanelCard<T>({
 function PanelFailure({
   label,
   t,
-  requestId
+  requestId,
 }: {
   label: Label;
   t: (key: string, vars?: Record<string, string>) => string;
@@ -1087,8 +1248,16 @@ function PanelFailure({
   return (
     <div role="alert" className="flex flex-col items-start gap-2">
       <p className="font-ui text-13 text-muted">{label("panel.failed")}</p>
-      {requestId ? <p className="font-mono text-12 text-muted">{t("error.requestId", { id: requestId })}</p> : null}
-      <Link to="/" reloadDocument className="font-ui text-12 text-accent underline">
+      {requestId ? (
+        <p className="font-mono text-12 text-muted">
+          {t("error.requestId", { id: requestId })}
+        </p>
+      ) : null}
+      <Link
+        to="/"
+        reloadDocument
+        className="font-ui text-12 text-accent underline"
+      >
         {label("panel.retry")}
       </Link>
     </div>
