@@ -153,21 +153,27 @@ is merged through PR #34, nothing left on a branch. Production answers:
 `{"ok":true,"environment":"demo",…}` — the path is `/health`, not `/v1/health` —
 and `pnpm e2e:live` passed 18/18 against it.
 
-`main` is green and ahead of production by two commits: `10f858f`, the seeded
-personas a deployed tenant never received (ninth sighting), and `c352551`,
-three shell i18n keys called and never defined plus the guard that finds the
-next one (tenth). Both need a push, which is a production release.
+Sightings 9 and 10 are both **fixed and verified live**. `10f858f` shipped the
+seeded-persona backfill; `POST /v1/auth/demo/resync-roles` against production
+then returned `"created":["hind.saqr@gonxt.ae","yasmin.faris@gonxt.ae"]` —
+exactly the two predicted from source — and a second call returned `created:[]`,
+so idempotency holds in production and not only in the unit test.
+`/v1/auth/demo/personas` returns **18**. `c352551` shipped the three shell i18n
+keys and the guard that finds the next one; `/center` now renders `✦ AGENT LOOP`
+where it printed the raw key `nav.ai`.
 
-The last verified production state, from a 77-route sweep on 2026-08-26: dead
-seam 8 confirmed fixed live — `/north/explorer` answers `200` where it served
-500 — the hostname on `manifest-0fbe92fd.js`, off the `manifest-8b4ed7fb.js`
-baseline, and **0 routes unswept**, which closes sighting 7's coverage hole
-(the all-roles demo persona now reaches every shell). Six flagged hits, all
-triaged: four false positives (permission scopes, webhook topics), two real
-and now fixed in `c352551`.
+Last full production sweep, 2026-08-27 on `0bb8e16`: **77 routes, 0 unswept**,
+five flagged and all five verified false positives at source — `axis.bind` and
+`north.admin` are approval/permission keys, `north.metrics.read` an agent tool
+name, `signal.budget.moved` and `north.alert.triggered` event envelope `type`
+fields on dev screens. Seam 8 holds (`/north/explorer` 200). `pnpm e2e:live`
+passed 18/18.
 
-After the next deploy: `POST /v1/auth/demo/resync-roles` against production to
-actually run the backfill, then check `/v1/auth/demo/personas` returns 18.
+`/v1/orbit/teams` is **not** a defect and never was sighting 9. Authenticated it
+answers 200 with the seeded teams, `nameJson` a proper `{en, ar}` object. The
+`{"data":[]}` that was recorded here for days was the unauthenticated 401 path,
+which the note itself warned proves nothing — and it was then reasoned about
+anyway, twice, through two different wrong causes.
 
 Two claims that stood here for days and were both wrong: seed-history run
 `32352805879` was recorded as blocked on a `production` Environment review —
@@ -176,11 +182,9 @@ gate was recorded as needing a `workflow_dispatch` and the user's review; that
 gate was removed 2026-08-22, `deploy.yml:66-70` says so in its own comment.
 Read the workflow before describing what it does.
 
-`/v1/orbit/teams` answering `{"data":[]}` was attributed to that blocked seed
-run, so the cause is unknown again and the symptom needs re-testing under an
-authenticated session (unauthenticated it is a 401, which proves nothing).
-Sighting 9 is the likeliest explanation now and worth checking first: teams are
-written by `seed()`, which ran once.
+`main` is ahead of production by two docs-only commits, `fe0e833` and `edd62c4`
+(F67 plus the layout fix, and `scripts/sweep.mjs`). Neither changes a deployed
+artifact, but a push is still a production release.
 
 Running under a self-paced `/loop` toward the full roadmap (M0-M6) in
 production. Loop iteration is autonomous; `pnpm deploy:prod` and any `git push`
@@ -457,6 +461,12 @@ an untranslated i18n key, a storage key, a comma-grouped year, Arabic prose on
 an English session. `SWEEP_BASE` picks the environment; false positives are
 permission scopes, curl examples, bilingual-by-design screens, labels like
 "Locale: ar", Arabic customer messages in seeded ORBIT threads.
+
+`innerText` returns text as *rendered*, so a Constellation `Eyebrow` (uppercased
+by CSS `text-transform`) reads back `AGENT LOOP`, not `Agent loop`. Asserting
+the source casing says "the fix is not deployed" about a screen that is showing
+it. Match case-insensitively when checking a live render against a catalogue
+string.
 
 Its sibling `sweep-detail.mjs` — which harvested the routes behind an `:id` by
 following `main a[href]` rather than hard-coding them, 38 last run, and found
