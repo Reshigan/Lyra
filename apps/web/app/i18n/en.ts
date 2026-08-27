@@ -234,6 +234,11 @@ export const en = {
   "common.approvalTitle": "Waiting on an approval",
   "common.approvalBody": "This needs sign-off under {policy} before it can go through.",
   "common.approvalLink": "Open the approval queue",
+  // Unit help under an input whose type says something the label cannot
+  // (components/fields.tsx `hintFor`). A field's own `hintKey` overrides these.
+  "common.field.hint.json": "JSON — an object or a list, exactly as it is stored.",
+  "common.field.hint.rate": "A percentage. 2.5 means two and a half percent.",
+  "common.field.hint.ratio": "A multiplier, not a percentage. 18.5 means 18.5 times.",
   "common.restore": "Restore",
   "common.deleted.state": "Records shown",
   "common.deleted.live": "Live records",

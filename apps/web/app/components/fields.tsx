@@ -177,6 +177,7 @@ export function FieldInput({
   invalid?: (name: string) => string | undefined;
 }) {
   const error = invalid?.(field.name);
+  const hint = hintFor(field, label);
   const value = inputValue(field, row);
   // Spread conditionally: exactOptionalPropertyTypes rejects an explicit
   // `undefined` where the prop is optional.
@@ -205,7 +206,7 @@ export function FieldInput({
     <Field
       label={label(field.name)}
       required={field.required ?? false}
-      {...(field.hintKey ? { hint: label(field.hintKey) } : {})}
+      {...(hint ? { hint } : {})}
       {...(error ? { error } : {})}
     >
       {field.type === "select" ? (
@@ -266,6 +267,31 @@ export function measure(value: number, unit: string, currency: string, locale: s
 }
 
 /** Numeric inputs need a step or the browser rejects a decimal share. */
+/**
+ * Three of the field types are entered in units nothing on the screen states.
+ * `json` wants a literal JSON document rather than prose; `rate` is stored as
+ * parts per million and typed as a percentage; `ratio` is stored the same way
+ * and typed as the plain multiplier (`inputValue` divides by 10,000 and
+ * 1,000,000 respectively). 434 spec fields across the workspaces carry 13
+ * hints between them, so per-field prose was never going to cover this — the
+ * *type* is what needs explaining, and it explains identically everywhere.
+ *
+ * `money` is deliberately not here: it submits raw and every money field is
+ * named `…Minor`, which says it on the label itself.
+ *
+ * A field's own `hintKey` still wins — a type hint is the floor, not a cap.
+ * The keys resolve through `common.` in the shared catalogue, which both
+ * label resolvers fall through to (`spec.ts:210`, `detail-kit.tsx:318`), so no
+ * workspace table has to carry them.
+ */
+function hintFor(field: FieldSpec, label: (key: string) => string): string | undefined {
+  if (field.hintKey) return label(field.hintKey);
+  if (field.type === "json" || field.type === "rate" || field.type === "ratio") {
+    return label(`field.hint.${field.type}`);
+  }
+  return undefined;
+}
+
 function stepFor(type: FieldSpec["type"]): { step?: number } {
   switch (type) {
     case "money":
