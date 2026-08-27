@@ -25,6 +25,7 @@ import {
 import { ApiError, api, fetchMe } from "../api.server";
 import { refOptions } from "../refs.server";
 import { cloudflare } from "../context";
+import { RequestId } from "./module";
 import { useShellData } from "./workspace";
 import { RefPicker, type RefOption } from "../components/ref-picker";
 import { labelsFrom } from "./detail-kit";
@@ -383,7 +384,11 @@ type ActionResult =
   | { kind: "screening"; problem: null; screening: Screening }
   | { kind: "evidence"; problem: null; bundle: Bundle }
   | { kind: "retention"; problem: null; retention: RetentionResult }
-  | { kind: RunKind; problem: { title: string; status: number; detail?: string }; screening?: never };
+  | {
+      kind: RunKind;
+      problem: { title: string; status: number; detail?: string; requestId?: string };
+      screening?: never;
+    };
 
 /**
  * The one line a just-finished run adds to the header. Nothing to say before a
@@ -523,6 +528,7 @@ export default function ComplianceRun() {
               <p className="max-w-prose font-ui text-13 text-muted">
                 {fresh.problem.detail ?? fresh.problem.title}
               </p>
+              <RequestId id={fresh.problem.requestId} />
             </div>
           ) : null}
 

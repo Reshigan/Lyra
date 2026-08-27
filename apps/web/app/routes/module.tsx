@@ -645,6 +645,21 @@ const LOCAL_PROBLEM_TITLES: Record<string, "error.unknownIntent"> = {
   unknown_intent: "error.unknownIntent"
 };
 
+/**
+ * The one thing support can look up (docs/15 checklist item 10). Its own
+ * component because three screens render a failure card whose *copy* differs —
+ * <Problem> below, the compliance run's "the run did not happen", the SIGNAL
+ * journey's inline draft error — and the reference line is the part that must
+ * not differ between them. Renders nothing when the failure never reached the
+ * API, which is when there is no id to quote.
+ */
+export function RequestId({ id }: { id?: string }) {
+  const shell = useShellData();
+  const t = translator(shell?.locale ?? "en");
+  if (!id) return null;
+  return <p className="font-mono text-12 text-muted">{t("error.requestId", { id })}</p>;
+}
+
 /** What the API objected to, in the actor's path rather than a toast. */
 export function Problem({ problem }: { problem: { title: string; detail?: string; requestId?: string } }) {
   const shell = useShellData();
@@ -655,9 +670,7 @@ export function Problem({ problem }: { problem: { title: string; detail?: string
       <p className="font-ui text-13 text-text">
         {local ? t(local) : (problem.detail ?? problem.title)}
       </p>
-      {problem.requestId ? (
-        <p className="font-mono text-12 text-muted">{t("error.requestId", { id: problem.requestId })}</p>
-      ) : null}
+      <RequestId id={problem.requestId} />
     </div>
   );
 }

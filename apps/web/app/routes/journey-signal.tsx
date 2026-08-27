@@ -6,6 +6,7 @@ import { ApiError, api, type Problem } from "../api.server";
 import { cloudflare } from "../context";
 import { JourneyNav } from "../components/journey-nav";
 import { translator, DEFAULT_LOCALE } from "../i18n";
+import { RequestId } from "./module";
 import { useShellData } from "./workspace";
 
 interface Attribute {
@@ -185,6 +186,7 @@ export default function JourneySignal({ loaderData }: { loaderData: Awaited<Retu
         <div role="alert" className="rounded-md border border-danger/40 bg-danger/10 p-4">
           <p className="font-ui text-14 font-medium text-danger">{result.problem.title}</p>
           {result.problem.detail ? <p className="mt-1 font-ui text-13 text-subtle">{result.problem.detail}</p> : null}
+          <RequestId id={result.problem.requestId} />
         </div>
       ) : null}
 

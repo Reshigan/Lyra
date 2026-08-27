@@ -155,7 +155,7 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
 
   const me = await fetchMe(env, request);
   if (!me.permissions.includes(PERM.read)) {
-    return { name: null, data: null, error: null, denied: true };
+    return { name: null, data: null, error: null, requestId: null, denied: true };
   }
 
   // GET /dashboards/:id/data checks the permission and the tenant, but not the
@@ -163,20 +163,24 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   // list is the gate: a dashboard that is not in it is not this actor's to open.
   const listed = await api<{ data: DashboardRow[] }>("/v1/analytics/dashboards", { env, request });
   const row = listed.data.find((entry) => entry.id === dashboardId);
-  if (!row) return { name: null, data: null, error: null, denied: false };
+  if (!row) return { name: null, data: null, error: null, requestId: null, denied: false };
 
   try {
     const data = await api<DashboardData>(`/v1/analytics/dashboards/${dashboardId}/data`, {
       env,
       request
     });
-    return { name: nameIn(row.nameJson, me.locale, row.key), data, error: null, denied: false };
+    return { name: nameIn(row.nameJson, me.locale, row.key), data, error: null, requestId: null, denied: false };
   } catch (error) {
     if (error instanceof ApiError) {
       return {
         name: nameIn(row.nameJson, me.locale, row.key),
         data: null,
         error: error.problem.detail ?? error.problem.title,
+        // The id support looks the failure up by. Flattening the problem to a
+        // string here is what loses it, which is why it rides alongside
+        // (docs/15 checklist item 10, same narrowing point as module.tsx).
+        requestId: error.problem.requestId ?? null,
         denied: false
       };
     }
@@ -221,7 +225,14 @@ export default function AnalyticsDashboard() {
       </header>
 
       {!data ? (
-        <EmptyState title={l("unavailable")} body={loaded.error ?? t("error.generic")} />
+        <EmptyState
+          title={l("unavailable")}
+          body={
+            loaded.requestId
+              ? `${loaded.error ?? t("error.generic")} ${t("error.requestId", { id: loaded.requestId })}`
+              : (loaded.error ?? t("error.generic"))
+          }
+        />
       ) : specs.length === 0 ? (
         <EmptyState title={l("noTiles")} body={t("common.empty.body")} />
       ) : (
