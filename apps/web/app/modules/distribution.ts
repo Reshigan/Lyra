@@ -13,6 +13,7 @@ export const distribution: WorkspaceSpec = {
   labels: {
     en: {
       channels: "Channels",
+      "link.onboarding": "Onboarding checklist",
       offerings: "Offerings",
       "commission-rates": "Commission rates",
       "quote-requests": "Quote requests",
@@ -152,6 +153,7 @@ export const distribution: WorkspaceSpec = {
     },
     ar: {
       channels: "القنوات",
+      "link.onboarding": "قائمة مهام التهيئة",
       offerings: "العروض",
       "commission-rates": "أسعار العمولة",
       "quote-requests": "طلبات التسعير",
@@ -298,6 +300,7 @@ export const distribution: WorkspaceSpec = {
       create: "dist:channels:write",
       update: "dist:channels:write",
       remove: "dist:channels:write",
+      recordLink: { href: "/onboarding/channels/{id}", labelKey: "link.onboarding" },
       search: true,
       filters: [
         { name: "kind", options: ["b2c", "b2b"] },

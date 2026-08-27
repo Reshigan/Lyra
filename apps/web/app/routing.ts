@@ -99,7 +99,10 @@ export const HIDDEN_ROUTES: Record<string, string> = {
   "/axis/cases/:id/detail": "opens one work item from the cases list",
   "/distribution/channels/:id/detail": "opens one distribution channel from the channels list",
   "/search/results": "the full result page behind the command palette, opened from its last row",
-  "/onboarding/:kind/:ref": "one subject's onboarding checklist, opened from that partner, channel or staff record",
+  // Staff onboarding is served by the same screen but has no opener: /admin/staff
+  // is a bespoke route with no workspace tab, so there is no recordLink to hang
+  // one on. Claim only what routing.reachable.test.ts can hold you to.
+  "/onboarding/:kind/:ref": "one subject's onboarding checklist, opened from that partner or channel record",
   "/orbit/journeys/:id/builder": "opens one journey's steps from the journeys list",
   "/surface/:module/:screen":
     "one screen from the Constellation design pull, opened from the link that names it — there is no single rail slot for a whole design catalogue (routes/surface.tsx)",

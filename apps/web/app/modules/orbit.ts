@@ -10,6 +10,7 @@ export const orbit: WorkspaceSpec = {
   labels: {
     en: {
       conversations: "Conversations",
+      "link.onboarding": "Onboarding checklist",
       thread: "Open thread",
       builder: "Open builder",
       "link.console": "Live console",
@@ -194,6 +195,7 @@ export const orbit: WorkspaceSpec = {
     },
     ar: {
       conversations: "المحادثات",
+      "link.onboarding": "قائمة مهام التهيئة",
       thread: "فتح المحادثة",
       builder: "فتح المحرّر",
       "link.console": "لوحة المحادثات الحية",
@@ -541,6 +543,10 @@ export const orbit: WorkspaceSpec = {
       api: "/v1/orbit/partners",
       read: "orbit:partners:read",
       create: "orbit:partners:create",
+      // The onboarding checklist routing.ts has always said is "opened from that
+      // partner … record". It never was — the screen shipped with no path
+      // builder anywhere — and routing.reachable.test.ts is what now says so.
+      recordLink: { href: "/onboarding/partners/{id}", labelKey: "link.onboarding" },
       // No `update`/`editable`: the API registers no generic PATCH here, because
       // stage/status/sandboxFlag/goLiveAt belong to advancePartner() and its
       // `dist.partner_activate` approval (resources.ts §partners). An edit form
