@@ -241,7 +241,7 @@ rather than mirrored, a parameter no caller passes, a column holding something
 other than what its name says. It tests green because the unit test calls the
 function directly and the fixture mocks the assumption instead of the server.
 Fix it at the seam every reader routes through, grep the call sites in the same
-commit, verify on a deployed environment. Fourteen sightings so far.
+commit, verify on a deployed environment. Fifteen sightings so far.
 
 1. `apps/web/app/components/whitespace-commentary.tsx`, typed against an assumed
    contract while the API was built in parallel, shared one field with what
@@ -411,6 +411,23 @@ commit, verify on a deployed environment. Fourteen sightings so far.
    than the code delivers, narrow the doc: staff onboarding stays unreachable
    (`/admin/staff` is bespoke, no workspace tab to hang a `recordLink` on), so
    the claim now says partners and channels, which is what the guard can hold.
+
+14. `c5351d3`, the follow-on to sighting 11 and invisible until it shipped: the
+   settlement detail loader carried **one flag for two unrelated facts**.
+   `may.read` is whether the actor holds `dist:commissions:read` — the same
+   scope the API gates `/lines` on (`routes/settlement.ts:64`), so the loader's
+   own check was right — but the 4xx swallow returned `{ ...may, read: false }`
+   and the render branch `!may.read || !lines` could not separate them. An
+   administrator holding all 24 roles was told their roles did not include
+   access. The swallow stays (sighting 8's shape is correct); only the lie is
+   removed. The second half is the guard: **both sweeps scored this `ok [200]`**,
+   because `sweepRoute` classifies on status and greps for non-prose, and a
+   denial EmptyState is prose under a 200. The sweep signs in holding all 24
+   roles, so a rendered permission wall is by construction a lie about *that*
+   reader — `error.forbidden`'s prose is now a CHECK in `sweep-lib.mjs`. The
+   general shape: **a boolean that answers two questions will eventually answer
+   the wrong one**, and a sweep that classifies on status cannot see a screen
+   that fails politely.
 
 One more, from writing docs/29 rather than from a screen: its draft headline
 ("every posting hard-codes 5% tax") was wrong because citations inherited from a
