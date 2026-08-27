@@ -12,7 +12,11 @@ import {
   type LoaderFunctionArgs
 } from "react-router";
 import { Button, EmptyState, Input, Panel, Select, Table, type Column, isOpaqueRef } from "@lyra/ui";
-import { ApiError, api, asRouteError, fetchMe, names, rejectedBy } from "../api.server";
+import { ApiError, api, asRouteError, fetchMe, names } from "../api.server";
+// rejectedBy runs in the component, not the loader: importing it from the
+// .server module pulls that module into the client bundle (api-error.ts exists
+// for exactly this, see its header).
+import { rejectedBy } from "../api-error";
 import { Cell, FieldInput } from "../components/fields";
 import { cloudflare } from "../context";
 import { translator } from "../i18n";

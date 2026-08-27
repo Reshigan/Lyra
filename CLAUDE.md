@@ -237,6 +237,16 @@ gets invoked. `beforeEach(() => api.mockClear())` therefore calls the mock, and
 a mock whose implementation rejects fails the test with its own rejection —
 which reads as the code under test being broken. Use a braced body.
 
+`pnpm test`, `typecheck` and `lint` never bundle, so **none of them can see a
+server-only module reaching the client**. `apps/web/app/api.server.ts` is
+stripped from the client build only for `loader`/`action`/`middleware`/`headers`;
+a route that imports anything from it for use in a *component* fails the build
+with "Server-only module referenced by client" and nothing before `pnpm
+--filter @lyra/web build` says a word. `api-error.ts` exists for exactly this
+(its own header says so) — import `ApiError`, `invalidFields` and `rejectedBy`
+from there when the call site is a component. Run the web build before pushing
+a route change, not just the three green checks.
+
 ## The recurring defect: dead seams
 
 A dead seam is a declared contract nothing routes through: a web type assumed
