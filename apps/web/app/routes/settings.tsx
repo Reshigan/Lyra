@@ -240,6 +240,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "sessions.active": "Active",
     "sessions.ended": "Ended",
     "sessions.end": "End session",
+    "sessions.endConfirm": "End this session? Whoever is signed in on that device is signed out immediately and has to sign in again.",
     "sessions.ok": "That session has been ended.",
     "sessions.none": "No sessions recorded.",
     "sessions.unavailable": "Your sessions could not be read just now.",
@@ -438,6 +439,7 @@ const LABELS: Record<string, Record<string, string>> = {
     "sessions.active": "نشطة",
     "sessions.ended": "منتهية",
     "sessions.end": "إنهاء الجلسة",
+    "sessions.endConfirm": "هل تريد إنهاء هذه الجلسة؟ سيُسجَّل خروج من يستخدم ذلك الجهاز فوراً وسيحتاج إلى تسجيل الدخول مرة أخرى.",
     "sessions.ok": "تم إنهاء تلك الجلسة.",
     "sessions.none": "لا توجد جلسات مسجّلة.",
     "sessions.unavailable": "تعذّرت قراءة جلساتك الآن.",
@@ -2009,9 +2011,15 @@ function sessionColumns(
           <Form method="post">
             <input type="hidden" name="intent" value="revoke-session" />
             <input type="hidden" name="id" value={row.id} />
-            <Button type="submit" variant="danger" size="sm" loading={pending === "revoke-session"}>
+            <ConfirmButton
+              type="submit"
+              variant="danger"
+              size="sm"
+              loading={pending === "revoke-session"}
+              message={label("sessions.endConfirm")}
+            >
               {label("sessions.end")}
-            </Button>
+            </ConfirmButton>
           </Form>
         )
     }

@@ -25,6 +25,7 @@ import { api } from "../api.server";
 import { cloudflare } from "../context";
 import { Gate } from "./staff";
 import { useNorthSessionData } from "./north-shell";
+import { ConfirmButton } from "../components/confirm";
 import {
   labelsFrom,
   parsed,
@@ -114,6 +115,7 @@ const LABELS: Labels = {
     "close.note.hint": "The outcome review. What the numbers did, and whether the call held.",
     "close.reviewed": "Close as reviewed",
     "close.reversed": "Close as reversed",
+    "close.confirm": "Close this decision? The outcome is recorded against it and the decision leaves the open list. Reopening is not something this screen can do.",
     "none.title": "Nothing decided yet",
     "none.body": "No decision has been recorded. The first one to log is the one you are about to argue about again.",
     denied: "You do not have permission to read the decision log. Ask a tenant administrator for NORTH decision access.",
@@ -183,6 +185,7 @@ const LABELS: Labels = {
     "close.note.hint": "مراجعة النتيجة. ماذا فعلت الأرقام، وهل صمد القرار.",
     "close.reviewed": "أغلقه كمُراجَع",
     "close.reversed": "أغلقه كمعكوس",
+    "close.confirm": "هل تريد إغلاق هذا القرار؟ ستُسجَّل النتيجة عليه وسيغادر قائمة القرارات المفتوحة. إعادة الفتح ليست شيئاً تستطيع هذه الشاشة فعله.",
     "none.title": "لا قرارات بعد",
     "none.body": "لم يُسجَّل أي قرار. أول ما يُسجَّل هو ما ستختلفون عليه مرة أخرى.",
     denied: "لا تملك صلاحية قراءة سجل القرارات. اطلب من مدير المستأجر صلاحية قرارات نورث.",
@@ -627,12 +630,25 @@ function DecisionCard({
               <Textarea name="note" rows={3} aria-label={l("close.note")} />
             </Field>
             <div className="flex flex-wrap gap-2">
-              <Button type="submit" name="intent" value="reviewed" disabled={busy}>
+              <ConfirmButton
+                type="submit"
+                name="intent"
+                value="reviewed"
+                disabled={busy}
+                message={l("close.confirm")}
+              >
                 {l("close.reviewed")}
-              </Button>
-              <Button type="submit" name="intent" value="reversed" variant="secondary" disabled={busy}>
+              </ConfirmButton>
+              <ConfirmButton
+                type="submit"
+                name="intent"
+                value="reversed"
+                variant="secondary"
+                disabled={busy}
+                message={l("close.confirm")}
+              >
                 {l("close.reversed")}
-              </Button>
+              </ConfirmButton>
             </div>
           </Form>
         ) : null}

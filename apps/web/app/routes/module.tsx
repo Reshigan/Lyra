@@ -219,6 +219,10 @@ export default function ModuleList() {
   // place. Add a `softDelete` flag to ResourceSpec if that ever proves too wide.
   const canRestore = Boolean(tab.remove && held.has(tab.remove));
   const deletedView = loaded.deleted;
+  // Whether this actor can create here at all. The empty state and the panel
+  // itself must agree: telling a reader without `tab.create` to "create the
+  // first one" names a control that is not on their page.
+  const canCreate = Boolean(tab.fields && tab.create && held.has(tab.create) && !deletedView);
 
   const columns: Array<Column<Row>> = tab.columns.map((column, index) => ({
     key: column.name,
@@ -413,7 +417,7 @@ export default function ModuleList() {
         </div>
       ) : null}
 
-      {tab.fields && tab.create && held.has(tab.create) && !deletedView ? (
+      {canCreate ? (
         <CreatePanel tab={tab} label={label} t={t} busy={busy} defaultOpen={Boolean(problem)} />
       ) : null}
 
@@ -452,8 +456,29 @@ export default function ModuleList() {
                   ? t("common.empty.deleted")
                   : filtered
                     ? t("common.empty.filtered")
-                    : t("common.empty.body")
+                    : canCreate
+                      ? t("common.empty.body")
+                      : t("common.empty.none")
               }
+              {...(deletedView
+                ? {}
+                : filtered
+                  ? {
+                      action: (
+                        <Button variant="secondary" onClick={() => setSearchParams(new URLSearchParams())}>
+                          {t("common.empty.clear")}
+                        </Button>
+                      )
+                    }
+                  : canCreate
+                    ? {
+                        action: (
+                          <Button variant="secondary" onClick={openCreatePanel}>
+                            {t("common.new")}
+                          </Button>
+                        )
+                      }
+                    : {})}
             />
           }
           footer={
@@ -531,6 +556,24 @@ function firstPage(current: URLSearchParams): string {
 }
 
 /**
+ * The create panel's element id. The empty state says "create the first one",
+ * and until it could open the panel that sentence named a control the reader
+ * could not see: `<details>` ships closed, so the instruction pointed at a
+ * collapsed disclosure three feet up the page. Opening it is what makes the
+ * copy true.
+ */
+const CREATE_PANEL_ID = "module-create";
+
+/** Open the create panel and put the cursor in it, from anywhere on the page. */
+function openCreatePanel() {
+  const panel = document.getElementById(CREATE_PANEL_ID);
+  if (!(panel instanceof HTMLDetailsElement)) return;
+  panel.open = true;
+  panel.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  panel.querySelector<HTMLElement>("input, select, textarea")?.focus();
+}
+
+/**
  * Creation lives above the table, closed by default and re-opened when the API
  * rejected the last attempt — `<details>` does the disclosure, so there is no
  * open/closed state to keep in sync and no modal between the actor and the list.
@@ -555,6 +598,7 @@ function CreatePanel({
 
   return (
     <details
+      id={CREATE_PANEL_ID}
       open={open}
       onToggle={(e) => setOpen(e.currentTarget.open)}
       className="group rounded-lg border border-border bg-surface-1"

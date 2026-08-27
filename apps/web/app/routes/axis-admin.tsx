@@ -7,12 +7,13 @@ import {
   type ActionFunctionArgs,
   type LoaderFunctionArgs
 } from "react-router";
-import { Badge, Button, Card, EmptyState, Stat, Table, type BadgeTone, type Column } from "@lyra/ui";
+import { Badge, Card, EmptyState, Stat, Table, type BadgeTone, type Column } from "@lyra/ui";
 import { ApiError, api, fetchMe, type Problem } from "../api.server";
 import { cloudflare } from "../context";
 import { translator } from "../i18n";
 import { axis } from "../modules/axis";
 import { labelsFor, optionLabel } from "../modules/spec";
+import { ConfirmButton } from "../components/confirm";
 import { labelsFrom, tag, type Label } from "./detail-kit";
 import { Gate } from "./staff";
 import { useAxisSessionData } from "./axis-shell";
@@ -110,6 +111,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     sopsIntro: "The version marked active is the one cases follow. Publishing one retires whichever version it replaces.",
     sopsCaption: "Procedure versions",
     sopsEmpty: "No procedures yet.",
+    publishConfirm: "Publish this version? Every case opened from now on follows it, and the version it replaces stops being active. Publishing again is how you undo it.",
     colKey: "Procedure",
     colVersion: "Version",
     colApplies: "Applies to",
@@ -142,6 +144,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     sopsIntro: "النسخة المفعّلة هي التي تتبعها الحالات. نشر نسخة يسحب النسخة التي تحل محلها.",
     sopsCaption: "نسخ الإجراءات",
     sopsEmpty: "لا توجد إجراءات بعد.",
+    publishConfirm: "هل تريد نشر هذه النسخة؟ ستتبعها كل حالة تُفتح من الآن فصاعداً، وتتوقف النسخة التي تحل محلها عن كونها نشطة. النشر مرة أخرى هو طريقة التراجع.",
     colKey: "الإجراء",
     colVersion: "النسخة",
     colApplies: "ينطبق على",
@@ -304,9 +307,15 @@ export default function AxisAdmin() {
             <input type="hidden" name="intent" value="publish" />
             <input type="hidden" name="sopId" value={row.id} />
             <input type="hidden" name="idempotencyKey" value={loaded.idempotencyKey} />
-            <Button type="submit" variant="ghost" size="sm" loading={busy}>
+            <ConfirmButton
+              type="submit"
+              variant="ghost"
+              size="sm"
+              loading={busy}
+              message={l("publishConfirm")}
+            >
               {l("publish")}
-            </Button>
+            </ConfirmButton>
           </Form>
         ) : null
     }

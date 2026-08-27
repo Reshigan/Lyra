@@ -28,6 +28,7 @@ import { api, asRouteError, fetchMe, type Problem as ProblemShape } from "../api
 import { arrowFor, localeFrom } from "../i18n";
 import { cloudflare } from "../context";
 import { Gate } from "./staff";
+import { ConfirmButton } from "../components/confirm";
 import { ORBIT, labelsFrom, orbitPortals, refusal, safe, type Label, type Labels, type Page } from "./orbit-shared";
 
 // The journey editor. Steps, the trigger, and the branches between them — as
@@ -226,6 +227,7 @@ export const LABELS: Labels = {
     stepType: "Step kind",
     addStep: "Add step",
     removeStep: "Remove",
+    removeStepConfirm: "Remove this step? Any step that routed into it loses that path, and conversations already on it stay where they are. Add the step again to undo.",
     branches: "Branches",
     branchesBody: "A branch says which step follows which. Add one line per path.",
     fromStep: "From",
@@ -305,6 +307,7 @@ export const LABELS: Labels = {
     stepType: "نوع الخطوة",
     addStep: "أضف خطوة",
     removeStep: "احذف",
+    removeStepConfirm: "هل تريد حذف هذه الخطوة؟ ستفقد كل خطوة تؤدي إليها ذلك المسار، وتبقى المحادثات الموجودة عليها في مكانها. أضف الخطوة مرة أخرى للتراجع.",
     branches: "التفرعات",
     branchesBody: "التفرّع يحدد الخطوة التالية لكل خطوة. أضف سطرًا لكل مسار.",
     fromStep: "من",
@@ -589,7 +592,7 @@ export default function JourneyBuilder() {
                       <input type="hidden" name="intent" value="remove-step" />
                       <input type="hidden" name="key" value={node.key} />
                       <input type="hidden" name="nonce" value={`remove:${loaded.nonce}:${node.key}`} />
-                      <Button
+                      <ConfirmButton
                         type="submit"
                         variant="ghost"
                         size="sm"
@@ -598,9 +601,12 @@ export default function JourneyBuilder() {
                         // is only visible on screen, so name it for the ones who
                         // are not looking at the screen.
                         aria-label={`${l("removeStep")}: ${node.key}`}
+                        // The dialog names the step too: by the time it opens, the
+                        // row that said which one is behind it.
+                        message={`${l("removeStepConfirm")}\n\n${node.key}`}
                       >
                         {l("removeStep")}
-                      </Button>
+                      </ConfirmButton>
                     </Form>
                   ) : null}
                 </span>
