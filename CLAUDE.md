@@ -182,12 +182,30 @@ gate was recorded as needing a `workflow_dispatch` and the user's review; that
 gate was removed 2026-08-22, `deploy.yml:66-70` says so in its own comment.
 Read the workflow before describing what it does.
 
-`main` is ahead of production by eight commits, all code-bearing: `0cad1ef`
-through `61c2745` are the empty-state ratchet (63 screens now teach one action,
-`ALLOWED` emptied, the contract guarded rather than the table prop), `9823033`
-keeps the reference id on every error state, and `d768164` + `8f29bda` are dead
-seam 15 — `problem.errors` read, and the rejected input marked at `FieldInput`.
+Production is on `31b88a9` (run 33066869556 green, `pnpm e2e:live` 18/18) and
+`4fe7d42` is pushed and building. Everything from the empty-state ratchet
+(`0cad1ef`..`61c2745`, 63 screens teaching one action), `9823033` (reference id
+on every error state) and dead seam 15 (`d768164` + `8f29bda`) is live.
 A push is a production release.
+
+The friendliness pass added two guards worth naming, both the same shape as the
+existing source-scanning ones. `31b88a9`: `AgentBadge`'s `why` is optional in
+the primitive on purpose, so `components/agent-badge.why.test.ts` walks the real
+`.tsx` sources and fails on any badge that neither passes `why=` nor carries a
+`ponytail:` comment above it naming what explains instead — **an optional prop
+encoding a documented obligation (docs/15 §4) needs a source guard, not a
+type**. `4fe7d42`: 434 spec form fields carry 13 hints between them, which is
+what makes per-field prose the wrong instrument — **when a field type is entered
+in units its label cannot state, the hint belongs on the type**. `hintFor`
+(`components/fields.tsx`) covers `json`, `rate` and `ratio` from three
+`common.field.hint.*` keys both label resolvers fall through to; `money` is
+excluded because every such field is named `…Minor`.
+
+Two friendliness items are closed **by inspection** — do not re-open. Undo is
+already honest everywhere: `signal-budget.tsx:399` implements it and every other
+mention states plainly the action cannot be undone. And the first-run
+affordance exists: `home.tsx:600` computes `barren` and line 992 renders a
+titled `EmptyState` with a real door.
 
 Running under a self-paced `/loop` toward the full roadmap (M0-M6) in
 production. Loop iteration is autonomous; `pnpm deploy:prod` and any `git push`
