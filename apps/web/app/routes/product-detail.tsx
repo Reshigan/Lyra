@@ -99,7 +99,10 @@ export const LABELS: Record<string, Record<string, string>> = {
     versionsCaption: "Every underwriter version of this product, and the commission it pays.",
     channelsTitle: "Sold through",
     channelsCaption: "Channels allowed to distribute a version of this product.",
+    noneVersions: "No version of this product exists yet. A version is what a customer actually buys.",
+    noneChannels: "No version restricts itself to a channel, and none is on sale, so nothing can be sold yet.",
     channelsAll: "Every channel may sell this: no version restricts it.",
+    "channelsAll.body": "Restrict a version to a channel from its own record if you want to narrow that.",
     colOffering: "Version",
     colProvider: "Underwriter",
     colPricing: "Priced by",
@@ -150,7 +153,10 @@ export const LABELS: Record<string, Record<string, string>> = {
     versionsCaption: "كل إصدار لهذا المنتج، والعمولة التي يدفعها.",
     channelsTitle: "قنوات البيع",
     channelsCaption: "القنوات المسموح لها بتوزيع إصدار من هذا المنتج.",
+    noneVersions: "لا يوجد إصدار من هذا المنتج بعد. الإصدار هو ما يشتريه العميل فعلاً.",
+    noneChannels: "لا إصدار يقيّد نفسه بقناة، ولا شيء معروض للبيع، فلا يمكن بيع شيء بعد.",
     channelsAll: "كل القنوات تستطيع بيع هذا المنتج: لا إصدار يقيّده.",
+    "channelsAll.body": "قيّد إصداراً بقناة من سجله الخاص إن أردت تضييق ذلك.",
     colOffering: "الإصدار",
     colProvider: "جهة الاكتتاب",
     colPricing: "طريقة التسعير",
@@ -404,7 +410,7 @@ export default function ProductDetail() {
           columns={offeringColumns}
           rows={loaded.offerings}
           rowKey={(row) => row.id}
-          empty={<EmptyState title={l("none")} />}
+          empty={<EmptyState title={l("none")} body={l("noneVersions")} />}
         />
       </Card>
 
@@ -414,7 +420,13 @@ export default function ProductDetail() {
           columns={channelColumns}
           rows={loaded.channels}
           rowKey={(row) => row.id}
-          empty={<EmptyState title={loaded.unrestricted ? l("channelsAll") : l("none")} />}
+          empty={
+            loaded.unrestricted ? (
+              <EmptyState title={l("channelsAll")} body={l("channelsAll.body")} />
+            ) : (
+              <EmptyState title={l("none")} body={l("noneChannels")} />
+            )
+          }
         />
       </Card>
 

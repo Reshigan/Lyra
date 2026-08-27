@@ -837,7 +837,7 @@ export default function CampaignStudio() {
 
           <Card title={l("studio.variants")} description={l("studio.whyDraft")}>
             {mine.length === 0 ? (
-              <EmptyState title={l("studio.noVariants")} />
+              <EmptyState title={l("studio.noVariants")} body={l("studio.noVariants.body")} />
             ) : (
               <ul className="flex flex-col divide-y divide-border border-y border-border">
                 {mine.map((creative) => (
@@ -1001,7 +1001,7 @@ export default function CampaignStudio() {
                 />
               </>
             ) : (
-              <EmptyState title={l("studio.noSpend")} />
+              <EmptyState title={l("studio.noSpend")} body={l("studio.noSpend.body")} />
             )}
           </Card>
         </>

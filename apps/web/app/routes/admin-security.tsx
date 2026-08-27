@@ -113,6 +113,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     mfaExempt: "External sign-ins",
     gapsCaption: "People an internal role covers who have no second factor yet",
     gapsEmpty: "Everyone it applies to has enrolled.",
+    "gapsEmpty.body": "Nothing to chase. Anyone added later who has not enrolled will appear here.",
     gapsWithheld: "Some people have not enrolled. Naming them needs permission to read the staff directory.",
     colPerson: "Person",
     colEmail: "Sign-in address",
@@ -142,6 +143,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     ssoIntro: "Single sign-on for a mail domain. A disabled provider cannot be used to sign in.",
     ssoCaption: "Configured sign-in providers",
     ssoEmpty: "No sign-in provider is configured, so everyone signs in with a password.",
+    "ssoEmpty.body": "Connect a provider to let staff sign in with your organisation's own accounts.",
     ssoGapTitle: "A live provider cannot assert a second factor",
     ssoGapBody:
       "These providers sign people in without proving a second factor was used. The platform still requires one, so the people they cover must enrol here as well.",
@@ -181,6 +183,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     mfaExempt: "تسجيلات خارجية",
     gapsCaption: "أشخاص يشملهم دور داخلي وليس لديهم عامل ثانٍ بعد",
     gapsEmpty: "كل من تشمله القاعدة قد سجّل عامله الثاني.",
+    "gapsEmpty.body": "لا شيء للمتابعة. سيظهر هنا كل من يُضاف لاحقاً ولم يسجّل عامله الثاني.",
     gapsWithheld: "بعض الأشخاص لم يسجّلوا بعد. تسميتهم تتطلب صلاحية قراءة دليل الموظفين.",
     colPerson: "الشخص",
     colEmail: "عنوان تسجيل الدخول",
@@ -210,6 +213,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     ssoIntro: "الدخول الموحّد لنطاق بريد. الموفّر المعطّل لا يمكن استخدامه لتسجيل الدخول.",
     ssoCaption: "موفرو تسجيل الدخول المهيّأون",
     ssoEmpty: "لا يوجد موفّر مهيّأ، فيسجّل الجميع الدخول بكلمة مرور.",
+    "ssoEmpty.body": "اربط موفّراً ليسجّل الموظفون الدخول بحسابات مؤسستك.",
     ssoGapTitle: "موفّر نشط لا يؤكّد وجود عامل ثانٍ",
     ssoGapBody:
       "هؤلاء الموفرون يسجّلون الدخول دون إثبات استخدام عامل ثانٍ. المنصّة ما زالت تطلبه، فعلى من يشملونهم التسجيل هنا أيضًا.",
@@ -392,7 +396,7 @@ export default function AdminSecurity() {
               columns={gapColumns}
               rows={posture.mfa.gaps}
               rowKey={(row) => row.userId}
-              empty={<EmptyState title={l("gapsEmpty")} />}
+              empty={<EmptyState title={l("gapsEmpty")} body={l("gapsEmpty.body")} />}
             />
           )}
           {loaded.may.usersRead ? (
@@ -455,7 +459,7 @@ export default function AdminSecurity() {
             rows={posture.sso.providers}
             rowKey={(row) => row.id}
             rowState={(row) => (row.enabled ? undefined : "sealed")}
-            empty={<EmptyState title={l("ssoEmpty")} />}
+            empty={<EmptyState title={l("ssoEmpty")} body={l("ssoEmpty.body")} />}
           />
           {loaded.may.providersRead ? (
             <Link to="/admin/identity-providers" className="font-ui text-13 text-accent underline underline-offset-2">

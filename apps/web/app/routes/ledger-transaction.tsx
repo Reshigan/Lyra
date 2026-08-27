@@ -570,7 +570,7 @@ export default function LedgerTransaction() {
           </Button>
         </div>
         {loaded.approvals.length === 0 ? (
-          <EmptyState title={l("txn.approvalsEmpty")} />
+          <EmptyState title={l("txn.approvalsEmpty")} body={l("txn.approvalsEmpty.body")} />
         ) : (
           <Table<ApprovalRow>
             caption={l("txn.approvals")}
@@ -643,7 +643,7 @@ export default function LedgerTransaction() {
             ]}
           />
         ) : (
-          <EmptyState title={l("txn.auditEmpty")} />
+          <EmptyState title={l("txn.auditEmpty")} body={l("txn.auditEmpty.body")} />
         )}
       </section>
     </div>

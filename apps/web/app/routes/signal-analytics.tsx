@@ -228,7 +228,7 @@ export default function GrowthAnalytics() {
 
       <Card title={l("growth.attribution")} description={l("growth.attributionCaption")}>
         {loaded.rolls.length === 0 ? (
-          <EmptyState title={l("growth.noSpend")} className="mt-4" />
+          <EmptyState title={l("growth.noSpend")} body={l("growth.noSpend.body")} className="mt-4" />
         ) : (
           <Table
             className="mt-4"
@@ -243,7 +243,7 @@ export default function GrowthAnalytics() {
 
       <Card title={l("growth.cohorts")} description={l("growth.cohortsCaption")}>
         {loaded.cohorts.length === 0 ? (
-          <EmptyState title={l("none")} className="mt-4" />
+          <EmptyState title={l("growth.noCohorts")} body={l("growth.noCohorts.body")} className="mt-4" />
         ) : (
           <Table
             className="mt-4"

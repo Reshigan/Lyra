@@ -285,7 +285,7 @@ export default function SignalDev() {
 
               {result?.rows ? (
                 result.rows.length === 0 ? (
-                  <EmptyState title={l("dev.readEmpty")} />
+                  <EmptyState title={l("dev.readEmpty")} body={l("dev.readEmpty.body")} />
                 ) : (
                   <div className="flex flex-col gap-2">
                     <p className="font-ui text-13 text-subtle">
@@ -328,7 +328,7 @@ export default function SignalDev() {
             columns={hookColumns}
             rows={loaded.hooks}
             rowKey={(row) => row.id}
-            empty={<EmptyState title={l("dev.hooksEmpty")} />}
+            empty={<EmptyState title={l("dev.hooksEmpty")} body={l("dev.hooksEmpty.body")} />}
           />
           {result?.ping ? <Ping ping={result.ping} l={l} /> : null}
         </div>

@@ -226,7 +226,7 @@ export default function ScoutRadar() {
       <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
         <Card>
           {loaded.dots.length === 0 ? (
-            <EmptyState title={l("radar.empty")} />
+            <EmptyState title={l("radar.empty")} body={l("radar.empty.body")} />
           ) : (
             <Quadrant dots={loaded.dots} l={l} locale={locale} />
           )}
@@ -242,7 +242,7 @@ export default function ScoutRadar() {
 
         <Card title={l("radar.dossier")}>
           {chosen === null ? (
-            <EmptyState title={l("radar.pick")} />
+            <EmptyState title={l("radar.pick")} body={l("radar.pick.body")} />
           ) : (
             <div className="flex flex-col gap-3">
               <h2 className="font-ui text-12 font-medium uppercase tracking-[0.14em] text-subtle">

@@ -218,6 +218,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     "lines.total": "These lines total",
     "lines.close": "Close",
     "lines.none": "No lines in this period",
+    "lines.none.body": "A line is written when something is posted. Close a period, or post an entry, to see them.",
     "col.postedAt": "Posted",
     "col.txnType": "Transaction",
     "col.txnId": "Transaction id",
@@ -229,7 +230,8 @@ export const LABELS: Record<string, Record<string, string>> = {
     "side.credit": "Credit",
     "denied.title": "You cannot open the money map",
     "denied.body": "It needs a permission your role does not hold. An administrator can grant it.",
-    empty: "Nothing was posted in this period"
+    empty: "Nothing was posted in this period",
+    "empty.body": "Nothing moved, so there is no map to draw. Pick a period with activity.",
   },
   ar: {
     title: "خريطة الأموال",
@@ -265,6 +267,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     "lines.total": "إجمالي هذه القيود",
     "lines.close": "إغلاق",
     "lines.none": "لا توجد قيود في هذه الفترة",
+    "lines.none.body": "يُكتب القيد عند ترحيل شيء. أقفل فترة أو رحّل قيداً لتراها.",
     "col.postedAt": "تاريخ الترحيل",
     "col.txnType": "المعاملة",
     "col.txnId": "معرّف المعاملة",
@@ -276,7 +279,8 @@ export const LABELS: Record<string, Record<string, string>> = {
     "side.credit": "دائن",
     "denied.title": "لا يمكنك فتح خريطة الأموال",
     "denied.body": "تتطلب صلاحية لا يملكها دورك. يمكن للمسؤول منحها.",
-    empty: "لم يُرحَّل شيء في هذه الفترة"
+    empty: "لم يُرحَّل شيء في هذه الفترة",
+    "empty.body": "لم يتحرك شيء، فلا خريطة تُرسم. اختر فترة فيها نشاط.",
   }
 };
 
@@ -428,7 +432,7 @@ export default function LedgerMoneyMap() {
       </Form>
 
       {laid.nodes.length === 0 ? (
-        <EmptyState title={l("empty")} />
+        <EmptyState title={l("empty")} body={l("empty.body")} />
       ) : (
         // The diagram reads left to right in both locales: the ribbons are a
         // flow of time and money, not a line of text, and mirroring them would
@@ -614,7 +618,7 @@ function Lines({
         rowKey={(row) => `${row.txnId}:${row.seq}`}
         caption={`${label("lines.title")} — ${label(`node.${drilled.node}`)}`}
         density="compact"
-        empty={<EmptyState title={label("lines.none")} />}
+        empty={<EmptyState title={label("lines.none")} body={label("lines.none.body")} />}
       />
     </section>
   );

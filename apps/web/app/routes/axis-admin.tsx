@@ -111,6 +111,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     sopsIntro: "The version marked active is the one cases follow. Publishing one retires whichever version it replaces.",
     sopsCaption: "Procedure versions",
     sopsEmpty: "No procedures yet.",
+    "sopsEmpty.body": "A procedure is the set of steps a work item follows. Add one so new items have a path.",
     publishConfirm: "Publish this version? Every case opened from now on follows it, and the version it replaces stops being active. Publishing again is how you undo it.",
     colKey: "Procedure",
     colVersion: "Version",
@@ -124,6 +125,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     connectorsIntro: "Outbound webhook delivery over the deliveries recorded so far.",
     connectorsCaption: "Webhooks",
     connectorsEmpty: "No webhook is configured.",
+    "connectorsEmpty.body": "Add one to have work-item events pushed to your own systems as they happen.",
     colUrl: "Endpoint",
     colDelivered: "Delivered",
     colFailed: "Failed",
@@ -144,6 +146,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     sopsIntro: "النسخة المفعّلة هي التي تتبعها الحالات. نشر نسخة يسحب النسخة التي تحل محلها.",
     sopsCaption: "نسخ الإجراءات",
     sopsEmpty: "لا توجد إجراءات بعد.",
+    "sopsEmpty.body": "الإجراء هو الخطوات التي يتبعها بند العمل. أضف واحداً ليجد كل بند جديد مساره.",
     publishConfirm: "هل تريد نشر هذه النسخة؟ ستتبعها كل حالة تُفتح من الآن فصاعداً، وتتوقف النسخة التي تحل محلها عن كونها نشطة. النشر مرة أخرى هو طريقة التراجع.",
     colKey: "الإجراء",
     colVersion: "النسخة",
@@ -157,6 +160,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     connectorsIntro: "تسليم الويب هوك الصادر بحسب عمليات التسليم المسجّلة حتى الآن.",
     connectorsCaption: "الويب هوك",
     connectorsEmpty: "لا يوجد ويب هوك مهيّأ.",
+    "connectorsEmpty.body": "أضف واحداً لتُدفع أحداث بنود العمل إلى أنظمتك فور وقوعها.",
     colUrl: "نقطة النهاية",
     colDelivered: "تم التسليم",
     colFailed: "فشل",
@@ -368,7 +372,7 @@ export default function AxisAdmin() {
             rows={loaded.sops}
             rowKey={(row) => row.id}
             rowState={(row) => (row.status === "retired" ? "sealed" : undefined)}
-            empty={<EmptyState title={l("sopsEmpty")} />}
+            empty={<EmptyState title={l("sopsEmpty")} body={l("sopsEmpty.body")} />}
           />
         </Card>
       ) : null}
@@ -393,7 +397,7 @@ export default function AxisAdmin() {
               columns={healthColumns}
               rows={loaded.health}
               rowKey={(row) => row.webhookId}
-              empty={<EmptyState title={l("connectorsEmpty")} />}
+              empty={<EmptyState title={l("connectorsEmpty")} body={l("connectorsEmpty.body")} />}
             />
             <Link to="/admin/developer" className="font-ui text-13 text-accent underline underline-offset-2">
               {l("hooksManage")}

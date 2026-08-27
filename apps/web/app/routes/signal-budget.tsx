@@ -249,7 +249,7 @@ export default function BudgetAndBounds() {
 
       <Card title={l("budget.perCampaign")}>
         {loaded.campaigns.length === 0 ? (
-          <EmptyState title={l("cockpit.noCampaigns")} />
+          <EmptyState title={l("cockpit.noCampaigns")} body={l("cockpit.noCampaigns.body")} />
         ) : (
           <Table
             caption={l("budget.caption")}
@@ -301,7 +301,7 @@ export default function BudgetAndBounds() {
       <Card title={l("budget.moves")} description={l("budget.movesCaption")}>
         <GuardrailNotice title={l("budget.reverse")} reason={l("budget.reverseHint")} tone="info" />
         {loaded.moves.length === 0 ? (
-          <EmptyState title={l("budget.noMoves")} className="mt-4" />
+          <EmptyState title={l("budget.noMoves")} body={l("budget.noMoves.body")} className="mt-4" />
         ) : (
           <Table
             className="mt-4"

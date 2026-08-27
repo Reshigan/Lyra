@@ -149,6 +149,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     kindCustom: "Custom",
     openFor: "Open the permissions of {name}",
     emptyRoles: "No roles yet.",
+    "emptyRoles.body": "A role is a named bundle of permissions you assign to staff. Create one to start.",
     pickPrompt: "Choose a role to see what it may do.",
     matrixTitle: "What {name} may do",
     matrixIntro: "A ticked box is a granted permission. Only the permissions you hold yourself are offered.",
@@ -159,7 +160,9 @@ export const LABELS: Record<string, Record<string, string>> = {
       "This role is provisioned from the platform's own role catalogue, so an edit here would drift from the definition in code.",
     grantsHeld: "Held",
     grantsNone: "No permissions granted yet.",
+    "grantsNone.body": "This role does nothing until a permission is added to it.",
     grantableNone: "You hold no permissions you could grant.",
+    "grantableNone.body": "You can only grant what you hold yourself. Ask an administrator to widen your own role first.",
     keptTitle: "Kept as they are",
     keptIntro: "Grants outside your own permissions, including wildcards. Saving leaves them untouched.",
     nameLabel: "Display name",
@@ -194,6 +197,7 @@ export const LABELS: Record<string, Record<string, string>> = {
     kindCustom: "مخصص",
     openFor: "افتح أذونات {name}",
     emptyRoles: "لا توجد أدوار بعد.",
+    "emptyRoles.body": "الدور حزمة أذونات مسمّاة تُسندها إلى الموظفين. أنشئ واحداً للبدء.",
     pickPrompt: "اختر دورًا لترى ما يمكنه فعله.",
     matrixTitle: "ما يمكن أن يفعله {name}",
     matrixIntro: "المربع المحدَّد يعني إذنًا ممنوحًا. تُعرض فقط الأذونات التي تملكها أنت.",
@@ -203,7 +207,9 @@ export const LABELS: Record<string, Record<string, string>> = {
     systemReason: "هذا الدور مُهيَّأ من كتالوج أدوار المنصة، فأي تعديل هنا سيخالف تعريفه في الكود.",
     grantsHeld: "ممنوح",
     grantsNone: "لا أذونات ممنوحة بعد.",
+    "grantsNone.body": "لا يفعل هذا الدور شيئاً حتى تُضاف إليه صلاحية.",
     grantableNone: "لا تملك أذونات يمكنك منحها.",
+    "grantableNone.body": "لا يمكنك منح إلا ما تملكه. اطلب من المسؤول توسيع دورك أولاً.",
     keptTitle: "تُترك كما هي",
     keptIntro: "أذونات خارج نطاق أذوناتك، بما فيها أنماط البدل. الحفظ لا يمسّها.",
     nameLabel: "الاسم المعروض",
@@ -393,7 +399,7 @@ export default function AdminRoles() {
           columns={columns}
           rows={loaded.roles}
           rowKey={(row) => row.id}
-          empty={<EmptyState title={l("emptyRoles")} />}
+          empty={<EmptyState title={l("emptyRoles")} body={l("emptyRoles.body")} />}
         />
       </Card>
 
@@ -454,7 +460,10 @@ function RoleMatrix({
         {role.system ? <GuardrailNotice title={l("systemTitle")} reason={l("systemReason")} tone="info" /> : null}
 
         {blocks.length === 0 ? (
-          <EmptyState title={l(editable ? "grantableNone" : "grantsNone")} />
+          <EmptyState
+            title={l(editable ? "grantableNone" : "grantsNone")}
+            body={l(editable ? "grantableNone.body" : "grantsNone.body")}
+          />
         ) : null}
 
         <Form method="post" className="flex flex-col gap-4">

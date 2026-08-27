@@ -83,7 +83,7 @@ export default function ScoutPricing() {
 
       <Card title={l("price.byLine")} description={l("price.note")}>
         {loaded.lines.length === 0 ? (
-          <EmptyState title={l("price.empty")} className="mt-4" />
+          <EmptyState title={l("price.empty")} body={l("price.empty.body")} className="mt-4" />
         ) : (
           <Table
             className="mt-4"
@@ -98,7 +98,7 @@ export default function ScoutPricing() {
 
       <Card title={l("price.losing")}>
         {loaded.losses.length === 0 ? (
-          <EmptyState title={l("price.allBelow")} className="mt-4" />
+          <EmptyState title={l("price.allBelow")} body={l("price.allBelow.body")} className="mt-4" />
         ) : (
           <Table
             className="mt-4"

@@ -49,12 +49,14 @@ const LABELS: Record<string, Record<string, string>> = {
     "ask.agent": "Agent",
     "feed.why": "Why",
     "feed.title": "Waiting for a decision",
-    "feed.empty": "Nothing is waiting on you. Proposals appear here when a run wants to change something.",
+    "feed.empty": "Nothing is waiting on you.",
+    "feed.empty.body": "Proposals appear here when a run wants to change something.",
     "feed.act": "Act",
     "feed.dismiss": "Dismiss",
     "feed.done.title": "Recently decided",
     "runs.title": "Recent runs",
-    "runs.empty": "No runs yet. Start with a question above.",
+    "runs.empty": "No runs yet.",
+    "runs.empty.body": "Start with a question above — a run reads the platform and comes back with what it found.",
     "runs.rounds": "rounds",
     "runs.proposals": "proposals",
     "answer.title": "The loop's answer",
@@ -75,12 +77,14 @@ const LABELS: Record<string, Record<string, string>> = {
     "ask.agent": "الوكيل",
     "feed.why": "لماذا",
     "feed.title": "بانتظار قرارك",
-    "feed.empty": "لا شيء بانتظارك. تظهر المقترحات هنا عندما يريد تشغيل ما تغيير شيئاً.",
+    "feed.empty": "لا شيء بانتظارك.",
+    "feed.empty.body": "تظهر المقترحات هنا عندما يريد تشغيل ما تغيير شيء.",
     "feed.act": "تنفيذ",
     "feed.dismiss": "تجاهل",
     "feed.done.title": "قرارات حديثة",
     "runs.title": "التشغيلات الأخيرة",
-    "runs.empty": "لا تشغيلات بعد. ابدأ بسؤال أعلاه.",
+    "runs.empty": "لا تشغيلات بعد.",
+    "runs.empty.body": "ابدأ بسؤال أعلاه — يقرأ التشغيل المنصّة ويعود بما وجده.",
     "runs.rounds": "جولات",
     "runs.proposals": "مقترحات",
     "answer.title": "إجابة الحلقة",
@@ -425,7 +429,7 @@ export default function CommandCenter() {
         </h2>
         <Hairline className="my-3" />
         {proposals.length === 0 ? (
-          <EmptyState title={t("feed.empty")} />
+          <EmptyState title={t("feed.empty")} body={t("feed.empty.body")} />
         ) : (
           <ul className="flex flex-col gap-3">
             {proposals.map((p) => {
@@ -491,7 +495,7 @@ export default function CommandCenter() {
         </h2>
         <Hairline className="my-3" />
         {runs.length === 0 ? (
-          <EmptyState title={t("runs.empty")} />
+          <EmptyState title={t("runs.empty")} body={t("runs.empty.body")} />
         ) : (
           <ul className="flex flex-col divide-y divide-current/10">
             {runs.map((r) => {
